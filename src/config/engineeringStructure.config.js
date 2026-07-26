@@ -60,6 +60,7 @@ export const ENGINEERING_DISCIPLINES = {
       // },
       // SOFT-CODED: P&ID Verification feature entry — add/remove here only
       // SOFT-CODED: display name changed from 'P&ID Verification' → 'P&ID QC'
+      // SOFT-CODED: V2 access via in-page switcher — no separate sidebar entry needed
       {
         id: 'pidVerification',
         name: 'P&ID QC',

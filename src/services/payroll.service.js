@@ -80,13 +80,8 @@ const payrollService = {
   getLeaveRequest: (id) =>
     unwrap(apiClient.get(`${BASE}/leave-requests/${id}/`)),
 
-  // SOFT-CODED: Support both JSON and multipart/form-data for file uploads
-  createLeaveRequest: (data, isMultipart = false) => {
-    const config = isMultipart ? {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    } : {}
-    return unwrap(apiClient.post(`${BASE}/leave-requests/`, data, config))
-  },
+  createLeaveRequest: (data) =>
+    unwrap(apiClient.post(`${BASE}/leave-requests/`, data)),
 
   approveLeaveRequest: (id, note = '') =>
     unwrap(apiClient.post(`${BASE}/leave-requests/${id}/approve/`, { note })),

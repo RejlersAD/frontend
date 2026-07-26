@@ -10,10 +10,41 @@ import {
   Trash2, ArrowLeft, BarChart2, Save, Zap, Tag, Link, Sliders,
   Ruler, ScanLine, Brain, CircleDot, Type, ChevronDown, ChevronUp,
   Lightbulb, Eye, EyeOff, Hash, ClipboardList, Boxes, MapPin, Wrench, Network, Database, GripVertical,
-  Search, ExternalLink, Sparkles, Maximize2, Minimize2, Wind,
+  Search, ExternalLink, Sparkles, Maximize2, Minimize2, Wind, Plus,
   Gauge, CheckSquare, Factory, Droplet, Flame, Settings, Award, Waves, Cog, CircleDot as Valve,
   BookOpen, HelpCircle, List, Star, FileCheck, PlayCircle,
 } from 'lucide-react';
+
+// ═════════════════════════════════════════════════════════════════════════════
+// V2 CONFIGURATION — Soft-coded isolation for complete independence from V1
+// ═════════════════════════════════════════════════════════════════════════════
+const VERSION = 'V2';
+const API_VERSION_PATH = '/v2/pid-verification';
+const DB_TABLE_PREFIX = 'pidv2_';
+const ENABLE_V2_FEATURES = true;
+const SHOW_VERSION_BADGE = true;
+const V2_BETA_MODE = true;
+
+// SOFT-CODED: V2 API Base URL Construction
+// Replace /v1 with /v2 in the base URL to get correct V2 endpoint
+// Example: /api/v1 → /api/v2, or http://example.com/api/v1 → http://example.com/api/v2
+const getV2ApiBase = () => {
+  if (API_BASE_URL.includes('/v1')) {
+    return API_BASE_URL.replace('/v1', '/v2');
+  }
+  // Fallback: if no /v1 found, append /v2 to base
+  return `${API_BASE_URL}/v2`;
+};
+
+const API_V2_BASE_URL = getV2ApiBase();
+
+// SOFT-CODED: Debug logging for V2 API configuration (dev only)
+if (import.meta.env.DEV) {
+  console.log('[PID V2] 🔧 V1 Base URL:', API_BASE_URL);
+  console.log('[PID V2] ✅ V2 Base URL:', API_V2_BASE_URL);
+  console.log('[PID V2] 📍 API Prefix will be:', `${API_V2_BASE_URL}/pid-verification`);
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Theme & layout primitives  (identical to PIDUpload.jsx)
@@ -23,24 +54,24 @@ import {
 const OVERLAY_MARKER_ANIM_PING_SCALE = 2.5;
 
 const KEYFRAMES = `
-  @keyframes floatA { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(40px,-30px) scale(1.06)} }
-  @keyframes floatB { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-35px,25px) scale(1.04)} }
-  @keyframes floatC { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(20px,35px) scale(1.05)} }
-  @keyframes fadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes floatA { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(50px,-40px) scale(1.08)} }
+  @keyframes floatB { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-45px,30px) scale(1.06)} }
+  @keyframes floatC { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(25px,40px) scale(1.07)} }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
   @keyframes gradShift { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
   @keyframes scanLine { 0%{top:0%} 100%{top:100%} }
-  @keyframes nodeGlow { 0%,100%{transform:scale(1);opacity:0.8} 50%{transform:scale(1.35);opacity:1} }
-  @keyframes factSlide { 0%{opacity:0;transform:translateY(8px)} 15%,85%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-8px)} }
-  @keyframes checkPop { 0%{transform:scale(0);opacity:0} 70%{transform:scale(1.2)} 100%{transform:scale(1);opacity:1} }
-  @keyframes pulse2 { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes nodeGlow { 0%,100%{transform:scale(1);opacity:0.8} 50%{transform:scale(1.4);opacity:1} }
+  @keyframes factSlide { 0%{opacity:0;transform:translateY(10px)} 15%,85%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-10px)} }
+  @keyframes checkPop { 0%{transform:scale(0);opacity:0} 70%{transform:scale(1.25)} 100%{transform:scale(1);opacity:1} }
+  @keyframes pulse2 { 0%,100%{opacity:1} 50%{opacity:0.5} }
   @keyframes marquee { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
-  @keyframes cardIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes cardIn { from{opacity:0;transform:translateY(12px) scale(0.98)} to{opacity:1;transform:translateY(0) scale(1)} }
   @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
   @keyframes pipeFlow { 0%{stroke-dashoffset:100} 100%{stroke-dashoffset:0} }
-  @keyframes drillPulse { 0%,100%{transform:scaleY(1);opacity:0.8} 50%{transform:scaleY(1.15);opacity:1} }
-  @keyframes dropletFall { 0%{transform:translateY(-8px);opacity:0} 60%{opacity:1} 100%{transform:translateY(8px);opacity:0} }
-  @keyframes railIn { from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:translateX(0)} }
-  @keyframes panelSlide { from{opacity:0;transform:translateX(-14px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes drillPulse { 0%,100%{transform:scaleY(1);opacity:0.8} 50%{transform:scaleY(1.2);opacity:1} }
+  @keyframes dropletFall { 0%{transform:translateY(-10px);opacity:0} 60%{opacity:1} 100%{transform:translateY(10px);opacity:0} }
+  @keyframes railIn { from{opacity:0;transform:translateX(28px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes panelSlide { from{opacity:0;transform:translateX(-18px)} to{opacity:1;transform:translateX(0)} }
   @keyframes orbitA { 0%{transform:rotate(0deg) translateX(52px) rotate(0deg)} 100%{transform:rotate(360deg) translateX(52px) rotate(-360deg)} }
   @keyframes orbitB { 0%{transform:rotate(120deg) translateX(52px) rotate(-120deg)} 100%{transform:rotate(480deg) translateX(52px) rotate(-480deg)} }
   @keyframes orbitC { 0%{transform:rotate(240deg) translateX(52px) rotate(-240deg)} 100%{transform:rotate(600deg) translateX(52px) rotate(-600deg)} }
@@ -51,10 +82,10 @@ const KEYFRAMES = `
   }
   @keyframes markerGlow {
     0%, 100% { opacity: 1;    filter: brightness(1);   }
-    50%      { opacity: 0.55; filter: brightness(1.35); }
+    50%      { opacity: 0.6; filter: brightness(1.4); }
   }
   @keyframes navTabIn {
-    from { opacity: 0; transform: translateX(18px) scale(0.92); }
+    from { opacity: 0; transform: translateX(22px) scale(0.94); }
     to   { opacity: 1; transform: translateX(0)    scale(1);    }
   }
   @keyframes activeBarSlide {
@@ -68,6 +99,38 @@ const KEYFRAMES = `
   @keyframes fadeIn {
     from { opacity: 0; }
     to   { opacity: 1; }
+  }
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.92); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(99,102,241,0.3); }
+    50% { box-shadow: 0 0 40px rgba(99,102,241,0.5), 0 0 60px rgba(139,92,246,0.3); }
+  }
+  @keyframes ripple {
+    0% { transform: scale(0.8); opacity: 1; }
+    100% { transform: scale(2.5); opacity: 0; }
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-32px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(32px); }
+    to { opacity: 1; transform: translateX(0); }
   }
 `;
 
@@ -123,72 +186,168 @@ const WORKFLOW_TRANSITION_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)'; // Smooth eas
 
 // HEADER & BRANDING
 const HEADER_SHOW_GRADIENT_BG    = true;  // Enable subtle gradient background on page header
-const HEADER_GRADIENT_FROM       = 'rgba(59,130,246,0.03)';  // Blue tint start
-const HEADER_GRADIENT_TO         = 'rgba(99,102,241,0.06)';  // Indigo tint end
-const HEADER_ICON_SIZE           = 40;    // px - main page icon size
+const HEADER_GRADIENT_FROM       = 'rgba(99,102,241,0.08)';  // Indigo tint start (enhanced)
+const HEADER_GRADIENT_TO         = 'rgba(59,130,246,0.12)';  // Blue tint end (enhanced)
+const HEADER_ICON_SIZE           = 48;    // px - main page icon size (larger)
 const HEADER_ICON_BG_STYLE       = 'gradient'; // 'solid', 'gradient', 'outline'
 const HEADER_SHOW_STATUS_BADGE   = true;  // Show "Production Ready" or similar badge
-const HEADER_BADGE_TEXT          = 'Production Ready'; // Badge text
-const HEADER_BADGE_COLOR         = '#10b981'; // Badge color (green)
+const HEADER_BADGE_TEXT          = 'V2 Beta · AI-Powered'; // Enhanced badge text
+const HEADER_BADGE_COLOR         = '#8b5cf6'; // Badge color (purple - more premium)
 
 // TYPOGRAPHY
-const HEADING_MAIN_SIZE          = '2.5rem';    // Main page title size
-const HEADING_MAIN_WEIGHT        = 800;         // Font weight (400-900)
-const HEADING_SUB_SIZE           = '0.95rem';   // Subtitle/description size
-const HEADING_SUB_COLOR          = '#64748b';   // Subtitle color
-const FEATURE_BADGE_SIZE         = '0.75rem';   // Feature badges text size
+const HEADING_MAIN_SIZE          = '2.75rem';   // Main page title size (larger)
+const HEADING_MAIN_WEIGHT        = 900;         // Font weight (bolder)
+const HEADING_SUB_SIZE           = '1.05rem';   // Subtitle/description size (larger)
+const HEADING_SUB_COLOR          = '#475569';   // Subtitle color (darker for better contrast)
+const FEATURE_BADGE_SIZE         = '0.8rem';    // Feature badges text size (slightly larger)
 const FEATURE_BADGE_STYLE        = 'pill';      // 'pill', 'rounded', 'square'
 
 // PROJECT CARDS
-const CARD_BORDER_RADIUS         = '16px';      // Card corner radius
-const CARD_PADDING               = '24px';      // Internal card padding
-const CARD_GAP                   = '20px';      // Gap between cards in grid
-const CARD_SHADOW_DEFAULT        = '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)';
-const CARD_SHADOW_HOVER          = '0 10px 25px rgba(59,130,246,0.15), 0 4px 10px rgba(0,0,0,0.08)';
+const CARD_BORDER_RADIUS         = '20px';      // Card corner radius (more rounded)
+const CARD_PADDING               = '28px';      // Internal card padding (more spacious)
+const CARD_GAP                   = '24px';      // Gap between cards in grid (wider gaps)
+const CARD_SHADOW_DEFAULT        = '0 2px 8px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)';
+const CARD_SHADOW_HOVER          = '0 12px 40px rgba(99,102,241,0.2), 0 8px 16px rgba(59,130,246,0.12)';
 const CARD_BORDER_COLOR          = '#e2e8f0';  // Default border
-const CARD_BORDER_HOVER_COLOR    = '#3b82f6';  // Hover border color
-const CARD_HOVER_LIFT            = '-4px';     // Vertical lift on hover
-const CARD_HOVER_SCALE           = 1.01;       // Scale on hover (1.0 = no scale)
-const CARD_TRANSITION_SPEED      = '250ms';    // Transition duration
-const CARD_ICON_SIZE             = 48;         // px - project icon size
-const CARD_ICON_BG               = 'linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%)';
+const CARD_BORDER_HOVER_COLOR    = '#6366f1';  // Hover border color (indigo)
+const CARD_HOVER_LIFT            = '-8px';     // Vertical lift on hover (more dramatic)
+const CARD_HOVER_SCALE           = 1.02;       // Scale on hover (more noticeable)
+const CARD_TRANSITION_SPEED      = '300ms';    // Transition duration (smoother)
+const CARD_ICON_SIZE             = 56;         // px - project icon size (larger)
+const CARD_ICON_BG               = 'linear-gradient(135deg, #c7d2fe 0%, #ddd6fe 50%, #e0e7ff 100%)';
 const CARD_SHOW_ACCENT_LINE      = true;       // Top accent line on cards
-const CARD_ACCENT_HEIGHT         = '3px';      // Accent line thickness
+const CARD_ACCENT_HEIGHT         = '4px';      // Accent line thickness (thicker)
 
 // BUTTONS
-const BUTTON_PRIMARY_BG          = 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)';
-const BUTTON_PRIMARY_HOVER_BG    = 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)';
-const BUTTON_BORDER_RADIUS       = '12px';     // Button corner radius
-const BUTTON_PADDING_X           = '20px';     // Horizontal padding
-const BUTTON_PADDING_Y           = '12px';     // Vertical padding
-const BUTTON_FONT_WEIGHT         = 600;        // Font weight
-const BUTTON_SHADOW              = '0 4px 12px rgba(59,130,246,0.25)';
-const BUTTON_HOVER_LIFT          = '-2px';     // Vertical lift on hover
-const BUTTON_ICON_SIZE           = 18;         // px - icon size in buttons
+const BUTTON_PRIMARY_BG          = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
+const BUTTON_PRIMARY_HOVER_BG    = 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)';
+const BUTTON_BORDER_RADIUS       = '14px';     // Button corner radius (more rounded)
+const BUTTON_PADDING_X           = '24px';     // Horizontal padding (wider)
+const BUTTON_PADDING_Y           = '14px';     // Vertical padding (taller)
+const BUTTON_FONT_WEIGHT         = 700;        // Font weight (bolder)
+const BUTTON_SHADOW              = '0 6px 20px rgba(99,102,241,0.35), 0 2px 8px rgba(139,92,246,0.2)';
+const BUTTON_HOVER_LIFT          = '-3px';     // Vertical lift on hover (more dramatic)
+const BUTTON_ICON_SIZE           = 20;         // px - icon size in buttons (larger)
 
 // EMPTY STATE
-const EMPTY_STATE_ICON_SIZE      = 80;         // px - large icon when no projects
-const EMPTY_STATE_BG             = '#fafafa';  // Background color
+const EMPTY_STATE_ICON_SIZE      = 96;         // px - large icon when no projects (larger)
+const EMPTY_STATE_BG             = 'linear-gradient(135deg, #faf5ff 0%, #f5f3ff 50%, #ede9fe 100%)';  // Gradient background
 const EMPTY_STATE_BORDER_STYLE   = 'dashed';   // 'solid', 'dashed', 'none'
-const EMPTY_STATE_BORDER_COLOR   = '#cbd5e1';  // Border color
-const EMPTY_STATE_PADDING        = '64px';     // Internal padding
+const EMPTY_STATE_BORDER_COLOR   = '#c7d2fe';  // Border color (purple tint)
+const EMPTY_STATE_PADDING        = '72px';     // Internal padding (more spacious)
 
-// COLORS & ACCENTS
-const COLOR_PRIMARY              = '#3b82f6';  // Primary blue
-const COLOR_PRIMARY_LIGHT        = '#60a5fa';  // Light blue
+// COLORS & ACCENTS - Enhanced Professional Palette
+const COLOR_PRIMARY              = '#6366f1';  // Primary indigo (more premium)
+const COLOR_PRIMARY_LIGHT        = '#818cf8';  // Light indigo
 const COLOR_SUCCESS              = '#10b981';  // Green
 const COLOR_WARNING              = '#f59e0b';  // Amber
 const COLOR_DANGER               = '#ef4444';  // Red
 const COLOR_ERROR                = '#ef4444';  // Error red (same as danger)
 const COLOR_TEXT_PRIMARY         = '#0f172a';  // Dark text
-const COLOR_TEXT_SECONDARY       = '#64748b';  // Medium gray text
-const COLOR_TEXT_TERTIARY        = '#94a3b8';  // Light gray text
+const COLOR_TEXT_SECONDARY       = '#475569';  // Medium gray text (darker)
+const COLOR_TEXT_TERTIARY        = '#64748b';  // Light gray text (darker)
 
-// ANIMATIONS
+// ANIMATIONS - Smooth & Engaging
 const ANIMATION_CARD_ENTRANCE    = 'fadeUp';   // Card entrance animation
-const ANIMATION_ENTRANCE_DELAY   = 0.05;       // seconds - stagger between cards
-const ANIMATION_ENTRANCE_DURATION = '0.5s';    // Card entrance duration
+const ANIMATION_ENTRANCE_DELAY   = 0.08;       // seconds - stagger between cards (slower for elegance)
+const ANIMATION_ENTRANCE_DURATION = '0.6s';    // Card entrance duration (smoother)
 const ANIMATION_HOVER_DURATION   = CARD_TRANSITION_SPEED; // Hover animation speed
+const ANIMATION_PAGE_TRANSITION  = 'cubic-bezier(0.4, 0, 0.2, 1)'; // Page transition easing
+const ANIMATION_MICRO_INTERACTION = '200ms';   // Quick feedback animations
+
+// GLASSMORPHISM & MODERN EFFECTS
+const GLASS_BG_OPACITY           = 0.95;       // Glass background opacity (0-1)
+const GLASS_BLUR_STRENGTH        = '20px';     // Backdrop blur strength
+const GLASS_BORDER_OPACITY       = 0.2;        // Glass border opacity
+const ENABLE_GLASSMORPHISM       = true;       // Enable glass effect on panels
+
+// STATUS BADGES & INDICATORS
+const BADGE_BORDER_RADIUS        = '8px';      // Badge corner radius
+const BADGE_FONT_SIZE            = '0.75rem';  // Badge text size
+const BADGE_PADDING_X            = '10px';     // Badge horizontal padding
+const BADGE_PADDING_Y            = '4px';      // Badge vertical padding
+const BADGE_FONT_WEIGHT          = 600;        // Badge font weight
+
+// PROGRESS INDICATORS
+const PROGRESS_BAR_HEIGHT        = '8px';      // Progress bar height
+const PROGRESS_BAR_RADIUS        = '12px';     // Progress bar corner radius
+const PROGRESS_ANIMATION_SPEED   = '1.5s';     // Progress animation duration
+const PROGRESS_SHOW_GLOW         = true;       // Add glow effect to progress bars
+
+// INTERACTIVE STATES
+const INTERACTIVE_SCALE_HOVER    = 1.05;       // Scale on hover for interactive elements
+const INTERACTIVE_SCALE_ACTIVE   = 0.98;       // Scale on click/press
+const INTERACTIVE_TRANSITION     = '200ms cubic-bezier(0.4, 0, 0.2, 1)';
+
+// SPACING & LAYOUT
+const SECTION_SPACING            = '32px';     // Space between major sections
+const ELEMENT_SPACING            = '16px';     // Space between related elements
+const COMPACT_SPACING            = '12px';     // Compact spacing for dense areas
+
+// TOOLTIP & POPOVER
+const TOOLTIP_BG                 = 'rgba(15,23,42,0.95)'; // Tooltip background
+const TOOLTIP_BORDER_RADIUS      = '10px';     // Tooltip corner radius
+const TOOLTIP_PADDING            = '8px 12px'; // Tooltip padding
+const TOOLTIP_FONT_SIZE          = '0.8rem';   // Tooltip text size
+const TOOLTIP_MAX_WIDTH          = '280px';    // Maximum tooltip width
+
+// GRADIENT DEFINITIONS - Premium Color Schemes
+const GRADIENT_PRIMARY           = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
+const GRADIENT_SUCCESS           = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+const GRADIENT_WARNING           = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+const GRADIENT_DANGER            = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+const GRADIENT_INFO              = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+const GRADIENT_PURPLE            = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+const GRADIENT_PINK              = 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)';
+const GRADIENT_ORANGE            = 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)';
+const GRADIENT_TEAL              = 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)';
+const GRADIENT_CYAN              = 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)';
+
+// ICON BACKGROUNDS - Soft, Elegant Gradients
+const ICON_BG_PRIMARY            = 'linear-gradient(135deg, #ddd6fe 0%, #e0e7ff 100%)';
+const ICON_BG_SUCCESS            = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)';
+const ICON_BG_WARNING            = 'linear-gradient(135deg, #fed7aa 0%, #fde68a 100%)';
+const ICON_BG_DANGER             = 'linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)';
+const ICON_BG_INFO               = 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)';
+
+// PANEL HEADER GRADIENTS - Professional Dark Headers
+const PANEL_HEADER_PRIMARY       = 'linear-gradient(135deg, #1e293b 0%, #334155 100%)';
+const PANEL_HEADER_INDIGO        = 'linear-gradient(135deg, #3730a3 0%, #4f46e5 100%)';
+const PANEL_HEADER_PURPLE        = 'linear-gradient(135deg, #6b21a8 0%, #7c3aed 100%)';
+const PANEL_HEADER_BLUE          = 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)';
+const PANEL_HEADER_TEAL          = 'linear-gradient(135deg, #115e59 0%, #0f766e 100%)';
+
+// HOVER GLOW EFFECTS - Subtle Illumination
+const HOVER_GLOW_PRIMARY         = '0 0 30px rgba(99,102,241,0.3)';
+const HOVER_GLOW_SUCCESS         = '0 0 30px rgba(16,185,129,0.3)';
+const HOVER_GLOW_WARNING         = '0 0 30px rgba(245,158,11,0.3)';
+const HOVER_GLOW_DANGER          = '0 0 30px rgba(239,68,68,0.3)';
+
+// SHADOW DEFINITIONS - Layered Depth
+const SHADOW_SM                  = '0 1px 2px rgba(0,0,0,0.05)';
+const SHADOW_MD                  = '0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05)';
+const SHADOW_LG                  = '0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05)';
+const SHADOW_XL                  = '0 20px 25px rgba(0,0,0,0.1), 0 10px 10px rgba(0,0,0,0.04)';
+const SHADOW_2XL                 = '0 25px 50px rgba(0,0,0,0.15), 0 12px 24px rgba(0,0,0,0.08)';
+const SHADOW_COLORED_PRIMARY     = '0 8px 24px rgba(99,102,241,0.25), 0 4px 12px rgba(139,92,246,0.15)';
+const SHADOW_COLORED_SUCCESS     = '0 8px 24px rgba(16,185,129,0.25), 0 4px 12px rgba(5,150,105,0.15)';
+
+// BORDER STYLES
+const BORDER_SUBTLE              = '1px solid rgba(226,232,240,0.8)';
+const BORDER_MEDIUM              = '1px solid rgba(203,213,225,0.9)';
+const BORDER_STRONG              = '2px solid rgba(148,163,184,0.5)';
+const BORDER_ACCENT              = '2px solid rgba(99,102,241,0.4)';
+
+// Z-INDEX LAYERS - Organized Stacking
+const ZINDEX_BACKGROUND          = -1;
+const ZINDEX_BASE                = 0;
+const ZINDEX_CARD                = 10;
+const ZINDEX_DROPDOWN            = 100;
+const ZINDEX_STICKY              = 200;
+const ZINDEX_MODAL_BACKDROP      = 900;
+const ZINDEX_MODAL               = 1000;
+const ZINDEX_TOOLTIP             = 1100;
+const ZINDEX_NOTIFICATION        = 1200;
 
 // ── Soft-coded: icon rail nav button appearance ───────────────────────────────
 // NAV_RAIL_ENTRY_DELAY_MS   : stagger between each button's entry animation (ms)
@@ -255,18 +414,43 @@ const _lfcGlobal = (code) =>
   { stroke:'#0891b2', fill:'#bae6fd', label: code || '—' };
 
 const T = {
-  bg:    'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)',
+  bg:    'linear-gradient(135deg, #faf5ff 0%, #f5f3ff 20%, #ede9fe 40%, #e0e7ff 60%, #dbeafe 80%, #f0f9ff 100%)',
   blobs: [
-    { color:'rgba(59,130,246,0.09)',  size:'520px', top:'-80px',    left:'18%',    anim:'floatA 14s ease-in-out infinite'    },
-    { color:'rgba(168,85,247,0.07)',  size:'430px', top:'28%',      right:'-60px', anim:'floatB 17s ease-in-out infinite'    },
-    { color:'rgba(245,158,11,0.07)',  size:'380px', bottom:'-60px', left:'32%',    anim:'floatC 12s ease-in-out infinite'    },
-    { color:'rgba(6,182,212,0.06)',   size:'300px', top:'62%',      left:'-40px',  anim:'floatA 10s ease-in-out infinite 3s' },
+    { color:'rgba(99,102,241,0.12)',  size:'600px', top:'-100px',  left:'15%',    anim:'floatA 16s ease-in-out infinite'    },
+    { color:'rgba(139,92,246,0.10)',  size:'500px', top:'25%',     right:'-80px', anim:'floatB 19s ease-in-out infinite'    },
+    { color:'rgba(59,130,246,0.09)',  size:'450px', bottom:'-80px',left:'30%',    anim:'floatC 14s ease-in-out infinite'    },
+    { color:'rgba(14,165,233,0.08)',  size:'350px', top:'60%',     left:'-50px',  anim:'floatA 12s ease-in-out infinite 3s' },
+    { color:'rgba(168,85,247,0.07)',  size:'280px', top:'10%',     right:'20%',   anim:'floatB 15s ease-in-out infinite 2s' },
   ],
-  card:  { background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04)' },
-  cardH: { boxShadow:'0 10px 30px rgba(0,0,0,0.10),0 2px 8px rgba(0,0,0,0.05)', borderColor:'#93c5fd' },
-  panel: { background:'rgba(255,255,255,0.85)', border:'1px solid #e8edf5', backdropFilter:'blur(12px)', boxShadow:'0 1px 3px rgba(0,0,0,0.04)' },
-  modal: { background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 20px 60px rgba(0,0,0,0.15)' },
-  input: { background:'#f8fafc', border:'1px solid #e2e8f0' },
+  card:  { 
+    background:'#ffffff', 
+    border:'1px solid rgba(226,232,240,0.8)', 
+    boxShadow:'0 2px 8px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(99,102,241,0.03)',
+    borderRadius: CARD_BORDER_RADIUS,
+  },
+  cardH: { 
+    boxShadow:'0 12px 40px rgba(99,102,241,0.2), 0 8px 16px rgba(59,130,246,0.12), 0 0 0 2px rgba(99,102,241,0.2)', 
+    borderColor:'rgba(99,102,241,0.6)',
+    transform: `translateY(${CARD_HOVER_LIFT}) scale(${CARD_HOVER_SCALE})`,
+  },
+  panel: { 
+    background:'rgba(255,255,255,0.92)', 
+    border:'1px solid rgba(226,232,240,0.9)', 
+    backdropFilter:'blur(16px)', 
+    boxShadow:'0 2px 8px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.03)',
+  },
+  modal: { 
+    background:'#ffffff', 
+    border:'1px solid #e2e8f0', 
+    boxShadow:'0 24px 72px rgba(15,23,42,0.18), 0 12px 32px rgba(99,102,241,0.12)',
+    borderRadius: '24px',
+  },
+  input: { 
+    background:'#f8fafc', 
+    border:'1px solid #e2e8f0',
+    borderRadius: '12px',
+    transition: `all ${ANIMATION_MICRO_INTERACTION} ${ANIMATION_PAGE_TRANSITION}`,
+  },
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -423,7 +607,8 @@ const DarkModal = ({ show, onClose, title, subtitle, iconEl, children }) =>
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
-const API_PREFIX = `${API_BASE_URL}/pid-verification`;
+// SOFT-CODED: V2 API prefix uses the correctly constructed V2 base URL
+const API_PREFIX = `${API_V2_BASE_URL}/pid-verification`;  // V2: /api/v2/pid-verification
 
 const SEVERITY_STYLES = {
   critical: 'bg-red-100 text-red-800 border-red-300',
@@ -680,9 +865,17 @@ const PERF_MODEL_ACCURACY_LABEL =
 // Adjust this set as new tiers are introduced.
 const PERF_MODEL_HIGHCONF_TIERS = new Set(['P1', 'P2', 'CX']);
 
-// DRAWING_PANEL_LABEL: display name for the main "Drawing" panel tab.
-// Change only this value to rename the tab across the entire UI — no other code changes needed.
-const DRAWING_PANEL_LABEL = 'General';
+// ─────────────────────────────────────────────────────────────────────────────
+// SOFT-CODED: canvas tab labels — aligned to the 4 real P&ID comparison
+// workflows. Change only these values to rename a tab across the entire UI —
+// no other code changes needed. See PANELS array below for the tab definitions
+// and which underlying content sections (drawing/lines/equipment/instrumentation)
+// each tab renders.
+// ─────────────────────────────────────────────────────────────────────────────
+const DRAWING_PANEL_LABEL = 'P&ID & Legends';
+const LINELIST_PANEL_LABEL = 'P&ID & Line List';
+const EQUIPMENT_PANEL_LABEL = 'P&ID & Equipment List';
+const INSTRUMENT_PANEL_LABEL = 'P&ID & Instrument Index';
 
 // Soft-coded: minimum chars typed before the General findings search activates.
 const GENERAL_SEARCH_MIN_CHARS = 1;
@@ -1094,7 +1287,7 @@ function IndexTagsEquipmentPanel({ masterIndex, tagList, equipList, CATEGORY_LAB
   );
 }
 
-const PIDVerification = () => {
+const PIDVerificationV2 = () => {
 
   // ── Navigation ────────────────────────────────────────────────────────────
   const navigate = useNavigate();
@@ -1263,6 +1456,13 @@ const PIDVerification = () => {
   const [legendFile,      setLegendFile]      = useState(null);
   const [legendKnowledge, setLegendKnowledge] = useState(null);
 
+  // ── History row actions: View / Edit / Delete (soft-coded, additive) ─────
+  const [viewingHistoryId,  setViewingHistoryId]  = useState(null); // doc currently loading into the viewer
+  const [editingHistoryId,  setEditingHistoryId]  = useState(null); // doc whose name is being edited inline
+  const [editingHistoryName, setEditingHistoryName] = useState('');
+  const [savingHistoryEdit, setSavingHistoryEdit]  = useState(false);
+  const [deletingHistoryId, setDeletingHistoryId]  = useState(null); // doc awaiting/undergoing delete confirmation
+
   // ── Smart Workflow UI Controls (Collapsible + Compact Mode) ──────────────
   const [workflowCollapsed, setWorkflowCollapsed] = useState(WORKFLOW_DEFAULT_COLLAPSED);
   const [workflowCompact,   setWorkflowCompact]   = useState(WORKFLOW_COMPACT_DEFAULT);
@@ -1401,7 +1601,44 @@ const PIDVerification = () => {
   // ── Drawing image (lazy-loaded for overlay) ───────────────────────────────
   const [drawingImageUrl,     setDrawingImageUrl]     = useState(null);
   const [drawingImageLoading, setDrawingImageLoading] = useState(false);
-  // ── Legend Sheets — AI-powered extraction ─────────────────────────────────
+  // Soft-coded: reason the drawing image failed to load, shown to the user
+  // instead of a generic "unavailable" message (also logged to console).
+  const [drawingImageError,   setDrawingImageError]   = useState(null);
+  // Bump this to force the drawing-image effect to re-fetch (used by the
+  // "Retry" button — no need to change activeDrawing/documentId).
+  const [drawingImageRetryTick, setDrawingImageRetryTick] = useState(0);
+  
+  // ── BYOK (Bring Your Own Key) — AI Deep Extraction ────────────────────────
+  // SOFT-CODED: AI Provider Configuration
+  const AI_PROVIDERS = {
+    openai: {
+      key: 'openai',
+      name: 'OpenAI',
+      icon: '🤖',
+      placeholder: 'sk-...',
+      gradient: 'linear-gradient(135deg,#10a37f,#0d8066)',
+      bgGradient: 'linear-gradient(135deg,#ecfdf5,#d1fae5)',
+      description: 'GPT-4 Vision for deep P&ID analysis',
+      learnMoreUrl: 'https://platform.openai.com/api-keys',
+    },
+    claude: {
+      key: 'claude',
+      name: 'Claude (Anthropic)',
+      icon: '🧠',
+      placeholder: 'sk-ant-...',
+      gradient: 'linear-gradient(135deg,#d97706,#b45309)',
+      bgGradient: 'linear-gradient(135deg,#fef3c7,#fde68a)',
+      description: 'Claude 3 for intelligent extraction',
+      learnMoreUrl: 'https://console.anthropic.com/settings/keys',
+    },
+  };
+  const [apiKeys, setApiKeys] = useState({ openai: '', claude: '' });
+  const [showApiKeyForm, setShowApiKeyForm] = useState(false);
+  const [savingApiKeys, setSavingApiKeys] = useState(false);
+  const [apiKeyStatus, setApiKeyStatus] = useState({ openai: 'not_set', claude: 'not_set' }); // 'not_set' | 'active' | 'invalid'
+  const [showApiKey, setShowApiKey] = useState({ openai: false, claude: false });
+  
+  // ── Legend Sheets — AI-powered extraction (REMOVED - replaced by BYOK) ────
   const [legendSheets,       setLegendSheets]       = useState([]);
   const [showLegendUpload,   setShowLegendUpload]   = useState(false);
   const [legendUploadFiles,  setLegendUploadFiles]  = useState([]);
@@ -1410,6 +1647,24 @@ const PIDVerification = () => {
   const [legendPanelSheet,   setLegendPanelSheet]   = useState(null);  // full detail
   const [loadingLegendDetail,setLoadingLegendDetail]= useState(false);
   const legendPollRef = useRef(null);
+  
+  // ── Reference Data — Line List, Equipment List, Instrument Index ─────────
+  const [lineListFiles,       setLineListFiles]       = useState([]);
+  const [equipmentListFiles,  setEquipmentListFiles]  = useState([]);
+  const [instrumentIndexFiles,setInstrumentIndexFiles] = useState([]);
+  const [showLineListUpload,   setShowLineListUpload]   = useState(false);
+  const [showEquipmentUpload,  setShowEquipmentUpload]  = useState(false);
+  const [showInstrumentUpload, setShowInstrumentUpload] = useState(false);
+  const [lineListUploadFiles,  setLineListUploadFiles]  = useState([]);
+  const [equipmentUploadFiles, setEquipmentUploadFiles] = useState([]);
+  const [instrumentUploadFiles,setInstrumentUploadFiles]= useState([]);
+  const [lineListUploading,    setLineListUploading]    = useState(false);
+  const [equipmentUploading,   setEquipmentUploading]   = useState(false);
+  const [instrumentUploading,  setInstrumentUploading]  = useState(false);
+  
+  // ── BYOK AI Deep Extraction ───────────────────────────────────────────────
+  const [showBYOKPanel, setShowBYOKPanel] = useState(false);
+  
   // ── Findings filters (soft-coded, additive) ───────────────────────────────
   const [filterSeverity, setFilterSeverity] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -1421,27 +1676,50 @@ const PIDVerification = () => {
   // ── Drawing image loader — refetch whenever the active drawing changes ─────
   useEffect(() => {
     let objectUrl = null;
+    let cancelled = false;
     const docId = documentId || results?.document_id;
     if (!docId || !activeDrawingData) {
       setDrawingImageUrl(null);
+      setDrawingImageError(null);
       return;
     }
     const pageIndex = activeDrawingData.page_index ?? 0;
     setDrawingImageLoading(true);
     setDrawingImageUrl(null);
+    setDrawingImageError(null);
     axios.get(
       `${API_PREFIX}/drawing-image/${docId}/${pageIndex}/`,
       { headers: authHeader(), responseType: 'blob', timeout: 30000 }
     ).then(res => {
+      if (cancelled) return;
       objectUrl = URL.createObjectURL(res.data);
       setDrawingImageUrl(objectUrl);
-    }).catch(() => {
+    }).catch(async (err) => {
+      if (cancelled) return;
+      // Soft-coded: surface the *real* reason instead of a generic message.
+      // The backend returns JSON ({ error: "..." }) even on failure, but since
+      // we request responseType:'blob' axios hands it back as a Blob — decode
+      // it back to text/JSON here so the actual cause is visible.
+      let reason = err?.message || 'Unknown error';
+      const blob = err?.response?.data;
+      if (blob instanceof Blob) {
+        try {
+          const text = await blob.text();
+          reason = JSON.parse(text)?.error || text || reason;
+        } catch { /* non-JSON body — keep default reason */ }
+      } else if (err?.response?.data?.error) {
+        reason = err.response.data.error;
+      }
+      console.error('[PID V2] Drawing image load failed:', {
+        documentId: docId, pageIndex, status: err?.response?.status, reason,
+      });
       setDrawingImageUrl(null);
+      setDrawingImageError(reason);
     }).finally(() => {
-      setDrawingImageLoading(false);
+      if (!cancelled) setDrawingImageLoading(false);
     });
-    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [documentId, activeDrawing, results?.document_id]);
+    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [documentId, activeDrawing, results?.document_id, drawingImageRetryTick]);
 
   // Clear Drawing Layout trace cache when switching to a different drawing page
   useEffect(() => {
@@ -1577,6 +1855,80 @@ const PIDVerification = () => {
     }
   };
 
+  // ── History row: View — load a previously-uploaded document's results ────
+  // into the main viewer (same rendering used right after upload/re-check).
+  const viewHistoryDocument = async (d) => {
+    if (viewingHistoryId) return;
+    setViewingHistoryId(d.document_id);
+    try {
+      setResults(null);
+      setDocumentId(d.document_id);
+      setDocStatus(d.status);
+      setActiveDrawing(null);
+      setOverrides({});
+      setOverridesSaved(false);
+      setComparison(null);
+      await fetchResults(d.document_id);
+    } catch (e) {
+      flash('error', 'Failed to load document');
+    } finally {
+      setViewingHistoryId(null);
+    }
+  };
+
+  // ── History row: Edit — inline rename of the document's display name ─────
+  const startEditHistoryName = (d) => {
+    setEditingHistoryId(d.document_id);
+    setEditingHistoryName(d.file_name);
+  };
+
+  const cancelEditHistoryName = () => {
+    setEditingHistoryId(null);
+    setEditingHistoryName('');
+  };
+
+  const saveEditHistoryName = async (docId) => {
+    const newName = editingHistoryName.trim();
+    if (!newName) { flash('error', 'File name cannot be empty'); return; }
+    setSavingHistoryEdit(true);
+    try {
+      await axios.patch(
+        `${API_PREFIX}/update/${docId}/`,
+        { file_name: newName },
+        { headers: authHeader() },
+      );
+      setHistory(prev => prev.map(h => h.document_id === docId ? { ...h, file_name: newName } : h));
+      if (documentId === docId && results) setResults(prev => prev ? { ...prev, file_name: newName } : prev);
+      flash('success', 'Document renamed');
+      cancelEditHistoryName();
+    } catch (e) {
+      flash('error', e?.response?.data?.error || 'Rename failed');
+    } finally {
+      setSavingHistoryEdit(false);
+    }
+  };
+
+  // ── History row: Delete — remove the document permanently (confirmed) ────
+  const deleteHistoryDocument = async (d) => {
+    if (deletingHistoryId) return;
+    if (!window.confirm(`Delete "${d.file_name}"? This permanently removes the document, its drawings and findings. This cannot be undone.`)) {
+      return;
+    }
+    setDeletingHistoryId(d.document_id);
+    try {
+      await axios.delete(`${API_PREFIX}/delete/${d.document_id}/`, { headers: authHeader() });
+      setHistory(prev => prev.filter(h => h.document_id !== d.document_id));
+      if (documentId === d.document_id) {
+        setResults(null); setDocumentId(null); setDocStatus(null);
+      }
+      flash('success', `"${d.file_name}" deleted`);
+    } catch (e) {
+      flash('error', e?.response?.data?.error || 'Delete failed');
+    } finally {
+      setDeletingHistoryId(null);
+    }
+  };
+
   // Atomically persist calibration corrections to state and localStorage.
   const saveCalibration = (next) => {
     setCalibCorrections(next);
@@ -1624,7 +1976,10 @@ const PIDVerification = () => {
     }
   };
 
-  // ── Legend Sheets API helpers ──────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LEGEND SHEETS FUNCTIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
   const fetchLegendSheets = async (projectId) => {
     if (!projectId) return;
     try {
@@ -1633,21 +1988,7 @@ const PIDVerification = () => {
         { headers: authHeader() },
       );
       setLegendSheets(res.data?.legend_sheets || []);
-    } catch (_) { /* non-fatal */ }
-  };
-
-  // Instrument Symbol Registry — fetch all symbols for the active project
-  const fetchInstrumentSymbols = async (projectId) => {
-    if (!projectId) return;
-    setLoadingInstrSymbols(true);
-    try {
-      const res = await axios.get(
-        `${API_PREFIX}/projects/${projectId}/instrument-symbols/`,
-        { headers: authHeader() },
-      );
-      setInstrSymbols(res.data?.symbols || []);
-    } catch (_) { /* non-fatal */ }
-    finally { setLoadingInstrSymbols(false); }
+    } catch (_) { }
   };
 
   const uploadLegendSheets = async () => {
@@ -1663,7 +2004,6 @@ const PIDVerification = () => {
       );
       setShowLegendUpload(false);
       setLegendUploadFiles([]);
-      // Start polling for status updates
       fetchLegendSheets(selectedProject.project_id);
       startLegendPoll(selectedProject.project_id);
       flash('success', 'Legend sheet(s) uploaded — AI extraction in progress…');
@@ -1676,7 +2016,6 @@ const PIDVerification = () => {
 
   const startLegendPoll = (projectId) => {
     if (legendPollRef.current) clearInterval(legendPollRef.current);
-    // Soft-coded: poll every 4 s, stop after 120 s
     const POLL_INTERVAL_MS = 4000;
     const POLL_MAX_MS      = 120000;
     const start = Date.now();
@@ -1727,8 +2066,203 @@ const PIDVerification = () => {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════════════════════
+
   // Cleanup legend poll on unmount
   useEffect(() => () => { if (legendPollRef.current) clearInterval(legendPollRef.current); }, []);
+
+  // Instrument Symbol Registry — fetch all symbols for the active project
+  const fetchInstrumentSymbols = async (projectId) => {
+    if (!projectId) return;
+    setLoadingInstrSymbols(true);
+    try {
+      const res = await axios.get(
+        `${API_PREFIX}/projects/${projectId}/instrument-symbols/`,
+        { headers: authHeader() },
+      );
+      setInstrSymbols(res.data?.symbols || []);
+    } catch (_) { /* non-fatal */ }
+    finally { setLoadingInstrSymbols(false); }
+  };
+
+  // ── Reference Data Functions (Line List, Equipment List, Instrument Index) ────
+  
+  // SOFT-CODED: Reference data type configuration
+  const REFERENCE_DATA_TYPES = {
+    line_list: {
+      apiKey: 'line_list',
+      displayName: 'Line List',
+      description: 'Upload piping line list for cross-checking',
+      icon: '📋',
+      color: 'blue',
+      gradient: 'linear-gradient(135deg,#eff6ff,#dbeafe)',
+      iconBg: 'linear-gradient(135deg,#3b82f6,#2563eb)',
+      stateFiles: lineListFiles,
+      setStateFiles: setLineListFiles,
+      showUpload: showLineListUpload,
+      setShowUpload: setShowLineListUpload,
+      uploadFiles: lineListUploadFiles,
+      setUploadFiles: setLineListUploadFiles,
+      uploading: lineListUploading,
+      setUploading: setLineListUploading,
+    },
+    equipment_list: {
+      apiKey: 'equipment_list',
+      displayName: 'Equipment List',
+      description: 'Upload equipment register for verification',
+      icon: '⚙️',
+      color: 'purple',
+      gradient: 'linear-gradient(135deg,#faf5ff,#f3e8ff)',
+      iconBg: 'linear-gradient(135deg,#9333ea,#7c3aed)',
+      stateFiles: equipmentListFiles,
+      setStateFiles: setEquipmentListFiles,
+      showUpload: showEquipmentUpload,
+      setShowUpload: setShowEquipmentUpload,
+      uploadFiles: equipmentUploadFiles,
+      setUploadFiles: setEquipmentUploadFiles,
+      uploading: equipmentUploading,
+      setUploading: setEquipmentUploading,
+    },
+    instrument_index: {
+      apiKey: 'instrument_index',
+      displayName: 'Instrument Index',
+      description: 'Upload instrument index for tag verification',
+      icon: '🎚️',
+      color: 'indigo',
+      gradient: 'linear-gradient(135deg,#eef2ff,#e0e7ff)',
+      iconBg: 'linear-gradient(135deg,#6366f1,#4f46e5)',
+      stateFiles: instrumentIndexFiles,
+      setStateFiles: setInstrumentIndexFiles,
+      showUpload: showInstrumentUpload,
+      setShowUpload: setShowInstrumentUpload,
+      uploadFiles: instrumentUploadFiles,
+      setUploadFiles: setInstrumentUploadFiles,
+      uploading: instrumentUploading,
+      setUploading: setInstrumentUploading,
+    },
+  };
+
+  const fetchReferenceData = async (projectId) => {
+    if (!projectId) return;
+    try {
+      const res = await axios.get(
+        `${API_PREFIX}/projects/${projectId}/reference-data/`,
+        { headers: authHeader() }
+      );
+      const allData = res.data.reference_data || [];
+      
+      // Soft-coded: split by data_type
+      setLineListFiles(allData.filter(d => d.data_type === 'line_list'));
+      setEquipmentListFiles(allData.filter(d => d.data_type === 'equipment_list'));
+      setInstrumentIndexFiles(allData.filter(d => d.data_type === 'instrument_index'));
+    } catch (err) {
+      console.error('[ReferenceData] Fetch failed:', err);
+    }
+  };
+
+  const uploadReferenceData = async (dataType, files, config) => {
+    if (!selectedProject?.project_id || !files.length) return;
+    config.setUploading(true);
+    try {
+      // Upload each file separately
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('data_type', dataType);
+        fd.append('file', file);
+        await axios.post(
+          `${API_PREFIX}/projects/${selectedProject.project_id}/reference-data/upload/`,
+          fd,
+          { headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' } },
+        );
+      }
+      config.setShowUpload(false);
+      config.setUploadFiles([]);
+      await fetchReferenceData(selectedProject.project_id);
+      flash('success', `${config.displayName} uploaded successfully`);
+    } catch (err) {
+      flash('error', err?.response?.data?.error || 'Upload failed');
+    } finally {
+      config.setUploading(false);
+    }
+  };
+
+  const deleteReferenceData = async (referenceId, dataType) => {
+    try {
+      await axios.delete(`${API_PREFIX}/reference-data/${referenceId}/`, { headers: authHeader() });
+      
+      // Remove from appropriate state
+      if (dataType === 'line_list') {
+        setLineListFiles(prev => prev.filter(f => f.reference_id !== referenceId));
+      } else if (dataType === 'equipment_list') {
+        setEquipmentListFiles(prev => prev.filter(f => f.reference_id !== referenceId));
+      } else if (dataType === 'instrument_index') {
+        setInstrumentIndexFiles(prev => prev.filter(f => f.reference_id !== referenceId));
+      }
+      
+      flash('success', 'Reference data removed');
+    } catch (_) {
+      flash('error', 'Failed to delete reference data');
+    }
+  };
+
+  // ── BYOK (Bring Your Own Key) Functions ────────────────────────────────────
+  
+  const fetchApiKeys = async (projectId) => {
+    if (!projectId) return;
+    try {
+      const res = await axios.get(
+        `${API_PREFIX}/projects/${projectId}/api-keys/`,
+        { headers: authHeader() }
+      );
+      const keys = res.data.api_keys || {};
+      setApiKeyStatus({
+        openai: keys.openai_key ? 'active' : 'not_set',
+        claude: keys.claude_key ? 'active' : 'not_set',
+      });
+      // Don't set actual keys in state for security - only show status
+    } catch (err) {
+      console.error('[BYOK] Fetch failed:', err);
+    }
+  };
+
+  const saveApiKeys = async () => {
+    if (!selectedProject?.project_id) return;
+    setSavingApiKeys(true);
+    try {
+      const payload = {};
+      if (apiKeys.openai) payload.openai_key = apiKeys.openai;
+      if (apiKeys.claude) payload.claude_key = apiKeys.claude;
+      
+      await axios.post(
+        `${API_PREFIX}/projects/${selectedProject.project_id}/api-keys/`,
+        payload,
+        { headers: authHeader() }
+      );
+      
+      setShowApiKeyForm(false);
+      setApiKeys({ openai: '', claude: '' }); // Clear form
+      await fetchApiKeys(selectedProject.project_id);
+      flash('success', 'API keys saved securely — AI deep extraction enabled');
+    } catch (err) {
+      flash('error', err?.response?.data?.error || 'Failed to save API keys');
+    } finally {
+      setSavingApiKeys(false);
+    }
+  };
+
+  const deleteApiKey = async (provider) => {
+    if (!selectedProject?.project_id) return;
+    try {
+      await axios.delete(
+        `${API_PREFIX}/projects/${selectedProject.project_id}/api-keys/${provider}/`,
+        { headers: authHeader() }
+      );
+      setApiKeyStatus(prev => ({ ...prev, [provider]: 'not_set' }));
+      flash('success', `${AI_PROVIDERS[provider].name} key removed`);
+    } catch (err) {
+      flash('error', 'Failed to delete API key');
+    }
+  };
 
   // ── Unmount cleanup — kill status polling timers when leaving the page ────
   // Prevents zombie pollers from accumulating across navigations (each one
@@ -1798,8 +2332,10 @@ const PIDVerification = () => {
     setResults(null);
     fetchHistory(p.project_id);
     fetchLegendKnowledge(p.project_id);
-    fetchLegendSheets(p.project_id);
     fetchInstrumentSymbols(p.project_id);
+    fetchReferenceData(p.project_id);
+    fetchApiKeys(p.project_id);
+    fetchLegendSheets(p.project_id);
   };
 
   const handleBackToProjects = () => {
@@ -1814,8 +2350,8 @@ const PIDVerification = () => {
     setLegendKnowledge(null);
     setLegendScope(null);
     setLegendBuiltAt(null);
-    setLegendSheets([]);
-    setShowLegendPanel(false);
+    // LEGEND SHEETS REMOVED: setLegendSheets([]);
+    // LEGEND SHEETS REMOVED: setShowLegendPanel(false);
     setMessage({ type:'', text:'' });
   };
 
@@ -2164,7 +2700,12 @@ const PIDVerification = () => {
     //   POLL_MAX_CONSECUTIVE_ERR : abort after N consecutive failed polls (network/auth)
     //   POLL_REQUEST_TIMEOUT_MS  : per-request timeout for /status/ calls (ms)
     const POLL_INTERVAL_MS         = 3000;
-    const POLL_MAX_DURATION_MS     = 15 * 60 * 1000;  // 15 minutes — far less than 1 hour
+    // 40 minutes — matches the backend Celery task's hard time limit (35 min,
+    // see TASK_CONFIG in backend/apps/pid_verification_v2/services/processing_config.py)
+    // plus a buffer for queueing delay, so multi-page P&ID documents that
+    // legitimately need the full backend budget aren't flagged as "stuck"
+    // by the frontend before the server has even finished (or failed).
+    const POLL_MAX_DURATION_MS     = 40 * 60 * 1000;
     const POLL_MAX_CONSECUTIVE_ERR = 5;
     const POLL_REQUEST_TIMEOUT_MS  = 15000;
 
@@ -2841,7 +3382,7 @@ const PIDVerification = () => {
                       lineHeight: 1.2,
                       margin: 0
                     }}>
-                      P&ID Verification
+                      P&ID Verification {SHOW_VERSION_BADGE && <span style={{ fontSize: '0.85em', color: '#6366f1' }}>V2</span>}
                     </h1>
                     {HEADER_SHOW_STATUS_BADGE && (
                       <span style={{
@@ -2858,6 +3399,23 @@ const PIDVerification = () => {
                       }}>
                         <CheckCircle style={{ width: '14px', height: '14px' }} />
                         {HEADER_BADGE_TEXT}
+                      </span>
+                    )}
+                    {SHOW_VERSION_BADGE && (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 12px',
+                        borderRadius: '20px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        background: '#ede9fe',
+                        color: '#6366f1',
+                        border: '1px solid #c7d2fe'
+                      }}>
+                        <Sparkles style={{ width: '14px', height: '14px' }} />
+                        {V2_BETA_MODE ? 'Beta' : 'Version 2'}
                       </span>
                     )}
                   </div>
@@ -2899,11 +3457,11 @@ const PIDVerification = () => {
                 </div>
               </div>
 
-              {/* Right: Quick Stats + Version Switcher */}
+              {/* Right: Version Switcher + Quick Stats */}
               <div className="flex items-center gap-6">
-                {/* Version Switcher Button */}
+                {/* Back to V1 Button */}
                 <button
-                  onClick={() => navigate('/engineering/process/pid-verification-v2')}
+                  onClick={() => navigate('/engineering/process/pid-verification')}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -2912,26 +3470,29 @@ const PIDVerification = () => {
                     borderRadius: '12px',
                     fontSize: '0.875rem',
                     fontWeight: 600,
-                    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                    color: 'white',
-                    border: 'none',
+                    background: 'white',
+                    color: '#6366f1',
+                    border: '2px solid #6366f1',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+                    boxShadow: '0 2px 8px rgba(99,102,241,0.15)',
                     transition: 'all 0.2s ease',
                     whiteSpace: 'nowrap'
                   }}
                   onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#6366f1';
+                    e.currentTarget.style.color = 'white';
                     e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.5)';
+                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.3)';
                   }}
                   onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'white';
+                    e.currentTarget.style.color = '#6366f1';
                     e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.15)';
                   }}
                 >
-                  <Sparkles style={{ width: '16px', height: '16px' }} />
-                  Try V2 Beta
-                  <ChevronRight style={{ width: '16px', height: '16px' }} />
+                  <ArrowLeft style={{ width: '16px', height: '16px' }} />
+                  Back to V1
                 </button>
 
                 {/* Quick Stats (shown when projects exist) */}
@@ -4832,221 +5393,342 @@ const PIDVerification = () => {
               </div>
             </div>
           ) : (
-            /* ═══ SMART PROJECT CARDS GRID ═══ */
+            /* ═══ MODERN ANIMATED PROJECT CARDS GRID ═══ */
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: CARD_GAP
+              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              gap: CARD_GAP,
+              perspective: '1000px'
             }}>
               {projects.map((p, idx) => {
-                const cardStyle = {
-                  position: 'relative',
-                  background: 'white',
-                  border: `1px solid ${CARD_BORDER_COLOR}`,
-                  borderRadius: CARD_BORDER_RADIUS,
-                  padding: CARD_PADDING,
-                  cursor: 'pointer',
-                  boxShadow: CARD_SHADOW_DEFAULT,
-                  transition: `all ${CARD_TRANSITION_SPEED} cubic-bezier(0.4, 0, 0.2, 1)`,
-                  overflow: 'hidden',
-                  animation: `${ANIMATION_CARD_ENTRANCE} ${ANIMATION_ENTRANCE_DURATION} ease-out ${0.2 + (idx * ANIMATION_ENTRANCE_DELAY)}s both`
-                };
-
                 return (
                   <div 
                     key={p.project_id} 
                     onClick={() => handleSelectProject(p)}
-                    style={cardStyle}
+                    style={{
+                      position: 'relative',
+                      background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                      border: `2px solid transparent`,
+                      borderRadius: CARD_BORDER_RADIUS,
+                      padding: '0',
+                      cursor: 'pointer',
+                      boxShadow: CARD_SHADOW_DEFAULT,
+                      transition: `all ${CARD_TRANSITION_SPEED} cubic-bezier(0.4, 0, 0.2, 1)`,
+                      overflow: 'hidden',
+                      animation: `scaleIn ${ANIMATION_ENTRANCE_DURATION} ease-out ${0.2 + (idx * ANIMATION_ENTRANCE_DELAY)}s both`,
+                      backgroundImage: `linear-gradient(135deg, rgba(99,102,241,0.03) 0%, rgba(139,92,246,0.02) 100%)`
+                    }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = CARD_BORDER_HOVER_COLOR;
-                      e.currentTarget.style.boxShadow = CARD_SHADOW_HOVER;
-                      e.currentTarget.style.transform = `translateY(${CARD_HOVER_LIFT}) scale(${CARD_HOVER_SCALE})`;
-                      const accentLine = e.currentTarget.querySelector('.card-accent-line');
-                      if (accentLine) accentLine.style.opacity = '1';
+                      const card = e.currentTarget;
+                      card.style.borderImage = 'linear-gradient(135deg, #6366f1, #8b5cf6) 1';
+                      card.style.boxShadow = CARD_SHADOW_HOVER;
+                      card.style.transform = `translateY(${CARD_HOVER_LIFT}) scale(${CARD_HOVER_SCALE}) rotateX(2deg)`;
+                      const icon = card.querySelector('.project-icon');
+                      if (icon) icon.style.transform = 'scale(1.1) rotate(5deg)';
+                      const chevron = card.querySelector('.project-chevron');
+                      if (chevron) chevron.style.transform = 'translateX(4px)';
+                      const glow = card.querySelector('.card-glow');
+                      if (glow) glow.style.opacity = '1';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = CARD_BORDER_COLOR;
-                      e.currentTarget.style.boxShadow = CARD_SHADOW_DEFAULT;
-                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                      const accentLine = e.currentTarget.querySelector('.card-accent-line');
-                      if (accentLine) accentLine.style.opacity = '0';
+                      const card = e.currentTarget;
+                      card.style.borderImage = 'none';
+                      card.style.border = `2px solid transparent`;
+                      card.style.boxShadow = CARD_SHADOW_DEFAULT;
+                      card.style.transform = 'translateY(0) scale(1) rotateX(0deg)';
+                      const icon = card.querySelector('.project-icon');
+                      if (icon) icon.style.transform = 'scale(1) rotate(0deg)';
+                      const chevron = card.querySelector('.project-chevron');
+                      if (chevron) chevron.style.transform = 'translateX(0)';
+                      const glow = card.querySelector('.card-glow');
+                      if (glow) glow.style.opacity = '0';
                     }}
                   >
-                    {/* Top accent line */}
-                    {CARD_SHOW_ACCENT_LINE && (
-                      <div 
-                        className="card-accent-line"
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          height: CARD_ACCENT_HEIGHT,
-                          background: BUTTON_PRIMARY_BG,
-                          opacity: 0,
-                          transition: `opacity ${CARD_TRANSITION_SPEED} ease`
-                        }}
-                      />
-                    )}
+                    {/* Animated Glow Effect */}
+                    <div 
+                      className="card-glow"
+                      style={{
+                        position: 'absolute',
+                        inset: '-2px',
+                        background: GRADIENT_PRIMARY,
+                        borderRadius: CARD_BORDER_RADIUS,
+                        opacity: 0,
+                        zIndex: -1,
+                        filter: 'blur(20px)',
+                        transition: `opacity ${CARD_TRANSITION_SPEED} ease`,
+                        animation: 'glow 3s ease-in-out infinite'
+                      }}
+                    />
 
-                    {/* Header: Icon + Action */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
-                      {/* Icon */}
+                    {/* Top Gradient Accent Bar */}
+                    <div style={{
+                      height: '6px',
+                      background: GRADIENT_PRIMARY,
+                      borderRadius: `${CARD_BORDER_RADIUS} ${CARD_BORDER_RADIUS} 0 0`,
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}>
                       <div style={{
-                        width: `${CARD_ICON_SIZE}px`,
-                        height: `${CARD_ICON_SIZE}px`,
-                        borderRadius: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: CARD_ICON_BG,
-                        border: `1px solid ${CARD_BORDER_COLOR}`,
-                        transition: `all ${CARD_TRANSITION_SPEED} ease`
-                      }}>
-                        <Layers style={{ 
-                          width: `${CARD_ICON_SIZE * 0.45}px`, 
-                          height: `${CARD_ICON_SIZE * 0.45}px`,
-                          color: COLOR_PRIMARY
-                        }} />
-                      </div>
-
-                      {/* Chevron */}
-                      <ChevronRight style={{
-                        width: '20px',
-                        height: '20px',
-                        color: COLOR_TEXT_TERTIARY,
-                        transition: `all ${CARD_TRANSITION_SPEED} ease`
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+                        animation: 'shimmer 2s linear infinite'
                       }} />
                     </div>
 
-                    {/* Project Name */}
-                    <h3 style={{
-                      fontSize: '1.05rem',
-                      fontWeight: 700,
-                      color: COLOR_TEXT_PRIMARY,
-                      margin: '0 0 4px',
-                      lineClamp: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {p.project_name}
-                    </h3>
-
-                    {/* Description */}
-                    {p.description && (
-                      <p style={{
-                        fontSize: '0.85rem',
-                        color: COLOR_TEXT_SECONDARY,
-                        margin: '0 0 16px',
-                        lineHeight: 1.5,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
+                    {/* Card Content */}
+                    <div style={{ padding: CARD_PADDING }}>
+                      {/* Header: Icon + Chevron */}
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'flex-start', 
+                        justifyContent: 'space-between', 
+                        marginBottom: '20px' 
                       }}>
-                        {p.description}
-                      </p>
-                    )}
+                        {/* Animated Icon with Gradient */}
+                        <div 
+                          className="project-icon"
+                          style={{
+                            width: `${CARD_ICON_SIZE}px`,
+                            height: `${CARD_ICON_SIZE}px`,
+                            borderRadius: '16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: ICON_BG_PRIMARY,
+                            border: `2px solid rgba(99,102,241,0.2)`,
+                            transition: `all ${CARD_TRANSITION_SPEED} cubic-bezier(0.34, 1.56, 0.64, 1)`,
+                            position: 'relative',
+                            overflow: 'hidden',
+                            boxShadow: SHADOW_COLORED_PRIMARY
+                          }}>
+                          {/* Icon Shine Effect */}
+                          <div style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.4) 50%, transparent 60%)',
+                            animation: 'shimmer 3s linear infinite'
+                          }} />
+                          <Layers style={{ 
+                            width: `${CARD_ICON_SIZE * 0.5}px`, 
+                            height: `${CARD_ICON_SIZE * 0.5}px`,
+                            color: COLOR_PRIMARY,
+                            position: 'relative',
+                            zIndex: 1
+                          }} />
+                        </div>
 
-                    {/* Stats */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px 0',
-                      marginTop: '8px',
-                      borderTop: `1px solid ${CARD_BORDER_COLOR}`,
-                      fontSize: '0.8rem',
-                      color: COLOR_TEXT_TERTIARY
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <FileText style={{ width: '14px', height: '14px' }} />
-                        <span style={{ fontWeight: 500, color: COLOR_TEXT_SECONDARY }}>
-                          {p.document_count ?? 0}
-                        </span>
-                        <span>drawings</span>
+                        {/* Animated Chevron */}
+                        <div 
+                          className="project-chevron"
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'rgba(99,102,241,0.08)',
+                            transition: `all ${CARD_TRANSITION_SPEED} ease`
+                          }}
+                        >
+                          <ChevronRight style={{
+                            width: '18px',
+                            height: '18px',
+                            color: COLOR_PRIMARY
+                          }} />
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Clock style={{ width: '14px', height: '14px' }} />
-                        {new Date(p.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
 
-                    {/* Actions */}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                      <button 
-                        onClick={(ev) => { 
-                          ev.stopPropagation(); 
-                          setEditingProject(p); 
-                          setEditName(p.project_name); 
-                          setEditDesc(p.description || ''); 
-                          setShowEditModal(true); 
-                        }}
-                        style={{
-                          flex: 1,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          padding: '8px 12px',
-                          fontSize: '0.8rem',
-                          fontWeight: 500,
+                      {/* Project Name with Gradient Text */}
+                      <h3 style={{
+                        fontSize: '1.15rem',
+                        fontWeight: 800,
+                        background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                        margin: '0 0 8px',
+                        lineHeight: 1.3,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {p.project_name}
+                      </h3>
+
+                      {/* Description */}
+                      {p.description ? (
+                        <p style={{
+                          fontSize: '0.875rem',
                           color: COLOR_TEXT_SECONDARY,
-                          background: '#f8fafc',
-                          border: `1px solid ${CARD_BORDER_COLOR}`,
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          transition: `all ${CARD_TRANSITION_SPEED} ease`
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#f1f5f9';
-                          e.currentTarget.style.borderColor = COLOR_PRIMARY;
-                          e.currentTarget.style.color = COLOR_PRIMARY;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#f8fafc';
-                          e.currentTarget.style.borderColor = CARD_BORDER_COLOR;
-                          e.currentTarget.style.color = COLOR_TEXT_SECONDARY;
-                        }}
-                      >
-                        <Edit style={{ width: '14px', height: '14px' }} />
-                        Edit
-                      </button>
-                      <button 
-                        onClick={(ev) => { 
-                          ev.stopPropagation(); 
-                          setDeletingProject(p); 
-                          setShowDeleteConfirm(true); 
-                        }}
-                        style={{
-                          flex: 1,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
+                          margin: '0 0 20px',
+                          lineHeight: 1.6,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          minHeight: '42px'
+                        }}>
+                          {p.description}
+                        </p>
+                      ) : (
+                        <p style={{
+                          fontSize: '0.875rem',
+                          color: '#cbd5e1',
+                          margin: '0 0 20px',
+                          lineHeight: 1.6,
+                          fontStyle: 'italic',
+                          minHeight: '42px'
+                        }}>
+                          No description provided
+                        </p>
+                      )}
+
+                      {/* Stats with Modern Pills */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '16px',
+                        marginBottom: '16px',
+                        background: 'linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(139,92,246,0.03) 100%)',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(99,102,241,0.1)'
+                      }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '8px',
+                          flex: 1
+                        }}>
+                          <div style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: ICON_BG_INFO
+                          }}>
+                            <FileText style={{ width: '18px', height: '18px', color: '#3b82f6' }} />
+                          </div>
+                          <div>
+                            <div style={{ 
+                              fontSize: '1.25rem', 
+                              fontWeight: 800, 
+                              color: COLOR_TEXT_PRIMARY,
+                              lineHeight: 1 
+                            }}>
+                              {p.document_count ?? 0}
+                            </div>
+                            <div style={{ 
+                              fontSize: '0.7rem', 
+                              color: COLOR_TEXT_TERTIARY,
+                              marginTop: '2px'
+                            }}>
+                              Drawings
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{
+                          width: '1px',
+                          height: '36px',
+                          background: 'linear-gradient(to bottom, transparent, rgba(99,102,241,0.2), transparent)'
+                        }} />
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
                           gap: '6px',
-                          padding: '8px 12px',
-                          fontSize: '0.8rem',
-                          fontWeight: 500,
-                          color: COLOR_DANGER,
-                          background: '#fef2f2',
-                          border: '1px solid #fecaca',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          transition: `all ${CARD_TRANSITION_SPEED} ease`
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#fee2e2';
-                          e.currentTarget.style.borderColor = COLOR_DANGER;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#fef2f2';
-                          e.currentTarget.style.borderColor = '#fecaca';
-                        }}
-                      >
-                        <Trash2 style={{ width: '14px', height: '14px' }} />
-                        Delete
-                      </button>
+                          fontSize: '0.75rem',
+                          color: COLOR_TEXT_TERTIARY,
+                          flex: 1
+                        }}>
+                          <Clock style={{ width: '16px', height: '16px' }} />
+                          <span>{new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons with Gradient & Animation */}
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button 
+                          onClick={(ev) => { 
+                            ev.stopPropagation(); 
+                            setEditingProject(p); 
+                            setEditName(p.project_name); 
+                            setEditDesc(p.description || ''); 
+                            setShowEditModal(true); 
+                          }}
+                          style={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            padding: '12px 16px',
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            color: COLOR_PRIMARY,
+                            background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.06) 100%)',
+                            border: `2px solid rgba(99,102,241,0.2)`,
+                            borderRadius: '12px',
+                            cursor: 'pointer',
+                            transition: `all ${ANIMATION_MICRO_INTERACTION} ${ANIMATION_PAGE_TRANSITION}`,
+                            position: 'relative',
+                            overflow: 'hidden'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.12) 100%)';
+                            e.currentTarget.style.borderColor = COLOR_PRIMARY;
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = SHADOW_COLORED_PRIMARY;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.06) 100%)';
+                            e.currentTarget.style.borderColor = 'rgba(99,102,241,0.2)';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = 'none';
+                          }}
+                        >
+                          <Edit style={{ width: '16px', height: '16px' }} />
+                          Edit
+                        </button>
+                        <button 
+                          onClick={(ev) => { 
+                            ev.stopPropagation(); 
+                            setDeletingProject(p); 
+                            setShowDeleteConfirm(true); 
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '12px',
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            color: COLOR_DANGER,
+                            background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(220,38,38,0.06) 100%)',
+                            border: `2px solid rgba(239,68,68,0.2)`,
+                            borderRadius: '12px',
+                            cursor: 'pointer',
+                            transition: `all ${ANIMATION_MICRO_INTERACTION} ${ANIMATION_PAGE_TRANSITION}`
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.12) 100%)';
+                            e.currentTarget.style.borderColor = COLOR_DANGER;
+                            e.currentTarget.style.transform = 'translateY(-2px) scale(1.05)';
+                            e.currentTarget.style.boxShadow = '0 8px 24px rgba(239,68,68,0.25)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(220,38,38,0.06) 100%)';
+                            e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)';
+                            e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                            e.currentTarget.style.boxShadow = 'none';
+                          }}
+                        >
+                          <Trash2 style={{ width: '16px', height: '16px' }} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -5166,6 +5848,11 @@ const PIDVerification = () => {
                 <span key={p.label} className={`text-xs font-semibold border px-2.5 py-1 rounded-full ${p.cls}`}>{p.label}</span>
               ))}
             </div>
+            {/* BYOK AI Deep Extraction */}
+            <button onClick={() => setShowBYOKPanel(true)}
+              className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white border border-purple-400 rounded-xl transition-all text-sm shadow-lg shadow-purple-200 flex-shrink-0 font-semibold">
+              <Sparkles className="w-4 h-4" />BYOK — AI Deep Extraction
+            </button>
             {/* History */}
             <button onClick={() => fetchHistory(selectedProject.project_id)}
               className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl transition-all text-sm shadow-sm flex-shrink-0">
@@ -5178,277 +5865,323 @@ const PIDVerification = () => {
 
         <FlashBanner />
 
-        {/* Upload card — two-column on lg+ screens */}
+        {/* Upload card — Modern redesigned layout */}
         {!results && (
-          <div className="rounded-2xl p-5 sm:p-6 mb-5" style={{ ...T.panel, animation:'fadeUp 0.5s ease-out 0.2s both' }}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="space-y-6" style={{ animation:'fadeUp 0.5s ease-out 0.2s both' }}>
+            
+            {/* ═══════════════════════════════════════════════════════════════
+                P&ID DRAWING UPLOAD — Primary File
+            ═══════════════════════════════════════════════════════════════ */}
+            <div className="relative rounded-3xl overflow-hidden" style={{
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.9) 100%)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(148,163,184,0.2)',
+              boxShadow: '0 20px 60px -15px rgba(59,130,246,0.15), 0 0 0 1px rgba(255,255,255,0.5) inset'
+            }}>
+              {/* Decorative gradient overlay */}
+              <div className="absolute inset-0 opacity-5" style={{
+                background: 'radial-gradient(circle at top right, #3b82f6, transparent 60%), radial-gradient(circle at bottom left, #6366f1, transparent 60%)'
+              }} />
+              
+              <div className="relative p-8">
+                {/* Header with icon */}
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="relative">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+                      boxShadow: '0 10px 30px -10px rgba(59,130,246,0.5), 0 0 0 3px rgba(59,130,246,0.1)'
+                    }}>
+                      <FileText className="w-7 h-7 text-white" />
+                    </div>
+                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-xs font-black">*</span>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                      P&amp;ID Drawing
+                    </h3>
+                    <p className="text-sm text-slate-500 mt-0.5">Upload your primary process diagram for AI analysis</p>
+                  </div>
+                  {file && (
+                    <div className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg shadow-emerald-200">
+                      <CheckCircle className="w-5 h-5 text-white" />
+                    </div>
+                  )}
+                </div>
 
-              {/* ── Left: drop-zone + selected file chip ─────────────── */}
-              <div className="flex flex-col gap-3">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">P&amp;ID Drawing (PDF) *</label>
+                {/* Upload zone */}
                 <div
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={handleDrop}
                   onClick={() => document.getElementById('pidv-file-input').click()}
-                  className={`border-2 border-dashed rounded-xl p-10 text-center transition-all duration-300 cursor-pointer flex-1 ${
-                    dragOver ? 'border-amber-400 bg-amber-50 shadow-lg shadow-amber-200/60'
-                    : file    ? 'border-emerald-400 bg-emerald-50'
-                    :            'border-slate-300 hover:border-blue-400 bg-white hover:bg-blue-50/40'
-                  }`}>
-                  <div className={`w-14 h-14 mx-auto mb-3 rounded-xl flex items-center justify-center transition-all ${
-                    dragOver ? 'bg-amber-100 animate-bounce' : file ? 'bg-emerald-50 border border-emerald-200' : 'bg-blue-50 border border-blue-200'
-                  }`}>
-                    {file ? <FileText className="w-7 h-7 text-emerald-500" /> : <UploadIcon className={`w-7 h-7 ${dragOver ? 'text-amber-500' : 'text-blue-500'}`} />}
-                  </div>
-                  <p className="text-sm font-semibold text-slate-700 mb-1">
-                    {file ? file.name : dragOver ? 'Drop your P&ID here' : 'Drag & drop or click to upload'}
-                  </p>
-                  <p className="text-xs text-slate-400">{file ? `${(file.size/1024/1024).toFixed(2)} MB` : 'PDF, PNG, JPG, TIFF, DWG · Max 50 MB'}</p>
-                  <input id="pidv-file-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.dwg" className="hidden" onChange={handleFileChange} />
-                </div>
-                {file && (
-                  <div className="flex items-center gap-2 bg-white border border-emerald-200 rounded-xl px-4 py-2.5">
-                    <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
-                    <span className="text-sm font-medium text-slate-800 truncate flex-1">{file.name}</span>
-                    <button onClick={e => { e.stopPropagation(); setFile(null); }} className="p-1 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* ── Right: legend knowledge panel ────────────────────── */}
-              <div className="flex flex-col rounded-xl overflow-hidden border border-slate-200 h-fit">
-                <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2"
-                  style={{ background:'linear-gradient(135deg,#f8faff,#eef2ff)' }}>
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background:'linear-gradient(135deg,#2563eb,#1d4ed8)' }}>
-                    <Shield className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-700 uppercase tracking-wide leading-none">Legend Sheet</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Per-project · overrides global legend during analysis</p>
-                  </div>
-                  {/* Scope badge */}
-                  {legendScope === 'project' && (
-                    <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Project</span>
-                  )}
-                  {legendScope === 'global' && (
-                    <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Global fallback</span>
-                  )}
-                </div>
-                <div className="p-4 bg-white flex flex-col gap-3">
-                  {/* Prefix counters */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                      <span className="text-xs text-slate-500">Instrument prefixes</span>
-                      <span className="text-sm font-bold text-slate-700 ml-2">{legendKnowledge?.instrument_prefixes?.length ?? 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                      <span className="text-xs text-slate-500">Valve prefixes</span>
-                      <span className="text-sm font-bold text-slate-700 ml-2">{legendKnowledge?.valve_prefixes?.length ?? 0}</span>
-                    </div>
-                  </div>
-                  {/* Built-at info */}
-                  {legendScope === 'project' && legendBuiltAt && (
-                    <p className="text-xs text-emerald-600">
-                      Project legend built {new Date(legendBuiltAt).toLocaleDateString()}
-                    </p>
-                  )}
-                  {/* File picker — any format */}
-                  <input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp"
-                    onChange={e => setLegendFile(e.target.files?.[0] || null)}
-                    className="text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                  />
-                  {legendFile && (
-                    <p className="text-xs text-slate-500 truncate">Selected: {legendFile.name}</p>
-                  )}
-                  {/* Build button */}
-                  <button
-                    onClick={handleBuildLegend}
-                    disabled={buildingLegend || !legendFile}
-                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50 transition-all hover:-translate-y-px"
-                    style={{ background:'linear-gradient(135deg,#2563eb,#1d4ed8)', boxShadow:'0 3px 10px rgba(37,99,235,0.25)' }}
-                  >
-                    {buildingLegend ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
-                    {buildingLegend ? 'Building…' : 'Build Project Legend'}
-                  </button>
-                  {/* Clear project legend (only if project legend is active) */}
-                  {legendScope === 'project' && (
-                    <button
-                      onClick={handleClearProjectLegend}
-                      disabled={clearingLegend}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 border border-slate-200 bg-slate-50 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 transition-all"
-                    >
-                      {clearingLegend ? <Loader className="w-3 h-3 animate-spin" /> : null}
-                      {clearingLegend ? 'Clearing…' : 'Clear Project Legend'}
-                    </button>
-                  )}
-                  {legendKnowledge?.sources?.length > 0 && (
-                    <p className="text-xs text-slate-400 truncate">
-                      Sources: {legendKnowledge.sources.join(', ')}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-            </div>{/* end grid */}
-
-            {/* ── Legend Sheets — AI extraction card ──────────────────────── */}
-            <div className="mt-4 rounded-xl border border-slate-200 overflow-hidden">
-              {/* Header */}
-              <div className="px-4 py-3 flex items-center gap-2.5 border-b border-slate-100"
-                style={{ background:'linear-gradient(135deg,#f0fdf4,#dcfce7)' }}>
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background:'linear-gradient(135deg,#16a34a,#15803d)' }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-white">
-                    <path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/>
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-700 uppercase tracking-wide leading-none">Legend Sheets</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Upload legend sheets — AI extracts line types, numbering, abbreviations &amp; more</p>
-                </div>
-                {legendSheets.length > 0 && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">{legendSheets.length} sheet{legendSheets.length !== 1 ? 's' : ''}</span>
-                )}
-                <button
-                  onClick={() => setShowLegendUpload(v => !v)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:-translate-y-px"
-                  style={{ background:'linear-gradient(135deg,#16a34a,#15803d)', boxShadow:'0 2px 8px rgba(22,163,74,0.3)' }}
+                  className={`relative rounded-2xl p-12 text-center transition-all duration-500 cursor-pointer group ${
+                    dragOver 
+                      ? 'border-3 border-amber-400 bg-gradient-to-br from-amber-50 to-orange-50 scale-[1.02] shadow-2xl shadow-amber-200' 
+                      : file    
+                        ? 'border-2 border-emerald-400 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-lg shadow-emerald-100'
+                        : 'border-2 border-dashed border-slate-300 bg-white hover:border-blue-400 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 hover:shadow-xl hover:shadow-blue-100'
+                  }`}
+                  style={{ minHeight: '240px' }}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                  {showLegendUpload ? 'Cancel' : 'Add Legend'}
-                </button>
+                  {/* Animated background particles */}
+                  {!file && (
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
+                      <div className="absolute top-4 left-4 w-2 h-2 bg-blue-400 rounded-full animate-ping" style={{ animationDelay: '0.2s' }} />
+                      <div className="absolute top-8 right-12 w-3 h-3 bg-indigo-400 rounded-full animate-ping" style={{ animationDelay: '0.5s' }} />
+                      <div className="absolute bottom-6 left-16 w-2 h-2 bg-purple-400 rounded-full animate-ping" style={{ animationDelay: '0.8s' }} />
+                    </div>
+                  )}
+                  
+                  <div className={`relative z-10 transition-all duration-500 ${
+                    dragOver ? 'scale-110 -translate-y-2' : 'scale-100'
+                  }`}>
+                    {/* Icon */}
+                    <div className={`w-20 h-20 mx-auto mb-5 rounded-2xl flex items-center justify-center transition-all duration-500 ${
+                      dragOver 
+                        ? 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-2xl shadow-amber-300 scale-110 rotate-12' 
+                        : file 
+                          ? 'bg-gradient-to-br from-emerald-400 to-teal-500 shadow-xl shadow-emerald-200'
+                          : 'bg-gradient-to-br from-blue-400 to-indigo-500 shadow-lg shadow-blue-200 group-hover:scale-110 group-hover:shadow-2xl'
+                    }`}>
+                      {file 
+                        ? <CheckCircle className="w-10 h-10 text-white animate-in zoom-in duration-500" /> 
+                        : dragOver
+                          ? <UploadIcon className="w-10 h-10 text-white animate-bounce" />
+                          : <UploadIcon className="w-10 h-10 text-white group-hover:animate-pulse" />
+                      }
+                    </div>
+                    
+                    {/* Text */}
+                    <div className="space-y-2">
+                      <p className="text-lg font-bold text-slate-900">
+                        {file 
+                          ? file.name 
+                          : dragOver 
+                            ? '✨ Drop it like it\'s hot!' 
+                            : '📂 Drag & drop your P&ID here'
+                        }
+                      </p>
+                      <p className="text-sm text-slate-500 font-medium">
+                        {file 
+                          ? `${(file.size/1024/1024).toFixed(2)} MB • Ready to process`
+                          : 'or click to browse • PDF, PNG, JPG, TIFF, DWG'
+                        }
+                      </p>
+                      {!file && (
+                        <p className="text-xs text-slate-400 max-w-md mx-auto mt-3">
+                          Supports multi-page PDFs up to 50 MB • AI will analyze all pages automatically
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <input 
+                    id="pidv-file-input" 
+                    type="file" 
+                    accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.dwg" 
+                    className="hidden" 
+                    onChange={handleFileChange} 
+                  />
+                </div>
+
+                {/* File chip (when selected) */}
+                {file && (
+                  <div className="mt-4 flex items-center gap-3 bg-white border-2 border-emerald-300 rounded-2xl px-5 py-4 shadow-lg shadow-emerald-100" style={{animation:'fadeUp 0.3s ease-out'}}>
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">{file.name}</p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs font-semibold text-emerald-600">{(file.size/1024/1024).toFixed(2)} MB</span>
+                        <span className="text-xs text-slate-400">•</span>
+                        <span className="text-xs text-slate-500">{file.type || 'Document'}</span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={e => { e.stopPropagation(); setFile(null); }} 
+                      className="w-10 h-10 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 flex items-center justify-center transition-all hover:scale-110 group"
+                      title="Remove file"
+                    >
+                      <X className="w-5 h-5 text-red-500 group-hover:rotate-90 transition-transform" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ═══════════════════════════════════════════════════════════════
+                LEGEND SHEETS — AI-Powered Extraction
+            ═══════════════════════════════════════════════════════════════ */}
+            <div className="relative rounded-3xl overflow-hidden" style={{
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(240,253,244,0.95) 100%)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(134,239,172,0.3)',
+              boxShadow: '0 20px 60px -15px rgba(34,197,94,0.15), 0 0 0 1px rgba(255,255,255,0.5) inset'
+            }}>
+              {/* Decorative gradient */}
+              <div className="absolute inset-0 opacity-5" style={{
+                background: 'radial-gradient(circle at top left, #22c55e, transparent 60%), radial-gradient(circle at bottom right, #10b981, transparent 60%)'
+              }} />
+              
+              {/* Header */}
+              <div className="relative px-8 py-6 border-b border-emerald-100/50" style={{
+                background: 'linear-gradient(135deg, rgba(240,253,244,0.6) 0%, rgba(220,252,231,0.6) 100%)'
+              }}>
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{
+                      background: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)',
+                      boxShadow: '0 10px 30px -10px rgba(34,197,94,0.5), 0 0 0 3px rgba(34,197,94,0.1)'
+                    }}>
+                      <Brain className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center animate-pulse">
+                      <Sparkles className="w-3 h-3 text-white" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight">Legend Sheets</h3>
+                    <p className="text-sm text-slate-600 mt-0.5">AI extracts symbols, line types, numbering & abbreviations</p>
+                  </div>
+                  {legendSheets.length > 0 && (
+                    <div className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg shadow-emerald-200">
+                      <span className="text-sm font-black text-white">{legendSheets.length}</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowLegendUpload(v => !v)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:scale-105 active:scale-95"
+                    style={{
+                      background: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)',
+                      boxShadow: '0 8px 24px -8px rgba(34,197,94,0.4)'
+                    }}
+                  >
+                    {showLegendUpload ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {showLegendUpload ? 'Cancel' : 'Add Legend'}
+                  </button>
+                </div>
               </div>
 
-              {/* Upload drop zone (shown only when panel is open) */}
+              {/* Upload zone */}
               {showLegendUpload && (
-                <div className="px-4 py-3 border-b border-slate-100 bg-white flex flex-col gap-3">
-                  <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 cursor-pointer hover:bg-emerald-50 transition-colors">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-emerald-400">
-                      <path d="M4 16l4-4 4 4M12 12V4M8 20h8M16 16l4-4 4 4"/>
-                      <path d="M4 20h4"/>
-                    </svg>
-                    <span className="text-xs font-semibold text-emerald-700">Drop legend files here, or click to browse</span>
-                    <span className="text-xs text-slate-400">PDF · PNG · JPG · TIFF · BMP</span>
+                <div className="relative px-8 py-6 border-b border-emerald-100/50 bg-white/60">
+                  <div
+                    className="relative rounded-2xl p-10 border-2 border-dashed border-emerald-300 bg-gradient-to-br from-emerald-50 to-teal-50 cursor-pointer hover:border-emerald-400 hover:shadow-xl hover:shadow-emerald-100 transition-all duration-300 group"
+                    onClick={() => document.getElementById('legend-file-input').click()}
+                  >
+                    <div className="text-center">
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-200 group-hover:scale-110 transition-transform">
+                        <UploadIcon className="w-8 h-8 text-white" />
+                      </div>
+                      <p className="text-base font-bold text-emerald-900 mb-1">Drop legend files here</p>
+                      <p className="text-sm text-slate-500">or click to browse • PDF, PNG, JPG, TIFF, BMP</p>
+                    </div>
                     <input
+                      id="legend-file-input"
                       type="file"
                       multiple
                       accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp"
-                      className="sr-only"
+                      className="hidden"
                       onChange={e => setLegendUploadFiles(Array.from(e.target.files || []))}
                     />
-                  </label>
+                  </div>
+                  
                   {legendUploadFiles.length > 0 && (
-                    <ul className="flex flex-col gap-1">
+                    <div className="mt-4 space-y-2">
                       {legendUploadFiles.map((f, i) => (
-                        <li key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0">
-                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>
-                          </svg>
-                          <span className="truncate flex-1">{f.name}</span>
-                          <span className="text-slate-400">{(f.size/1024).toFixed(0)} KB</span>
-                        </li>
+                        <div key={i} className="flex items-center gap-3 bg-white border border-emerald-200 rounded-xl px-4 py-3 shadow-sm">
+                          <FileText className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                          <span className="text-sm font-medium text-slate-800 truncate flex-1">{f.name}</span>
+                          <span className="text-xs font-semibold text-slate-400">{(f.size/1024).toFixed(0)} KB</span>
+                        </div>
                       ))}
-                    </ul>
+                      <button
+                        onClick={uploadLegendSheets}
+                        disabled={legendUploading || !legendUploadFiles.length}
+                        className="w-full flex items-center justify-center gap-2 px-5 py-4 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-95 mt-4"
+                        style={{
+                          background: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)',
+                          boxShadow: '0 10px 30px -10px rgba(34,197,94,0.4)'
+                        }}
+                      >
+                        {legendUploading 
+                          ? <><Loader className="w-4 h-4 animate-spin" />Uploading & Extracting…</> 
+                          : <><Sparkles className="w-4 h-4" />Upload & Extract with AI</>
+                        }
+                      </button>
+                    </div>
                   )}
-                  <button
-                    onClick={uploadLegendSheets}
-                    disabled={legendUploading || !legendUploadFiles.length}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50 transition-all hover:-translate-y-px"
-                    style={{ background:'linear-gradient(135deg,#16a34a,#15803d)', boxShadow:'0 3px 10px rgba(22,163,74,0.25)' }}
-                  >
-                    {legendUploading
-                      ? <><Loader className="w-3.5 h-3.5 animate-spin" />Uploading…</>
-                      : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload &amp; Extract</>}
-                  </button>
                 </div>
               )}
 
               {/* Sheet list */}
               {legendSheets.length > 0 && (
-                <div className="divide-y divide-slate-100 bg-white">
+                <div className="relative divide-y divide-slate-100">
                   {legendSheets.map(sheet => {
-                    // Soft-coded: status colours
                     const STATUS_STYLE = {
-                      pending:    { bg:'bg-slate-100', text:'text-slate-500', dot:'bg-slate-400' },
-                      processing: { bg:'bg-amber-50',  text:'text-amber-600', dot:'bg-amber-400 animate-pulse' },
-                      completed:  { bg:'bg-emerald-50',text:'text-emerald-700', dot:'bg-emerald-500' },
-                      failed:     { bg:'bg-red-50',    text:'text-red-600',  dot:'bg-red-400' },
+                      pending:    { bg:'bg-slate-100', text:'text-slate-600', dot:'bg-slate-400', ring:'ring-slate-200' },
+                      processing: { bg:'bg-blue-100',  text:'text-blue-700', dot:'bg-blue-500 animate-pulse', ring:'ring-blue-200' },
+                      completed:  { bg:'bg-emerald-100', text:'text-emerald-700', dot:'bg-emerald-500', ring:'ring-emerald-200' },
+                      failed:     { bg:'bg-red-100',   text:'text-red-700',   dot:'bg-red-500', ring:'ring-red-200' },
                     };
                     const ss = STATUS_STYLE[sheet.status] || STATUS_STYLE.pending;
-                    const cats = sheet.category_counts || {};
-                    const totalItems = Object.values(cats).reduce((a, b) => a + b, 0);
+                    const totalItems = (sheet.instruments?.length || 0) + (sheet.valves?.length || 0) + (sheet.lines?.length || 0);
 
                     return (
-                      <div key={sheet.legend_id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/60 transition-colors group">
-                        {/* File icon */}
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-slate-100">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-slate-500">
-                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>
-                          </svg>
-                        </div>
-                        {/* File name + meta */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-slate-700 truncate">{sheet.file_name}</p>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            {/* Status */}
-                            <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full ${ss.bg} ${ss.text}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
-                              {sheet.status}
-                            </span>
-                            {/* Extraction method */}
-                            {sheet.extraction_method && (
-                              <span className="text-xs text-slate-400">
-                                {sheet.extraction_method === 'ai_vision' ? '🤖 AI Vision' : '📝 Text parse'}
-                              </span>
-                            )}
-                            {/* Category count */}
-                            {sheet.status === 'completed' && totalItems > 0 && (
-                              <span className="text-xs text-emerald-600 font-medium">{totalItems} items extracted</span>
-                            )}
+                      <div key={sheet.legend_id} className="relative px-8 py-5 hover:bg-emerald-50/30 transition-all group">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ring-2 ${ss.ring} shadow-md`} style={{
+                            background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'
+                          }}>
+                            <FileText className="w-6 h-6 text-emerald-600" />
                           </div>
-                        </div>
-                        {/* Actions */}
-                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {sheet.status === 'completed' && (
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-900 truncate">{sheet.file_name}</p>
+                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${ss.bg} ${ss.text} ring-1 ${ss.ring}`}>
+                                <span className={`w-2 h-2 rounded-full ${ss.dot}`} />
+                                {sheet.status}
+                              </span>
+                              {sheet.extraction_method && (
+                                <span className="text-xs font-medium text-slate-500">
+                                  {sheet.extraction_method === 'ai_vision' ? '🤖 AI Vision' : '📝 Text'}
+                                </span>
+                              )}
+                              {sheet.status === 'completed' && totalItems > 0 && (
+                                <span className="text-xs font-bold text-emerald-600">{totalItems} items ✨</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {sheet.status === 'completed' && (
+                              <button
+                                onClick={() => openLegendDetail(sheet.legend_id)}
+                                className="w-10 h-10 rounded-xl bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 flex items-center justify-center transition-all hover:scale-110"
+                                title="View extracted data"
+                              >
+                                <Eye className="w-5 h-5 text-emerald-600" />
+                              </button>
+                            )}
+                            {sheet.status === 'failed' && (
+                              <button
+                                onClick={() => retryLegendExtraction(sheet.legend_id)}
+                                className="w-10 h-10 rounded-xl bg-amber-100 hover:bg-amber-200 border border-amber-300 flex items-center justify-center transition-all hover:scale-110"
+                                title="Retry"
+                              >
+                                <RefreshCw className="w-5 h-5 text-amber-600" />
+                              </button>
+                            )}
                             <button
-                              onClick={() => openLegendDetail(sheet.legend_id)}
-                              title="View extracted data"
-                              className="w-7 h-7 rounded-lg border border-emerald-200 bg-emerald-50 flex items-center justify-center hover:bg-emerald-100 transition-colors"
+                              onClick={() => deleteLegendSheet(sheet.legend_id)}
+                              className="w-10 h-10 rounded-xl bg-red-100 hover:bg-red-200 border border-red-300 flex items-center justify-center transition-all hover:scale-110"
+                              title="Delete"
                             >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-emerald-600">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                              </svg>
+                              <Trash2 className="w-5 h-5 text-red-600" />
                             </button>
-                          )}
-                          {sheet.status === 'failed' && (
-                            <button
-                              onClick={() => retryLegendExtraction(sheet.legend_id)}
-                              title="Retry extraction"
-                              className="w-7 h-7 rounded-lg border border-amber-200 bg-amber-50 flex items-center justify-center hover:bg-amber-100 transition-colors"
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-amber-600">
-                                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
-                              </svg>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => deleteLegendSheet(sheet.legend_id)}
-                            title="Remove legend sheet"
-                            className="w-7 h-7 rounded-lg border border-red-200 bg-red-50 flex items-center justify-center hover:bg-red-100 transition-colors"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-red-500">
-                              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                              <path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
-                            </svg>
-                          </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -5457,12 +6190,219 @@ const PIDVerification = () => {
               )}
 
               {legendSheets.length === 0 && !showLegendUpload && (
-                <p className="px-4 py-4 text-xs text-slate-400 text-center bg-white">
-                  No legend sheets uploaded yet — click <strong>Add Legend</strong> to upload PDF/image legend files
-                </p>
+                <div className="relative px-8 py-12 text-center">
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center opacity-40">
+                    <Brain className="w-10 h-10 text-emerald-500" />
+                  </div>
+                  <p className="text-sm text-slate-500">
+                    No legend sheets yet • Click <strong className="text-emerald-600">Add Legend</strong> to upload
+                  </p>
+                </div>
               )}
             </div>
-            {/* ── End Legend Sheets card ─────────────────────────────────── */}
+
+            {/* ═══════════════════════════════════════════════════════════════
+                REFERENCE DATA — Line List, Equipment, Instrument Index
+            ═══════════════════════════════════════════════════════════════ */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {Object.entries(REFERENCE_DATA_TYPES).map(([key, config]) => {
+                const files = config.stateFiles;
+                const showUpload = config.showUpload;
+                const uploadFiles = config.uploadFiles;
+                const uploading = config.uploading;
+                
+                // Color theme mapping
+                const THEME = {
+                  blue: {
+                    gradient: 'linear-gradient(135deg, rgba(239,246,255,0.95) 0%, rgba(219,234,254,0.95) 100%)',
+                    headerBg: 'linear-gradient(135deg, rgba(239,246,255,0.6) 0%, rgba(219,234,254,0.6) 100%)',
+                    iconBg: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    shadow: '0 20px 60px -15px rgba(59,130,246,0.15)',
+                    badgeBg: 'bg-blue-100',
+                    badgeText: 'text-blue-700',
+                    badgeRing: 'ring-blue-200',
+                    uploadBg: 'bg-gradient-to-br from-blue-50 to-indigo-50',
+                    uploadBorder: 'border-blue-300',
+                    uploadHover: 'hover:border-blue-400',
+                    radial: 'radial-gradient(circle at top right, #3b82f6, transparent 60%)'
+                  },
+                  purple: {
+                    gradient: 'linear-gradient(135deg, rgba(250,245,255,0.95) 0%, rgba(243,232,255,0.95) 100%)',
+                    headerBg: 'linear-gradient(135deg, rgba(250,245,255,0.6) 0%, rgba(243,232,255,0.6) 100%)',
+                    iconBg: 'linear-gradient(135deg, #a855f7 0%, #9333ea 100%)',
+                    shadow: '0 20px 60px -15px rgba(168,85,247,0.15)',
+                    badgeBg: 'bg-purple-100',
+                    badgeText: 'text-purple-700',
+                    badgeRing: 'ring-purple-200',
+                    uploadBg: 'bg-gradient-to-br from-purple-50 to-pink-50',
+                    uploadBorder: 'border-purple-300',
+                    uploadHover: 'hover:border-purple-400',
+                    radial: 'radial-gradient(circle at top right, #a855f7, transparent 60%)'
+                  },
+                  indigo: {
+                    gradient: 'linear-gradient(135deg, rgba(238,242,255,0.95) 0%, rgba(224,231,255,0.95) 100%)',
+                    headerBg: 'linear-gradient(135deg, rgba(238,242,255,0.6) 0%, rgba(224,231,255,0.6) 100%)',
+                    iconBg: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                    shadow: '0 20px 60px -15px rgba(99,102,241,0.15)',
+                    badgeBg: 'bg-indigo-100',
+                    badgeText: 'text-indigo-700',
+                    badgeRing: 'ring-indigo-200',
+                    uploadBg: 'bg-gradient-to-br from-indigo-50 to-violet-50',
+                    uploadBorder: 'border-indigo-300',
+                    uploadHover: 'hover:border-indigo-400',
+                    radial: 'radial-gradient(circle at top right, #6366f1, transparent 60%)'
+                  }
+                };
+                const theme = THEME[config.color] || THEME.blue;
+
+                return (
+                  <div key={key} className="relative rounded-3xl overflow-hidden" style={{
+                    background: theme.gradient,
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(148,163,184,0.2)',
+                    boxShadow: `${theme.shadow}, 0 0 0 1px rgba(255,255,255,0.5) inset`
+                  }}>
+                    {/* Decorative gradient */}
+                    <div className="absolute inset-0 opacity-5" style={{ background: theme.radial }} />
+                    
+                    {/* Header */}
+                    <div className="relative px-6 py-5 border-b border-slate-100/50" style={{ background: theme.headerBg }}>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{
+                          background: theme.iconBg,
+                          boxShadow: `0 8px 20px -8px ${config.color === 'blue' ? 'rgba(59,130,246,0.5)' : config.color === 'purple' ? 'rgba(168,85,247,0.5)' : 'rgba(99,102,241,0.5)'}, 0 0 0 3px ${config.color === 'blue' ? 'rgba(59,130,246,0.1)' : config.color === 'purple' ? 'rgba(168,85,247,0.1)' : 'rgba(99,102,241,0.1)'}`
+                        }}>
+                          <span className="text-lg">{config.icon}</span>
+                        </div>
+                        {files.length > 0 && (
+                          <div className={`px-3 py-1 rounded-lg ${theme.badgeBg} ring-1 ${theme.badgeRing}`}>
+                            <span className={`text-xs font-black ${theme.badgeText}`}>{files.length}</span>
+                          </div>
+                        )}
+                      </div>
+                      <h3 className="text-sm font-black text-slate-900 tracking-tight mb-1">{config.displayName}</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed mb-3">{config.description}</p>
+                      <button
+                        onClick={() => config.setShowUpload(v => !v)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-95"
+                        style={{
+                          background: theme.iconBg,
+                          boxShadow: `0 8px 20px -8px ${config.color === 'blue' ? 'rgba(59,130,246,0.4)' : config.color === 'purple' ? 'rgba(168,85,247,0.4)' : 'rgba(99,102,241,0.4)'}`
+                        }}
+                      >
+                        {showUpload ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                        {showUpload ? 'Cancel' : 'Add Files'}
+                      </button>
+                    </div>
+
+                    {/* Upload zone */}
+                    {showUpload && (
+                      <div className="relative px-6 py-5 border-b border-slate-100/50 bg-white/60">
+                        <div
+                          className={`relative rounded-2xl p-8 border-2 border-dashed ${theme.uploadBorder} ${theme.uploadBg} cursor-pointer ${theme.uploadHover} hover:shadow-xl transition-all duration-300 group`}
+                          onClick={() => document.getElementById(`ref-${key}-input`).click()}
+                        >
+                          <div className="text-center">
+                            <div className="w-12 h-12 mx-auto mb-3 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform" style={{ background: theme.iconBg }}>
+                              <UploadIcon className="w-6 h-6 text-white" />
+                            </div>
+                            <p className="text-sm font-bold text-slate-900 mb-1">Drop files here</p>
+                            <p className="text-xs text-slate-500">or click to browse • Excel, CSV, PDF</p>
+                          </div>
+                          <input
+                            id={`ref-${key}-input`}
+                            type="file"
+                            multiple
+                            accept=".xlsx,.xls,.csv,.pdf,.txt"
+                            className="hidden"
+                            onChange={e => config.setUploadFiles(Array.from(e.target.files || []))}
+                          />
+                        </div>
+                        
+                        {uploadFiles.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {uploadFiles.map((f, i) => (
+                              <div key={i} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+                                <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                <span className="text-xs font-medium text-slate-700 truncate flex-1">{f.name}</span>
+                                <span className="text-xs font-semibold text-slate-400">{(f.size/1024).toFixed(0)}K</span>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => uploadReferenceData(config.apiKey, uploadFiles, config)}
+                              disabled={uploading || !uploadFiles.length}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-95 mt-3"
+                              style={{
+                                background: theme.iconBg,
+                                boxShadow: `0 8px 20px -8px ${config.color === 'blue' ? 'rgba(59,130,246,0.4)' : config.color === 'purple' ? 'rgba(168,85,247,0.4)' : 'rgba(99,102,241,0.4)'}`
+                              }}
+                            >
+                              {uploading 
+                                ? <><Loader className="w-4 h-4 animate-spin" />Uploading…</> 
+                                : <><UploadIcon className="w-4 h-4" />Upload Files</>
+                              }
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* File list */}
+                    {files.length > 0 && (
+                      <div className="relative divide-y divide-slate-100">
+                        {files.map(file => {
+                          const STATUS_STYLE = {
+                            pending:    { bg:'bg-slate-100', text:'text-slate-600', dot:'bg-slate-400', ring:'ring-slate-200' },
+                            processing: { bg:'bg-amber-100',  text:'text-amber-700', dot:'bg-amber-500 animate-pulse', ring:'ring-amber-200' },
+                            completed:  { bg:'bg-emerald-100',text:'text-emerald-700', dot:'bg-emerald-500', ring:'ring-emerald-200' },
+                            failed:     { bg:'bg-red-100',   text:'text-red-700',   dot:'bg-red-500', ring:'ring-red-200' },
+                          };
+                          const ss = STATUS_STYLE[file.status] || STATUS_STYLE.pending;
+
+                          return (
+                            <div key={file.reference_id} className="relative px-6 py-4 hover:bg-white/50 transition-all group">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-white ring-2 ${ss.ring} shadow-sm`}>
+                                  <FileText className="w-5 h-5 text-slate-500" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-slate-900 truncate">{file.file_name}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${ss.bg} ${ss.text} ring-1 ${ss.ring}`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                                      {file.status}
+                                    </span>
+                                    {file.status === 'completed' && file.metadata?.row_count && (
+                                      <span className="text-xs font-semibold text-emerald-600">{file.metadata.row_count} rows</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => deleteReferenceData(file.reference_id, file.data_type)}
+                                  className="w-8 h-8 rounded-xl bg-red-100 hover:bg-red-200 border border-red-300 flex items-center justify-center transition-all hover:scale-110 opacity-0 group-hover:opacity-100"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4 text-red-600" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {files.length === 0 && !showUpload && (
+                      <div className="relative px-6 py-10 text-center">
+                        <div className="w-16 h-16 mx-auto mb-3 rounded-2xl flex items-center justify-center opacity-30" style={{ background: theme.uploadBg }}>
+                          <Database className="w-8 h-8 text-slate-400" />
+                        </div>
+                        <p className="text-xs text-slate-500">No files uploaded yet</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
             {/* ── Optional: AI Document Assist (Wrench) ─────────────────── */}
             <div className="mt-5 rounded-2xl overflow-hidden border border-slate-200 bg-white">
@@ -5692,20 +6632,67 @@ const PIDVerification = () => {
             </div>
             {/* ── End AI Document Assist ─────────────────────────────────── */}
 
+            {/* Error display */}
             {error && (
-              <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-600">{error}</p>
+              <div className="rounded-2xl overflow-hidden border border-red-200 bg-white shadow-lg shadow-red-100" style={{animation:'fadeUp 0.3s ease-out'}}>
+                <div className="px-6 py-5 flex items-start gap-4" style={{
+                  background: 'linear-gradient(135deg, rgba(254,242,242,0.8) 0%, rgba(254,226,226,0.8) 100%)'
+                }}>
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{
+                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                    boxShadow: '0 8px 20px -8px rgba(239,68,68,0.5), 0 0 0 3px rgba(239,68,68,0.1)'
+                  }}>
+                    <AlertTriangle className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-black text-red-900 mb-1">Upload Error</h4>
+                    <p className="text-sm text-red-700 leading-relaxed">{error}</p>
+                  </div>
+                </div>
               </div>
             )}
 
-            <button onClick={handleUpload} disabled={uploading || !file}
-              className={`mt-4 w-full py-3 px-6 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                uploading || !file ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                : 'text-white shadow-lg hover:-translate-y-px active:translate-y-0'
+            {/* Submit button */}
+            <button 
+              onClick={handleUpload} 
+              disabled={uploading || !file}
+              className={`w-full relative overflow-hidden rounded-3xl py-6 px-8 font-black text-base flex items-center justify-center gap-3 transition-all duration-300 group ${
+                uploading || !file 
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-2 border-slate-200' 
+                  : 'shadow-2xl hover:shadow-3xl hover:-translate-y-1 active:translate-y-0'
               }`}
-              style={uploading || !file ? undefined : { background:'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow:'0 4px 14px rgba(99,102,241,0.35)' }}>
-              {uploading ? <><Loader className="w-4 h-4 animate-spin" />Uploading…</> : <><Cpu className="w-4 h-4" />Run P&amp;ID Verification</>}
+              style={uploading || !file ? undefined : {
+                background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #a855f7 100%)',
+                backgroundSize: '200% auto',
+                boxShadow: '0 12px 40px -12px rgba(99,102,241,0.5), 0 0 0 2px rgba(255,255,255,0.5) inset'
+              }}
+            >
+              {/* Animated gradient overlay on hover */}
+              {!uploading && file && (
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 100%)'
+                }} />
+              )}
+              
+              {/* Icon and text */}
+              <div className={`relative z-10 flex items-center gap-3 ${uploading || !file ? '' : 'text-white'}`}>
+                {uploading ? (
+                  <>
+                    <Loader className="w-5 h-5 animate-spin" />
+                    <span>Processing Upload...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${file ? 'bg-white/20' : ''}`}>
+                      <Cpu className="w-5 h-5" />
+                    </div>
+                    <span className="text-lg">Run P&amp;ID Verification</span>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${file ? 'bg-white/20' : ''}`}>
+                      <Zap className="w-5 h-5" />
+                    </div>
+                  </>
+                )}
+              </div>
             </button>
 
             {(polling || docStatus === 'processing') && (
@@ -5716,60 +6703,45 @@ const PIDVerification = () => {
 
         {/* Results panel — icon rail navigation */}
         {results && (() => {
-          // ── Soft-coded panel definitions ──────────────────────────────────
+          // ─────────────────────────────────────────────────────────────────────
+          // Soft-coded panel definitions — aligned to the 4 real P&ID comparison
+          // workflows: Legends, Line List, Equipment List, Instrument Index.
           // Add a new entry here to add a new panel tab. No other code changes needed.
+          //
+          // Related (merged) content is intelligently grouped under one tab id so
+          // no functionality is lost:
+          //   • 'lines'          → Line List checks + Piping checks (same tab)
+          //   • 'equipment'      → Equipment checks + Compressor checks (same tab)
+          //   • 'instrumentation'→ Instrument Index checks
+          //   • 'drawing'        → Main P&ID canvas compared against the Legend sheet
+          // ─────────────────────────────────────────────────────────────────────
+          // shortLabel: compact text shown inside the narrow rail button so long
+          // names like "P&ID & Instrument Index" never overflow. The full `label`
+          // is still used for the hover tooltip and anywhere else it's referenced.
           const PANELS = [
             {
               id: 'drawing',
               label: DRAWING_PANEL_LABEL,
-              icon: ({ cls }) => (
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" className={cls}>
-                  <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9"/><circle cx="15" cy="15" r="2" /><path d="M13.5 15h-7"/>
-                </svg>
-              ),
+              shortLabel: 'Legends',
+              icon: ({ cls }) => <BookOpen className={cls} />,
               badge: null,
               accent: '#3b82f6',
               glow: 'rgba(59,130,246,0.25)',
             },
             {
-              id: 'findings',
-              label: 'Findings',
-              icon: ({ cls }) => <GitBranch className={cls} />,
-              badge: totalIssues || null,
-              badgeCls: totalIssues > 0 ? 'bg-red-500 text-white' : 'bg-green-500 text-white',
-              accent: '#ef4444',
-              glow: 'rgba(239,68,68,0.25)',
-            },
-            {
               id: 'lines',
-              label: 'Lines',
+              label: LINELIST_PANEL_LABEL,
+              shortLabel: 'Line List',
               icon: ({ cls }) => <Ruler className={cls} />,
               badge: (activeDrawingData?.metadata?.line_tags || []).length || null,
               badgeCls: 'bg-teal-500 text-white',
               accent: '#0d9488',
               glow: 'rgba(13,148,136,0.25)',
             },
-            ...( SHOW_NAMING_PANEL ? [{
-              id: 'naming',
-              label: 'Naming',
-              icon: ({ cls }) => <Type className={cls} />,
-              badge: namingResults ? (namingResults.total || '✓') : null,
-              badgeCls: namingResults?.total > 0 ? 'bg-violet-500 text-white' : 'bg-emerald-500 text-white',
-              accent: '#7c3aed',
-              glow: 'rgba(124,58,237,0.25)',
-            }] : []),
-            ...( SHOW_COMPARE_PANEL ? [{
-              id: 'comparison',
-              label: 'Compare',
-              icon: ({ cls }) => <BarChart2 className={cls} />,
-              badge: comparison ? '✓' : null,
-              badgeCls: 'bg-teal-500 text-white',
-              accent: '#0f766e',
-              glow: 'rgba(15,118,110,0.25)',
-            }] : []),
             {
               id: 'equipment',
-              label: 'Equipment',
+              label: EQUIPMENT_PANEL_LABEL,
+              shortLabel: 'Equipment',
               icon: ({ cls }) => <Cpu className={cls} />,
               badge: (() => {
                 const tp = activeDrawingData?.metadata?.tag_positions || {};
@@ -5782,7 +6754,8 @@ const PIDVerification = () => {
             },
             {
               id: 'instrumentation',
-              label: 'Instr.',
+              label: INSTRUMENT_PANEL_LABEL,
+              shortLabel: 'Instrument',
               icon: ({ cls }) => <Wrench className={cls} />,
               badge: (() => {
                 // Show count of AI-detected issues from instr-relevant findings
@@ -5793,62 +6766,6 @@ const PIDVerification = () => {
               badgeCls: 'bg-amber-500 text-white',
               accent: '#d97706',
               glow: 'rgba(217,119,6,0.25)',
-            },
-            {
-              id: 'piping',
-              label: 'Piping',
-              icon: ({ cls }) => <Network className={cls} />,
-              badge: (() => {
-                const pipCats = new Set(['piping','line','spec','insulation','valve']);
-                const cnt = (activeDrawingData?.issues || []).filter(f => pipCats.has(f.category)).length;
-                return cnt || null;
-              })(),
-              badgeCls: 'bg-cyan-500 text-white',
-              accent: '#0891b2',
-              glow: 'rgba(8,145,178,0.25)',
-            },
-            {
-              id: 'compressor',
-              label: 'Compressor',
-              icon: ({ cls }) => <Wind className={cls} />,
-              badge: (() => {
-                const cnt = (activeDrawingData?.issues || []).filter(f =>
-                  (f.rule_id || '').startsWith('CMP-') || f.category === 'compressor'
-                ).length;
-                return cnt || null;
-              })(),
-              badgeCls: 'bg-violet-500 text-white',
-              accent: '#7c3aed',
-              glow: 'rgba(124,58,237,0.25)',
-            },
-            {
-              id: 'cross',
-              label: 'Cross-Ref',
-              icon: ({ cls }) => <Activity className={cls} />,
-              badge: null,
-              accent: '#f59e0b',
-              glow: 'rgba(245,158,11,0.25)',
-            },
-            {
-              id: 'index',
-              label: 'Index',
-              icon: ({ cls }) => <ClipboardList className={cls} />,
-              badge: (() => {
-                const allD = results?.drawings ?? [];
-                const total = allD.reduce((s,d) => s + (d.issues?.length ?? 0), 0);
-                return total || null;
-              })(),
-              badgeCls: 'bg-indigo-500 text-white',
-              accent: '#6366f1',
-              glow: 'rgba(99,102,241,0.25)',
-            },
-            {
-              id: 'performance',
-              label: 'Perf.',
-              icon: ({ cls }) => <Zap className={cls} />,
-              badge: null,
-              accent: '#10b981',
-              glow: 'rgba(16,185,129,0.25)',
             },
           ];
 
@@ -6140,6 +7057,13 @@ const PIDVerification = () => {
                         : <><RefreshCw className="w-3.5 h-3.5" /> Re-check</>
                       }
                     </button>
+                    <button onClick={() => navigate(`/engineering/process/pid-verification-v2/report/${documentId}`)}
+                      title="Open the 5-tab comparison report (General / Legend / Line List / Equipment / Instrument)"
+                      className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px"
+                      style={{ background:'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow:'0 3px 10px rgba(79,70,229,0.25)' }}>
+                      <BarChart2 className="w-3.5 h-3.5" />
+                      Full Report
+                    </button>
                     <button onClick={downloadExcel} disabled={downloadingXlsx}
                       className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-60"
                       style={{ background:'linear-gradient(135deg,#059669,#10b981)', boxShadow:'0 3px 10px rgba(16,185,129,0.25)' }}>
@@ -6226,14 +7150,14 @@ const PIDVerification = () => {
                                : qScore>=70?{letter:'B',color:'#3b82f6',glow:'rgba(59,130,246,0.22)',label:'Good'}
                                : qScore>=50?{letter:'C',color:'#f59e0b',glow:'rgba(245,158,11,0.22)',label:'Fair'}
                                :            {letter:'D',color:'#ef4444',glow:'rgba(239,68,68,0.22)',label:'Needs Attention'};
+                // Only 3 cards now — one per *other* tab in the 4-tab canvas
+                // (the Legends/Drawing tab is the one already open, so it has no
+                // card of its own). Piping/Compressor counts are folded into the
+                // Line List / Equipment cards since those checks now live there.
                 const NAV_CARDS = [
-                  { id:'findings',       label:'Findings',   Icon:GitBranch, count:totalIssues,  sub:`${criticalCount} crit · ${majorCount} major · ${_minor} minor`, accent:'#ef4444', bg:'rgba(239,68,68,0.07)',    border:'rgba(239,68,68,0.18)',    status: criticalCount>0?'critical':majorCount>0?'major':totalIssues>0?'minor':'pass' },
-                  { id:'lines',         label:'Lines',       Icon:Ruler,     count:_lineCnt,     sub:`${extractionSummary?.line_tags_multi_angle||0} multi-angle · ${extractionSummary?.line_sizes||0} sizes`,      accent:'#0d9488', bg:'rgba(13,148,136,0.07)',  border:'rgba(13,148,136,0.18)',  status:'info' },
-                  { id:'equipment',     label:'Equipment',   Icon:Cpu,       count:_equipCnt,    sub:`${extractionSummary?.instruments||0} instr · ${extractionSummary?.valves||0} valves · ${extractionSummary?.equipment||0} equip`, accent:'#7c3aed', bg:'rgba(124,58,237,0.07)', border:'rgba(124,58,237,0.18)', status:'info' },
-                  { id:'instrumentation',label:'Instr.',     Icon:Wrench,    count:_instrCnt,    sub:_instrCnt>0?`${_instrCnt} issue${_instrCnt!==1?'s':''} detected`:'No issues found',   accent:'#d97706', bg:'rgba(217,119,6,0.07)',   border:'rgba(217,119,6,0.18)',   status:_instrCnt>0?'warn':'pass' },
-                  { id:'piping',        label:'Piping',      Icon:Network,   count:_pipCnt,      sub:_pipCnt>0?`${_pipCnt} issue${_pipCnt!==1?'s':''} detected`:'No issues found',          accent:'#0891b2', bg:'rgba(8,145,178,0.07)',   border:'rgba(8,145,178,0.18)',   status:_pipCnt>0?'warn':'pass' },
-                  { id:'compressor',    label:'Compressor',  Icon:Wind,      count:_cmpCnt,      sub:_cmpCnt>0?`${_cmpCnt} CMP issue${_cmpCnt!==1?'s':''} detected`:'Compressor QC checklist', accent:'#7c3aed', bg:'rgba(124,58,237,0.07)', border:'rgba(124,58,237,0.18)', status:_cmpCnt>0?'warn':'pass' },
-                  { id:'cross',         label:'Cross-Ref',   Icon:Activity,  count:null,         sub:'Cross-drawing references',   accent:'#f59e0b', bg:'rgba(245,158,11,0.07)',  border:'rgba(245,158,11,0.18)',  status:'info' },
+                  { id:'lines',         label:LINELIST_PANEL_LABEL,   Icon:Ruler,     count:_lineCnt,     sub:`${_pipCnt} piping issue${_pipCnt!==1?'s':''} · ${extractionSummary?.line_sizes||0} sizes`,      accent:'#0d9488', bg:'rgba(13,148,136,0.07)',  border:'rgba(13,148,136,0.18)',  status:_pipCnt>0?'warn':'info' },
+                  { id:'equipment',     label:EQUIPMENT_PANEL_LABEL,  Icon:Cpu,       count:_equipCnt,    sub:`${_cmpCnt} compressor issue${_cmpCnt!==1?'s':''} · ${extractionSummary?.valves||0} valves · ${extractionSummary?.equipment||0} equip`, accent:'#7c3aed', bg:'rgba(124,58,237,0.07)', border:'rgba(124,58,237,0.18)', status:_cmpCnt>0?'warn':'info' },
+                  { id:'instrumentation',label:INSTRUMENT_PANEL_LABEL, Icon:Wrench,    count:_instrCnt,    sub:_instrCnt>0?`${_instrCnt} issue${_instrCnt!==1?'s':''} detected`:'No issues found',   accent:'#d97706', bg:'rgba(217,119,6,0.07)',   border:'rgba(217,119,6,0.18)',   status:_instrCnt>0?'warn':'pass' },
                 ];
                 // Soft-coded: status badge styles keyed by `status` field above.
                 const STATUS_BADGE = {
@@ -6723,8 +7647,18 @@ const PIDVerification = () => {
                       )}
 
                       {!drawingImageLoading && !drawingImageUrl && (
-                        <div className="flex items-center justify-center gap-2 py-10 text-slate-400 text-xs">
-                          <AlertTriangle className="w-4 h-4" />Drawing preview unavailable
+                        <div className="flex flex-col items-center justify-center gap-2 py-10 text-slate-400 text-xs px-4 text-center">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span>Drawing preview unavailable</span>
+                          {drawingImageError && (
+                            <span className="text-[11px] text-red-500 font-medium max-w-md">{drawingImageError}</span>
+                          )}
+                          <button
+                            onClick={() => setDrawingImageRetryTick(t => t + 1)}
+                            className="mt-1 flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />Retry
+                          </button>
                         </div>
                       )}
 
@@ -7165,10 +8099,10 @@ const PIDVerification = () => {
                               })()}
                             </span>
                             <button
-                              onClick={() => { setActivePanel('findings'); setTimeout(() => jumpToFinding(ff.id), 150); }}
+                              onClick={() => { setActivePanel('drawing'); setTimeout(() => jumpToFinding(ff.id), 150); }}
                               className="text-[10px] font-bold px-2.5 py-1 rounded-lg text-white transition-all hover:opacity-80"
                               style={{ background: '#0891b2' }}>
-                              View in Findings Panel →
+                              View on Drawing →
                             </button>
                           </div>
                         </div>
@@ -8065,7 +8999,7 @@ const PIDVerification = () => {
                                           )}
                                           <div className="ml-auto flex items-center gap-2">
                                             <button className="text-[10px] flex items-center gap-1 text-indigo-500 hover:text-indigo-700 font-medium"
-                                              onClick={e => { e.stopPropagation(); setActivePanel('findings'); setFocusedFindingId(f.id); setTimeout(() => jumpToFinding(f.id), 150); }}>
+                                              onClick={e => { e.stopPropagation(); setActivePanel('drawing'); setFocusedFindingId(f.id); setTimeout(() => jumpToFinding(f.id), 150); }}>
                                               <Eye className="w-3 h-3" /> Locate
                                             </button>
                                             <span className="text-slate-300">{isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}</span>
@@ -12019,8 +12953,8 @@ const PIDVerification = () => {
             )}
             {/* ─── end INSTRUMENTATION panel ─── */}
 
-            {/* ─── PIPING panel ─── */}
-            {activePanel === 'piping' && (
+            {/* ─── PIPING panel — merged into the P&ID & Line List tab ─── */}
+            {activePanel === 'lines' && (
             <div className="rounded-2xl overflow-hidden" style={{ ...T.card, animation:'panelSlide 0.25s ease-out both' }}>
             {(() => {
               // ══ Soft-coded: Piping QC Checklist ═══════════════════════════════════════
@@ -13195,8 +14129,8 @@ const PIDVerification = () => {
             )}
             {/* ─── end PIPING panel ─── */}
 
-            {/* ─── COMPRESSOR panel ─── */}
-            {activePanel === 'compressor' && (
+            {/* ─── COMPRESSOR panel — merged into the P&ID & Equipment List tab ─── */}
+            {activePanel === 'equipment' && (
             <div className="rounded-2xl overflow-hidden" style={{ ...T.card, animation:'panelSlide 0.25s ease-out both' }}>
             {(() => {
               // ══ Soft-coded: CMP checklist items ══════════════════════════════════════
@@ -16409,16 +17343,18 @@ const PIDVerification = () => {
                         />
                       </span>
 
-                      {/* Label */}
+                      {/* Label — shortLabel keeps the rail button from overflowing;
+                          the full tab.label is still shown in the title tooltip. */}
                       <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
                         <span style={{
                           fontSize: '10px', fontWeight: 800,
-                          letterSpacing: '0.04em', textTransform: 'uppercase',
+                          letterSpacing: '0.02em', textTransform: 'uppercase',
                           lineHeight: 1.2, whiteSpace: 'nowrap',
+                          overflow: 'hidden', textOverflow: 'ellipsis',
                           color: isActive ? '#ffffff' : '#475569',
                           transition: 'color 0.18s',
                         }}>
-                          {tab.label}
+                          {tab.shortLabel || tab.label}
                         </span>
                       </span>
                       {tab.badge != null && (
@@ -16465,8 +17401,8 @@ const PIDVerification = () => {
                     <span style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'26px', height:'26px', borderRadius:'8px', background:'rgba(255,255,255,0.22)', flexShrink:0 }}>
                       <ghostTab.icon cls="w-3.5 h-3.5" style={{ color:'#ffffff' }} />
                     </span>
-                    <span style={{ fontSize:'10px', fontWeight:800, letterSpacing:'0.04em', textTransform:'uppercase', color:'#ffffff', whiteSpace:'nowrap', flex:1 }}>
-                      {ghostTab.label}
+                    <span style={{ fontSize:'10px', fontWeight:800, letterSpacing:'0.02em', textTransform:'uppercase', color:'#ffffff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flex:1 }}>
+                      {ghostTab.shortLabel || ghostTab.label}
                     </span>
                     <GripVertical style={{ width:'10px', flexShrink:0, color:'rgba(255,255,255,0.55)' }} />
                   </div>
@@ -16662,14 +17598,10 @@ const PIDVerification = () => {
                 </div>
                 <div className="px-5 py-4 space-y-2.5">
                   {[
-                    { icon: '📏', panel: 'Lines', desc: 'Piping lines, tags, size/fluid validation, drawing layout' },
-                    { icon: '⚙️', panel: 'Equipment', desc: 'Vessels, exchangers, pumps, compressors with tag registry' },
-                    { icon: '🎛️', panel: 'Instrument', desc: 'DCS symbols, ISA compliance, tag naming, loop diagrams' },
-                    { icon: '🔧', panel: 'Piping', desc: 'Valve types, fittings, connections, spec compliance' },
-                    { icon: '💨', panel: 'Compressor', desc: 'Compressor-specific checks, performance data' },
-                    { icon: '🔗', panel: 'Cross-Ref', desc: 'PFD cross-reference & Wrench DMS document search' },
-                    { icon: '📋', panel: 'Index', desc: 'Master findings index, severity filtering, valve tracking' },
-                    { icon: '⚡', panel: 'Performance', desc: 'Model accuracy, rule leaderboard, per-drawing stats' },
+                    { icon: '�', panel: DRAWING_PANEL_LABEL, desc: 'Compare P&ID symbols & depictions against the Legend sheet' },
+                    { icon: '📏', panel: LINELIST_PANEL_LABEL, desc: 'Line numbers, sizes, fluid codes & piping/valve spec compliance' },
+                    { icon: '⚙️', panel: EQUIPMENT_PANEL_LABEL, desc: 'Vessels, exchangers, pumps, compressors with tag registry' },
+                    { icon: '🎛️', panel: INSTRUMENT_PANEL_LABEL, desc: 'DCS symbols, ISA compliance, tag naming, loop diagrams' },
                   ].map(item => (
                     <div key={item.panel} className="flex items-start gap-2 py-1">
                       <span className="text-sm flex-shrink-0">{item.icon}</span>
@@ -16794,10 +17726,44 @@ const PIDVerification = () => {
                       d.status === 'completed' ? 'bg-green-500' : d.status === 'failed' ? 'bg-red-500' : 'bg-amber-400'
                     }`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 truncate">{d.file_name}</p>
-                      <p className="text-xs text-slate-400">{new Date(d.created_at).toLocaleString()} · {d.total_issues ?? 0} issues · {d.total_drawings ?? 0} drawings</p>
+                      {editingHistoryId === d.document_id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            autoFocus
+                            value={editingHistoryName}
+                            onChange={e => setEditingHistoryName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveEditHistoryName(d.document_id);
+                              if (e.key === 'Escape') cancelEditHistoryName();
+                            }}
+                            maxLength={512}
+                            className="text-sm font-medium text-slate-800 border border-indigo-300 rounded-lg px-2 py-1 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          />
+                          <button
+                            onClick={() => saveEditHistoryName(d.document_id)}
+                            disabled={savingHistoryEdit}
+                            title="Save name"
+                            className="flex items-center justify-center w-7 h-7 rounded-lg bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 transition-all disabled:opacity-50 flex-shrink-0"
+                          >
+                            {savingHistoryEdit ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            onClick={cancelEditHistoryName}
+                            disabled={savingHistoryEdit}
+                            title="Cancel"
+                            className="flex items-center justify-center w-7 h-7 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100 transition-all disabled:opacity-50 flex-shrink-0"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-sm font-medium text-slate-800 truncate">{d.file_name}</p>
+                          <p className="text-xs text-slate-400">{new Date(d.created_at).toLocaleString()} · {d.total_issues ?? 0} issues · {d.total_drawings ?? 0} drawings</p>
+                        </>
+                      )}
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium border flex-shrink-0 ${
                       d.status === 'completed' ? 'bg-green-50 text-green-700 border-green-200'
                       : d.status === 'failed'  ? 'bg-red-50 text-red-600 border-red-200'
                       :                          'bg-amber-50 text-amber-700 border-amber-200'
@@ -16829,6 +17795,41 @@ const PIDVerification = () => {
                         }
                       </button>
                     )}
+                    {/* View — load this document's results into the main viewer */}
+                    {['completed', 'failed'].includes(d.status) && editingHistoryId !== d.document_id && (
+                      <button
+                        onClick={() => viewHistoryDocument(d)}
+                        disabled={viewingHistoryId === d.document_id}
+                        title="View results"
+                        className="flex items-center justify-center gap-1 w-8 h-8 rounded-lg border transition-all hover:-translate-y-px disabled:opacity-50 flex-shrink-0"
+                        style={{ background:'#eff6ff', border:'1px solid #bfdbfe', color:'#2563eb' }}
+                      >
+                        {viewingHistoryId === d.document_id ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+                    {/* Edit — inline rename of the display name */}
+                    {editingHistoryId !== d.document_id && (
+                      <button
+                        onClick={() => startEditHistoryName(d)}
+                        title="Rename"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg border transition-all hover:-translate-y-px flex-shrink-0"
+                        style={{ background:'#fffbeb', border:'1px solid #fde68a', color:'#b45309' }}
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {/* Delete — permanently remove the document (confirmed) */}
+                    {editingHistoryId !== d.document_id && (
+                      <button
+                        onClick={() => deleteHistoryDocument(d)}
+                        disabled={deletingHistoryId === d.document_id}
+                        title="Delete document"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg border transition-all hover:-translate-y-px disabled:opacity-50 flex-shrink-0"
+                        style={{ background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626' }}
+                      >
+                        {deletingHistoryId === d.document_id ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -16838,389 +17839,260 @@ const PIDVerification = () => {
 
       </div>
 
-      {/* ── Legend Sheet Detail Panel (slide-in drawer) ──────────────────── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          LEGEND SHEET DETAIL PANEL — REMOVED (Replaced with BYOK)
+          ══════════════════════════════════════════════════════════════════════
+          This entire section was commented out because Legend Sheets feature
+          was replaced with BYOK (Bring Your Own Key) for AI Deep Extraction.
+          The panel is no longer needed. Kept here for reference only.
+          ══════════════════════════════════════════════════════════════════════
       {showLegendPanel && (
         <div className="fixed inset-0 z-50 flex items-stretch justify-end pointer-events-none">
-          {/* dim backdrop */}
-          <div
-            className="absolute inset-0 bg-slate-900/40 pointer-events-auto"
-            onClick={() => setShowLegendPanel(false)}
-          />
-          {/* Drawer */}
-          <div className="relative w-full max-w-xl pointer-events-auto flex flex-col bg-white shadow-2xl"
-            style={{ animation: 'legendDrawerIn 0.25s ease-out' }}>
-            <style>{`
-              @keyframes legendDrawerIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to   { transform: translateX(0);    opacity: 1; }
-              }
-            `}</style>
+          ...Legend Panel JSX...
+        </div>
+      )}
+      ══════════════════════════════════════════════════════════════════════ */}
 
-            {/* Drawer header */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100"
-              style={{ background:'linear-gradient(135deg,#f0fdf4,#dcfce7)' }}>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background:'linear-gradient(135deg,#16a34a,#15803d)' }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-white">
-                  <path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/>
-                </svg>
+      {/* ── BYOK AI Deep Extraction Panel ──────────────────────────────────────── */}
+      {showBYOKPanel && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowBYOKPanel(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 overflow-hidden"
+            style={{ animation: 'fadeUp 0.3s ease-out' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black tracking-tight">BYOK — AI Deep Extraction</h2>
+                    <p className="text-purple-100 text-sm mt-1">Bring Your Own Key for Advanced AI Processing</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowBYOKPanel(false)}
+                  className="w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-800 truncate">
-                  {loadingLegendDetail ? 'Loading…' : (legendPanelSheet?.file_name || 'Legend Sheet')}
-                </p>
-                <p className="text-xs text-slate-400">
-                  {legendPanelSheet?.extracted_data?.extraction_method === 'ai_vision' ? '🤖 Extracted via AI Vision' : '📝 Extracted via text parse'}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowLegendPanel(false)}
-                className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-slate-500">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
             </div>
 
-            {/* Drawer body — scrollable */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {loadingLegendDetail && (
-                <div className="flex items-center justify-center py-16 gap-3">
-                  <Loader className="w-5 h-5 animate-spin text-emerald-500" />
-                  <span className="text-sm text-slate-400">Extracting data…</span>
-                </div>
-              )}
-
-              {!loadingLegendDetail && !legendPanelSheet && (
-                <p className="text-sm text-slate-400 text-center py-16">No data available</p>
-              )}
-
-              {!loadingLegendDetail && legendPanelSheet && (() => {
-                const d = legendPanelSheet.extracted_data || {};
-
-                // ── Soft-coded: drawer section definitions ─────────────────
-                // Add/remove entries here to change which categories appear.
-                const SECTIONS = [
-                  {
-                    key:   'line_representation',
-                    title: 'Line Representation',
-                    icon:  '—',
-                    empty: 'No line types found',
-                    render: (items) => (
-                      <div className="flex flex-col gap-1.5">
-                        {items.map((row, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs">
-                            <span className="font-mono font-bold text-slate-700 w-24 flex-shrink-0 truncate">{row.key || '—'}</span>
-                            <span className="flex-1 text-slate-500">{row.description}</span>
-                            <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-slate-500 text-[10px] font-medium ${
-                              row.line_style === 'solid'  ? 'bg-blue-50 text-blue-600'  :
-                              row.line_style === 'dashed' ? 'bg-amber-50 text-amber-600':
-                              row.line_style === 'dotted' ? 'bg-purple-50 text-purple-600' :
-                              'bg-slate-100'
-                            }`}>{row.line_style}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'line_numbering_piping',
-                    title: 'Line Numbering — Piping',
-                    icon:  '⌗',
-                    empty: 'No piping numbering format found',
-                    render: (val) => (
-                      <div className="space-y-2">
-                        {val.format && (
-                          <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
-                            <p className="text-xs text-blue-500 font-medium mb-1">Format</p>
-                            <p className="font-mono text-sm font-bold text-blue-700">{val.format}</p>
-                            {val.example && <p className="text-xs text-blue-500 mt-1">e.g. <span className="font-mono">{val.example}</span></p>}
-                          </div>
-                        )}
-                        {val.fields?.length > 0 && (
-                          <div className="flex flex-col gap-1">
-                            {val.fields.map((f, i) => (
-                              <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                                <span className="w-5 h-5 rounded flex items-center justify-center bg-blue-100 text-blue-700 font-bold text-[10px] flex-shrink-0 mt-0.5">{f.position}</span>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-slate-700">{f.name}</p>
-                                  <p className="text-slate-400 truncate">{f.description}</p>
-                                </div>
-                                {f.example && <span className="font-mono text-slate-500 text-[10px]">{f.example}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ),
-                    isObj: true,
-                  },
-                  {
-                    key:   'line_numbering_pipeline',
-                    title: 'Line Numbering — Pipeline',
-                    icon:  '⌗',
-                    empty: 'No pipeline numbering format found',
-                    render: (val) => (
-                      <div className="space-y-2">
-                        {val.format && (
-                          <div className="p-3 rounded-lg bg-purple-50 border border-purple-100">
-                            <p className="text-xs text-purple-500 font-medium mb-1">Format</p>
-                            <p className="font-mono text-sm font-bold text-purple-700">{val.format}</p>
-                            {val.example && <p className="text-xs text-purple-400 mt-1">e.g. <span className="font-mono">{val.example}</span></p>}
-                          </div>
-                        )}
-                        {val.fields?.length > 0 && (
-                          <div className="flex flex-col gap-1">
-                            {val.fields.map((f, i) => (
-                              <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                                <span className="w-5 h-5 rounded flex items-center justify-center bg-purple-100 text-purple-700 font-bold text-[10px] flex-shrink-0 mt-0.5">{f.position}</span>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-slate-700">{f.name}</p>
-                                  <p className="text-slate-400 truncate">{f.description}</p>
-                                </div>
-                                {f.example && <span className="font-mono text-slate-500 text-[10px]">{f.example}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ),
-                    isObj: true,
-                  },
-                  {
-                    key:   'abbreviations_process',
-                    title: 'Abbreviations — Process',
-                    icon:  'Aa',
-                    empty: 'No abbreviations found',
-                    render: (items) => (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {items.map((a, i) => (
-                          <div key={i} className="flex items-start gap-1.5 bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-amber-700 text-xs w-12 flex-shrink-0">{a.abbr}</span>
-                            <span className="text-xs text-slate-500 leading-tight flex-1 min-w-0 truncate" title={a.full_name}>{a.full_name}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'inline_equipment',
-                    title: 'In-Line Equipment',
-                    icon:  '⊕',
-                    empty: 'No in-line equipment found',
-                    render: (items) => (
-                      <div className="flex flex-col gap-1.5">
-                        {items.map((e, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs">
-                            <span className="font-mono font-bold text-slate-700 w-16 flex-shrink-0 truncate">{e.symbol}</span>
-                            <span className="flex-1 text-slate-500">{e.description}</span>
-                            {e.type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0 capitalize">{e.type}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'service_codes',
-                    title: 'Service Codes',
-                    icon:  '⬡',
-                    empty: 'No service codes found',
-                    render: (obj) => (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {Object.entries(obj).map(([k, v], i) => (
-                          <div key={i} className="flex items-start gap-1.5 bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-emerald-700 text-xs w-10 flex-shrink-0">{k}</span>
-                            <span className="text-xs text-slate-500 leading-tight flex-1 min-w-0 truncate" title={v}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                    isObj: true,
-                    asEntries: true,
-                  },
-                  {
-                    key:   'insulation_codes',
-                    title: 'Insulation Codes',
-                    icon:  '▣',
-                    empty: 'No insulation codes found',
-                    render: (obj) => (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {Object.entries(obj).map(([k, v], i) => (
-                          <div key={i} className="flex items-start gap-1.5 bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-sky-700 text-xs w-8 flex-shrink-0">{k}</span>
-                            <span className="text-xs text-slate-500 leading-tight flex-1 min-w-0 truncate" title={v}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                    isObj: true,
-                    asEntries: true,
-                  },
-                  {
-                    key:   'piping_specs',
-                    title: 'Piping Specs',
-                    icon:  '≡',
-                    empty: 'No piping specs found',
-                    render: (obj) => (
-                      <div className="flex flex-col gap-1.5">
-                        {Object.entries(obj).map(([k, v], i) => (
-                          <div key={i} className="flex items-start gap-2 bg-slate-50 rounded px-2 py-1.5 border border-slate-100 text-xs">
-                            <span className="font-mono font-bold text-rose-700 w-20 flex-shrink-0 truncate">{k}</span>
-                            <span className="text-slate-500 flex-1 min-w-0">{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                    isObj: true,
-                    asEntries: true,
-                  },
-                  // ── Soft-coded NEW sections (legend coverage extension) ─────────
-                  // These mirror the backend schema additions in legend_extractor.py.
-                  // Each section is purely additive — present only when AI returns data.
-                  {
-                    key:   'equipment_class_codes',
-                    title: 'Equipment Class Codes',
-                    icon:  '⛁',
-                    empty: 'No equipment class codes found',
-                    render: (obj) => (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {Object.entries(obj).map(([k, v], i) => (
-                          <div key={i} className="flex items-start gap-1.5 bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-indigo-700 text-xs w-10 flex-shrink-0">{k}</span>
-                            <span className="text-xs text-slate-500 leading-tight flex-1 min-w-0 truncate" title={v}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                    isObj: true,
-                    asEntries: true,
-                  },
-                  {
-                    key:   'drawing_references',
-                    title: 'Drawing & Code References',
-                    icon:  '※',
-                    empty: 'No drawing or code references found',
-                    render: (items) => (
-                      <div className="flex flex-col gap-1.5">
-                        {items.map((r, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-teal-700 w-32 flex-shrink-0 truncate" title={r.ref}>{r.ref || '—'}</span>
-                            <span className="flex-1 text-slate-500 min-w-0">{r.description || ''}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'tie_in_symbols',
-                    title: 'Tie-in / Off-page Connectors',
-                    icon:  '⇄',
-                    empty: 'No tie-in or off-page symbols found',
-                    render: (items) => (
-                      <div className="flex flex-col gap-1.5">
-                        {items.map((t, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-fuchsia-700 w-16 flex-shrink-0 truncate">{t.symbol || '—'}</span>
-                            <span className="flex-1 text-slate-500 min-w-0">{t.description || ''}</span>
-                            {t.type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-fuchsia-50 text-fuchsia-600 flex-shrink-0 capitalize">{String(t.type).replace(/_/g,' ')}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'general_notes',
-                    title: 'General Notes',
-                    icon:  '✎',
-                    empty: 'No general notes found',
-                    render: (items) => (
-                      <ol className="list-decimal list-inside flex flex-col gap-1 text-xs text-slate-600">
-                        {items.map((n, i) => (
-                          <li key={i} className="leading-snug">{n}</li>
-                        ))}
-                      </ol>
-                    ),
-                  },
-                ];
-
-                return (
-                  <>
-                    {SECTIONS.map(sec => {
-                      const val = d[sec.key];
-                      const isEmpty = !val ||
-                        (Array.isArray(val) && val.length === 0) ||
-                        (typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length === 0 && !val.format);
-                      if (isEmpty) return null;
-
-                      return (
-                        <div key={sec.key} className="rounded-xl border border-slate-200 overflow-hidden">
-                          {/* Section header */}
-                          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50">
-                            <span className="font-mono text-sm font-bold text-slate-400 w-6 text-center">{sec.icon}</span>
-                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{sec.title}</span>
-                            <span className="ml-auto text-xs text-slate-400">
-                              {Array.isArray(val) ? `${val.length} items` :
-                               sec.asEntries ? `${Object.keys(val).length} codes` :
-                               val.fields?.length ? `${val.fields.length} fields` : ''}
-                            </span>
-                          </div>
-                          <div className="p-3 bg-white">
-                            {isEmpty ? (
-                              <p className="text-xs text-slate-400 italic">{sec.empty}</p>
-                            ) : (
-                              sec.render(val)
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Instrument + Valve prefixes */}
-                    {(d.instrument_prefixes?.length > 0 || d.valve_prefixes?.length > 0) && (
-                      <div className="rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50">
-                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Tag Prefixes</span>
-                        </div>
-                        <div className="p-3 bg-white flex flex-col gap-2">
-                          {d.instrument_prefixes?.length > 0 && (
-                            <div>
-                              <p className="text-xs text-slate-400 font-medium mb-1">Instrument</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {d.instrument_prefixes.map((p, i) => (
-                                  <span key={i} className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-bold">{p}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {d.valve_prefixes?.length > 0 && (
-                            <div>
-                              <p className="text-xs text-slate-400 font-medium mb-1">Valve</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {d.valve_prefixes.map((p, i) => (
-                                  <span key={i} className="font-mono text-xs px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-bold">{p}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Extraction metadata */}
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-400 space-y-0.5">
-                      <p>Extracted: {legendPanelSheet.updated_at ? new Date(legendPanelSheet.updated_at).toLocaleString() : '—'}</p>
-                      {d.raw_text_chars !== undefined && <p>Raw text chars: {d.raw_text_chars}</p>}
-                      {d.extraction_method && <p>Method: {d.extraction_method}</p>}
+            {/* Content */}
+            <div className="p-6 max-h-[70vh] overflow-y-auto">
+              {/* Feature Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                      <Brain className="w-5 h-5 text-purple-600" />
                     </div>
-                  </>
-                );
-              })()}
+                    <div>
+                      <h3 className="font-bold text-slate-900 mb-1">Multi-Model Support</h3>
+                      <p className="text-sm text-slate-600">GPT-4o, Claude 3.5 Sonnet, and Gemini Pro for maximum accuracy</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                      <Shield className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900 mb-1">Secure & Private</h3>
+                      <p className="text-sm text-slate-600">Your API keys are encrypted and never stored permanently</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                      <Zap className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900 mb-1">Deep Extraction</h3>
+                      <p className="text-sm text-slate-600">Advanced symbol recognition, tag extraction, and context analysis</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                      <Database className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900 mb-1">Project-Scoped</h3>
+                      <p className="text-sm text-slate-600">Keys are linked to your project for consistent processing</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Info Panel */}
+              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg mb-6">
+                <div className="flex items-start gap-3">
+                  <Lightbulb className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-blue-900 mb-1">How BYOK Works</h4>
+                    <ul className="text-sm text-blue-800 space-y-1">
+                      <li>• Configure your own API keys for OpenAI, Claude, or Gemini</li>
+                      <li>• Keys are encrypted using AES-256 and stored per-project</li>
+                      <li>• AI models process your P&IDs with enhanced accuracy</li>
+                      <li>• You maintain full control and can revoke access anytime</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* API Key Configuration Section */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-purple-600" />
+                  Configure API Keys
+                </h3>
+                
+                {/* OpenAI */}
+                <div className="border border-slate-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                        <Brain className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900">OpenAI (GPT-4o)</p>
+                        <p className="text-xs text-slate-500">Industry-leading vision and reasoning</p>
+                      </div>
+                    </div>
+                    {apiKeyStatus.openai === 'active' ? (
+                      <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />Active
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full">
+                        Recommended
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="password"
+                      value={apiKeys.openai}
+                      onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
+                      placeholder={apiKeyStatus.openai === 'active' ? '•••••••••••••••••••• (key saved — enter a new key to replace)' : 'sk-proj-...'}
+                      className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                    {apiKeyStatus.openai === 'active' && (
+                      <button
+                        onClick={() => deleteApiKey('openai')}
+                        className="px-3 py-2.5 border border-slate-300 text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                        title="Remove key"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Claude */}
+                <div className="border border-slate-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                        <Cpu className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900">Anthropic Claude (3.5 Sonnet)</p>
+                        <p className="text-xs text-slate-500">Superior technical document understanding</p>
+                      </div>
+                    </div>
+                    {apiKeyStatus.claude === 'active' && (
+                      <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />Active
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="password"
+                      value={apiKeys.claude}
+                      onChange={(e) => setApiKeys(prev => ({ ...prev, claude: e.target.value }))}
+                      placeholder={apiKeyStatus.claude === 'active' ? '•••••••••••••••••••• (key saved — enter a new key to replace)' : 'sk-ant-...'}
+                      className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                    {apiKeyStatus.claude === 'active' && (
+                      <button
+                        onClick={() => deleteApiKey('claude')}
+                        className="px-3 py-2.5 border border-slate-300 text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                        title="Remove key"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Gemini — not yet supported by the analysis backend */}
+                <div className="border border-slate-200 rounded-xl p-4 opacity-60">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                        <Sparkles className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900">Google Gemini (Pro Vision)</p>
+                        <p className="text-xs text-slate-500">Advanced multimodal processing</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-slate-100 text-slate-500 text-xs font-semibold rounded-full">
+                      Coming soon
+                    </span>
+                  </div>
+                  <input 
+                    type="password"
+                    placeholder="AIza..."
+                    disabled
+                    className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50 rounded-lg text-sm cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Shield className="w-4 h-4" />
+                <span>Keys are encrypted with AES-256</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setShowBYOKPanel(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-white transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={async () => { await saveApiKeys(); setShowBYOKPanel(false); }}
+                  disabled={savingApiKeys || (!apiKeys.openai && !apiKeys.claude)}
+                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-200 font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingApiKeys ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  {savingApiKeys ? 'Saving...' : 'Save Configuration'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-      {/* ── End Legend Sheet Detail Panel ────────────────────────────────── */}
 
       {/* ── Fullscreen Workflow Modal ──────────────────────────────────────── */}
       {workflowFullscreen && (
@@ -17377,4 +18249,4 @@ const PIDVerification = () => {
   );
 };
 
-export default PIDVerification;
+export default PIDVerificationV2;

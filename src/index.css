@@ -15,6 +15,20 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Soft-coded text-selection theme — replaces the browser's default
+     (often purple) highlight with a subtle indigo/blue tint that matches
+     the app's primary accent color. Tune these two variables to re-theme
+     text selection everywhere without touching individual components. */
+  --app-selection-bg: rgba(79, 70, 229, 0.16);
+  --app-selection-text: #0f172a;
+}
+
+/* Applies the soft-coded selection theme above to all selectable text
+   (headings, paragraphs, inputs, etc.) across the entire app. */
+::selection {
+  background-color: var(--app-selection-bg);
+  color: var(--app-selection-text);
 }
 
 * {
