@@ -225,7 +225,10 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config
-    const _silent = _isSilentTimeoutEndpoint(error.config?.url || '')
+    // silentTimeout: per-request opt-in (not URL-wide) — lets one caller of a
+    // shared endpoint suppress the toast while another caller of that same
+    // endpoint still surfaces errors normally.
+    const _silent = _isSilentTimeoutEndpoint(error.config?.url || '') || error.config?.silentTimeout === true
     
     // Enhanced error logging for debugging — but stay quiet for background
     // pollers so DevTools doesn't drown in red on a slow worker.
@@ -270,7 +273,10 @@ apiClient.interceptors.response.use(
     // Handle network/connection errors (cannot reach server)
     if (!error.response) {
       console.error('[API] 🌐 NETWORK ERROR - No response received from server');
-      const _silent = _isSilentTimeoutEndpoint(error.config?.url || '');
+      // silentTimeout: per-request opt-in (not URL-wide) — lets one caller of a
+    // shared endpoint suppress the toast while another caller of that same
+    // endpoint still surfaces errors normally.
+    const _silent = _isSilentTimeoutEndpoint(error.config?.url || '') || error.config?.silentTimeout === true;
       
       // Check if it's a CORS issue
       if (error.message.includes('CORS') || error.code === 'ERR_NETWORK') {

@@ -36,6 +36,7 @@ export default function EmployeesTable() {
       const data = await payrollEngineService.listEmployees({
         is_active: showInactive ? undefined : 'true',
         search: search || undefined,
+        page_size:500
       })
       setEmployees(Array.isArray(data) ? data : (data?.results ?? []))
     } catch (e) {

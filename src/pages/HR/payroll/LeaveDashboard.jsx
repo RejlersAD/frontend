@@ -196,7 +196,7 @@ export default function LeaveDashboard() {
     authUser?.is_staff ||
     authUser?.is_superuser ||
     rbacUser?.roles?.some(r =>
-      r.code?.startsWith('hr') || r.code === 'admin' || r.code === 'superadmin'
+      r.code?.startsWith('hr') || r.code === 'admin' || r.code === 'super_admin'
     )
   ) ?? false
   // Reporting Manager: any staff user can action Stage-1

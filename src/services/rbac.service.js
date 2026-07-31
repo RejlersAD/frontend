@@ -28,6 +28,12 @@ class RBACService {
     return apiService.get(`${RBAC_BASE_URL}/users/`, { params });
   }
 
+  async getTotalUserCount() {
+    // Company-wide count across all organizations. Super admin only —
+    // regular admins get a 403 and should fall back to their org-scoped count.
+    return apiService.get(`${RBAC_BASE_URL}/users/total-count/`);
+  }
+
   async getUserById(id) {
     // Returns the full UserProfileSerializer payload (roles, modules,
     // engineer_profile, MFA, security fields) — used by feature pages that
@@ -141,11 +147,12 @@ class RBACService {
   }
 
   // ==================== Roles ====================
-  async getRoles() {
-    // SOFT-CODED: is_active=true ensures deactivated roles never appear in the
-    // Role Management UI.  The backend queryset also enforces this server-side;
-    // this param is a defensive client-side guard.
-    return apiService.get(`${RBAC_BASE_URL}/roles/?is_active=true`);
+  async getRoles(config = {}) {
+    // The backend queryset already hardcodes is_active=True, so no filter
+    // param is needed here. No timeout — this is fetched in the background
+    // (see UserManagement.jsx) and should never block page load, so let it
+    // take as long as it needs instead of failing an otherwise-working call.
+    return apiService.get(`${RBAC_BASE_URL}/roles/`, { timeout: 0, ...config });
   }
 
   // SOFT-CODED: calls the sync-default-role action on the RoleViewSet.

@@ -63,6 +63,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
   const [catalog, setCatalog] = useState(null)
   const [employees, setEmployees] = useState([])
   const [empSearch, setEmpSearch] = useState('')
+  const [empSelected, setEmpSelected] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [touched, setTouched] = useState(false)
@@ -79,6 +80,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
     setError(null)
     setTouched(false)
     setEmpSearch(adjustment?.employee_name || '')
+    setEmpSelected(false)
   }, [open, adjustment])
 
   // Load /catalog/ once for select options
@@ -207,13 +209,21 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
             type="text"
             placeholder="Search by name or emp #…"
             value={empSearch}
-            onChange={(e) => setEmpSearch(e.target.value)}
+            onChange={(e) => { setEmpSearch(e.target.value); setEmpSelected(false) }}
             className={baseCls}
           />
+          {!empSelected && (
           <select
             id={id}
             value={value ?? ''}
-            onChange={(e) => handleChange(field.key, e.target.value)}
+            onChange={(e) => {
+              handleChange(field.key, e.target.value)
+              const emp = employees.find((em) => String(em.id) === String(e.target.value))
+              if (emp){
+                 setEmpSearch(`${emp.employee_no} · ${emp.full_name}`)
+                 setEmpSelected(true)
+              }
+            }}
             className={baseCls}
             size={Math.min(6, Math.max(3, filteredEmployees.length))}
           >
@@ -228,6 +238,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
               </option>
             ))}
           </select>
+          )}
         </div>
       )
     }

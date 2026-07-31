@@ -223,8 +223,8 @@ const OVERVIEW_BUTTONS = [
     label: 'Upcoming Joiners',
     section: 'onboarding',
     actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats) => {
-      window.location.hash = '#onboarding?filter=upcoming'
+    actionValue: (stats, onTabChange) => {
+      if (onTabChange) onTabChange('onboarding')
     },
     variant: 'primary',
     style: 'outline',
@@ -262,9 +262,9 @@ const OVERVIEW_BUTTONS = [
     label: 'Initiate Exit',
     section: 'offboarding',
     actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats) => {
-      // Could open a modal or navigate to offboarding form
-      alert('Initiate offboarding feature - to be implemented')
+    actionValue: (stats, onTabChange) => {
+      // The real "Initiate Exit" form lives on the Offboarding List tab.
+      if (onTabChange) onTabChange('offboarding')
     },
     variant: 'warning',
     style: 'outline',
@@ -682,6 +682,7 @@ const SmartButton = ({ config, stats, customCallback, className = '' }) => {
     switch (config.actionType) {
       case NAV_ACTIONS.HASH:
         window.location.hash = config.actionValue
+        if (customCallback) customCallback(config.actionValue.replace('#', '').split('?')[0])
         break
       case NAV_ACTIONS.TAB:
         if (customCallback) customCallback(config.actionValue)
@@ -831,7 +832,7 @@ export default function OnboardingOffboarding() {
 
       {/* Tab Content */}
       <div>
-        {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'overview' && <OverviewTab onTabChange={setActiveTab} />}
         {activeTab === 'onboarding' && <OnboardingListTab />}
         {activeTab === 'offboarding' && <OffboardingListTab />}
         {activeTab === 'create' && <CreateEmployeeTab />}
@@ -841,7 +842,7 @@ export default function OnboardingOffboarding() {
 }
 
 // ── Overview Tab ───────────────────────────────────────────────────────────
-function OverviewTab() {
+function OverviewTab({ onTabChange }) {
   const [onboardingStats, setOnboardingStats] = useState(null)
   const [offboardingStats, setOffboardingStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -935,9 +936,10 @@ function OverviewTab() {
             Onboarding Pipeline
           </h2>
           {/* Smart Button Group for Onboarding Actions */}
-          <SmartButtonGroup 
-            section="onboarding" 
+          <SmartButtonGroup
+            section="onboarding"
             stats={onboardingStats}
+            onTabChange={onTabChange}
             className="flex-shrink-0"
           />
         </div>
@@ -997,9 +999,10 @@ function OverviewTab() {
             Offboarding Pipeline
           </h2>
           {/* Smart Button Group for Offboarding Actions */}
-          <SmartButtonGroup 
-            section="offboarding" 
+          <SmartButtonGroup
+            section="offboarding"
             stats={offboardingStats}
+            onTabChange={onTabChange}
             className="flex-shrink-0"
           />
         </div>

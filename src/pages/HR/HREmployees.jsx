@@ -1969,7 +1969,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
       // Profile fields
       employee_id: emp.employee_id || '',
       phone: emp.phone || '',
-      location: emp.location || '',
+      location: emp.location ?? '',
       bio: emp.bio || '',
       is_mfa_enabled: emp.is_mfa_enabled || false,
       organization: emp.organization?.id || '',
@@ -2121,7 +2121,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
 
       // Handle role changes (add/remove roles)
       const currentRoleIds = (emp.roles || []).map(r => r.id)
-      const newRoleIds = formData.roles || []
+      const newRoleIds = formData.roles?.length > 0 ? formData.roles : (emp.roles || []).map(r => r.id)
       
       const rolesToAdd = newRoleIds.filter(id => !currentRoleIds.includes(id))
       const rolesToRemove = currentRoleIds.filter(id => !newRoleIds.includes(id))
@@ -2180,10 +2180,11 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
 
       setSaveSuccess(true)
       setIsEditing(false)
+      if (setSelectedEmp) setSelectedEmp(prev => prev ? { ...prev, location: formData.location, phone: formData.phone, bio: formData.bio, first_name: formData.first_name, last_name: formData.last_name } : prev)
       
       // Callback to parent to refresh data
       if (onUpdate) {
-        onUpdate()
+        onUpdate({ location: formData.location, phone: formData.phone, bio: formData.bio, first_name: formData.first_name, last_name: formData.last_name })
       }
 
       // Show success briefly then close
@@ -2220,7 +2221,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
     const hasChanges = JSON.stringify(formData) !== JSON.stringify({
       employee_id: emp.employee_id || '',
       phone: emp.phone || '',
-      location: emp.location || '',
+      location: emp.location ?? '',
       bio: emp.bio || '',
       organization: emp.organization?.id || '',
       department: emp.department || '',
@@ -2281,7 +2282,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
     // Overview fields
     if (field.id === 'employee_id') return emp.employee_id || ''
     if (field.id === 'phone') return emp.phone || ''
-    if (field.id === 'location') return emp.location || ''
+    if (field.id === 'location') return emp.location ?? ''
     if (field.id === 'bio') return emp.bio || ''
     if (field.id === 'is_mfa_enabled') return emp.is_mfa_enabled || false
     
@@ -2295,7 +2296,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
     if (field.id === 'job_title') return emp.job_title || ''
     if (field.id === 'status') return emp.status || 'active'
     if (field.id === 'manager') return emp.manager?.id || emp.manager || ''
-    if (field.id === 'roles') return (emp.roles || []).map(r => r.id)
+    if (field.id === 'roles') return (emp.roles || []).map(r => r.display_name || r.name || r.id)
     
     // Competency fields (engineer_profile)
     if (field.id.startsWith('engineer_profile.')) {
@@ -2426,7 +2427,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
                 </div>
               ))}
               {!isEditing && (
-                <Field label="Manager" value={emp.manager ? `User #${emp.manager}` : '—'} />
+                <Field label="Manager" value={emp.manager_name || emp.manager_detail?.name || '—'} />
               )}
             </div>
           )}
@@ -2999,9 +3000,19 @@ export default function HREmployees() {
           loading={detailLoading}
           initialTab={selectedTab}
           onClose={() => { setSelectedEmp(null); setSelectedTab(null) }}
-          onUpdate={fetchEmployees}
+          onUpdate={(updated) => {
+            if (updated) setSelectedEmp(prev => prev ? { ...prev, ...updated } : prev)
+            fetchEmployees()
+            if (selectedEmp?.id) {
+              rbacService.getUserById(selectedEmp.id + "?t=" + Date.now()).then(resp => {
+              const full = resp?.data ?? resp
+              setSelectedEmp(prev => prev && prev.id === full.id ? { ...prev, ...full, location: full.location || prev.location } : prev)
+              })
+            }
+          }} 
         />
       )}
     </div>
   )
 }
+

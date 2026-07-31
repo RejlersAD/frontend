@@ -83,6 +83,12 @@ const payrollService = {
   createLeaveRequest: (data) =>
     unwrap(apiClient.post(`${BASE}/leave-requests/`, data)),
 
+  rmApproveLeaveRequest: (id, note = '') =>
+    unwrap(apiClient.post(`${BASE}/leave-requests/${id}/rm-approve/`, { note })),
+
+  rmRejectLeaveRequest: (id, note = '') =>
+    unwrap(apiClient.post(`${BASE}/leave-requests/${id}/rm-reject/`, { note })),
+
   approveLeaveRequest: (id, note = '') =>
     unwrap(apiClient.post(`${BASE}/leave-requests/${id}/approve/`, { note })),
 
@@ -100,6 +106,16 @@ const payrollService = {
   // Returns { branch, year, codes: string[] } — lightweight, no pagination
   getBranchEmployeeCodes: (branch, year) =>
     unwrap(apiClient.get(`${BASE}/branch-employee-codes/`, { params: { branch, year } })),
+
+  // ── Leave Encashment ────────────────────────────────────────────────────────
+  getLeaveEncashmentStatus: (params = {}) =>
+    unwrap(apiClient.get(`${BASE}/leave-encashment/status/`, { params })),
+
+  previewLeaveEncashment: (params = {}) =>
+    unwrap(apiClient.get(`${BASE}/leave-encashment/preview/`, { params })),
+
+  runLeaveEncashment: (data = {}) =>
+    unwrap(apiClient.post(`${BASE}/leave-encashment/run/`, data)),
 
   // ── Public Holidays (Abu Dhabi / UAE official calendar + HR-added) ────────
   // List: any authenticated user may read.

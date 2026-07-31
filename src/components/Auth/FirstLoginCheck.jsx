@@ -10,7 +10,7 @@ import { STORAGE_KEYS } from '../../config/app.config';
  * Automatically checks if user needs to reset password after authentication
  * Soft-coded with proper error handling
  */
-const FirstLoginCheck = ({ children }) => {
+const FirstLoginCheck = ({ children, onPasswordChanged }) => {
   const { isAuthenticated, user } = useSelector((state) => state.auth);
   const [checking, setChecking] = useState(false);
   const [mustResetPassword, setMustResetPassword] = useState(false);
@@ -99,6 +99,7 @@ const FirstLoginCheck = ({ children }) => {
           onSuccess={() => {
             setMustResetPassword(false);
             setChecked(true);
+            if (onPasswordChanged) onPasswordChanged();
           }}
         />
       </>

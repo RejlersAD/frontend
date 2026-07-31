@@ -153,6 +153,7 @@ const useAIChampionTracker = () => {
     dwellStartRef.current = { path: pathname, at: now };
 
     // Schedule the track — only fires if the user stays on the page
+    const controller = new AbortController();
     const timer = setTimeout(() => {
       const { application, module, feature } = resolveAppFeature(pathname);
       const dwellMs = prev.path && prev.at ? now - prev.at : 0;
@@ -180,6 +181,7 @@ const useAIChampionTracker = () => {
       // endpoint to avoid noisy `[API Error]` logs / toasts.
       analyticsService.trackActivity(payload, {
         timeout: TRACKER_TIMEOUT_MS,
+        signal: controller.signal,
       }).then(() => {
         lastTrackRef.current = { path: pathname, at: now };
       }).catch((err) => {
@@ -190,7 +192,10 @@ const useAIChampionTracker = () => {
       });
     }, MIN_DWELL_MS);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [location.pathname, isAuthenticated]);
 };
 

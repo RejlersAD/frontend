@@ -144,7 +144,7 @@ export const HR_DASHBOARD_KPIS = [
     sub: 'Punched in right now',
     icon: 'ArrowRightOnRectangleIcon',
     accent: 'from-green-500 to-emerald-600',
-    compute: ({ live }) => live?.summary?.currently_in ?? null,
+    compute: ({ live }) => live?.summary?.currently_in ?? 0,
   },
   {
     id: 'currently_out',
@@ -152,7 +152,7 @@ export const HR_DASHBOARD_KPIS = [
     sub: 'Off-site / not punched',
     icon: 'ArrowLeftOnRectangleIcon',
     accent: 'from-slate-500 to-slate-700',
-    compute: ({ live }) => live?.summary?.currently_out ?? null,
+    compute: ({ live }) => live?.summary?.currently_out ?? 0,
   },
   {
     id: 'late_today',
@@ -160,7 +160,7 @@ export const HR_DASHBOARD_KPIS = [
     sub: 'Arrived after grace period',
     icon: 'ClockIcon',
     accent: 'from-amber-500 to-orange-600',
-    compute: ({ live }) => live?.summary?.late_today ?? null,
+    compute: ({ live }) => live?.summary?.late_today ?? 0,
   },
   {
     id: 'attendance_rate',
@@ -337,7 +337,7 @@ export const HR_DASHBOARD_PAYROLL_KPIS = [
     icon:    'BanknotesIcon',
     accent:  'from-purple-500 to-violet-600',
     urgent:  true,
-    compute: (d) => (d.pendingSalaryCount ?? 0) + (d.pendingSlipsCount ?? 0) || null,
+    compute: (d) => (d.pendingSalaryCount ?? 0) + (d.pendingSlipsCount ?? 0),
   },
   {
     id:      'payroll_runs',
@@ -346,7 +346,7 @@ export const HR_DASHBOARD_PAYROLL_KPIS = [
     icon:    'CpuChipIcon',
     accent:  'from-teal-500 to-cyan-600',
     urgent:  false,
-    compute: (d) => d.payrollSummary?.total_runs ?? d.payrollSummary?.payroll_runs ?? null,
+    compute: (d) => d.payrollSummary?.total_runs ?? d.payrollSummary?.payroll_runs ?? 0,
   },
 ]
 

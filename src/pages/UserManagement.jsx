@@ -52,13 +52,19 @@ const UserManagement = ({ pageControls }) => {
   const navigate = useNavigate();
   
   // Redux state
-  const { users, roles, modules, currentUser, loading } = useSelector((state) => state.rbac);
+  const { users, roles, modules, currentUser, loading, usersCount } = useSelector((state) => state.rbac);
   const { user: authUser } = useSelector((state) => state.auth);
-  
+
   // Local state - Authentication
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  
+  const [loadError, setLoadError] = useState(null);
+
+  // Company-wide user total (all orgs) — super admin only. Stays null for
+  // everyone else, so the Total Users card falls back to the org-scoped count.
+  const [allOrgsUserCount, setAllOrgsUserCount] = useState(null);
+  const [activeUsersCount, setActiveUsersCount] = useState(0);
+
   // Local state - UI
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -439,13 +445,12 @@ const UserManagement = ({ pageControls }) => {
         // Load all data
         console.log('[UserManagement] Loading data...');
         
-        // Fetch current user
-        await dispatch(fetchCurrentUser()).unwrap();
-        
-        // Fetch core data in parallel
+        // Fetch users and current user — roles are fetched separately in the
+        // background (see the dedicated effect below) since that endpoint can
+        // be slow, and the page shouldn't wait on it to finish loading.
         const [usersResult] = await Promise.allSettled([
           dispatch(fetchUsers()).unwrap(),
-          dispatch(fetchRoles()).unwrap()
+          dispatch(fetchCurrentUser()).unwrap()
         ]);
         
         console.log('[UserManagement] Core data loaded:', {
@@ -534,22 +539,63 @@ const UserManagement = ({ pageControls }) => {
           localStorage.removeItem(STORAGE_KEYS.USER_DATA);
           
           if (isMounted) {
-            navigate('/login', { 
+            navigate('/login', {
               replace: true,
               state: { from: '/admin/users', message: 'Session expired. Please login again.' }
             });
           }
+        } else if (isMounted) {
+          setLoadError(error?.message || 'Failed to load user data. Please try again.');
+          setIsDataLoaded(true);
         }
       }
     };
-    
-    initializeComponent();
-    
+
+    // Safety-net: guarantee the loading screen never hangs forever if a
+    // request never settles (e.g. silently dropped network request).
+    const timeoutId = setTimeout(() => {
+      if (isMounted) {
+        setLoadError('Loading timed out. Please check your connection and try again.');
+        setIsDataLoaded(true);
+      }
+    }, 60000);
+
+    initializeComponent().finally(() => clearTimeout(timeoutId));
+
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
     };
   }, [dispatch, navigate]);
-  
+
+  // ========== TOTAL USERS: company-wide count for super admins ==========
+  // Regular admins get a 403 here (by design, org scoping) and just keep
+  // seeing their org-scoped usersCount instead.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    rbacService.getTotalUserCount()
+      .then(res => setAllOrgsUserCount(res?.data?.count ?? null))
+      .catch(() => setAllOrgsUserCount(null));
+  }, [isAuthenticated]);
+
+  // ========== ACTIVE USERS: lightweight count, independent of table page ==========
+  // page_size=1 keeps this cheap — we only need the "count" field, not rows.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    rbacService.getUsers({ page_size: 1, status: 'active' })
+      .then(res => setActiveUsersCount(res?.data?.count ?? 0))
+      .catch(() => setActiveUsersCount(0));
+  }, [isAuthenticated]);
+
+  // ========== ROLES: fire-and-forget background fetch ==========
+  // Dispatched independently (not awaited by page-load) since this endpoint
+  // can be slow. The "Roles Available" card just picks up the Redux `roles`
+  // state whenever it eventually arrives.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    dispatch(fetchRoles());
+  }, [isAuthenticated, dispatch]);
+
   // ========== LIFECYCLE: NOTIFICATION AUTO-DISMISS ==========
   useEffect(() => {
     if (notification.show) {
@@ -599,18 +645,7 @@ const UserManagement = ({ pageControls }) => {
       const department = user.department || '';
       const jobTitle = user.job_title || '';
       
-      // ✅ SYNC WITH RAILWAY DB: Exclude soft-deleted users
-      // Filter out users with .deleted_ in email (duplicate cleanup)
-      if (email.includes('.deleted_')) {
-        return false;
-      }
-      
-      // Filter out users marked as deleted in RBAC profile
-      if (user.is_deleted === true) {
-        return false;
-      }
-      
-      const matchesSearch = !searchTerm || 
+      const matchesSearch = !searchTerm ||
         email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1530,8 +1565,8 @@ const UserManagement = ({ pageControls }) => {
     setBulkDeactivatePreview(null);
   };
   
-  // ========== RENDER: LOADING STATE ==========
-  if (!isAuthenticated || !isDataLoaded) {
+  // ========== RENDER: LOADING / ERROR STATE ==========
+  if (!isAuthenticated || (!isDataLoaded && !users?.length)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
@@ -1542,6 +1577,29 @@ const UserManagement = ({ pageControls }) => {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading User Management</h2>
           <p className="text-gray-600">Please wait while we load your data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Unable to Load User Management</h2>
+          <p className="text-gray-600 mb-4">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -1628,71 +1686,6 @@ const UserManagement = ({ pageControls }) => {
           </div>
         </div>
       )}
-      
-      {/* Debug Panel - Pagination State */}
-      <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400 rounded-xl shadow-lg p-4 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <h3 className="text-lg font-bold text-gray-900">?? Live Debug Panel - Pagination State</h3>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                console.log('?? [Test Button] Manual test - Setting to 25 per page');
-                handleItemsPerPageChange(25);
-              }}
-              className="px-3 py-1 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 active:scale-95 transition-all font-bold"
-            >
-              ?? Test: Set 25/page
-            </button>
-            <button
-              onClick={() => {
-                console.log('?? [Test Button] Manual test - Setting to 50 per page');
-                handleItemsPerPageChange(50);
-              }}
-              className="px-3 py-1 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 active:scale-95 transition-all font-bold"
-            >
-              ?? Test: Set 50/page
-            </button>
-            <button
-              onClick={() => {
-                console.log('?? [Test Button] Manual test - Go to page 2');
-                handlePageChange(2);
-              }}
-              className="px-3 py-1 bg-purple-500 text-white text-sm rounded-lg hover:bg-purple-600 active:scale-95 transition-all font-bold"
-            >
-              ?? Test: Go Page 2
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div className="bg-white p-3 rounded-lg border border-yellow-300">
-            <p className="text-gray-600 font-semibold">Items Per Page:</p>
-            <p className="text-2xl font-bold text-blue-600">{itemsPerPage}</p>
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-yellow-300">
-            <p className="text-gray-600 font-semibold">Current Page:</p>
-            <p className="text-2xl font-bold text-green-600">{currentPage}</p>
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-yellow-300">
-            <p className="text-gray-600 font-semibold">Total Users:</p>
-            <p className="text-2xl font-bold text-purple-600">{filteredUsers.length}</p>
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-yellow-300">
-            <p className="text-gray-600 font-semibold">Showing Users:</p>
-            <p className="text-2xl font-bold text-orange-600">{paginatedUsers.length}</p>
-          </div>
-        </div>
-        <div className="mt-3 bg-white p-3 rounded-lg border border-yellow-300">
-          <p className="text-gray-600 font-semibold mb-1">Range:</p>
-          <p className="text-sm font-mono">
-            From: <span className="font-bold text-blue-600">{showingFrom}</span> | 
-            To: <span className="font-bold text-green-600">{showingTo}</span> | 
-            Total Pages: <span className="font-bold text-purple-600">{totalPages}</span>
-          </p>
-        </div>
-      </div>
       
       {/* Header */}
       <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
@@ -1839,9 +1832,9 @@ const UserManagement = ({ pageControls }) => {
               }}
               className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
             >
-              <option value="all">?? All Status</option>
-              <option value="active">? Active</option>
-              <option value="inactive">? Inactive</option>
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
             
             <select
@@ -1852,7 +1845,7 @@ const UserManagement = ({ pageControls }) => {
               }}
               className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
             >
-              <option value="all">?? All Organizations</option>
+              <option value="all">All Organizations</option>
               {organizations.map(org => (
                 <option key={org.id} value={org.id}>{org.name}</option>
               ))}
@@ -1890,12 +1883,12 @@ const UserManagement = ({ pageControls }) => {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              ?? Reset Filters
+              Reset Filters
             </button>
             
             <div className="ml-auto flex items-center gap-2 bg-gradient-to-r from-blue-50 to-purple-50 px-4 py-2 rounded-lg border-2 border-blue-200">
               <span className="text-sm font-semibold text-gray-700">
-                ?? Showing <span className="text-blue-600">{showingFrom}</span>-<span className="text-blue-600">{showingTo}</span> of <span className="text-purple-600 font-bold">{filteredUsers.length}</span> results
+                Showing <span className="text-blue-600">{showingFrom}</span>-<span className="text-blue-600">{showingTo}</span> of <span className="text-purple-600 font-bold">{usersCount}</span> results
               </span>
             </div>
           </div>
@@ -1908,7 +1901,7 @@ const UserManagement = ({ pageControls }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 text-sm">Total Users</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{filteredUsers.length}</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{allOrgsUserCount ?? usersCount}</p>
             </div>
             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1923,7 +1916,7 @@ const UserManagement = ({ pageControls }) => {
             <div>
               <p className="text-gray-600 text-sm">Active Users</p>
               <p className="text-3xl font-bold text-green-600 mt-1">
-                {filteredUsers.filter(u => u.status === 'active').length}
+                {activeUsersCount}
               </p>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -1943,7 +1936,7 @@ const UserManagement = ({ pageControls }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 text-sm">Roles Available</p>
-              <p className="text-3xl font-bold text-purple-600 mt-1">{assignableRoles.length}</p>
+              <p className="text-3xl font-bold text-purple-600 mt-1">{roles.length}</p>
               <p className="text-xs text-gray-500 mt-1">Manage at /admin/roles →</p>
             </div>
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -2226,7 +2219,7 @@ const UserManagement = ({ pageControls }) => {
               <div className="flex items-center gap-4">
                 <span className="text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
                   Showing <span className="font-bold text-blue-600">{showingFrom}</span> to <span className="font-bold text-blue-600">{showingTo}</span> of{' '}
-                  <span className="font-bold text-purple-600">{filteredUsers.length}</span> results
+                  <span className="font-bold text-purple-600">{usersCount}</span> results
                 </span>
                 <div className="relative">
                   <select
@@ -2260,9 +2253,6 @@ const UserManagement = ({ pageControls }) => {
                     </svg>
                   </div>
                 </div>
-                <span className="text-xs text-gray-500 bg-yellow-50 px-2 py-1 rounded border border-yellow-200">
-                  Current: <span className="font-bold text-yellow-700">{itemsPerPage}</span> per page
-                </span>
               </div>
               
               <div className="flex items-center gap-2">

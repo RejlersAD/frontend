@@ -32,6 +32,7 @@ const NotificationBell = () => {
   const bellRef = useRef(null)
   const errorCountRef = useRef(0)
   const pollingIntervalRef = useRef(null)
+  const unreadAbortRef = useRef(null)
 
   // Fetch unread count on mount and every 2 minutes (optimized from 60s) - only if authenticated
   useEffect(() => {
@@ -50,6 +51,9 @@ const NotificationBell = () => {
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
+      }
+      if (unreadAbortRef.current) {
+        unreadAbortRef.current.abort()
       }
     }
   }, [isAuthenticated])
@@ -89,15 +93,23 @@ const NotificationBell = () => {
       console.log('[NotificationBell] ⏸️ Heavy op active, skipping unread-count poll')
       return
     }
+    // Cancel any still-in-flight unread-count request before starting a new
+    // one — prevents duplicate/racing requests (e.g. mount + poll overlap).
+    if (unreadAbortRef.current) {
+      unreadAbortRef.current.abort()
+    }
+    const controller = new AbortController()
+    unreadAbortRef.current = controller
     try {
-      const count = await notificationService.getUnreadCount()
+      const count = await notificationService.getUnreadCount({ signal: controller.signal })
       console.log('[NotificationBell] ✅ Unread count fetched:', count)
       setUnreadCount(count)
-      
+
       // Reset error count on success
       errorCountRef.current = 0
-      
+
     } catch (error) {
+      if (error.code === 'ERR_CANCELED') return
       // Silent log — error.service already handles toast suppression.
       console.warn('[NotificationBell] Poll failed (silent):', error.message)
       

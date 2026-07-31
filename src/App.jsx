@@ -215,6 +215,13 @@ function App() {
         return
       }
 
+      // Reset immediately on every fresh login so a stale `true` left over from
+      // a previous session (e.g. via FirstLoginPasswordReset, which doesn't
+      // touch this state) can never be rendered while the fetch below is
+      // still in flight — this was the race condition causing the popup to
+      // flash/reappear before the fresh value came back.
+      setMustChangePassword(false)
+
       // Warmup ping: fire GET /health/ to wake Railway backend before page-level data fetches.
       // Non-fatal — runs in background, does not block module loading or page render.
       fetch(`${API_BASE_URL}${API_ENDPOINTS.HEALTH}`, { method: 'GET' })
@@ -240,10 +247,11 @@ function App() {
         const data = await response.json()
         console.log('🔐 App: Full user data:', data)
         
-        // Check must_change_password flag
-        if (data.must_change_password === true) {
-          setMustChangePassword(true)
-        }
+        // Check must_change_password flag — set unconditionally from the fresh
+        // API value (both true and false) so a stale true from an earlier
+        // session can't survive a fresh fetch that correctly returns false.
+        console.log('🔐 App: must_change_password from fresh /rbac/users/me/ call:', data.must_change_password)
+        setMustChangePassword(data.must_change_password === true)
         
         if (data.modules && Array.isArray(data.modules)) {
           const moduleCodes = data.modules.map(m => m.code)
@@ -379,7 +387,7 @@ function App() {
         />
       )}
       
-      <FirstLoginCheck>
+      <FirstLoginCheck onPasswordChanged={handlePasswordChangeSuccess}>
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />

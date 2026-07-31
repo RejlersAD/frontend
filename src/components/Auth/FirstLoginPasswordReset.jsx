@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import axios from 'axios';
 import { API_BASE_URL } from '../../config/api.config';
 import { STORAGE_KEYS } from '../../config/app.config';
-import { logout } from '../../store/slices/authSlice';
+import { logout, updateUser } from '../../store/slices/authSlice';
 import passwordExpiryService from '../../services/passwordExpiry.service';
 
 // Soft-coded post-change behaviour constants
@@ -141,9 +141,24 @@ const FirstLoginPasswordReset = ({ user, onSuccess }) => {
       if (response.data.success) {
         // Show inline success state — no browser alert()
         setSuccess(true);
+        // Notify the parent so it can close any other password-required
+        // popup (e.g. ChangePasswordModal) that may be showing underneath
+        if (onSuccess) onSuccess();
         // Clear expiry banner immediately
         passwordExpiryService.clearAndNotify();
         passwordExpiryService.stopPeriodicCheck();
+
+        // Re-fetch the fresh profile and sync Redux so must_change_password
+        // reflects the change immediately instead of the stale login-time value
+        try {
+          const meResponse = await axios.get(`${API_BASE_URL}/rbac/users/me/`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          dispatch(updateUser(meResponse.data));
+        } catch (refreshError) {
+          console.error('Failed to refresh user data after password reset:', refreshError);
+        }
+
         // Log out properly via Redux (clears localStorage + Redux state)
         // then redirect to login for a fresh session
         setTimeout(() => {

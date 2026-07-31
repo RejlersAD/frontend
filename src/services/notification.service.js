@@ -34,11 +34,12 @@ export const notificationService = {
    * Get unread notification count
    * @returns {Promise<number>}
    */
-  getUnreadCount: async () => {
+  getUnreadCount: async (options = {}) => {
     try {
       console.log('[Notification Service] Fetching unread count...')
       const response = await apiClient.get(`${NOTIFICATION_BASE_URL}/unread_count/`, {
         timeout: NOTIFICATION_POLL_TIMEOUT_MS,
+        ...options,
       })
       console.log('[Notification Service] Response:', response.data)
       return response.data.unread_count || 0

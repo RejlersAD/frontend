@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { X, Lock, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import { updateUser } from '../../store/slices/authSlice';
 
 /**
  * ChangePasswordModal Component
@@ -7,6 +9,7 @@ import { X, Lock, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
  * Shows on login when admin has reset password to default
  */
 const ChangePasswordModal = ({ isOpen, onClose, onSuccess, isRequired = false }) => {
+  const dispatch = useDispatch();
   const [formData, setFormData] = useState({
     oldPassword: '',
     newPassword: '',
@@ -103,7 +106,7 @@ const ChangePasswordModal = ({ isOpen, onClose, onSuccess, isRequired = false })
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+          'Authorization': `Bearer ${localStorage.getItem('radai_access_token')}`
         },
         body: JSON.stringify({
           old_password: formData.oldPassword,
@@ -130,13 +133,28 @@ const ChangePasswordModal = ({ isOpen, onClose, onSuccess, isRequired = false })
       }
 
       setSuccessMessage(data.message || 'Password changed successfully');
-      
+
       // Clear form
       setFormData({
         oldPassword: '',
         newPassword: '',
         confirmPassword: ''
       });
+
+      // Re-fetch the fresh profile and sync Redux so must_change_password
+      // reflects the change immediately instead of the stale login-time value
+      try {
+        const meResponse = await fetch('/api/v1/rbac/users/me/', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('radai_access_token')}`
+          }
+        });
+        if (meResponse.ok) {
+          dispatch(updateUser(await meResponse.json()));
+        }
+      } catch (refreshError) {
+        console.error('Failed to refresh user data after password change:', refreshError);
+      }
 
       // Call success callback after 1.5 seconds
       setTimeout(() => {

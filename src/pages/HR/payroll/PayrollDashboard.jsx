@@ -8,6 +8,7 @@ import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import payrollService from '../../../services/payroll.service'
+import payrollEngineService from '../../../services/payrollEngine.service'
 import timesheetSvc from '../../../services/timesheet.service'
 import {
   PAYROLL_KPIS, ATT_KPIS, PAYROLL_RUN_COLUMNS, PAYROLL_COPY,
@@ -180,7 +181,7 @@ const NOW = new Date()
 const CY  = NOW.getFullYear()
 
 const REPORT_FETCHERS = {
-  employees:        () => payrollService.getEmployeeSalaryInfo({ page_size: 500 }),
+  employees: () => payrollEngineService.listEmployees({ page_size: 500, is_active: 'true' }),
   gross:            () => payrollService.getSalarySlips({ page_size: 500 }),
   net:              () => payrollService.getSalarySlips({ page_size: 500 }),
   pending:          () => payrollService.getSalarySlips({ status: 'pending_approval', page_size: 500 }),
@@ -1074,3 +1075,5 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
     </div>
   )
 }
+
+

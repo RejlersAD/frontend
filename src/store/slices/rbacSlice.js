@@ -26,8 +26,7 @@ export const fetchUsers = createAsyncThunk(
       // User can override page_size if needed for specific use cases
       const fetchParams = {
         ...params,
-        page_size: params.page_size || 1000,  // Increased to 1000 to fetch all users
-        is_deleted: 'false'  // Only fetch non-deleted profiles (synced with Railway DB)
+        page_size: params.page_size || 100,
       };
       
       console.log('[fetchUsers] 📄 Fetching users with params:', fetchParams);
@@ -71,7 +70,8 @@ export const fetchRoles = createAsyncThunk(
   'rbac/fetchRoles',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await rbacService.getRoles();
+      const response = await rbacService.getRoles({ silentTimeout: true });
+      console.log('[fetchRoles] Raw response.data:', response?.data);
       // Soft-coded: Handle both direct data and nested data.data responses
       const rolesData = response?.data?.data || response?.data || response;
       console.log('[fetchRoles] Extracted rolesData:', rolesData);
