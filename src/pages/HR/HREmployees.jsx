@@ -2180,11 +2180,12 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
 
       setSaveSuccess(true)
       setIsEditing(false)
-      if (setSelectedEmp) setSelectedEmp(prev => prev ? { ...prev, location: formData.location, phone: formData.phone, bio: formData.bio, first_name: formData.first_name, last_name: formData.last_name } : prev)
-      
-      // Callback to parent to refresh data
+
+      // Callback to parent — pass the full formData so the parent can apply
+      // an optimistic update to every edited field, not just a hardcoded
+      // subset, before the fresh getUserById() fetch resolves.
       if (onUpdate) {
-        onUpdate({ location: formData.location, phone: formData.phone, bio: formData.bio, first_name: formData.first_name, last_name: formData.last_name })
+        onUpdate({ ...formData })
       }
 
       // Show success briefly then close
@@ -3001,15 +3002,17 @@ export default function HREmployees() {
           initialTab={selectedTab}
           onClose={() => { setSelectedEmp(null); setSelectedTab(null) }}
           onUpdate={(updated) => {
+            // Optimistic update — apply immediately so the drawer/list reflect
+            // the save before the network round-trip below completes.
             if (updated) setSelectedEmp(prev => prev ? { ...prev, ...updated } : prev)
             fetchEmployees()
             if (selectedEmp?.id) {
               rbacService.getUserById(selectedEmp.id + "?t=" + Date.now()).then(resp => {
-              const full = resp?.data ?? resp
-              setSelectedEmp(prev => prev && prev.id === full.id ? { ...prev, ...full, location: full.location || prev.location } : prev)
+                const full = normalizeEmployee(resp?.data ?? resp)
+                setSelectedEmp(prev => prev && prev.id === full.id ? { ...prev, ...full } : prev)
               })
             }
-          }} 
+          }}
         />
       )}
     </div>

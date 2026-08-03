@@ -666,7 +666,16 @@ const UserManagement = ({ pageControls }) => {
       return matchesSearch && matchesStatus && matchesOrganization && matchesRole;
     });
   }, [users, searchTerm, statusFilter, organizationFilter, roleFilter]);
-  
+
+  // ========== SEARCH: Re-fetch from API when searchTerm changes ==========
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const delayDebounce = setTimeout(() => {
+      dispatch(fetchUsers({ search: searchTerm || undefined }));
+    }, 400);
+    return () => clearTimeout(delayDebounce);
+  }, [searchTerm, isAuthenticated, dispatch]);
+
   // ========== COMPUTED: PAGINATED USERS ==========
   const paginatedUsers = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
