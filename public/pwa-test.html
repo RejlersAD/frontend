@@ -1,0 +1,82 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>PWA Install Test</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>PWA Installation Test</h1>
+    <button id="installBtn" style="display:none; padding: 20px; background: #0891b2; color: white; font-size: 18px; border: none; border-radius: 8px; cursor: pointer;">
+        Install PWA
+    </button>
+    <div id="status" style="margin-top: 20px; font-family: monospace;"></div>
+    
+    <script>
+        const installBtn = document.getElementById('installBtn');
+        const statusDiv = document.getElementById('status');
+        let deferredPrompt;
+        
+        function log(msg) {
+            console.log(msg);
+            statusDiv.innerHTML += msg + '<br>';
+        }
+        
+        log('🚀 Test page loaded');
+        log('📍 URL: ' + window.location.href);
+        log('🔐 Protocol: ' + window.location.protocol);
+        
+        // Check service worker support
+        if ('serviceWorker' in navigator) {
+            log('✅ Service Worker supported');
+            navigator.serviceWorker.getRegistrations().then(regs => {
+                log('✅ Found ' + regs.length + ' service worker(s)');
+            });
+        } else {
+            log('❌ Service Worker NOT supported');
+        }
+        
+        // Listen for beforeinstallprompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            log('✅ beforeinstallprompt event fired!');
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'block';
+        });
+        
+        // Install button click
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) {
+                log('❌ No deferredPrompt available');
+                return;
+            }
+            
+            log('📱 Triggering install prompt...');
+            deferredPrompt.prompt();
+            
+            const { outcome } = await deferredPrompt.userChoice;
+            log('👤 User choice: ' + outcome);
+            
+            deferredPrompt = null;
+            installBtn.style.display = 'none';
+        });
+        
+        // Check if already installed
+        window.addEventListener('appinstalled', () => {
+            log('🎉 App installed!');
+        });
+        
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            log('✅ Already running in standalone mode');
+        }
+        
+        // Timeout check
+        setTimeout(() => {
+            if (!deferredPrompt) {
+                log('⚠️ No beforeinstallprompt event after 3 seconds');
+                log('💡 This is normal on localhost in some browsers');
+                log('💡 Try: Look for install icon in address bar OR use Chrome DevTools > Application > Manifest');
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
