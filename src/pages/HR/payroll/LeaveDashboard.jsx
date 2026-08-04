@@ -210,7 +210,11 @@ export default function LeaveDashboard() {
     let params = {}
     if      (reqTab === 'rm_pending')  params = { status: 'PENDING' }
     else if (reqTab === 'hr_pending')  params = { status: 'RM_APPROVED' }
-    else if (reqTab === 'history')     params = { status: 'APPROVED,REJECTED,CANCELLED,RM_REJECTED' }
+    // Multi-status filters must use `status__in` — the backend only splits
+    // on commas for that param name; plain `status` does an exact match
+    // against the whole string, so a comma-joined list here always matched
+    // zero rows.
+    else if (reqTab === 'history')     params = { status__in: 'APPROVED,REJECTED,CANCELLED,RM_REJECTED' }
     // 'new' tab: no fetch needed
     if (reqTab !== 'new') {
       payrollService.getLeaveRequests(params)

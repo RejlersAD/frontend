@@ -179,13 +179,71 @@ function ApprovalPipelineWidget({ data, onViewAll }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const NOW = new Date()
 const CY  = NOW.getFullYear()
+const CM  = NOW.getMonth() + 1
+
+// The Gross/Net/Pending/YTD KPI tiles are computed from the Payroll Engine
+// (apps.payroll_engine — where payroll runs are actually generated), so
+// their drill-down reports must read from the same engine models, not the
+// legacy apps.finance salary-slip endpoints (always empty in this deployment).
+// These helpers normalise the engine's Payslip/PayrollRun shape into the
+// field names the existing report columns already expect (see
+// PAYROLL_KPI_REPORTS in hrPayroll.config.js) so no column/UI changes are needed.
+const normalisePayslip = (p) => ({
+  ...p,
+  slip_number:      p.employee_no || p.id,
+  employee_name:    p.snapshot_full_name,
+  month:            CM,
+  year:             CY,
+  basic_salary:     p.basic,
+  total_allowances: [p.housing, p.transport, p.home_leave, p.other_earnings]
+    .reduce((sum, v) => sum + (parseFloat(v) || 0), 0),
+  gross_salary:     p.gross_earnings,
+  net_salary:       p.net_payable,
+})
+
+const normaliseRun = (r) => ({
+  ...r,
+  run_code:           r.cycle_code,
+  total_employees:    r.employee_count,
+  total_gross_salary: r.total_gross,
+  total_net_salary:   r.total_net,
+})
+
+// EmployeeLeaveRecord API rows expose total_earned/total_taken/leave_balance;
+// the leave-record report columns expect days_earned/days_taken/balance.
+const normaliseLeaveRecord = (r) => ({
+  ...r,
+  days_earned: r.total_earned,
+  days_taken:  r.total_taken,
+  balance:     r.leave_balance,
+})
+
+// Current-month PayrollRun — shared by Gross/Net/Pending drill-downs so none
+// of them accidentally span multiple runs (each run has its own full set of
+// employee payslips, so mixing runs together duplicates every employee).
+const fetchCurrentMonthRun = async () => {
+  const runResp = await payrollEngineService.listRuns({ year: CY, month: CM, page_size: 1 })
+  return (runResp?.results ?? (Array.isArray(runResp) ? runResp : []))[0] ?? null
+}
+
+const fetchCurrentMonthPayslips = async (extraParams = {}) => {
+  const run = await fetchCurrentMonthRun()
+  if (!run) return { results: [] }
+  const data = await payrollEngineService.listPayslips({ run: run.id, page_size: 500, ...extraParams })
+  const rows = data?.results ?? (Array.isArray(data) ? data : [])
+  return { results: rows.map(normalisePayslip) }
+}
 
 const REPORT_FETCHERS = {
   employees: () => payrollEngineService.listEmployees({ page_size: 500, is_active: 'true' }),
-  gross:            () => payrollService.getSalarySlips({ page_size: 500 }),
-  net:              () => payrollService.getSalarySlips({ page_size: 500 }),
-  pending:          () => payrollService.getSalarySlips({ status: 'pending_approval', page_size: 500 }),
-  ytd:              () => payrollService.getPayrollRuns({ year: CY, page_size: 50 }),
+  gross:            () => fetchCurrentMonthPayslips(),
+  net:              () => fetchCurrentMonthPayslips(),
+  pending:          () => fetchCurrentMonthPayslips({ status: 'draft' }),
+  ytd: async () => {
+    const data = await payrollEngineService.listRuns({ year: CY, page_size: 50 })
+    const rows = data?.results ?? (Array.isArray(data) ? data : [])
+    return { results: rows.map(normaliseRun) }
+  },
   // Merges PayrollAuditAlert (status=open) + PayrollValidationLog (is_resolved=false)
   // into a single normalised list so the drill-down matches the KPI tile count.
   alerts: async () => {
@@ -211,11 +269,39 @@ const REPORT_FETCHERS = {
     }))
     return { results: [...auditRows, ...validRows] }
   },
-  leave_employees:  () => payrollService.getLeaveRecords({ page_size: 500 }),
-  leave_taken_ytd:  () => payrollService.getLeaveRequests({ status: 'APPROVED', page_size: 500 }),
-  leave_earned_ytd: () => payrollService.getLeaveRecords({ page_size: 500 }),
-  leave_avg_balance:() => payrollService.getLeaveRecords({ page_size: 500 }),
-  leave_critical:   () => payrollService.getLeaveRecords({ page_size: 500 }),
+  // The leave-records API returns total_earned/total_taken/leave_balance,
+  // but these report columns (and extractRows' own sort/filter below) read
+  // them under different aliases (days_earned, days_taken, balance,
+  // remaining_balance) — alias them here so the existing columns work
+  // without touching the shared report config.
+  leave_employees: async () => {
+    const data = await payrollService.getLeaveRecords({ page_size: 500 })
+    const rows = data?.results ?? (Array.isArray(data) ? data : [])
+    return { results: rows.map(normaliseLeaveRecord) }
+  },
+  // The API returns the computed day count as `days_requested`, but the
+  // report column reads `total_days`/`duration_days` — alias it here so the
+  // existing column keeps working without touching the shared report config.
+  leave_taken_ytd: async () => {
+    const data = await payrollService.getLeaveRequests({ status: 'APPROVED', page_size: 500 })
+    const rows = data?.results ?? (Array.isArray(data) ? data : [])
+    return { results: rows.map((r) => ({ ...r, total_days: r.days_requested })) }
+  },
+  leave_earned_ytd: async () => {
+    const data = await payrollService.getLeaveRecords({ page_size: 500 })
+    const rows = data?.results ?? (Array.isArray(data) ? data : [])
+    return { results: rows.map(normaliseLeaveRecord) }
+  },
+  leave_avg_balance: async () => {
+    const data = await payrollService.getLeaveRecords({ page_size: 500 })
+    const rows = data?.results ?? (Array.isArray(data) ? data : [])
+    return { results: rows.map(normaliseLeaveRecord) }
+  },
+  leave_critical: async () => {
+    const data = await payrollService.getLeaveRecords({ page_size: 500 })
+    const rows = data?.results ?? (Array.isArray(data) ? data : [])
+    return { results: rows.map(normaliseLeaveRecord) }
+  },
 }
 
 // Post-process raw API response → array of report rows
@@ -742,7 +828,22 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
     Promise.all([
       payrollService.getDashboardSummary().catch(() => null),
       payrollService.getPayrollRuns({ page_size: 12 }).catch(() => ({ results: [] })),
-    ]).then(([s, r]) => {
+    ]).then(async ([s, r]) => {
+      // The backend summary counts draft payslips across every PayrollRun
+      // (all months), but the Pending Approvals modal only ever shows the
+      // current month's run — recompute the card's count the same way so
+      // both agree.
+      if (s) {
+        const run = await fetchCurrentMonthRun().catch(() => null)
+        if (run) {
+          const pendingResp = await payrollEngineService
+            .listPayslips({ run: run.id, status: 'draft', page_size: 1 })
+            .catch(() => null)
+          s.pending_approvals = pendingResp?.count ?? s.pending_approvals
+        } else {
+          s.pending_approvals = 0
+        }
+      }
       setSummary(s)
       setRuns(r?.results ?? r ?? [])
     }).catch((e) => setError(e.message)).finally(() => setLoading(false))

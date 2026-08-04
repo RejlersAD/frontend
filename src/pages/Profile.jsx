@@ -163,7 +163,6 @@ const Profile = () => {
   const { user } = useSelector((s) => s.auth);
 
   const [activeTab, setActiveTab]             = useState('personal');
-  const [showExitModal, setShowExitModal]     = useState(false);
   const [isLoading, setIsLoading]             = useState(false);
   const [isFetching, setIsFetching]           = useState(true);
   const [profileData, setProfileData]         = useState(null);
@@ -1311,7 +1310,7 @@ const Profile = () => {
                   <h3 className="text-xl font-bold text-gray-800 mb-2">Initiate Exit Process</h3>
                   <p className="text-gray-500 mb-6">Start the offboarding process for this employee</p>
                   <button
-                    onClick={() => setShowExitModal(true)}
+                    onClick={() => toast.info('Offboarding workflow coming soon')}
                     style={{padding:'12px 32px',background:'linear-gradient(135deg,#f43f8e,#ec4899)',border:'none',borderRadius:12,color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',boxShadow:'0 4px 14px rgba(244,63,142,0.4)'}}
                   >
                     🚪 Initiate Exit
@@ -1323,103 +1322,6 @@ const Profile = () => {
           </div>
         </div>
       </div>
-
-      {/* ── Exit Modal ── */}
-      {showExitModal && (
-        <div style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(2px)'}}>
-          <div style={{width:'min(780px,95vw)',maxHeight:'90vh',background:'#fff',borderRadius:16,boxShadow:'0 25px 60px rgba(0,0,0,0.25)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
-            <div style={{background:'linear-gradient(135deg,#f43f8e 0%,#ec4899 50%,#a855f7 100%)',padding:'20px 28px',display:'flex',alignItems:'center',gap:14}}>
-              <div style={{width:44,height:44,borderRadius:12,background:'rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>👤</div>
-              <div style={{flex:1}}>
-                <div style={{color:'#fff',fontWeight:700,fontSize:20}}>Initiate Exit Process</div>
-                <div style={{color:'rgba(255,255,255,0.85)',fontSize:13,marginTop:2}}>Start offboarding for a departing employee</div>
-              </div>
-              <button onClick={() => setShowExitModal(false)} style={{background:'none',border:'none',color:'#fff',fontSize:22,cursor:'pointer'}}>✕</button>
-            </div>
-            <div style={{overflowY:'auto',padding:'24px 28px',flex:1}}>
-              <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:12,padding:'20px 24px',marginBottom:16}}>
-                <div style={{fontWeight:700,fontSize:15,color:'#1e293b',marginBottom:16}}>👤 Employee Information</div>
-                <div style={{marginBottom:12}}>
-                  <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Select Employee *</label>
-                  <input placeholder="Search by name or email..." style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}} />
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginTop:14}}>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Position *</label>
-                    <input placeholder="e.g., Senior Engineer" style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}} />
-                  </div>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Department *</label>
-                    <input placeholder="e.g., Engineering" style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}} />
-                  </div>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Reporting Manager</label>
-                    <input placeholder="Manager name" style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}} />
-                  </div>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Branch *</label>
-                    <select style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}}>
-                      <option>Rejlers Abu Dhabi</option>
-                      <option>Rejlers Dubai</option>
-                      <option>Rejlers Sharjah</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:12,padding:'20px 24px',marginBottom:16}}>
-                <div style={{fontWeight:700,fontSize:15,color:'#1e293b',marginBottom:16}}>📋 Exit Details</div>
-                <div style={{marginBottom:12}}>
-                  <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Exit Reason *</label>
-                  <select style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}}>
-                    <option value="">Select Exit Reason</option>
-                    <option>Resignation</option>
-                    <option>Retirement</option>
-                    <option>Termination</option>
-                    <option>Contract End</option>
-                    <option>Mutual Agreement</option>
-                  </select>
-                </div>
-                <div style={{marginBottom:12}}>
-                  <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Exit Reason Details</label>
-                  <textarea placeholder="Provide additional details about the exit reason..." rows={3} style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box',resize:'vertical'}} />
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Last Working Day *</label>
-                    <input type="date" style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}} />
-                  </div>
-                  <div>
-                    <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Notice Period (Days)</label>
-                    <input type="number" defaultValue="30" style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}} />
-                  </div>
-                </div>
-              </div>
-              <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:12,padding:'20px 24px'}}>
-                <div style={{fontWeight:700,fontSize:15,color:'#1e293b',marginBottom:16}}>🗂️ Process Tracking</div>
-                <div style={{marginBottom:12}}>
-                  <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Assign To HR</label>
-                  <select style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box'}}>
-                    <option value="">Select HR manager (optional)</option>
-                    <option>Sarah Johnson</option>
-                    <option>Mohammed Al-Rashid</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{fontSize:13,fontWeight:600,color:'#374151',display:'block',marginBottom:6}}>Additional Notes</label>
-                  <textarea placeholder="Any additional information or special considerations..." rows={3} style={{width:'100%',padding:'9px 12px',border:'1.5px solid #e2e8f0',borderRadius:8,fontSize:13,boxSizing:'border-box',resize:'vertical'}} />
-                </div>
-              </div>
-            </div>
-            <div style={{padding:'16px 28px',borderTop:'1px solid #e2e8f0',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fff'}}>
-              <span style={{fontSize:12,color:'#ef4444'}}>* Required fields</span>
-              <div style={{display:'flex',gap:12}}>
-                <button onClick={() => setShowExitModal(false)} style={{padding:'10px 24px',border:'1.5px solid #d1d5db',borderRadius:8,background:'#fff',color:'#374151',fontSize:14,fontWeight:600,cursor:'pointer'}}>Cancel</button>
-                <button style={{padding:'10px 24px',background:'linear-gradient(135deg,#f43f8e,#ec4899)',border:'none',borderRadius:8,color:'#fff',fontSize:14,fontWeight:600,cursor:'pointer',boxShadow:'0 4px 12px rgba(244,63,142,0.35)'}}>✓ Initiate Offboarding</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 };

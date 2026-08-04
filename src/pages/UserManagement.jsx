@@ -64,6 +64,7 @@ const UserManagement = ({ pageControls }) => {
   // everyone else, so the Total Users card falls back to the org-scoped count.
   const [allOrgsUserCount, setAllOrgsUserCount] = useState(null);
   const [activeUsersCount, setActiveUsersCount] = useState(0);
+  const [inactiveUsersCount, setInactiveUsersCount] = useState(0);
 
   // Local state - UI
   const [searchTerm, setSearchTerm] = useState('');
@@ -587,6 +588,14 @@ const UserManagement = ({ pageControls }) => {
       .catch(() => setActiveUsersCount(0));
   }, [isAuthenticated]);
 
+  // ========== INACTIVE USERS: lightweight count, independent of table page ==========
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    rbacService.getUsers({ page_size: 1, status: 'inactive' })
+      .then(res => setInactiveUsersCount(res?.data?.count ?? 0))
+      .catch(() => setInactiveUsersCount(0));
+  }, [isAuthenticated]);
+
   // ========== ROLES: fire-and-forget background fetch ==========
   // Dispatched independently (not awaited by page-load) since this endpoint
   // can be slow. The "Roles Available" card just picks up the Redux `roles`
@@ -666,16 +675,7 @@ const UserManagement = ({ pageControls }) => {
       return matchesSearch && matchesStatus && matchesOrganization && matchesRole;
     });
   }, [users, searchTerm, statusFilter, organizationFilter, roleFilter]);
-
-  // ========== SEARCH: Re-fetch from API when searchTerm changes ==========
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    const delayDebounce = setTimeout(() => {
-      dispatch(fetchUsers({ search: searchTerm || undefined }));
-    }, 400);
-    return () => clearTimeout(delayDebounce);
-  }, [searchTerm, isAuthenticated, dispatch]);
-
+  
   // ========== COMPUTED: PAGINATED USERS ==========
   const paginatedUsers = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -1905,7 +1905,7 @@ const UserManagement = ({ pageControls }) => {
       </div>
       
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -1931,6 +1931,22 @@ const UserManagement = ({ pageControls }) => {
             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm">Inactive Users</p>
+              <p className="text-3xl font-bold text-red-600 mt-1">
+                {inactiveUsersCount}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
             </div>
           </div>

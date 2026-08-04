@@ -337,8 +337,11 @@ const INSIGHT_TONES = {
 // -----------------------------------------------------------------------------
 
 const EmployeeProfileHeader = ({ profile, leaveRecord, monthlyTs, salaryInfo, loading }) => {
+  // UserProfileSerializer declares first_name/last_name/username write_only —
+  // they're never present on the GET response. The real values live on the
+  // nested `user` object (UserSerializer), same as used elsewhere in this file.
   const name = profile
-    ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.username
+    ? [profile.user?.first_name, profile.user?.last_name].filter(Boolean).join(' ') || profile.user?.username
     : null
   const initials = name ? avatarInitials(name) : '??'
 
@@ -375,9 +378,9 @@ const EmployeeProfileHeader = ({ profile, leaveRecord, monthlyTs, salaryInfo, lo
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
           {/* Avatar */}
           <div className="relative flex-shrink-0">
-            {profile?.profile_picture ? (
+            {profile?.profile_photo ? (
               <img
-                src={profile.profile_picture}
+                src={profile.profile_photo}
                 alt={name}
                 className="w-20 h-20 rounded-2xl object-cover border-4 border-white/30 shadow-lg"
               />
