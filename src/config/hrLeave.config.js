@@ -118,11 +118,11 @@ export const countWorkingDays = (from, to) => {
   const start = new Date(from)
   const end   = new Date(to)
   if (start > end) return 0
-  const cur = new Date(start)
+  let cur = new Date(start)
   while (cur <= end) {
     const dow = cur.getDay()
     if (dow !== 0 && dow !== 6) count++
-    cur.setDate(cur.getDate() + 1)
+    cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1)
   }
   return count
 }

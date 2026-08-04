@@ -827,11 +827,11 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
     const e = new Date(form.end_date)
     if (e < s) { setCalcDays(null); return }
     let days = 0
-    const d = new Date(s)
+    let d = new Date(s)
     while (d <= e) {
       const dow = d.getDay()
       if (dow !== 0 && dow !== 6) days++
-      d.setDate(d.getDate() + 1)
+      d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
     }
     if (form.half_day) days = Math.max(0.5, days - 0.5)
     setCalcDays(days)

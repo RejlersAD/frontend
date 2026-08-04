@@ -233,7 +233,7 @@ export default function LeaveDashboard() {
     const e = new Date(formState.end_date)
     if (e < s) return null
     let d = 0; let c = new Date(s)
-    while (c <= e) { if (c.getDay() !== 0 && c.getDay() !== 6) d++; c.setDate(c.getDate() + 1) }
+    while (c <= e) { if (c.getDay() !== 0 && c.getDay() !== 6) d++; c = new Date(c.getFullYear(), c.getMonth(), c.getDate() + 1) }
     return d
   }, [formState.start_date, formState.end_date])
 
