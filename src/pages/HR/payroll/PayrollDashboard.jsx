@@ -816,11 +816,13 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
   const [trackerData,  setTrackerData]  = useState(null)   // approval pipeline widget
 
   // Role — used to gate the Approval Pipeline widget
+  // authUser is the raw UserProfileSerializer payload — is_superuser lives on
+  // the nested `user` object (UserSerializer), not at the top level.
   const rbacUser    = useSelector(s => s.rbac?.currentUser)
   const authUser    = useSelector(s => s.auth?.user)
   const isSuperAdmin = (
-    authUser?.is_superuser ||
-    rbacUser?.roles?.some(r => r.code === 'superadmin' || r.code === 'admin')
+    authUser?.user?.is_superuser ||
+    rbacUser?.roles?.some(r => r.code === 'super_admin' || r.code === 'admin')
   ) ?? false
 
   useEffect(() => {

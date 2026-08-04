@@ -192,15 +192,17 @@ export default function LeaveDashboard() {
   // ── Role checks ───────────────────────────────────────────────────────────
   const rbacUser    = useSelector(s => s.rbac?.currentUser)
   const authUser    = useSelector(s => s.auth?.user)
+  // authUser is the raw UserProfileSerializer payload — is_staff/is_superuser
+  // live on the nested `user` object (UserSerializer), not at the top level.
   const isHRManager = (
-    authUser?.is_staff ||
-    authUser?.is_superuser ||
+    authUser?.user?.is_staff ||
+    authUser?.user?.is_superuser ||
     rbacUser?.roles?.some(r =>
       r.code?.startsWith('hr') || r.code === 'admin' || r.code === 'super_admin'
     )
   ) ?? false
   // Reporting Manager: any staff user can action Stage-1
-  const isManager = authUser?.is_staff || authUser?.is_superuser ||
+  const isManager = authUser?.user?.is_staff || authUser?.user?.is_superuser ||
     rbacUser?.roles?.some(r => (r.level ?? 0) >= 3 || r.code?.includes('manager') || r.code?.includes('senior'))
 
   // ── Load requests whenever requests tab is active ──────────────────────────
