@@ -14,6 +14,7 @@
  * existing form-state key (`STORAGE_KEY` from the template config) by
  * never overwriting it without the user clicking "Load".
  */
+// eslint-disable-next-line no-unused-vars -- PUMP_HYDRAULIC_TABS reserved for future per-tab thumbnails
 import PUMP_HYDRAULIC_TABS, { STORAGE_KEY as FORM_STORAGE_KEY } from './pumpHydraulicTemplate.config';
 import { REFRESH_EVENT } from './pumpHydraulicAIMapper';
 import {
@@ -211,9 +212,5 @@ const _exports = {
   deleteSnapshot, deleteProject, clearHistory,
   HISTORY_STORAGE_KEY, HISTORY_EVENT, SNAPSHOT_SOURCES, HISTORY_META_FIELDS,
 };
-
-// Silence unused import lint — PUMP_HYDRAULIC_TABS reserved for future
-// per-tab thumbnails (kept here for forward-compatibility, harmless).
-void PUMP_HYDRAULIC_TABS;
 
 export default _exports;

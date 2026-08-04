@@ -1151,7 +1151,7 @@ const InstrumentIndex = () => {
     // Summary sheet (kept generic — independent of template)
     const summaryData = [
       ['Category', 'Count'],
-      ...Object.entries(result.category_summary || {}).sort(),
+      ...Object.entries(result.category_summary || {}).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
       ['TOTAL', result.total || 0],
     ];
     const ws2 = XLSX.utils.aoa_to_sheet(summaryData);

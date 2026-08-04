@@ -50,6 +50,24 @@ const ADMIN_MODULE_CODES = [
   'ai_champion',
   'enquiry_management'
 ]
+
+// Strip HTML/script markup from string fields before persisting API data to
+// localStorage — defense-in-depth against stored-XSS if upstream data is
+// ever tainted (e.g. an unsanitized profile field round-tripped from the API).
+const sanitizeForStorage = (value) => {
+  if (typeof value === 'string') {
+    return value.replace(/<[^>]*>/g, '')
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeForStorage)
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, sanitizeForStorage(v)])
+    )
+  }
+  return value
+}
 // ───────────────────────────────────────────────────────────────────────────
 
 const Sidebar = ({ isOpen, setIsOpen, isCollapsed: isCollapsedProp, setIsCollapsed: setIsCollapsedProp }) => {
@@ -172,7 +190,7 @@ const Sidebar = ({ isOpen, setIsOpen, isCollapsed: isCollapsedProp, setIsCollaps
               ...(shouldUpdateUser ? { user: data.user } : {}),
               ...(shouldUpdateRoles ? { roles: data.roles } : {}),
             }
-            localStorage.setItem('radai_user_data', JSON.stringify(merged))
+            localStorage.setItem('radai_user_data', JSON.stringify(sanitizeForStorage(merged)))
             console.log('✅ User auth data persisted to localStorage')
           } catch (_) { /* non-fatal */ }
           console.log('✅ User auth data synced from live API')

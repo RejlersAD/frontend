@@ -346,7 +346,8 @@ const PFDVerification = () => {
     return true;
   });
 
-  const categories = [...new Set((verificationReport?.issues || []).map(i => i.category))].sort();
+  const categories = [...new Set((verificationReport?.issues || []).map(i => i.category))]
+    .sort((a, b) => String(a).localeCompare(String(b)));
 
   const groupedIssues = categories.reduce((acc, cat) => {
     acc[cat] = filteredIssues.filter(i => i.category === cat);
