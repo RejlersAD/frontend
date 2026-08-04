@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Michelle Role Verification Test</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .container {
+            background: #000;
+            border: 2px solid #00ff00;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        h1 {
+            color: #00ff00;
+            text-align: center;
+            border-bottom: 2px solid #00ff00;
+            padding-bottom: 10px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #333;
+            background: #0a0a0a;
+        }
+        .section h2 {
+            color: #00ffff;
+            margin-top: 0;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #1a1a1a;
+            border-left: 3px solid #00ff00;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .success { color: #00ff00; }
+        .error { color: #ff0000; }
+        .warning { color: #ffaa00; }
+        .info { color: #00ffff; }
+        .code {
+            background: #222;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 MICHELLE ROLE VERIFICATION TEST</h1>
+        
+        <div class="section">
+            <h2>1. Test Backend API Directly</h2>
+            <button onclick="testBackendAPI()">Test API</button>
+            <div id="api-result" class="result"></div>
+        </div>
+
+        <div class="section">
+            <h2>2. Check LocalStorage</h2>
+            <button onclick="checkLocalStorage()">Check LocalStorage</button>
+            <button onclick="clearLocalStorage()">Clear LocalStorage</button>
+            <div id="storage-result" class="result"></div>
+        </div>
+
+        <div class="section">
+            <h2>3. Test Frontend Service</h2>
+            <button onclick="testFrontendService()">Test Frontend Service</button>
+            <div id="service-result" class="result"></div>
+        </div>
+
+        <div class="section">
+            <h2>4. Recommendations</h2>
+            <div class="result">
+                <div class="info">
+✅ EXPECTED BEHAVIOR:
+   • Michelle should have 2 roles
+   • Primary Role: "HR & Payroll Administrator" (hr_admin)
+   • Secondary Role: "Default" (default)
+   • Both roles should have is_primary flag
+   
+⚠️  IF FRONTEND SHOWS OLD DATA:
+   1. Click "Clear LocalStorage" button above
+   2. Hard refresh page (Ctrl+F5)
+   3. Logout and login again
+   4. Check browser console for errors (F12)
+   
+💡 COMMON ISSUES:
+   • Browser cache not cleared
+   • Old JWT token with outdated claims
+   • Frontend not reading is_primary flag
+   • Redux state not updating
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api/v1';
+        
+        function log(elementId, message, type = 'info') {
+            const el = document.getElementById(elementId);
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info';
+            el.innerHTML = `<span class="${className}">${message}</span>`;
+        }
+
+        async function testBackendAPI() {
+            log('api-result', '⏳ Testing backend API...', 'info');
+            
+            try {
+                const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
+                
+                if (!token) {
+                    log('api-result', '❌ ERROR: No access token found in localStorage\n\n💡 Please login first', 'error');
+                    return;
+                }
+                
+                const response = await fetch(`${API_BASE}/rbac/users/me/`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Analyze the response
+                let analysis = '✅ API RESPONSE RECEIVED\n\n';
+                analysis += `📧 Email: ${data.user?.email || 'N/A'}\n\n`;
+                analysis += `🔑 Primary Role:\n`;
+                analysis += `   ${JSON.stringify(data.primary_role, null, 2)}\n\n`;
+                analysis += `📋 All Roles (${data.roles?.length || 0}):\n`;
+                
+                if (data.roles && data.roles.length > 0) {
+                    data.roles.forEach((role, idx) => {
+                        const isPrimary = role.is_primary ? '🌟 PRIMARY' : '   Secondary';
+                        analysis += `\n   ${idx + 1}. ${role.name} (${role.code})\n`;
+                        analysis += `      Level: ${role.level}\n`;
+                        analysis += `      Status: ${isPrimary}\n`;
+                        analysis += `      is_primary: ${role.is_primary !== undefined ? role.is_primary : '❌ MISSING!'}\n`;
+                    });
+                } else {
+                    analysis += '   ❌ No roles found!\n';
+                }
+                
+                analysis += `\n📦 Modules: ${data.modules?.length || 0} total\n`;
+                
+                // Verification
+                analysis += '\n' + '─'.repeat(50) + '\n';
+                analysis += '🧪 VERIFICATION:\n\n';
+                
+                const hasIsPrimary = data.roles?.every(r => r.is_primary !== undefined);
+                const hasPrimaryRole = data.primary_role !== null && data.primary_role !== undefined;
+                const hasTwoRoles = data.roles?.length >= 2;
+                const hasDefault = data.roles?.some(r => r.code === 'default');
+                const hasHRAdmin = data.roles?.some(r => r.code === 'hr_admin');
+                
+                analysis += `   ✓ is_primary field in all roles: ${hasIsPrimary ? '✅ YES' : '❌ NO'}\n`;
+                analysis += `   ✓ primary_role field exists: ${hasPrimaryRole ? '✅ YES' : '❌ NO'}\n`;
+                analysis += `   ✓ Has 2 roles: ${hasTwoRoles ? '✅ YES' : '❌ NO (found: ' + (data.roles?.length || 0) + ')'}\n`;
+                analysis += `   ✓ Has default role: ${hasDefault ? '✅ YES' : '❌ NO'}\n`;
+                analysis += `   ✓ Has hr_admin role: ${hasHRAdmin ? '✅ YES' : '❌ NO'}\n`;
+                
+                if (hasIsPrimary && hasPrimaryRole && hasTwoRoles && hasDefault && hasHRAdmin) {
+                    analysis += '\n✅ ALL CHECKS PASSED - API is working correctly!';
+                    log('api-result', analysis, 'success');
+                } else {
+                    analysis += '\n⚠️  SOME CHECKS FAILED - See issues above';
+                    log('api-result', analysis, 'warning');
+                }
+                
+            } catch (error) {
+                log('api-result', `❌ ERROR: ${error.message}\n\n${error.stack || ''}`, 'error');
+            }
+        }
+
+        function checkLocalStorage() {
+            log('storage-result', '⏳ Checking localStorage...', 'info');
+            
+            const keys = [
+                'radai_access_token',
+                'radai_refresh_token',
+                'radai_user_data',
+                'access',
+                'refresh',
+                'user_data'
+            ];
+            
+            let result = '📦 LOCALSTORAGE CONTENTS:\n\n';
+            
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                if (value) {
+                    result += `✅ ${key}:\n`;
+                    
+                    // Try to parse JSON
+                    try {
+                        const parsed = JSON.parse(value);
+                        
+                        if (key.includes('user_data') || key === 'user_data') {
+                            result += '   User Data:\n';
+                            result += `   • Email: ${parsed.user?.email || parsed.email || 'N/A'}\n`;
+                            result += `   • Primary Role: ${parsed.primary_role?.name || 'N/A'}\n`;
+                            result += `   • Roles Count: ${parsed.roles?.length || 0}\n`;
+                            
+                            if (parsed.roles && parsed.roles.length > 0) {
+                                result += '   • Roles:\n';
+                                parsed.roles.forEach((role, idx) => {
+                                    const isPrimary = role.is_primary ? '🌟 PRIMARY' : '   Secondary';
+                                    result += `     ${idx + 1}. ${role.name} (${role.code}) - ${isPrimary}\n`;
+                                });
+                            }
+                        } else {
+                            result += `   Length: ${value.length} characters\n`;
+                        }
+                    } catch (e) {
+                        result += `   Length: ${value.length} characters (not JSON)\n`;
+                    }
+                    
+                    result += '\n';
+                } else {
+                    result += `❌ ${key}: Not found\n\n`;
+                }
+            });
+            
+            log('storage-result', result, 'info');
+        }
+
+        function clearLocalStorage() {
+            if (!confirm('⚠️  This will clear ALL localStorage and you will need to login again. Continue?')) {
+                return;
+            }
+            
+            const keys = [
+                'radai_access_token',
+                'radai_refresh_token',
+                'radai_user_data',
+                'access',
+                'refresh',
+                'user_data'
+            ];
+            
+            keys.forEach(key => localStorage.removeItem(key));
+            
+            log('storage-result', '✅ LocalStorage cleared!\n\n💡 Now refresh the page and login again.', 'success');
+        }
+
+        async function testFrontendService() {
+            log('service-result', '⏳ Testing frontend service...', 'info');
+            
+            try {
+                // Check if rbacService is available (for pages that load it)
+                if (typeof window.rbacService === 'undefined') {
+                    log('service-result', '⚠️  Frontend service not loaded on this page.\n\nThis is a standalone test page. Use Test #1 to check the API directly.', 'warning');
+                    return;
+                }
+                
+                const userData = await window.rbacService.getCurrentUser();
+                log('service-result', `✅ Frontend service working!\n\nUser: ${userData.user?.email}\nRoles: ${userData.roles?.length || 0}`, 'success');
+                
+            } catch (error) {
+                log('service-result', `❌ ERROR: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-check localStorage on page load
+        window.addEventListener('load', () => {
+            checkLocalStorage();
+        });
+    </script>
+</body>
+</html>

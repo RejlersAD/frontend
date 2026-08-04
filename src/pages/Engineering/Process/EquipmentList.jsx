@@ -21,8 +21,6 @@ import * as XLSX from 'xlsx';
 import { getApiBaseUrl } from '../../../config/environment.config';
 import { STORAGE_KEYS } from '../../../config/app.config';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
-import useActiveLegend from '../../../hooks/useActiveLegend';
-import ActiveLegendBadge from '../../../components/ActiveLegendBadge';
 
 // ---------------------------------------------------------------------------
 // Soft-coded column definitions — add/remove columns here only.
@@ -503,7 +501,6 @@ const EQ_T = {
 
 // ---------------------------------------------------------------------------
 const EquipmentList = () => {
-  const { legend: activeLegend, loading: legendLoading } = useActiveLegend('equipment_list');
   const [files,          setFiles]          = useState([]);
   const [isProcessing,   setIsProcessing]   = useState(false);
   const [progress,       setProgress]       = useState(0);
@@ -673,12 +670,6 @@ const EquipmentList = () => {
       files.forEach((f, i) => formData.append(`file_${i}`, f));
     } else {
       formData.append('file', files[0]);
-    }
-    if (activeLegend?.definition) {
-      try {
-        formData.append('active_legend_id', String(activeLegend.legend_id || ''));
-        formData.append('active_legend_definition', JSON.stringify(activeLegend.definition));
-      } catch { /* ignore serialization errors */ }
     }
 
     const token   = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -1005,10 +996,6 @@ const EquipmentList = () => {
             <p className="text-slate-500 text-base leading-relaxed max-w-2xl mb-6">
               Extract 18 engineering fields from Equipment List registers or P&amp;ID drawings using AI — Tag No., Description, Operating &amp; Design Conditions, MOC, Insulation, Dimensions, Motor Rating, P&amp;ID Ref and more
             </p>
-
-            <div className="mb-4">
-              <ActiveLegendBadge section="equipment_list" legend={activeLegend} loading={legendLoading} />
-            </div>
 
             {/* Capability chips */}
             <div className="flex flex-wrap gap-2 mb-5">

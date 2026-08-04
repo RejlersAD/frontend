@@ -42,13 +42,6 @@ const RESET_MODAL_COPY = {
   cancelBtn:       'Cancel',
 };
 
-// Soft-coded configuration for loading & search behavior
-const LOADING_CONFIG = {
-  TIMEOUT_MS: 60000,        // 60 seconds - max time to wait for initial data load
-  SEARCH_DEBOUNCE_MS: 400,  // 400ms - delay before triggering search API call
-  ACTIVE_USERS_PAGE_SIZE: 1, // Minimal page size for active user count query
-};
-
 /**
  * User Management Page - Rebuilt
  * CRUD operations for users with role assignment
@@ -565,7 +558,7 @@ const UserManagement = ({ pageControls }) => {
         setLoadError('Loading timed out. Please check your connection and try again.');
         setIsDataLoaded(true);
       }
-    }, LOADING_CONFIG.TIMEOUT_MS);
+    }, 60000);
 
     initializeComponent().finally(() => clearTimeout(timeoutId));
 
@@ -589,7 +582,7 @@ const UserManagement = ({ pageControls }) => {
   // page_size=1 keeps this cheap — we only need the "count" field, not rows.
   useEffect(() => {
     if (!isAuthenticated) return;
-    rbacService.getUsers({ page_size: LOADING_CONFIG.ACTIVE_USERS_PAGE_SIZE, status: 'active' })
+    rbacService.getUsers({ page_size: 1, status: 'active' })
       .then(res => setActiveUsersCount(res?.data?.count ?? 0))
       .catch(() => setActiveUsersCount(0));
   }, [isAuthenticated]);
@@ -679,7 +672,7 @@ const UserManagement = ({ pageControls }) => {
     if (!isAuthenticated) return;
     const delayDebounce = setTimeout(() => {
       dispatch(fetchUsers({ search: searchTerm || undefined }));
-    }, LOADING_CONFIG.SEARCH_DEBOUNCE_MS);
+    }, 400);
     return () => clearTimeout(delayDebounce);
   }, [searchTerm, isAuthenticated, dispatch]);
 

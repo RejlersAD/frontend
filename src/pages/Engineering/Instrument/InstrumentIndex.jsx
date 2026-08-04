@@ -55,8 +55,6 @@ import {
   getInstrumentTemplate,
 } from './InstrumentProjectManager';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
-import useActiveLegend from '../../../hooks/useActiveLegend';
-import ActiveLegendBadge from '../../../components/ActiveLegendBadge';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PFD-FORMAT REDESIGN — theme, animations & landing-page primitives
@@ -681,7 +679,6 @@ function EditInstrumentModal({ open, draft, fields, onChange, onClose, onSave })
 // ─── Main Component ───────────────────────────────────────────────────────────
 const InstrumentIndex = () => {
   const navigate = useNavigate();
-  const { legend: activeLegend, loading: legendLoading } = useActiveLegend('instrument_index');
 
   // ── Project Management (Phase 1) ────────────────────────────────────
   const {
@@ -957,12 +954,6 @@ const InstrumentIndex = () => {
     // Explicit unit / area code (e.g. ADNOC Gas '562'). Drives the {unit}
     // prefix in tag-format normalisation when present.
     formData.append('project_unit', activeProject.unit || '');
-    if (activeLegend?.definition) {
-      try {
-        formData.append('active_legend_id', String(activeLegend.legend_id || ''));
-        formData.append('active_legend_definition', JSON.stringify(activeLegend.definition));
-      } catch { /* ignore serialization errors */ }
-    }
 
     const token  = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     const url    = `${API_BASE}/pid/instrument-index/analyze/`;
@@ -1009,63 +1000,9 @@ const InstrumentIndex = () => {
       }
 
       const data = await resp.json();
-
-      // ── Async pipeline (HTTP 202 + upload_id) ──────────────────────
-      // The extraction now runs in a Celery worker and this response is
-      // just an acknowledgement. Poll the status endpoint until it turns
-      // `completed` (or `failed`) — same pattern as Line List / Equipment.
-      if (data && data.async && data.upload_id && data.status === 'processing') {
-        const uploadId = data.upload_id;
-        const pollBase = `${API_BASE}/pid/instrument-index/status/${uploadId}/`;
-        const POLL_INTERVAL_MS = 3000;
-        const POLL_MAX_MS = 60 * 60 * 1000; // 60 min ceiling matches backend hard limit
-        const pollStart = Date.now();
-        let last = null;
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          if (Date.now() - pollStart > POLL_MAX_MS) {
-            throw new Error('Extraction is still running after 60 min — please retry with a smaller drawing.');
-          }
-          await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-          let pollResp;
-          try {
-            pollResp = await fetch(pollBase, {
-              method: 'GET',
-              headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-          } catch (netErr) {
-            // Network blip during polling — keep trying, don't kill the job.
-            if (isTransientNetworkError(netErr)) continue;
-            throw netErr;
-          }
-          if (!pollResp.ok) {
-            if (pollResp.status === 404) throw new Error('Extraction task expired before it completed.');
-            continue;
-          }
-          last = await pollResp.json();
-          if (last.status === 'processing') {
-            const pct = Math.max(1, Math.min(99, Number(last.progress) || 0));
-            setProgress(pct);
-            if (last.message) setStatusMessage(last.message);
-            continue;
-          }
-          if (last.status === 'failed') {
-            throw new Error(last.error || 'Extraction failed on the server.');
-          }
-          if (last.status === 'completed') {
-            setProgress(100);
-            setStatusMessage('Extraction complete!');
-            setResult(last);
-            break;
-          }
-          // Unknown status — treat as still processing and keep polling.
-        }
-      } else {
-        // Legacy synchronous response — used when async is disabled or falls back
-        setProgress(100);
-        setStatusMessage('Extraction complete!');
-        setResult(data);
-      }
+      setProgress(100);
+      setStatusMessage('Extraction complete!');
+      setResult(data);
     } catch (err) {
       clearTimeout(abort);
       let msg;
@@ -1530,9 +1467,6 @@ const InstrumentIndex = () => {
               <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight truncate">
                 {activeProject.name}
               </h1>
-              <div className="mt-1">
-                <ActiveLegendBadge section="instrument_index" legend={activeLegend} loading={legendLoading} />
-              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">

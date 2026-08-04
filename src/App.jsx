@@ -47,7 +47,6 @@ const CRSMultipleRevision = FEATURE_FLAGS.crsMultiRevisionVersion === 'classic' 
 import ProjectControl from './pages/ProjectControl'
 import ProjectsPage from './pages/Projects/ProjectsPage'
 import PlanningPackagePage from './pages/PlanningPackagePage'
-import PlanningPackageDocs from './pages/PlanningPackageDocs'
 import GeneralQHSE from './pages/QHSE/GeneralQHSE'
 import QHSEHub from './pages/QHSE/QHSEHub'
 // SOFT-CODED: QHSEInterconnectedDemo removed (not needed)
@@ -119,9 +118,8 @@ import ProcessEquipmentDatasheet from './pages/Engineering/Process/ProcessEquipm
 import LineList from './pages/Engineering/Process/LineList'
 import EquipmentList from './pages/Engineering/Process/EquipmentList'
 import PIDVerification from './pages/Engineering/Process/PIDVerification'
-import PIDCheckerV2 from './pages/Engineering/Process/PIDCheckerV2'
-import PIDCheckerV2Docs from './pages/Engineering/Process/PIDCheckerV2Docs'
-import LegendSheetsCanvas from './pages/Engineering/Process/LegendSheetsCanvas'
+import PIDVerificationV2 from './pages/Engineering/Process/PIDVerificationV2'
+import PIDVerificationV2Report from './pages/Engineering/Process/PIDVerificationV2Report'
 import PFDQualityChecker from './pages/Engineering/Process/PFDQualityChecker'
 import CriticalLineList from './pages/Engineering/Piping/CriticalLineList'
 // Electrical Datasheet Components
@@ -915,32 +913,22 @@ function App() {
           }
         />
 
-        {/* P&ID Checker V2 — new minimal scaffold */}
+        {/* P&ID Verification V2 */}
         <Route
-          path="engineering/process/pid-checker-v2"
+          path="engineering/process/pid-verification-v2"
           element={
             <ModuleProtectedRoute moduleCode="pid_analysis">
-              <PIDCheckerV2 />
+              <PIDVerificationV2 />
             </ModuleProtectedRoute>
           }
         />
 
-        {/* P&ID Checker V2 — Documentation & Workflow */}
+        {/* P&ID Verification V2 — Comparison Report */}
         <Route
-          path="engineering/process/pid-checker-v2/docs"
+          path="engineering/process/pid-verification-v2/report/:documentId"
           element={
             <ModuleProtectedRoute moduleCode="pid_analysis">
-              <PIDCheckerV2Docs />
-            </ModuleProtectedRoute>
-          }
-        />
-
-        {/* P&ID Checker V2 — Legend Sheets full-page canvas */}
-        <Route
-          path="engineering/process/pid-checker-v2/legends"
-          element={
-            <ModuleProtectedRoute moduleCode="pid_analysis">
-              <LegendSheetsCanvas />
+              <PIDVerificationV2Report />
             </ModuleProtectedRoute>
           }
         />
@@ -1259,16 +1247,8 @@ function App() {
         <Route
           path="planning-packages"
           element={
-            <ModuleProtectedRoute moduleCode="planning_package">
+            <ModuleProtectedRoute moduleCode="project_control">
               <PlanningPackagePage />
-            </ModuleProtectedRoute>
-          }
-        />
-        <Route
-          path="planning-packages/docs"
-          element={
-            <ModuleProtectedRoute moduleCode="planning_package">
-              <PlanningPackageDocs />
             </ModuleProtectedRoute>
           }
         />

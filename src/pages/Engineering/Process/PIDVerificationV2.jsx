@@ -6,7 +6,7 @@ import CrossRecommendationPanel from '../../../components/recommendations/CrossR
 import {
   Upload as UploadIcon, FileText, CheckCircle, AlertTriangle,
   Loader, X, Download, Activity, Shield, GitBranch, Cpu, Clock,
-  RefreshCw, FolderPlus, Package, Layers, ChevronRight, ChevronLeft, Edit,
+  RefreshCw, FolderPlus, Package, Layers, ChevronRight, Edit,
   Trash2, ArrowLeft, BarChart2, Save, Zap, Tag, Link, Sliders,
   Ruler, ScanLine, Brain, CircleDot, Type, ChevronDown, ChevronUp,
   Lightbulb, Eye, EyeOff, Hash, ClipboardList, Boxes, MapPin, Wrench, Network, Database, GripVertical,
@@ -176,7 +176,6 @@ const WORKFLOW_BORDER_COLOR      = '#e2e8f0';        // Border color
 const WORKFLOW_BORDER_RADIUS     = '16px';           // Corner radius
 const WORKFLOW_SHADOW            = '0 1px 3px rgba(0,0,0,0.08)'; // Box shadow
 const WORKFLOW_COLLAPSED_HEIGHT  = '60px';           // Height when collapsed (title bar only)
-const WORKFLOW_SPLIT_PANEL_HEIGHT = '600px';         // Shared fixed height for both split-screen columns (diagram + docs) so they stay aligned regardless of image size or window width
 
 // ANIMATION
 const WORKFLOW_COLLAPSE_DURATION = '400ms';          // Collapse/expand animation speed
@@ -208,7 +207,7 @@ const CARD_BORDER_RADIUS         = '20px';      // Card corner radius (more roun
 const CARD_PADDING               = '28px';      // Internal card padding (more spacious)
 const CARD_GAP                   = '24px';      // Gap between cards in grid (wider gaps)
 const CARD_SHADOW_DEFAULT        = '0 2px 8px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)';
-const CARD_SHADOW_HOVER          = '0 12px 40px rgba(13,148,136,0.2), 0 8px 16px rgba(6,95,70,0.12)';
+const CARD_SHADOW_HOVER          = '0 12px 40px rgba(99,102,241,0.2), 0 8px 16px rgba(59,130,246,0.12)';
 const CARD_BORDER_COLOR          = '#e2e8f0';  // Default border
 const CARD_BORDER_HOVER_COLOR    = '#6366f1';  // Hover border color (indigo)
 const CARD_HOVER_LIFT            = '-8px';     // Vertical lift on hover (more dramatic)
@@ -229,19 +228,6 @@ const BUTTON_FONT_WEIGHT         = 700;        // Font weight (bolder)
 const BUTTON_SHADOW              = '0 6px 20px rgba(99,102,241,0.35), 0 2px 8px rgba(139,92,246,0.2)';
 const BUTTON_HOVER_LIFT          = '-3px';     // Vertical lift on hover (more dramatic)
 const BUTTON_ICON_SIZE           = 20;         // px - icon size in buttons (larger)
-
-// PROJECT WORKSPACE ACCENT (soft-coded)
-// Dedicated color scheme for the "New Project" / "Create First Project"
-// buttons and the Project Card hover states — kept independent from the
-// global COLOR_PRIMARY / GRADIENT_PRIMARY (indigo/purple) used elsewhere on
-// this page so re-theming this section never touches unrelated UI. Change
-// these values to adjust the look.
-const PROJECT_ACCENT_GRADIENT       = 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)';   // Teal
-const PROJECT_ACCENT_HOVER_GRADIENT = 'linear-gradient(135deg, #0f766e 0%, #065f46 100%)';   // Darker teal (hover)
-const PROJECT_ACCENT_COLOR          = '#0d9488';                                              // Solid teal (icons/text)
-const PROJECT_ACCENT_SHADOW         = '0 8px 24px rgba(13,148,136,0.25), 0 4px 12px rgba(6,95,70,0.15)';
-const PROJECT_ACCENT_SHADOW_HOVER   = '0 12px 40px rgba(13,148,136,0.2), 0 8px 16px rgba(6,95,70,0.12)';
-const PROJECT_ACCENT_ICON_BG        = 'linear-gradient(135deg, #99f6e4 0%, #a7f3d0 100%)';    // Light teal icon bg
 
 // EMPTY STATE
 const EMPTY_STATE_ICON_SIZE      = 96;         // px - large icon when no projects (larger)
@@ -654,63 +640,6 @@ const HIDDEN_CATEGORIES = new Set(['notes', 'connectivity']);
 const HIDDEN_SEVERITIES = new Set(['info']);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Soft-coded: multi-drawing navigator display mode.
-// Below this many pages, drawings render as a compact horizontally-scrollable
-// pill strip; at/above it, the UI switches to a searchable dropdown + Prev/Next
-// stepper so multi-sheet documents (20-30+ pages) stay usable instead of
-// wrapping into a multi-row wall of raw drawing_id pills.
-const DRAWING_NAV_INLINE_LIMIT = 8;
-
-// Extracts a clean, human-readable label from a raw drawing_id such as
-// "8a07cc8c-7f2b-404e-878c-731162c19152-DRAWING-3" -> "Drawing 3". Falls back
-// to a short id fragment if the expected "-DRAWING-N" / "-PAGE-N" / "-SHEET-N"
-// suffix pattern isn't present, so unexpected id formats never crash the UI.
-function getDrawingLabel(drawingId) {
-  if (!drawingId) return '';
-  const id = String(drawingId);
-  const m = id.match(/-(DRAWING|PAGE|SHEET)[-_]?(\d+)\s*$/i);
-  if (m) {
-    const kind = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
-    return `${kind} ${m[2]}`;
-  }
-  return id.length > 14 ? `${id.slice(0, 10)}\u2026` : id;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Soft-coded: shared marker-coordinate sanity check, used by every Drawing
-// Overlay tab (Legends, Line List, Equipment, Instrument, Compressor) to keep
-// markers accurately placed inside the diagram instead of drifting past its
-// edges. Single source of truth so all tabs behave consistently.
-// - MARKER_AREA_*: the trustworthy drawing content-area band (% of page).
-// - MARKER_OUTLIER_MARGIN_PCT: how far outside that band a raw coordinate may
-//   still fall before it's judged corrupt/garbage OCR data and dropped
-//   entirely (rather than clamped to the edge, which would just pile stray
-//   dots against the border).
-const MARKER_AREA_X_MIN = 1;
-const MARKER_AREA_X_MAX = 97;
-const MARKER_AREA_Y_MIN = 1;
-const MARKER_AREA_Y_MAX = 96;
-const MARKER_OUTLIER_MARGIN_PCT = 15;
-
-// Sanitizes a raw (xp, yp) marker coordinate pair (percent of page):
-//  - returns null for non-finite / missing values, or values too far outside
-//    the drawing's content area (treated as unnecessary/garbage dots — the
-//    caller should drop the marker or fall back to another resolution tier)
-//  - otherwise clamps genuine near-edge values into the visible content-area
-//    band so the marker always renders on-canvas, never past the image edge
-function sanitizeMarkerPct(xp, yp) {
-  if (typeof xp !== 'number' || typeof yp !== 'number' || !Number.isFinite(xp) || !Number.isFinite(yp)) return null;
-  const outOfRange =
-    xp < MARKER_AREA_X_MIN - MARKER_OUTLIER_MARGIN_PCT || xp > MARKER_AREA_X_MAX + MARKER_OUTLIER_MARGIN_PCT ||
-    yp < MARKER_AREA_Y_MIN - MARKER_OUTLIER_MARGIN_PCT || yp > MARKER_AREA_Y_MAX + MARKER_OUTLIER_MARGIN_PCT;
-  if (outOfRange) return null;
-  return {
-    xp: Math.min(MARKER_AREA_X_MAX, Math.max(MARKER_AREA_X_MIN, xp)),
-    yp: Math.min(MARKER_AREA_Y_MAX, Math.max(MARKER_AREA_Y_MIN, yp)),
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Soft-coded ACCURACY FILTERS (frontend safety-net mirroring backend filters).
 // Even after the backend `_apply_accuracy_filters` has run, occasional OCR
 // fragments slip through — especially on legacy drawings.  These two knobs let
@@ -979,34 +908,6 @@ const ANALYSIS_STAGES = [
   { id: 'linesizes',  label: 'Line size validation',         icon: Ruler,      durationMs: 15000 },
   { id: 'rules',      label: 'Deterministic rule engine',    icon: Brain,      durationMs: 18000 },
   { id: 'report',     label: 'Building findings report',     icon: FileText,   durationMs: 22000 },
-];
-
-// Soft-coded 3-stage grouping for the Smart Documentation "Quick Start" accordion —
-// mirrors the RADAI AI-Assisted P&ID Verification Workflow diagram (Inputs & Setup /
-// AI Processing / Results & Export). Each group clusters the 9 step keys and drives
-// the colored stage-banner header rendered above its cluster of step cards.
-const WORKFLOW_STAGE_GROUPS = [
-  {
-    id: 'stage1',
-    label: 'STAGE 1 · Inputs & Setup',
-    description: 'Open your project and bring in every source document the AI needs',
-    colorFrom: '#475569', colorTo: '#1e293b',
-    stepKeys: ['step1', 'step2', 'step3', 'step4', 'step5'],
-  },
-  {
-    id: 'stage2',
-    label: 'STAGE 2 · AI Processing',
-    description: 'Kick off the 7-stage AI pipeline and track live progress',
-    colorFrom: '#8b5cf6', colorTo: '#6d28d9',
-    stepKeys: ['step6', 'step7'],
-  },
-  {
-    id: 'stage3',
-    label: 'STAGE 3 · Results & Export',
-    description: 'Review findings and export in the format your stakeholders need',
-    colorFrom: '#10b981', colorTo: '#047857',
-    stepKeys: ['step8', 'step9'],
-  },
 ];
 
 const PID_FACTS = [
@@ -1419,11 +1320,6 @@ const PIDVerificationV2 = () => {
   const [results,      setResults]      = useState(null);
   const [error,        setError]        = useState('');
   const [activeDrawing,setActiveDrawing]= useState(null);
-  // ── Drawing navigator (multi-sheet documents) ────────────────────────────
-  // Soft-coded UI state for the searchable dropdown + Prev/Next stepper used
-  // when a document has more than DRAWING_NAV_INLINE_LIMIT pages.
-  const [drawingNavOpen,  setDrawingNavOpen]  = useState(false);
-  const [drawingNavQuery, setDrawingNavQuery] = useState('');
   const pollRef    = useRef(null);
   // ── Elapsed-time timer for the processing loader ──────────────────────────
   const [elapsedSec,   setElapsedSec]   = useState(0);
@@ -1443,17 +1339,6 @@ const PIDVerificationV2 = () => {
   const [qcPanelOpen, setQcPanelOpen] = useState(DRAWING_QC_PANEL_OPEN_DEFAULT);
   // Sub-tab within the Lines panel: 'qc' | 'designations'
   const [lineQcSubTab, setLineQcSubTab] = useState('qc');
-  // Lines panel top-level view mode — soft-coded default keeps the panel simple:
-  // 'simple'   = one consolidated Critical-findings report, P&ID vs Line List,
-  //              across every drawing in the document (default — easiest to read).
-  // 'advanced' = original 5-tab workspace (AI Insights / QC Checks / Designations /
-  //              Analytics / Drawing Layout) for engineers who need full detail.
-  // No sub-tab logic below is removed — 'advanced' still renders it unchanged.
-  const [lineListViewMode, setLineListViewMode] = useState('simple');
-  // Equipment panel view mode — same Simple (consolidated P&ID vs Equipment
-  // Register report, default) / Advanced (full ISA tag-inventory workspace)
-  // toggle pattern as the Lines panel above.
-  const [equipListViewMode, setEquipListViewMode] = useState('simple');
   // QC Checks sub-tab filters
   const [qcSearch,     setQcSearch]     = useState('');
   const [qcSevFilter,  setQcSevFilter]  = useState('all');
@@ -1590,15 +1475,11 @@ const PIDVerificationV2 = () => {
 
   // Documentation accordion state - track expanded steps
   const [expandedSteps, setExpandedSteps] = useState({
-    step1: true,   // Open Project - expanded by default
-    step2: false,  // Upload P&ID
-    step3: false,  // Upload Legend
-    step4: false,  // Reference Files (Optional)
-    step5: false,  // Wrench DMS (Optional)
-    step6: false,  // Run Verification
-    step7: false,  // AI Analysis (7 stages)
-    step8: false,  // Review Results
-    step9: false   // Export
+    step1: true,  // Create Project - expanded by default
+    step2: false, // Upload P&ID
+    step3: false, // AI Analysis
+    step4: false, // Review Results
+    step5: false  // Export Report
   });
 
   // Toggle individual step
@@ -1612,16 +1493,22 @@ const PIDVerificationV2 = () => {
   // Expand all steps
   const expandAllSteps = () => {
     setExpandedSteps({
-      step1: true, step2: true, step3: true, step4: true, step5: true,
-      step6: true, step7: true, step8: true, step9: true
+      step1: true,
+      step2: true,
+      step3: true,
+      step4: true,
+      step5: true
     });
   };
 
   // Collapse all steps
   const collapseAllSteps = () => {
     setExpandedSteps({
-      step1: false, step2: false, step3: false, step4: false, step5: false,
-      step6: false, step7: false, step8: false, step9: false
+      step1: false,
+      step2: false,
+      step3: false,
+      step4: false,
+      step5: false
     });
   };
 
@@ -1661,15 +1548,6 @@ const PIDVerificationV2 = () => {
   const [runningCompare,  setRunningCompare]  = useState(false);
   const [comparison,      setComparison]      = useState(null);
   const [showUncertainHighlights, setShowUncertainHighlights] = useState(false);
-  // ── Soft-coded: "Critical Only" overlay visualisation ─────────────────────
-  // Purely a display-layer filter — applied across every drawing overlay in
-  // all 4 comparison tabs (Legends, Line List, Equipment, Instrument) so
-  // ONLY markers whose top/aggregated severity is 'critical' are ever drawn;
-  // Major/Minor/Info markers are suppressed by design. No matching,
-  // rule-engine, or data logic is touched — this only narrows what gets drawn.
-  // Set OVERLAY_ONLY_CRITICAL to false to restore all-severity overlays.
-  const OVERLAY_ONLY_CRITICAL = true;
-  const OVERLAY_CRITICAL_SEVERITY = 'critical'; // soft-coded severity key filtered to
   const [focusedFindingId, setFocusedFindingId] = useState(null);
   // Correction mode — when true, clicking the drawing canvas records the clicked
   // % position as the corrected location for the currently focused finding.
@@ -3079,10 +2957,6 @@ const PIDVerificationV2 = () => {
   const totalIssues   = results?.total_issues ?? allIssues.length;
   const criticalCount = allIssues.filter(f => getVal(f, 'severity') === 'critical').length;
   const majorCount    = allIssues.filter(f => getVal(f, 'severity') === 'major').length;
-  // Soft-coded: exports (Full Report / Excel / PDF) are only "ready" once any
-  // review overrides have been saved — otherwise the generated file/report
-  // would silently miss the reviewer's latest, unsaved decisions.
-  const EXPORT_READY = pendingCount === 0;
 
   // Soft-coded overlay helpers (frontend only): infer confidence and pseudo-position from evidence.
   const bandRank = { low: 1, medium: 2, high: 3 };
@@ -3191,11 +3065,8 @@ const PIDVerificationV2 = () => {
     const pickBestOcc = (pos) => {
       if (!pos) return null;
       if (!pos.all || pos.all.length === 0) {
-        // Direct tag position (no 'all' array) — sanitize before trusting it;
-        // drops corrupt/off-page coordinates instead of rendering a stray dot.
-        if (pos.x_pct == null || pos.y_pct == null) return null;
-        const s = sanitizeMarkerPct(pos.x_pct, pos.y_pct);
-        return s ? { x_pct: s.xp, y_pct: s.yp } : null;
+        // Direct tag position (no 'all' array) — use as-is
+        return (pos.x_pct != null && pos.y_pct != null) ? pos : null;
       }
       // Filter to drawing content area (excludes title block corners)
       const inArea = pos.all.filter(o =>
@@ -3212,8 +3083,7 @@ const PIDVerificationV2 = () => {
         const d  = dx * dx + dy * dy;
         if (d < bestDist) { bestDist = d; best = o; }
       }
-      const s = sanitizeMarkerPct(best.x_pct, best.y_pct);
-      return s ? { x_pct: s.xp, y_pct: s.yp } : null;
+      return { x_pct: best.x_pct, y_pct: best.y_pct };
     };
 
     // Prefer H-direction occurrence for line_tags (horizontal labels are the
@@ -3223,8 +3093,7 @@ const PIDVerificationV2 = () => {
       if (occs.length === 0) return null;
       const hOcc = occs.find(o => o.direction === 'H');
       const candidate = hOcc ?? occs[0];
-      const s = sanitizeMarkerPct(candidate.x_pct, candidate.y_pct);
-      return s ? { x_pct: s.xp, y_pct: s.yp } : null;
+      return { x_pct: candidate.x_pct, y_pct: candidate.y_pct };
     };
 
     // Apply soft-coded calibration offset and clamp to visible canvas.
@@ -3329,8 +3198,7 @@ const PIDVerificationV2 = () => {
           if (!raNk) continue;
           if (evNk.includes(raNk) || raNk.includes(evNk)) {
             if (ra.x_pct != null && ra.y_pct != null) {
-              const s = sanitizeMarkerPct(ra.x_pct, ra.y_pct);
-              if (s) return { x_pct: s.xp, y_pct: s.yp, tier: 'P5' };
+              return { x_pct: ra.x_pct, y_pct: ra.y_pct, tier: 'P5' };
             }
           }
         }
@@ -3394,11 +3262,7 @@ const PIDVerificationV2 = () => {
       !HIDDEN_SEVERITIES.has((f.severity || '').toLowerCase())
     )
   );
-  const visibleOverlayNodes = overlayNodes
-    .filter(n => showUncertainHighlights || n.band !== 'low')
-    // Display-only: when "Critical Only" is enabled, narrow the rendered marker
-    // set to critical-severity findings. Does not touch buildOverlayNodes()/matching.
-    .filter(n => !OVERLAY_ONLY_CRITICAL || (n.finding?.severity || '').toLowerCase() === OVERLAY_CRITICAL_SEVERITY);
+  const visibleOverlayNodes = overlayNodes.filter(n => showUncertainHighlights || n.band !== 'low');
 
   // ── Anchored-findings filter ──────────────────────────────────────────────
   // Inline evidence-key normalizer — mirrors normKey defined inside buildOverlayNodes.
@@ -3677,9 +3541,7 @@ const PIDVerificationV2 = () => {
               boxShadow: WORKFLOW_SHADOW,
               overflow: 'hidden',
               transition: `all ${WORKFLOW_COLLAPSE_DURATION} ${WORKFLOW_TRANSITION_EASING}`,
-              display: 'flex',
-              flexDirection: 'column',
-              height: workflowCollapsed ? WORKFLOW_COLLAPSED_HEIGHT : (WORKFLOW_SPLIT_SCREEN ? WORKFLOW_SPLIT_PANEL_HEIGHT : 'auto')
+              height: workflowCollapsed ? WORKFLOW_COLLAPSED_HEIGHT : 'auto'
             }}>
               
               {/* Workflow Header (Always Visible) */}
@@ -3791,9 +3653,7 @@ const PIDVerificationV2 = () => {
               {!workflowCollapsed && (
                 <div style={{
                   padding: workflowCompact ? '16px' : '24px',
-                  background: 'linear-gradient(135deg, rgba(15,23,42,0.02) 0%, rgba(30,41,59,0.04) 100%)',
-                  flex: 1,
-                  overflowY: 'auto'
+                  background: 'linear-gradient(135deg, rgba(15,23,42,0.02) 0%, rgba(30,41,59,0.04) 100%)'
                 }}>
                   
                   {/* Zoom Controls Bar */}
@@ -4017,8 +3877,8 @@ const PIDVerificationV2 = () => {
                       
                       {/* Actual Image */}
                       <img 
-                        src="/assets/images/PID_Workflow_V2.png" 
-                        alt="RADAI AI-Assisted P&ID Verification Workflow - 3 Stages: Inputs & Setup, AI Processing, Results & Export (9 steps)"
+                        src="/assets/images/PID_Workflow.png" 
+                        alt="P&ID Verification Workflow - 3 Stage Process: Upload Documents, AI Analysis, Quality Report"
                         onLoad={() => { setWorkflowImageLoaded(true); setWorkflowImageError(false); }}
                         onError={() => { setWorkflowImageError(true); setWorkflowImageLoaded(false); }}
                         style={{
@@ -4036,6 +3896,29 @@ const PIDVerificationV2 = () => {
                           }
                         }}
                       />
+                    </div>
+
+                    {/* Workflow Caption */}
+                    <div style={{
+                      marginTop: '16px',
+                      textAlign: 'center',
+                      maxWidth: '900px',
+                      padding: '12px 20px',
+                      background: 'rgba(59,130,246,0.05)',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(59,130,246,0.1)'
+                    }}>
+                      <p style={{
+                        fontSize: '13px',
+                        color: COLOR_TEXT_SECONDARY,
+                        margin: 0,
+                        lineHeight: 1.6
+                      }}>
+                        <span style={{ color: COLOR_PRIMARY, fontWeight: 700 }}>✓ 3-Stage AI Process:</span> <span style={{ fontWeight: 500 }}>Stage 1</span> Upload P&ID drawings & legends (PDF/DWG/PNG) → <span style={{ fontWeight: 500 }}>Stage 2</span> AI Analysis with 20+ verification rules (OCR, Vision, ML) → <span style={{ fontWeight: 500 }}>Stage 3</span> Interactive quality report with export capabilities
+                      </p>
+                      <div style={{ marginTop: '8px', fontSize: '11px', color: '#6366f1', fontStyle: 'italic' }}>
+                        💡 Tip: Click image to zoom in • Use controls above for zoom/fullscreen
+                      </div>
                     </div>
 
                   </div>
@@ -4107,7 +3990,7 @@ const PIDVerificationV2 = () => {
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
-                maxHeight: WORKFLOW_SPLIT_PANEL_HEIGHT
+                maxHeight: '600px'
               }}>
                 {/* Header */}
                 <div style={{
@@ -4305,23 +4188,7 @@ const PIDVerificationV2 = () => {
                         </button>
                       </div>
 
-                      {/* ═══ STAGE 1 BANNER: Inputs & Setup ═══ */}
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                        padding: '10px 14px', marginBottom: '14px',
-                        borderRadius: '10px',
-                        background: `linear-gradient(135deg, ${WORKFLOW_STAGE_GROUPS[0].colorFrom} 0%, ${WORKFLOW_STAGE_GROUPS[0].colorTo} 100%)`,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'white', letterSpacing: '0.05em' }}>
-                          {WORKFLOW_STAGE_GROUPS[0].label}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.85)' }}>
-                          {WORKFLOW_STAGE_GROUPS[0].description}
-                        </span>
-                      </div>
-
-                      {/* Step 1: Open Project - DETAILED */}
+                      {/* Step 1: Create Project - DETAILED */}
                       <div style={{
                         marginBottom: '20px',
                         border: '2px solid rgba(59,130,246,0.2)',
@@ -4357,7 +4224,7 @@ const PIDVerificationV2 = () => {
                             }}>1</div>
                             <div style={{ flex: 1 }}>
                               <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
-                                Open Project
+                                Create Project
                               </h4>
                               <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '2px 0 0' }}>
                                 Organize your P&ID verification work
@@ -4456,10 +4323,10 @@ const PIDVerificationV2 = () => {
                             }}>2</div>
                             <div style={{ flex: 1 }}>
                               <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
-                                Upload P&ID Drawing
+                                Upload P&ID Drawings & Legends
                               </h4>
                               <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '2px 0 0' }}>
-                                The primary process diagram the AI will analyze
+                                Critical step for accurate AI analysis
                               </p>
                             </div>
                             {expandedSteps.step2 ? (
@@ -4479,9 +4346,15 @@ const PIDVerificationV2 = () => {
                             <ol style={{ margin: 0, paddingLeft: '24px', fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, lineHeight: 1.8 }}>
                               <li><strong>Select your project</strong> from the list below (the project card will highlight)</li>
                               <li><strong>Click "Upload P&ID"</strong> or drag files into the upload zone</li>
-                              <li><strong>Select the file:</strong> The primary process diagram (PDF/DWG recommended)</li>
-                              <li><strong>Wait for upload confirmation</strong> - you'll see a progress bar</li>
-                              <li><strong>Continue to Step 3</strong> to attach a legend sheet (recommended), or skip straight to <strong>Step 6</strong> to run verification</li>
+                              <li><strong>Select files:</strong>
+                                <ul style={{ marginTop: '4px', paddingLeft: '20px' }}>
+                                  <li><strong>Main P&ID Drawing:</strong> The primary process diagram (PDF/DWG recommended)</li>
+                                  <li><strong>Legend Sheet:</strong> Symbol definitions and abbreviations (CRITICAL for accuracy)</li>
+                                  <li><strong>Additional Sheets:</strong> Any continuation or related drawings</li>
+                                </ul>
+                              </li>
+                              <li><strong>Wait for upload confirmation</strong> - you'll see progress bars for each file</li>
+                              <li><strong>Click "Start Analysis"</strong> when all files are uploaded</li>
                             </ol>
                           </div>
 
@@ -4518,10 +4391,11 @@ const PIDVerificationV2 = () => {
                           }}>
                             <strong style={{ fontSize: '0.8rem', color: COLOR_TEXT_PRIMARY, display: 'block', marginBottom: '6px' }}>🎯 Upload Best Practices:</strong>
                             <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, lineHeight: 1.6 }}>
-                              <li><strong>Add a legend in Step 3</strong> - AI accuracy improves by 20-30% once a legend is built</li>
+                              <li><strong>Always include legend sheets</strong> - AI accuracy improves by 20-30% with legends</li>
                               <li><strong>High resolution:</strong> Use 300 DPI minimum for scanned images</li>
                               <li><strong>Clear scans:</strong> Avoid shadows, folds, or torn edges</li>
                               <li><strong>Orientation:</strong> Upload in correct orientation (AI can handle rotation but accuracy drops)</li>
+                              <li><strong>Multiple sheets:</strong> Upload all related sheets together (Sheet 1, 2, 3... of the same drawing)</li>
                               <li><strong>File naming:</strong> Use descriptive names like "P16093-PID-001-Rev-A.pdf" not "scan123.pdf"</li>
                             </ul>
                           </div>
@@ -4533,384 +4407,14 @@ const PIDVerificationV2 = () => {
                             border: '1px solid rgba(239,68,68,0.2)'
                           }}>
                             <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, lineHeight: 1.5 }}>
-                              <strong style={{ color: COLOR_ERROR }}>🚫 Common Mistakes:</strong> Skipping the legend step, using low-resolution scans (&lt;150 DPI), or mixing unrelated drawings in one project. These reduce AI accuracy significantly.
+                              <strong style={{ color: COLOR_ERROR }}>🚫 Common Mistakes:</strong> Uploading only the main drawing without legends, using low-resolution scans (&lt;150 DPI), or mixing unrelated drawings in one project. These reduce AI accuracy significantly.
                             </p>
                           </div>
                         </div>
                         )}
                       </div>
 
-                      {/* Step 3: Upload Legend - DETAILED */}
-                      <div style={{
-                        marginBottom: '20px',
-                        border: '2px solid rgba(20,184,166,0.2)',
-                        borderRadius: '12px',
-                        overflow: 'hidden',
-                        transition: 'all 300ms ease'
-                      }}>
-                        <div 
-                          onClick={() => toggleStep('step3')}
-                          style={{
-                            background: 'linear-gradient(135deg, rgba(20,184,166,0.12) 0%, rgba(13,148,136,0.08) 100%)',
-                            padding: '14px 16px',
-                            borderBottom: expandedSteps.step3 ? '1px solid rgba(20,184,166,0.2)' : 'none',
-                            cursor: 'pointer',
-                            transition: 'all 200ms ease'
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.18) 0%, rgba(13,148,136,0.14) 100%)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.12) 0%, rgba(13,148,136,0.08) 100%)'}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{
-                              width: '36px',
-                              height: '36px',
-                              borderRadius: '10px',
-                              background: 'linear-gradient(135deg, #14b8a6, #0d9488)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '1rem',
-                              fontWeight: 700,
-                              color: 'white',
-                              boxShadow: '0 4px 12px rgba(20,184,166,0.3)'
-                            }}>3</div>
-                            <div style={{ flex: 1 }}>
-                              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
-                                Upload Legend
-                              </h4>
-                              <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '2px 0 0' }}>
-                                Teach the AI your symbol library — strongly recommended
-                              </p>
-                            </div>
-                            {expandedSteps.step3 ? (
-                              <ChevronUp style={{ width: '20px', height: '20px', color: '#14b8a6', transition: 'transform 200ms ease' }} />
-                            ) : (
-                              <ChevronDown style={{ width: '20px', height: '20px', color: '#14b8a6', transition: 'transform 200ms ease' }} />
-                            )}
-                          </div>
-                        </div>
-
-                        {expandedSteps.step3 && (
-                          <div style={{ padding: '16px', background: 'white', animation: 'fadeIn 300ms ease' }}>
-                          <div style={{ marginBottom: '14px' }}>
-                            <h5 style={{ fontSize: '0.85rem', fontWeight: 600, color: COLOR_TEXT_PRIMARY, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontSize: '1rem' }}>🗝️</span> How to Build Legend Knowledge
-                            </h5>
-                            <ol style={{ margin: 0, paddingLeft: '24px', fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, lineHeight: 1.8 }}>
-                              <li><strong>Open the Legend panel</strong> for your project (next to the upload zone)</li>
-                              <li><strong>Choose your legend sheet</strong> — the PDF/image containing symbol definitions, abbreviations and instrument prefixes</li>
-                              <li><strong>Click "Build Legend Knowledge"</strong> — the AI extracts and indexes every symbol it finds</li>
-                              <li><strong>Review the summary</strong> once built — you'll see the symbol count and build timestamp</li>
-                            </ol>
-                          </div>
-
-                          <div style={{ 
-                            padding: '12px', 
-                            background: 'rgba(20,184,166,0.06)', 
-                            borderRadius: '8px',
-                            border: '1px solid rgba(20,184,166,0.2)',
-                            marginBottom: '12px'
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                              <Lightbulb style={{ width: '16px', height: '16px', color: '#14b8a6', marginTop: '2px', flexShrink: 0 }} />
-                              <div>
-                                <strong style={{ fontSize: '0.8rem', color: COLOR_TEXT_PRIMARY, display: 'block', marginBottom: '4px' }}>💡 Why it matters:</strong>
-                                <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, lineHeight: 1.6 }}>
-                                  Once built, this legend is reused automatically for <strong>every drawing you verify in this project</strong> — no need to re-upload it per drawing. AI accuracy on tag and symbol recognition improves significantly once a project-specific legend is in place.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={{ 
-                            padding: '10px 12px', 
-                            background: 'rgba(245,158,11,0.06)', 
-                            borderRadius: '8px',
-                            border: '1px solid rgba(245,158,11,0.2)'
-                          }}>
-                            <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, lineHeight: 1.5 }}>
-                              <strong style={{ color: COLOR_WARNING }}>⚠️ Optional but recommended:</strong> Skipping this step still works — the AI falls back to standard ISA-5.1 symbol knowledge. Rebuilding the legend later overwrites the previous knowledge for this project.
-                            </p>
-                          </div>
-                        </div>
-                        )}
-                      </div>
-
-                      {/* Step 4: Reference Files (Optional) - DETAILED */}
-                      <div style={{
-                        marginBottom: '20px',
-                        border: '2px solid rgba(236,72,153,0.2)',
-                        borderRadius: '12px',
-                        overflow: 'hidden',
-                        transition: 'all 300ms ease'
-                      }}>
-                        <div 
-                          onClick={() => toggleStep('step4')}
-                          style={{
-                            background: 'linear-gradient(135deg, rgba(236,72,153,0.12) 0%, rgba(219,39,119,0.08) 100%)',
-                            padding: '14px 16px',
-                            borderBottom: expandedSteps.step4 ? '1px solid rgba(236,72,153,0.2)' : 'none',
-                            cursor: 'pointer',
-                            transition: 'all 200ms ease'
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(236,72,153,0.18) 0%, rgba(219,39,119,0.14) 100%)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(236,72,153,0.12) 0%, rgba(219,39,119,0.08) 100%)'}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{
-                              width: '36px',
-                              height: '36px',
-                              borderRadius: '10px',
-                              background: 'linear-gradient(135deg, #ec4899, #db2777)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '1rem',
-                              fontWeight: 700,
-                              color: 'white',
-                              boxShadow: '0 4px 12px rgba(236,72,153,0.3)'
-                            }}>4</div>
-                            <div style={{ flex: 1 }}>
-                              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
-                                Reference Files (Optional)
-                              </h4>
-                              <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '2px 0 0' }}>
-                                Cross-check tags against your master registers
-                              </p>
-                            </div>
-                            {expandedSteps.step4 ? (
-                              <ChevronUp style={{ width: '20px', height: '20px', color: '#ec4899', transition: 'transform 200ms ease' }} />
-                            ) : (
-                              <ChevronDown style={{ width: '20px', height: '20px', color: '#ec4899', transition: 'transform 200ms ease' }} />
-                            )}
-                          </div>
-                        </div>
-
-                        {expandedSteps.step4 && (
-                          <div style={{ padding: '16px', background: 'white', animation: 'fadeIn 300ms ease' }}>
-                          <div style={{ marginBottom: '14px' }}>
-                            <h5 style={{ fontSize: '0.85rem', fontWeight: 600, color: COLOR_TEXT_PRIMARY, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontSize: '1rem' }}>📚</span> Optional Cross-Reference Uploads
-                            </h5>
-                            <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '0 0 10px', lineHeight: 1.6 }}>
-                              Upload any of these master registers to let the AI cross-check tags found on the drawing against your project's source-of-truth data:
-                            </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                              <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)' }}>
-                                <strong style={{ fontSize: '0.8rem', color: COLOR_TEXT_PRIMARY }}>📋 Line List</strong>
-                                <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '4px 0 0', lineHeight: 1.5 }}>Piping line list — cross-checks line numbers, sizes and specs against the drawing</p>
-                              </div>
-                              <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(147,51,234,0.06)', border: '1px solid rgba(147,51,234,0.2)' }}>
-                                <strong style={{ fontSize: '0.8rem', color: COLOR_TEXT_PRIMARY }}>⚙️ Equipment List</strong>
-                                <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '4px 0 0', lineHeight: 1.5 }}>Equipment register — verifies every equipment tag on the drawing is registered and correctly named</p>
-                              </div>
-                              <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                <strong style={{ fontSize: '0.8rem', color: COLOR_TEXT_PRIMARY }}>🎚️ Instrument Index</strong>
-                                <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '4px 0 0', lineHeight: 1.5 }}>Instrument index — flags instrument tags on the drawing missing from (or mismatched with) the index</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={{ 
-                            padding: '10px 12px', 
-                            background: 'rgba(16,185,129,0.06)', 
-                            borderRadius: '8px',
-                            border: '1px solid rgba(16,185,129,0.2)'
-                          }}>
-                            <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, lineHeight: 1.5 }}>
-                              <strong style={{ color: COLOR_SUCCESS }}>✅ Fully optional:</strong> Skip this step for a standalone drawing quality check. Upload any combination of the three registers at any time — you don't need all three, and you can add them later before re-running verification.
-                            </p>
-                          </div>
-                        </div>
-                        )}
-                      </div>
-
-                      {/* Step 5: Wrench DMS (Optional) - DETAILED */}
-                      <div style={{
-                        marginBottom: '20px',
-                        border: '2px solid rgba(14,165,233,0.2)',
-                        borderRadius: '12px',
-                        overflow: 'hidden',
-                        transition: 'all 300ms ease'
-                      }}>
-                        <div 
-                          onClick={() => toggleStep('step5')}
-                          style={{
-                            background: 'linear-gradient(135deg, rgba(14,165,233,0.12) 0%, rgba(2,132,199,0.08) 100%)',
-                            padding: '14px 16px',
-                            borderBottom: expandedSteps.step5 ? '1px solid rgba(14,165,233,0.2)' : 'none',
-                            cursor: 'pointer',
-                            transition: 'all 200ms ease'
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(14,165,233,0.18) 0%, rgba(2,132,199,0.14) 100%)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(14,165,233,0.12) 0%, rgba(2,132,199,0.08) 100%)'}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{
-                              width: '36px',
-                              height: '36px',
-                              borderRadius: '10px',
-                              background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '1rem',
-                              fontWeight: 700,
-                              color: 'white',
-                              boxShadow: '0 4px 12px rgba(14,165,233,0.3)'
-                            }}>5</div>
-                            <div style={{ flex: 1 }}>
-                              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
-                                Wrench DMS (Optional)
-                              </h4>
-                              <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '2px 0 0' }}>
-                                Let AI find & fetch the right P&ID straight from Wrench
-                              </p>
-                            </div>
-                            {expandedSteps.step5 ? (
-                              <ChevronUp style={{ width: '20px', height: '20px', color: '#0ea5e9', transition: 'transform 200ms ease' }} />
-                            ) : (
-                              <ChevronDown style={{ width: '20px', height: '20px', color: '#0ea5e9', transition: 'transform 200ms ease' }} />
-                            )}
-                          </div>
-                        </div>
-
-                        {expandedSteps.step5 && (
-                          <div style={{ padding: '16px', background: 'white', animation: 'fadeIn 300ms ease' }}>
-                          <div style={{ marginBottom: '14px' }}>
-                            <h5 style={{ fontSize: '0.85rem', fontWeight: 600, color: COLOR_TEXT_PRIMARY, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontSize: '1rem' }}>🗂️</span> AI Document Assist (Wrench)
-                            </h5>
-                            <ol style={{ margin: 0, paddingLeft: '24px', fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, lineHeight: 1.8 }}>
-                              <li><strong>Enable "AI Document Assist"</strong> in the upload panel (off by default)</li>
-                              <li><strong>Pick or search the linked Wrench project</strong> from the dropdown</li>
-                              <li><strong>Review the ranked recommendations</strong> — RAD AI scores candidate P&ID PDFs from that Wrench transmittal</li>
-                              <li><strong>Click a recommendation</strong> to download it straight from Wrench and load it into the upload zone, ready to verify</li>
-                            </ol>
-                          </div>
-
-                          <div style={{ 
-                            padding: '10px 12px', 
-                            background: 'rgba(245,158,11,0.06)', 
-                            borderRadius: '8px',
-                            border: '1px solid rgba(245,158,11,0.2)'
-                          }}>
-                            <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, lineHeight: 1.5 }}>
-                              <strong style={{ color: COLOR_WARNING }}>⚠️ Requires setup:</strong> This panel only appears when Wrench integration is configured for your organization (Admin → Wrench). If it isn't configured, simply upload your P&ID file manually in Step 2.
-                            </p>
-                          </div>
-                        </div>
-                        )}
-                      </div>
-
-                      {/* ═══ STAGE 2 BANNER: AI Processing ═══ */}
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                        padding: '10px 14px', marginBottom: '14px',
-                        borderRadius: '10px',
-                        background: `linear-gradient(135deg, ${WORKFLOW_STAGE_GROUPS[1].colorFrom} 0%, ${WORKFLOW_STAGE_GROUPS[1].colorTo} 100%)`,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'white', letterSpacing: '0.05em' }}>
-                          {WORKFLOW_STAGE_GROUPS[1].label}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.85)' }}>
-                          {WORKFLOW_STAGE_GROUPS[1].description}
-                        </span>
-                      </div>
-
-                      {/* Step 6: Run Verification - DETAILED */}
-                      <div style={{
-                        marginBottom: '20px',
-                        border: '2px solid rgba(239,68,68,0.2)',
-                        borderRadius: '12px',
-                        overflow: 'hidden',
-                        transition: 'all 300ms ease'
-                      }}>
-                        <div 
-                          onClick={() => toggleStep('step6')}
-                          style={{
-                            background: 'linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(220,38,38,0.08) 100%)',
-                            padding: '14px 16px',
-                            borderBottom: expandedSteps.step6 ? '1px solid rgba(239,68,68,0.2)' : 'none',
-                            cursor: 'pointer',
-                            transition: 'all 200ms ease'
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.18) 0%, rgba(220,38,38,0.14) 100%)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(220,38,38,0.08) 100%)'}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{
-                              width: '36px',
-                              height: '36px',
-                              borderRadius: '10px',
-                              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '1rem',
-                              fontWeight: 700,
-                              color: 'white',
-                              boxShadow: '0 4px 12px rgba(239,68,68,0.3)'
-                            }}>6</div>
-                            <div style={{ flex: 1 }}>
-                              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
-                                Run Verification
-                              </h4>
-                              <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '2px 0 0' }}>
-                                Kick off analysis and track live progress
-                              </p>
-                            </div>
-                            {expandedSteps.step6 ? (
-                              <ChevronUp style={{ width: '20px', height: '20px', color: '#ef4444', transition: 'transform 200ms ease' }} />
-                            ) : (
-                              <ChevronDown style={{ width: '20px', height: '20px', color: '#ef4444', transition: 'transform 200ms ease' }} />
-                            )}
-                          </div>
-                        </div>
-
-                        {expandedSteps.step6 && (
-                          <div style={{ padding: '16px', background: 'white', animation: 'fadeIn 300ms ease' }}>
-                          <div style={{ marginBottom: '14px' }}>
-                            <h5 style={{ fontSize: '0.85rem', fontWeight: 600, color: COLOR_TEXT_PRIMARY, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontSize: '1rem' }}>▶️</span> Starting the Analysis
-                            </h5>
-                            <ol style={{ margin: 0, paddingLeft: '24px', fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, lineHeight: 1.8 }}>
-                              <li><strong>Click "Start Analysis"</strong> once your P&ID (and any optional legend / reference files) are ready</li>
-                              <li><strong>The file uploads</strong> and the document is queued on the server for processing</li>
-                              <li><strong>Live status updates</strong> automatically — the page polls the server every few seconds and shows elapsed time</li>
-                              <li><strong>Feel free to navigate away</strong> — processing continues server-side; check the History panel to pick up where you left off</li>
-                            </ol>
-                          </div>
-
-                          <div style={{ 
-                            padding: '12px', 
-                            background: 'rgba(239,68,68,0.06)', 
-                            borderRadius: '8px',
-                            border: '1px solid rgba(239,68,68,0.2)',
-                            marginBottom: '12px'
-                          }}>
-                            <strong style={{ fontSize: '0.8rem', color: COLOR_TEXT_PRIMARY, display: 'block', marginBottom: '6px' }}>🔁 If something goes wrong:</strong>
-                            <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, lineHeight: 1.6 }}>
-                              A failed or stuck document doesn't require starting over. Open <strong>History</strong> and click <strong>"Re-check"</strong> on that document — it re-queues the same uploaded file for processing without repeating Steps 1-5.
-                            </p>
-                          </div>
-
-                          <div style={{ 
-                            padding: '10px 12px', 
-                            background: 'rgba(59,130,246,0.06)', 
-                            borderRadius: '8px',
-                            border: '1px solid rgba(59,130,246,0.2)'
-                          }}>
-                            <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, lineHeight: 1.5 }}>
-                              <strong style={{ color: COLOR_PRIMARY }}>ℹ️ Typical duration:</strong> A few minutes depending on drawing size and complexity. Very large or multi-sheet drawings may take longer — the status will always keep updating.
-                            </p>
-                          </div>
-                        </div>
-                        )}
-                      </div>
-
-                      {/* Step 7: AI Analysis - 7-STAGE PIPELINE */}
+                      {/* Step 3: AI Analysis - DEEP DIVE */}
                       <div style={{
                         marginBottom: '20px',
                         border: '2px solid rgba(245,158,11,0.2)',
@@ -4919,11 +4423,11 @@ const PIDVerificationV2 = () => {
                         transition: 'all 300ms ease'
                       }}>
                         <div 
-                          onClick={() => toggleStep('step7')}
+                          onClick={() => toggleStep('step3')}
                           style={{
                             background: 'linear-gradient(135deg, rgba(245,158,11,0.12) 0%, rgba(234,88,12,0.08) 100%)',
                             padding: '14px 16px',
-                            borderBottom: expandedSteps.step7 ? '1px solid rgba(245,158,11,0.2)' : 'none',
+                            borderBottom: expandedSteps.step3 ? '1px solid rgba(245,158,11,0.2)' : 'none',
                             cursor: 'pointer',
                             transition: 'all 200ms ease'
                           }}
@@ -4943,16 +4447,16 @@ const PIDVerificationV2 = () => {
                               fontWeight: 700,
                               color: 'white',
                               boxShadow: '0 4px 12px rgba(245,158,11,0.3)'
-                            }}>7</div>
+                            }}>3</div>
                             <div style={{ flex: 1 }}>
                               <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
-                                AI Analysis — 7-Stage Pipeline
+                                AI Analysis - Deep Quality Check
                               </h4>
                               <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '2px 0 0' }}>
                                 Automated verification with 20+ engineering rules
                               </p>
                             </div>
-                            {expandedSteps.step7 ? (
+                            {expandedSteps.step3 ? (
                               <ChevronUp style={{ width: '20px', height: '20px', color: '#f59e0b', transition: 'transform 200ms ease' }} />
                             ) : (
                               <ChevronDown style={{ width: '20px', height: '20px', color: '#f59e0b', transition: 'transform 200ms ease' }} />
@@ -4960,51 +4464,46 @@ const PIDVerificationV2 = () => {
                           </div>
                         </div>
                         
-                        {expandedSteps.step7 && (
+                        {expandedSteps.step3 && (
                           <div style={{ padding: '16px', background: 'white', animation: 'fadeIn 300ms ease' }}>
                           <div style={{ marginBottom: '14px' }}>
                             <h5 style={{ fontSize: '0.85rem', fontWeight: 600, color: COLOR_TEXT_PRIMARY, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <span style={{ fontSize: '1rem' }}>🤖</span> What Happens During Analysis
                             </h5>
                             <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: '0 0 12px', lineHeight: 1.6 }}>
-                              Once you click "Start Analysis" in Step 6, our AI engine runs a 7-stage verification pipeline. This typically takes a few minutes depending on drawing complexity. Here's the detailed breakdown:
+                              Once you click "Start Analysis", our AI engine performs a comprehensive 5-phase verification process. This typically takes 2-5 minutes depending on drawing complexity. Here's the detailed breakdown:
                             </p>
                             
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
                               {[
                                 { 
-                                  phase: 'Stage 1: OCR Text Extraction',
-                                  desc: 'Multi-engine OCR (Tesseract + Google Vision) reads every tag, label and note on the drawing',
+                                  phase: 'Phase 1: Document Processing',
+                                  desc: 'PDF/DWG parsing, image extraction, coordinate mapping',
+                                  time: '~30 sec',
                                   color: '#3b82f6'
                                 },
                                 { 
-                                  phase: 'Stage 2: Tag Pattern Recognition',
-                                  desc: 'Identifies instrument, equipment and line tags using ISA-5.1 and project-specific patterns',
+                                  phase: 'Phase 2: OCR & Text Extraction',
+                                  desc: 'Multi-engine OCR (Tesseract + Google Vision), text recognition, tag identification',
+                                  time: '~1 min',
                                   color: '#8b5cf6'
                                 },
                                 { 
-                                  phase: 'Stage 3: Connectivity Graph Build',
-                                  desc: 'Maps how lines, valves and equipment connect across the drawing',
-                                  color: '#ec4899'
-                                },
-                                { 
-                                  phase: 'Stage 4: Valve & Equipment Checks',
-                                  desc: 'Validates valve placement, orphaned equipment and symbol correctness',
+                                  phase: 'Phase 3: Legend Analysis',
+                                  desc: 'Symbol library creation, abbreviation mapping, instrument prefix detection',
+                                  time: '~30 sec',
                                   color: '#f59e0b'
                                 },
                                 { 
-                                  phase: 'Stage 5: Line Size Validation',
-                                  desc: 'Checks line sizing consistency, reducers and branch logic',
-                                  color: '#14b8a6'
-                                },
-                                { 
-                                  phase: 'Stage 6: Deterministic Rule Engine',
-                                  desc: 'Runs the 20+ quality verification rules across tags, connectivity, sizing and compliance',
+                                  phase: 'Phase 4: Quality Rule Engine',
+                                  desc: '20+ verification rules, connectivity checks, tag validation, compliance scanning',
+                                  time: '~1-2 min',
                                   color: '#10b981'
                                 },
                                 { 
-                                  phase: 'Stage 7: Building Findings Report',
-                                  desc: 'Aggregates findings, classifies severity and positions markers for the results view',
+                                  phase: 'Phase 5: Results Compilation',
+                                  desc: 'Findings aggregation, severity classification, marker positioning, report generation',
+                                  time: '~20 sec',
                                   color: '#6366f1'
                                 }
                               ].map((phase, i) => (
@@ -5029,6 +4528,7 @@ const PIDVerificationV2 = () => {
                                       color: phase.color
                                     }}>{i + 1}</div>
                                     <strong style={{ fontSize: '0.8rem', color: COLOR_TEXT_PRIMARY, flex: 1 }}>{phase.phase}</strong>
+                                    <span style={{ fontSize: '0.7rem', color: COLOR_TEXT_SECONDARY, fontStyle: 'italic' }}>{phase.time}</span>
                                   </div>
                                   <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, paddingLeft: '32px', lineHeight: 1.5 }}>
                                     {phase.desc}
@@ -5101,7 +4601,7 @@ const PIDVerificationV2 = () => {
                               <div>
                                 <strong style={{ fontSize: '0.8rem', color: COLOR_TEXT_PRIMARY, display: 'block', marginBottom: '4px' }}>📊 Real-Time Progress:</strong>
                                 <p style={{ fontSize: '0.75rem', color: COLOR_TEXT_SECONDARY, margin: 0, lineHeight: 1.5 }}>
-                                  Watch the live stage indicator as it moves through all 7 stages. The browser tab stays active — you can work on other tasks while processing continues in the background.
+                                  Watch the progress bar and phase indicators in real-time. You'll see: <strong>Current phase</strong>, <strong>Percentage complete</strong>, <strong>Estimated time remaining</strong>, and <strong>Items processed</strong>. The browser tab stays active - you can work on other tasks.
                                 </p>
                               </div>
                             </div>
@@ -5110,23 +4610,7 @@ const PIDVerificationV2 = () => {
                         )}
                       </div>
 
-                      {/* ═══ STAGE 3 BANNER: Results & Export ═══ */}
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                        padding: '10px 14px', marginBottom: '14px',
-                        borderRadius: '10px',
-                        background: `linear-gradient(135deg, ${WORKFLOW_STAGE_GROUPS[2].colorFrom} 0%, ${WORKFLOW_STAGE_GROUPS[2].colorTo} 100%)`,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'white', letterSpacing: '0.05em' }}>
-                          {WORKFLOW_STAGE_GROUPS[2].label}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.85)' }}>
-                          {WORKFLOW_STAGE_GROUPS[2].description}
-                        </span>
-                      </div>
-
-                      {/* Step 8: Review Results - DETAILED */}
+                      {/* Step 4: Review Results - DETAILED */}
                       <div style={{
                         marginBottom: '20px',
                         border: '2px solid rgba(16,185,129,0.2)',
@@ -5135,11 +4619,11 @@ const PIDVerificationV2 = () => {
                         transition: 'all 300ms ease'
                       }}>
                         <div 
-                          onClick={() => toggleStep('step8')}
+                          onClick={() => toggleStep('step4')}
                           style={{
                             background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(52,211,153,0.08) 100%)',
                             padding: '14px 16px',
-                            borderBottom: expandedSteps.step8 ? '1px solid rgba(16,185,129,0.2)' : 'none',
+                            borderBottom: expandedSteps.step4 ? '1px solid rgba(16,185,129,0.2)' : 'none',
                             cursor: 'pointer',
                             transition: 'all 200ms ease'
                           }}
@@ -5159,7 +4643,7 @@ const PIDVerificationV2 = () => {
                               fontWeight: 700,
                               color: 'white',
                               boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
-                            }}>8</div>
+                            }}>4</div>
                             <div style={{ flex: 1 }}>
                               <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
                                 Review Findings & Results
@@ -5168,7 +4652,7 @@ const PIDVerificationV2 = () => {
                                 Interactive analysis with visual markers
                               </p>
                             </div>
-                            {expandedSteps.step8 ? (
+                            {expandedSteps.step4 ? (
                               <ChevronUp style={{ width: '20px', height: '20px', color: '#10b981', transition: 'transform 200ms ease' }} />
                             ) : (
                               <ChevronDown style={{ width: '20px', height: '20px', color: '#10b981', transition: 'transform 200ms ease' }} />
@@ -5176,7 +4660,7 @@ const PIDVerificationV2 = () => {
                           </div>
                         </div>
                         
-                        {expandedSteps.step8 && (
+                        {expandedSteps.step4 && (
                           <div style={{ padding: '16px', background: 'white', animation: 'fadeIn 300ms ease' }}>
                           <div style={{ marginBottom: '14px' }}>
                             <h5 style={{ fontSize: '0.85rem', fontWeight: 600, color: COLOR_TEXT_PRIMARY, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -5278,7 +4762,7 @@ const PIDVerificationV2 = () => {
                         )}
                       </div>
 
-                      {/* Step 9: Export Report - DETAILED */}
+                      {/* Step 5: Export Report - DETAILED */}
                       <div style={{
                         marginBottom: '8px',
                         border: '2px solid rgba(99,102,241,0.2)',
@@ -5287,11 +4771,11 @@ const PIDVerificationV2 = () => {
                         transition: 'all 300ms ease'
                       }}>
                         <div 
-                          onClick={() => toggleStep('step9')}
+                          onClick={() => toggleStep('step5')}
                           style={{
                             background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(59,130,246,0.08) 100%)',
                             padding: '14px 16px',
-                            borderBottom: expandedSteps.step9 ? '1px solid rgba(99,102,241,0.2)' : 'none',
+                            borderBottom: expandedSteps.step5 ? '1px solid rgba(99,102,241,0.2)' : 'none',
                             cursor: 'pointer',
                             transition: 'all 200ms ease'
                           }}
@@ -5311,7 +4795,7 @@ const PIDVerificationV2 = () => {
                               fontWeight: 700,
                               color: 'white',
                               boxShadow: '0 4px 12px rgba(99,102,241,0.3)'
-                            }}>9</div>
+                            }}>5</div>
                             <div style={{ flex: 1 }}>
                               <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: COLOR_TEXT_PRIMARY, margin: 0 }}>
                                 Export Quality Report
@@ -5320,7 +4804,7 @@ const PIDVerificationV2 = () => {
                                 Professional documentation for your team
                               </p>
                             </div>
-                            {expandedSteps.step9 ? (
+                            {expandedSteps.step5 ? (
                               <ChevronUp style={{ width: '20px', height: '20px', color: '#6366f1', transition: 'transform 200ms ease' }} />
                             ) : (
                               <ChevronDown style={{ width: '20px', height: '20px', color: '#6366f1', transition: 'transform 200ms ease' }} />
@@ -5328,7 +4812,7 @@ const PIDVerificationV2 = () => {
                           </div>
                         </div>
                         
-                        {expandedSteps.step9 && (
+                        {expandedSteps.step5 && (
                           <div style={{ padding: '16px', background: 'white', animation: 'fadeIn 300ms ease' }}>
                           <div style={{ marginBottom: '14px' }}>
                             <h5 style={{ fontSize: '0.85rem', fontWeight: 600, color: COLOR_TEXT_PRIMARY, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -5735,22 +5219,22 @@ const PIDVerificationV2 = () => {
                 fontSize: '0.875rem',
                 fontWeight: BUTTON_FONT_WEIGHT,
                 color: 'white',
-                background: PROJECT_ACCENT_GRADIENT,
+                background: BUTTON_PRIMARY_BG,
                 border: 'none',
                 borderRadius: BUTTON_BORDER_RADIUS,
                 cursor: 'pointer',
-                boxShadow: PROJECT_ACCENT_SHADOW,
+                boxShadow: BUTTON_SHADOW,
                 transition: `all ${ANIMATION_HOVER_DURATION} cubic-bezier(0.4, 0, 0.2, 1)`,
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = PROJECT_ACCENT_HOVER_GRADIENT;
+                e.currentTarget.style.background = BUTTON_PRIMARY_HOVER_BG;
                 e.currentTarget.style.transform = `translateY(${BUTTON_HOVER_LIFT})`;
-                e.currentTarget.style.boxShadow = PROJECT_ACCENT_SHADOW_HOVER;
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(59,130,246,0.35)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = PROJECT_ACCENT_GRADIENT;
+                e.currentTarget.style.background = BUTTON_PRIMARY_BG;
                 e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = PROJECT_ACCENT_SHADOW;
+                e.currentTarget.style.boxShadow = BUTTON_SHADOW;
               }}
             >
               <FolderPlus style={{ width: `${BUTTON_ICON_SIZE}px`, height: `${BUTTON_ICON_SIZE}px` }} />
@@ -5827,22 +5311,22 @@ const PIDVerificationV2 = () => {
                   fontSize: '0.95rem',
                   fontWeight: BUTTON_FONT_WEIGHT,
                   color: 'white',
-                  background: PROJECT_ACCENT_GRADIENT,
+                  background: BUTTON_PRIMARY_BG,
                   border: 'none',
                   borderRadius: BUTTON_BORDER_RADIUS,
                   cursor: 'pointer',
-                  boxShadow: PROJECT_ACCENT_SHADOW,
+                  boxShadow: BUTTON_SHADOW,
                   transition: `all ${ANIMATION_HOVER_DURATION} cubic-bezier(0.4, 0, 0.2, 1)`,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = PROJECT_ACCENT_HOVER_GRADIENT;
+                  e.currentTarget.style.background = BUTTON_PRIMARY_HOVER_BG;
                   e.currentTarget.style.transform = `translateY(${BUTTON_HOVER_LIFT})`;
-                  e.currentTarget.style.boxShadow = PROJECT_ACCENT_SHADOW_HOVER;
+                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(59,130,246,0.35)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = PROJECT_ACCENT_GRADIENT;
+                  e.currentTarget.style.background = BUTTON_PRIMARY_BG;
                   e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = PROJECT_ACCENT_SHADOW;
+                  e.currentTarget.style.boxShadow = BUTTON_SHADOW;
                 }}
               >
                 <FolderPlus style={{ width: '20px', height: '20px' }} />
@@ -5932,11 +5416,11 @@ const PIDVerificationV2 = () => {
                       transition: `all ${CARD_TRANSITION_SPEED} cubic-bezier(0.4, 0, 0.2, 1)`,
                       overflow: 'hidden',
                       animation: `scaleIn ${ANIMATION_ENTRANCE_DURATION} ease-out ${0.2 + (idx * ANIMATION_ENTRANCE_DELAY)}s both`,
-                      backgroundImage: `linear-gradient(135deg, rgba(13,148,136,0.03) 0%, rgba(6,95,70,0.02) 100%)`
+                      backgroundImage: `linear-gradient(135deg, rgba(99,102,241,0.03) 0%, rgba(139,92,246,0.02) 100%)`
                     }}
                     onMouseEnter={(e) => {
                       const card = e.currentTarget;
-                      card.style.borderImage = 'linear-gradient(135deg, #14b8a6, #0d9488) 1';
+                      card.style.borderImage = 'linear-gradient(135deg, #6366f1, #8b5cf6) 1';
                       card.style.boxShadow = CARD_SHADOW_HOVER;
                       card.style.transform = `translateY(${CARD_HOVER_LIFT}) scale(${CARD_HOVER_SCALE}) rotateX(2deg)`;
                       const icon = card.querySelector('.project-icon');
@@ -5966,7 +5450,7 @@ const PIDVerificationV2 = () => {
                       style={{
                         position: 'absolute',
                         inset: '-2px',
-                        background: PROJECT_ACCENT_GRADIENT,
+                        background: GRADIENT_PRIMARY,
                         borderRadius: CARD_BORDER_RADIUS,
                         opacity: 0,
                         zIndex: -1,
@@ -5979,7 +5463,7 @@ const PIDVerificationV2 = () => {
                     {/* Top Gradient Accent Bar */}
                     <div style={{
                       height: '6px',
-                      background: PROJECT_ACCENT_GRADIENT,
+                      background: GRADIENT_PRIMARY,
                       borderRadius: `${CARD_BORDER_RADIUS} ${CARD_BORDER_RADIUS} 0 0`,
                       position: 'relative',
                       overflow: 'hidden'
@@ -6011,12 +5495,12 @@ const PIDVerificationV2 = () => {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            background: PROJECT_ACCENT_ICON_BG,
-                            border: `2px solid rgba(13,148,136,0.2)`,
+                            background: ICON_BG_PRIMARY,
+                            border: `2px solid rgba(99,102,241,0.2)`,
                             transition: `all ${CARD_TRANSITION_SPEED} cubic-bezier(0.34, 1.56, 0.64, 1)`,
                             position: 'relative',
                             overflow: 'hidden',
-                            boxShadow: PROJECT_ACCENT_SHADOW
+                            boxShadow: SHADOW_COLORED_PRIMARY
                           }}>
                           {/* Icon Shine Effect */}
                           <div style={{
@@ -6028,7 +5512,7 @@ const PIDVerificationV2 = () => {
                           <Layers style={{ 
                             width: `${CARD_ICON_SIZE * 0.5}px`, 
                             height: `${CARD_ICON_SIZE * 0.5}px`,
-                            color: PROJECT_ACCENT_COLOR,
+                            color: COLOR_PRIMARY,
                             position: 'relative',
                             zIndex: 1
                           }} />
@@ -6044,14 +5528,14 @@ const PIDVerificationV2 = () => {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            background: 'rgba(13,148,136,0.08)',
+                            background: 'rgba(99,102,241,0.08)',
                             transition: `all ${CARD_TRANSITION_SPEED} ease`
                           }}
                         >
                           <ChevronRight style={{
                             width: '18px',
                             height: '18px',
-                            color: PROJECT_ACCENT_COLOR
+                            color: COLOR_PRIMARY
                           }} />
                         </div>
                       </div>
@@ -6184,9 +5668,9 @@ const PIDVerificationV2 = () => {
                             padding: '12px 16px',
                             fontSize: '0.85rem',
                             fontWeight: 600,
-                            color: PROJECT_ACCENT_COLOR,
-                            background: 'linear-gradient(135deg, rgba(13,148,136,0.08) 0%, rgba(6,95,70,0.06) 100%)',
-                            border: `2px solid rgba(13,148,136,0.2)`,
+                            color: COLOR_PRIMARY,
+                            background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.06) 100%)',
+                            border: `2px solid rgba(99,102,241,0.2)`,
                             borderRadius: '12px',
                             cursor: 'pointer',
                             transition: `all ${ANIMATION_MICRO_INTERACTION} ${ANIMATION_PAGE_TRANSITION}`,
@@ -6194,14 +5678,14 @@ const PIDVerificationV2 = () => {
                             overflow: 'hidden'
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(13,148,136,0.15) 0%, rgba(6,95,70,0.12) 100%)';
-                            e.currentTarget.style.borderColor = PROJECT_ACCENT_COLOR;
+                            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.12) 100%)';
+                            e.currentTarget.style.borderColor = COLOR_PRIMARY;
                             e.currentTarget.style.transform = 'translateY(-2px)';
-                            e.currentTarget.style.boxShadow = PROJECT_ACCENT_SHADOW;
+                            e.currentTarget.style.boxShadow = SHADOW_COLORED_PRIMARY;
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(13,148,136,0.08) 0%, rgba(6,95,70,0.06) 100%)';
-                            e.currentTarget.style.borderColor = 'rgba(13,148,136,0.2)';
+                            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.06) 100%)';
+                            e.currentTarget.style.borderColor = 'rgba(99,102,241,0.2)';
                             e.currentTarget.style.transform = 'translateY(0)';
                             e.currentTarget.style.boxShadow = 'none';
                           }}
@@ -7458,8 +6942,8 @@ const PIDVerificationV2 = () => {
                               <FileText className="w-4 h-4 text-white" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-bold text-slate-900 truncate" title={drawing.drawing_id}>
-                                {getDrawingLabel(drawing.drawing_id)}
+                              <p className="text-xs font-bold text-slate-900 truncate">
+                                {drawing.drawing_id}
                               </p>
                               <div className="flex items-center gap-2 mt-1">
                                 <span className={`text-xs font-medium ${
@@ -7492,10 +6976,11 @@ const PIDVerificationV2 = () => {
                     <Activity className="w-4 h-4 text-green-700" />
                     <h4 className="text-xs font-bold text-green-900 uppercase tracking-wider">Quick Stats</h4>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {[
                       { label: 'Total', value: totalIssues, color: '#10b981' },
                       { label: 'Critical', value: criticalCount, color: '#ef4444' },
+                      { label: 'Major', value: majorCount, color: '#f59e0b' },
                       { label: 'Minor', value: totalIssues - criticalCount - majorCount, color: '#3b82f6' },
                     ].map(stat => (
                       <div key={stat.label} className="text-center p-2 rounded-lg"
@@ -7541,7 +7026,9 @@ const PIDVerificationV2 = () => {
                   {/* Stat chips */}
                   {[
                     { v: results.drawings?.length ?? 0, label:'Drawings', color:'text-blue-600', bg:'rgba(59,130,246,0.08)', border:'rgba(59,130,246,0.18)' },
+                    { v: totalIssues, label:'Issues', color: totalIssues > 0 ? 'text-red-600' : 'text-green-600', bg: totalIssues > 0 ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)', border: totalIssues > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(34,197,94,0.18)' },
                     { v: criticalCount, label:'Critical', color:'text-red-700', bg:'rgba(239,68,68,0.08)', border:'rgba(239,68,68,0.15)' },
+                    { v: majorCount, label:'Major', color:'text-orange-600', bg:'rgba(234,88,12,0.08)', border:'rgba(234,88,12,0.15)' },
                     { v: (results.drawings ?? []).reduce((s,d) => s + (d.overrides_applied ?? 0), 0), label:'Overridden', color:'text-slate-600', bg:'rgba(100,116,139,0.08)', border:'rgba(100,116,139,0.15)' },
                   ].map(chip => (
                     <div key={chip.label} className="rounded-xl px-3 py-2 text-center flex-shrink-0"
@@ -7570,68 +7057,29 @@ const PIDVerificationV2 = () => {
                         : <><RefreshCw className="w-3.5 h-3.5" /> Re-check</>
                       }
                     </button>
-                    {/* ── Export group — visually grouped + status-aware (soft-coded via
-                        EXPORT_READY / pendingCount). Each button shows a live badge with
-                        the current Critical-severity finding count (criticalCount) — the
-                        exports only contain Critical findings — and is disabled with an
-                        explanatory tooltip while review overrides are unsaved (the
-                        exported files/report would not yet reflect those pending edits). */}
-                    <div className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-2xl border border-slate-200 bg-slate-50/70">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex-shrink-0">Export</span>
-                      <button onClick={() => navigate(`/engineering/process/pid-verification-v2/report/${documentId}`)}
-                        disabled={!EXPORT_READY}
-                        title={!EXPORT_READY
-                          ? `Save your ${pendingCount} pending review change${pendingCount !== 1 ? 's' : ''} first so the report reflects your latest decisions`
-                          : 'Open the 5-tab comparison report (General / Legend / Line List / Equipment / Instrument)'}
-                        className="relative flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
-                        style={{ background:'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow:'0 3px 10px rgba(79,70,229,0.25)' }}>
-                        <BarChart2 className="w-3.5 h-3.5" />
-                        Full Report
-                        {criticalCount > 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[9px] font-black rounded-full bg-white text-indigo-600 border border-indigo-200 shadow-sm">{criticalCount}</span>
-                        )}
-                      </button>
-                      <button onClick={downloadExcel} disabled={downloadingXlsx || !EXPORT_READY}
-                        title={!EXPORT_READY
-                          ? `Save your ${pendingCount} pending review change${pendingCount !== 1 ? 's' : ''} first so the export reflects your latest decisions`
-                          : 'Download findings as an Excel workbook'}
-                        className="relative flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
-                        style={{ background:'linear-gradient(135deg,#059669,#10b981)', boxShadow:'0 3px 10px rgba(16,185,129,0.25)' }}>
-                        {downloadingXlsx ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                        Excel
-                        {criticalCount > 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[9px] font-black rounded-full bg-white text-emerald-600 border border-emerald-200 shadow-sm">{criticalCount}</span>
-                        )}
-                      </button>
-                      <button onClick={downloadPDF} disabled={downloadingPdf || !EXPORT_READY}
-                        title={!EXPORT_READY
-                          ? `Save your ${pendingCount} pending review change${pendingCount !== 1 ? 's' : ''} first so the export reflects your latest decisions`
-                          : 'Download the annotated PDF report'}
-                        className="relative flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
-                        style={{ background:'linear-gradient(135deg,#dc2626,#ef4444)', boxShadow:'0 3px 10px rgba(239,68,68,0.25)' }}>
-                        {downloadingPdf ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                        PDF
-                        {criticalCount > 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[9px] font-black rounded-full bg-white text-red-600 border border-red-200 shadow-sm">{criticalCount}</span>
-                        )}
-                      </button>
-                    </div>
+                    <button onClick={() => navigate(`/engineering/process/pid-verification-v2/report/${documentId}`)}
+                      title="Open the 5-tab comparison report (General / Legend / Line List / Equipment / Instrument)"
+                      className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px"
+                      style={{ background:'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow:'0 3px 10px rgba(79,70,229,0.25)' }}>
+                      <BarChart2 className="w-3.5 h-3.5" />
+                      Full Report
+                    </button>
+                    <button onClick={downloadExcel} disabled={downloadingXlsx}
+                      className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-60"
+                      style={{ background:'linear-gradient(135deg,#059669,#10b981)', boxShadow:'0 3px 10px rgba(16,185,129,0.25)' }}>
+                      {downloadingXlsx ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      Excel
+                    </button>
+                    <button onClick={downloadPDF} disabled={downloadingPdf}
+                      className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-60"
+                      style={{ background:'linear-gradient(135deg,#dc2626,#ef4444)', boxShadow:'0 3px 10px rgba(239,68,68,0.25)' }}>
+                      {downloadingPdf ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      PDF
+                    </button>
                     <button onClick={() => { resetUpload(); setResults(null); }}
                       className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl transition-all">
                       <RefreshCw className="w-3.5 h-3.5" />New
                     </button>
-                    {/* Critical-only overlay visualisation — soft-coded (OVERLAY_ONLY_CRITICAL),
-                        display-layer only. Major/Minor/Info markers are permanently suppressed
-                        across every Drawing Overlay (Legends, Line List, Equipment, Instrument)
-                        without altering any matching/rule logic. */}
-                    <span
-                      title="This overlay only ever renders Critical severity markers (Major/Minor/Info are suppressed)"
-                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border"
-                      style={{ background:'linear-gradient(135deg,#dc2626,#ef4444)', color:'#fff', border:'1.5px solid #dc2626', boxShadow:'0 3px 10px rgba(220,38,38,0.35)' }}
-                    >
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      Critical Only
-                    </span>
                     <button
                       onClick={toggleFullscreen}
                       title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
@@ -7644,116 +7092,20 @@ const PIDVerificationV2 = () => {
                 </div>
               </div>
 
-              {/* ── Drawing navigator (multi-sheet documents) ──────────────
-                  Soft-coded (DRAWING_NAV_INLINE_LIMIT): <= limit pages render
-                  as a clean horizontally-scrollable pill strip; above it, a
-                  Prev/Next stepper + searchable dropdown replaces the pill
-                  wall so 20-30+ page documents stay usable and professional
-                  (no more raw "uuid-DRAWING-N(count)" text spilling across
-                  multiple rows). */}
-              {results.drawings?.length > 1 && (() => {
-                const drawings   = results.drawings;
-                const curIdx     = Math.max(0, drawings.findIndex(d => d.drawing_id === activeDrawing));
-                const useDropdown = drawings.length > DRAWING_NAV_INLINE_LIMIT;
-                const goTo = (idx) => {
-                  if (idx < 0 || idx >= drawings.length) return;
-                  setActiveDrawing(drawings[idx].drawing_id);
-                };
-
-                if (!useDropdown) {
-                  return (
-                    <div className="flex gap-2 flex-wrap" style={{ animation:'fadeUp 0.5s ease-out 0.12s both' }}>
-                      {drawings.map(d => (
-                        <button key={d.drawing_id} onClick={() => setActiveDrawing(d.drawing_id)}
-                          title={d.drawing_id}
-                          className={`text-sm px-4 py-1.5 rounded-full border font-medium transition-all ${
-                            activeDrawing === d.drawing_id ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'
-                          }`}
-                          style={activeDrawing === d.drawing_id ? { background:'linear-gradient(135deg,#3b82f6,#6366f1)' } : undefined}>
-                          {getDrawingLabel(d.drawing_id)}<span className={`ml-1.5 text-xs font-semibold ${activeDrawing === d.drawing_id ? 'text-blue-200' : 'text-slate-400'}`}>({d.issue_count})</span>
-                        </button>
-                      ))}
-                    </div>
-                  );
-                }
-
-                const q = drawingNavQuery.trim().toLowerCase();
-                const filtered = q
-                  ? drawings.filter(d => getDrawingLabel(d.drawing_id).toLowerCase().includes(q) || d.drawing_id.toLowerCase().includes(q))
-                  : drawings;
-                const activeMeta = drawings[curIdx];
-
-                return (
-                  <div className="relative flex items-center gap-2" style={{ animation:'fadeUp 0.5s ease-out 0.12s both' }}>
-                    <button onClick={() => goTo(curIdx - 1)} disabled={curIdx <= 0}
-                      title="Previous drawing"
-                      className="flex items-center justify-center w-8 h-8 rounded-lg border bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:text-slate-600 transition-all">
-                      <ChevronLeft className="w-4 h-4" />
+              {/* ── Drawing tabs (always visible when multiple drawings) ── */}
+              {results.drawings?.length > 1 && (
+                <div className="flex gap-2 flex-wrap" style={{ animation:'fadeUp 0.5s ease-out 0.12s both' }}>
+                  {results.drawings.map(d => (
+                    <button key={d.drawing_id} onClick={() => setActiveDrawing(d.drawing_id)}
+                      className={`text-sm px-4 py-1.5 rounded-full border font-medium transition-all ${
+                        activeDrawing === d.drawing_id ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'
+                      }`}
+                      style={activeDrawing === d.drawing_id ? { background:'linear-gradient(135deg,#3b82f6,#6366f1)' } : undefined}>
+                      {d.drawing_id}<span className={`ml-1.5 text-xs font-semibold ${activeDrawing === d.drawing_id ? 'text-blue-200' : 'text-slate-400'}`}>({d.issue_count})</span>
                     </button>
-
-                    <button onClick={() => setDrawingNavOpen(v => !v)}
-                      title={activeMeta?.drawing_id}
-                      className="flex items-center gap-2 text-sm font-bold px-3 py-1.5 rounded-lg border transition-all"
-                      style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', color:'#fff', borderColor:'transparent' }}>
-                      <Layers className="w-3.5 h-3.5" />
-                      {getDrawingLabel(activeMeta?.drawing_id)}
-                      <span className="text-blue-200 text-xs font-semibold">
-                        {curIdx + 1} of {drawings.length} · {activeMeta?.issue_count ?? 0} issue{(activeMeta?.issue_count ?? 0) === 1 ? '' : 's'}
-                      </span>
-                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${drawingNavOpen ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    <button onClick={() => goTo(curIdx + 1)} disabled={curIdx >= drawings.length - 1}
-                      title="Next drawing"
-                      className="flex items-center justify-center w-8 h-8 rounded-lg border bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:text-slate-600 transition-all">
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-
-                    {drawingNavOpen && (
-                      <>
-                        {/* Backdrop to close on outside click */}
-                        <div className="fixed inset-0 z-30" onClick={() => setDrawingNavOpen(false)} />
-                        <div className="absolute left-0 top-full mt-2 z-40 rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
-                          style={{ width: '320px' }}>
-                          <div className="p-2 border-b border-slate-100">
-                            <div className="relative">
-                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                              <input
-                                autoFocus
-                                value={drawingNavQuery}
-                                onChange={e => setDrawingNavQuery(e.target.value)}
-                                placeholder={`Search ${drawings.length} drawings…`}
-                                className="w-full pl-8 pr-2 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                              />
-                            </div>
-                          </div>
-                          <div className="max-h-72 overflow-y-auto py-1">
-                            {filtered.length === 0 ? (
-                              <p className="text-xs text-slate-400 text-center py-4">No drawings match “{drawingNavQuery}”</p>
-                            ) : filtered.map(d => {
-                              const idx = drawings.indexOf(d);
-                              const isActive = d.drawing_id === activeDrawing;
-                              return (
-                                <button key={d.drawing_id}
-                                  onClick={() => { goTo(idx); setDrawingNavOpen(false); setDrawingNavQuery(''); }}
-                                  title={d.drawing_id}
-                                  className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-left transition-colors ${
-                                    isActive ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-600 hover:bg-slate-50'
-                                  }`}>
-                                  <span className="truncate">{getDrawingLabel(d.drawing_id)}</span>
-                                  <span className={`flex-shrink-0 font-semibold ${d.issue_count > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                    {d.issue_count}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
+                  ))}
+                </div>
+              )}
 
               {/* ── No drawings warning ─────────────────────────────────── */}
               {results.drawings?.length === 0 && (
@@ -7837,9 +7189,9 @@ const PIDVerificationV2 = () => {
                       {qGrade.letter} · {qScore}%
                     </span>
                     {/* Drawing id */}
-                    <span className="text-xs font-bold text-white/80 truncate flex-1 min-w-0" title={activeDrawing}>{getDrawingLabel(activeDrawing)}</span>
+                    <span className="text-xs font-bold text-white/80 truncate flex-1 min-w-0">{activeDrawing}</span>
                     {/* Severity micro-chips */}
-                    {[{v:criticalCount,c:'#ef4444',l:'C'},{v:_minor,c:'#fbbf24',l:'m'}]
+                    {[{v:criticalCount,c:'#ef4444',l:'C'},{v:majorCount,c:'#f97316',l:'M'},{v:_minor,c:'#fbbf24',l:'m'}]
                       .filter(x => x.v > 0)
                       .map(x => (
                         <span key={x.l} className="text-[10px] font-black px-1.5 py-0.5 rounded flex-shrink-0"
@@ -7929,7 +7281,7 @@ const PIDVerificationV2 = () => {
                       {/* Drawing name + severity bar */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h2 className="text-base font-black text-white truncate" title={activeDrawing}>{getDrawingLabel(activeDrawing)}</h2>
+                          <h2 className="text-base font-black text-white truncate">{activeDrawing}</h2>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
                             style={{ background:`${qGrade.color}25`, color:qGrade.color, border:`1px solid ${qGrade.color}40` }}>
                             {qGrade.label}
@@ -7942,6 +7294,7 @@ const PIDVerificationV2 = () => {
                         {totalIssues > 0 ? (
                           <div className="mt-2.5 flex gap-0.5 rounded-full overflow-hidden h-2" style={{ background:'rgba(255,255,255,0.08)' }}>
                             {criticalCount>0&&<div title={`${criticalCount} Critical`} style={{ flex:criticalCount, background:'#ef4444', borderRadius:'99px 0 0 99px' }}/>}
+                            {majorCount>0  &&<div title={`${majorCount} Major`}    style={{ flex:majorCount,    background:'#f97316' }}/>}
                             {_minor>0      &&<div title={`${_minor} Minor`}        style={{ flex:_minor,        background:'#fbbf24' }}/>}
                             {_overCnt>0    &&<div title={`${_overCnt} Overridden`} style={{ flex:_overCnt,      background:'rgba(148,163,184,0.6)', borderRadius:'0 99px 99px 0' }}/>}
                           </div>
@@ -7951,6 +7304,7 @@ const PIDVerificationV2 = () => {
                         <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
                           {[
                             { v:criticalCount, label:'Critical', color:'#ef4444' },
+                            { v:majorCount,    label:'Major',    color:'#f97316' },
                             { v:_minor,        label:'Minor',    color:'#fbbf24' },
                             { v:_overCnt,      label:'Overridden',color:'rgba(148,163,184,0.7)' },
                           ].map(c=>(
@@ -8224,10 +7578,12 @@ const PIDVerificationV2 = () => {
 
                     {/* ── Overlay legend ── */}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-[10px] text-slate-500">
-                      {/* Severity colours — soft-coded: only Critical is ever rendered on the
-                          overlay (OVERLAY_ONLY_CRITICAL), so Major/Minor/Info are omitted here. */}
+                      {/* Severity colours */}
                       {[
                         { bg:'#dc2626', label:'Critical' },
+                        { bg:'#f97316', label:'Major' },
+                        { bg:'#fbbf24', label:'Minor' },
+                        { bg:'#3b82f6', label:'Info' },
                       ].map(s => (
                         <span key={s.label} className="flex items-center gap-1">
                           <span className="inline-block w-3 h-3 rounded-full border border-white/50 flex-shrink-0" style={{ background:s.bg, boxShadow:'0 1px 3px rgba(0,0,0,0.3)' }} />
@@ -8655,6 +8011,9 @@ const PIDVerificationV2 = () => {
                             <div className="absolute bottom-2 left-2 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-600" style={{ pointerEvents: 'none' }}>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-600 inline-block" />Critical</span>
+                                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />Major</span>
+                                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />Minor</span>
+                                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />Info</span>
                                 <span className="text-slate-400">·</span>
                                 <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-[2px] bg-sky-500" style={{transform:'rotate(45deg)'}} />Dup Line</span>
                                 <span className="inline-flex items-center gap-1"><span className="inline-block w-5 h-2.5 rounded-sm border border-sky-400" style={{background:'rgba(14,165,233,0.18)'}} />Dup Zone</span>
@@ -8822,7 +8181,7 @@ const PIDVerificationV2 = () => {
                       <GitBranch className="w-4 h-4 text-red-600" />
                     </div>
                     <div>
-                      <h2 className="text-sm font-bold text-slate-900" title={activeDrawing}>{getDrawingLabel(activeDrawing)} — Findings</h2>
+                      <h2 className="text-sm font-bold text-slate-900">{activeDrawing} — Findings</h2>
                       <p className="text-xs text-slate-500">{activeDrawingData.issues?.length ?? 0} total findings</p>
                     </div>
                   </div>
@@ -9156,170 +8515,6 @@ const PIDVerificationV2 = () => {
               const lineTags = activeDrawingData?.metadata?.line_tags || [];
               const allIssuesHere = activeDrawingData?.issues || [];
 
-              // ── Soft-coded: which finding categories count as "line" quality issues.
-              // Shared by both the Simple consolidated report below and the Advanced
-              // workspace further down — single source of truth.
-              const isLineFindingShared = (f) =>
-                f.category === 'line_size' || (f.rule_id || '').startsWith('LSZ');
-
-              // ══════════════════════════════════════════════════════════════════════
-              // SIMPLE VIEW (default) — one consolidated Critical-findings report,
-              // P&ID vs Line List, across every drawing in the document. Replaces the
-              // 5-tab Advanced workspace with a single easy-to-read report per the
-              // "critical information only" simplification request. The Advanced
-              // workspace below is fully preserved and reachable via the toggle.
-              // ══════════════════════════════════════════════════════════════════════
-              if (lineListViewMode === 'simple') {
-                const allDrawingsForLines = results?.drawings ?? [];
-
-                // Soft-coded: severity rank used to pick the worst finding per line
-                // and to sort the comparison table (worst-first).
-                const SIMPLE_SEV_RANK = { critical: 3, major: 2, minor: 1, info: 0 };
-
-                // ── Build one comparison row per P&ID line designation ──────────────
-                // This is the actual "P&ID vs Line List" comparison surface: every
-                // pipeline designation read off the drawing (the P&ID side) next to
-                // its QC status (the Line List quality-check side) — laid out as a
-                // single scannable table instead of scattered tabs/cards.
-                const comparisonRows = allDrawingsForLines.flatMap(d => {
-                  const dTags     = d.metadata?.line_tags || [];
-                  const dFindings = (d.issues ?? []).filter(isLineFindingShared);
-                  return dTags.map((lt, idx) => {
-                    const matches = dFindings.filter(f =>
-                      (f.evidence || '').includes(lt.text) || (f.issue_observed || f.issue || '').includes(lt.text)
-                    );
-                    const worst = matches.sort((a, b) =>
-                      (SIMPLE_SEV_RANK[(b.severity||'').toLowerCase()] ?? -1) - (SIMPLE_SEV_RANK[(a.severity||'').toLowerCase()] ?? -1)
-                    )[0];
-                    return {
-                      key: `${d.drawing_id}-${lt.text}-${idx}`,
-                      drawing_id: d.drawing_id,
-                      tag: lt.text || '—',
-                      size: lt.size || '—',
-                      fluid: lt.fluid_code || '—',
-                      severity: (worst?.severity || '').toLowerCase() || null,
-                      issue: worst ? (worst.issue_observed || worst.issue) : null,
-                    };
-                  });
-                });
-
-                // Worst-first sort so critical/major discrepancies surface immediately.
-                const sortedRows = [...comparisonRows].sort((a, b) =>
-                  (SIMPLE_SEV_RANK[b.severity] ?? -1) - (SIMPLE_SEV_RANK[a.severity] ?? -1)
-                );
-
-                const criticalCountAll  = comparisonRows.filter(r => r.severity === 'critical').length;
-                const affectedDrawings  = new Set(comparisonRows.filter(r => r.severity === 'critical').map(r => r.drawing_id)).size;
-                const cleanCountAll     = comparisonRows.filter(r => !r.severity).length;
-
-                // Soft-coded row-status styling — single source of truth for colours.
-                const ROW_STATUS_STYLE = {
-                  critical: { bg: '#fef2f2', text: '#991b1b', dot: '#dc2626', label: 'Critical' },
-                  major:    { bg: '#fff7ed', text: '#9a3412', dot: '#f97316', label: 'Major' },
-                  minor:    { bg: '#fefce8', text: '#854d0e', dot: '#eab308', label: 'Minor' },
-                  clean:    { bg: '#f0fdf4', text: '#166534', dot: '#22c55e', label: 'Match' },
-                };
-
-                return (
-                  <div>
-                    {/* ── Header ── */}
-                    <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100"
-                      style={{ background: 'linear-gradient(to right, rgba(13,148,136,0.05), transparent)' }}>
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow:'0 4px 12px rgba(13,148,136,0.3)' }}>
-                        <Ruler className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h2 className="text-sm font-bold text-slate-900">P&amp;ID vs Line List — Comparison</h2>
-                        <p className="text-xs text-slate-500">
-                          {comparisonRows.length} line designation{comparisonRows.length !== 1 ? 's' : ''} compared across {allDrawingsForLines.length} drawing{allDrawingsForLines.length !== 1 ? 's' : ''}
-                        </p>
-                      </div>
-                      <button onClick={() => setLineListViewMode('advanced')}
-                        title="Show the full 5-tab workspace (AI Insights, QC Checks, Designations, Analytics, Drawing Layout)"
-                        className="flex-shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px"
-                        style={{ background:'#f8fafc', border:'1.5px solid #e2e8f0', color:'#475569' }}>
-                        <Sliders className="w-3.5 h-3.5" /> Advanced View
-                      </button>
-                    </div>
-
-                    {/* ── Consolidated stat bar ── */}
-                    <div className="grid grid-cols-3 gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
-                      {[
-                        { v: criticalCountAll, label: 'Critical Findings', color:'#dc2626', bg:'rgba(220,38,38,0.07)', border:'rgba(220,38,38,0.2)' },
-                        { v: cleanCountAll,     label: 'Matched / Clean',   color:'#16a34a', bg:'rgba(22,163,74,0.08)',  border:'rgba(22,163,74,0.2)'  },
-                        { v: affectedDrawings,  label: 'Drawings Affected', color:'#0d9488', bg:'rgba(13,148,136,0.08)', border:'rgba(13,148,136,0.2)' },
-                      ].map(c => (
-                        <div key={c.label} className="rounded-xl p-2.5 text-center"
-                          style={{ background: c.bg, border: `1px solid ${c.border}` }}>
-                          <p className="font-black text-xl leading-none" style={{ color: c.color }}>{c.v}</p>
-                          <p className="text-[10px] text-slate-500 font-medium mt-0.5">{c.label}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* ── Side-by-side comparison table (P&ID reading ↔ QC status) ── */}
-                    <div className="p-5">
-                      {sortedRows.length === 0 ? (
-                        <div className="flex flex-col items-center gap-2 py-14 text-center">
-                          <CheckCircle className="w-10 h-10 text-emerald-400" />
-                          <p className="text-sm font-bold text-slate-700">No line designations to compare</p>
-                          <p className="text-xs text-slate-400 max-w-sm">
-                            No pipeline designations were extracted from the P&amp;ID for this document yet.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="bg-slate-50 text-slate-500 text-left">
-                                <th className="px-3 py-2 font-bold">Drawing</th>
-                                <th className="px-3 py-2 font-bold">Line Designation (P&amp;ID)</th>
-                                <th className="px-3 py-2 font-bold">Size</th>
-                                <th className="px-3 py-2 font-bold">Fluid</th>
-                                <th className="px-3 py-2 font-bold">Status</th>
-                                <th className="px-3 py-2 font-bold">Issue</th>
-                                <th className="px-3 py-2 font-bold text-right">&nbsp;</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {sortedRows.map(r => {
-                                const st = ROW_STATUS_STYLE[r.severity || 'clean'];
-                                return (
-                                  <tr key={r.key} style={{ background: r.severity === 'critical' ? st.bg : undefined }}>
-                                    <td className="px-3 py-2 text-slate-500 font-mono whitespace-nowrap">{getDrawingLabel(r.drawing_id)}</td>
-                                    <td className="px-3 py-2 font-mono font-semibold text-slate-800 whitespace-nowrap">{r.tag}</td>
-                                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.size}</td>
-                                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.fluid}</td>
-                                    <td className="px-3 py-2 whitespace-nowrap">
-                                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-bold"
-                                        style={{ background: st.bg, color: st.text }}>
-                                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.dot }} />
-                                        {st.label}
-                                      </span>
-                                    </td>
-                                    <td className="px-3 py-2 text-slate-600 max-w-xs truncate" title={r.issue || ''}>{r.issue || '—'}</td>
-                                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                                      {r.drawing_id !== activeDrawing && (
-                                        <button onClick={() => setActiveDrawing(r.drawing_id)}
-                                          title="Open this drawing"
-                                          className="text-[10px] font-bold px-2 py-1 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
-                                          View
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
               // ── Soft-coded: LSZ rule catalogue ─────────────────────────────────────
               const LINE_QC_RULES = {
                 'LSZ-001': { short: 'Missing size annotation',      desc: 'Pipeline detected without an NPS size label — size is mandatory on line designations.',                                    checkName: 'Size Completeness',  icon: '📏', fix: 'Add the NPS size label to the affected line designation on the P&ID.' },
@@ -9569,21 +8764,15 @@ const PIDVerificationV2 = () => {
                       {minorLF   > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">{minorLF} MIN</span>}
                       {lineFindings.length === 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> All Pass</span>}
                     </div>
-                    {/* Back to Simple consolidated report */}
-                    <button onClick={() => setLineListViewMode('simple')}
-                      title="Back to the simplified consolidated Critical Findings report"
-                      className="flex-shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px"
-                      style={{ background:'#f8fafc', border:'1.5px solid #e2e8f0', color:'#475569' }}>
-                      <Ruler className="w-3.5 h-3.5" /> Simple View
-                    </button>
                   </div>
 
                   {/* ══ QC summary stat bar ══ */}
-                  <div className="grid grid-cols-4 gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
+                  <div className="grid grid-cols-5 gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
                     {[
                       { v: lineTags.length,  label: 'Total Lines',  color:'#0d9488', bg:'rgba(13,148,136,0.08)',  border:'rgba(13,148,136,0.2)' },
                       { v: cleanCount,        label: 'Clean',        color:'#16a34a', bg:'rgba(22,163,74,0.08)',   border:'rgba(22,163,74,0.2)'  },
                       { v: criticalLF,        label: 'Critical',     color:'#dc2626', bg:'rgba(220,38,38,0.07)',   border:'rgba(220,38,38,0.2)'  },
+                      { v: majorLF,           label: 'Major',        color:'#ea580c', bg:'rgba(234,88,12,0.07)',   border:'rgba(234,88,12,0.2)'  },
                       { v: dupCount,          label: 'Duplicates',   color:'#0284c7', bg:'rgba(2,132,199,0.07)',   border:'rgba(2,132,199,0.2)'  },
                     ].map(c => (
                       <div key={c.label} className="rounded-xl p-2.5 text-center relative overflow-hidden"
@@ -10026,7 +9215,7 @@ const PIDVerificationV2 = () => {
                             {majorLF   > 0 && ` ${majorLF} major finding${majorLF!==1?'s':''} need review before issue.`}
                           </p>
                           <div className="flex gap-3 mt-2">
-                            {[['Clean', cleanCount, '#22c55e'],['Critical',criticalLF,'#dc2626'],['Minor',minorLF,'#f59e0b']].map(([l,v,c])=>(
+                            {[['Clean', cleanCount, '#22c55e'],['Critical',criticalLF,'#dc2626'],['Major',majorLF,'#ea580c'],['Minor',minorLF,'#f59e0b']].map(([l,v,c])=>(
                               <div key={l} className="text-center">
                                 <p className="text-sm font-black leading-none" style={{color:c}}>{v}</p>
                                 <p className="text-[9px] text-slate-400 mt-0.5">{l}</p>
@@ -10666,10 +9855,11 @@ const PIDVerificationV2 = () => {
                   ) : (
                     <div>
                       {/* ── Stats bar ── */}
-                      <div className="grid grid-cols-4 gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
+                      <div className="grid grid-cols-5 gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
                         {[
                           { v: namingResults.total,         label:'Total',       color:'text-violet-600',  bg:'rgba(124,58,237,0.07)', border:'rgba(124,58,237,0.18)' },
                           { v: critN,                       label:'Critical',     color:'text-red-600',     bg:'rgba(239,68,68,0.07)',  border:'rgba(239,68,68,0.18)'  },
+                          { v: majN,                        label:'Major',        color:'text-orange-600',  bg:'rgba(234,88,12,0.07)',  border:'rgba(234,88,12,0.18)'  },
                           { v: minN,                        label:'Minor',        color:'text-yellow-700',  bg:'rgba(202,138,4,0.07)',  border:'rgba(202,138,4,0.18)'  },
                           { v: aiN,                         label:'AI-flagged',   color:'text-purple-600',  bg:'rgba(147,51,234,0.07)', border:'rgba(147,51,234,0.18)' },
                         ].map(c => (
@@ -11004,21 +10194,6 @@ const PIDVerificationV2 = () => {
                 F:   { label:'Filter/Strainer',         type:'equipment',  icon:'⚙️',  color:'#0d9488' },
               };
 
-              // Shared classifier (used by both Simple and Advanced views below).
-              const classifyTag = (tagId) => {
-                const upper = tagId.toUpperCase();
-                const sortedPfx = Object.keys(EQUIP_FAMILIES).sort((a, b) => b.length - a.length);
-                for (const pfx of sortedPfx) {
-                  if (upper.startsWith(pfx)) return EQUIP_FAMILIES[pfx];
-                }
-                return { label:'Unknown', type:'instrument', icon:'❔', color:'#94a3b8' };
-              };
-
-              // Soft-coded: which finding categories count as "equipment" (Equipment
-              // Register) quality issues — shared by Simple report + Advanced workspace.
-              const isEquipFindingShared = (f) =>
-                f.category === 'equipment' || (f.rule_id || '').startsWith('EQP');
-
               // Soft-coded: severity rank for QC badge ordering
               const SEV_RANK  = { critical: 4, major: 3, minor: 2, info: 1 };
               const SEV_COLOR = { critical:'#dc2626', major:'#f97316', minor:'#d97706', info:'#3b82f6' };
@@ -11031,156 +10206,6 @@ const PIDVerificationV2 = () => {
                 { id:'valve',      label:'Valves'      },
                 { id:'equipment',  label:'Equipment'   },
               ];
-
-              // ══════════════════════════════════════════════════════════════════════
-              // SIMPLE VIEW (default) — one consolidated Critical-findings report,
-              // P&ID vs Equipment Register, across every drawing in the document.
-              // Mirrors the Lines panel's Simple View pattern. The Advanced workspace
-              // (ISA tag inventory below) is fully preserved and reachable via toggle.
-              // ══════════════════════════════════════════════════════════════════════
-              if (equipListViewMode === 'simple') {
-                const allDrawingsForEquip = results?.drawings ?? [];
-
-                const SIMPLE_EQ_SEV_RANK = { critical: 3, major: 2, minor: 1, info: 0 };
-
-                // One row per equipment tag (V/T/K/C/F/E/P prefixes) per drawing —
-                // the actual "P&ID vs Equipment Register" comparison surface.
-                const comparisonRows = allDrawingsForEquip.flatMap(d => {
-                  const dTagPos = d.metadata?.tag_positions || {};
-                  const dFindings = (d.issues ?? []).filter(isEquipFindingShared);
-                  const equipTagIds = Object.keys(dTagPos).filter(id => classifyTag(id).type === 'equipment');
-                  return equipTagIds.map((tagId, idx) => {
-                    const upperTag = tagId.toUpperCase();
-                    const matches = dFindings.filter(f =>
-                      (f.evidence || '').toUpperCase().includes(upperTag) ||
-                      (f.issue_observed || f.issue || '').toUpperCase().includes(upperTag)
-                    );
-                    const worst = matches.sort((a, b) =>
-                      (SIMPLE_EQ_SEV_RANK[(b.severity||'').toLowerCase()] ?? -1) - (SIMPLE_EQ_SEV_RANK[(a.severity||'').toLowerCase()] ?? -1)
-                    )[0];
-                    return {
-                      key: `${d.drawing_id}-${tagId}-${idx}`,
-                      drawing_id: d.drawing_id,
-                      tag: tagId,
-                      type: classifyTag(tagId).label,
-                      severity: (worst?.severity || '').toLowerCase() || null,
-                      issue: worst ? (worst.issue_observed || worst.issue) : null,
-                    };
-                  });
-                });
-
-                const sortedRows = [...comparisonRows].sort((a, b) =>
-                  (SIMPLE_EQ_SEV_RANK[b.severity] ?? -1) - (SIMPLE_EQ_SEV_RANK[a.severity] ?? -1)
-                );
-
-                const criticalCountAll = comparisonRows.filter(r => r.severity === 'critical').length;
-                const affectedDrawings = new Set(comparisonRows.filter(r => r.severity === 'critical').map(r => r.drawing_id)).size;
-                const cleanCountAll    = comparisonRows.filter(r => !r.severity).length;
-
-                const ROW_STATUS_STYLE = {
-                  critical: { bg: '#fef2f2', text: '#991b1b', dot: '#dc2626', label: 'Critical' },
-                  major:    { bg: '#fff7ed', text: '#9a3412', dot: '#f97316', label: 'Major' },
-                  minor:    { bg: '#fefce8', text: '#854d0e', dot: '#eab308', label: 'Minor' },
-                  clean:    { bg: '#f0fdf4', text: '#166534', dot: '#22c55e', label: 'Match' },
-                };
-
-                return (
-                  <div>
-                    {/* ── Header ── */}
-                    <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100"
-                      style={{ background: 'linear-gradient(to right, rgba(124,58,237,0.05), transparent)' }}>
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg,#7c3aed,#6366f1)', boxShadow:'0 4px 12px rgba(124,58,237,0.3)' }}>
-                        <Cpu className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h2 className="text-sm font-bold text-slate-900">P&amp;ID vs Equipment Register — Comparison</h2>
-                        <p className="text-xs text-slate-500">
-                          {comparisonRows.length} equipment tag{comparisonRows.length !== 1 ? 's' : ''} compared across {allDrawingsForEquip.length} drawing{allDrawingsForEquip.length !== 1 ? 's' : ''}
-                        </p>
-                      </div>
-                      <button onClick={() => setEquipListViewMode('advanced')}
-                        title="Show the full ISA tag-inventory workspace (Instruments / Valves / Equipment)"
-                        className="flex-shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px"
-                        style={{ background:'#f8fafc', border:'1.5px solid #e2e8f0', color:'#475569' }}>
-                        <Sliders className="w-3.5 h-3.5" /> Advanced View
-                      </button>
-                    </div>
-
-                    {/* ── Consolidated stat bar ── */}
-                    <div className="grid grid-cols-3 gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
-                      {[
-                        { v: criticalCountAll, label: 'Critical Findings', color:'#dc2626', bg:'rgba(220,38,38,0.07)', border:'rgba(220,38,38,0.2)' },
-                        { v: cleanCountAll,     label: 'Matched / Clean',   color:'#16a34a', bg:'rgba(22,163,74,0.08)',  border:'rgba(22,163,74,0.2)'  },
-                        { v: affectedDrawings,  label: 'Drawings Affected', color:'#7c3aed', bg:'rgba(124,58,237,0.08)', border:'rgba(124,58,237,0.2)' },
-                      ].map(c => (
-                        <div key={c.label} className="rounded-xl p-2.5 text-center"
-                          style={{ background: c.bg, border: `1px solid ${c.border}` }}>
-                          <p className="font-black text-xl leading-none" style={{ color: c.color }}>{c.v}</p>
-                          <p className="text-[10px] text-slate-500 font-medium mt-0.5">{c.label}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* ── Side-by-side comparison table (P&ID reading ↔ Register status) ── */}
-                    <div className="p-5">
-                      {sortedRows.length === 0 ? (
-                        <div className="flex flex-col items-center gap-2 py-14 text-center">
-                          <CheckCircle className="w-10 h-10 text-emerald-400" />
-                          <p className="text-sm font-bold text-slate-700">No equipment tags to compare</p>
-                          <p className="text-xs text-slate-400 max-w-sm">
-                            No equipment tags were extracted from the P&amp;ID for this document yet.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="bg-slate-50 text-slate-500 text-left">
-                                <th className="px-3 py-2 font-bold">Drawing</th>
-                                <th className="px-3 py-2 font-bold">Equipment Tag (P&amp;ID)</th>
-                                <th className="px-3 py-2 font-bold">Type</th>
-                                <th className="px-3 py-2 font-bold">Status</th>
-                                <th className="px-3 py-2 font-bold">Issue</th>
-                                <th className="px-3 py-2 font-bold text-right">&nbsp;</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {sortedRows.map(r => {
-                                const st = ROW_STATUS_STYLE[r.severity || 'clean'];
-                                return (
-                                  <tr key={r.key} style={{ background: r.severity === 'critical' ? st.bg : undefined }}>
-                                    <td className="px-3 py-2 text-slate-500 font-mono whitespace-nowrap">{getDrawingLabel(r.drawing_id)}</td>
-                                    <td className="px-3 py-2 font-mono font-semibold text-slate-800 whitespace-nowrap">{r.tag}</td>
-                                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.type}</td>
-                                    <td className="px-3 py-2 whitespace-nowrap">
-                                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-bold"
-                                        style={{ background: st.bg, color: st.text }}>
-                                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.dot }} />
-                                        {st.label}
-                                      </span>
-                                    </td>
-                                    <td className="px-3 py-2 text-slate-600 max-w-xs truncate" title={r.issue || ''}>{r.issue || '—'}</td>
-                                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                                      {r.drawing_id !== activeDrawing && (
-                                        <button onClick={() => setActiveDrawing(r.drawing_id)}
-                                          title="Open this drawing"
-                                          className="text-[10px] font-bold px-2 py-1 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
-                                          View
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
 
               // ── Build inventory ─────────────────────────────────────────────────────
               const tagPos    = activeDrawingData?.metadata?.tag_positions || {};
@@ -11198,6 +10223,15 @@ const PIDVerificationV2 = () => {
                   valveFindingsByTag[tid].push(f);
                 }
               }
+
+              const classifyTag = (tagId) => {
+                const upper = tagId.toUpperCase();
+                const sortedPfx = Object.keys(EQUIP_FAMILIES).sort((a, b) => b.length - a.length);
+                for (const pfx of sortedPfx) {
+                  if (upper.startsWith(pfx)) return EQUIP_FAMILIES[pfx];
+                }
+                return { label:'Unknown', type:'instrument', icon:'❔', color:'#94a3b8' };
+              };
 
               const tagInventory = allTagIds.map(id => ({
                 id,
@@ -11404,12 +10438,6 @@ const PIDVerificationV2 = () => {
                         {issueCount > 0 && <span className="text-orange-500 font-semibold"> · {issueCount} with QC issues</span>}
                       </p>
                     </div>
-                    <button onClick={() => setEquipListViewMode('simple')}
-                      title="Back to the consolidated P&ID vs Equipment Register comparison report"
-                      className="flex-shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px"
-                      style={{ background:'#f8fafc', border:'1.5px solid #e2e8f0', color:'#475569' }}>
-                      <Sliders className="w-3.5 h-3.5" /> Simple View
-                    </button>
                     {/* QC score ring */}
                     <div className="flex flex-col items-center flex-shrink-0 gap-0.5">
                       <div className="relative w-12 h-12">
@@ -11904,7 +10932,7 @@ const PIDVerificationV2 = () => {
                               {majIssues  > 0 && ` ${majIssues} major item${majIssues!==1?'s':''} need review.`}
                             </p>
                             <div className="flex gap-3 mt-2">
-                              {[['Clean',cleanCount,'#22c55e'],['Critical',critIssues,'#dc2626']].map(([l,v,c])=>(
+                              {[['Clean',cleanCount,'#22c55e'],['Critical',critIssues,'#dc2626'],['Major',majIssues,'#ea580c'],['Issues',issueCount,'#f97316']].map(([l,v,c])=>(
                                 <div key={l} className="text-center">
                                   <p className="text-sm font-black leading-none" style={{color:c}}>{v}</p>
                                   <p className="text-[9px] text-slate-400 mt-0.5">{l}</p>
@@ -12002,20 +11030,8 @@ const PIDVerificationV2 = () => {
                       const MARKER_COLOR_CLEAN   = '#22c55e';
                       const MARKER_COLOR_GLOW_CLEAN = 'rgba(34,197,94,0.45)';
 
-                      // Soft-coded: only keep tags with a plausible on-drawing coordinate
-                      // (sanitizeMarkerPct drops garbage/off-page positions entirely).
-                      const tagsWithCoordsAll = sortedFiltered.filter(t =>
-                        t.pos?.x_pct != null && t.pos?.y_pct != null &&
-                        !!sanitizeMarkerPct(t.pos.x_pct, t.pos.y_pct)
-                      );
-                      const tagsNoCoords   = sortedFiltered.length - tagsWithCoordsAll.length;
-                      // Display-only: narrow markers drawn on the image to Critical severity
-                      // since the overlay only ever renders Critical severity markers.
-                      // Underlying inventory/matching (tagInventory, valveFindingsByTag,
-                      // topSev) is unchanged.
-                      const tagsWithCoords = OVERLAY_ONLY_CRITICAL
-                        ? tagsWithCoordsAll.filter(t => topSev(t.findings) === OVERLAY_CRITICAL_SEVERITY)
-                        : tagsWithCoordsAll;
+                      const tagsWithCoords = sortedFiltered.filter(t => t.pos?.x_pct != null && t.pos?.y_pct != null);
+                      const tagsNoCoords   = sortedFiltered.length - tagsWithCoords.length;
 
                       return (
                         <div className="flex overflow-hidden" style={{ minHeight:0 }}>
@@ -12111,9 +11127,8 @@ const PIDVerificationV2 = () => {
                                       const dotColor = hasIssue ? (SEV_COLOR[maxS] || '#f97316') : MARKER_COLOR_CLEAN;
                                       const dotGlow  = hasIssue ? `${SEV_COLOR[maxS]}55` : MARKER_COLOR_GLOW_CLEAN;
 
-                                      const _sanePos = sanitizeMarkerPct(t.pos.x_pct, t.pos.y_pct);
-                                      const left = _sanePos ? _sanePos.xp : Math.min(97, Math.max(1, t.pos.x_pct));
-                                      const top  = _sanePos ? _sanePos.yp : Math.min(94, Math.max(1, t.pos.y_pct));
+                                      const left = Math.min(97, Math.max(1, t.pos.x_pct));
+                                      const top  = Math.min(94, Math.max(1, t.pos.y_pct));
                                       const size = isSelected ? MARKER_SIZE_SELECTED : MARKER_SIZE_NORMAL;
 
                                       return (
@@ -12882,7 +11897,7 @@ const PIDVerificationV2 = () => {
                         <p className="text-xs font-bold text-slate-600 mb-3 flex items-center gap-1.5">
                           <span className="text-base">🔍</span> Failed / Review by Severity
                         </p>
-                        {['critical','minor','info'].map(sev => {
+                        {['critical','major','minor','info'].map(sev => {
                           const sevChecks = INSTR_CHECKS.filter(c => c.severity === sev);
                           const sevIssues = sevChecks.filter(c => ['fail','warn'].includes(effectiveStatus(c))).length;
                           if (sevIssues === 0 && sevChecks.length === 0) return null;
@@ -13024,15 +12039,11 @@ const PIDVerificationV2 = () => {
                           const d = (o.x_pct - 50) ** 2 + (o.y_pct - 50) ** 2;
                           if (d < bestD) { bestD = d; best = o; }
                         }
-                        // Soft-coded sanity check: drops corrupt/off-page coordinates
-                        // instead of rendering a stray dot outside the diagram.
-                        const s = sanitizeMarkerPct(best.x_pct, best.y_pct);
-                        return s ? [s.xp, s.yp, false] : [null, null, false];
+                        return [best.x_pct, best.y_pct, false];
                       }
                       // Step 2: all occurrences are in title block — flag as reference-only
                       const fallback = primary || candidates[0];
-                      const s2 = sanitizeMarkerPct(fallback.x_pct, fallback.y_pct);
-                      return s2 ? [s2.xp, s2.yp, true] : [null, null, true];
+                      return [fallback.x_pct, fallback.y_pct, true];
                     };
 
                     // ── Soft-coded: severity colour scheme ───────────────────────────────────
@@ -13352,7 +12363,7 @@ const PIDVerificationV2 = () => {
                                   style={{ background:'rgba(59,130,246,0.12)', border:'2px solid #1d4ed8', color:'#3b82f6' }}>FT</span>
                                 ISA bubble (OK)
                               </span>
-                              {[['critical','#dc2626'],['minor','#d97706']].map(([sev,c]) => (
+                              {[['critical','#dc2626'],['major','#f97316'],['minor','#d97706']].map(([sev,c]) => (
                                 <span key={sev} className="flex items-center gap-1 capitalize">
                                   <span className="inline-flex w-4 h-4 rounded-full items-center justify-center flex-shrink-0"
                                     style={{ background:`${c}15`, border:`2px solid ${c}` }}>
@@ -13477,13 +12488,8 @@ const PIDVerificationV2 = () => {
                                           style={{ background:'rgba(15,23,42,0.55)', zIndex:5, pointerEvents:'none',
                                                    transition:'opacity 0.25s ease' }} />
                                       )}
-                                      {/* Render only the selected marker when chip is active; the
-                                          overlay only ever renders critical severity markers
-                                          (display-only — instrMarkerList/topSev logic untouched). */}
-                                      {instrMarkerList
-                                        .filter(m => !instrSelectedTag || m.tag === instrSelectedTag)
-                                        .filter(m => !OVERLAY_ONLY_CRITICAL || m.topSev === OVERLAY_CRITICAL_SEVERITY)
-                                        .map((m) => {
+                                      {/* Render only the selected marker when chip is active */}
+                                      {instrMarkerList.filter(m => !instrSelectedTag || m.tag === instrSelectedTag).map((m) => {
                                         const isSel   = instrSelectedTag === m.tag;
                                         const isaCat  = _getIsaCat(m.prefix);
                                         // ISA P&ID balloon convention:
@@ -14671,20 +13677,14 @@ const PIDVerificationV2 = () => {
                       const occs = (lt.occurrences || []).filter(o => o.x_pct != null && o.y_pct != null);
                       if (occs.length === 0) return [null, null];
                       const hOcc = occs.find(o => o.direction === 'H');
-                      // Soft-coded sanity check: drops corrupt/off-page coordinates
-                      // instead of rendering a stray dot outside the diagram.
-                      if (hOcc) {
-                        const s = sanitizeMarkerPct(hOcc.x_pct, hOcc.y_pct);
-                        if (s) return [s.xp, s.yp];
-                      }
+                      if (hOcc) return [hOcc.x_pct, hOcc.y_pct];
                       // Nearest to drawing centroid (50%, 50%)
                       let best = occs[0]; let bestD = Infinity;
                       for (const o of occs) {
                         const d = (o.x_pct - 50) ** 2 + (o.y_pct - 50) ** 2;
                         if (d < bestD) { bestD = d; best = o; }
                       }
-                      const s2 = sanitizeMarkerPct(best.x_pct, best.y_pct);
-                      return s2 ? [s2.xp, s2.yp] : [null, null];
+                      return [best.x_pct, best.y_pct];
                     };
 
                     // ── Build findings map: lineText (normalised) → findings array ──────────
@@ -14917,13 +13917,8 @@ const PIDVerificationV2 = () => {
                                         style={{ background:'rgba(15,23,42,0.55)', zIndex:5, pointerEvents:'none',
                                                  transition:'opacity 0.25s ease' }} />
                                     )}
-                                    {/* Only render the selected marker when a chip is active; the
-                                        overlay only ever renders critical severity markers
-                                        (display-only — lineMarkers/topSev logic untouched). */}
-                                    {lineMarkers
-                                      .filter(m => !pipSelectedLine || m.text === pipSelectedLine)
-                                      .filter(m => !OVERLAY_ONLY_CRITICAL || m.topSev === OVERLAY_CRITICAL_SEVERITY)
-                                      .map((m) => {
+                                    {/* Only render the selected marker when a chip is active */}
+                                    {lineMarkers.filter(m => !pipSelectedLine || m.text === pipSelectedLine).map((m) => {
                                       const isSel  = pipSelectedLine === m.text;
                                       const sc     = m.topSev ? (PIP_SEV_COLOR[m.topSev] || PIP_SEV_COLOR.info) : null;
                                       const mBg    = sc ? sc.bg    : m.fc.bg;
@@ -15555,12 +14550,9 @@ const PIDVerificationV2 = () => {
                     // This mirrors pickBestOcc() in buildOverlayNodes().
                     const _pickPos = (pos) => {
                       if (!pos) return null;
-                      // Case 1: direct position — sanitize before trusting it; drops
-                      // corrupt/off-page coordinates instead of rendering a stray dot.
+                      // Case 1: direct position — use as-is
                       if (!pos.all || pos.all.length === 0) {
-                        if (pos.x_pct == null || pos.y_pct == null) return null;
-                        const s = sanitizeMarkerPct(pos.x_pct, pos.y_pct);
-                        return s ? { xp: s.xp, yp: s.yp } : null;
+                        return (pos.x_pct != null && pos.y_pct != null) ? { xp: pos.x_pct, yp: pos.y_pct } : null;
                       }
                       // Case 2: occurrences array — filter to drawing content area then pick nearest centroid
                       const inArea = pos.all.filter(o =>
@@ -15575,8 +14567,7 @@ const PIDVerificationV2 = () => {
                         const d = (o.x_pct - 50) ** 2 + (o.y_pct - 40) ** 2;
                         if (d < bestD) { bestD = d; best = o; }
                       }
-                      const s2 = sanitizeMarkerPct(best.x_pct, best.y_pct);
-                      return s2 ? { xp: s2.xp, yp: s2.yp } : null;
+                      return { xp: best.x_pct, yp: best.y_pct };
                     };
 
                     // ── Source 1: CMP finding nodes from overlayNodes (already P1–P5 resolved) ──
@@ -15787,11 +14778,8 @@ const PIDVerificationV2 = () => {
                                     )}
 
                                     {/* ── Layer A: Equipment tag circles (from tag_positions) ── */}
-                                    {/* Display-only: the overlay only ever renders critical-severity
-                                        tag circles — allCmpMarkers/topSev matching logic is unchanged. */}
                                     {allCmpMarkers
                                       .filter(m => !cmpSelectedTag || m.tag === cmpSelectedTag)
-                                      .filter(m => !OVERLAY_ONLY_CRITICAL || (m.topSev||'').toLowerCase() === OVERLAY_CRITICAL_SEVERITY)
                                       .map(m => {
                                         const isSel = cmpSelectedTag === m.tag;
                                         const sc    = CMP_SEV_COLOR[(m.topSev||'').toLowerCase()] || null;
@@ -15861,7 +14849,6 @@ const PIDVerificationV2 = () => {
                                     {/* These use the same P1-P5 coordinate resolution as the main
                                         drawing panel — exact OCR-located positions. */}
                                     {cmpNodes
-                                      .filter(n => !OVERLAY_ONLY_CRITICAL || (n.finding?.severity || '').toLowerCase() === OVERLAY_CRITICAL_SEVERITY)
                                       .filter(n => {
                                         if (!cmpSelectedTag) return true;
                                         // When a tag is selected, only show findings mentioning it
@@ -16725,6 +15712,7 @@ const PIDVerificationV2 = () => {
                         {/* Legend */}
                         <div className="flex items-center gap-x-4 flex-wrap px-5 pb-2 text-[9px] text-slate-500">
                           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full flex-shrink-0 bg-red-600" />Critical</span>
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full flex-shrink-0 bg-orange-500" />Major</span>
                           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full flex-shrink-0 bg-yellow-400" />Minor</span>
                           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full flex-shrink-0 border-2 border-slate-300" style={{ background:'transparent' }} />Estimated</span>
                           <span className="ml-auto font-medium" style={{ color:'#6366f1' }}>Solid = OCR-located · Dashed = estimated position · Click to inspect</span>
@@ -16912,11 +15900,8 @@ const PIDVerificationV2 = () => {
                   // ── Inline pickBestOcc for tag_positions ─────────────────────────
                   const _vlvPickBest = (pos) => {
                     if (!pos) return null;
-                    if (!pos.all || pos.all.length === 0) {
-                      if (pos.x_pct == null || pos.y_pct == null) return null;
-                      const s = sanitizeMarkerPct(pos.x_pct, pos.y_pct);
-                      return s ? { xp: s.xp, yp: s.yp } : null;
-                    }
+                    if (!pos.all || pos.all.length === 0)
+                      return (pos.x_pct != null && pos.y_pct != null) ? { xp: pos.x_pct, yp: pos.y_pct } : null;
                     const inArea = pos.all.filter(o =>
                       o.x_pct != null && o.y_pct != null &&
                       o.x_pct >= 1 && o.x_pct <= 96 &&
@@ -16929,8 +15914,7 @@ const PIDVerificationV2 = () => {
                       const d = (o.x_pct - 50) ** 2 + (o.y_pct - 40) ** 2;
                       if (d < bestD) { bestD = d; best = o; }
                     }
-                    const s2 = sanitizeMarkerPct(best.x_pct, best.y_pct);
-                    return s2 ? { xp: s2.xp, yp: s2.yp } : null;
+                    return { xp: best.x_pct, yp: best.y_pct };
                   };
 
                   // ── VLV rule findings (from AI analysis) ────────────────────────
@@ -19221,8 +18205,8 @@ const PIDVerificationV2 = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <img 
-              src="/assets/images/PID_Workflow_V2.png" 
-              alt="RADAI AI-Assisted P&ID Verification Workflow - Full Screen"
+              src="/assets/images/PID_Workflow.png" 
+              alt="P&ID Verification Workflow - Full Screen"
               style={{
                 width: '100%',
                 height: 'auto',

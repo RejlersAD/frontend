@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
@@ -28,23 +27,17 @@ import {
 
   ArrowPathIcon,
 
-  ExclamationTriangleIcon,
-
-  ViewColumnsIcon,
-
-  ArrowRightIcon,
-
-  MapIcon
+  ExclamationTriangleIcon
 
 } from '@heroicons/react/24/outline';
 
 import {
-  ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, ChevronDown, ChevronUp,
+  ZoomIn, ZoomOut, Maximize2, RotateCcw, ChevronDown, ChevronUp,
   BookOpen, PlayCircle, List, Star, HelpCircle, FileCheck, Lightbulb,
   Upload as UploadIcon, FileText, AlertTriangle, Activity, Brain,
   Eye, Download, Settings, Sparkles, CheckCircle, Rocket, Target,
   TrendingUp, Zap, Shield, Award, Package, Cpu, Database,
-  FolderPlus, Folder, Edit2, Trash2, ChevronRight, Loader, X, Save, MoreVertical
+  FolderPlus, Folder, Edit2, Trash2, ChevronRight, Loader, X, Save
 } from 'lucide-react';
 
 import { usePageControls } from '../../../hooks/usePageControls';
@@ -421,176 +414,7 @@ const CLL_PROJECT_CONFIG = {
   SELECTOR_WORKFLOW_MARGIN_TOP: '32px', // Space between project grid and workflow
 };
 
-// ─── 35-Column Excel Export — shared builder (SOFT-CODED) ─────────────────
-// Single source of truth for the header/row/column-width layout so the
-// main "Export Excel" button and the "Edit Data → Save" flow both produce
-// byte-identical workbooks. Kept 1:1 with the original inline export code
-// — do NOT change column order without checking both call sites.
-const CLL_EXPORT_HEADERS = [
-  'Line Number', 'Size', 'Fluid Code', 'Area', 'Sequence No', 'PIPR Class', 'Insulation', 'From', 'To',
-  'Flow Medium', 'Two Phase', 'Surge Flow', 'Flow Max', 'Density',
-  'Normal Pressure', 'Normal Temp', 'Design Pressure', 'Min Design Temp (°C)', 'Max Design Temp (°C)',
-  'Design Code', 'Category-M Fluid', 'Schedule / Wall THK', 'Stress Relief', 'PWHT',
-  'RT', 'MT/PT', 'Hardness', 'Visual', 'NACE-MR-0175', 'Piping Rated Pressure',
-  'Test Pressure', 'Test Medium', 'P&ID No.', 'P&ID Rev', 'Date', 'Criticality Code', 'Criticality Stress'
-];
 
-const CLL_EXPORT_COLUMN_WIDTHS = [
-  { wch: 20 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 20 },
-  { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
-  { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 18 },
-  { wch: 15 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 10 },
-  { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 20 },
-  { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 18 }, { wch: 18 }
-];
-
-// ─── P&ID Drawing Canvas (Phase 2) — SOFT-CODED config ─────────────────────
-// Cycling color palette assigned to each line's markup so multiple saved
-// lines stay visually distinct on the drawing. Extend this array to widen
-// the palette without touching any handler code.
-const CLL_DRAWING_COLORS = [
-  '#DC2626', '#2563EB', '#059669', '#D97706', '#7C3AED',
-  '#DB2777', '#0891B2', '#65A30D', '#EA580C', '#4F46E5',
-];
-const CLL_DRAWING_MARKER_SIZE_PX = 14;
-const CLL_DRAWING_WAYPOINT_SIZE_PX = 10;
-// The overlay SVG uses viewBox="0 0 100 100", so this is in viewBox units
-// (percent-of-drawing), not pixels — it intentionally scales with zoom, same
-// as a real markup line drawn on the P&ID would.
-const CLL_DRAWING_LINE_WIDTH_VB = 0.6;
-// Deterministically pick a color for a line number so it stays stable
-// across reloads without persisting a color-assignment table.
-const cllColorForLine = (lineNumber) => {
-  const str = String(lineNumber || '');
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  }
-  return CLL_DRAWING_COLORS[hash % CLL_DRAWING_COLORS.length];
-};
-// SOFT-CODED zoom/pan behaviour for the drawing canvas — tune here without
-// touching any handler logic. FIT_PADDING leaves a small margin around the
-// drawing when it's first fit-to-view; PAN_CLICK_THRESHOLD_PX distinguishes
-// a plain click (place/move a marker) from a drag (pan the canvas).
-const CLL_DRAWING_ZOOM_CONFIG = {
-  MIN: 0.25,
-  MAX: 6,
-  STEP: 0.25,
-  WHEEL_STEP: 0.15,
-  FIT_PADDING: 0.96,
-  PAN_CLICK_THRESHOLD_PX: 4,
-};
-
-// Maps a raw extracted-line object to a plain array matching CLL_EXPORT_HEADERS.
-const buildLineListRowArray = (row) => ([
-  row.original_detection || row.line_number || '',
-  row.size || '',
-  row.fluid_code || '',
-  row.area || '',
-  row.sequence_no || '',
-  row.pipr_class || '',
-  row.insulation || '',
-  row.from_line || row.from || '',
-  row.to_line || row.to || '',
-  row.flow_medium || '',
-  row.two_phase || '',
-  row.surge_flow || '',
-  row.flow_max || '',
-  row.density || '',
-  row.normal_pressure || '',
-  row.normal_temp || '',
-  row.design_pressure || '',
-  row.min_design_temp || '',
-  row.max_design_temp || '',
-  row.design_code || '',
-  row.category_m_fluid || '',
-  row.schedule_wall_thk || '',
-  row.stress_relief || '',
-  row.pwht || '',
-  row.rt || '',
-  row.mt_pt || '',
-  row.hardness || '',
-  row.visual || '',
-  row.nace_mr_0175 || '',
-  row.piping_rated_pressure || '',
-  row.test_pressure || '',
-  row.test_medium || '',
-  row.pid_no || '',
-  row.pid_rev || '',
-  row.date || '',
-  row.criticality_code || '',
-  row.criticality_stress || '',
-]);
-
-// Builds a SheetJS workbook from either raw extracted-line objects
-// (`asObjects=true`, default) or already-flattened row arrays (from the
-// Edit Data grid). Used by both the Export Excel button and the Save
-// Edited Data flow so both stay byte-identical in layout.
-const buildLineListWorkbook = (rows, { asObjects = true } = {}) => {
-  const dataRows = asObjects ? rows.map(buildLineListRowArray) : rows;
-  const wsData = [CLL_EXPORT_HEADERS, ...dataRows];
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols'] = CLL_EXPORT_COLUMN_WIDTHS;
-  XLSX.utils.book_append_sheet(wb, ws, 'Critical Line List');
-  return wb;
-};
-
-// POSTs a built workbook to the backend so it's persisted in the database
-// / S3 bucket as a Previous Output — best-effort only, never blocks or
-// fails the user's local download/edit flow.
-const saveWorkbookToPreviousOutputs = async (wb, { filename, meta }) => {
-  const wbArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([wbArray], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const form = new FormData();
-  form.append('excel_file', blob, filename);
-  Object.entries(meta).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) form.append(key, String(value));
-  });
-  const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-  const res = await fetch(`${API_BASE_URL}/designiq/lists/save_output/`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` },
-    body: form,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data?.success === false) {
-    throw new Error(data?.error || `Save failed (HTTP ${res.status})`);
-  }
-  return data;
-};
-
-// ─── Column Selection + "Version 2" multi-file consolidation — soft-coded ──
-// Lets a user pick a subset of columns from a Previous Output, download just
-// those, and optionally consolidate rows (restricted to those columns) from
-// OTHER previous outputs and/or a freshly extracted document into a new
-// linked "Version 2" output. None of this touches the core AI/OCR extraction
-// logic — it only reads already-produced rows (via `output_data`) and, for
-// new documents, calls the SAME `upload_pid` / `upload_pid_status` endpoints
-// the main upload flow already uses.
-const CLL_V2_POLL_INTERVAL_MS = 5000;   // 5s between status checks
-const CLL_V2_POLL_MAX_ATTEMPTS = 240;   // 20 minutes total
-const CLL_V2_PID_REVISION_SUFFIX = 'V2';
-
-// Projects a row captured under `sourceHeaders` onto `targetHeaders` by
-// matching header NAME (not position) — lets sources with slightly
-// different column layouts still be combined safely.
-const projectRowByHeaders = (sourceHeaders, sourceRow, targetHeaders) => (
-  targetHeaders.map((h) => {
-    const idx = sourceHeaders.indexOf(h);
-    return idx >= 0 ? (sourceRow[idx] ?? '') : '';
-  })
-);
-
-// Builds a workbook from an arbitrary (possibly column-filtered) header/row set.
-const buildProjectedWorkbook = (headers, rows, sheetName = 'Line List') => {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  return wb;
-};
 
 
 const CriticalLineList = () => {
@@ -660,124 +484,12 @@ const CriticalLineList = () => {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [rowActionId, setRowActionId] = useState(null); // id of row currently in delete/recheck
+
   const [rowActionType, setRowActionType] = useState(null); // 'delete' | 'recheck'
+
   const [recheckResults, setRecheckResults] = useState({}); // { [outputId]: { health, issues, drift, stats } }
-  // Previous Outputs row "more actions" dropdown — keeps the row compact as
-  // the number of available actions keeps growing (Recheck/Modify/Edit Data/
-  // Columns/Drawing/Delete), instead of an ever-widening row of buttons.
-  // Rendered through a portal at document.body (see actionMenuAnchor) so it
-  // floats above every other row/table instead of being clipped or covered.
-  const [openActionMenuId, setOpenActionMenuId] = useState(null);
-  const [actionMenuAnchor, setActionMenuAnchor] = useState(null); // { top, left } viewport coords
-
-  const closeActionMenu = useCallback(() => {
-    setOpenActionMenuId(null);
-    setActionMenuAnchor(null);
-  }, []);
-
-  const toggleActionMenu = useCallback((e, outputId) => {
-    // Capture the real DOM node synchronously — `e` is a React synthetic
-    // event whose fields get nulled out after the handler returns, so it
-    // must not be read from inside the setState updater below (which React
-    // may invoke later/asynchronously).
-    const buttonEl = e.currentTarget;
-    setOpenActionMenuId((prevId) => {
-      if (prevId === outputId) {
-        setActionMenuAnchor(null);
-        return null;
-      }
-      if (!buttonEl) return prevId;
-      const rect = buttonEl.getBoundingClientRect();
-      const MENU_WIDTH = 192;
-      const MENU_HEIGHT_ESTIMATE = 264;
-      const openUpward = rect.bottom + MENU_HEIGHT_ESTIMATE > window.innerHeight && rect.top > MENU_HEIGHT_ESTIMATE;
-      setActionMenuAnchor({
-        left: Math.min(Math.max(8, rect.right - MENU_WIDTH), window.innerWidth - MENU_WIDTH - 8),
-        top: openUpward ? Math.max(8, rect.top - MENU_HEIGHT_ESTIMATE - 6) : rect.bottom + 6,
-      });
-      return outputId;
-    });
-  }, []);
-
-  // Data-edit modal — edit the actual line-list cells of a previous output
-
-  // and re-save as a NEW version (DB + S3), original left untouched.
-
-  const [editingOutputData, setEditingOutputData] = useState(null); // output row being data-edited
-
-  const [dataEditHeaders, setDataEditHeaders] = useState([]);
-
-  const [dataEditRows, setDataEditRows] = useState([]); // array of arrays
-
-  const [loadingDataEdit, setLoadingDataEdit] = useState(false);
-
-  const [savingDataEdit, setSavingDataEdit] = useState(false);
-
-  // Column Selection + "Version 2" consolidation modal
-
-  const [columnSelectOutput, setColumnSelectOutput] = useState(null); // source output row
-
-  const [columnSelectHeaders, setColumnSelectHeaders] = useState([]);
-
-  const [columnSelectRows, setColumnSelectRows] = useState([]);
-
-  const [loadingColumnSelect, setLoadingColumnSelect] = useState(false);
-
-  const [selectedColumns, setSelectedColumns] = useState([]); // header names
-
-  const [columnSelectStage, setColumnSelectStage] = useState(1); // 1 = pick columns, 2 = version-2 sources
-
-  const [v2SelectedOutputIds, setV2SelectedOutputIds] = useState([]);
-
-  const [v2UploadFile, setV2UploadFile] = useState(null);
-
-  const [v2EnrichmentFiles, setV2EnrichmentFiles] = useState({ hmb: null, pms: null, nace: null, stress: null });
-
-  const [v2Processing, setV2Processing] = useState(false);
-
-  const [v2ProcessingStep, setV2ProcessingStep] = useState('');
-
-  const [savingV2, setSavingV2] = useState(false);
 
   
-
-  // ─── P&ID Drawing Canvas (Phase 2) — From/To line markup ───────────────
-  const [drawingOutput, setDrawingOutput] = useState(null); // output row the modal is open for
-  const [drawingList, setDrawingList] = useState([]); // [{id, filename, page_count, sequence, has_file}]
-  const [loadingDrawings, setLoadingDrawings] = useState(false);
-  const [attachingDrawing, setAttachingDrawing] = useState(false);
-  const [deletingDrawingId, setDeletingDrawingId] = useState(null);
-  const [activeDrawingId, setActiveDrawingId] = useState(null);
-  const [activeDrawingPage, setActiveDrawingPage] = useState(0);
-  const [drawingImageUrl, setDrawingImageUrl] = useState(null); // blob object URL
-  const [loadingDrawingImage, setLoadingDrawingImage] = useState(false);
-  const [drawingLineRows, setDrawingLineRows] = useState([]); // [{line_number, from, to}]
-  const [loadingDrawingRows, setLoadingDrawingRows] = useState(false);
-  const [annotationsByLine, setAnnotationsByLine] = useState({}); // { [line_number]: annotation }
-  const [selectedLineNumber, setSelectedLineNumber] = useState(null);
-  const [draftAnnotation, setDraftAnnotation] = useState(null); // working copy being edited
-  const [placingMode, setPlacingMode] = useState(null); // 'from' | 'to' | 'waypoint' | null
-  const [savingAnnotation, setSavingAnnotation] = useState(false);
-  const [drawingLineFilter, setDrawingLineFilter] = useState('');
-  // OCR-suggested From/To anchors (additive enhancement) — best-effort tag
-  // positions captured at extraction time. { [line_number]: { from: {x_pct,
-  // y_pct,page_index,confidence}, to?: {...} } }. Empty for outputs
-  // processed before this feature — suggestions are always optional.
-  const [tagPositionsByLine, setTagPositionsByLine] = useState({});
-  const drawingImgRef = useRef(null);
-  const draggingPointRef = useRef(null); // { kind: 'from'|'to'|'waypoint', index }
-  // Zoom / pan — lets the drawing be fit-to-view by default, then zoomed and
-  // dragged (panned) freely, independent of marker placement/dragging.
-  const [drawingZoom, setDrawingZoom] = useState(1); // multiplier on top of drawingFitScale
-  const [drawingPan, setDrawingPan] = useState({ x: 0, y: 0 }); // px offset
-  const [drawingFitScale, setDrawingFitScale] = useState(1); // scale that fits the natural image into the viewport
-  const [drawingNaturalSize, setDrawingNaturalSize] = useState({ w: 0, h: 0 });
-  const drawingViewportRef = useRef(null); // outer clipping viewport (fixed size)
-  const panDragRef = useRef(null); // { startX, startY, startPanX, startPanY, moved }
-  const suppressNextClickRef = useRef(false); // set true right after a pan-drag so the trailing click doesn't place a marker
-  const [drawingModalFullscreen, setDrawingModalFullscreen] = useState(false); // expands the modal to fill the whole viewport
-
-
 
   // Enrichment Documents (Optional - Do NOT block base extraction)
 
@@ -1273,32 +985,6 @@ const CriticalLineList = () => {
 
   }, [fetchData, fetchPreviousOutputs]);
 
-  // Close the Previous Outputs row "more actions" dropdown on any click
-  // outside it (and on Escape), same convention as other dropdowns in app.
-  // Also closes on scroll/resize since the menu is portal-rendered with a
-  // fixed position snapshotted at open-time (it doesn't track the trigger).
-  useEffect(() => {
-    if (!openActionMenuId) return;
-    const handleClickOutside = (e) => {
-      if (!e.target.closest('[data-cll-action-menu], [data-cll-action-menu-portal]')) {
-        closeActionMenu();
-      }
-    };
-    const handleEscape = (e) => {
-      if (e.key === 'Escape') closeActionMenu();
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    window.addEventListener('scroll', closeActionMenu, true);
-    window.addEventListener('resize', closeActionMenu);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-      window.removeEventListener('scroll', closeActionMenu, true);
-      window.removeEventListener('resize', closeActionMenu);
-    };
-  }, [openActionMenuId, closeActionMenu]);
-
 
   // Processing modal — rotate tips + track elapsed time while visible
   useEffect(() => {
@@ -1371,18 +1057,6 @@ const CriticalLineList = () => {
         a.click();
 
         window.URL.revokeObjectURL(url);
-
-      } else {
-
-        const data = await response.json().catch(() => ({}));
-
-        const message = data?.code === 'file_missing'
-
-          ? "This output's Excel file is missing from server storage. Use Recheck to confirm, then Delete this entry and regenerate the list."
-
-          : (data?.error || `Download failed (HTTP ${response.status})`);
-
-        alert(message);
 
       }
 
@@ -1685,604 +1359,6 @@ const CriticalLineList = () => {
       setRowActionId(null);
 
       setRowActionType(null);
-
-    }
-
-  };
-
-
-
-  // ─── Edit Data (Previous Outputs) ──────────────────────────────────────
-
-  // Loads a previous output's stored Excel rows into an editable grid.
-
-  const openDataEditModal = async (output) => {
-
-    setEditingOutputData(output);
-
-    setLoadingDataEdit(true);
-
-    setDataEditHeaders([]);
-
-    setDataEditRows([]);
-
-    try {
-
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-
-      const res = await fetch(
-
-        `${API_BASE_URL}/designiq/lists/output_data/${output.id}/`,
-
-        { headers: { 'Authorization': `Bearer ${token}` } }
-
-      );
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || data?.success === false) {
-
-        throw new Error(data?.error || `Failed to load data (HTTP ${res.status})`);
-
-      }
-
-      setDataEditHeaders(data.headers || []);
-
-      setDataEditRows((data.rows || []).map((r) => [...r]));
-
-    } catch (err) {
-
-      console.error('Error loading output data:', err);
-
-      alert(`Failed to load data for editing: ${err.message || err}`);
-
-      setEditingOutputData(null);
-
-    } finally {
-
-      setLoadingDataEdit(false);
-
-    }
-
-  };
-
-
-
-  const closeDataEditModal = () => {
-
-    setEditingOutputData(null);
-
-    setDataEditHeaders([]);
-
-    setDataEditRows([]);
-
-  };
-
-
-
-  const updateDataEditCell = (rowIdx, colIdx, value) => {
-
-    setDataEditRows((prev) => {
-
-      const next = prev.map((r) => [...r]);
-
-      next[rowIdx][colIdx] = value;
-
-      return next;
-
-    });
-
-  };
-
-
-
-  const addDataEditRow = () => {
-
-    setDataEditRows((prev) => [...prev, dataEditHeaders.map(() => '')]);
-
-  };
-
-
-
-  const deleteDataEditRow = (rowIdx) => {
-
-    setDataEditRows((prev) => prev.filter((_, i) => i !== rowIdx));
-
-  };
-
-
-
-  // Rebuilds a workbook from the edited grid and saves it as a NEW
-
-  // ProcessedPIDOutput version (edited_from = the source output) —
-
-  // the original record/file is never modified.
-
-  const handleSaveDataEdit = async () => {
-
-    if (!editingOutputData) return;
-
-    setSavingDataEdit(true);
-
-    try {
-
-      const wb = buildLineListWorkbook(dataEditRows, { asObjects: false });
-
-      const baseName = (editingOutputData.excel_filename || 'output').replace(/\.xlsx$/i, '');
-
-      const filename = `${baseName}_edited_${Date.now()}.xlsx`;
-
-      const saved = await saveWorkbookToPreviousOutputs(wb, {
-
-        filename,
-
-        meta: {
-
-          pid_number: editingOutputData.pid_number || 'Manual Export',
-
-          pid_revision: editingOutputData.pid_revision || '',
-
-          list_type: 'line_list',
-
-          format_type: editingOutputData.format_type || 'general',
-
-          total_lines: dataEditRows.length,
-
-          total_columns: dataEditHeaders.length,
-
-          enrichment_enabled: !!editingOutputData.enrichment_enabled,
-
-          edited_from: editingOutputData.id,
-
-        },
-
-      });
-
-      if (saved?.output) {
-
-        setPreviousOutputs((prev) => [saved.output, ...prev]);
-
-      } else {
-
-        fetchPreviousOutputs();
-
-      }
-
-      closeDataEditModal();
-
-    } catch (err) {
-
-      console.error('Error saving edited data:', err);
-
-      alert(`Failed to save edited data: ${err.message || err}`);
-
-    } finally {
-
-      setSavingDataEdit(false);
-
-    }
-
-  };
-
-
-
-  // ─── Column Selection + "Version 2" consolidation ──────────────────────
-
-  const openColumnSelectModal = async (output) => {
-
-    setColumnSelectOutput(output);
-
-    setColumnSelectStage(1);
-
-    setLoadingColumnSelect(true);
-
-    setColumnSelectHeaders([]);
-
-    setColumnSelectRows([]);
-
-    setSelectedColumns([]);
-
-    setV2SelectedOutputIds([]);
-
-    setV2UploadFile(null);
-
-    setV2EnrichmentFiles({ hmb: null, pms: null, nace: null, stress: null });
-
-    try {
-
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-
-      const res = await fetch(
-
-        `${API_BASE_URL}/designiq/lists/output_data/${output.id}/`,
-
-        { headers: { 'Authorization': `Bearer ${token}` } }
-
-      );
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || data?.success === false) {
-
-        throw new Error(data?.error || `Failed to load data (HTTP ${res.status})`);
-
-      }
-
-      setColumnSelectHeaders(data.headers || []);
-
-      setColumnSelectRows((data.rows || []).map((r) => [...r]));
-
-      setSelectedColumns(data.headers || []); // default: all columns selected
-
-    } catch (err) {
-
-      console.error('Error loading output for column selection:', err);
-
-      alert(`Failed to load data: ${err.message || err}`);
-
-      setColumnSelectOutput(null);
-
-    } finally {
-
-      setLoadingColumnSelect(false);
-
-    }
-
-  };
-
-
-
-  const closeColumnSelectModal = () => {
-
-    setColumnSelectOutput(null);
-
-    setColumnSelectHeaders([]);
-
-    setColumnSelectRows([]);
-
-    setSelectedColumns([]);
-
-    setColumnSelectStage(1);
-
-    setV2SelectedOutputIds([]);
-
-    setV2UploadFile(null);
-
-    setV2EnrichmentFiles({ hmb: null, pms: null, nace: null, stress: null });
-
-    setV2Processing(false);
-
-    setV2ProcessingStep('');
-
-  };
-
-
-
-  const toggleSelectedColumn = (header) => {
-
-    setSelectedColumns((prev) => (
-
-      prev.includes(header) ? prev.filter((h) => h !== header) : [...prev, header]
-
-    ));
-
-  };
-
-
-
-  const selectAllColumns = () => setSelectedColumns([...columnSelectHeaders]);
-
-  const deselectAllColumns = () => setSelectedColumns([]);
-
-
-
-  // Quick client-side download of just the selected columns — no backend
-
-  // call, no save; original stored output is completely untouched.
-
-  const handleDownloadSelectedColumns = () => {
-
-    if (selectedColumns.length === 0) {
-
-      alert('Select at least one column to download.');
-
-      return;
-
-    }
-
-    const orderedSelected = columnSelectHeaders.filter((h) => selectedColumns.includes(h));
-
-    const projectedRows = columnSelectRows.map((row) => projectRowByHeaders(columnSelectHeaders, row, orderedSelected));
-
-    const wb = buildProjectedWorkbook(orderedSelected, projectedRows);
-
-    const baseName = (columnSelectOutput?.excel_filename || 'output').replace(/\.xlsx$/i, '');
-
-    const timestamp = new Date().toISOString().split('T')[0];
-
-    XLSX.writeFile(wb, `${baseName}_columns_${timestamp}.xlsx`);
-
-  };
-
-
-
-  const toggleV2OutputSelected = (id) => {
-
-    setV2SelectedOutputIds((prev) => (
-
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-
-    ));
-
-  };
-
-
-
-  const handleV2FileChange = (e) => setV2UploadFile(e.target.files?.[0] || null);
-
-  const handleV2EnrichmentFileChange = (key) => (e) => {
-
-    setV2EnrichmentFiles((prev) => ({ ...prev, [key]: e.target.files?.[0] || null }));
-
-  };
-
-
-
-  // Uploads + polls a NEW document through the EXISTING extraction pipeline
-
-  // (same /upload_pid/ + /upload_pid_status/ endpoints & Celery task the
-
-  // main page uses) — core AI/OCR logic is untouched, only invoked here too.
-
-  const extractRowsFromNewUpload = async () => {
-
-    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-
-    const formData = new FormData();
-
-    formData.append('pid_file', v2UploadFile);
-
-    formData.append('list_type', 'line_list');
-
-    if (v2EnrichmentFiles.hmb) formData.append('hmb_file', v2EnrichmentFiles.hmb);
-
-    if (v2EnrichmentFiles.pms) formData.append('pms_file', v2EnrichmentFiles.pms);
-
-    if (v2EnrichmentFiles.nace) formData.append('nace_file', v2EnrichmentFiles.nace);
-
-    if (v2EnrichmentFiles.stress) formData.append('stress_criticality_file', v2EnrichmentFiles.stress);
-
-
-
-    setV2ProcessingStep('Uploading document…');
-
-    const res = await fetch(`${API_BASE_URL}/designiq/lists/upload_pid/`, {
-
-      method: 'POST',
-
-      headers: { 'Authorization': `Bearer ${token}` },
-
-      body: formData,
-
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) throw new Error(data?.error || `Upload failed (HTTP ${res.status})`);
-
-
-
-    const pickRows = (result) => (
-
-      result?.enriched_data?.length ? result.enriched_data
-
-        : result?.extracted_lines?.length ? result.extracted_lines : []
-
-    );
-
-
-
-    if (data.task_id && !data.enriched_data && !data.extracted_lines) {
-
-      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-      for (let attempt = 1; attempt <= CLL_V2_POLL_MAX_ATTEMPTS; attempt++) {
-
-        const statusRes = await fetch(`${API_BASE_URL}/designiq/lists/upload_pid_status/${data.task_id}/`, {
-
-          headers: { 'Authorization': `Bearer ${token}` },
-
-        });
-
-        const statusData = await statusRes.json().catch(() => ({}));
-
-        setV2ProcessingStep(statusData.status || `Processing… (attempt ${attempt})`);
-
-        if (statusData.state === 'SUCCESS' && statusData.result) {
-
-          return pickRows(statusData.result);
-
-        }
-
-        if (statusData.state === 'FAILURE') {
-
-          throw new Error(statusData.error || 'Extraction task failed');
-
-        }
-
-        await sleep(CLL_V2_POLL_INTERVAL_MS);
-
-      }
-
-      throw new Error('Extraction timed out — please try again.');
-
-    }
-
-    return pickRows(data);
-
-  };
-
-
-
-  // Consolidates: (1) the primary source's selected columns, (2) selected
-
-  // existing Previous Outputs projected onto the same columns, and (3) rows
-
-  // from a freshly uploaded/extracted document — then saves the result as a
-
-  // NEW linked "Version 2" output. The primary source output, and every
-
-  // other output used, are read-only inputs here and are never modified.
-
-  const handleProcessVersion2 = async () => {
-
-    if (selectedColumns.length === 0) {
-
-      alert('Select at least one column first.');
-
-      return;
-
-    }
-
-    if (v2SelectedOutputIds.length === 0 && !v2UploadFile) {
-
-      alert('Select at least one other output or upload a new document to continue.');
-
-      return;
-
-    }
-
-    setSavingV2(true);
-
-    setV2Processing(true);
-
-    setV2ProcessingStep('Preparing…');
-
-    try {
-
-      const orderedSelected = columnSelectHeaders.filter((h) => selectedColumns.includes(h));
-
-      const combinedRows = columnSelectRows.map((row) => projectRowByHeaders(columnSelectHeaders, row, orderedSelected));
-
-
-
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-
-      for (const outputId of v2SelectedOutputIds) {
-
-        setV2ProcessingStep('Loading data from another output…');
-
-        const res = await fetch(`${API_BASE_URL}/designiq/lists/output_data/${outputId}/`, {
-
-          headers: { 'Authorization': `Bearer ${token}` },
-
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        if (res.ok && data?.success !== false) {
-
-          const srcHeaders = data.headers || [];
-
-          (data.rows || []).forEach((row) => {
-
-            combinedRows.push(projectRowByHeaders(srcHeaders, row, orderedSelected));
-
-          });
-
-        }
-
-      }
-
-
-
-      if (v2UploadFile) {
-
-        const newRows = await extractRowsFromNewUpload();
-
-        newRows.forEach((row) => {
-
-          const fullRow = buildLineListRowArray(row);
-
-          combinedRows.push(projectRowByHeaders(CLL_EXPORT_HEADERS, fullRow, orderedSelected));
-
-        });
-
-      }
-
-
-
-      setV2ProcessingStep('Saving Version 2…');
-
-      const wb = buildProjectedWorkbook(orderedSelected, combinedRows);
-
-      const baseName = (columnSelectOutput?.excel_filename || 'output').replace(/\.xlsx$/i, '');
-
-      const timestamp = Date.now();
-
-      const filename = `${baseName}_v2_${timestamp}.xlsx`;
-
-
-
-      const saved = await saveWorkbookToPreviousOutputs(wb, {
-
-        filename,
-
-        meta: {
-
-          pid_number: columnSelectOutput?.pid_number || 'Manual Export',
-
-          pid_revision: [columnSelectOutput?.pid_revision, CLL_V2_PID_REVISION_SUFFIX].filter(Boolean).join(' '),
-
-          list_type: 'line_list',
-
-          format_type: columnSelectOutput?.format_type || 'general',
-
-          total_lines: combinedRows.length,
-
-          total_columns: orderedSelected.length,
-
-          enrichment_enabled: !!columnSelectOutput?.enrichment_enabled,
-
-          edited_from: columnSelectOutput?.id,
-
-        },
-
-      });
-
-
-
-      // Also hand the user an immediate local copy of the consolidated sheet.
-
-      XLSX.writeFile(wb, filename);
-
-
-
-      if (saved?.output) {
-
-        setPreviousOutputs((prev) => [saved.output, ...prev]);
-
-      } else {
-
-        fetchPreviousOutputs();
-
-      }
-
-      closeColumnSelectModal();
-
-    } catch (err) {
-
-      console.error('Error processing Version 2:', err);
-
-      alert(`Failed to process Version 2: ${err.message || err}`);
-
-    } finally {
-
-      setSavingV2(false);
-
-      setV2Processing(false);
-
-      setV2ProcessingStep('');
 
     }
 
@@ -3107,527 +2183,7 @@ const CriticalLineList = () => {
 
   };
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // P&ID DRAWING CANVAS (Phase 2) — From/To line markup
-  // Additive feature: reuses the existing "Previous Outputs" row data and
-  // the authenticated-blob-fetch pattern already used by handleDownloadOutput.
-  // ═══════════════════════════════════════════════════════════════════════
 
-  const fetchDrawingsList = useCallback(async (outputId) => {
-    setLoadingDrawings(true);
-    try {
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const res = await fetch(`${API_BASE_URL}/designiq/lists/output_drawings/${outputId}/`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      const drawings = data?.drawings || [];
-      setDrawingList(drawings);
-      if (drawings.length > 0) {
-        setActiveDrawingId((prev) => prev || drawings[0].id);
-      }
-    } catch (err) {
-      console.error('Error fetching drawings:', err);
-    } finally {
-      setLoadingDrawings(false);
-    }
-  }, []);
-
-  const fetchDrawingAnnotations = useCallback(async (outputId) => {
-    try {
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const res = await fetch(`${API_BASE_URL}/designiq/lists/line_annotations/${outputId}/`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      setAnnotationsByLine(data?.annotations || {});
-    } catch (err) {
-      console.error('Error fetching line annotations:', err);
-    }
-  }, []);
-
-  const fetchDrawingLineRows = useCallback(async (outputId) => {
-    setLoadingDrawingRows(true);
-    try {
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const res = await fetch(`${API_BASE_URL}/designiq/lists/output_data/${outputId}/`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setDrawingLineRows([]);
-        return;
-      }
-      const headers = data.headers || [];
-      const lineIdx = headers.findIndex((h) => String(h).trim().toLowerCase() === 'line number');
-      const fromIdx = headers.findIndex((h) => String(h).trim().toLowerCase() === 'from');
-      const toIdx = headers.findIndex((h) => String(h).trim().toLowerCase() === 'to');
-      const rows = (data.rows || []).map((r) => ({
-        line_number: lineIdx >= 0 ? String(r[lineIdx] ?? '') : '',
-        from: fromIdx >= 0 ? String(r[fromIdx] ?? '') : '',
-        to: toIdx >= 0 ? String(r[toIdx] ?? '') : '',
-      })).filter((r) => r.line_number);
-      setDrawingLineRows(rows);
-      setTagPositionsByLine(data.tag_positions || {});
-    } catch (err) {
-      console.error('Error fetching output rows for drawing view:', err);
-      setDrawingLineRows([]);
-      setTagPositionsByLine({});
-    } finally {
-      setLoadingDrawingRows(false);
-    }
-  }, []);
-
-  const loadDrawingImage = useCallback(async (drawingId, pageIndex) => {
-    if (!drawingId) return;
-    setLoadingDrawingImage(true);
-    try {
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const res = await fetch(
-        `${API_BASE_URL}/designiq/lists/drawing_image/${drawingId}/${pageIndex || 0}/`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data?.error || `Failed to render drawing (HTTP ${res.status})`);
-        setDrawingImageUrl((prev) => { if (prev) window.URL.revokeObjectURL(prev); return null; });
-        return;
-      }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      setDrawingImageUrl((prev) => { if (prev) window.URL.revokeObjectURL(prev); return url; });
-    } catch (err) {
-      console.error('Error loading drawing image:', err);
-    } finally {
-      setLoadingDrawingImage(false);
-    }
-  }, []);
-
-  const openDrawingModal = async (output) => {
-    setDrawingOutput(output);
-    setDrawingList([]);
-    setActiveDrawingId(null);
-    setActiveDrawingPage(0);
-    setDrawingImageUrl(null);
-    setDrawingLineRows([]);
-    setAnnotationsByLine({});
-    setSelectedLineNumber(null);
-    setDraftAnnotation(null);
-    setPlacingMode(null);
-    setDrawingLineFilter('');
-    setTagPositionsByLine({});
-    setDrawingZoom(1);
-    setDrawingPan({ x: 0, y: 0 });
-    setDrawingFitScale(1);
-    setDrawingNaturalSize({ w: 0, h: 0 });
-    await Promise.all([
-      fetchDrawingsList(output.id),
-      fetchDrawingLineRows(output.id),
-      fetchDrawingAnnotations(output.id),
-    ]);
-  };
-
-  const closeDrawingModal = () => {
-    setDrawingImageUrl((prev) => { if (prev) window.URL.revokeObjectURL(prev); return null; });
-    setDrawingOutput(null);
-    setDrawingList([]);
-    setActiveDrawingId(null);
-    setActiveDrawingPage(0);
-    setDrawingLineRows([]);
-    setAnnotationsByLine({});
-    setSelectedLineNumber(null);
-    setDraftAnnotation(null);
-    setPlacingMode(null);
-    setTagPositionsByLine({});
-    setDrawingZoom(1);
-    setDrawingPan({ x: 0, y: 0 });
-  };
-
-  // Computes the scale that fits the natural drawing size into the current
-  // viewport (with a small padding margin) and centers it. Called whenever a
-  // new page/drawing image finishes loading, so "the entire drawing" is
-  // always visible by default without the user needing to scroll.
-  const fitDrawingToViewport = useCallback((naturalW, naturalH) => {
-    const viewport = drawingViewportRef.current;
-    if (!viewport || !naturalW || !naturalH) return;
-    const vw = viewport.clientWidth;
-    const vh = viewport.clientHeight;
-    const scale = Math.min(vw / naturalW, vh / naturalH) * CLL_DRAWING_ZOOM_CONFIG.FIT_PADDING;
-    const safeScale = Math.max(CLL_DRAWING_ZOOM_CONFIG.MIN, Math.min(CLL_DRAWING_ZOOM_CONFIG.MAX, scale || 1));
-    setDrawingFitScale(safeScale);
-    setDrawingZoom(1);
-    setDrawingPan({
-      x: (vw - naturalW * safeScale) / 2,
-      y: (vh - naturalH * safeScale) / 2,
-    });
-  }, []);
-
-  const handleDrawingImageLoad = (e) => {
-    const naturalW = e.target.naturalWidth;
-    const naturalH = e.target.naturalHeight;
-    setDrawingNaturalSize({ w: naturalW, h: naturalH });
-    fitDrawingToViewport(naturalW, naturalH);
-  };
-
-  const zoomDrawing = (direction) => {
-    setDrawingZoom((z) => {
-      const next = Math.max(
-        CLL_DRAWING_ZOOM_CONFIG.MIN,
-        Math.min(CLL_DRAWING_ZOOM_CONFIG.MAX, z + direction * CLL_DRAWING_ZOOM_CONFIG.STEP)
-      );
-      return next;
-    });
-  };
-
-  const resetDrawingFit = () => {
-    if (drawingNaturalSize.w && drawingNaturalSize.h) {
-      fitDrawingToViewport(drawingNaturalSize.w, drawingNaturalSize.h);
-    } else {
-      setDrawingZoom(1);
-      setDrawingPan({ x: 0, y: 0 });
-    }
-  };
-
-  // Zoom centered on the cursor position (keeps the point under the mouse
-  // stationary on screen while the scale changes) — mirrors standard
-  // diagram/PDF-viewer wheel-zoom behaviour.
-  const handleDrawingWheelZoom = (e) => {
-    if (!drawingImageUrl || !drawingViewportRef.current) return;
-    e.preventDefault();
-    const rect = drawingViewportRef.current.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const oldScale = drawingFitScale * drawingZoom;
-    const direction = e.deltaY < 0 ? 1 : -1;
-
-    setDrawingZoom((z) => {
-      const nextZoom = Math.max(
-        CLL_DRAWING_ZOOM_CONFIG.MIN,
-        Math.min(CLL_DRAWING_ZOOM_CONFIG.MAX, z + direction * CLL_DRAWING_ZOOM_CONFIG.WHEEL_STEP)
-      );
-      const newScale = drawingFitScale * nextZoom;
-      if (oldScale > 0) {
-        setDrawingPan((prevPan) => {
-          const canvasX = (cx - prevPan.x) / oldScale;
-          const canvasY = (cy - prevPan.y) / oldScale;
-          return { x: cx - canvasX * newScale, y: cy - canvasY * newScale };
-        });
-      }
-      return nextZoom;
-    });
-  };
-
-  // Drag-to-pan the canvas. A short-movement threshold distinguishes a plain
-  // click (place/select a marker) from an intentional drag (pan the view) —
-  // markers themselves stopPropagation() in their own mousedown so this only
-  // fires when dragging the drawing background.
-  const startCanvasPan = (e) => {
-    if (e.button !== 0) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startPan = { ...drawingPan };
-    panDragRef.current = { startX, startY, startPanX: startPan.x, startPanY: startPan.y, moved: false };
-
-    const onMove = (moveEvt) => {
-      if (!panDragRef.current) return;
-      const dx = moveEvt.clientX - panDragRef.current.startX;
-      const dy = moveEvt.clientY - panDragRef.current.startY;
-      if (Math.abs(dx) > CLL_DRAWING_ZOOM_CONFIG.PAN_CLICK_THRESHOLD_PX || Math.abs(dy) > CLL_DRAWING_ZOOM_CONFIG.PAN_CLICK_THRESHOLD_PX) {
-        panDragRef.current.moved = true;
-      }
-      setDrawingPan({ x: panDragRef.current.startPanX + dx, y: panDragRef.current.startPanY + dy });
-    };
-    const onUp = () => {
-      if (panDragRef.current?.moved) {
-        suppressNextClickRef.current = true;
-      }
-      panDragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  // Load the active drawing's page image whenever selection changes
-  useEffect(() => {
-    if (drawingOutput && activeDrawingId) {
-      loadDrawingImage(activeDrawingId, activeDrawingPage);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawingOutput, activeDrawingId, activeDrawingPage]);
-
-  // Re-fit the drawing to the viewport when the modal is toggled into/out of
-  // full screen (the viewport size changes but the <img> doesn't reload, so
-  // its onLoad won't fire again — recompute the fit on the next paint instead).
-  useEffect(() => {
-    if (!drawingImageUrl || !drawingNaturalSize.w || !drawingNaturalSize.h) return;
-    const raf = requestAnimationFrame(() => fitDrawingToViewport(drawingNaturalSize.w, drawingNaturalSize.h));
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawingModalFullscreen]);
-
-  const handleAttachDrawing = async (file) => {
-    if (!drawingOutput || !file) return;
-    setAttachingDrawing(true);
-    try {
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const formData = new FormData();
-      formData.append('drawing_file', file);
-      const res = await fetch(`${API_BASE_URL}/designiq/lists/output_drawings/${drawingOutput.id}/`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to attach drawing (HTTP ${res.status})`);
-      }
-      setDrawingList((prev) => [...prev, data.drawing]);
-      setActiveDrawingId(data.drawing.id);
-      setActiveDrawingPage(0);
-    } catch (err) {
-      console.error('Error attaching drawing:', err);
-      alert(`Failed to attach drawing: ${err.message || err}`);
-    } finally {
-      setAttachingDrawing(false);
-    }
-  };
-
-  const handleDeleteDrawing = async (drawingId) => {
-    if (!drawingOutput) return;
-    if (!window.confirm('Delete this drawing? Any From/To markers placed on it will show as "drawing removed".')) return;
-    setDeletingDrawingId(drawingId);
-    try {
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const res = await fetch(`${API_BASE_URL}/designiq/lists/output_drawings/${drawingOutput.id}/${drawingId}/`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to delete drawing (HTTP ${res.status})`);
-      }
-      setDrawingList((prev) => prev.filter((d) => d.id !== drawingId));
-      if (activeDrawingId === drawingId) {
-        setActiveDrawingId((prev) => {
-          const remaining = drawingList.filter((d) => d.id !== drawingId);
-          return remaining[0]?.id || null;
-        });
-        setActiveDrawingPage(0);
-      }
-    } catch (err) {
-      console.error('Error deleting drawing:', err);
-      alert(`Failed to delete drawing: ${err.message || err}`);
-    } finally {
-      setDeletingDrawingId(null);
-    }
-  };
-
-  const selectDrawingLine = (lineNumber) => {
-    setSelectedLineNumber(lineNumber);
-    setPlacingMode(null);
-    const existing = annotationsByLine[lineNumber];
-    setDraftAnnotation(existing ? { ...existing, path_points: existing.path_points || [] } : {
-      line_number: lineNumber,
-      from_drawing_id: activeDrawingId,
-      from_page_index: activeDrawingPage,
-      from_point: {},
-      to_drawing_id: activeDrawingId,
-      to_page_index: activeDrawingPage,
-      to_point: {},
-      path_points: [],
-      color: cllColorForLine(lineNumber),
-    });
-  };
-
-  // Places/moves the from/to point or appends a waypoint at the clicked
-  // percentage position on the currently displayed drawing page.
-  const handleDrawingImageClick = (e) => {
-    if (suppressNextClickRef.current) {
-      suppressNextClickRef.current = false;
-      return;
-    }
-    if (!placingMode || !draftAnnotation || !drawingImgRef.current) return;
-    const rect = drawingImgRef.current.getBoundingClientRect();
-    const x_pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    const y_pct = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-
-    setDraftAnnotation((prev) => {
-      if (!prev) return prev;
-      if (placingMode === 'from') {
-        return { ...prev, from_drawing_id: activeDrawingId, from_page_index: activeDrawingPage, from_point: { x_pct, y_pct } };
-      }
-      if (placingMode === 'to') {
-        return { ...prev, to_drawing_id: activeDrawingId, to_page_index: activeDrawingPage, to_point: { x_pct, y_pct } };
-      }
-      if (placingMode === 'waypoint') {
-        return { ...prev, path_points: [...(prev.path_points || []), { x_pct, y_pct }] };
-      }
-      return prev;
-    });
-  };
-
-  // Drag-to-adjust for from/to/waypoint markers already placed.
-  const startDraggingPoint = (kind, index) => (e) => {
-    e.stopPropagation();
-    draggingPointRef.current = { kind, index };
-    const onMove = (moveEvt) => {
-      if (!draggingPointRef.current || !drawingImgRef.current) return;
-      const rect = drawingImgRef.current.getBoundingClientRect();
-      const x_pct = Math.max(0, Math.min(100, ((moveEvt.clientX - rect.left) / rect.width) * 100));
-      const y_pct = Math.max(0, Math.min(100, ((moveEvt.clientY - rect.top) / rect.height) * 100));
-      setDraftAnnotation((prev) => {
-        if (!prev) return prev;
-        if (draggingPointRef.current.kind === 'from') {
-          return { ...prev, from_point: { x_pct, y_pct } };
-        }
-        if (draggingPointRef.current.kind === 'to') {
-          return { ...prev, to_point: { x_pct, y_pct } };
-        }
-        if (draggingPointRef.current.kind === 'waypoint') {
-          const nextPoints = [...(prev.path_points || [])];
-          nextPoints[draggingPointRef.current.index] = { x_pct, y_pct };
-          return { ...prev, path_points: nextPoints };
-        }
-        return prev;
-      });
-    };
-    const onUp = () => {
-      draggingPointRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  const removeDraftWaypoint = (index) => {
-    setDraftAnnotation((prev) => prev ? {
-      ...prev,
-      path_points: (prev.path_points || []).filter((_, i) => i !== index),
-    } : prev);
-  };
-
-  // Builds the ordered [{x_pct,y_pct}] path for an annotation, restricted to
-  // points that live on the currently displayed drawing+page — reused for
-  // both the active (selected) line and every other already-annotated line
-  // so the full P&ID markup layout can be shown together, in the background.
-  const buildAnnotationPath = useCallback((a) => {
-    if (!a) return [];
-    const pts = [];
-    if (a.from_point?.x_pct != null && a.from_drawing_id === activeDrawingId && (a.from_page_index || 0) === activeDrawingPage) {
-      pts.push(a.from_point);
-    }
-    (a.path_points || []).forEach((p) => pts.push(p));
-    if (a.to_point?.x_pct != null && a.to_drawing_id === activeDrawingId && (a.to_page_index || 0) === activeDrawingPage) {
-      pts.push(a.to_point);
-    }
-    return pts;
-  }, [activeDrawingId, activeDrawingPage]);
-
-  // Returns the OCR-suggested anchor for the given kind ('from'|'to') on the
-  // currently selected line, ONLY when: a suggestion was captured, we're
-  // viewing the same source drawing+page it was captured on (the
-  // auto-retained sequence=0 drawing), and the real point hasn't already
-  // been placed. Purely additive — never overrides a manually-placed point.
-  const getSuggestedPoint = useCallback((kind) => {
-    if (!selectedLineNumber || !draftAnnotation) return null;
-    const suggestion = tagPositionsByLine[selectedLineNumber]?.[kind];
-    if (!suggestion || suggestion.x_pct == null || suggestion.y_pct == null) return null;
-    const sourceDrawingId = drawingList[0]?.id;
-    if (!sourceDrawingId || activeDrawingId !== sourceDrawingId) return null;
-    if ((suggestion.page_index || 0) !== activeDrawingPage) return null;
-    const realPoint = kind === 'from' ? draftAnnotation.from_point : draftAnnotation.to_point;
-    if (realPoint?.x_pct != null) return null;
-    return suggestion;
-  }, [selectedLineNumber, draftAnnotation, tagPositionsByLine, drawingList, activeDrawingId, activeDrawingPage]);
-
-  // Copies a suggested point into the draft — identical shape/state update as
-  // manual placement (handleDrawingImageClick), so save/delete/drag all work
-  // on it exactly like a manually-placed point afterward.
-  const applySuggestedPoint = (kind) => {
-    const suggestion = getSuggestedPoint(kind);
-    if (!suggestion) return;
-    const sourceDrawingId = drawingList[0]?.id;
-    setDraftAnnotation((prev) => {
-      if (!prev) return prev;
-      const point = { x_pct: suggestion.x_pct, y_pct: suggestion.y_pct };
-      if (kind === 'from') {
-        return { ...prev, from_drawing_id: sourceDrawingId, from_page_index: suggestion.page_index || 0, from_point: point };
-      }
-      return { ...prev, to_drawing_id: sourceDrawingId, to_page_index: suggestion.page_index || 0, to_point: point };
-    });
-  };
-
-  const handleSaveAnnotation = async () => {
-    if (!drawingOutput || !draftAnnotation) return;
-    setSavingAnnotation(true);
-    try {
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const body = {
-        line_number: draftAnnotation.line_number,
-        from: {
-          drawing_id: draftAnnotation.from_drawing_id,
-          page_index: draftAnnotation.from_page_index || 0,
-          x_pct: draftAnnotation.from_point?.x_pct,
-          y_pct: draftAnnotation.from_point?.y_pct,
-        },
-        to: {
-          drawing_id: draftAnnotation.to_drawing_id,
-          page_index: draftAnnotation.to_page_index || 0,
-          x_pct: draftAnnotation.to_point?.x_pct,
-          y_pct: draftAnnotation.to_point?.y_pct,
-        },
-        path_points: draftAnnotation.path_points || [],
-        color: draftAnnotation.color || cllColorForLine(draftAnnotation.line_number),
-      };
-      const res = await fetch(`${API_BASE_URL}/designiq/lists/line_annotations/${drawingOutput.id}/`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to save markup (HTTP ${res.status})`);
-      }
-      setAnnotationsByLine((prev) => ({ ...prev, [draftAnnotation.line_number]: data.annotation }));
-      setPlacingMode(null);
-    } catch (err) {
-      console.error('Error saving annotation:', err);
-      alert(`Failed to save markup: ${err.message || err}`);
-    } finally {
-      setSavingAnnotation(false);
-    }
-  };
-
-  const handleDeleteAnnotation = async () => {
-    if (!drawingOutput || !selectedLineNumber) return;
-    if (!window.confirm(`Remove the From/To markup for line ${selectedLineNumber}?`)) return;
-    setSavingAnnotation(true);
-    try {
-      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      const res = await fetch(
-        `${API_BASE_URL}/designiq/lists/line_annotations/${drawingOutput.id}/?line_number=${encodeURIComponent(selectedLineNumber)}`,
-        { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to delete markup (HTTP ${res.status})`);
-      }
-      setAnnotationsByLine((prev) => {
-        const next = { ...prev };
-        delete next[selectedLineNumber];
-        return next;
-      });
-      setDraftAnnotation((prev) => prev ? { ...prev, from_point: {}, to_point: {}, path_points: [] } : prev);
-    } catch (err) {
-      console.error('Error deleting annotation:', err);
-      alert(`Failed to delete markup: ${err.message || err}`);
-    } finally {
-      setSavingAnnotation(false);
-    }
-  };
 
   return (
 
@@ -8007,61 +6563,154 @@ const CriticalLineList = () => {
 
                 <button
 
-                  onClick={async () => {
+                  onClick={() => {
 
                     const data = extractedData.lines;
 
-                    const wb = buildLineListWorkbook(data);
+                    
+
+                    // ALL 35 COLUMNS Excel Export (From and To separate)
+
+                    const headers = [
+
+                      'Line Number', 'Size', 'Fluid Code', 'Area', 'Sequence No', 'PIPR Class', 'Insulation', 'From', 'To',
+
+                      'Flow Medium', 'Two Phase', 'Surge Flow', 'Flow Max', 'Density', 
+
+                      'Normal Pressure', 'Normal Temp', 'Design Pressure', 'Min Design Temp (Â°C)', 'Max Design Temp (Â°C)',
+
+                      'Design Code', 'Category-M Fluid', 'Schedule / Wall THK', 'Stress Relief', 'PWHT',
+
+                      'RT', 'MT/PT', 'Hardness', 'Visual', 'NACE-MR-0175', 'Piping Rated Pressure',
+
+                      'Test Pressure', 'Test Medium', 'P&ID No.', 'P&ID Rev', 'Date', 'Criticality Code', 'Criticality Stress'
+
+                    ];
+
+                    
+
+                    const wsData = [headers];
+
+                    
+
+                    // Add all 37 columns for each row
+
+                    data.forEach(row => {
+
+                      wsData.push([
+
+                        row.original_detection || row.line_number || '',
+
+                        row.size || '',
+
+                        row.fluid_code || '',
+
+                        row.area || '',
+
+                        row.sequence_no || '',
+
+                        row.pipr_class || '',
+
+                        row.insulation || '',
+
+                        row.from_line || row.from || '',
+
+                        row.to_line || row.to || '',
+
+                        row.flow_medium || '',
+
+                        row.two_phase || '',
+
+                        row.surge_flow || '',
+
+                        row.flow_max || '',
+
+                        row.density || '',
+
+                        row.normal_pressure || '',
+
+                        row.normal_temp || '',
+
+                        row.design_pressure || '',
+
+                        row.min_design_temp || '',
+                        row.max_design_temp || '',
+
+                        row.design_code || '',
+
+                        row.category_m_fluid || '',
+
+                        row.schedule_wall_thk || '',
+
+                        row.stress_relief || '',
+
+                        row.pwht || '',
+
+                        row.rt || '',
+
+                        row.mt_pt || '',
+
+                        row.hardness || '',
+
+                        row.visual || '',
+
+                        row.nace_mr_0175 || '',
+
+                        row.piping_rated_pressure || '',
+
+                        row.test_pressure || '',
+
+                        row.test_medium || '',
+
+                        row.pid_no || '',
+
+                        row.pid_rev || '',
+
+                        row.date || '',
+
+                        row.criticality_code || '',
+
+                        row.criticality_stress || ''
+
+                      ]);
+
+                    });
+
+                    
+
+                    const wb = XLSX.utils.book_new();
+
+                    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+                    
+
+                    // Set column widths for all 37 columns
+
+                    ws['!cols'] = [
+
+                      { wch: 20 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 20 },
+
+                      { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
+
+                      { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 18 },
+
+                      { wch: 15 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 10 },
+
+                      { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 20 },
+
+                      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 18 }, { wch: 18 }
+
+                    ];
+
+                    
+
+                    XLSX.utils.book_append_sheet(wb, ws, 'Critical Line List');
+
+                    
 
                     const timestamp = new Date().toISOString().split('T')[0];
 
-                    const filename = `PID_35Columns_${data.length}lines_${timestamp}.xlsx`;
-
-                    // Unchanged core behaviour — immediate client-side download.
-
-                    XLSX.writeFile(wb, filename);
-
-                    // NEW: also persist a copy to Previous Outputs (DB / S3),
-
-                    // best-effort so it never blocks or fails the download above.
-
-                    try {
-
-                      const saved = await saveWorkbookToPreviousOutputs(wb, {
-
-                        filename,
-
-                        meta: {
-
-                          pid_number: data[0]?.pid_no || 'Manual Export',
-
-                          pid_revision: data[0]?.pid_rev || '',
-
-                          list_type: 'line_list',
-
-                          format_type: 'general',
-
-                          total_lines: data.length,
-
-                          total_columns: CLL_EXPORT_HEADERS.length,
-
-                          enrichment_enabled: true,
-
-                        },
-
-                      });
-
-                      if (saved?.output) {
-
-                        setPreviousOutputs((prev) => [saved.output, ...prev]);
-
-                      }
-
-                    } catch (saveErr) {
-
-                      console.error('Could not auto-save export to Previous Outputs:', saveErr);
-
-                    }
+                    XLSX.writeFile(wb, `PID_35Columns_${data.length}lines_${timestamp}.xlsx`);
 
                   }}
 
@@ -8531,17 +7180,15 @@ const CriticalLineList = () => {
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
 
-                        <div className="flex items-center gap-1.5" data-cll-action-menu>
+                        <div className="flex items-center gap-1.5">
 
                           <button
 
                             onClick={() => handleDownloadOutput(output.id, output.excel_filename)}
 
-                            disabled={output.has_file === false}
+                            className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-xs font-semibold"
 
-                            className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600 transition-colors text-xs font-semibold"
-
-                            title={output.has_file === false ? 'File unavailable on server — use Recheck to confirm, then Delete and regenerate this list' : 'Download Excel'}
+                            title="Download Excel"
 
                           >
 
@@ -8551,177 +7198,57 @@ const CriticalLineList = () => {
 
                           </button>
 
-                          {output.has_file === false && (
-
-                            <span
-
-                              className="px-2 py-1 bg-slate-100 text-slate-600 border border-slate-300 rounded-full text-[10px] font-semibold whitespace-nowrap"
-
-                              title="This output's Excel file is missing from server storage. Download / Edit Data / Columns are disabled. Delete this entry and regenerate the list."
-
-                            >
-
-                              ⚠ File Missing
-
-                            </span>
-
-                          )}
-
                           <button
 
-                            onClick={(e) => toggleActionMenu(e, output.id)}
+                            onClick={() => handleRecheckOutput(output)}
 
-                            className={`p-1.5 rounded-lg border transition-colors ${openActionMenuId === output.id ? 'bg-slate-100 border-slate-300 text-slate-900' : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                            disabled={rowActionId === output.id}
 
-                            title="More actions"
+                            className="flex items-center px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-xs font-semibold"
 
-                            aria-haspopup="menu"
-
-                            aria-expanded={openActionMenuId === output.id}
+                            title="Re-validate this Excel file (line/column count, structural checks)"
 
                           >
 
-                            <MoreVertical className="w-4 h-4" />
+                            <ArrowPathIcon className={`w-4 h-4 mr-1 ${rowActionId === output.id && rowActionType === 'recheck' ? 'animate-spin' : ''}`} />
+
+                            {rowActionId === output.id && rowActionType === 'recheck' ? 'Checking…' : 'Recheck'}
 
                           </button>
 
-                          {openActionMenuId === output.id && actionMenuAnchor && createPortal(
+                          <button
 
-                            <div
+                            onClick={() => openEditModal(output)}
 
-                              role="menu"
+                            className="flex items-center px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-semibold"
 
-                              data-cll-action-menu-portal
+                            title="Modify metadata"
 
-                              className="fixed w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1 z-[9999]"
+                          >
 
-                              style={{ top: actionMenuAnchor.top, left: actionMenuAnchor.left }}
+                            <PencilSquareIcon className="w-4 h-4 mr-1" />
 
-                            >
+                            Modify
 
-                              <button
+                          </button>
 
-                                role="menuitem"
+                          <button
 
-                                onClick={() => { closeActionMenu(); handleRecheckOutput(output); }}
+                            onClick={() => handleDeleteOutput(output)}
 
-                                disabled={rowActionId === output.id}
+                            disabled={rowActionId === output.id}
 
-                                className="w-full flex items-center px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 transition-colors text-xs font-semibold"
 
-                                title="Re-validate this Excel file (line/column count, structural checks)"
+                            title="Delete this output"
 
-                              >
+                          >
 
-                                <ArrowPathIcon className={`w-4 h-4 mr-2 text-emerald-600 ${rowActionId === output.id && rowActionType === 'recheck' ? 'animate-spin' : ''}`} />
+                            <TrashIcon className="w-4 h-4 mr-1" />
 
-                                {rowActionId === output.id && rowActionType === 'recheck' ? 'Checking…' : 'Recheck'}
+                            {rowActionId === output.id && rowActionType === 'delete' ? 'Deleting…' : 'Delete'}
 
-                              </button>
-
-                              <button
-
-                                role="menuitem"
-
-                                onClick={() => { closeActionMenu(); openEditModal(output); }}
-
-                                className="w-full flex items-center px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-
-                                title="Modify metadata"
-
-                              >
-
-                                <PencilSquareIcon className="w-4 h-4 mr-2 text-amber-500" />
-
-                                Modify
-
-                              </button>
-
-                              <button
-
-                                role="menuitem"
-
-                                onClick={() => { closeActionMenu(); openDataEditModal(output); }}
-
-                                disabled={output.has_file === false}
-
-                                className="w-full flex items-center px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-
-                                title={output.has_file === false ? 'File unavailable on server — use Recheck to confirm, then Delete and regenerate this list' : 'Edit the line-list data and save as a new version'}
-
-                              >
-
-                                <Edit2 className="w-4 h-4 mr-2 text-blue-600" />
-
-                                Edit Data
-
-                              </button>
-
-                              <button
-
-                                role="menuitem"
-
-                                onClick={() => { closeActionMenu(); openColumnSelectModal(output); }}
-
-                                disabled={output.has_file === false}
-
-                                className="w-full flex items-center px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-
-                                title={output.has_file === false ? 'File unavailable on server — use Recheck to confirm, then Delete and regenerate this list' : 'Select columns to download, or consolidate into a Version 2'}
-
-                              >
-
-                                <ViewColumnsIcon className="w-4 h-4 mr-2 text-indigo-600" />
-
-                                Columns
-
-                              </button>
-
-                              <button
-
-                                role="menuitem"
-
-                                onClick={() => { closeActionMenu(); openDrawingModal(output); }}
-
-                                className="w-full flex items-center px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-
-                                title="View P&ID drawing and mark From/To line paths"
-
-                              >
-
-                                <MapIcon className="w-4 h-4 mr-2 text-teal-600" />
-
-                                Drawing
-
-                              </button>
-
-                              <div className="my-1 border-t border-slate-100" />
-
-                              <button
-
-                                role="menuitem"
-
-                                onClick={() => { closeActionMenu(); handleDeleteOutput(output); }}
-
-                                disabled={rowActionId === output.id}
-
-                                className="w-full flex items-center px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed"
-
-                                title="Delete this output"
-
-                              >
-
-                                <TrashIcon className="w-4 h-4 mr-2" />
-
-                                {rowActionId === output.id && rowActionType === 'delete' ? 'Deleting…' : 'Delete'}
-
-                              </button>
-
-                            </div>,
-
-                            document.body
-
-                          )}
+                          </button>
 
                         </div>
 
@@ -9461,1024 +7988,6 @@ const CriticalLineList = () => {
 
         </div>
 
-      )}
-
-      {editingOutputData && (
-
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
-
-            <div className="px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center gap-2">
-
-              <Edit2 className="w-5 h-5" />
-
-              <h3 className="font-bold text-lg">Edit Line-List Data</h3>
-
-              <span className="text-xs text-white/80 ml-2">{editingOutputData.excel_filename}</span>
-
-              <button
-
-                onClick={closeDataEditModal}
-
-                className="ml-auto text-white/80 hover:text-white text-2xl leading-none"
-
-                title="Close"
-
-              >
-
-                ×
-
-              </button>
-
-            </div>
-
-            <div className="px-6 py-4 flex-1 overflow-auto">
-
-              {loadingDataEdit ? (
-
-                <div className="flex items-center justify-center py-16">
-
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-
-                  <span className="ml-3 text-gray-600">Loading data…</span>
-
-                </div>
-
-              ) : (
-
-                <>
-
-                  <div className="flex items-center justify-between mb-3">
-
-                    <p className="text-xs text-slate-500">
-
-                      Edit any cell, then <span className="font-semibold">Save as New Version</span> — the original output is kept unchanged.
-
-                    </p>
-
-                    <button
-
-                      onClick={addDataEditRow}
-
-                      className="flex items-center px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-xs font-semibold"
-
-                    >
-
-                      <PlusIcon className="w-4 h-4 mr-1" />
-
-                      Add Row
-
-                    </button>
-
-                  </div>
-
-                  <table className="min-w-full text-xs border-collapse">
-
-                    <thead className="sticky top-0 bg-slate-100">
-
-                      <tr>
-
-                        <th className="px-2 py-1.5 border border-slate-200 text-slate-500">#</th>
-
-                        {dataEditHeaders.map((h, i) => (
-
-                          <th key={i} className="px-2 py-1.5 border border-slate-200 text-left font-semibold text-slate-700 whitespace-nowrap">
-
-                            {h}
-
-                          </th>
-
-                        ))}
-
-                        <th className="px-2 py-1.5 border border-slate-200"></th>
-
-                      </tr>
-
-                    </thead>
-
-                    <tbody>
-
-                      {dataEditRows.map((row, rowIdx) => (
-
-                        <tr key={rowIdx} className="hover:bg-slate-50">
-
-                          <td className="px-2 py-1 border border-slate-200 text-slate-400 text-center">{rowIdx + 1}</td>
-
-                          {row.map((cell, colIdx) => (
-
-                            <td key={colIdx} className="border border-slate-200 p-0">
-
-                              <input
-
-                                type="text"
-
-                                value={cell ?? ''}
-
-                                onChange={(e) => updateDataEditCell(rowIdx, colIdx, e.target.value)}
-
-                                className="w-full px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-blue-50"
-
-                              />
-
-                            </td>
-
-                          ))}
-
-                          <td className="px-2 py-1 border border-slate-200 text-center">
-
-                            <button
-
-                              onClick={() => deleteDataEditRow(rowIdx)}
-
-                              title="Delete row"
-
-                              className="text-rose-500 hover:text-rose-700"
-
-                            >
-
-                              <TrashIcon className="w-4 h-4" />
-
-                            </button>
-
-                          </td>
-
-                        </tr>
-
-                      ))}
-
-                    </tbody>
-
-                  </table>
-
-                </>
-
-              )}
-
-            </div>
-
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
-
-              <button
-
-                onClick={closeDataEditModal}
-
-                disabled={savingDataEdit}
-
-                className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-50"
-
-              >
-
-                Cancel
-
-              </button>
-
-              <button
-
-                onClick={handleSaveDataEdit}
-
-                disabled={savingDataEdit || loadingDataEdit}
-
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg disabled:opacity-50 text-sm font-semibold"
-
-              >
-
-                {savingDataEdit ? 'Saving…' : 'Save as New Version'}
-
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
-      {columnSelectOutput && (
-
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-
-            <div className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex items-center gap-2">
-
-              <ViewColumnsIcon className="w-5 h-5" />
-
-              <h3 className="font-bold text-lg">
-
-                {columnSelectStage === 1 ? 'Select Columns' : 'Version 2 — Consolidate Sources'}
-
-              </h3>
-
-              <span className="text-xs text-white/80 ml-2">{columnSelectOutput.excel_filename}</span>
-
-              <button
-
-                onClick={closeColumnSelectModal}
-
-                className="ml-auto text-white/80 hover:text-white text-2xl leading-none"
-
-                title="Close"
-
-              >
-
-                ×
-
-              </button>
-
-            </div>
-
-            <div className="px-6 py-4 flex-1 overflow-auto">
-
-              {loadingColumnSelect ? (
-
-                <div className="flex items-center justify-center py-16">
-
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-
-                  <span className="ml-3 text-gray-600">Loading columns…</span>
-
-                </div>
-
-              ) : columnSelectStage === 1 ? (
-
-                <>
-
-                  <div className="flex items-center justify-between mb-3">
-
-                    <p className="text-xs text-slate-500">
-
-                      Choose which columns to keep. Download just these columns, or continue to consolidate more files into a Version 2.
-
-                    </p>
-
-                    <div className="flex gap-2">
-
-                      <button onClick={selectAllColumns} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-700">Select All</button>
-
-                      <button onClick={deselectAllColumns} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-700">Deselect All</button>
-
-                    </div>
-
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-
-                    {columnSelectHeaders.map((h, i) => (
-
-                      <label
-
-                        key={i}
-
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-colors ${selectedColumns.includes(h) ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600'}`}
-
-                      >
-
-                        <input
-
-                          type="checkbox"
-
-                          checked={selectedColumns.includes(h)}
-
-                          onChange={() => toggleSelectedColumn(h)}
-
-                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-400"
-
-                        />
-
-                        <span className="truncate">{h}</span>
-
-                      </label>
-
-                    ))}
-
-                  </div>
-
-                  <div className="mt-4 text-xs text-slate-500 bg-indigo-50 border border-indigo-200 rounded-lg p-2">
-
-                    {selectedColumns.length} of {columnSelectHeaders.length} columns selected · {columnSelectRows.length} rows
-
-                  </div>
-
-                </>
-
-              ) : (
-
-                <>
-
-                  <div className="mb-4 text-xs text-slate-500 bg-indigo-50 border border-indigo-200 rounded-lg p-2">
-
-                    Selected columns: <span className="font-semibold text-indigo-700">{selectedColumns.join(', ')}</span>
-
-                  </div>
-
-
-
-                  <div className="mb-5">
-
-                    <h4 className="text-sm font-bold text-slate-800 mb-2">Merge from existing Previous Outputs</h4>
-
-                    {previousOutputs.filter((o) => o.id !== columnSelectOutput.id).length === 0 ? (
-
-                      <p className="text-xs text-slate-400">No other saved outputs available.</p>
-
-                    ) : (
-
-                      <div className="space-y-1 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">
-
-                        {previousOutputs.filter((o) => o.id !== columnSelectOutput.id).map((o) => (
-
-                          <label key={o.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer text-xs">
-
-                            <input
-
-                              type="checkbox"
-
-                              checked={v2SelectedOutputIds.includes(o.id)}
-
-                              onChange={() => toggleV2OutputSelected(o.id)}
-
-                              className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-400"
-
-                            />
-
-                            <span className="font-medium text-slate-700">{o.excel_filename}</span>
-
-                            <span className="text-slate-400">· {o.pid_number} {o.pid_revision} · {o.total_lines} lines</span>
-
-                          </label>
-
-                        ))}
-
-                      </div>
-
-                    )}
-
-                  </div>
-
-
-
-                  <div className="mb-3">
-
-                    <h4 className="text-sm font-bold text-slate-800 mb-2">Or upload a new document for extraction</h4>
-
-                    <input
-
-                      type="file"
-
-                      accept=".pdf"
-
-                      onChange={handleV2FileChange}
-
-                      className="block w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:text-xs file:font-semibold hover:file:bg-indigo-700"
-
-                    />
-
-                    {v2UploadFile && <p className="text-xs text-slate-500 mt-1">Selected: {v2UploadFile.name}</p>}
-
-                    <details className="mt-2">
-
-                      <summary className="text-xs font-semibold text-indigo-600 cursor-pointer">Advanced: attach enrichment documents (optional)</summary>
-
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-
-                        <div>
-
-                          <label className="text-xs text-slate-500">HMB</label>
-
-                          <input type="file" onChange={handleV2EnrichmentFileChange('hmb')} className="block w-full text-xs" />
-
-                        </div>
-
-                        <div>
-
-                          <label className="text-xs text-slate-500">PMS</label>
-
-                          <input type="file" onChange={handleV2EnrichmentFileChange('pms')} className="block w-full text-xs" />
-
-                        </div>
-
-                        <div>
-
-                          <label className="text-xs text-slate-500">NACE</label>
-
-                          <input type="file" onChange={handleV2EnrichmentFileChange('nace')} className="block w-full text-xs" />
-
-                        </div>
-
-                        <div>
-
-                          <label className="text-xs text-slate-500">Stress Criticality</label>
-
-                          <input type="file" onChange={handleV2EnrichmentFileChange('stress')} className="block w-full text-xs" />
-
-                        </div>
-
-                      </div>
-
-                    </details>
-
-                  </div>
-
-
-
-                  {v2Processing && (
-
-                    <div className="flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg p-2 mt-3">
-
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
-
-                      {v2ProcessingStep}
-
-                    </div>
-
-                  )}
-
-                </>
-
-              )}
-
-            </div>
-
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between gap-2">
-
-              {columnSelectStage === 2 ? (
-
-                <button
-
-                  onClick={() => setColumnSelectStage(1)}
-
-                  disabled={savingV2}
-
-                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-50"
-
-                >
-
-                  ← Back
-
-                </button>
-
-              ) : <span />}
-
-              <div className="flex gap-2">
-
-                <button
-
-                  onClick={closeColumnSelectModal}
-
-                  disabled={savingV2}
-
-                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-50"
-
-                >
-
-                  Cancel
-
-                </button>
-
-                {columnSelectStage === 1 ? (
-
-                  <>
-
-                    <button
-
-                      onClick={handleDownloadSelectedColumns}
-
-                      disabled={loadingColumnSelect || selectedColumns.length === 0}
-
-                      className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm font-semibold flex items-center gap-1"
-
-                    >
-
-                      <ArrowDownTrayIcon className="w-4 h-4" /> Download Selected Columns
-
-                    </button>
-
-                    <button
-
-                      onClick={() => setColumnSelectStage(2)}
-
-                      disabled={loadingColumnSelect || selectedColumns.length === 0}
-
-                      className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg disabled:opacity-50 text-sm font-semibold flex items-center gap-1"
-
-                    >
-
-                      Continue to Version 2 <ArrowRightIcon className="w-4 h-4" />
-
-                    </button>
-
-                  </>
-
-                ) : (
-
-                  <button
-
-                    onClick={handleProcessVersion2}
-
-                    disabled={savingV2}
-
-                    className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg disabled:opacity-50 text-sm font-semibold"
-
-                  >
-
-                    {savingV2 ? 'Processing…' : 'Process & Save Version 2'}
-
-                  </button>
-
-                )}
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════
-          P&ID DRAWING CANVAS (Phase 2) — From/To line markup modal
-          ═══════════════════════════════════════════════════════════ */}
-      {drawingOutput && (
-        <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 ${drawingModalFullscreen ? '' : 'p-4'}`}>
-          <div className={`bg-white shadow-2xl overflow-hidden flex flex-col ${drawingModalFullscreen ? 'w-screen h-screen rounded-none' : 'w-full max-w-7xl h-[92vh] rounded-2xl'}`}>
-            <div className="px-6 py-4 bg-gradient-to-r from-teal-600 to-cyan-600 text-white flex items-center gap-2 flex-shrink-0">
-              <MapIcon className="w-5 h-5" />
-              <h3 className="font-bold text-lg">P&ID Drawing — From/To Markup</h3>
-              <span className="text-xs text-white/80 ml-2">{drawingOutput.pid_number} {drawingOutput.pid_revision ? `Rev ${drawingOutput.pid_revision}` : ''}</span>
-              <button
-                onClick={() => setDrawingModalFullscreen((f) => !f)}
-                className="ml-auto text-white/80 hover:text-white p-1 rounded hover:bg-white/10"
-                title={drawingModalFullscreen ? 'Exit full screen' : 'Full screen'}
-              >
-                {drawingModalFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-              </button>
-              <button
-                onClick={closeDrawingModal}
-                className="text-white/80 hover:text-white text-2xl leading-none"
-                title="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="flex flex-1 min-h-0">
-              {/* Sidebar — extracted line rows */}
-              <div className="w-72 flex-shrink-0 border-r border-slate-200 flex flex-col min-h-0">
-                <div className="p-3 border-b border-slate-200">
-                  <input
-                    type="text"
-                    value={drawingLineFilter}
-                    onChange={(e) => setDrawingLineFilter(e.target.value)}
-                    placeholder="Filter line number…"
-                    className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  {loadingDrawingRows ? (
-                    <div className="p-4 text-xs text-slate-500">Loading rows…</div>
-                  ) : drawingLineRows.length === 0 ? (
-                    <div className="p-4 text-xs text-slate-500">No extracted rows found for this output.</div>
-                  ) : (
-                    drawingLineRows
-                      .filter((r) => !drawingLineFilter || r.line_number.toLowerCase().includes(drawingLineFilter.toLowerCase()))
-                      .map((r) => {
-                        const annotated = !!annotationsByLine[r.line_number];
-                        const isSelected = selectedLineNumber === r.line_number;
-                        return (
-                          <button
-                            key={r.line_number}
-                            onClick={() => selectDrawingLine(r.line_number)}
-                            className={`w-full text-left px-3 py-2 border-b border-slate-100 text-xs hover:bg-teal-50 transition-colors ${isSelected ? 'bg-teal-100' : ''}`}
-                          >
-                            <div className="flex items-center gap-1.5 font-semibold text-slate-800">
-                              <span
-                                className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: annotated ? (annotationsByLine[r.line_number].color || cllColorForLine(r.line_number)) : '#CBD5E1' }}
-                              />
-                              {r.line_number}
-                            </div>
-                            <div className="text-slate-500 mt-0.5">
-                              {r.from || '—'} <ArrowRightIcon className="w-3 h-3 inline mx-0.5" /> {r.to || '—'}
-                            </div>
-                          </button>
-                        );
-                      })
-                  )}
-                </div>
-              </div>
-
-              {/* Main canvas area */}
-              <div className="flex-1 flex flex-col min-h-0">
-                {/* Drawing tabs + attach */}
-                <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 flex-shrink-0 overflow-x-auto">
-                  {loadingDrawings ? (
-                    <span className="text-xs text-slate-500">Loading drawings…</span>
-                  ) : drawingList.length === 0 ? (
-                    <span className="text-xs text-slate-500">No drawing attached yet — attach one to begin markup.</span>
-                  ) : (
-                    drawingList.map((d, i) => (
-                      <div key={d.id} className="flex items-center gap-1 flex-shrink-0">
-                        <button
-                          onClick={() => { setActiveDrawingId(d.id); setActiveDrawingPage(0); }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${activeDrawingId === d.id ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-                          title={d.filename}
-                        >
-                          Drawing {i + 1} {d.page_count > 1 ? `(${d.page_count}p)` : ''}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteDrawing(d.id)}
-                          disabled={deletingDrawingId === d.id}
-                          className="text-slate-400 hover:text-rose-600 disabled:opacity-40"
-                          title="Delete this drawing"
-                        >
-                          <TrashIcon className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                  <label className="ml-auto flex items-center gap-1 px-3 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold cursor-pointer hover:bg-teal-100 flex-shrink-0">
-                    {attachingDrawing ? 'Uploading…' : (
-                      <>
-                        <ArrowUpTrayIcon className="w-3.5 h-3.5" /> Attach Drawing
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="application/pdf"
-                      className="hidden"
-                      disabled={attachingDrawing}
-                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAttachDrawing(f); e.target.value = ''; }}
-                    />
-                  </label>
-                </div>
-
-                {/* Page navigation for multi-page drawings */}
-                {activeDrawingId && (drawingList.find((d) => d.id === activeDrawingId)?.page_count || 1) > 1 && (
-                  <div className="flex items-center gap-2 px-4 py-1.5 border-b border-slate-100 flex-shrink-0">
-                    <button
-                      onClick={() => setActiveDrawingPage((p) => Math.max(0, p - 1))}
-                      disabled={activeDrawingPage === 0}
-                      className="px-2 py-1 bg-slate-100 rounded text-xs disabled:opacity-40"
-                    >
-                      ‹ Prev
-                    </button>
-                    <span className="text-xs text-slate-600">
-                      Page {activeDrawingPage + 1} / {drawingList.find((d) => d.id === activeDrawingId)?.page_count || 1}
-                    </span>
-                    <button
-                      onClick={() => setActiveDrawingPage((p) => Math.min((drawingList.find((d) => d.id === activeDrawingId)?.page_count || 1) - 1, p + 1))}
-                      disabled={activeDrawingPage >= (drawingList.find((d) => d.id === activeDrawingId)?.page_count || 1) - 1}
-                      className="px-2 py-1 bg-slate-100 rounded text-xs disabled:opacity-40"
-                    >
-                      Next ›
-                    </button>
-                  </div>
-                )}
-
-                {/* Markup controls */}
-                {selectedLineNumber && (
-                  <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-100 flex-shrink-0 flex-wrap">
-                    <span className="text-xs font-semibold text-slate-700">Line {selectedLineNumber}:</span>
-                    <button
-                      onClick={() => setPlacingMode(placingMode === 'from' ? null : 'from')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${placingMode === 'from' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}
-                    >
-                      {placingMode === 'from' ? 'Click drawing to set From…' : 'Set From'}
-                    </button>
-                    <button
-                      onClick={() => setPlacingMode(placingMode === 'to' ? null : 'to')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${placingMode === 'to' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}
-                    >
-                      {placingMode === 'to' ? 'Click drawing to set To…' : 'Set To'}
-                    </button>
-                    <button
-                      onClick={() => setPlacingMode(placingMode === 'waypoint' ? null : 'waypoint')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${placingMode === 'waypoint' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'}`}
-                    >
-                      {placingMode === 'waypoint' ? 'Click drawing to add bend…' : 'Add Waypoint'}
-                    </button>
-                    {(draftAnnotation?.path_points?.length > 0) && (
-                      <button
-                        onClick={() => removeDraftWaypoint(draftAnnotation.path_points.length - 1)}
-                        className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700"
-                      >
-                        Remove Last Waypoint
-                      </button>
-                    )}
-                    {getSuggestedPoint('from') && (
-                      <button
-                        onClick={() => applySuggestedPoint('from')}
-                        title="OCR-suggested From location — click to accept"
-                        className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-dashed border-amber-400 hover:bg-amber-100"
-                      >
-                        Use Suggested From {getSuggestedPoint('from').confidence === 'high' ? '(auto)' : '(approx)'}
-                      </button>
-                    )}
-                    {getSuggestedPoint('to') && (
-                      <button
-                        onClick={() => applySuggestedPoint('to')}
-                        title="OCR-suggested To location — click to accept"
-                        className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-dashed border-amber-400 hover:bg-amber-100"
-                      >
-                        Use Suggested To {getSuggestedPoint('to').confidence === 'high' ? '(auto)' : '(approx)'}
-                      </button>
-                    )}
-                    <button
-                      onClick={handleSaveAnnotation}
-                      disabled={savingAnnotation}
-                      className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
-                    >
-                      {savingAnnotation ? 'Saving…' : 'Save Markup'}
-                    </button>
-                    {annotationsByLine[selectedLineNumber] && (
-                      <button
-                        onClick={handleDeleteAnnotation}
-                        disabled={savingAnnotation}
-                        className="px-3 py-1 rounded-lg text-xs font-semibold bg-rose-100 text-rose-700 hover:bg-rose-200 disabled:opacity-50"
-                      >
-                        Delete Markup
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Image + overlay — fit-to-view by default, zoomable + pannable */}
-                <div
-                  ref={drawingViewportRef}
-                  className="flex-1 bg-slate-100 relative overflow-hidden"
-                  onMouseDown={drawingImageUrl ? startCanvasPan : undefined}
-                  onWheel={drawingImageUrl ? handleDrawingWheelZoom : undefined}
-                  style={{ cursor: drawingImageUrl ? (placingMode ? 'crosshair' : 'grab') : 'default' }}
-                >
-                  {/* Floating zoom toolbar */}
-                  {drawingImageUrl && (
-                    <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-white/90 backdrop-blur rounded-lg shadow-md border border-slate-200 px-1.5 py-1">
-                      <button
-                        onClick={() => zoomDrawing(-1)}
-                        disabled={drawingZoom <= CLL_DRAWING_ZOOM_CONFIG.MIN}
-                        className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 text-slate-700"
-                        title="Zoom out"
-                      >
-                        <ZoomOut style={{ width: '15px', height: '15px' }} />
-                      </button>
-                      <span className="text-[11px] font-semibold text-slate-600 w-11 text-center select-none">
-                        {Math.round(drawingFitScale * drawingZoom * 100)}%
-                      </span>
-                      <button
-                        onClick={() => zoomDrawing(1)}
-                        disabled={drawingZoom >= CLL_DRAWING_ZOOM_CONFIG.MAX}
-                        className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 text-slate-700"
-                        title="Zoom in"
-                      >
-                        <ZoomIn style={{ width: '15px', height: '15px' }} />
-                      </button>
-                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                      <button
-                        onClick={resetDrawingFit}
-                        className="p-1.5 rounded hover:bg-slate-100 text-slate-700"
-                        title="Fit drawing to view"
-                      >
-                        <Maximize2 style={{ width: '15px', height: '15px' }} />
-                      </button>
-                    </div>
-                  )}
-
-                  {loadingDrawingImage ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                    </div>
-                  ) : !drawingImageUrl ? (
-                    <div className="flex items-center justify-center h-full text-sm text-slate-500">
-                      {drawingList.length === 0 ? 'Attach a P&ID drawing to begin.' : 'Select a drawing tab to view it.'}
-                    </div>
-                  ) : (
-                    <div
-                      className="absolute top-0 left-0 select-none"
-                      style={{
-                        width: drawingNaturalSize.w || 'auto',
-                        height: drawingNaturalSize.h || 'auto',
-                        transform: `translate(${drawingPan.x}px, ${drawingPan.y}px) scale(${drawingFitScale * drawingZoom})`,
-                        transformOrigin: '0 0',
-                      }}
-                    >
-                      <img
-                        ref={drawingImgRef}
-                        src={drawingImageUrl}
-                        alt="P&ID drawing"
-                        onLoad={handleDrawingImageLoad}
-                        onClick={handleDrawingImageClick}
-                        className="block max-w-none select-none pointer-events-auto"
-                        draggable={false}
-                      />
-
-                      {/* Lines/dots layer — viewBox 0-100 so percentage points map reliably
-                          regardless of zoom/pan, matching the box the markers below use. */}
-                      <svg
-                        viewBox="0 0 100 100"
-                        preserveAspectRatio="none"
-                        className="absolute inset-0 w-full h-full pointer-events-none"
-                      >
-                        {/* Background layer: EVERY other saved line's full From→To path,
-                            each in its own color (fetched straight from the already-loaded
-                            extraction/annotation data — annotationsByLine), dashed + dimmed
-                            so the whole P&ID markup layout is visible at a glance while the
-                            selected line (drawn below, full-strength) still stands out. */}
-                        {Object.entries(annotationsByLine).map(([ln, a]) => {
-                          if (ln === selectedLineNumber) return null;
-                          const pts = buildAnnotationPath(a);
-                          const color = a.color || cllColorForLine(ln);
-                          return (
-                            <g key={`bg-${ln}`} opacity={0.55}>
-                              {pts.length >= 2 && (
-                                <polyline
-                                  points={pts.map((p) => `${p.x_pct},${p.y_pct}`).join(' ')}
-                                  fill="none"
-                                  stroke={color}
-                                  strokeWidth={CLL_DRAWING_LINE_WIDTH_VB * 0.7}
-                                  strokeDasharray="1.4,1.1"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              )}
-                              {pts.map((p, i) => (
-                                <circle key={`${ln}-${i}`} cx={p.x_pct} cy={p.y_pct} r={0.9} fill={color} />
-                              ))}
-                            </g>
-                          );
-                        })}
-
-                        {/* Active (selected) line's polyline — solid, full strength, on top */}
-                        {draftAnnotation && (() => {
-                          const pts = buildAnnotationPath(draftAnnotation);
-                          if (pts.length < 2) return null;
-                          const pointsAttr = pts.map((p) => `${p.x_pct},${p.y_pct}`).join(' ');
-                          return (
-                            <polyline
-                              points={pointsAttr}
-                              fill="none"
-                              stroke={draftAnnotation.color || cllColorForLine(draftAnnotation.line_number)}
-                              strokeWidth={CLL_DRAWING_LINE_WIDTH_VB}
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          );
-                        })()}
-                      </svg>
-
-                      {/* Markers layer — plain HTML absolute-percentage divs (same
-                          convention as the PID Verification overlay) so they always
-                          render visibly regardless of SVG viewport quirks, and stay
-                          crisp/draggable at any zoom level. */}
-                      {/* OCR-suggested anchors (additive) — dashed amber, shown ONLY
-                          while the real point hasn't been placed yet. Click to accept;
-                          this never happens automatically. */}
-                      {getSuggestedPoint('from') && (() => {
-                        const s = getSuggestedPoint('from');
-                        return (
-                          <div
-                            onClick={() => applySuggestedPoint('from')}
-                            title={`OCR-suggested From (${s.confidence === 'high' ? 'auto' : 'approx'}) — click to accept`}
-                            style={{
-                              position: 'absolute',
-                              left: `${s.x_pct}%`,
-                              top: `${s.y_pct}%`,
-                              transform: `translate(-50%, -50%) scale(${1 / (drawingFitScale * drawingZoom)})`,
-                              transformOrigin: 'center',
-                              cursor: 'pointer',
-                              zIndex: 5,
-                            }}
-                          >
-                            <div className="flex flex-col items-center pointer-events-auto">
-                              <span className="px-1.5 py-0.5 mb-0.5 rounded bg-amber-500 text-white text-[10px] font-bold shadow whitespace-nowrap">FROM?</span>
-                              <div
-                                className="rounded-full border-2 border-dashed border-amber-600"
-                                style={{ width: CLL_DRAWING_MARKER_SIZE_PX, height: CLL_DRAWING_MARKER_SIZE_PX, background: 'rgba(245,158,11,0.35)' }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {getSuggestedPoint('to') && (() => {
-                        const s = getSuggestedPoint('to');
-                        return (
-                          <div
-                            onClick={() => applySuggestedPoint('to')}
-                            title={`OCR-suggested To (${s.confidence === 'high' ? 'auto' : 'approx'}) — click to accept`}
-                            style={{
-                              position: 'absolute',
-                              left: `${s.x_pct}%`,
-                              top: `${s.y_pct}%`,
-                              transform: `translate(-50%, -50%) scale(${1 / (drawingFitScale * drawingZoom)})`,
-                              transformOrigin: 'center',
-                              cursor: 'pointer',
-                              zIndex: 5,
-                            }}
-                          >
-                            <div className="flex flex-col items-center pointer-events-auto">
-                              <span className="px-1.5 py-0.5 mb-0.5 rounded bg-amber-500 text-white text-[10px] font-bold shadow whitespace-nowrap">TO?</span>
-                              <div
-                                className="rounded-full border-2 border-dashed border-amber-600"
-                                style={{ width: CLL_DRAWING_MARKER_SIZE_PX, height: CLL_DRAWING_MARKER_SIZE_PX, background: 'rgba(245,158,11,0.35)' }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {draftAnnotation?.from_point?.x_pct != null && draftAnnotation.from_drawing_id === activeDrawingId && (draftAnnotation.from_page_index || 0) === activeDrawingPage && (
-                        <div
-                          onMouseDown={startDraggingPoint('from', 0)}
-                          style={{
-                            position: 'absolute',
-                            left: `${draftAnnotation.from_point.x_pct}%`,
-                            top: `${draftAnnotation.from_point.y_pct}%`,
-                            transform: `translate(-50%, -50%) scale(${1 / (drawingFitScale * drawingZoom)})`,
-                            transformOrigin: 'center',
-                            cursor: 'grab',
-                            zIndex: 5,
-                          }}
-                        >
-                          <div className="flex flex-col items-center pointer-events-none">
-                            <span className="px-1.5 py-0.5 mb-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shadow whitespace-nowrap">FROM</span>
-                            <div
-                              className="rounded-full border-2 border-white shadow-lg"
-                              style={{ width: CLL_DRAWING_MARKER_SIZE_PX, height: CLL_DRAWING_MARKER_SIZE_PX, background: '#059669', pointerEvents: 'auto' }}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {draftAnnotation?.to_point?.x_pct != null && draftAnnotation.to_drawing_id === activeDrawingId && (draftAnnotation.to_page_index || 0) === activeDrawingPage && (
-                        <div
-                          onMouseDown={startDraggingPoint('to', 0)}
-                          style={{
-                            position: 'absolute',
-                            left: `${draftAnnotation.to_point.x_pct}%`,
-                            top: `${draftAnnotation.to_point.y_pct}%`,
-                            transform: `translate(-50%, -50%) scale(${1 / (drawingFitScale * drawingZoom)})`,
-                            transformOrigin: 'center',
-                            cursor: 'grab',
-                            zIndex: 5,
-                          }}
-                        >
-                          <div className="flex flex-col items-center pointer-events-none">
-                            <span className="px-1.5 py-0.5 mb-0.5 rounded bg-rose-600 text-white text-[10px] font-bold shadow whitespace-nowrap">TO</span>
-                            <div
-                              className="rounded-full border-2 border-white shadow-lg"
-                              style={{ width: CLL_DRAWING_MARKER_SIZE_PX, height: CLL_DRAWING_MARKER_SIZE_PX, background: '#DC2626', pointerEvents: 'auto' }}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {draftAnnotation?.path_points?.map((p, i) => (
-                        <div
-                          key={i}
-                          onMouseDown={startDraggingPoint('waypoint', i)}
-                          style={{
-                            position: 'absolute',
-                            left: `${p.x_pct}%`,
-                            top: `${p.y_pct}%`,
-                            transform: `translate(-50%, -50%) scale(${1 / (drawingFitScale * drawingZoom)})`,
-                            transformOrigin: 'center',
-                            cursor: 'grab',
-                            zIndex: 4,
-                          }}
-                        >
-                          <div
-                            className="rounded-full border-2 border-white shadow-lg"
-                            style={{
-                              width: CLL_DRAWING_WAYPOINT_SIZE_PX,
-                              height: CLL_DRAWING_WAYPOINT_SIZE_PX,
-                              background: draftAnnotation.color || '#4F46E5',
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Cross-drawing indicators — shown when From/To lives on a different drawing */}
-                  {draftAnnotation?.from_point?.x_pct != null && draftAnnotation.from_drawing_id && draftAnnotation.from_drawing_id !== activeDrawingId && (
-                    <span className="absolute top-3 left-3 z-10 px-2 py-1 rounded bg-emerald-600 text-white text-[11px] font-semibold shadow">
-                      FROM is on another drawing
-                    </span>
-                  )}
-                  {draftAnnotation?.to_point?.x_pct != null && draftAnnotation.to_drawing_id && draftAnnotation.to_drawing_id !== activeDrawingId && (
-                    <span className="absolute top-11 left-3 z-10 px-2 py-1 rounded bg-rose-600 text-white text-[11px] font-semibold shadow">
-                      TO is on another drawing
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       </>

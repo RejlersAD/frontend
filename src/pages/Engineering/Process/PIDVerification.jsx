@@ -184,13 +184,6 @@ const COLOR_TEXT_PRIMARY         = '#0f172a';  // Dark text
 const COLOR_TEXT_SECONDARY       = '#64748b';  // Medium gray text
 const COLOR_TEXT_TERTIARY        = '#94a3b8';  // Light gray text
 
-// ── Soft-coded: entry point to the new P&ID Checker V2 scaffold ───────────
-// Adjust the route / label / gradient here without touching the header JSX.
-const PID_CHECKER_V2_ROUTE          = '/engineering/process/pid-checker-v2';
-const PID_CHECKER_V2_BUTTON_LABEL   = 'P&ID Checker V2';
-const PID_CHECKER_V2_TOOLTIP        = 'Open the new P&ID Checker V2 scaffold — next-generation validation workspace';
-const PID_CHECKER_V2_GRADIENT       = 'linear-gradient(135deg, #7c3aed 0%, #ec4899 100%)';
-
 // ANIMATIONS
 const ANIMATION_CARD_ENTRANCE    = 'fadeUp';   // Card entrance animation
 const ANIMATION_ENTRANCE_DELAY   = 0.05;       // seconds - stagger between cards
@@ -2908,10 +2901,9 @@ const PIDVerification = () => {
 
               {/* Right: Quick Stats + Version Switcher */}
               <div className="flex items-center gap-6">
-                {/* P&ID Checker V2 — new scaffold entry point */}
+                {/* Version Switcher Button */}
                 <button
-                  onClick={() => navigate(PID_CHECKER_V2_ROUTE)}
-                  title={PID_CHECKER_V2_TOOLTIP}
+                  onClick={() => navigate('/engineering/process/pid-verification-v2')}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -2920,25 +2912,25 @@ const PIDVerification = () => {
                     borderRadius: '12px',
                     fontSize: '0.875rem',
                     fontWeight: 600,
-                    background: PID_CHECKER_V2_GRADIENT,
+                    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                     color: 'white',
                     border: 'none',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(124,58,237,0.4)',
+                    boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
                     transition: 'all 0.2s ease',
                     whiteSpace: 'nowrap'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(124,58,237,0.5)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.5)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(124,58,237,0.4)';
+                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)';
                   }}
                 >
-                  <Layers style={{ width: '16px', height: '16px' }} />
-                  {PID_CHECKER_V2_BUTTON_LABEL}
+                  <Sparkles style={{ width: '16px', height: '16px' }} />
+                  Try V2 Beta
                   <ChevronRight style={{ width: '16px', height: '16px' }} />
                 </button>
 

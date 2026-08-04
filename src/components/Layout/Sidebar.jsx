@@ -435,7 +435,7 @@ const Sidebar = ({ isOpen, setIsOpen, isCollapsed: isCollapsedProp, setIsCollaps
           icon: CubeIcon,
           path: '/planning-packages',
           description: 'Work package planning and tracking',
-          moduleCode: 'planning_package',
+          moduleCode: 'project_control',
           badge: 'NEW'
         }
       ]

@@ -62,14 +62,6 @@ const CATEGORY_LABELS = {
   legend: 'Legend', linelist: 'Line List', equipment: 'Equipment', instrument: 'Instrument',
 };
 
-// Soft-coded: restrict every report tab (General/Legend/Line List/Equipment/
-// Instrument) to Critical findings only — keeps this Full Report page, the
-// Excel export and the PDF export all in sync with the main page's
-// "Critical Only" Drawing Overlay behaviour. Set to false to restore all
-// severities.
-const REPORT_ONLY_CRITICAL = true;
-const REPORT_CRITICAL_SEVERITY = 'critical';
-
 // Discrepancy type is soft-coded via the rule_id suffix convention used by the
 // comparison engine: 001 = missing, 002 = extra, 003 = mismatch (tasks.py).
 const DISCREPANCY_SUFFIX = { missing: '001', extra: '002', mismatch: '003' };
@@ -123,16 +115,14 @@ export default function PIDVerificationV2Report() {
   const activeConfig = REPORT_TABS.find(t => t.key === activeTab) || REPORT_TABS[0];
 
   // Flatten findings across all drawings, scoped to the active tab's categories.
-  // Soft-coded critical-only gate (REPORT_ONLY_CRITICAL) applied here so it
-  // propagates to the table, the stats cards and both exports automatically.
   const tabFindings = useMemo(() => {
     const cats = activeConfig.categories;
     const rows = [];
     drawings.forEach(d => {
       (d.issues || []).forEach(f => {
-        if (!cats.includes(f.category)) return;
-        if (REPORT_ONLY_CRITICAL && (f.severity || '').toLowerCase() !== REPORT_CRITICAL_SEVERITY) return;
-        rows.push({ ...f, drawing_id: d.drawing_id, drawing_title: d.title });
+        if (cats.includes(f.category)) {
+          rows.push({ ...f, drawing_id: d.drawing_id, drawing_title: d.title });
+        }
       });
     });
     return rows;

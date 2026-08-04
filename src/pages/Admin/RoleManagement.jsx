@@ -75,15 +75,8 @@ const AR_STATUS_LABELS = {
   denied:   'Denied',
 };
 
-const MAIN_TAB_ROLES    = 'roles';
-const MAIN_TAB_AR       = 'access-requests';
-// SOFT-CODED: "New Features" tab — surfaces any Module the backend has
-// auto-synced from rbac_config.ALL_MODULES_CATALOGUE (see ModuleViewSet.
-// _sync_catalogue_modules) that isn't yet grouped into a labelled section
-// below (NON_ENGINEERING_GROUPS / engineeringStructure.config.js). These
-// modules already work — they're toggleable under "Other Modules" per role —
-// this tab just makes brand-new ones easy to notice without hunting.
-const MAIN_TAB_FEATURES = 'new-features';
+const MAIN_TAB_ROLES = 'roles';
+const MAIN_TAB_AR    = 'access-requests';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── Dynamic Module Catalog ───────────────────────────────────────────────
@@ -133,12 +126,7 @@ const NON_ENGINEERING_GROUPS = [
     label: 'Project Control',
     color: 'indigo',
     description: 'Project planning, tracking and schedule control',
-    // Each code maps to a Sidebar sub-feature (6.1–6.2) — kept separate so
-    // Planning Package can be granted/revoked independently of Projects.
-    moduleCodes: [
-      'project_control',   // 6.1 Projects
-      'planning_package',  // 6.2 Planning Package
-    ],
+    moduleCodes: ['project_control'],
   },
   {
     id: 'procurement',
@@ -212,29 +200,6 @@ function buildCatalog() {
 
 const MODULE_CATALOG    = buildCatalog();
 const KNOWN_MODULE_CODES = new Set(MODULE_CATALOG.flatMap((g) => g.moduleCodes));
-
-// SOFT-CODED: once an admin clicks "Update" on the New Features tab, the
-// modules shown at that moment are considered "reviewed" and should stop
-// cluttering the tab/badge — even though they're still technically ungrouped
-// in KNOWN_MODULE_CODES. This is purely a local UI "seen" marker (no core
-// RBAC data — module/role/permission rows are never touched by it), so it's
-// safe to persist in localStorage rather than adding backend state.
-const ACK_FEATURES_STORAGE_KEY = 'radai_rbac_acknowledged_feature_codes_v1';
-function loadAcknowledgedFeatureCodes() {
-  try {
-    const raw = window.localStorage.getItem(ACK_FEATURES_STORAGE_KEY);
-    return new Set(raw ? JSON.parse(raw) : []);
-  } catch {
-    return new Set();
-  }
-}
-function saveAcknowledgedFeatureCodes(codesSet) {
-  try {
-    window.localStorage.setItem(ACK_FEATURES_STORAGE_KEY, JSON.stringify([...codesSet]));
-  } catch {
-    /* localStorage unavailable — non-fatal, tab just re-shows items next visit */
-  }
-}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function getLevelColor(level) { return ROLE_LEVEL_COLORS[level] || DEFAULT_LEVEL_COLOR; }
@@ -591,51 +556,6 @@ function RoleManagement() {
     return arr;
   }, []);
 
-  // ── "New Features" tab: modules auto-synced from rbac_config.py that
-  // aren't yet grouped under a labelled section (see NON_ENGINEERING_GROUPS
-  // comment above). Reuses the same `modules` state already loaded for the
-  // Roles & Permissions tab — no separate fetch needed at rest.
-  const [acknowledgedFeatureCodes, setAcknowledgedFeatureCodes] = useState(loadAcknowledgedFeatureCodes);
-  const newFeatureModules = useMemo(
-    () => modules.filter((m) => !KNOWN_MODULE_CODES.has(m.code) && !acknowledgedFeatureCodes.has(m.code)),
-    [modules, acknowledgedFeatureCodes]
-  );
-  const [syncingFeatures, setSyncingFeatures] = useState(false);
-  const handleSyncFeatures = useCallback(async () => {
-    setSyncingFeatures(true);
-    try {
-      // GET /modules/ lazily triggers the backend's idempotent catalogue sync
-      // (ModuleViewSet._sync_catalogue_modules) — purely additive, never
-      // removes or edits an existing Module/RoleModule row.
-      const before = new Set(modules.map((m) => m.code));
-      const freshModules = toArray(await rbacService.getModules());
-      setModules(freshModules);
-      // Refresh roles too so the Roles & Permissions tab's per-role toggle
-      // state (assignedModuleIds) reflects the latest module list right away.
-      await refreshRoles();
-      const justAdded = freshModules.filter((m) => !before.has(m.code)).length;
-
-      // Everything currently ungrouped (pre-existing + just-synced) is now
-      // considered "reviewed" — clear it from the tab/badge so Update
-      // properly resolves the list instead of leaving it stuck.
-      const stillUngrouped = freshModules.filter((m) => !KNOWN_MODULE_CODES.has(m.code));
-      setAcknowledgedFeatureCodes((prev) => {
-        const next = new Set(prev);
-        stillUngrouped.forEach((m) => next.add(m.code));
-        saveAcknowledgedFeatureCodes(next);
-        return next;
-      });
-
-      notify('success', justAdded > 0
-        ? `Synced — ${justAdded} new feature${justAdded === 1 ? '' : 's'} detected and reviewed.`
-        : 'Synced — no new features found. Everything is up to date.');
-    } catch {
-      notify('error', 'Failed to sync features.');
-    } finally {
-      setSyncingFeatures(false);
-    }
-  }, [modules, refreshRoles, notify]);
-
   const handleSelectRole = useCallback((role) => {
     setSelectedRole(role); setAssignSearch(''); setAssignResults([]);
     setShowAddPanel(false); setEditingUser(null);
@@ -898,9 +818,8 @@ function RoleManagement() {
         {/* Pill-style main tabs */}
         <div className="flex gap-1 mt-4 bg-gray-100 p-0.5 rounded-lg w-fit">
           {[
-            { key: MAIN_TAB_ROLES,    label: 'Roles & Permissions', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
-            { key: MAIN_TAB_AR,       label: 'Access Requests',     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-            { key: MAIN_TAB_FEATURES, label: 'New Features',        icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+            { key: MAIN_TAB_ROLES, label: 'Roles & Permissions', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+            { key: MAIN_TAB_AR,    label: 'Access Requests',     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
           ].map(({ key, label, icon }) => (
             <button key={key} onClick={() => setMainTab(key)}
               className={`relative flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
@@ -913,11 +832,6 @@ function RoleManagement() {
               {key === MAIN_TAB_AR && pendingTotal > 0 && (
                 <span className="bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none font-bold">
                   {pendingTotal > 9 ? '9+' : pendingTotal}
-                </span>
-              )}
-              {key === MAIN_TAB_FEATURES && newFeatureModules.length > 0 && (
-                <span className="bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none font-bold">
-                  {newFeatureModules.length > 9 ? '9+' : newFeatureModules.length}
                 </span>
               )}
             </button>
@@ -1575,80 +1489,6 @@ function RoleManagement() {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════
-          TAB: New Features
-          Lists Modules already auto-synced from rbac_config.py's
-          catalogue that aren't yet grouped into a labelled section —
-          i.e. genuinely new sidebar sub-features. "Update" just
-          re-triggers the (idempotent, additive-only) backend sync and
-          refreshes roles so per-role toggles reflect it immediately.
-          These modules are already grantable today under "Other
-          Modules" inside Roles & Permissions — this tab exists purely
-          for visibility, so nothing new has to be hunted for.
-      ══════════════════════════════════════════════════════════ */}
-      {mainTab === MAIN_TAB_FEATURES && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
-          <div className="max-w-3xl">
-            <div className="flex items-start justify-between gap-4 mb-5">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-800">Newly Detected Features</h2>
-                <p className="text-xs text-gray-400 mt-1 max-w-lg">
-                  Modules found in the codebase that aren't grouped into a labelled
-                  section yet. They're already toggleable per role under "Other Modules"
-                  in Roles &amp; Permissions — click Update to re-check for anything new
-                  and refresh access management right away.
-                </p>
-              </div>
-              <button onClick={handleSyncFeatures} disabled={syncingFeatures}
-                className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm transition-colors shrink-0">
-                {syncingFeatures ? (
-                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                )}
-                Update
-              </button>
-            </div>
-
-            {loadingMods ? (
-              <div className="flex items-center justify-center h-40 gap-3 text-gray-400">
-                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Loading features…</span>
-              </div>
-            ) : newFeatureModules.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 text-gray-300 gap-3">
-                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M5 13l4 4L19 7" />
-                </svg>
-                <p className="text-sm text-gray-400">No new features — everything is grouped and up to date.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {newFeatureModules.map((m) => (
-                  <div key={m.id} className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3.5">
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-800">{m.name}</span>
-                        <span className="text-xs font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">{m.code}</span>
-                        <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">New</span>
-                      </div>
-                      {m.description && <p className="text-xs text-gray-500 mt-0.5 truncate">{m.description}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
