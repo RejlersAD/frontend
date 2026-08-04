@@ -873,9 +873,12 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
       .catch(() => {}) // biometric tile degrades gracefully
   }, [])
 
-  // Approval tracker — loaded separately; only for super-admins
+  // Approval tracker — loaded separately; only for super-admins.
+  // getApprovalTracker isn't implemented yet (no backend endpoint exists) —
+  // guard the call so the widget just stays hidden instead of throwing.
   useEffect(() => {
     if (!isSuperAdmin) return
+    if (typeof payrollService.getApprovalTracker !== 'function') return
     payrollService.getApprovalTracker().catch(() => null).then(d => {
       if (d) setTrackerData(d)
     })

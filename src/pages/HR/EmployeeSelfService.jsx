@@ -31,6 +31,7 @@ import {
 import PeopleNav from '../../components/PeopleNav/PeopleNav'
 import rbacService   from '../../services/rbac.service'
 import payrollService from '../../services/payroll.service'
+import payrollEngineService from '../../services/payrollEngine.service'
 import timesheetSvc   from '../../services/timesheet.service'
 import { fmtCurrency } from '../../config/hrPayroll.config'
 import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR, DAILY_TRACKER_PRIORITIES, DAILY_TRACKER_STATUSES, DAILY_TRACKER_PROJECT_CATEGORIES, DAILY_TRACKER_COPY, DAILY_TRACKER_APPROVAL_STATUSES, DAILY_TRACKER_WIZARD_STEPS, DAILY_TRACKER_SUBMIT_TO_OPTIONS, ESS_ATT_MONTHS_BACK, ESS_ATT_STANDARD_DAY_HRS, ESS_ATT_MAX_DAILY_HRS, ESS_ATT_STANDARD_WORKING_DAYS, ESS_ATT_RATE_GOOD, ESS_ATT_RATE_WARN, ESS_ATT_PARTIAL_DAY_HRS, ESS_ATT_OVERTIME_HRS, ESS_ATT_FEATURES, ESS_ATT_DAY_STATUS, ESS_ATT_DOW, ESS_ATT_COPY, ESS_TIMESHEET_TABS, ESS_TIMESHEET_DEFAULT_TAB, ESS_TIMESHEET_POLL_MS, ESS_TIMESHEET_COPY, ESS_TIMESHEET_STATUS } from '../../config/hrLeave.config'
@@ -613,7 +614,6 @@ const AIInsightsPanel = ({ insights, loading }) => (
 // -----------------------------------------------------------------------------
 
 const LeaveBalanceSection = ({ leaveRecord, requests, loading }) => {
-  const taken     = Number(leaveRecord?.total_taken)    || 0
   const earned    = Number(leaveRecord?.total_earned)   || 0
   const encashed  = Number(leaveRecord?.total_encashed) || 0
   const balance   = Number(leaveRecord?.leave_balance)  || 0
@@ -639,7 +639,7 @@ const LeaveBalanceSection = ({ leaveRecord, requests, loading }) => {
     }
     
     leaveTypeName = String(leaveTypeName).toLowerCase()
-    const days = Number(req.duration_days || req.days_requested || req.days || 0)
+    const days = Number(req.days_requested || req.duration_days || req.days || 0)
     
     // Match to config key (annual, sick, emergency, etc.)
     let configKey = 'annual'  // default
@@ -655,6 +655,12 @@ const LeaveBalanceSection = ({ leaveRecord, requests, loading }) => {
     acc[configKey] = (acc[configKey] || 0) + days
     return acc
   }, {})
+
+  // Days Taken = sum across all leave types, computed live from approved
+  // requests — not leaveRecord.total_taken, which is a static snapshot from
+  // the one-off HR Excel import and is never updated as leave gets approved
+  // through the app (it stays 0 while leaveTypeUsage correctly shows real usage).
+  const taken = Object.values(leaveTypeUsage).reduce((sum, d) => sum + d, 0)
 
   // Filter to only show enabled leave types (soft-coded control)
   const leaveTypes = Object.entries(LEAVE_TYPE_CONFIG)
@@ -672,7 +678,7 @@ const LeaveBalanceSection = ({ leaveRecord, requests, loading }) => {
     { name: 'Encashed', value: encashed, fill: '#f59e0b' },
   ].filter(d => d.value > 0)
 
-  const pending  = (requests || []).filter(r => ['PENDING','RM_APPROVED'].includes(r.status?.toUpperCase()))
+  const pending  = (requests || []).filter(r => r.status?.toUpperCase() === 'PENDING')
   const approved = (requests || []).filter(r => r.status?.toUpperCase() === 'APPROVED')
   const upcoming = approved.filter(r => new Date(r.start_date) >= new Date())
 
@@ -786,7 +792,7 @@ const LeaveBalanceSection = ({ leaveRecord, requests, loading }) => {
                   <div className="text-xs text-slate-400">{fmtDate(r.start_date)} â†’ {fmtDate(r.end_date)}</div>
                 </div>
                 <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full">
-                  {r.duration_days || '?'} day{r.duration_days !== 1 ? 's' : ''}
+                  {Number(r.days_requested ?? 0)} day{Number(r.days_requested ?? 0) !== 1 ? 's' : ''}
                 </span>
               </div>
             ))}
@@ -3359,8 +3365,10 @@ export default function EmployeeSelfService() {
 
     Promise.all([
       payrollService.getLeaveTypes().catch(() => []),
-      // Backend auto-scopes to current user (via perform_create + get_queryset fix)
-      payrollService.getLeaveRequests({ page_size: 50 }).catch(() => ({ results: [] })),
+      // mine=true forces scoping to the current user's own requests even when
+      // they hold an HR/Admin role (which otherwise gets unrestricted visibility
+      // for the Leave Management / Approval Tracker views).
+      payrollService.getLeaveRequests({ mine: true, page_size: 50 }).catch(() => ({ results: [] })),
       // Backend auto-scopes to current user's employee_id with intelligent fallback
       // No need to pass employee_code or search - backend detects from auth user
       payrollService.getLeaveRecords({ page_size: 5 }).catch(() => ({ results: [] })),
@@ -3398,16 +3406,34 @@ export default function EmployeeSelfService() {
     const empCode = profile?.employee_id // biometric code for EmployeeSalaryInfo lookup
 
     Promise.all([
-      // Backend SalarySlipViewSet filters by ?employee=<User UUID> (added in backend fix)
-      userId
-        ? payrollService.getSalarySlips({ employee: userId, page_size: 12 }).catch(() => ({ results: [] }))
-        : payrollService.getSalarySlips({ page_size: 12 }).catch(() => ({ results: [] })),
+      // Real payslips live in payroll_engine.Payslip (finance.SalarySlip is
+      // always empty — that model is unused). employee_no filters by the
+      // PayrollEmployee's biometric/HR code, matching UserProfile.employee_id.
+      empCode
+        ? payrollEngineService.listPayslips({ employee_no: empCode, page_size: 12 }).catch(() => ({ results: [] }))
+        : Promise.resolve({ results: [] }),
       // EmployeeSalaryInfo: filter by user UUID (added in backend fix)
       userId
         ? payrollService.getEmployeeSalaryInfo({ employee: userId }).catch(() => null)
         : Promise.resolve(null),
     ]).then(([slipRes, info]) => {
-      const slipList = Array.isArray(slipRes) ? slipRes : slipRes?.results || []
+      const rawSlips = Array.isArray(slipRes) ? slipRes : slipRes?.results || []
+      // Normalise payroll_engine field names to what PayrollSnapshot already
+      // reads (gross_salary/net_salary/month/year), and sort most-recent-run
+      // first — run_cycle is 'YYYY-MM' so string sort works — since the
+      // backend's default ordering here is alphabetical by employee name.
+      const slipList = [...rawSlips]
+        .sort((a, b) => String(b.run_cycle).localeCompare(String(a.run_cycle)))
+        .map(s => {
+          const [year, month] = String(s.run_cycle || '').split('-').map(Number)
+          return {
+            ...s,
+            year,
+            month,
+            gross_salary: s.gross_earnings,
+            net_salary:   s.net_payable,
+          }
+        })
       setSlips(slipList)
       const infoList = Array.isArray(info) ? info : info?.results || [info]
       setSalaryInfo(infoList.find(Boolean) || null)
@@ -3473,8 +3499,8 @@ export default function EmployeeSelfService() {
       }
       
       setSubmitResult({ success: true, message: 'Leave request submitted successfully! Awaiting manager approval.' })
-      // Reload requests — backend now scopes to current user
-      const reqRes = await payrollService.getLeaveRequests({ page_size: 50 }).catch(() => ({ results: [] }))
+      // Reload requests — mine=true scopes to current user even for HR/Admin roles
+      const reqRes = await payrollService.getLeaveRequests({ mine: true, page_size: 50 }).catch(() => ({ results: [] }))
       const reqs   = Array.isArray(reqRes) ? reqRes : reqRes?.results || []
       setLeaveRequests(userId ? reqs.filter(r => r.employee === userId) : reqs)
     } catch (err) {
@@ -3491,6 +3517,14 @@ export default function EmployeeSelfService() {
   // -- Tab notification badges -------------------------------------------------
   const pendingLeave   = leaveRequests.filter(r => r.status?.toUpperCase() === 'PENDING').length
   const unreadNotifs   = leaveRequests.filter(r => ['APPROVED','REJECTED','RM_REJECTED'].includes(r.status?.toUpperCase())).length
+
+  // Days Taken — live sum from approved requests. Matches LeaveBalanceSection's
+  // calculation on the Leave tab exactly (same leaveRequests state, same
+  // field/sum logic) so both tabs always agree, instead of the Overview card
+  // reading the static leaveRecord.total_taken snapshot.
+  const totalDaysTaken = leaveRequests
+    .filter(r => r.status?.toUpperCase() === 'APPROVED')
+    .reduce((sum, r) => sum + Number(r.days_requested || r.duration_days || r.days || 0), 0)
 
   const tabBadges = {
     leave:         pendingLeave > 0 ? pendingLeave : null,
@@ -3542,7 +3576,7 @@ export default function EmployeeSelfService() {
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <KpiCard icon="CalendarDaysIcon" label="Annual Balance" value={`${Number(leaveRecord?.leave_balance||0).toFixed(1)} d`} sub="Remaining" tone="blue" />
-                  <KpiCard icon="CheckCircleIcon" label="Days Taken" value={`${Number(leaveRecord?.total_taken||0).toFixed(1)} d`} sub="This year" tone="green" />
+                  <KpiCard icon="CheckCircleIcon" label="Days Taken" value={`${totalDaysTaken.toFixed(1)} d`} sub="This year" tone="green" />
                   <KpiCard icon="ClockIcon" label="Pending" value={pendingLeave} sub="Awaiting approval" tone={pendingLeave ? 'amber' : 'slate'} />
                   <KpiCard icon="BanknotesIcon" label="Encashed" value={`${Number(leaveRecord?.total_encashed||0).toFixed(1)} d`} sub={`${new Date().toLocaleString('default',{month:'short',year:'numeric'})} YTD`} tone="purple" />
                 </div>

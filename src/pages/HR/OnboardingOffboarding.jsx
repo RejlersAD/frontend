@@ -4,7 +4,7 @@
  * 
  * ✅ MIGRATED: Now uses EmployeeMaster backend (employee_master_id, auto-generated employee_number)
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import apiClient from '../../services/api.service'
@@ -167,8 +167,10 @@ const OVERVIEW_BUTTONS = [
     id: 'view-all-onboarding',
     label: 'View All',
     section: 'onboarding',
-    actionType: NAV_ACTIONS.HASH,
-    actionValue: '#onboarding',
+    actionType: NAV_ACTIONS.CALLBACK,
+    actionValue: (stats, onTabChange) => {
+      if (onTabChange) onTabChange('all-onboarding')
+    },
     variant: 'primary',
     style: 'ghost',
     size: 'md',
@@ -184,8 +186,10 @@ const OVERVIEW_BUTTONS = [
     id: 'add-new-employee',
     label: 'Add New',
     section: 'onboarding',
-    actionType: NAV_ACTIONS.HASH,
-    actionValue: '#create',
+    actionType: NAV_ACTIONS.CALLBACK,
+    actionValue: (stats, onTabChange) => {
+      if (onTabChange) onTabChange('create')
+    },
     variant: 'success',
     style: 'outline',
     size: 'md',
@@ -202,9 +206,8 @@ const OVERVIEW_BUTTONS = [
     label: 'Overdue Items',
     section: 'onboarding',
     actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats) => {
-      console.log('Filtering onboarding by overdue status')
-      window.location.hash = '#onboarding?filter=overdue'
+    actionValue: (stats, onTabChange) => {
+      if (onTabChange) onTabChange('overdue-onboarding')
     },
     variant: 'danger',
     style: 'outline',
@@ -224,7 +227,7 @@ const OVERVIEW_BUTTONS = [
     section: 'onboarding',
     actionType: NAV_ACTIONS.CALLBACK,
     actionValue: (stats, onTabChange) => {
-      if (onTabChange) onTabChange('onboarding')
+      if (onTabChange) onTabChange('upcoming-onboarding')
     },
     variant: 'primary',
     style: 'outline',
@@ -244,8 +247,10 @@ const OVERVIEW_BUTTONS = [
     id: 'view-all-offboarding',
     label: 'View All',
     section: 'offboarding',
-    actionType: NAV_ACTIONS.HASH,
-    actionValue: '#offboarding',
+    actionType: NAV_ACTIONS.CALLBACK,
+    actionValue: (stats, onTabChange) => {
+      if (onTabChange) onTabChange('all-offboarding')
+    },
     variant: 'danger',
     style: 'ghost',
     size: 'md',
@@ -282,8 +287,8 @@ const OVERVIEW_BUTTONS = [
     label: 'Overdue Items',
     section: 'offboarding',
     actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats) => {
-      window.location.hash = '#offboarding?filter=overdue'
+    actionValue: (stats, onTabChange) => {
+      if (onTabChange) onTabChange('overdue-offboarding')
     },
     variant: 'danger',
     style: 'outline',
@@ -302,8 +307,8 @@ const OVERVIEW_BUTTONS = [
     label: 'Upcoming Exits',
     section: 'offboarding',
     actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats) => {
-      window.location.hash = '#offboarding?filter=upcoming'
+    actionValue: (stats, onTabChange) => {
+      if (onTabChange) onTabChange('upcoming-offboarding')
     },
     variant: 'warning',
     style: 'outline',
@@ -417,8 +422,8 @@ const KPI_CARDS_CONFIG = {
       urgent: (stats) => false,
       visible: (stats) => true,
       order: 1,
-      onClick: (stats) => {
-        window.location.hash = '#onboarding'
+      onClick: (stats, onAction) => {
+        if (onAction) onAction('all-onboarding')
       },
       tooltip: 'Total active onboarding processes',
       animation: true,
@@ -434,8 +439,8 @@ const KPI_CARDS_CONFIG = {
       urgent: (stats) => false,
       visible: (stats) => true,
       order: 2,
-      onClick: (stats) => {
-        window.location.hash = '#onboarding?filter=upcoming'
+      onClick: (stats, onAction) => {
+        if (onAction) onAction('upcoming-onboarding')
       },
       tooltip: 'Employees joining in the next 30 days',
       animation: true,
@@ -451,8 +456,8 @@ const KPI_CARDS_CONFIG = {
       urgent: (stats) => (stats?.overdue ?? 0) > 0,
       visible: (stats) => true,
       order: 3,
-      onClick: (stats) => {
-        window.location.hash = '#onboarding?filter=overdue'
+      onClick: (stats, onAction) => {
+        if (onAction) onAction('overdue-onboarding')
       },
       tooltip: 'Overdue onboarding items requiring attention',
       animation: true,
@@ -468,8 +473,8 @@ const KPI_CARDS_CONFIG = {
       urgent: (stats) => false,
       visible: (stats) => true,
       order: 4,
-      onClick: (stats) => {
-        window.location.hash = '#onboarding?status=completed'
+      onClick: (stats, onAction) => {
+        if (onAction) onAction('completed-onboarding')
       },
       tooltip: 'Completed onboarding processes this month',
       animation: true,
@@ -487,8 +492,8 @@ const KPI_CARDS_CONFIG = {
       urgent: (stats) => false,
       visible: (stats) => true,
       order: 1,
-      onClick: (stats) => {
-        window.location.hash = '#offboarding'
+      onClick: (stats, onAction) => {
+        if (onAction) onAction('all-offboarding')
       },
       tooltip: 'Total active offboarding processes',
       animation: true,
@@ -504,8 +509,8 @@ const KPI_CARDS_CONFIG = {
       urgent: (stats) => false,
       visible: (stats) => true,
       order: 2,
-      onClick: (stats) => {
-        window.location.hash = '#offboarding?filter=upcoming'
+      onClick: (stats, onAction) => {
+        if (onAction) onAction('upcoming-offboarding')
       },
       tooltip: 'Employees leaving in the next 30 days',
       animation: true,
@@ -521,8 +526,8 @@ const KPI_CARDS_CONFIG = {
       urgent: (stats) => (stats?.overdue ?? 0) > 0,
       visible: (stats) => true,
       order: 3,
-      onClick: (stats) => {
-        window.location.hash = '#offboarding?filter=overdue'
+      onClick: (stats, onAction) => {
+        if (onAction) onAction('overdue-offboarding')
       },
       tooltip: 'Overdue offboarding items requiring attention',
       animation: true,
@@ -538,8 +543,8 @@ const KPI_CARDS_CONFIG = {
       urgent: (stats) => false,
       visible: (stats) => true,
       order: 4,
-      onClick: (stats) => {
-        window.location.hash = '#offboarding?status=completed'
+      onClick: (stats, onAction) => {
+        if (onAction) onAction('completed-offboarding')
       },
       tooltip: 'Completed offboarding processes this month',
       animation: true,
@@ -551,7 +556,7 @@ const KPI_CARDS_CONFIG = {
  * Smart KPI Card Renderer Component
  * Renders a KPI card based on configuration with all smart features
  */
-const SmartKPICard = ({ config, stats }) => {
+const SmartKPICard = ({ config, stats, onAction }) => {
   // Check visibility
   const isVisible = typeof config.visible === 'function' ? config.visible(stats) : true
   if (!isVisible) return null
@@ -574,7 +579,7 @@ const SmartKPICard = ({ config, stats }) => {
   // Handle click
   const handleClick = () => {
     if (typeof config.onClick === 'function') {
-      config.onClick(stats)
+      config.onClick(stats, onAction)
     }
   }
 
@@ -619,18 +624,18 @@ const SmartKPICard = ({ config, stats }) => {
  * Smart KPI Card Grid Component
  * Renders a grid of KPI cards for a specific section with smart layout
  */
-const SmartKPICardGrid = ({ section, stats }) => {
+const SmartKPICardGrid = ({ section, stats, onAction }) => {
   const cards = KPI_CARDS_CONFIG[section] || []
-  
+
   // Sort by order
   const sortedCards = [...cards].sort((a, b) => a.order - b.order)
-  
+
   if (sortedCards.length === 0) return null
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {sortedCards.map((cardConfig) => (
-        <SmartKPICard key={cardConfig.id} config={cardConfig} stats={stats} />
+        <SmartKPICard key={cardConfig.id} config={cardConfig} stats={stats} onAction={onAction} />
       ))}
     </div>
   )
@@ -781,6 +786,14 @@ const Spinner = () => (
 export default function OnboardingOffboarding() {
   const user = useSelector((state) => state.auth.user)
   const [activeTab, setActiveTab] = useState('overview')
+  // Filter applied to the Offboarding List tab when navigating there from an Overview card/button
+  const [offboardingFilter, setOffboardingFilter] = useState(null)
+
+  // Direct tab-bar navigation clears any pending filter (only Overview cards/buttons should set one)
+  const goToTab = (tabId) => {
+    if (tabId === 'offboarding') setOffboardingFilter(null)
+    setActiveTab(tabId)
+  }
 
   // Tabs configuration
   const tabs = [
@@ -814,7 +827,7 @@ export default function OnboardingOffboarding() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => goToTab(tab.id)}
                   className={`flex items-center justify-center gap-2 px-5 py-3 rounded-lg transition-all duration-200 whitespace-nowrap min-w-fit ${
                     activeTab === tab.id
                       ? 'bg-gradient-to-r from-blue-500 to-violet-500 text-white shadow-md shadow-blue-500/30 font-semibold'
@@ -832,24 +845,123 @@ export default function OnboardingOffboarding() {
 
       {/* Tab Content */}
       <div>
-        {activeTab === 'overview' && <OverviewTab onTabChange={setActiveTab} />}
+        {activeTab === 'overview' && <OverviewTab onTabChange={setActiveTab} onOffboardingFilter={setOffboardingFilter} />}
         {activeTab === 'onboarding' && <OnboardingListTab />}
-        {activeTab === 'offboarding' && <OffboardingListTab />}
+        {activeTab === 'offboarding' && <OffboardingListTab initialFilter={offboardingFilter} />}
         {activeTab === 'create' && <CreateEmployeeTab />}
       </div>
     </div>
   )
 }
 
+// Statuses that count as "not yet completed" — mirrors backend statistics() overdue/upcoming definitions
+const ONBOARDING_ACTIVE_STATUSES = ['initiated', 'documentation', 'equipment', 'access_provisioning', 'training']
+const OFFBOARDING_ACTIVE_STATUSES = ['initiated', 'access_revocation', 'equipment_return', 'exit_interview', 'final_settlement']
+
+const ONBOARDING_MODAL_TITLES = {
+  all: 'All Onboarding Processes',
+  upcoming: 'Employees Joining Soon',
+  overdue: 'Overdue Onboarding Items',
+  completed: 'Onboarding Completed This Month',
+}
+
+// Maps a KPI/button action id to the onboarding modal filter it should apply
+const ONBOARDING_FILTER_SIGNALS = {
+  'all-onboarding': 'all',
+  'upcoming-onboarding': 'upcoming',
+  'overdue-onboarding': 'overdue',
+  'completed-onboarding': 'completed',
+}
+
+// Maps a KPI/button action id to the offboarding list filter it should apply
+const OFFBOARDING_FILTER_SIGNALS = {
+  'all-offboarding': 'all',
+  'upcoming-offboarding': 'upcoming',
+  'overdue-offboarding': 'overdue',
+  'completed-offboarding': 'completed',
+}
+
+const filterOnboardingRecords = (records, filterType, filterValue) => {
+  const today = new Date().toISOString().split('T')[0]
+  const upcomingLimit = new Date()
+  upcomingLimit.setDate(upcomingLimit.getDate() + 30)
+  const upcomingLimitStr = upcomingLimit.toISOString().split('T')[0]
+  const now = new Date()
+
+  switch (filterType) {
+    case 'upcoming':
+      return records.filter(
+        (r) => r.joining_date && r.joining_date >= today && r.joining_date <= upcomingLimitStr && ONBOARDING_ACTIVE_STATUSES.includes(r.status)
+      )
+    case 'overdue':
+      return records.filter((r) => r.joining_date && r.joining_date < today && ONBOARDING_ACTIVE_STATUSES.includes(r.status))
+    case 'completed':
+      return records.filter((r) => {
+        if (r.status !== 'completed' || !r.actual_completion_date) return false
+        const d = new Date(r.actual_completion_date)
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+      })
+    case 'branch':
+      return records.filter((r) => r.branch === filterValue)
+    case 'all':
+    default:
+      return records
+  }
+}
+
 // ── Overview Tab ───────────────────────────────────────────────────────────
-function OverviewTab({ onTabChange }) {
+function OverviewTab({ onTabChange, onOffboardingFilter }) {
   const [onboardingStats, setOnboardingStats] = useState(null)
   const [offboardingStats, setOffboardingStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [onboardingModalOpen, setOnboardingModalOpen] = useState(false)
+  const [onboardingModalTitle, setOnboardingModalTitle] = useState('')
+  const [onboardingModalItems, setOnboardingModalItems] = useState([])
+  const [onboardingModalLoading, setOnboardingModalLoading] = useState(false)
 
   useEffect(() => {
     loadStatistics()
   }, [])
+
+  const loadOnboardingRecords = (filterType, filterValue) => {
+    setOnboardingModalOpen(true)
+    setOnboardingModalLoading(true)
+    setOnboardingModalTitle(
+      filterType === 'branch'
+        ? `Onboarding — ${BRANCH_CONFIG[filterValue]?.label || filterValue}`
+        : ONBOARDING_MODAL_TITLES[filterType] || 'Onboarding Processes'
+    )
+    apiClient
+      .get(`${API_BASE}/onboarding/`)
+      .then((res) => {
+        const records = res.data?.results || []
+        setOnboardingModalItems(filterOnboardingRecords(records, filterType, filterValue))
+      })
+      .catch((err) => console.error('Failed to load onboarding records:', err))
+      .finally(() => setOnboardingModalLoading(false))
+  }
+
+  const handleOnboardingAction = (action) => {
+    if (typeof action === 'string' && action.startsWith('branch-onboarding:')) {
+      loadOnboardingRecords('branch', action.slice('branch-onboarding:'.length))
+    } else if (ONBOARDING_FILTER_SIGNALS[action]) {
+      loadOnboardingRecords(ONBOARDING_FILTER_SIGNALS[action])
+    } else if (onTabChange) {
+      onTabChange(action)
+    }
+  }
+
+  const handleOffboardingAction = (action) => {
+    if (typeof action === 'string' && action.startsWith('branch-offboarding:')) {
+      if (onOffboardingFilter) onOffboardingFilter({ branch: action.slice('branch-offboarding:'.length) })
+      if (onTabChange) onTabChange('offboarding')
+    } else if (OFFBOARDING_FILTER_SIGNALS[action]) {
+      if (onOffboardingFilter) onOffboardingFilter({ dateFilter: OFFBOARDING_FILTER_SIGNALS[action] })
+      if (onTabChange) onTabChange('offboarding')
+    } else if (onTabChange) {
+      onTabChange(action)
+    }
+  }
 
   const loadStatistics = () => {
     setLoading(true)
@@ -939,14 +1051,14 @@ function OverviewTab({ onTabChange }) {
           <SmartButtonGroup
             section="onboarding"
             stats={onboardingStats}
-            onTabChange={onTabChange}
+            onTabChange={handleOnboardingAction}
             className="flex-shrink-0"
           />
         </div>
 
         {/* Main KPIs - Smart Card Grid */}
         <div className="mb-6">
-          <SmartKPICardGrid section="onboarding" stats={onboardingStats} />
+          <SmartKPICardGrid section="onboarding" stats={onboardingStats} onAction={handleOnboardingAction} />
         </div>
 
         {/* Status Pipeline */}
@@ -973,7 +1085,11 @@ function OverviewTab({ onTabChange }) {
               {Object.entries(onboardingStats.by_branch).map(([branch, count]) => {
                 const branchCfg = BRANCH_CONFIG[branch] || { label: branch, color: 'text-slate-600' }
                 return (
-                  <div key={branch} className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                  <div
+                    key={branch}
+                    className="bg-slate-50 rounded-lg p-4 border border-slate-200 cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => handleOnboardingAction(`branch-onboarding:${branch}`)}
+                  >
                     <div className="flex items-center justify-between">
                       <div>
                         <div className={`text-xs font-medium ${branchCfg.color}`}>{branchCfg.label}</div>
@@ -1002,14 +1118,14 @@ function OverviewTab({ onTabChange }) {
           <SmartButtonGroup
             section="offboarding"
             stats={offboardingStats}
-            onTabChange={onTabChange}
+            onTabChange={handleOffboardingAction}
             className="flex-shrink-0"
           />
         </div>
 
         {/* Main KPIs - Smart Card Grid */}
         <div className="mb-6">
-          <SmartKPICardGrid section="offboarding" stats={offboardingStats} />
+          <SmartKPICardGrid section="offboarding" stats={offboardingStats} onAction={handleOffboardingAction} />
         </div>
 
         {/* Status Pipeline */}
@@ -1056,7 +1172,11 @@ function OverviewTab({ onTabChange }) {
               {Object.entries(offboardingStats.by_branch).map(([branch, count]) => {
                 const branchCfg = BRANCH_CONFIG[branch] || { label: branch, color: 'text-slate-600' }
                 return (
-                  <div key={branch} className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                  <div
+                    key={branch}
+                    className="bg-slate-50 rounded-lg p-4 border border-slate-200 cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => handleOffboardingAction(`branch-offboarding:${branch}`)}
+                  >
                     <div className="flex items-center justify-between">
                       <div>
                         <div className={`text-xs font-medium ${branchCfg.color}`}>{branchCfg.label}</div>
@@ -1071,6 +1191,62 @@ function OverviewTab({ onTabChange }) {
           </div>
         )}
       </div>
+
+      {/* Onboarding Records Modal (Total Active / Joining Soon / Overdue / Completed / By Branch) */}
+      {onboardingModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setOnboardingModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <HeroIcons.ExclamationTriangleIcon className="w-5 h-5 text-rose-500" />
+                {onboardingModalTitle}
+              </h3>
+              <button
+                onClick={() => setOnboardingModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded"
+                title="Close"
+              >
+                <HeroIcons.XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              {onboardingModalLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Spinner />
+                  <span className="ml-2 text-slate-500 text-sm">Loading...</span>
+                </div>
+              ) : onboardingModalItems.length === 0 ? (
+                <p className="text-sm text-slate-500 text-center py-6">No matching onboarding items.</p>
+              ) : (
+                onboardingModalItems.map((item) => {
+                  const cfg = ONBOARDING_STATUS_CONFIG[item.status] || { label: item.status, color: 'bg-gray-100 text-gray-700' }
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-slate-800">{item.employee_name}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Joining date: {item.joining_date ? new Date(item.joining_date).toLocaleDateString() : '—'}
+                          {item.department ? ` • ${item.department}` : ''}
+                        </div>
+                      </div>
+                      <span className={`px-2 py-1 rounded text-xs border ${cfg.color}`}>{cfg.label}</span>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2100,10 +2276,17 @@ const OFFBOARDING_FILTERS = [
 ]
 
 // ── Offboarding List Tab ───────────────────────────────────────────────────
-function OffboardingListTab() {
+function OffboardingListTab({ initialFilter } = {}) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState({ status: '', branch: '', exit_reason: '', search: '' })
+  const [filters, setFilters] = useState({
+    status: '',
+    branch: initialFilter?.branch || '',
+    exit_reason: '',
+    search: '',
+  })
+  // Client-side date-range filter set when arriving from an Overview KPI card ('upcoming' | 'overdue' | 'completed' | 'all')
+  const [dateFilter, setDateFilter] = useState(initialFilter?.dateFilter || 'all')
   const [expandedRow, setExpandedRow] = useState(null)
   const [editingField, setEditingField] = useState(null)
   const [editValue, setEditValue] = useState('')
@@ -2116,6 +2299,26 @@ function OffboardingListTab() {
   useEffect(() => {
     loadRecords()
   }, [filters])
+
+  const displayRecords = useMemo(() => {
+    if (dateFilter === 'all') return records
+    const now = new Date()
+    return records.filter((r) => {
+      if (dateFilter === 'upcoming') {
+        return r.days_until_exit >= 0 && r.days_until_exit <= 30 && OFFBOARDING_ACTIVE_STATUSES.includes(r.status)
+      }
+      if (dateFilter === 'overdue') {
+        return r.days_until_exit < 0 && OFFBOARDING_ACTIVE_STATUSES.includes(r.status)
+      }
+      if (dateFilter === 'completed') {
+        if (r.status !== 'completed' || !r.actual_completion_date) return false
+        const d = new Date(r.actual_completion_date)
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+      }
+      return true
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, dateFilter])
 
   const loadRecords = () => {
     setLoading(true)
@@ -2444,7 +2647,7 @@ function OffboardingListTab() {
           <Spinner />
           <span className="ml-2 text-slate-500 mt-2">Loading offboarding records...</span>
         </div>
-      ) : records.length === 0 ? (
+      ) : displayRecords.length === 0 ? (
         /* Enhanced Empty State */
         <div className="bg-gradient-to-br from-slate-50 via-white to-rose-50/30 rounded-2xl border-2 border-dashed border-slate-300 p-12 text-center">
           <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-rose-100 to-pink-100 rounded-full flex items-center justify-center">
@@ -2452,7 +2655,7 @@ function OffboardingListTab() {
           </div>
           <h3 className="text-lg font-bold text-slate-800 mb-2">No Offboarding Records Found</h3>
           <p className="text-sm text-slate-600 mb-6 max-w-md mx-auto">
-            {filters.search || filters.status || filters.branch || filters.exit_reason ? (
+            {filters.search || filters.status || filters.branch || filters.exit_reason || dateFilter !== 'all' ? (
               "No records match your current filters. Try adjusting your search criteria."
             ) : (
               "There are currently no active offboarding processes. Initiate an exit process to get started."
@@ -2466,9 +2669,12 @@ function OffboardingListTab() {
               <HeroIcons.UserMinusIcon className="w-5 h-5" />
               Initiate Exit Process
             </button>
-            {(filters.search || filters.status || filters.branch || filters.exit_reason) && (
+            {(filters.search || filters.status || filters.branch || filters.exit_reason || dateFilter !== 'all') && (
               <button
-                onClick={() => setFilters({ status: '', branch: '', exit_reason: '', search: '' })}
+                onClick={() => {
+                  setFilters({ status: '', branch: '', exit_reason: '', search: '' })
+                  setDateFilter('all')
+                }}
                 className="px-6 py-3 border-2 border-slate-300 hover:border-slate-400 text-slate-700 rounded-lg font-medium transition-all flex items-center gap-2"
               >
                 <HeroIcons.XMarkIcon className="w-5 h-5" />
@@ -2480,7 +2686,7 @@ function OffboardingListTab() {
       ) : viewMode === 'cards' ? (
         /* Card View */
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {records.map((record) => {
+          {displayRecords.map((record) => {
             const statusCfg = OFFBOARDING_STATUS_CONFIG[record.status] || OFFBOARDING_STATUS_CONFIG.initiated
             const branchCfg = BRANCH_CONFIG[record.branch] || BRANCH_CONFIG.RAD
             const exitCfg = EXIT_REASON_CONFIG[record.exit_reason] || EXIT_REASON_CONFIG.other
@@ -2655,7 +2861,7 @@ function OffboardingListTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {records.map((record) => {
+                {displayRecords.map((record) => {
                   const statusCfg = OFFBOARDING_STATUS_CONFIG[record.status] || OFFBOARDING_STATUS_CONFIG.initiated
                   const branchCfg = BRANCH_CONFIG[record.branch] || BRANCH_CONFIG.RAD
                   const exitCfg = EXIT_REASON_CONFIG[record.exit_reason] || EXIT_REASON_CONFIG.other
