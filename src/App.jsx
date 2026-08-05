@@ -120,6 +120,9 @@ import EquipmentList from './pages/Engineering/Process/EquipmentList'
 import PIDVerification from './pages/Engineering/Process/PIDVerification'
 import PIDVerificationV2 from './pages/Engineering/Process/PIDVerificationV2'
 import PIDVerificationV2Report from './pages/Engineering/Process/PIDVerificationV2Report'
+import PIDCheckerV2 from './pages/Engineering/Process/PIDCheckerV2'
+import PIDCheckerV2Docs from './pages/Engineering/Process/PIDCheckerV2Docs'
+import LegendSheetsCanvas from './pages/Engineering/Process/LegendSheetsCanvas'
 import PFDQualityChecker from './pages/Engineering/Process/PFDQualityChecker'
 import CriticalLineList from './pages/Engineering/Piping/CriticalLineList'
 // Electrical Datasheet Components
@@ -903,19 +906,9 @@ function App() {
         />
 
 
-        {/* P&ID Verification */}
+        {/* P&ID Verification - Default is now V2 */}
         <Route
           path="engineering/process/pid-verification"
-          element={
-            <ModuleProtectedRoute moduleCode="pid_analysis">
-              <PIDVerification />
-            </ModuleProtectedRoute>
-          }
-        />
-
-        {/* P&ID Verification V2 */}
-        <Route
-          path="engineering/process/pid-verification-v2"
           element={
             <ModuleProtectedRoute moduleCode="pid_analysis">
               <PIDVerificationV2 />
@@ -923,9 +916,19 @@ function App() {
           }
         />
 
-        {/* P&ID Verification V2 — Comparison Report */}
+        {/* P&ID Verification V1 (Legacy) */}
         <Route
-          path="engineering/process/pid-verification-v2/report/:documentId"
+          path="engineering/process/pid-verification-v1"
+          element={
+            <ModuleProtectedRoute moduleCode="pid_analysis">
+              <PIDVerification />
+            </ModuleProtectedRoute>
+          }
+        />
+
+        {/* P&ID Verification — Comparison Report */}
+        <Route
+          path="engineering/process/pid-verification/report/:documentId"
           element={
             <ModuleProtectedRoute moduleCode="pid_analysis">
               <PIDVerificationV2Report />
@@ -940,6 +943,36 @@ function App() {
             <ProtectedRoute>
               <PFDQualityChecker />
             </ProtectedRoute>
+          }
+        />
+
+        {/* P&ID Checker V2 — Line-List Extractor */}
+        <Route
+          path="engineering/process/pid-checker-v2"
+          element={
+            <ModuleProtectedRoute moduleCode="pid_analysis">
+              <PIDCheckerV2 />
+            </ModuleProtectedRoute>
+          }
+        />
+
+        {/* P&ID Checker V2 — Documentation & Workflow */}
+        <Route
+          path="engineering/process/pid-checker-v2/docs"
+          element={
+            <ModuleProtectedRoute moduleCode="pid_analysis">
+              <PIDCheckerV2Docs />
+            </ModuleProtectedRoute>
+          }
+        />
+
+        {/* P&ID Checker V2 — Legend Sheets Canvas */}
+        <Route
+          path="engineering/process/pid-checker-v2/legends"
+          element={
+            <ModuleProtectedRoute moduleCode="pid_analysis">
+              <LegendSheetsCanvas />
+            </ModuleProtectedRoute>
           }
         />
 
