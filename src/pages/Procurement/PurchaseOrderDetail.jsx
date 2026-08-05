@@ -44,8 +44,18 @@ const PurchaseOrderDetail = () => {
         setOrder(response.data);
       } catch (error) {
         console.error('Error fetching order details:', error);
+        const statusCode = error.response?.status;
+        const backendMessage =
+          error.response?.data?.detail ||
+          error.response?.data?.error ||
+          error.response?.data?.message;
+
+        const defaultMessage = statusCode === 500
+          ? 'Failed to load purchase order details (server error). Please ensure backend migrations are up to date.'
+          : 'Failed to load purchase order details';
+
         setError({
-          message: error.response?.data?.detail || 'Failed to load purchase order details',
+          message: backendMessage || defaultMessage,
           action: () => navigate('/procurement/orders')
         });
       } finally {

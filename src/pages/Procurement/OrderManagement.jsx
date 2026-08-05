@@ -76,6 +76,21 @@ const OrderManagement = () => {
     features: { autoRefresh: true, fullscreen: true, sidebar: true }
   });
 
+  const APPROVED_REQUISITION_STATUSES = ['approved', 'fully_approved', 'vp_approved'];
+
+  /**
+   * Reset all search and filter values when switching tabs
+   * Prevents search filter persistence bugs across tabs
+   */
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab);
+    setSearchTerm('');
+    setFilterStatus('all');
+    setFilterVendor('all');
+    setFilterPriority('all');
+    setFilterType('all');
+  };
+
   const fetchOrders = async () => {
     try {
       setLoading(true);
@@ -93,6 +108,13 @@ const OrderManagement = () => {
       } else if (data && typeof data === 'object') {
         normalizedData = [data];
       }
+      
+      normalizedData.sort((a, b) => {
+        const aCreated = a?.created_at ? new Date(a.created_at).getTime() : 0;
+        const bCreated = b?.created_at ? new Date(b.created_at).getTime() : 0;
+        if (aCreated !== bCreated) return bCreated - aCreated;
+        return (b.po_number || '').localeCompare(a.po_number || '', undefined, { numeric: true, sensitivity: 'base' });
+      });
       
       setOrders(normalizedData);
       
@@ -301,7 +323,11 @@ const OrderManagement = () => {
     
     const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          prNumber.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || status === filterStatus;
+    const matchesStatus =
+      filterStatus === 'all' ||
+      (filterStatus === 'approved'
+        ? APPROVED_REQUISITION_STATUSES.includes(status)
+        : status === filterStatus);
     const matchesPriority = filterPriority === 'all' || priority === filterPriority;
     const matchesType = filterType === 'all' || requisitionType === filterType;
     return matchesSearch && matchesStatus && matchesPriority && matchesType;
@@ -537,6 +563,41 @@ const OrderManagement = () => {
     }
   };
 
+  const handleExportPRPDF = async (requisition) => {
+    if (!requisition || !requisition.id) {
+      console.error('Invalid requisition data for export');
+      return;
+    }
+
+    try {
+      const response = await apiClient.get(`/procurement/requisitions/${requisition.id}/export_pdf/`, {
+        responseType: 'blob',
+      });
+
+      const headerValue = response.headers?.['content-disposition'] || '';
+      const match = headerValue.match(/filename=\"?([^\";]+)\"?/i);
+      const fallbackName = `${requisition.pr_number || `PR-${requisition.id}`}_Approved.pdf`;
+      const filename = (match && match[1]) ? match[1] : fallbackName;
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting requisition PDF:', error);
+      const errorMsg =
+        error.response?.data?.error ||
+        error.response?.data?.detail ||
+        'Failed to export requisition PDF.';
+      alert(errorMsg);
+    }
+  };
+
   const getStatusBadge = (status) => {
     // Soft-coded status configuration based on active tab
     const statusType = activeTab === 'purchaseOrders' ? 'purchaseOrder' : 'requisition';
@@ -695,7 +756,7 @@ const OrderManagement = () => {
         total: safeReqs.length,
         draft: safeReqs.filter(r => r?.status === 'draft').length,
         submitted: safeReqs.filter(r => r?.status === 'submitted').length,
-        approved: safeReqs.filter(r => r?.status === 'approved').length,
+        approved: safeReqs.filter(r => APPROVED_REQUISITION_STATUSES.includes(r?.status)).length,
         rejected: safeReqs.filter(r => r?.status === 'rejected').length,
         converted: safeReqs.filter(r => r?.status === 'converted').length
       };
@@ -854,13 +915,15 @@ const OrderManagement = () => {
             {orderTabs.map((tab) => {
               const isActive = activeTab === tab.key;
               const Icon = tab.icon === 'ShoppingCartIcon' ? ShoppingCartIcon : DocumentTextIcon;
+              
+              // Properly reference counts based on tab key to prevent cross-tab mismatch
               const count = tab.key === 'purchaseOrders' ? filteredOrders.length : filteredRequisitions.length;
-              const totalCount = tab.key === 'purchaseOrders' ? orders.length : requisitions.length;
+              const totalCount = tab.key === 'purchaseOrders' ? (Array.isArray(orders) ? orders.length : 0) : (Array.isArray(requisitions) ? requisitions.length : 0);
               
               return (
                 <button
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => handleTabChange(tab.key)}
                   className={`
                     relative group flex items-center px-6 py-3 rounded-xl font-medium text-sm transition-all duration-300 transform
                     ${isActive
@@ -1430,7 +1493,7 @@ const OrderManagement = () => {
                   {/* Status Bar */}
                   <div className={`h-2 ${
                     req.status === 'converted' ? 'bg-gradient-to-r from-purple-400 to-indigo-500' :
-                    req.status === 'approved' ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
+                    APPROVED_REQUISITION_STATUSES.includes(req.status) ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
                     req.status === 'submitted' ? 'bg-gradient-to-r from-blue-400 to-blue-500' :
                     req.status === 'rejected' ? 'bg-gradient-to-r from-red-400 to-red-500' :
                     'bg-gradient-to-r from-gray-300 to-gray-400'
@@ -1517,32 +1580,42 @@ const OrderManagement = () => {
                     </div>
 
                     {/* Actions - Soft-coded button handlers */}
-                    <div className="flex space-x-2">
+                    <div className="grid grid-cols-2 gap-2">
                       <button 
                         onClick={() => handleOpenApproval(req)}
-                        className="flex-1 inline-flex justify-center items-center px-3 py-2.5 border-2 border-gray-200 shadow-sm text-sm font-semibold rounded-xl text-gray-700 bg-white hover:bg-gray-50 hover:border-purple-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200">
+                        className="inline-flex justify-center items-center px-2.5 py-2 border border-gray-200 shadow-sm text-xs font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 hover:border-purple-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200">
+                        <EyeIcon className="h-3.5 w-3.5 mr-1" />
                         <span>View Details</span>
                       </button>
                       <button 
                         onClick={() => handleEditRequisition(req)}
-                        className="flex-1 inline-flex justify-center items-center px-3 py-2.5 border-2 border-yellow-300 shadow-sm text-sm font-semibold rounded-xl text-yellow-700 bg-yellow-50 hover:bg-yellow-100 hover:border-yellow-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-all duration-200">
-                        <PencilIcon className="h-4 w-4 mr-1.5" />
+                        className="inline-flex justify-center items-center px-2.5 py-2 border border-amber-300 shadow-sm text-xs font-medium rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all duration-200">
+                        <PencilIcon className="h-3.5 w-3.5 mr-1" />
                         <span>Edit</span>
                       </button>
-                      {req.status === 'approved' && (
+                      {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
                         <button 
                           onClick={() => handleConvertToPO(req)}
-                          className="flex-1 inline-flex justify-center items-center px-3 py-2.5 border-2 border-transparent text-sm font-semibold rounded-xl text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 shadow-md hover:shadow-lg transition-all duration-200">
-                          <ShoppingCartIcon className="h-4 w-4 mr-1.5" />
+                          className="inline-flex justify-center items-center px-2.5 py-2 border border-transparent text-xs font-semibold rounded-lg text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 shadow-sm hover:shadow-md transition-all duration-200">
+                          <ShoppingCartIcon className="h-3.5 w-3.5 mr-1" />
                           <span>Convert to PO</span>
+                        </button>
+                      )}
+                      {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
+                        <button 
+                          onClick={() => handleExportPRPDF(req)}
+                          className="inline-flex justify-center items-center px-2.5 py-2 border border-purple-300 shadow-sm text-xs font-medium rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200">
+                          <DocumentTextIcon className="h-3.5 w-3.5 mr-1" />
+                          <span>Export PDF</span>
                         </button>
                       )}
                       {['draft', 'rejected', 'withdrawn'].includes(req.status) && (
                         <button 
                           onClick={() => handleDeleteRequisition(req)}
-                          className="inline-flex justify-center items-center px-3 py-2.5 border-2 border-red-300 shadow-sm text-sm font-semibold rounded-xl text-red-700 bg-red-50 hover:bg-red-100 hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
+                          className="col-span-2 inline-flex justify-center items-center px-2.5 py-2 border border-red-300 shadow-sm text-xs font-medium rounded-lg text-red-700 bg-red-50 hover:bg-red-100 hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
                           title="Delete this purchase requisition">
-                          <TrashIcon className="h-4 w-4" />
+                          <TrashIcon className="h-3.5 w-3.5 mr-1" />
+                          <span>Delete</span>
                         </button>
                       )}
                     </div>
@@ -1640,37 +1713,46 @@ const OrderManagement = () => {
                           ) : 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex justify-end space-x-2">
+                          <div className="flex justify-end gap-1.5">
                             <button
                               onClick={() => handleOpenApproval(req)}
-                              className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                             >
-                              <EyeIcon className="h-4 w-4 mr-1" />
+                              <EyeIcon className="h-3.5 w-3.5 mr-1" />
                               View
                             </button>
                             <button
                               onClick={() => handleEditRequisition(req)}
-                              className="inline-flex items-center px-3 py-1.5 border border-yellow-300 shadow-sm text-xs font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                              className="inline-flex items-center px-2.5 py-1.5 border border-amber-300 shadow-sm text-xs font-medium rounded-md text-amber-700 bg-amber-50 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
                             >
-                              <PencilIcon className="h-4 w-4 mr-1" />
+                              <PencilIcon className="h-3.5 w-3.5 mr-1" />
                               Edit
                             </button>
-                            {req.status === 'approved' && (
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
                               <button
                                 onClick={() => handleConvertToPO(req)}
-                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                                className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                               >
-                                <ShoppingCartIcon className="h-4 w-4 mr-1" />
+                                <ShoppingCartIcon className="h-3.5 w-3.5 mr-1" />
                                 Convert
+                              </button>
+                            )}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
+                              <button
+                                onClick={() => handleExportPRPDF(req)}
+                                className="inline-flex items-center px-2.5 py-1.5 border border-purple-300 shadow-sm text-xs font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                              >
+                                <DocumentTextIcon className="h-3.5 w-3.5 mr-1" />
+                                Export PDF
                               </button>
                             )}
                             {['draft', 'rejected', 'withdrawn'].includes(req.status) && (
                               <button
                                 onClick={() => handleDeleteRequisition(req)}
-                                className="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                className="inline-flex items-center px-2.5 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                                 title="Delete this purchase requisition"
                               >
-                                <TrashIcon className="h-4 w-4 mr-1" />
+                                <TrashIcon className="h-3.5 w-3.5 mr-1" />
                                 Delete
                               </button>
                             )}
@@ -1746,6 +1828,7 @@ const OrderManagement = () => {
         }}
         requisition={selectedRequisition}
         currentUser={currentUser}
+        onExportPDF={handleExportPRPDF}
         onApprovalComplete={handleApprovalComplete}
       />
       </div>

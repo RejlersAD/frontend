@@ -38,7 +38,7 @@ const REJECTION_CONFIG = {
   }
 };
 
-const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete }) => {
+const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete, onExportPDF }) => {
   const [loading, setLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [currentApproverType, setCurrentApproverType] = useState(null); // 'pm', 'vp', 'eng_manager', 'manager_projects'
@@ -49,6 +49,54 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   if (!isOpen || !requisition) return null;
 
+  const isFullyApproved = requisition.status === 'fully_approved' || requisition.status === 'approved';
+  const isRejected = requisition.status === 'rejected';
+
+  const normalizeApprovalStatus = (rawStatus) => {
+    const normalized = (rawStatus || '').toString().trim().toLowerCase();
+    if (['approved', 'complete', 'completed'].includes(normalized)) return 'approved';
+    if (['not_approved', 'rejected', 'declined'].includes(normalized)) return 'not_approved';
+    return 'pending';
+  };
+
+  const approvalHierarchy = Array.isArray(requisition.approval_hierarchy)
+    ? requisition.approval_hierarchy
+    : Array.isArray(requisition.approval_workflow_config)
+      ? requisition.approval_workflow_config
+      : [];
+
+  const findHierarchyStage = (matchers = [], fallbackStep = null) => {
+    const stage = approvalHierarchy.find((entry) => {
+      const roleText = `${entry?.role || ''} ${entry?.stage || ''}`.toLowerCase();
+      const matchesRole = matchers.some((matcher) => roleText.includes(matcher));
+      const matchesStep = fallbackStep && Number(entry?.step) === fallbackStep;
+      return matchesRole || matchesStep;
+    });
+    return stage || null;
+  };
+
+  const pmHierarchyStage = findHierarchyStage(['project manager', 'technical review'], 1);
+  const level2HierarchyStage = findHierarchyStage(['vp operations', 'vice president', 'procurement manager'], 2);
+  const engManagerHierarchyStage = findHierarchyStage(['engineering manager', 'engineering review'], 3);
+  const managerProjectsHierarchyStage = findHierarchyStage(['manager of projects', 'projects manager', 'project manager review'], 4);
+  const level2Label = level2HierarchyStage?.stage || level2HierarchyStage?.role || 'VP Operations';
+
+  const effectivePmStatus = pmHierarchyStage
+    ? normalizeApprovalStatus(pmHierarchyStage.status)
+    : (isFullyApproved ? 'approved' : normalizeApprovalStatus(requisition.pm_approval_status));
+
+  const effectiveLevel2Status = level2HierarchyStage
+    ? normalizeApprovalStatus(level2HierarchyStage.status)
+    : (isFullyApproved ? 'approved' : normalizeApprovalStatus(requisition.vp_op_approval_status));
+
+  const effectiveEngManagerStatus = engManagerHierarchyStage
+    ? normalizeApprovalStatus(engManagerHierarchyStage.status)
+    : normalizeApprovalStatus(requisition.eng_manager_approval_status);
+
+  const effectiveManagerProjectsStatus = managerProjectsHierarchyStage
+    ? normalizeApprovalStatus(managerProjectsHierarchyStage.status)
+    : normalizeApprovalStatus(requisition.manager_projects_approval_status);
+
   // Soft-coded approver capability detection
   // Maps approval tier to status check and endpoint configuration
   const APPROVER_CONFIG = {
@@ -57,33 +105,30 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       approveEndpoint: 'pm_approve',
       rejectEndpoint: 'pm_reject',
       statusField: 'pm_approval_status',
-      canApprove: requisition.status === 'submitted' && requisition.pm_approval_status === 'pending'
+      canApprove: !isFullyApproved && !isRejected && ['draft', 'submitted', 'in_review'].includes(requisition.status) && effectivePmStatus === 'pending'
     },
     eng_manager: {
       label: 'Engineering Manager',
       approveEndpoint: 'eng_manager_approve',
       rejectEndpoint: 'eng_manager_reject',
       statusField: 'eng_manager_approval_status',
-      canApprove: requisition.eng_manager_approval_status === 'pending'
+      canApprove: !isFullyApproved && !isRejected && !!engManagerHierarchyStage && effectiveEngManagerStatus === 'pending'
     },
     manager_projects: {
       label: 'Manager of Projects',
       approveEndpoint: 'manager_projects_approve',
       rejectEndpoint: 'manager_projects_reject',
       statusField: 'manager_projects_approval_status',
-      canApprove: requisition.manager_projects_approval_status === 'pending'
+      canApprove: !isFullyApproved && !isRejected && !!managerProjectsHierarchyStage && effectiveManagerProjectsStatus === 'pending'
     },
     vp: {
       label: 'Vice President of Operations',
       approveEndpoint: 'vp_approve',
       rejectEndpoint: 'vp_reject',
       statusField: 'vp_op_approval_status',
-      canApprove: requisition.pm_approval_status === 'approved' && requisition.vp_op_approval_status === 'pending'
+      canApprove: !isFullyApproved && !isRejected && effectivePmStatus === 'approved' && effectiveLevel2Status === 'pending'
     }
   };
-
-  const isFullyApproved = requisition.status === 'fully_approved' || requisition.status === 'approved';
-  const isRejected = requisition.status === 'rejected';
 
   // Soft-coded: Check if current user can perform any approval action
   const hasAnyApprovalCapability = Object.values(APPROVER_CONFIG).some(config => config.canApprove);
@@ -174,7 +219,13 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       setShowRejectModal(false);
     } catch (error) {
       console.error('Rejection error:', error);
-      const errorMsg = error.response?.data?.error || 'Failed to reject requisition. Please try again.';
+      const errorMsg =
+        error.response?.data?.error ||
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        (typeof error.response?.data === 'string' ? error.response.data : null) ||
+        error.message ||
+        'Failed to reject requisition. Please try again.';
       setRejectionError(errorMsg);
     } finally {
       setLoading(false);
@@ -243,18 +294,18 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
               {/* PM Approval Status */}
               <div className="flex items-center space-x-2">
                 <span className="text-indigo-100 text-sm">PM Approval:</span>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(requisition.pm_approval_status)}`}>
-                  {requisition.pm_approval_status === 'pending' ? 'Pending' : 
-                   requisition.pm_approval_status === 'approved' ? 'Approved' : 'Rejected'}
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(effectivePmStatus)}`}>
+                  {effectivePmStatus === 'pending' ? 'Pending' : 
+                   effectivePmStatus === 'approved' ? 'Approved' : 'Rejected'}
                 </span>
               </div>
 
               {/* VP Approval Status */}
               <div className="flex items-center space-x-2">
-                <span className="text-indigo-100 text-sm">VP Approval:</span>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(requisition.vp_op_approval_status)}`}>
-                  {requisition.vp_op_approval_status === 'pending' ? 'Pending' : 
-                   requisition.vp_op_approval_status === 'approved' ? 'Approved' : 'Rejected'}
+                <span className="text-indigo-100 text-sm">{level2Label}:</span>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(effectiveLevel2Status)}`}>
+                  {effectiveLevel2Status === 'pending' ? 'Pending' : 
+                   effectiveLevel2Status === 'approved' ? 'Approved' : 'Rejected'}
                 </span>
               </div>
             </div>
@@ -435,9 +486,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                   <div className="mb-4 pb-4 border-b border-gray-200">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-700">Project Manager</span>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(requisition.pm_approval_status)}`}>
-                        {requisition.pm_approval_status === 'pending' ? 'Pending' : 
-                         requisition.pm_approval_status === 'approved' ? 'Approved' : 'Rejected'}
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(effectivePmStatus)}`}>
+                        {effectivePmStatus === 'pending' ? 'Pending' : 
+                         effectivePmStatus === 'approved' ? 'Approved' : 'Rejected'}
                       </span>
                     </div>
                     {requisition.pm_name_display && (
@@ -456,10 +507,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                   {/* VP Approval */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-700">VP Operations</span>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(requisition.vp_op_approval_status)}`}>
-                        {requisition.vp_op_approval_status === 'pending' ? 'Pending' : 
-                         requisition.vp_op_approval_status === 'approved' ? 'Approved' : 'Rejected'}
+                      <span className="text-sm font-medium text-gray-700">{level2Label}</span>
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(effectiveLevel2Status)}`}>
+                        {effectiveLevel2Status === 'pending' ? 'Pending' : 
+                         effectiveLevel2Status === 'approved' ? 'Approved' : 'Rejected'}
                       </span>
                     </div>
                     {requisition.vp_op_name_display && (
@@ -634,10 +685,19 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       <div>
                         <p className="font-semibold text-green-900">Fully Approved</p>
                         <p className="text-sm text-green-700 mt-1">
-                          This requisition has been approved by both PM and VP Operations.
+                          This requisition has completed all required approval stages.
                         </p>
                       </div>
                     </div>
+                    {typeof onExportPDF === 'function' && (
+                      <button
+                        onClick={() => onExportPDF(requisition)}
+                        className="mt-4 inline-flex items-center px-4 py-2 border border-green-300 shadow-sm text-sm font-medium rounded-md text-green-800 bg-white hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      >
+                        <DocumentTextIcon className="h-4 w-4 mr-2" />
+                        Download Document
+                      </button>
+                    )}
                   </div>
                 )}
 
