@@ -56,6 +56,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [submitLoading, setSubmitLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [vendors, setVendors] = useState([]);
+  const [selectedVendor, setSelectedVendor] = useState(null);
   const [projects, setProjects] = useState([]);
   
   // Form state - all 56 fields from PDF template
@@ -176,11 +177,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [autoSaving, setAutoSaving] = useState(false);
   const [currentSection, setCurrentSection] = useState(1);
 
-  // Fetch vendors and projects on mount
+  // Fetch vendors and projects whenever the form is opened
   useEffect(() => {
-    fetchVendors();
-    fetchProjects();
-  }, []);
+    if (isOpen) {
+      fetchVendors();
+      fetchProjects();
+    }
+  }, [isOpen]);
 
   // Auto-calculate tax when total amount or VAT% changes
   useEffect(() => {
@@ -204,12 +207,32 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     }
   }, [formData, editData]);
 
+  const normalizeApiArray = (data) => {
+    if (Array.isArray(data)) return data;
+    if (data?.results && Array.isArray(data.results)) return data.results;
+    if (data?.data && Array.isArray(data.data)) return data.data;
+    if (data?.data?.results && Array.isArray(data.data.results)) return data.data.results;
+    if (data?.vendors && Array.isArray(data.vendors)) return data.vendors;
+    if (data && typeof data === 'object') {
+      const firstArray = Object.values(data).find((value) => Array.isArray(value));
+      if (Array.isArray(firstArray)) return firstArray;
+    }
+    return [];
+  };
+
   const fetchVendors = async () => {
     try {
-      const response = await apiClient.get('/procurement/vendors/');
+      const response = await apiClient.get('/procurement/vendors/', {
+        params: {
+          page_size: 1000,
+        },
+      });
       const data = response.data;
-      // Handle both paginated (data.results) and direct array responses
-      setVendors(Array.isArray(data.results) ? data.results : Array.isArray(data) ? data : []);
+      const normalizedVendors = normalizeApiArray(data);
+      setVendors(normalizedVendors);
+      if (!normalizedVendors.length) {
+        console.warn('Vendor API returned no vendors:', data);
+      }
     } catch (error) {
       console.error('Error fetching vendors:', error);
       setVendors([]); // Ensure vendors is always an array
@@ -228,13 +251,20 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     }
   };
 
+  useEffect(() => {
+    if (formData.vendor && vendors.length) {
+      const vendor = vendors.find((v) => String(v.id) === String(formData.vendor));
+      if (vendor) setSelectedVendor(vendor);
+    }
+  }, [vendors, formData.vendor]);
+
   const handleAutoSave = async () => {
     setAutoSaving(true);
     try {
       if (editData) {
-        await axios.patch(`/procurement/orders/${editData.id}/`, formData);
+        await apiClient.patch(`/procurement/orders/${editData.id}/`, formData);
       } else {
-        const response = await axios.post('/procurement/orders/', {
+        const response = await apiClient.post('/procurement/orders/', {
           ...formData,
           status: 'draft'
         });
@@ -246,6 +276,26 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       console.error('Auto-save failed:', error);
     } finally {
       setAutoSaving(false);
+    }
+  };
+
+  const handleVendorChange = (e) => {
+    const vendorId = e.target.value;
+    const vendor = vendors.find((v) => String(v.id) === String(vendorId));
+
+    setSelectedVendor(vendor || null);
+    setFormData((prev) => ({
+      ...prev,
+      vendor: vendorId,
+      seller_contact_person: vendor?.contact_person || prev.seller_contact_person,
+      seller_email: vendor?.email || prev.seller_email,
+      seller_phone: vendor?.phone || prev.seller_phone,
+      seller_license_no: vendor?.trade_license_number || prev.seller_license_no,
+      category: vendor?.categories?.[0] || prev.category,
+    }));
+
+    if (errors.vendor) {
+      setErrors((prev) => ({ ...prev, vendor: null }));
     }
   };
 
@@ -306,6 +356,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       ...prev,
       payment_milestones: prev.payment_milestones.filter((_, i) => i !== index)
     }));
+  };
+
+  const generatePoNumber = () => {
+    const now = new Date();
+    const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
+    return `RAD-PRJ-PUR-${datePart}-${randomPart}`;
   };
 
   const addItem = () => {
@@ -409,6 +466,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       }
       return;
     }
+
+    const poNumber = formData.po_number || generatePoNumber();
+    if (!formData.po_number) {
+      setFormData(prev => ({ ...prev, po_number: poNumber }));
+    }
     
     setSubmitLoading(true);
     
@@ -416,12 +478,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       const submitData = new FormData();
       
       // Append all form fields
-      Object.keys(formData).forEach(key => {
-        if (formData[key] !== null && formData[key] !== undefined && formData[key] !== '') {
-          if (typeof formData[key] === 'object') {
-            submitData.append(key, JSON.stringify(formData[key]));
+      Object.keys({ ...formData, po_number: poNumber }).forEach(key => {
+        const value = key === 'po_number' ? poNumber : formData[key];
+        if (value !== null && value !== undefined && value !== '') {
+          if (typeof value === 'object') {
+            submitData.append(key, JSON.stringify(value));
           } else {
-            submitData.append(key, formData[key]);
+            submitData.append(key, value);
           }
         }
       });
@@ -444,9 +507,9 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       
       let response;
       if (editData) {
-        response = await axios.patch(`/procurement/orders/${editData.id}/`, submitData, config);
+        response = await apiClient.patch(`/procurement/orders/${editData.id}/`, submitData, config);
       } else {
-        response = await axios.post('/procurement/orders/', submitData, config);
+        response = await apiClient.post('/procurement/orders/', submitData, config);
       }
       
       if (onSuccess) onSuccess(response.data);
@@ -593,7 +656,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   <select
                     name="vendor"
                     value={formData.vendor}
-                    onChange={handleChange}
+                    onChange={handleVendorChange}
                     className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
                       errors.vendor ? 'border-red-500' : ''
                     }`}
@@ -606,6 +669,32 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     ))}
                   </select>
                   {errors.vendor && <p className="mt-1 text-xs text-red-600">{errors.vendor}</p>}
+
+                  {selectedVendor && (
+                    <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-gray-700">
+                      <div className="font-semibold text-blue-700 mb-2">Selected vendor details</div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <span className="font-medium">Contact Person:</span> {selectedVendor.contact_person || 'N/A'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Email:</span> {selectedVendor.email || 'N/A'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Phone:</span> {selectedVendor.phone || 'N/A'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Country:</span> {selectedVendor.country || 'N/A'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Trade License:</span> {selectedVendor.trade_license_number || 'N/A'}
+                        </div>
+                        <div>
+                          <span className="font-medium">VAT Number:</span> {selectedVendor.vat_number || 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
