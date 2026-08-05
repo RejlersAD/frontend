@@ -70,7 +70,7 @@ const sanitizeForStorage = (value) => {
 }
 // ───────────────────────────────────────────────────────────────────────────
 
-const Sidebar = ({ isOpen, setIsOpen, isCollapsed: isCollapsedProp, setIsCollapsed: setIsCollapsedProp }) => {
+const Sidebar = ({ isOpen, setIsOpen, isCollapsed: isCollapsedProp, setIsCollapsed: setIsCollapsedProp, showHeader }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const dispatch = useDispatch()
@@ -764,23 +764,26 @@ const Sidebar = ({ isOpen, setIsOpen, isCollapsed: isCollapsedProp, setIsCollaps
       <aside
         className={`
           fixed inset-y-0 left-0 z-50 top-16
-          ${isCollapsed ? SIDEBAR.collapsed.widthClass : SIDEBAR.expanded.widthClass} bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700
+          ${isCollapsed ? SIDEBAR.collapsed.widthClass : SIDEBAR.expanded.widthClass} bg-white dark:bg-gray-800
+          ${showHeader ? 'border-0' : 'border-r border-gray-200 dark:border-gray-700'}
           transform transition-all duration-300 ease-in-out
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           flex flex-col h-[calc(100vh-4rem)]
         `}
       >
         {/* Sidebar Header */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700">
+        <div className={`h-16 flex items-center justify-between px-4 ${showHeader ? 'border-b-0 bg-transparent' : 'border-b border-gray-200 dark:border-gray-700'}`}>
           {!isCollapsed ? (
             <>
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-lg">AI</span>
                 </div>
-                <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                  RADAI
-                </span>
+                {!showHeader && (
+                  <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    RADAI
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -1028,13 +1031,15 @@ const Sidebar = ({ isOpen, setIsOpen, isCollapsed: isCollapsedProp, setIsCollaps
         </div>
       </aside>
 
-      {/* Mobile menu button */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="lg:hidden fixed bottom-4 right-4 z-30 p-3 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all"
-      >
-        <Bars3Icon className="w-6 h-6" />
-      </button>
+      {/* Mobile menu button (hidden when top header is present to avoid duplicate toggles) */}
+      {!showHeader && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="lg:hidden fixed bottom-4 right-4 z-30 p-3 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all"
+        >
+          <Bars3Icon className="w-6 h-6" />
+        </button>
+      )}
     </>
   )
 }
