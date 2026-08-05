@@ -69,8 +69,8 @@
       "name": "Pre-Production (Railway)",
       "description": "Pre-production staging environment on Railway",
       "backend": {
-        "url": "https://aiflow-backend-preprod.up.railway.app",
-        "api_url": "https://aiflow-backend-preprod.up.railway.app/api/v1",
+        "url": "https://backend-production-9475.up.railway.app",
+        "api_url": "https://backend-production-9475.up.railway.app/api/v1",
         "host": "0.0.0.0",
         "port": 8000,
         "debug": false,
@@ -78,7 +78,7 @@
       },
       "frontend": {
         "url": "https://airflow-frontend-hsx7-git-preprod-rejlers.vercel.app",
-        "api_proxy": "https://aiflow-backend-preprod.up.railway.app/api/v1",
+        "api_proxy": "https://backend-production-9475.up.railway.app/api/v1",
         "port": 3000,
         "host": "0.0.0.0"
       },
