@@ -4,10 +4,7 @@ import { useSelector } from 'react-redux'
 import Header from './Header'
 import Footer from './Footer'
 import Sidebar from './Sidebar'
-import {
-  HEADER_HEIGHT_CLASS,
-  getMainMarginClass,
-} from '../../config/layout.config'
+import { HEADER_HEIGHT_CLASS } from '../../config/layout.config'
 
 /**
  * Layout Component
@@ -55,7 +52,6 @@ const Layout = () => {
   // Hide the shared footer on public pages that render their own or are auth flow pages.
   const showFooter = !isPublicRoute
 
-  const mainMarginClass = getMainMarginClass(showSidebar, sidebarOpen, sidebarCollapsed)
   const contentOffsetClass = showHeader ? HEADER_HEIGHT_CLASS : ''
 
   return (
@@ -73,9 +69,7 @@ const Layout = () => {
             showHeader={showHeader}
           />
         )}
-        <main
-          className={`main-content flex-grow min-w-0 transition-all duration-300 ${mainMarginClass} overflow-x-hidden`}
-        >
+        <main className="main-content flex-1 min-w-0 transition-all duration-300 overflow-x-hidden">
           <Outlet />
         </main>
       </div>
