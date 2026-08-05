@@ -26,26 +26,12 @@ export const useQHSEIntelligence = (moduleId, currentProject = null) => {
   
   const previousProjectRef = useRef(null);
   const analysisTimerRef = useRef(null);
-  const lastAnalyzedHashRef = useRef(null);
-  const lastAnalyzedAtRef = useRef(0);
 
   /**
    * Analyze current project and generate recommendations
    */
   const analyzeProject = useCallback(async (project) => {
     if (!project || projectsLoading) return;
-
-    // Skip repeat analyses for the same project happening too frequently
-    try {
-      const hash = project.id || JSON.stringify(project)
-      const recentMs = 60 * 1000 // 1 minute throttle
-      if (lastAnalyzedHashRef.current === hash && (Date.now() - lastAnalyzedAtRef.current) < recentMs) {
-        // Already analyzed recently
-        return
-      }
-    } catch (e) {
-      // ignore hashing errors and continue
-    }
 
     setIsAnalyzing(true);
     try {
@@ -58,13 +44,6 @@ export const useQHSEIntelligence = (moduleId, currentProject = null) => {
       setRecommendations(result);
       setCrossModuleImpacts(result.crossModuleImpacts);
       setAIInsights(result.insights);
-      // record analysis metadata to avoid immediate repeats
-      try {
-        lastAnalyzedHashRef.current = project.id || JSON.stringify(project)
-        lastAnalyzedAtRef.current = Date.now()
-      } catch (e) {
-        // ignore
-      }
     } catch (error) {
       console.error('Error analyzing project:', error);
     } finally {

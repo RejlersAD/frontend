@@ -10,7 +10,7 @@
  */
 export const formatDistanceToNow = (timestamp) => {
   try {
-    const date = parseDate(timestamp)
+    const date = new Date(timestamp)
     const now = new Date()
     const diffInSeconds = Math.floor((now - date) / 1000)
 
@@ -70,7 +70,7 @@ export const formatDistanceToNow = (timestamp) => {
  */
 export const formatDate = (date, format = 'short') => {
   try {
-    const d = parseDate(date)
+    const d = new Date(date)
     
     if (isNaN(d.getTime())) {
       return 'Invalid date'
@@ -129,7 +129,7 @@ export const formatDate = (date, format = 'short') => {
  */
 export const isToday = (date) => {
   try {
-    const d = parseDate(date)
+    const d = new Date(date)
     const today = new Date()
     return d.toDateString() === today.toDateString()
   } catch (error) {
@@ -145,46 +145,12 @@ export const isToday = (date) => {
  */
 export const isWithinDays = (date, days) => {
   try {
-    const d = parseDate(date)
+    const d = new Date(date)
     const now = new Date()
     const diffInDays = Math.floor((now - d) / (1000 * 60 * 60 * 24))
     return diffInDays <= days
   } catch (error) {
     return false
-  }
-}
-
-/**
- * Safe date parsing helper. Attempts to parse common formats and falls back
- * to a best-effort Date object. Returns an invalid Date if parsing fails.
- */
-export const parseDate = (input) => {
-  try {
-    if (input instanceof Date) return input
-    if (typeof input === 'number') return new Date(input)
-    if (!input) return new Date(NaN)
-
-    // Trim and normalize
-    const s = String(input).trim()
-
-    // ISO date (YYYY-MM-DD or with time)
-    if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(s)) {
-      return new Date(s)
-    }
-
-    // YYYY/MM/DD or YYYY.MM.DD
-    if (/^\d{4}[\.\/]\d{2}[\.\/]\d{2}$/.test(s)) {
-      return new Date(s.replace(/\./g, '-').replace(/\//g, '-'))
-    }
-
-    // Fallback: try Date.parse
-    const parsed = Date.parse(s)
-    if (!isNaN(parsed)) return new Date(parsed)
-
-    // Give up — return invalid date
-    return new Date(NaN)
-  } catch (err) {
-    return new Date(NaN)
   }
 }
 

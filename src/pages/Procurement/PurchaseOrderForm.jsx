@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import apiClient from '../../services/api.service';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -174,16 +175,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [popupError, setPopupError] = useState('');
   const [autoSaving, setAutoSaving] = useState(false);
   const [currentSection, setCurrentSection] = useState(1);
-  const fetchGuardRef = useRef(false);
 
   // Fetch vendors and projects on mount
   useEffect(() => {
-    // Guard against double-invocation in React StrictMode (dev) or accidental re-mounts
-    if (!fetchGuardRef.current) {
-      fetchGuardRef.current = true;
-      fetchVendors();
-      fetchProjects();
-    }
+    fetchVendors();
+    fetchProjects();
   }, []);
 
   // Auto-calculate tax when total amount or VAT% changes
@@ -210,7 +206,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
   const fetchVendors = async () => {
     try {
-      const response = await axios.get('/procurement/vendors/');
+      const response = await apiClient.get('/procurement/vendors/');
       const data = response.data;
       // Handle both paginated (data.results) and direct array responses
       setVendors(Array.isArray(data.results) ? data.results : Array.isArray(data) ? data : []);
@@ -222,7 +218,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
   const fetchProjects = async () => {
     try {
-      const response = await axios.get('/procurement/projects/');
+      const response = await apiClient.get('/procurement/projects/');
       const data = response.data;
       // Handle both paginated (data.results) and direct array responses
       setProjects(Array.isArray(data.results) ? data.results : Array.isArray(data) ? data : []);
@@ -909,7 +905,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   </div>
                   
                   {Array.isArray(formData.payment_milestones) && formData.payment_milestones.map((milestone, index) => (
-                    <div key={milestone.id || milestone.milestone || index} className="grid grid-cols-5 gap-2 mb-2">
+                    <div key={index} className="grid grid-cols-5 gap-2 mb-2">
                       <input
                         type="text"
                         value={milestone.milestone}
@@ -1131,7 +1127,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {Array.isArray(formData.items) && formData.items.length > 0 ? (
                       formData.items.map((item, index) => (
-                        <tr key={item.id || item.description || index}>
+                        <tr key={index}>
                           <td className="px-4 py-3">
                             <input
                               type="text"
