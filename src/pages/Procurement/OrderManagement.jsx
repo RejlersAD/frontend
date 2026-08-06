@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ShoppingCartIcon,
   MagnifyingGlassIcon,
-  FunnelIcon,
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
@@ -20,13 +19,14 @@ import {
   Squares2X2Icon,
   ListBulletIcon,
   EyeIcon,
+  PlusIcon,
   PencilIcon,
   TrashIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { PageControlButtons } from '../../components/Common/PageControlButtons';
 import { usePageControls } from '../../hooks/usePageControls';
-import { PROCUREMENT_CONFIG, getCategoryByCode, getStatusConfig, getPriorityConfig, getOrderTabs } from '../../config/procurement.config';
+import { getStatusConfig, getOrderTabs } from '../../config/procurement.config';
 import AIPurchaseOrderCreator from './AIPurchaseOrderCreator';
 import PurchaseRequisitionForm from './PurchaseRequisitionForm';
 import PurchaseRequisitionApproval from './PurchaseRequisitionApproval';
@@ -380,7 +380,7 @@ const OrderManagement = () => {
       if (!confirmed) return;
 
       // Soft-coded API endpoint
-      const response = await apiClient.patch(`/procurement/orders/${order.id}/`, {
+      await apiClient.patch(`/procurement/orders/${order.id}/`, {
         status: 'sent'
       });
 
@@ -621,10 +621,25 @@ const OrderManagement = () => {
       gray: 'bg-gray-100 text-gray-800 border-gray-200'
     };
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colorClasses[config.color]}`}>
+      <span className={`inline-flex shrink-0 items-center px-2 py-0.5 rounded-full text-[11px] leading-4 font-medium border ${colorClasses[config.color]}`}>
         {config.label}
       </span>
     );
+  };
+
+  const formatCurrency = (amount, currency = 'USD') => {
+    if (amount === null || amount === undefined || amount === '') return '—';
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount)) return '—';
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: currency || 'USD',
+        maximumFractionDigits: 2,
+      }).format(numericAmount);
+    } catch {
+      return `${currency || 'USD'} ${numericAmount.toLocaleString()}`;
+    }
   };
 
   const OrderStats = () => {
@@ -1074,23 +1089,23 @@ const OrderManagement = () => {
 
         {/* Filters and Search - Soft-coded based on active tab */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
-          <div className="bg-white shadow rounded-lg p-6">
+          <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               {/* Search */}
               <div className="md:col-span-2">
-                <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="search" className="block text-xs font-semibold text-gray-700 mb-1.5">
                   {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Requisitions'}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                    <MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />
                   </div>
                   <input
                     type="text"
                     id="search"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="block h-10 w-full pl-9 pr-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
                     placeholder={
                       activeTab === 'purchaseOrders' 
                         ? 'Search by PO number or vendor...' 
@@ -1102,14 +1117,14 @@ const OrderManagement = () => {
 
               {/* Status Filter */}
               <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="status" className="block text-xs font-semibold text-gray-700 mb-1.5">
                   Status
                 </label>
                 <select
                   id="status"
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
-                  className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="block h-10 w-full px-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
                 >
                   <option value="all">All Statuses</option>
                   {activeTab === 'purchaseOrders' ? (
@@ -1138,14 +1153,14 @@ const OrderManagement = () => {
               {/* Conditional Filters - Soft-coded based on tab */}
               {activeTab === 'purchaseOrders' ? (
                 <div>
-                  <label htmlFor="vendor" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="vendor" className="block text-xs font-semibold text-gray-700 mb-1.5">
                     Vendor
                   </label>
                   <select
                     id="vendor"
                     value={filterVendor}
                     onChange={(e) => setFilterVendor(e.target.value)}
-                    className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="block h-10 w-full px-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
                   >
                     <option value="all">All Vendors</option>
                     {vendors.map(vendor => (
@@ -1157,14 +1172,14 @@ const OrderManagement = () => {
                 </div>
               ) : (
                 <div>
-                  <label htmlFor="priority" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="priority" className="block text-xs font-semibold text-gray-700 mb-1.5">
                     Priority
                   </label>
                   <select
                     id="priority"
                     value={filterPriority}
                     onChange={(e) => setFilterPriority(e.target.value)}
-                    className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="block h-10 w-full px-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
                   >
                     <option value="all">All Priorities</option>
                     <option value="urgent">Urgent</option>
@@ -1176,40 +1191,40 @@ const OrderManagement = () => {
               )}
             </div>
 
-            <div className="mt-4 flex justify-between items-center">
-              <p className="text-sm text-gray-500">
+            <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-gray-500">
                 {activeTab === 'purchaseOrders' 
                   ? `Showing ${filteredOrders.length} of ${Array.isArray(orders) ? orders.length : 0} purchase orders`
                   : `Showing ${filteredRequisitions.length} of ${Array.isArray(requisitions) ? requisitions.length : 0} requisitions`
                 }
               </p>
-              <div className="flex items-center space-x-3">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* View Toggle - Soft-coded */}
-                <div className="inline-flex rounded-lg border border-gray-300 bg-white p-1 shadow-sm">
+                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
                   <button
                     type="button"
                     onClick={() => setViewMode('card')}
-                    className={`inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
+                    className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
                       viewMode === 'card'
-                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                        ? 'bg-white text-indigo-700 shadow-sm'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                     title="Card View"
                   >
-                    <Squares2X2Icon className="h-4 w-4 mr-1.5" />
+                    <Squares2X2Icon className="h-3.5 w-3.5 mr-1.5" />
                     Cards
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('list')}
-                    className={`inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
+                    className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
                       viewMode === 'list'
-                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                        ? 'bg-white text-indigo-700 shadow-sm'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                     title="List View"
                   >
-                    <ListBulletIcon className="h-4 w-4 mr-1.5" />
+                    <ListBulletIcon className="h-3.5 w-3.5 mr-1.5" />
                     List
                   </button>
                 </div>
@@ -1217,9 +1232,9 @@ const OrderManagement = () => {
                 <button
                   type="button"
                   onClick={() => activeTab === 'purchaseOrders' ? setShowPOForm(true) : setShowPRForm(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className="inline-flex h-9 items-center px-3.5 border border-transparent text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
-                  <SparklesIcon className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
+                  <PlusIcon className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                   {activeTab === 'purchaseOrders' ? 'Create Purchase Order' : 'Create Requisition'}
                 </button>
               </div>
@@ -1259,34 +1274,34 @@ const OrderManagement = () => {
               </div>
             </div>
           ) : viewMode === 'card' ? (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {filteredOrders.map((order) => {
                 const isOverdue = order.delivery_date && new Date(order.delivery_date) < new Date() && order.status !== 'completed';
                 const completionRate = order.items_count ? ((order.received_items || 0) / order.items_count) * 100 : 0;
                 
                 return (
-                <div key={order.id} className="group bg-white overflow-hidden shadow-lg rounded-2xl hover:shadow-2xl transition-all duration-300 border-2 border-gray-100 hover:border-indigo-400 transform hover:-translate-y-1">
+                <article key={order.id} className="group flex min-h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-indigo-300 hover:shadow-md">
                   {/* Status Bar */}
-                  <div className={`h-2 ${
+                  <div className={`h-1 ${
                     order.status === 'completed' ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
                     order.status === 'sent' ? 'bg-gradient-to-r from-blue-400 to-blue-500' :
                     order.status === 'draft' ? 'bg-gradient-to-r from-gray-300 to-gray-400' :
                     'bg-gradient-to-r from-yellow-400 to-amber-500'
                   }`} />
                   
-                  <div className="p-6">
+                  <div className="flex flex-1 flex-col p-5">
                     {/* Order Header */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-lg">
-                            <ShoppingCartIcon className="h-5 w-5 text-white" />
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-2.5">
+                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600">
+                            <ShoppingCartIcon className="h-4 w-4 text-white" />
                           </div>
-                          <div>
-                            <h3 className="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">
+                          <div className="min-w-0">
+                            <h3 className="break-words text-base font-semibold leading-5 text-gray-950 group-hover:text-indigo-700">
                               {order.po_number || `PO-${order.id}`}
                             </h3>
-                            <p className="text-xs text-gray-500">
+                            <p className="mt-1 line-clamp-2 text-xs leading-4 text-gray-500">
                               {order.vendor_name || 'No vendor assigned'}
                             </p>
                           </div>
@@ -1296,13 +1311,13 @@ const OrderManagement = () => {
                     </div>
 
                     {/* Order Details Grid */}
-                    <div className="space-y-3 mb-4">
+                    <div className="mb-4 space-y-2.5">
                       {order.delivery_date && (
-                        <div className={`flex items-center justify-between text-sm p-2 rounded-lg ${
+                        <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs ${
                           isOverdue ? 'bg-red-50' : 'bg-gray-50'
                         }`}>
                           <div className="flex items-center">
-                            <CalendarIcon className={`h-4 w-4 mr-2 ${isOverdue ? 'text-red-500' : 'text-gray-400'}`} />
+                            <CalendarIcon className={`h-3.5 w-3.5 mr-1.5 ${isOverdue ? 'text-red-500' : 'text-gray-400'}`} />
                             <span className={isOverdue ? 'text-red-700 font-medium' : 'text-gray-600'}>
                               Delivery: {new Date(order.delivery_date).toLocaleDateString()}
                             </span>
@@ -1316,21 +1331,21 @@ const OrderManagement = () => {
                       )}
                       
                       {order.total_amount && (
-                        <div className="flex items-center justify-between p-3 bg-gradient-to-r from-teal-50 to-cyan-50 rounded-lg">
+                        <div className="flex items-center justify-between rounded-lg border border-teal-100 bg-teal-50 px-3 py-2.5">
                           <div className="flex items-center">
-                            <CurrencyDollarIcon className="h-5 w-5 mr-2 text-teal-600" />
-                            <span className="text-sm text-gray-600">Order Value</span>
+                            <CurrencyDollarIcon className="h-3.5 w-3.5 mr-1.5 text-teal-600" />
+                            <span className="text-xs font-medium text-gray-600">Order value</span>
                           </div>
-                          <span className="text-lg font-bold text-teal-700">
-                            ${parseFloat(order.total_amount).toLocaleString()}
+                          <span className="text-base font-semibold tabular-nums text-teal-800">
+                            {formatCurrency(order.total_amount, order.currency)}
                           </span>
                         </div>
                       )}
                       
                       {order.shipping_address && (
-                        <div className="flex items-start text-sm p-2 bg-gray-50 rounded-lg">
-                          <TruckIcon className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0 mt-0.5" />
-                          <span className="text-gray-600 line-clamp-2">{order.shipping_address}</span>
+                        <div className="flex items-start rounded-lg bg-gray-50 px-3 py-2 text-xs">
+                          <TruckIcon className="h-3.5 w-3.5 mr-1.5 text-gray-400 flex-shrink-0 mt-0.5" />
+                          <span className="line-clamp-2 leading-4 text-gray-600">{order.shipping_address}</span>
                         </div>
                       )}
 
@@ -1352,37 +1367,43 @@ const OrderManagement = () => {
                     </div>
 
                     {/* Actions - Soft-coded button handlers */}
-                    <div className="flex space-x-2">
+                    <div className="mt-auto flex items-center gap-2 border-t border-gray-100 pt-3">
                       <button 
+                        type="button"
                         onClick={() => handleViewOrderDetails(order.id)}
-                        className="flex-1 inline-flex justify-center items-center px-3 py-2.5 border-2 border-gray-200 shadow-sm text-sm font-semibold rounded-xl text-gray-700 bg-white hover:bg-gray-50 hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
-                        <span>View Details</span>
+                        className="inline-flex h-9 flex-1 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                        <EyeIcon className="mr-1.5 h-3.5 w-3.5" />
+                        <span>View</span>
                       </button>
                       <button 
+                        type="button"
                         onClick={() => handleEditOrder(order)}
-                        className="flex-1 inline-flex justify-center items-center px-3 py-2.5 border-2 border-yellow-300 shadow-sm text-sm font-semibold rounded-xl text-yellow-700 bg-yellow-50 hover:bg-yellow-100 hover:border-yellow-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-all duration-200">
-                        <PencilIcon className="h-4 w-4 mr-1.5" />
+                        className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                        <PencilIcon className="h-3.5 w-3.5 mr-1.5" />
                         <span>Edit</span>
                       </button>
                       {order.status === 'draft' && (
                         <button 
+                          type="button"
                           onClick={() => handleSendOrder(order)}
-                          className="flex-1 inline-flex justify-center items-center px-3 py-2.5 border-2 border-transparent text-sm font-semibold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md hover:shadow-lg transition-all duration-200">
-                          <PaperAirplaneIcon className="h-4 w-4 mr-1.5" />
+                          className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                          <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1.5" />
                           <span>Send</span>
                         </button>
                       )}
                       {['draft', 'pending', 'cancelled'].includes(order.status) && (
                         <button 
+                          type="button"
                           onClick={() => handleDeleteOrder(order)}
-                          className="inline-flex justify-center items-center px-3 py-2.5 border-2 border-red-300 shadow-sm text-sm font-semibold rounded-xl text-red-700 bg-red-50 hover:bg-red-100 hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
-                          title="Delete this purchase order">
-                          <TrashIcon className="h-4 w-4" />
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                          title="Delete purchase order"
+                          aria-label={`Delete purchase order ${order.po_number || order.id}`}>
+                          <TrashIcon className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
                   </div>
-                </div>
+                </article>
               );
               })}
             </div>
@@ -1419,10 +1440,10 @@ const OrderManagement = () => {
                       <tr key={order.id} className="hover:bg-gray-50 transition-colors duration-150">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-                              <ShoppingCartIcon className="h-5 w-5 text-white" />
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-600">
+                              <ShoppingCartIcon className="h-4 w-4 text-white" />
                             </div>
-                            <div className="ml-4">
+                            <div className="ml-3">
                               <div className="text-sm font-semibold text-gray-900">{order.po_number || `PO-${order.id}`}</div>
                               <div className="text-xs text-gray-500">{order.project || 'No project'}</div>
                             </div>
@@ -1443,8 +1464,8 @@ const OrderManagement = () => {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-bold text-teal-700">
-                            {order.total_amount ? `$${parseFloat(order.total_amount).toLocaleString()}` : 'N/A'}
+                          <div className="text-sm font-semibold tabular-nums text-teal-800">
+                            {formatCurrency(order.total_amount, order.currency)}
                           </div>
                           {order.currency && <div className="text-xs text-gray-500">{order.currency}</div>}
                         </td>
@@ -1452,38 +1473,42 @@ const OrderManagement = () => {
                           {getStatusBadge(order.status)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex justify-end space-x-2">
+                          <div className="flex justify-end gap-2">
                             <button
+                              type="button"
                               onClick={() => handleViewOrderDetails(order.id)}
-                              className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                              className="inline-flex h-8 items-center rounded-md bg-indigo-600 px-2.5 text-xs font-semibold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                             >
-                              <EyeIcon className="h-4 w-4 mr-1" />
+                              <EyeIcon className="h-3.5 w-3.5 mr-1" />
                               View
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleEditOrder(order)}
-                              className="inline-flex items-center px-3 py-1.5 border border-yellow-300 shadow-sm text-xs font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                              className="inline-flex h-8 items-center rounded-md border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                             >
-                              <PencilIcon className="h-4 w-4 mr-1" />
+                              <PencilIcon className="h-3.5 w-3.5 mr-1" />
                               Edit
                             </button>
                             {order.status === 'draft' && (
                               <button
+                                type="button"
                                 onClick={() => handleSendOrder(order)}
-                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                className="inline-flex h-8 items-center rounded-md border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                               >
-                                <PaperAirplaneIcon className="h-4 w-4 mr-1" />
+                                <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1" />
                                 Send
                               </button>
                             )}
                             {['draft', 'pending', 'cancelled'].includes(order.status) && (
                               <button
+                                type="button"
                                 onClick={() => handleDeleteOrder(order)}
-                                className="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                                title="Delete this purchase order"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                title="Delete purchase order"
+                                aria-label={`Delete purchase order ${order.po_number || order.id}`}
                               >
-                                <TrashIcon className="h-4 w-4 mr-1" />
-                                Delete
+                                <TrashIcon className="h-3.5 w-3.5" />
                               </button>
                             )}
                           </div>
@@ -1830,7 +1855,7 @@ const OrderManagement = () => {
             setShowPOForm(false);
             setEditingOrder(null);  // Clear editing state on close
           }}
-          onSuccess={(newOrder) => {
+          onSuccess={() => {
             setShowPOForm(false);
             setEditingOrder(null);  // Clear editing state on success
             fetchOrders();  // Refresh orders to show updated data
@@ -1847,7 +1872,7 @@ const OrderManagement = () => {
             setShowPRForm(false);
             setEditingRequisition(null);  // Clear editing state on close
           }}
-          onSuccess={(newRequisition) => {
+          onSuccess={() => {
             setShowPRForm(false);
             setEditingRequisition(null);  // Clear editing state on success
             fetchRequisitions();  // Refresh requisitions to show updated data
