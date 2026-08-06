@@ -69,7 +69,7 @@ const Layout = () => {
             showHeader={showHeader}
           />
         )}
-        <main className="main-content flex-1 min-w-0 transition-all duration-300 overflow-x-hidden">
+        <main className={`main-content flex-1 min-w-0 transition-all duration-300 overflow-x-hidden ${showHeader ? 'pt-2 sm:pt-3' : ''}`}>
           <Outlet />
         </main>
       </div>

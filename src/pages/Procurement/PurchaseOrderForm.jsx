@@ -175,6 +175,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [errors, setErrors] = useState({});
   const [popupError, setPopupError] = useState('');
   const [autoSaving, setAutoSaving] = useState(false);
+  const [draftId, setDraftId] = useState(editData?.id || null);
   const [currentSection, setCurrentSection] = useState(1);
 
   // Fetch vendors and projects whenever the form is opened
@@ -205,7 +206,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       }, 30000);
       return () => clearInterval(autoSaveInterval);
     }
-  }, [formData, editData]);
+  }, [formData, editData, draftId]);
 
   const normalizeApiArray = (data) => {
     if (Array.isArray(data)) return data;
@@ -261,13 +262,15 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const handleAutoSave = async () => {
     setAutoSaving(true);
     try {
-      if (editData) {
-        await apiClient.patch(`/procurement/orders/${editData.id}/`, formData);
+      const persistedOrderId = editData?.id || draftId;
+      if (persistedOrderId) {
+        await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, formData);
       } else {
         const response = await apiClient.post('/procurement/orders/', {
           ...formData,
           status: 'draft'
         });
+        setDraftId(response.data.id);
         if (response.data.po_number) {
           setFormData(prev => ({ ...prev, po_number: response.data.po_number }));
         }
@@ -358,21 +361,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     }));
   };
 
-  const generatePoNumber = () => {
-    const now = new Date();
-    const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
-    const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
-    return `RAD-PRJ-PUR-${datePart}-${randomPart}`;
-  };
-
   const addItem = () => {
     setFormData(prev => ({
       ...prev,
       items: [
         ...prev.items,
         {
+          line_code: '',
           description: '',
           specification: '',
+          comment: '',
           quantity: 1,
           uom: '',
           unit_price: 0,
@@ -467,19 +465,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       return;
     }
 
-    const poNumber = formData.po_number || generatePoNumber();
-    if (!formData.po_number) {
-      setFormData(prev => ({ ...prev, po_number: poNumber }));
-    }
-    
     setSubmitLoading(true);
     
     try {
       const submitData = new FormData();
       
       // Append all form fields
-      Object.keys({ ...formData, po_number: poNumber }).forEach(key => {
-        const value = key === 'po_number' ? poNumber : formData[key];
+      Object.keys(formData).forEach(key => {
+        // PO number is immutable and comes from the authoritative backend sequence.
+        if (key === 'po_number') return;
+        const value = formData[key];
         if (value !== null && value !== undefined && value !== '') {
           if (typeof value === 'object') {
             submitData.append(key, JSON.stringify(value));
@@ -506,8 +501,9 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       };
       
       let response;
-      if (editData) {
-        response = await apiClient.patch(`/procurement/orders/${editData.id}/`, submitData, config);
+      const persistedOrderId = editData?.id || draftId;
+      if (persistedOrderId) {
+        response = await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, submitData, config);
       } else {
         response = await apiClient.post('/procurement/orders/', submitData, config);
       }
@@ -1203,8 +1199,10 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Line Code</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Item Description</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Specification / API/ASME Standard Tag</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Comment</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Qty</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">UOM</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Unit Price</th>
@@ -1217,6 +1215,15 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     {Array.isArray(formData.items) && formData.items.length > 0 ? (
                       formData.items.map((item, index) => (
                         <tr key={index}>
+                          <td className="px-4 py-3">
+                            <input
+                              type="text"
+                              value={item.line_code || ''}
+                              onChange={(e) => updateItem(index, 'line_code', e.target.value)}
+                              placeholder="e.g. 001"
+                              className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                          </td>
                           <td className="px-4 py-3">
                             <input
                               type="text"
@@ -1233,6 +1240,15 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                               onChange={(e) => updateItem(index, 'specification', e.target.value)}
                               placeholder="API/ASME Standard Tag"
                               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="text"
+                              value={item.comment || ''}
+                              onChange={(e) => updateItem(index, 'comment', e.target.value)}
+                              placeholder="Line comment"
+                              className="min-w-40 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                             />
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -1290,7 +1306,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="8" className="px-4 py-8 text-center text-sm text-gray-500">
+                        <td colSpan="10" className="px-4 py-8 text-center text-sm text-gray-500">
                           No items added yet. Click “+ Add Item” to begin.
                         </td>
                       </tr>

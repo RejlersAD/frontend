@@ -218,7 +218,9 @@ const PurchaseOrderDetail = () => {
         const unitPrice = Number(item.unit_price ?? item.price ?? 0) || 0;
         return {
           id: item.id || index + 1,
+          lineCode: item.line_code || item.lineCode || item.item_code || item.code || '',
           description: item.description || item.item || item.name || order.title || 'Purchase order item',
+          comment: item.comment || item.comments || item.remarks || item.notes || '',
           quantity,
           unit: item.unit || item.uom || item.unit_of_measure || 'EA',
           unitPrice,
@@ -227,7 +229,9 @@ const PurchaseOrderDetail = () => {
       })
     : [{
         id: 1,
+        lineCode: '',
         description: order.title || order.description || 'Purchase order scope',
+        comment: '',
         quantity: 1,
         unit: 'LOT',
         unitPrice: fallbackSubtotal,
@@ -327,8 +331,8 @@ const PurchaseOrderDetail = () => {
             <tr>
               <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left font-semibold">Project</th>
               <td className="border border-gray-400 px-2 py-1.5">{textOrDash(order.project_display || order.project_number || order.rad_project_no)}</td>
-              <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left font-semibold">Reference</th>
-              <td className="border border-gray-400 px-2 py-1.5">{textOrDash(order.quote_ref || order.marking)}</td>
+              <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left font-semibold">PR / Quote Ref.</th>
+              <td className="border border-gray-400 px-2 py-1.5">{textOrDash(order.pr_number || order.quote_ref || order.marking)}</td>
             </tr>
             <tr>
               <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left font-semibold">Status</th>
@@ -378,19 +382,23 @@ const PurchaseOrderDetail = () => {
         <table className="mt-3 text-[8.5px]">
           <thead>
             <tr className="bg-gray-900 text-white">
-              <th className="w-[6%] border border-gray-500 px-1.5 py-2 text-center">No.</th>
-              <th className="w-[46%] border border-gray-500 px-2 py-2 text-left">Description of Goods / Services</th>
-              <th className="w-[10%] border border-gray-500 px-1.5 py-2 text-right">Qty</th>
-              <th className="w-[9%] border border-gray-500 px-1.5 py-2 text-center">Unit</th>
-              <th className="w-[14%] border border-gray-500 px-2 py-2 text-right">Unit Price</th>
-              <th className="w-[15%] border border-gray-500 px-2 py-2 text-right">Amount</th>
+              <th className="w-[5%] border border-gray-500 px-1 py-2 text-center">No.</th>
+              <th className="w-[10%] border border-gray-500 px-1.5 py-2 text-left">Line Code</th>
+              <th className="w-[27%] border border-gray-500 px-2 py-2 text-left">Description of Goods / Services</th>
+              <th className="w-[15%] border border-gray-500 px-1.5 py-2 text-left">Comment</th>
+              <th className="w-[8%] border border-gray-500 px-1 py-2 text-right">Qty</th>
+              <th className="w-[7%] border border-gray-500 px-1 py-2 text-center">Unit</th>
+              <th className="w-[13%] border border-gray-500 px-1.5 py-2 text-right">Unit Price</th>
+              <th className="w-[15%] border border-gray-500 px-1.5 py-2 text-right">Amount</th>
             </tr>
           </thead>
           <tbody>
             {printableItems.map((item, index) => (
               <tr key={item.id}>
                 <td className="border border-gray-400 px-1.5 py-2 text-center align-top">{index + 1}</td>
+                <td className="border border-gray-400 px-1.5 py-2 align-top">{textOrDash(item.lineCode)}</td>
                 <td className="border border-gray-400 px-2 py-2 align-top">{item.description}</td>
+                <td className="border border-gray-400 px-1.5 py-2 align-top">{textOrDash(item.comment)}</td>
                 <td className="border border-gray-400 px-1.5 py-2 text-right align-top">{item.quantity.toLocaleString()}</td>
                 <td className="border border-gray-400 px-1.5 py-2 text-center align-top">{item.unit}</td>
                 <td className="border border-gray-400 px-2 py-2 text-right align-top">{formatMoney(item.unitPrice, currency)}</td>
@@ -476,6 +484,18 @@ const PurchaseOrderDetail = () => {
                   <ShoppingCartIcon className="h-8 w-8 mr-3 text-indigo-600" />
                   {order.po_number || `PO-${order.id}`}
                 </h1>
+                {typeof order.po_number_verified === 'boolean' && (
+                  <span
+                    className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      order.po_number_verified
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                    title={order.po_number_verification_message}
+                  >
+                    {order.po_number_verified ? 'PO number verified' : 'PO number requires correction'}
+                  </span>
+                )}
                 <p className="mt-1 text-sm text-gray-600">
                   Purchase Order Details
                 </p>
