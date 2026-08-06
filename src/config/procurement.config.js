@@ -299,6 +299,7 @@ export const PROCUREMENT_CONFIG = {
     requisition: {
       draft: { label: 'Draft', color: 'gray', icon: 'PencilIcon' },
       submitted: { label: 'Submitted', color: 'blue', icon: 'PaperAirplaneIcon' },
+      in_review: { label: 'In Review', color: 'yellow', icon: 'ClockIcon' },
       approved: { label: 'Approved', color: 'green', icon: 'CheckCircleIcon' },
       rejected: { label: 'Rejected', color: 'red', icon: 'XCircleIcon' },
       cancelled: { label: 'Cancelled', color: 'gray', icon: 'XMarkIcon' },

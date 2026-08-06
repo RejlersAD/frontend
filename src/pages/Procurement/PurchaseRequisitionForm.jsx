@@ -10,7 +10,7 @@
  * - Modern, professional UI
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import apiClient from '../../services/api.service';
 import {
   DocumentTextIcon,
@@ -19,71 +19,88 @@ import {
   XCircleIcon,
   CloudArrowUpIcon,
   InformationCircleIcon,
+  PlusIcon,
   SparklesIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_COUNT = 10;
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'
+]);
+
+const newLineItem = () => ({
+  description: '',
+  quantity: '1',
+  unit: 'EA',
+  unit_price: '',
+  total: '0.00',
+});
+
+const buildInitialFormData = (editData) => ({
+  pr_number: editData?.pr_number || '',
+  issued_date: editData?.issued_date || new Date().toISOString().split('T')[0],
+  supplier_name: editData?.supplier_name || '',
+  supplier_business_id: editData?.supplier_business_id || '',
+  product_service: editData?.product_service || '',
+  project_department: editData?.project_department || '',
+  description_reason: editData?.description_reason || '',
+  preferred_supplier_if_any: editData?.preferred_supplier_if_any || '',
+  price_description: editData?.price_description || '',
+  total_price: editData?.total_price || '',
+  currency: editData?.currency || 'USD',
+  price_remarks: editData?.price_remarks || '',
+  net_total_excl_vat: editData?.net_total_excl_vat || '',
+  po_number_reference: editData?.po_number_reference || '',
+  purchase_recommendation: editData?.purchase_recommendation || editData?.special_notes || '',
+  vendor: editData?.vendor || null,
+  vendor_selection_reason: editData?.vendor_selection_reason || '',
+  approval_workflow_config: editData?.approval_workflow_config || [],
+  price_remarks_data: editData?.price_remarks_data || {},
+  items: Array.isArray(editData?.items) ? editData.items : [],
+  requisition_type: editData?.requisition_type || 'project',
+  priority: editData?.priority || 'normal',
+});
+
+const selectedApproversFromWorkflow = (workflow = []) => {
+  const selection = {
+    project_manager: null,
+    engineering_manager: null,
+    manager_projects: null,
+    vp_operations: null,
+  };
+
+  workflow.forEach((stage) => {
+    const role = `${stage?.role || ''} ${stage?.stage || ''}`.toLowerCase();
+    const userId = stage?.user_id || stage?.approver_id || null;
+    if (role.includes('engineering manager')) selection.engineering_manager = userId;
+    else if (role.includes('manager of projects') || role.includes('projects manager')) selection.manager_projects = userId;
+    else if (role.includes('vice president') || role.includes('vp operations') || role.includes('procurement manager')) selection.vp_operations = userId;
+    else if (role.includes('project manager') || role.includes('technical review')) selection.project_manager = userId;
+  });
+
+  return selection;
+};
+
 const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }) => {
-  const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   
   // Form state - all 23 fields from PDF template
-  const [formData, setFormData] = useState({
-    // Header Section (Fields 1-3)
-    pr_number: editData?.pr_number || '', // Auto-generated
-    issued_date: editData?.issued_date || new Date().toISOString().split('T')[0],
-    
-    // Supplier Section (Fields 4-5)
-    supplier_name: editData?.supplier_name || '',
-    supplier_business_id: editData?.supplier_business_id || '',
-    
-    // Project/Product Section (Fields 6-7)
-    product_service: editData?.product_service || '',
-    project_department: editData?.project_department || '',
-    
-    // Description Section (Field 8)
-    description_reason: editData?.description_reason || '',
-    
-    // Preferred Supplier Section (Field 9)
-    preferred_supplier_if_any: editData?.preferred_supplier_if_any || '',
-    
-    // Pricing Section (Fields 10-13)
-    price_description: editData?.price_description || '',
-    total_price: editData?.total_price || '',
-    currency: editData?.currency || 'USD',
-    price_remarks: editData?.price_remarks || '',
-    net_total_excl_vat: editData?.net_total_excl_vat || '',
-    
-    // Reference Section (Field 14)
-    po_number_reference: editData?.po_number_reference || '',
-    
-    // Purchase Recommendation Section (Field 15) - RENAMED from special_notes
-    purchase_recommendation: editData?.purchase_recommendation || editData?.special_notes || '',
-    
-    // Vendor Integration
-    vendor: editData?.vendor || null,
-    vendor_selection_reason: editData?.vendor_selection_reason || '',
-    
-    // Dynamic Approval Workflow
-    approval_workflow_config: editData?.approval_workflow_config || [],
-    
-    // Price Remarks Data (Advanced)
-    price_remarks_data: editData?.price_remarks_data || {},
-    
-    // Additional fields
-    requisition_type: editData?.requisition_type || 'project',
-    priority: editData?.priority || 'normal',
-    status: editData?.status || 'draft',
-  });
+  const [formData, setFormData] = useState(() => buildInitialFormData(editData));
   
   const [files, setFiles] = useState([]);
   const [errors, setErrors] = useState({});
   const [autoSaving, setAutoSaving] = useState(false);
+  const draftIdRef = useRef(editData?.id || null);
+  const autoSaveInFlightRef = useRef(null);
+  const formDataRef = useRef(formData);
   
   // New state for dynamic features
   const [vendors, setVendors] = useState([]);
   const [vendorRecommendations, setVendorRecommendations] = useState([]);
-  const [loadingVendors, setLoadingVendors] = useState(false);
+  const [, setLoadingVendors] = useState(false);
   
   // Approval workflow state
   const [projectManagers, setProjectManagers] = useState([]);
@@ -96,6 +113,20 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     manager_projects: null,
     vp_operations: null,
   });
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const initialData = buildInitialFormData(editData);
+    setFormData(initialData);
+    formDataRef.current = initialData;
+    draftIdRef.current = editData?.id || null;
+    autoSaveInFlightRef.current = null;
+    setSelectedApprovers(selectedApproversFromWorkflow(editData?.approval_workflow_config || []));
+    setFiles([]);
+    setErrors({});
+    setUploadProgress(0);
+  }, [isOpen, editData]);
   
   // Price Remarks Advanced Fields
   const [showAdvancedPricing, setShowAdvancedPricing] = useState(false);
@@ -110,36 +141,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [showPoDropdown, setShowPoDropdown] = useState(false);
 
-  // Auto-save draft every 30 seconds
-  useEffect(() => {
-    if (!editData) {
-      const autoSaveInterval = setInterval(() => {
-        if (formData.product_service || formData.description_reason) {
-          handleAutoSave();
-        }
-      }, 30000); // 30 seconds
-
-      return () => clearInterval(autoSaveInterval);
-    }
-  }, [formData, editData]);
-  
   // Fetch vendors on mount
   useEffect(() => {
     fetchVendors();
     fetchApprovers();
   }, []);
 
-  // Auto-calculate net total when total price changes
-  useEffect(() => {
-    if (formData.total_price) {
-      // Assume VAT = 0 for now (can be made configurable)
-      setFormData(prev => ({
-        ...prev,
-        net_total_excl_vat: prev.total_price
-      }));
-    }
-  }, [formData.total_price]);
-  
   const fetchVendors = async () => {
     try {
       setLoadingVendors(true);
@@ -184,11 +191,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     
     try {
       // Create a draft PR first if doesn't exist
+      let savedDraft = null;
       if (!editData) {
-        await handleAutoSave();
+        savedDraft = await handleAutoSave();
       }
       
-      const prId = editData?.id || formData.id;
+      const prId = editData?.id || draftIdRef.current || savedDraft?.id;
       if (prId) {
         const response = await apiClient.post(`/procurement/requisitions/${prId}/recommend_vendors/`);
         setVendorRecommendations(response.data.recommendations || []);
@@ -258,19 +266,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     }
   };
 
-  // Auto-save draft every 30 seconds
-  useEffect(() => {
-    if (!editData) {
-      const autoSaveInterval = setInterval(() => {
-        if (formData.product_service || formData.description_reason) {
-          handleAutoSave();
-        }
-      }, 30000); // 30 seconds
-
-      return () => clearInterval(autoSaveInterval);
-    }
-  }, [formData, editData]);
-
   // Auto-calculate net total when total price changes
   useEffect(() => {
     if (formData.total_price) {
@@ -282,29 +277,63 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     }
   }, [formData.total_price]);
 
-  const handleAutoSave = async () => {
-    setAutoSaving(true);
-    try {
-      if (editData) {
-        // Update existing draft
-        await apiClient.patch(`/procurement/requisitions/${editData.id}/`, formData);
-      } else {
-        // Create new draft
-        const response = await apiClient.post('/procurement/requisitions/', {
-          ...formData,
-          status: 'draft'
-        });
-        // Update form with returned PR number
+  useEffect(() => {
+    if (!formData.items?.length) return;
+    const itemsTotal = formData.items.reduce(
+      (sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)),
+      0
+    ).toFixed(2);
+    setFormData(prev => ({ ...prev, total_price: itemsTotal }));
+  }, [formData.items]);
+
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
+  const handleAutoSave = useCallback(async () => {
+    if (autoSaveInFlightRef.current) {
+      return autoSaveInFlightRef.current;
+    }
+
+    const saveOperation = (async () => {
+      setAutoSaving(true);
+      try {
+        const targetDraftId = editData?.id || draftIdRef.current;
+        const response = targetDraftId
+          ? await apiClient.patch(`/procurement/requisitions/${targetDraftId}/`, formDataRef.current)
+          : await apiClient.post('/procurement/requisitions/', formDataRef.current);
+
+        draftIdRef.current = response.data.id;
         if (response.data.pr_number) {
           setFormData(prev => ({ ...prev, pr_number: response.data.pr_number }));
         }
+        return response.data;
+      } catch (error) {
+        console.error('Auto-save failed:', error);
+        throw error;
+      } finally {
+        setAutoSaving(false);
+        autoSaveInFlightRef.current = null;
       }
-    } catch (error) {
-      console.error('Auto-save failed:', error);
-    } finally {
-      setAutoSaving(false);
-    }
-  };
+    })();
+
+    autoSaveInFlightRef.current = saveOperation;
+    return saveOperation;
+  }, [editData]);
+
+  // One autosave timer per open form. Subsequent saves PATCH the same draft.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const autoSaveInterval = setInterval(() => {
+      const latestForm = formDataRef.current;
+      if (latestForm.product_service || latestForm.description_reason) {
+        handleAutoSave().catch(() => {});
+      }
+    }, 30000);
+
+    return () => clearInterval(autoSaveInterval);
+  }, [handleAutoSave, isOpen]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -320,11 +349,56 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
 
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
+    const invalidFile = selectedFiles.find(file => {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      return !ALLOWED_ATTACHMENT_EXTENSIONS.has(extension) || file.size <= 0 || file.size > MAX_ATTACHMENT_SIZE;
+    });
+    if (invalidFile) {
+      setErrors(prev => ({
+        ...prev,
+        attachments: `${invalidFile.name} must be an allowed, non-empty file no larger than 10 MB.`
+      }));
+      e.target.value = '';
+      return;
+    }
+    if (files.length + selectedFiles.length > MAX_ATTACHMENT_COUNT) {
+      setErrors(prev => ({ ...prev, attachments: 'Upload no more than 10 files at once.' }));
+      e.target.value = '';
+      return;
+    }
+    setErrors(prev => ({ ...prev, attachments: null }));
     setFiles(prevFiles => [...prevFiles, ...selectedFiles]);
+    e.target.value = '';
   };
 
   const removeFile = (index) => {
     setFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
+  };
+
+  const addLineItem = () => {
+    setFormData(prev => ({ ...prev, items: [...(prev.items || []), newLineItem()] }));
+  };
+
+  const updateLineItem = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const updated = { ...item, [field]: value };
+        updated.total = (
+          (parseFloat(updated.quantity) || 0) * (parseFloat(updated.unit_price) || 0)
+        ).toFixed(2);
+        return updated;
+      })
+    }));
+    setErrors(prev => ({ ...prev, items: null }));
+  };
+
+  const removeLineItem = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.filter((_, itemIndex) => itemIndex !== index)
+    }));
   };
 
   const validateForm = () => {
@@ -349,6 +423,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     
     if (!formData.total_price || parseFloat(formData.total_price) <= 0) {
       newErrors.total_price = 'Valid total price is required';
+    }
+
+    const invalidItemIndex = (formData.items || []).findIndex(item => (
+      !item.description?.trim()
+      || !(parseFloat(item.quantity) > 0)
+      || parseFloat(item.unit_price) < 0
+      || Number.isNaN(parseFloat(item.unit_price))
+    ));
+    if (invalidItemIndex >= 0) {
+      newErrors.items = `Line item ${invalidItemIndex + 1} requires a description, positive quantity, and valid unit price.`;
     }
     
     setErrors(newErrors);
@@ -418,6 +502,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
           approved_at: null
         });
       }
+
+      if (submitForApproval && approvalWorkflow.length === 0) {
+        setErrors(prev => ({
+          ...prev,
+          approval_workflow_config: 'Select at least one approver before submission.'
+        }));
+        alert('Select at least one approver before submitting the requisition.');
+        return;
+      }
       
       // Add approval workflow to form data
       const formDataWithWorkflow = {
@@ -437,9 +530,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         }
       });
       
-      // Set status based on action
-      submitData.set('status', submitForApproval ? 'submitted' : 'draft');
-      
       // Append files
       files.forEach((file) => {
         submitData.append('attachments_files', file);
@@ -455,23 +545,24 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         },
       };
       
-      let response;
-      if (editData) {
-        // Update existing PR
-        response = await apiClient.patch(`/procurement/requisitions/${editData.id}/`, submitData, config);
-        
-        // If submitting for approval, call submit endpoint
-        if (submitForApproval && response.data.status === 'draft') {
-          response = await apiClient.post(`/procurement/requisitions/${editData.id}/submit/`);
+      // Finish any in-flight autosave before deciding whether to POST or PATCH.
+      if (autoSaveInFlightRef.current) {
+        await autoSaveInFlightRef.current;
+      }
+
+      const targetDraftId = editData?.id || draftIdRef.current;
+      let response = targetDraftId
+        ? await apiClient.patch(`/procurement/requisitions/${targetDraftId}/`, submitData, config)
+        : await apiClient.post('/procurement/requisitions/', submitData, config);
+
+      draftIdRef.current = response.data.id;
+
+      // Lifecycle changes are performed only by the transactional submit action.
+      if (submitForApproval) {
+        if (response.data.status !== 'draft') {
+          throw new Error(`Requisition cannot be submitted from status ${response.data.status}.`);
         }
-      } else {
-        // Create new PR
-        response = await apiClient.post('/procurement/requisitions/', submitData, config);
-        
-        // If submitting for approval, call submit endpoint
-        if (submitForApproval && response.data.id) {
-          response = await apiClient.post(`/procurement/requisitions/${response.data.id}/submit/`);
-        }
+        response = await apiClient.post(`/procurement/requisitions/${response.data.id}/submit/`);
       }
       
       // Success
@@ -486,10 +577,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       if (error.response?.data) {
         setErrors(error.response.data);
       }
-      alert(submitForApproval ? 
-        'Failed to submit requisition. Please check all required fields.' :
-        'Failed to save draft. Please try again.'
-      );
+      const apiMessage = error.response?.data?.error || error.response?.data?.detail;
+      alert(apiMessage || error.message || (submitForApproval
+        ? 'Failed to submit requisition. Please check all required fields.'
+        : 'Failed to save draft. Please try again.'));
     } finally {
       setSubmitLoading(false);
       setUploadProgress(0);
@@ -939,6 +1030,79 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   <p className="mt-1 text-sm text-red-600">{errors.price_description}</p>
                 )}
               </div>
+
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900">Line Items</h4>
+                    <p className="text-xs text-gray-500">Optional for legacy requests; totals are calculated automatically.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addLineItem}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
+                  >
+                    <PlusIcon className="h-4 w-4" /> Add Item
+                  </button>
+                </div>
+
+                {formData.items?.length > 0 ? (
+                  <div className="space-y-3">
+                    {formData.items.map((item, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-2 items-start">
+                        <input
+                          value={item.description || ''}
+                          onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+                          placeholder="Description"
+                          className="col-span-12 md:col-span-5 px-2 py-2 text-sm border border-gray-300 rounded"
+                        />
+                        <input
+                          type="number"
+                          min="0.0001"
+                          step="0.0001"
+                          value={item.quantity ?? ''}
+                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
+                          aria-label={`Line item ${index + 1} quantity`}
+                          className="col-span-3 md:col-span-1 px-2 py-2 text-sm border border-gray-300 rounded"
+                        />
+                        <input
+                          value={item.unit || ''}
+                          onChange={(e) => updateLineItem(index, 'unit', e.target.value)}
+                          placeholder="Unit"
+                          aria-label={`Line item ${index + 1} unit`}
+                          className="col-span-3 md:col-span-1 px-2 py-2 text-sm border border-gray-300 rounded"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unit_price ?? ''}
+                          onChange={(e) => updateLineItem(index, 'unit_price', e.target.value)}
+                          placeholder="Unit price"
+                          aria-label={`Line item ${index + 1} unit price`}
+                          className="col-span-4 md:col-span-2 px-2 py-2 text-sm border border-gray-300 rounded"
+                        />
+                        <div className="col-span-10 md:col-span-2 px-2 py-2 text-sm text-right font-medium">
+                          {formData.currency} {item.total || '0.00'}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeLineItem(index)}
+                          aria-label={`Remove line item ${index + 1}`}
+                          className="col-span-2 md:col-span-1 p-2 text-red-500 hover:text-red-700"
+                        >
+                          <TrashIcon className="h-5 w-5 mx-auto" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <button type="button" onClick={addLineItem} className="w-full py-4 text-sm text-gray-500 border border-dashed border-gray-300 rounded">
+                    Add structured quantities and unit prices
+                  </button>
+                )}
+                {errors.items && <p className="mt-2 text-sm text-red-600">{errors.items}</p>}
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -969,8 +1133,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                     name="total_price"
                     value={formData.total_price}
                     onChange={handleChange}
+                    readOnly={formData.items?.length > 0}
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
                       errors.total_price ? 'border-red-500' : 'border-gray-300'
+                    } ${formData.items?.length > 0 ? 'bg-gray-50' : ''
                     }`}
                     placeholder="4000.00"
                   />
@@ -1351,6 +1517,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                     </div>
                   ))}
                 </div>
+              )}
+
+              {errors.attachments && (
+                <p className="text-sm text-red-600">{errors.attachments}</p>
               )}
               
               {uploadProgress > 0 && uploadProgress < 100 && (

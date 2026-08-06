@@ -49,7 +49,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   if (!isOpen || !requisition) return null;
 
-  const isFullyApproved = requisition.status === 'fully_approved' || requisition.status === 'approved';
+  const isFullyApproved = requisition.status === 'approved';
   const isRejected = requisition.status === 'rejected';
 
   const normalizeApprovalStatus = (rawStatus) => {
@@ -65,21 +65,42 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       ? requisition.approval_workflow_config
       : [];
 
-  const findHierarchyStage = (matchers = [], fallbackStep = null) => {
+  const findHierarchyStage = (matchers = []) => {
     const stage = approvalHierarchy.find((entry) => {
       const roleText = `${entry?.role || ''} ${entry?.stage || ''}`.toLowerCase();
-      const matchesRole = matchers.some((matcher) => roleText.includes(matcher));
-      const matchesStep = fallbackStep && Number(entry?.step) === fallbackStep;
-      return matchesRole || matchesStep;
+      return matchers.some((matcher) => roleText.includes(matcher));
     });
     return stage || null;
   };
 
-  const pmHierarchyStage = findHierarchyStage(['project manager', 'technical review'], 1);
-  const level2HierarchyStage = findHierarchyStage(['vp operations', 'vice president', 'procurement manager'], 2);
-  const engManagerHierarchyStage = findHierarchyStage(['engineering manager', 'engineering review'], 3);
-  const managerProjectsHierarchyStage = findHierarchyStage(['manager of projects', 'projects manager', 'project manager review'], 4);
+  const pmHierarchyStage = findHierarchyStage(['project manager', 'technical review']);
+  const level2HierarchyStage = findHierarchyStage(['vp operations', 'vice president', 'procurement manager']);
   const level2Label = level2HierarchyStage?.stage || level2HierarchyStage?.role || 'VP Operations';
+
+  const currentStage = approvalHierarchy.find(
+    (entry) => normalizeApprovalStatus(entry?.status) !== 'approved'
+  ) || null;
+  const currentStageRole = `${currentStage?.role || ''} ${currentStage?.stage || ''}`.toLowerCase();
+  const currentStageKey = currentStageRole.includes('engineering manager') || currentStageRole.includes('engineering review')
+    ? 'eng_manager'
+    : currentStageRole.includes('manager of projects') || currentStageRole.includes('projects manager')
+      ? 'manager_projects'
+      : currentStageRole.includes('vp operations') || currentStageRole.includes('vice president') || currentStageRole.includes('procurement manager')
+        ? 'vp'
+        : currentStageRole.includes('project manager') || currentStageRole.includes('technical review')
+          ? 'pm'
+          : null;
+
+  const currentUserData = currentUser?.user || currentUser || {};
+  const currentUserId = currentUserData?.id || currentUser?.user_id || currentUser?.id;
+  const currentUserRoles = currentUser?.roles || currentUserData?.roles || [];
+  const isSuperAdmin = currentUserData?.is_superuser === true || currentUserRoles.some(
+    (role) => role?.code === 'super_admin' || role?.name === 'Super Administrator'
+  );
+  const assignedCurrentUserId = currentStage?.user_id || currentStage?.approver_id;
+  const canActOnCurrentStage = Boolean(
+    currentStage && (isSuperAdmin || (currentUserId && String(currentUserId) === String(assignedCurrentUserId)))
+  );
 
   const effectivePmStatus = pmHierarchyStage
     ? normalizeApprovalStatus(pmHierarchyStage.status)
@@ -89,14 +110,6 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     ? normalizeApprovalStatus(level2HierarchyStage.status)
     : (isFullyApproved ? 'approved' : normalizeApprovalStatus(requisition.vp_op_approval_status));
 
-  const effectiveEngManagerStatus = engManagerHierarchyStage
-    ? normalizeApprovalStatus(engManagerHierarchyStage.status)
-    : normalizeApprovalStatus(requisition.eng_manager_approval_status);
-
-  const effectiveManagerProjectsStatus = managerProjectsHierarchyStage
-    ? normalizeApprovalStatus(managerProjectsHierarchyStage.status)
-    : normalizeApprovalStatus(requisition.manager_projects_approval_status);
-
   // Soft-coded approver capability detection
   // Maps approval tier to status check and endpoint configuration
   const APPROVER_CONFIG = {
@@ -105,28 +118,28 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       approveEndpoint: 'pm_approve',
       rejectEndpoint: 'pm_reject',
       statusField: 'pm_approval_status',
-      canApprove: !isFullyApproved && !isRejected && ['draft', 'submitted', 'in_review'].includes(requisition.status) && effectivePmStatus === 'pending'
+      canApprove: !isFullyApproved && !isRejected && currentStageKey === 'pm' && canActOnCurrentStage
     },
     eng_manager: {
       label: 'Engineering Manager',
       approveEndpoint: 'eng_manager_approve',
       rejectEndpoint: 'eng_manager_reject',
       statusField: 'eng_manager_approval_status',
-      canApprove: !isFullyApproved && !isRejected && !!engManagerHierarchyStage && effectiveEngManagerStatus === 'pending'
+      canApprove: !isFullyApproved && !isRejected && currentStageKey === 'eng_manager' && canActOnCurrentStage
     },
     manager_projects: {
       label: 'Manager of Projects',
       approveEndpoint: 'manager_projects_approve',
       rejectEndpoint: 'manager_projects_reject',
       statusField: 'manager_projects_approval_status',
-      canApprove: !isFullyApproved && !isRejected && !!managerProjectsHierarchyStage && effectiveManagerProjectsStatus === 'pending'
+      canApprove: !isFullyApproved && !isRejected && currentStageKey === 'manager_projects' && canActOnCurrentStage
     },
     vp: {
       label: 'Vice President of Operations',
       approveEndpoint: 'vp_approve',
       rejectEndpoint: 'vp_reject',
       statusField: 'vp_op_approval_status',
-      canApprove: !isFullyApproved && !isRejected && effectivePmStatus === 'approved' && effectiveLevel2Status === 'pending'
+      canApprove: !isFullyApproved && !isRejected && currentStageKey === 'vp' && canActOnCurrentStage
     }
   };
 
@@ -174,7 +187,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       onClose();
     } catch (error) {
       console.error('Approval error:', error);
-      alert(error.response?.data?.error || 'Failed to approve requisition. Please try again.');
+      alert(error.response?.data?.error || error.response?.data?.detail || 'Failed to approve requisition. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ShoppingCartIcon,
   MagnifyingGlassIcon,
@@ -35,9 +35,12 @@ import PurchaseOrderForm from './PurchaseOrderForm';
 const OrderManagement = () => {
   // Navigation hook for soft-coded routing
   const navigate = useNavigate();
+  const location = useLocation();
   
-  // Soft-coded tabs from configuration
-  const [activeTab, setActiveTab] = useState('purchaseOrders');
+  // The route is the source of truth so both entry points render one experience.
+  const activeTab = location.pathname.startsWith('/procurement/requisitions')
+    ? 'purchaseRequisitions'
+    : 'purchaseOrders';
   const orderTabs = getOrderTabs();
   
   // View mode state - soft-coded toggle between card and list view
@@ -76,19 +79,23 @@ const OrderManagement = () => {
     features: { autoRefresh: true, fullscreen: true, sidebar: true }
   });
 
-  const APPROVED_REQUISITION_STATUSES = ['approved', 'fully_approved', 'vp_approved'];
+  const APPROVED_REQUISITION_STATUSES = ['approved'];
 
   /**
    * Reset all search and filter values when switching tabs
    * Prevents search filter persistence bugs across tabs
    */
   const handleTabChange = (newTab) => {
-    setActiveTab(newTab);
     setSearchTerm('');
     setFilterStatus('all');
     setFilterVendor('all');
     setFilterPriority('all');
     setFilterType('all');
+    navigate(
+      newTab === 'purchaseRequisitions'
+        ? '/procurement/requisitions'
+        : '/procurement/orders'
+    );
   };
 
   const fetchOrders = async () => {
@@ -544,6 +551,7 @@ const OrderManagement = () => {
 
       // Soft-coded API endpoint for conversion
       const response = await apiClient.post(`/procurement/requisitions/${requisition.id}/convert_to_po/`);
+      const createdPoNumber = response.data?.purchase_order?.po_number;
 
       // Update requisition status - soft-coded state update
       setRequisitions(prevReqs => 
@@ -551,7 +559,7 @@ const OrderManagement = () => {
       );
 
       // Soft-coded success notification
-      alert(`✅ Requisition ${requisition.pr_number || requisition.id} converted to Purchase Order successfully!`);
+      alert(`✅ Requisition ${requisition.pr_number || requisition.id} converted to ${createdPoNumber || 'a Purchase Order'} successfully!`);
       
       // Refresh data
       await fetchRequisitions();
@@ -559,7 +567,7 @@ const OrderManagement = () => {
     } catch (error) {
       console.error('Error converting requisition:', error);
       // Soft-coded error handling
-      alert(`❌ Failed to convert: ${error.response?.data?.detail || error.message}`);
+      alert(`❌ Failed to convert: ${error.response?.data?.error || error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -575,7 +583,7 @@ const OrderManagement = () => {
       });
 
       const headerValue = response.headers?.['content-disposition'] || '';
-      const match = headerValue.match(/filename=\"?([^\";]+)\"?/i);
+      const match = headerValue.match(/filename="?([^";]+)"?/i);
       const fallbackName = `${requisition.pr_number || `PR-${requisition.id}`}_Approved.pdf`;
       const filename = (match && match[1]) ? match[1] : fallbackName;
 
@@ -756,13 +764,14 @@ const OrderManagement = () => {
         total: safeReqs.length,
         draft: safeReqs.filter(r => r?.status === 'draft').length,
         submitted: safeReqs.filter(r => r?.status === 'submitted').length,
+        inReview: safeReqs.filter(r => r?.status === 'in_review').length,
         approved: safeReqs.filter(r => APPROVED_REQUISITION_STATUSES.includes(r?.status)).length,
         rejected: safeReqs.filter(r => r?.status === 'rejected').length,
         converted: safeReqs.filter(r => r?.status === 'converted').length
       };
 
       return (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6 mb-6">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-7 mb-6">
           <div className="bg-gradient-to-br from-purple-500 via-purple-600 to-indigo-600 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 transition-all duration-300">
             <div className="p-6 relative">
               <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
@@ -839,6 +848,26 @@ const OrderManagement = () => {
             </div>
           </div>
 
+          <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-yellow-200 hover:shadow-xl transition-all duration-300">
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex-shrink-0 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-xl p-3 shadow-md">
+                  <ClockIcon className="h-6 w-6 text-white" />
+                </div>
+                <div className="text-right">
+                  <div className="text-3xl font-bold text-gray-900">{stats.inReview}</div>
+                  <div className="text-xs text-yellow-600 font-medium mt-1">In Review</div>
+                </div>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-yellow-400 to-amber-600 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${stats.total > 0 ? (stats.inReview / stats.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-red-200 hover:shadow-xl transition-all duration-300">
             <div className="p-5">
               <div className="flex items-center justify-between mb-3">
@@ -887,12 +916,18 @@ const OrderManagement = () => {
           <div className="flex justify-between items-center mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                <ShoppingCartIcon className="h-8 w-8 mr-3 text-indigo-600" />
-                Order Management
+                {activeTab === 'purchaseOrders' ? (
+                  <ShoppingCartIcon className="h-8 w-8 mr-3 text-indigo-600" />
+                ) : (
+                  <DocumentTextIcon className="h-8 w-8 mr-3 text-purple-600" />
+                )}
+                {activeTab === 'purchaseOrders' ? 'Order Management' : 'Purchase Requisition Management'}
               </h1>
               <p className="mt-2 text-sm text-gray-600 flex items-center">
                 <SparklesIcon className="h-4 w-4 mr-1 text-purple-500" />
-                AI-powered procurement with smart vendor selection and approval workflows
+                {activeTab === 'purchaseOrders'
+                  ? 'AI-powered procurement with smart vendor selection and order tracking'
+                  : 'Create, review, approve, and convert purchase requisitions in one workspace'}
               </p>
             </div>
             
@@ -1090,6 +1125,7 @@ const OrderManagement = () => {
                     <>
                       <option value="draft">Draft</option>
                       <option value="submitted">Submitted</option>
+                      <option value="in_review">In Review</option>
                       <option value="approved">Approved</option>
                       <option value="rejected">Rejected</option>
                       <option value="cancelled">Cancelled</option>
@@ -1494,6 +1530,7 @@ const OrderManagement = () => {
                   <div className={`h-2 ${
                     req.status === 'converted' ? 'bg-gradient-to-r from-purple-400 to-indigo-500' :
                     APPROVED_REQUISITION_STATUSES.includes(req.status) ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
+                    req.status === 'in_review' ? 'bg-gradient-to-r from-yellow-400 to-amber-500' :
                     req.status === 'submitted' ? 'bg-gradient-to-r from-blue-400 to-blue-500' :
                     req.status === 'rejected' ? 'bg-gradient-to-r from-red-400 to-red-500' :
                     'bg-gradient-to-r from-gray-300 to-gray-400'

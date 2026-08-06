@@ -99,7 +99,6 @@ import NotFound from './pages/NotFound'
 // Procurement Components
 import ProcurementDashboard from './pages/Procurement/ProcurementDashboard'
 import VendorManagement from './pages/Procurement/VendorManagement'
-import RequisitionManagement from './pages/Procurement/RequisitionManagement'
 import OrderManagement from './pages/Procurement/OrderManagement'
 import PurchaseOrderDetail from './pages/Procurement/PurchaseOrderDetail'
 import ReceiptManagement from './pages/Procurement/ReceiptManagement'
@@ -781,7 +780,7 @@ function App() {
           path="procurement/requisitions"
           element={
             <ModuleProtectedRoute moduleCode="procurement">
-              <RequisitionManagement />
+              <OrderManagement />
             </ModuleProtectedRoute>
           }
         />
