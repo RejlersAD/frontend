@@ -51,6 +51,45 @@ const APPROVER_OPTIONS = [
 
 const APPROVAL_STATUSES = ['Pending', 'Approved', 'Rejected', 'Clarification Required'];
 
+const normalizeApiErrors = (data) => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+
+  return Object.fromEntries(
+    Object.entries(data).map(([field, value]) => {
+      const message = Array.isArray(value)
+        ? value.map(String).join(' ')
+        : typeof value === 'object' && value !== null
+          ? Object.values(value).flat().map(String).join(' ')
+          : String(value);
+      return [field, message];
+    })
+  );
+};
+
+const getApiErrorMessage = (error, fieldErrors) => {
+  const responseData = error.response?.data;
+  if (typeof responseData === 'string' && !responseData.trim().startsWith('<')) {
+    return responseData;
+  }
+
+  const preferredMessage = fieldErrors.detail || fieldErrors.error || fieldErrors.message;
+  if (preferredMessage) return preferredMessage;
+
+  const firstFieldError = Object.entries(fieldErrors).find(
+    ([field]) => !['detail', 'error', 'message'].includes(field)
+  );
+  if (firstFieldError) {
+    const [field, message] = firstFieldError;
+    return `${field.replaceAll('_', ' ')}: ${message}`;
+  }
+
+  if (!error.response) return 'Unable to reach the server. Check your connection and try again.';
+  if (error.response.status >= 500) {
+    return 'The server could not create the purchase order. Please try again or contact support.';
+  }
+  return 'The purchase order could not be submitted. Review the required fields and try again.';
+};
+
 const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prReference = null }) => {
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -200,7 +239,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   useEffect(() => {
     if (!editData) {
       const autoSaveInterval = setInterval(() => {
-        if (formData.title || formData.description) {
+        const canPersistDraft = Boolean(
+          formData.vendor &&
+          formData.title?.trim() &&
+          formData.category &&
+          Number(formData.total_amount) > 0
+        );
+        if (canPersistDraft) {
           handleAutoSave();
         }
       }, 30000);
@@ -453,15 +498,22 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
   const handleSubmit = async (e, sendToVendor = false) => {
     e.preventDefault();
-    
-    if (sendToVendor && !validateForm(true)) {
-      // Show popup error for missing required fields (summary)
-      if (!formData.summary?.trim()) {
-        setPopupError('Please add a short summary before sending to vendor.');
-        setCurrentSection(1);
-        // auto-dismiss
-        setTimeout(() => setPopupError(''), 6000);
-      }
+
+    if (!validateForm(sendToVendor)) {
+      const validationMessage = !formData.vendor
+        ? 'Please select a vendor.'
+        : !formData.title?.trim()
+          ? 'Please enter a purchase order title.'
+          : !formData.total_amount || Number(formData.total_amount) <= 0
+            ? 'Please add at least one priced line item.'
+            : !formData.payment_terms?.trim()
+              ? 'Please enter the payment terms.'
+              : 'Please add a short summary before sending to the vendor.';
+      setPopupError(validationMessage);
+      setCurrentSection(
+        !formData.vendor || !formData.title?.trim() || (sendToVendor && !formData.summary?.trim()) ? 1 : 2
+      );
+      setTimeout(() => setPopupError(''), 6000);
       return;
     }
 
@@ -512,10 +564,10 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       if (onClose) onClose();
     } catch (error) {
       console.error('Error submitting PO:', error);
-      if (error.response?.data) {
-        setErrors(error.response.data);
-      }
-      alert('Failed to submit purchase order. Please check all fields.');
+      const fieldErrors = normalizeApiErrors(error.response?.data);
+      setErrors(fieldErrors);
+      setPopupError(getApiErrorMessage(error, fieldErrors));
+      setTimeout(() => setPopupError(''), 8000);
     } finally {
       setSubmitLoading(false);
       setUploadProgress(0);

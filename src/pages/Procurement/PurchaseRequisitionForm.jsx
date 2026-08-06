@@ -7,10 +7,11 @@
  * - Multi-file upload to S3
  * - Auto-save to draft
  * - Form validation
- * - Modern, professional UI
+ * - Modern, responsive UI with corrected section flow
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import {
   DocumentTextIcon,
@@ -107,6 +108,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   const [engineeringManagers, setEngineeringManagers] = useState([]);
   const [managerProjects, setManagerProjects] = useState([]);
   const [vpOperations, setVpOperations] = useState([]);
+  const [loadingApprovers, setLoadingApprovers] = useState(false);
+  const [approverLoadError, setApproverLoadError] = useState('');
   const [selectedApprovers, setSelectedApprovers] = useState({
     project_manager: null,
     engineering_manager: null,
@@ -126,6 +129,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     setFiles([]);
     setErrors({});
     setUploadProgress(0);
+    setProductSuggestions([]);
+    setProjectSuggestions([]);
+    setSupplierSuggestions([]);
+    setPoNumberSuggestions([]);
+    setSuggestionStatus({});
+    setShowProductDropdown(false);
+    setShowProjectDropdown(false);
+    setShowSupplierDropdown(false);
+    setShowPoDropdown(false);
   }, [isOpen, editData]);
   
   // Price Remarks Advanced Fields
@@ -140,12 +152,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [showPoDropdown, setShowPoDropdown] = useState(false);
+  const suggestionTimersRef = useRef({});
+  const suggestionRequestIdsRef = useRef({});
+  const [suggestionStatus, setSuggestionStatus] = useState({});
 
-  // Fetch vendors on mount
   useEffect(() => {
+    if (!isOpen) return;
     fetchVendors();
     fetchApprovers();
-  }, []);
+  }, [isOpen]);
 
   const fetchVendors = async () => {
     try {
@@ -154,19 +169,19 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         params: { page_size: 1000, status: 'active' }
       });
       const vendorData = response.data.results || response.data || [];
-      // Ensure vendorData is always an array
       setVendors(Array.isArray(vendorData) ? vendorData : []);
     } catch (error) {
       console.error('Error fetching vendors:', error);
-      setVendors([]); // Set empty array on error
+      setVendors([]);
     } finally {
       setLoadingVendors(false);
     }
   };
   
   const fetchApprovers = async () => {
+    setLoadingApprovers(true);
+    setApproverLoadError('');
     try {
-      // Fetch approvers for each role
       const [pmResponse, emResponse, mpResponse, vpResponse] = await Promise.all([
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'project_manager' } }),
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'engineering_manager' } }),
@@ -174,12 +189,31 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'vp_operations' } }),
       ]);
       
-      setProjectManagers(pmResponse.data.users || []);
-      setEngineeringManagers(emResponse.data.users || []);
-      setManagerProjects(mpResponse.data.users || []);
-      setVpOperations(vpResponse.data.users || []);
+      const usersFrom = (response) => {
+        const payload = response?.data?.data || response?.data || {};
+        return Array.isArray(payload.users) ? payload.users : [];
+      };
+
+      setProjectManagers(usersFrom(pmResponse));
+      setEngineeringManagers(usersFrom(emResponse));
+      setManagerProjects(usersFrom(mpResponse));
+      setVpOperations(usersFrom(vpResponse));
     } catch (error) {
       console.error('Error fetching approvers:', error);
+      setProjectManagers([]);
+      setEngineeringManagers([]);
+      setManagerProjects([]);
+      setVpOperations([]);
+      setApproverLoadError('Approvers could not be loaded. Please retry.');
+    } finally {
+      setLoadingApprovers(false);
+    }
+  };
+
+  const handleApproverChange = (role, userId) => {
+    setSelectedApprovers(prev => ({ ...prev, [role]: userId || null }));
+    if (errors.approval_workflow_config) {
+      setErrors(prev => ({ ...prev, approval_workflow_config: null }));
     }
   };
   
@@ -190,7 +224,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     }
     
     try {
-      // Create a draft PR first if doesn't exist
       let savedDraft = null;
       if (!editData) {
         savedDraft = await handleAutoSave();
@@ -206,70 +239,108 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     }
   };
   
-  // Autocomplete fetch functions
-  const fetchProductSuggestions = async (query) => {
-    if (!query || query.length < 2) {
-      setProductSuggestions([]);
+  const queueSuggestionFetch = (key, endpoint, rawQuery, setter, force = false) => {
+    const query = String(rawQuery || '').trim();
+    clearTimeout(suggestionTimersRef.current[key]);
+    const requestId = (suggestionRequestIdsRef.current[key] || 0) + 1;
+    suggestionRequestIdsRef.current[key] = requestId;
+
+    if (!force && query.length < 2) {
+      setter([]);
+      setSuggestionStatus(prev => ({
+        ...prev,
+        [key]: { loading: false, loaded: false, error: '' }
+      }));
       return;
     }
-    
-    try {
-      const response = await apiClient.get('/procurement/requisitions/get_product_services/', {
-        params: { q: query, limit: 20 }
-      });
-      setProductSuggestions(response.data.suggestions || []);
-    } catch (error) {
-      console.error('Error fetching product suggestions:', error);
-    }
-  };
-  
-  const fetchProjectSuggestions = async (query) => {
-    if (!query || query.length < 2) {
-      setProjectSuggestions([]);
-      return;
-    }
-    
-    try {
-      const response = await apiClient.get('/procurement/requisitions/get_projects_departments/', {
-        params: { q: query, limit: 20 }
-      });
-      setProjectSuggestions(response.data.suggestions || []);
-    } catch (error) {
-      console.error('Error fetching project suggestions:', error);
-    }
-  };
-  
-  const fetchSupplierSuggestions = async (query) => {
-    if (!query || query.length < 2) {
-      setSupplierSuggestions([]);
-      return;
-    }
-    
-    try {
-      const response = await apiClient.get('/procurement/requisitions/get_suppliers/', {
-        params: { q: query, limit: 20 }
-      });
-      setSupplierSuggestions(response.data.suggestions || []);
-    } catch (error) {
-      console.error('Error fetching supplier suggestions:', error);
-    }
-  };
-  
-  const fetchPoNumberSuggestions = async (query) => {
-    try {
-      const response = await apiClient.get('/procurement/requisitions/get_po_numbers/', {
-        params: { q: query || '', limit: 20 }
-      });
-      setPoNumberSuggestions(response.data.suggestions || []);
-    } catch (error) {
-      console.error('Error fetching PO number suggestions:', error);
-    }
+
+    setSuggestionStatus(prev => ({
+      ...prev,
+      [key]: { loading: true, loaded: false, error: '' }
+    }));
+
+    suggestionTimersRef.current[key] = setTimeout(async () => {
+      try {
+        const response = await apiClient.get(endpoint, { params: { q: query, limit: 20 } });
+        if (suggestionRequestIdsRef.current[key] !== requestId) return;
+        const payload = response?.data?.data || response?.data || {};
+        setter(Array.isArray(payload.suggestions) ? payload.suggestions : []);
+        setSuggestionStatus(prev => ({
+          ...prev,
+          [key]: { loading: false, loaded: true, error: '' }
+        }));
+      } catch (error) {
+        if (suggestionRequestIdsRef.current[key] !== requestId) return;
+        console.error(`Error fetching ${key} suggestions:`, error);
+        setter([]);
+        setSuggestionStatus(prev => ({
+          ...prev,
+          [key]: { loading: false, loaded: true, error: 'Suggestions could not be loaded.' }
+        }));
+      }
+    }, force && !query ? 0 : 250);
   };
 
-  // Auto-calculate net total when total price changes
+  const fetchProductSuggestions = (query, force = false) => queueSuggestionFetch(
+    'product', '/procurement/requisitions/get_product_services/', query, setProductSuggestions, force
+  );
+
+  const fetchProjectSuggestions = (query, force = false) => queueSuggestionFetch(
+    'project', '/procurement/requisitions/get_projects_departments/', query, setProjectSuggestions, force
+  );
+
+  const fetchSupplierSuggestions = (query, force = false) => queueSuggestionFetch(
+    'supplier', '/procurement/requisitions/get_suppliers/', query, setSupplierSuggestions, force
+  );
+
+  const fetchPoNumberSuggestions = (query, force = false) => queueSuggestionFetch(
+    'po', '/procurement/requisitions/get_po_numbers/', query, setPoNumberSuggestions, force
+  );
+
+  const closeSuggestions = (key, setter) => {
+    clearTimeout(suggestionTimersRef.current[key]);
+    suggestionRequestIdsRef.current[key] = (suggestionRequestIdsRef.current[key] || 0) + 1;
+    setter([]);
+  };
+
+  useEffect(() => () => {
+    Object.values(suggestionTimersRef.current).forEach(clearTimeout);
+  }, []);
+
+  const selectSupplier = (supplier) => {
+    setFormData(prev => ({
+      ...prev,
+      supplier_name: supplier.supplier_name,
+      supplier_business_id: supplier.supplier_business_id || '',
+      vendor: supplier.vendor_id || null,
+    }));
+    setErrors(prev => ({ ...prev, supplier_name: null, supplier_business_id: null }));
+    closeSuggestions('supplier', setSupplierSuggestions);
+    setShowSupplierDropdown(false);
+  };
+
+  const selectProduct = (product) => {
+    setFormData(prev => ({ ...prev, product_service: product }));
+    setErrors(prev => ({ ...prev, product_service: null }));
+    closeSuggestions('product', setProductSuggestions);
+    setShowProductDropdown(false);
+  };
+
+  const selectProject = (project) => {
+    setFormData(prev => ({ ...prev, project_department: project.value }));
+    setErrors(prev => ({ ...prev, project_department: null }));
+    closeSuggestions('project', setProjectSuggestions);
+    setShowProjectDropdown(false);
+  };
+
+  const selectPoNumber = (po) => {
+    setFormData(prev => ({ ...prev, po_number_reference: po.po_number }));
+    closeSuggestions('po', setPoNumberSuggestions);
+    setShowPoDropdown(false);
+  };
+
   useEffect(() => {
     if (formData.total_price) {
-      // Assume VAT = 0 for now (can be made configurable)
       setFormData(prev => ({
         ...prev,
         net_total_excl_vat: prev.total_price
@@ -321,7 +392,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     return saveOperation;
   }, [editData]);
 
-  // One autosave timer per open form. Subsequent saves PATCH the same draft.
   useEffect(() => {
     if (!isOpen) return undefined;
 
@@ -341,7 +411,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       ...prev,
       [name]: value
     }));
-    // Clear error for this field
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: null }));
     }
@@ -403,24 +472,18 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
 
   const validateForm = () => {
     const newErrors = {};
-    
-    // Required fields validation
     if (!formData.product_service?.trim()) {
       newErrors.product_service = 'Product/Service description is required';
     }
-    
     if (!formData.project_department?.trim()) {
       newErrors.project_department = 'Project/Department is required';
     }
-    
     if (!formData.description_reason?.trim()) {
       newErrors.description_reason = 'Description and reason is required';
     }
-    
     if (!formData.price_description?.trim()) {
       newErrors.price_description = 'Price description is required';
     }
-    
     if (!formData.total_price || parseFloat(formData.total_price) <= 0) {
       newErrors.total_price = 'Valid total price is required';
     }
@@ -441,7 +504,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
 
   const handleSubmit = async (e, submitForApproval = false) => {
     e.preventDefault();
-    
     if (submitForApproval && !validateForm()) {
       return;
     }
@@ -450,8 +512,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     
     try {
       const submitData = new FormData();
-      
-      // Build approval workflow from selected approvers
       const approvalWorkflow = [];
       let step = 1;
       
@@ -512,16 +572,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         return;
       }
       
-      // Add approval workflow to form data
       const formDataWithWorkflow = {
         ...formData,
         approval_workflow_config: approvalWorkflow
       };
       
-      // Append all form fields
       Object.keys(formDataWithWorkflow).forEach(key => {
         if (formDataWithWorkflow[key] !== null && formDataWithWorkflow[key] !== undefined && formDataWithWorkflow[key] !== '') {
-          // Handle JSON fields
           if (typeof formDataWithWorkflow[key] === 'object') {
             submitData.append(key, JSON.stringify(formDataWithWorkflow[key]));
           } else {
@@ -530,22 +587,18 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         }
       });
       
-      // Append files
       files.forEach((file) => {
         submitData.append('attachments_files', file);
       });
       
       const config = {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setUploadProgress(percentCompleted);
         },
       };
       
-      // Finish any in-flight autosave before deciding whether to POST or PATCH.
       if (autoSaveInFlightRef.current) {
         await autoSaveInFlightRef.current;
       }
@@ -557,21 +610,22 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
 
       draftIdRef.current = response.data.id;
 
-      // Lifecycle changes are performed only by the transactional submit action.
       if (submitForApproval) {
         if (response.data.status !== 'draft') {
           throw new Error(`Requisition cannot be submitted from status ${response.data.status}.`);
         }
         response = await apiClient.post(`/procurement/requisitions/${response.data.id}/submit/`);
       }
+
+      const requisitionLabel = response.data.pr_number
+        ? `PR ${response.data.pr_number}`
+        : 'Purchase requisition';
+      toast.success(submitForApproval
+        ? `${requisitionLabel} successfully created and submitted for approval.`
+        : `${requisitionLabel} saved as draft.`);
       
-      // Success
-      if (onSuccess) {
-        onSuccess(response.data);
-      }
-      if (onClose) {
-        onClose();
-      }
+      if (onSuccess) onSuccess(response.data);
+      if (onClose) onClose();
     } catch (error) {
       console.error('Error submitting PR:', error);
       if (error.response?.data) {
@@ -587,22 +641,22 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     }
   };
 
-  // Don't render if not open - check AFTER all hooks
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full my-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden">
+
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-6 rounded-t-xl">
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-5 rounded-t-xl flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <DocumentTextIcon className="h-8 w-8" />
+              <DocumentTextIcon className="h-8 w-8 text-purple-200" />
               <div>
-                <h2 className="text-2xl font-bold">
+                <h2 className="text-xl font-bold">
                   {editData ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
                 </h2>
-                <p className="text-purple-100 text-sm mt-1">
+                <p className="text-purple-100 text-xs mt-0.5">
                   RAD-OM-PRC-0001 FRM -1 Rev 0
                   {formData.pr_number && ` • PR No: ${formData.pr_number}`}
                 </p>
@@ -610,23 +664,27 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             </div>
             <button
               onClick={onClose}
-              className="text-white hover:text-purple-200 transition-colors"
+              className="text-white hover:text-purple-200 transition-colors p-1"
             >
               <XCircleIcon className="h-7 w-7" />
             </button>
           </div>
           
           {autoSaving && (
-            <div className="mt-3 flex items-center space-x-2 text-purple-100 text-sm">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            <div className="mt-2 flex items-center space-x-2 text-purple-100 text-xs">
+              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
               <span>Auto-saving draft...</span>
             </div>
           )}
         </div>
 
-        {/* Form Content */}
-        <form onSubmit={(e) => handleSubmit(e, true)} className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
-          {/* Header Section */}
+        {/* Form Body - Single Scroll Container with overflow-x-hidden */}
+        <form
+          id="pr-modal-form"
+          onSubmit={(e) => handleSubmit(e, true)}
+          className="flex-1 overflow-y-auto overflow-x-hidden p-8 space-y-8"
+        >
+          {/* Section 1: Header Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">1</span>
@@ -679,7 +737,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             </div>
           </div>
 
-          {/* Supplier Section */}
+          {/* Section 2: Supplier Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">2</span>
@@ -696,34 +754,42 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   name="supplier_name"
                   value={formData.supplier_name}
                   onChange={(e) => {
-                    handleChange(e);
-                    fetchSupplierSuggestions(e.target.value);
+                    const supplierName = e.target.value;
+                    setFormData(prev => ({
+                      ...prev,
+                      supplier_name: supplierName,
+                      supplier_business_id: '',
+                      vendor: null,
+                    }));
+                    fetchSupplierSuggestions(supplierName);
                     setShowSupplierDropdown(true);
                   }}
                   onFocus={() => {
-                    if (formData.supplier_name) {
-                      fetchSupplierSuggestions(formData.supplier_name);
-                    }
+                    fetchSupplierSuggestions(formData.supplier_name, true);
                     setShowSupplierDropdown(true);
                   }}
                   onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="Start typing to see suggestions..."
                 />
+                {showSupplierDropdown && suggestionStatus.supplier?.loading && (
+                  <p className="mt-1 text-xs text-gray-500">Loading suppliers...</p>
+                )}
+                {showSupplierDropdown && suggestionStatus.supplier?.error && (
+                  <p className="mt-1 text-xs text-red-600">{suggestionStatus.supplier.error}</p>
+                )}
+                {showSupplierDropdown && suggestionStatus.supplier?.loaded && !suggestionStatus.supplier?.error && supplierSuggestions.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-500">No matching suppliers found.</p>
+                )}
                 {showSupplierDropdown && supplierSuggestions.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {supplierSuggestions.map((supplier, index) => (
-                      <div
-                        key={index}
-                        onClick={() => {
-                          setFormData(prev => ({
-                            ...prev,
-                            supplier_name: supplier.supplier_name,
-                            supplier_business_id: supplier.supplier_business_id || ''
-                          }));
-                          setShowSupplierDropdown(false);
-                        }}
-                        className="px-4 py-3 hover:bg-purple-50 cursor-pointer border-b border-gray-100 last:border-0"
+                      <button
+                        type="button"
+                        key={supplier.vendor_id || `${supplier.supplier_name}-${index}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectSupplier(supplier)}
+                        className="block w-full px-4 py-3 text-left hover:bg-purple-50 border-b border-gray-100 last:border-0"
                       >
                         <div className="font-medium text-gray-900">{supplier.supplier_name}</div>
                         {supplier.supplier_business_id && (
@@ -735,7 +801,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                         <div className="text-xs text-gray-400 mt-1">
                           {supplier.source === 'master' ? '📁 Vendor Database' : '📝 Historical Data'}
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -750,15 +816,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   type="text"
                   name="supplier_business_id"
                   value={formData.supplier_business_id}
-                  onChange={handleChange}
+                  readOnly
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
                   placeholder="Auto-filled from supplier selection"
+                  title="Select a supplier name to populate this identifier"
                 />
               </div>
             </div>
           </div>
 
-          {/* Project/Product Section */}
+          {/* Section 3: Project/Product Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">3</span>
@@ -779,9 +846,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                     setShowProductDropdown(true);
                   }}
                   onFocus={() => {
-                    if (formData.product_service) {
-                      fetchProductSuggestions(formData.product_service);
-                    }
+                    fetchProductSuggestions(formData.product_service, true);
                     setShowProductDropdown(true);
                   }}
                   onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
@@ -791,19 +856,27 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   }`}
                   placeholder="Start typing... e.g., Value Engineering Services"
                 />
+                {showProductDropdown && suggestionStatus.product?.loading && (
+                  <p className="mt-1 text-xs text-gray-500">Loading products and services...</p>
+                )}
+                {showProductDropdown && suggestionStatus.product?.error && (
+                  <p className="mt-1 text-xs text-red-600">{suggestionStatus.product.error}</p>
+                )}
+                {showProductDropdown && suggestionStatus.product?.loaded && !suggestionStatus.product?.error && productSuggestions.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-500">No matching products or services found.</p>
+                )}
                 {showProductDropdown && productSuggestions.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                     {productSuggestions.map((product, index) => (
-                      <div
-                        key={index}
-                        onClick={() => {
-                          setFormData(prev => ({ ...prev, product_service: product }));
-                          setShowProductDropdown(false);
-                        }}
-                        className="px-4 py-2 hover:bg-purple-50 cursor-pointer border-b border-gray-100 last:border-0 text-sm"
+                      <button
+                        type="button"
+                        key={`${product}-${index}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectProduct(product)}
+                        className="block w-full px-4 py-2 text-left hover:bg-purple-50 border-b border-gray-100 last:border-0 text-sm"
                       >
                         {product}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -826,9 +899,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                     setShowProjectDropdown(true);
                   }}
                   onFocus={() => {
-                    if (formData.project_department) {
-                      fetchProjectSuggestions(formData.project_department);
-                    }
+                    fetchProjectSuggestions(formData.project_department, true);
                     setShowProjectDropdown(true);
                   }}
                   onBlur={() => setTimeout(() => setShowProjectDropdown(false), 200)}
@@ -838,16 +909,24 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   }`}
                   placeholder="Start typing to see project suggestions..."
                 />
+                {showProjectDropdown && suggestionStatus.project?.loading && (
+                  <p className="mt-1 text-xs text-gray-500">Loading projects...</p>
+                )}
+                {showProjectDropdown && suggestionStatus.project?.error && (
+                  <p className="mt-1 text-xs text-red-600">{suggestionStatus.project.error}</p>
+                )}
+                {showProjectDropdown && suggestionStatus.project?.loaded && !suggestionStatus.project?.error && projectSuggestions.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-500">No matching projects or departments found.</p>
+                )}
                 {showProjectDropdown && projectSuggestions.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {projectSuggestions.map((project, index) => (
-                      <div
-                        key={index}
-                        onClick={() => {
-                          setFormData(prev => ({ ...prev, project_department: project.value }));
-                          setShowProjectDropdown(false);
-                        }}
-                        className="px-4 py-3 hover:bg-purple-50 cursor-pointer border-b border-gray-100 last:border-0"
+                      <button
+                        type="button"
+                        key={`${project.source}-${project.project_number || project.value}-${index}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectProject(project)}
+                        className="block w-full px-4 py-3 text-left hover:bg-purple-50 border-b border-gray-100 last:border-0"
                       >
                         <div className="font-medium text-gray-900 text-sm">{project.label}</div>
                         {project.department && (
@@ -856,7 +935,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                         <div className="text-xs text-gray-400 mt-1">
                           {project.source === 'master' ? '📁 Project Database' : '📝 Historical Data'}
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -867,7 +946,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             </div>
           </div>
 
-          {/* Description Section */}
+          {/* Section 4: Description Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">4</span>
@@ -893,7 +972,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             </div>
           </div>
 
-          {/* Preferred Supplier Section */}
+          {/* Section 5: Vendor Selection Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">5</span>
@@ -904,7 +983,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Select Vendor from Database
                 </label>
-                <div className="flex space-x-2">
+                <div className="flex items-center gap-2">
                   <select
                     name="vendor"
                     value={formData.vendor || ''}
@@ -930,9 +1009,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   <button
                     type="button"
                     onClick={getVendorRecommendations}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                    className="flex-shrink-0 whitespace-nowrap px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 text-sm font-semibold shadow-sm"
                   >
-                    <SparklesIcon className="h-5 w-5" />
+                    <SparklesIcon className="h-4 w-4" />
                     <span>AI Recommend</span>
                   </button>
                 </div>
@@ -1005,7 +1084,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             </div>
           </div>
 
-          {/* Pricing Section */}
+          {/* Section 6: Pricing Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">6</span>
@@ -1136,8 +1215,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                     readOnly={formData.items?.length > 0}
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
                       errors.total_price ? 'border-red-500' : 'border-gray-300'
-                    } ${formData.items?.length > 0 ? 'bg-gray-50' : ''
-                    }`}
+                    } ${formData.items?.length > 0 ? 'bg-gray-50' : ''}`}
                     placeholder="4000.00"
                   />
                   {errors.total_price && (
@@ -1175,7 +1253,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 />
               </div>
               
-              {/* Advanced Price Remarks */}
               <div>
                 <button
                   type="button"
@@ -1280,114 +1357,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               )}
             </div>
           </div>
-          
-          {/* Dynamic Approval Workflow Section */}
-          <div className="border-b border-gray-200 pb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">9</span>
-              Approval Workflow
-            </h3>
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Select approvers for each tier. The workflow will follow the order you configure.
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Project Manager
-                  </label>
-                  <select
-                    value={selectedApprovers.project_manager || ''}
-                    onChange={(e) => setSelectedApprovers(prev => ({
-                      ...prev,
-                      project_manager: e.target.value
-                    }))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    <option value="">-- Select Project Manager --</option>
-                    {projectManagers.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Engineering Manager
-                  </label>
-                  <select
-                    value={selectedApprovers.engineering_manager || ''}
-                    onChange={(e) => setSelectedApprovers(prev => ({
-                      ...prev,
-                      engineering_manager: e.target.value
-                    }))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    <option value="">-- Select Engineering Manager --</option>
-                    {engineeringManagers.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Manager of Projects
-                  </label>
-                  <select
-                    value={selectedApprovers.manager_projects || ''}
-                    onChange={(e) => setSelectedApprovers(prev => ({
-                      ...prev,
-                      manager_projects: e.target.value
-                    }))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    <option value="">-- Select Manager of Projects --</option>
-                    {managerProjects.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Vice President of Operations
-                  </label>
-                  <select
-                    value={selectedApprovers.vp_operations || ''}
-                    onChange={(e) => setSelectedApprovers(prev => ({
-                      ...prev,
-                      vp_operations: e.target.value
-                    }))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    <option value="">-- Select VP Operations --</option>
-                    {vpOperations.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-xs text-blue-800">
-                  <strong>Note:</strong> The approval workflow will be built based on the approvers you select. 
-                  Empty fields will be skipped automatically.
-                </p>
-              </div>
-            </div>
-          </div>
 
-          {/* Reference Section */}
+          {/* Section 7: Reference Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">7</span>
@@ -1408,23 +1379,31 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   setShowPoDropdown(true);
                 }}
                 onFocus={() => {
-                  fetchPoNumberSuggestions(formData.po_number_reference);
+                  fetchPoNumberSuggestions(formData.po_number_reference, true);
                   setShowPoDropdown(true);
                 }}
                 onBlur={() => setTimeout(() => setShowPoDropdown(false), 200)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="Start typing PO number..."
               />
+              {showPoDropdown && suggestionStatus.po?.loading && (
+                <p className="mt-1 text-xs text-gray-500">Loading purchase orders...</p>
+              )}
+              {showPoDropdown && suggestionStatus.po?.error && (
+                <p className="mt-1 text-xs text-red-600">{suggestionStatus.po.error}</p>
+              )}
+              {showPoDropdown && suggestionStatus.po?.loaded && !suggestionStatus.po?.error && poNumberSuggestions.length === 0 && (
+                <p className="mt-1 text-xs text-gray-500">No matching purchase orders found.</p>
+              )}
               {showPoDropdown && poNumberSuggestions.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                   {poNumberSuggestions.map((po, index) => (
-                    <div
-                      key={index}
-                      onClick={() => {
-                        setFormData(prev => ({ ...prev, po_number_reference: po.po_number }));
-                        setShowPoDropdown(false);
-                      }}
-                      className="px-4 py-3 hover:bg-purple-50 cursor-pointer border-b border-gray-100 last:border-0"
+                    <button
+                      type="button"
+                      key={`${po.po_number}-${index}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectPoNumber(po)}
+                      className="block w-full px-4 py-3 text-left hover:bg-purple-50 border-b border-gray-100 last:border-0"
                     >
                       <div className="font-medium text-gray-900">{po.po_number}</div>
                       {po.supplier_name && (
@@ -1440,14 +1419,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                           Status: <span className="capitalize">{po.status.replace('_', ' ')}</span>
                         </div>
                       )}
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Special Notes Section */}
+          {/* Section 8: Purchase Recommendation Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">8</span>
@@ -1468,7 +1447,152 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             </div>
           </div>
 
-          {/* File Attachments Section */}
+          {/* Section 9: Approval Workflow Section */}
+          <div className="border-b border-gray-200 pb-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">9</span>
+              Approval Workflow
+            </h3>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Select approvers for each tier. The workflow will follow the order you configure.
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Project Manager
+                  </label>
+                  <select
+                    value={selectedApprovers.project_manager || ''}
+                    onChange={(e) => handleApproverChange('project_manager', e.target.value)}
+                    disabled={loadingApprovers || projectManagers.length === 0}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="">
+                      {loadingApprovers
+                        ? 'Loading approvers...'
+                        : projectManagers.length
+                          ? '-- Select Project Manager --'
+                          : 'No eligible approvers available'}
+                    </option>
+                    {projectManagers.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Engineering Manager
+                  </label>
+                  <select
+                    value={selectedApprovers.engineering_manager || ''}
+                    onChange={(e) => handleApproverChange('engineering_manager', e.target.value)}
+                    disabled={loadingApprovers || engineeringManagers.length === 0}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="">
+                      {loadingApprovers
+                        ? 'Loading approvers...'
+                        : engineeringManagers.length
+                          ? '-- Select Engineering Manager --'
+                          : 'No eligible approvers available'}
+                    </option>
+                    {engineeringManagers.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Manager of Projects
+                  </label>
+                  <select
+                    value={selectedApprovers.manager_projects || ''}
+                    onChange={(e) => handleApproverChange('manager_projects', e.target.value)}
+                    disabled={loadingApprovers || managerProjects.length === 0}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="">
+                      {loadingApprovers
+                        ? 'Loading approvers...'
+                        : managerProjects.length
+                          ? '-- Select Manager of Projects --'
+                          : 'No eligible approvers available'}
+                    </option>
+                    {managerProjects.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Vice President of Operations
+                  </label>
+                  <select
+                    value={selectedApprovers.vp_operations || ''}
+                    onChange={(e) => handleApproverChange('vp_operations', e.target.value)}
+                    disabled={loadingApprovers || vpOperations.length === 0}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="">
+                      {loadingApprovers
+                        ? 'Loading approvers...'
+                        : vpOperations.length
+                          ? '-- Select VP Operations --'
+                          : 'No eligible approvers available'}
+                    </option>
+                    {vpOperations.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {approverLoadError && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <span>{approverLoadError}</span>
+                  <button
+                    type="button"
+                    onClick={fetchApprovers}
+                    className="shrink-0 font-semibold text-red-700 underline hover:text-red-900"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!loadingApprovers && !approverLoadError && projectManagers.length > 0 && (
+                <p className="text-xs text-emerald-700">
+                  {projectManagers.length} eligible approvers loaded. Select one or more people from the lists above.
+                </p>
+              )}
+
+              {errors.approval_workflow_config && (
+                <p className="text-sm font-medium text-red-600">{errors.approval_workflow_config}</p>
+              )}
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-800">
+                  <strong>Note:</strong> The approval workflow will be built based on the approvers you select. 
+                  Empty fields will be skipped automatically.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 10: Attachments Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">10</span>
@@ -1544,8 +1668,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
           </div>
         </form>
 
-        {/* Footer Actions */}
-        <div className="bg-gray-50 px-8 py-5 rounded-b-xl border-t border-gray-200 flex items-center justify-between">
+        {/* Modal Footer Actions - Fixed Bottom Bar */}
+        <div className="bg-gray-50 px-8 py-4 rounded-b-xl border-t border-gray-200 flex items-center justify-between flex-shrink-0">
           <div className="text-sm text-gray-500">
             <span className="text-red-500">*</span> Required fields
           </div>
@@ -1553,7 +1677,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+              className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors font-medium text-sm"
             >
               Cancel
             </button>
@@ -1561,19 +1685,19 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               type="button"
               onClick={(e) => handleSubmit(e, false)}
               disabled={submitLoading}
-              className="px-6 py-2.5 border border-purple-300 rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors font-medium disabled:opacity-50"
+              className="px-6 py-2.5 border border-purple-300 rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors font-medium text-sm disabled:opacity-50"
             >
               Save Draft
             </button>
             <button
-              type="button"
-              onClick={(e) => handleSubmit(e, true)}
+              type="submit"
+              form="pr-modal-form"
               disabled={submitLoading}
-              className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all font-medium disabled:opacity-50 shadow-lg flex items-center space-x-2"
+              className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all font-medium text-sm disabled:opacity-50 shadow-md flex items-center space-x-2"
             >
               {submitLoading ? (
                 <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                   <span>Submitting...</span>
                 </>
               ) : (
@@ -1585,10 +1709,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             </button>
           </div>
         </div>
+
       </div>
     </div>
   );
 };
 
 export default PurchaseRequisitionForm;
-

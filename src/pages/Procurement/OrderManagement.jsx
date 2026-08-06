@@ -80,6 +80,27 @@ const OrderManagement = () => {
   });
 
   const APPROVED_REQUISITION_STATUSES = ['approved'];
+  const currentUserData = currentUser?.user || currentUser || {};
+  const currentUserId = currentUserData.id || currentUser?.user_id;
+  const currentUserRolesRaw = currentUser?.roles || currentUserData.roles;
+  const currentUserModulesRaw = currentUser?.modules || currentUserData.modules;
+  const currentUserRoles = Array.isArray(currentUserRolesRaw) ? currentUserRolesRaw : [];
+  const currentUserModules = Array.isArray(currentUserModulesRaw) ? currentUserModulesRaw : [];
+  const isCurrentUserAdmin = Boolean(
+    currentUserData.is_superuser
+    || currentUserRoles.some(role => role?.code === 'super_admin' || role?.code === 'admin')
+  );
+  const hasPurchaseOrderAccess = isCurrentUserAdmin || currentUserModules.some(
+    module => (typeof module === 'string' ? module : module?.code) === 'procurement_orders'
+  );
+  const canModifyRequisition = (requisition) => Boolean(
+    requisition?.status === 'draft'
+    && (isCurrentUserAdmin || (currentUserId && String(requisition.issued_by) === String(currentUserId)))
+  );
+  const canDeleteRequisition = (requisition) => Boolean(
+    ['draft', 'rejected', 'cancelled'].includes(requisition?.status)
+    && (isCurrentUserAdmin || (currentUserId && String(requisition.issued_by) === String(currentUserId)))
+  );
 
   /**
    * Reset all search and filter values when switching tabs
@@ -1649,13 +1670,15 @@ const OrderManagement = () => {
                         <EyeIcon className="h-3.5 w-3.5 mr-1" />
                         <span>View Details</span>
                       </button>
-                      <button 
-                        onClick={() => handleEditRequisition(req)}
-                        className="inline-flex justify-center items-center px-2.5 py-2 border border-amber-300 shadow-sm text-xs font-medium rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all duration-200">
-                        <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                        <span>Edit</span>
-                      </button>
-                      {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
+                      {canModifyRequisition(req) && (
+                        <button
+                          onClick={() => handleEditRequisition(req)}
+                          className="inline-flex justify-center items-center px-2.5 py-2 border border-amber-300 shadow-sm text-xs font-medium rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all duration-200">
+                          <PencilIcon className="h-3.5 w-3.5 mr-1" />
+                          <span>Edit</span>
+                        </button>
+                      )}
+                      {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && (
                         <button 
                           onClick={() => handleConvertToPO(req)}
                           className="inline-flex justify-center items-center px-2.5 py-2 border border-transparent text-xs font-semibold rounded-lg text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 shadow-sm hover:shadow-md transition-all duration-200">
@@ -1671,7 +1694,7 @@ const OrderManagement = () => {
                           <span>Export PDF</span>
                         </button>
                       )}
-                      {['draft', 'rejected', 'withdrawn'].includes(req.status) && (
+                      {canDeleteRequisition(req) && (
                         <button 
                           onClick={() => handleDeleteRequisition(req)}
                           className="col-span-2 inline-flex justify-center items-center px-2.5 py-2 border border-red-300 shadow-sm text-xs font-medium rounded-lg text-red-700 bg-red-50 hover:bg-red-100 hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
@@ -1783,14 +1806,16 @@ const OrderManagement = () => {
                               <EyeIcon className="h-3.5 w-3.5 mr-1" />
                               View
                             </button>
-                            <button
-                              onClick={() => handleEditRequisition(req)}
-                              className="inline-flex items-center px-2.5 py-1.5 border border-amber-300 shadow-sm text-xs font-medium rounded-md text-amber-700 bg-amber-50 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
-                            >
-                              <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                              Edit
-                            </button>
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
+                            {canModifyRequisition(req) && (
+                              <button
+                                onClick={() => handleEditRequisition(req)}
+                                className="inline-flex items-center px-2.5 py-1.5 border border-amber-300 shadow-sm text-xs font-medium rounded-md text-amber-700 bg-amber-50 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
+                              >
+                                <PencilIcon className="h-3.5 w-3.5 mr-1" />
+                                Edit
+                              </button>
+                            )}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && (
                               <button
                                 onClick={() => handleConvertToPO(req)}
                                 className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
@@ -1808,7 +1833,7 @@ const OrderManagement = () => {
                                 Export PDF
                               </button>
                             )}
-                            {['draft', 'rejected', 'withdrawn'].includes(req.status) && (
+                            {canDeleteRequisition(req) && (
                               <button
                                 onClick={() => handleDeleteRequisition(req)}
                                 className="inline-flex items-center px-2.5 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"

@@ -116,15 +116,28 @@ export const APPROVAL_TYPES = {
     color: 'indigo',
     gradientFrom: '#6366f1',
     gradientTo: '#4f46e5',
-    apiEndpoint: '/procurement/requisitions/',
+    apiEndpoint: '/procurement/requisitions/pending-for-me/',
+    actionApiEndpoint: '/procurement/requisitions/',
+    moduleCode: 'procurement_requisitions',
     // Role-based access control
-    allowedRoles: ['procurement_manager', 'procurement_admin', 'finance_manager', 'super_admin', 'admin'],
+    allowedRoles: ['project_manager', 'procurement_manager', 'procurement_admin', 'finance_manager', 'super_admin', 'admin'],
     requiresReportingManager: false,
-    filterLogic: 'approval_workflow',  // Filter by approval_workflow field
-    statusField: 'overall_status',
-    pendingStatuses: ['pending_approval', 'partially_approved'],
+    filterLogic: 'current_user_endpoint',
+    statusField: 'status',
+    pendingStatuses: ['submitted', 'in_review'],
     // Dynamic multi-step workflow (defined per requisition)
     stages: [], // Workflow is dynamic in approval_workflow field
+    fieldMapping: {
+      requisition_number: (item) => item.pr_number,
+      requester_name: (item) => item.issued_by_name || item.requested_by_name,
+      total_estimated_cost: (item) => item.total_price || item.estimated_budget,
+      approval_progress: (item) => {
+        const workflow = item.approval_hierarchy || item.approval_workflow_config || []
+        if (!workflow.length) return 0
+        const approved = workflow.filter(stage => String(stage?.status).toLowerCase() === 'approved').length
+        return Math.round((approved / workflow.length) * 100)
+      }
+    },
     displayFields: [
       { key: 'requisition_number', label: 'PR Number', type: 'text' },
       { key: 'title', label: 'Title', type: 'text' },
@@ -133,7 +146,7 @@ export const APPROVAL_TYPES = {
       { key: 'priority', label: 'Priority', type: 'badge' },
       { key: 'approval_progress', label: 'Progress', type: 'progress' }
     ],
-    actions: ['approve', 'reject', 'view', 'comment'],
+    actions: ['approve', 'reject', 'view'],
     kpi: {
       enabled: true,
       title: 'Procurement',
@@ -403,7 +416,7 @@ export function getApprovalFilters(filterLogic, user, rbacData) {
   }
   
   switch (filterLogic) {
-    case 'reporting_manager_or_hr':
+    case 'reporting_manager_or_hr': {
       // For leave requests: Backend automatically filters based on reporting hierarchy
       // in LeaveRequestViewSet.get_queryset() using Q(employee__rbac_profile__manager__user=user)
       // So we don't need to send any user-specific filters - just let backend handle it
@@ -420,12 +433,13 @@ export function getApprovalFilters(filterLogic, user, rbacData) {
         // No need to send reporting_manager parameter - backend handles it
         return {}
       }
+    }
     
     case 'reporting_manager':
       // Show only requests from direct reports
       return { reporting_manager: userId }
     
-    case 'role_based':
+    case 'role_based': {
       // Filter based on user's roles
       const roleFilters = {}
       
@@ -437,10 +451,14 @@ export function getApprovalFilters(filterLogic, user, rbacData) {
       }
       
       return roleFilters
+    }
     
     case 'approval_workflow':
-      // For procurement: filter by user_id in approval_workflow array
       return { approver_id: userId }
+
+    case 'current_user_endpoint':
+      // The endpoint derives the approver from the authenticated token.
+      return {}
     
     case 'approval_chain':
       // For invoices: filter by approver email/ID in approval chain
@@ -579,6 +597,12 @@ export function getEnabledApprovalTypes(user = null, rbacData = null) {
   
   // Get user's role codes
   const userRoleCodes = userRoles.map(r => r.code?.toLowerCase() || '').filter(Boolean)
+  const moduleSources = [rbacData?.modules, user?.modules, userData?.modules]
+  const userModuleCodes = moduleSources
+    .filter(Array.isArray)
+    .flat()
+    .map(module => (typeof module === 'string' ? module : module?.code)?.toLowerCase())
+    .filter(Boolean)
   
   // Check if user is a reporting manager (has direct reports)
   const isReportingManager = rbacData?.is_reporting_manager || 
@@ -598,13 +622,16 @@ export function getEnabledApprovalTypes(user = null, rbacData = null) {
         allowedRole.toLowerCase() === roleCode
       )
     )
+    const hasRequiredModule = approvalType.moduleCode
+      ? userModuleCodes.includes(approvalType.moduleCode.toLowerCase())
+      : false
     
     // If approval type requires reporting manager, check that too
     if (approvalType.requiresReportingManager) {
-      return hasAllowedRole || isReportingManager
+      return hasAllowedRole || hasRequiredModule || isReportingManager
     }
     
-    return hasAllowedRole
+    return hasAllowedRole || hasRequiredModule
   })
 }
 

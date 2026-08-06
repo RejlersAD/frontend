@@ -10,7 +10,7 @@
  * - Hierarchical approval visualization
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { API_BASE_URL } from '../config/api.config'
 import { API_CONFIG, LAYOUT_CONFIG } from '../config/enterpriseDashboard.config'
@@ -49,6 +49,7 @@ import {
 import KPICard from '../components/EnterpriseDashboard/KPICard'
 import ActivityTimeline from '../components/EnterpriseDashboard/ActivityTimeline'
 import AIInsightsPanel from '../components/EnterpriseDashboard/AIInsightsPanel'
+import { fetchCurrentUser } from '../store/slices/rbacSlice'
 
 // Icon map for dynamic icon rendering
 const ICON_MAP = {
@@ -68,6 +69,7 @@ const ICON_MAP = {
 }
 
 const ApprovalsPageDynamic = () => {
+  const dispatch = useDispatch()
   const navigate = useNavigate()
   const { user } = useSelector(s => s.auth)
   const rbacData = useSelector(s => s.rbac?.currentUser)
@@ -86,6 +88,12 @@ const ApprovalsPageDynamic = () => {
   const token = useMemo(() => {
     return localStorage.getItem('radai_access_token') || localStorage.getItem('access')
   }, [])
+
+  useEffect(() => {
+    if (token && !rbacData) {
+      dispatch(fetchCurrentUser())
+    }
+  }, [dispatch, rbacData, token])
 
   // Get enabled approval types based on user role (soft-coded RBAC filtering)
   const enabledTypes = useMemo(() => {
@@ -399,7 +407,7 @@ const ApprovalsPageDynamic = () => {
                   AI-Powered Approval Insights with Manager Hierarchy
                 </h3>
                 <p className="text-sm text-blue-700 leading-relaxed">
-                  This dashboard uses RADAI's intelligent analytics with integrated reporting manager hierarchy. 
+                  This dashboard uses RADAI&apos;s intelligent analytics with integrated reporting manager hierarchy.
                   Approvals are automatically routed based on your manager chain, department roles, and module permissions. 
                   {isAdmin ? ' As an administrator, you can see all pending approvals across the organization.' : 
                    ' You can see approvals from your direct reports and requests requiring your action.'}
@@ -565,7 +573,7 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
         }
       } else if (actionId === 'comment') {
         // Generic comment endpoint (soft-coded pattern, same base as approve/reject)
-        endpoint = `${activeConfig.apiEndpoint}${item.id}/comment/`
+        endpoint = `${activeConfig.actionApiEndpoint || activeConfig.apiEndpoint}${item.id}/comment/`
       } else {
         // For other approval types, use the standard pattern
         const actionMap = {
@@ -577,7 +585,7 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
           'release': 'release'
         }
         const endpointAction = actionMap[actionId] || actionId
-        endpoint = `${activeConfig.apiEndpoint}${item.id}/${endpointAction}/`
+        endpoint = `${activeConfig.actionApiEndpoint || activeConfig.apiEndpoint}${item.id}/${endpointAction}/`
       }
 
       console.log(`📤 Sending ${actionId} request to: ${API_BASE_URL}${endpoint}`)
@@ -588,7 +596,11 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ note: comment || '' })
+        body: JSON.stringify(
+          activeConfig.id === 'procurement' && actionId === 'reject'
+            ? { reason: comment || '' }
+            : { note: comment || '', signature: '' }
+        )
       })
 
       if (!response.ok) {
