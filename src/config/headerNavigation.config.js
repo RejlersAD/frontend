@@ -36,6 +36,7 @@ export const AUTHENTICATED_NAV_ITEMS = [
     type: NAV_ITEM_TYPES.LINK,
     access: NAV_ACCESS_RULES.AUTHENTICATED,
     enabled: true,
+    openInNewTab: true, // Public destination
     order: 1
   },
   {
@@ -62,6 +63,7 @@ export const AUTHENTICATED_NAV_ITEMS = [
     type: NAV_ITEM_TYPES.LINK,
     access: NAV_ACCESS_RULES.AUTHENTICATED,
     enabled: true,
+    openInNewTab: true, // Public destination
     order: 3
   },
   {
@@ -71,6 +73,7 @@ export const AUTHENTICATED_NAV_ITEMS = [
     type: NAV_ITEM_TYPES.LINK,
     access: NAV_ACCESS_RULES.AUTHENTICATED,
     enabled: true,
+    openInNewTab: true, // Public destination
     order: 4
   },
   {
@@ -79,7 +82,7 @@ export const AUTHENTICATED_NAV_ITEMS = [
     path: '/dashboard',
     type: NAV_ITEM_TYPES.LINK,
     access: NAV_ACCESS_RULES.AUTHENTICATED,
-    enabled: true,
+    enabled: false, // Available from the sidebar navigation
     order: 5
   },
   {
@@ -88,7 +91,7 @@ export const AUTHENTICATED_NAV_ITEMS = [
     path: '/profile',
     type: NAV_ITEM_TYPES.LINK,
     access: NAV_ACCESS_RULES.AUTHENTICATED,
-    enabled: true,
+    enabled: false, // Rendered in the authenticated user dropdown
     order: 6
   },
   {
@@ -97,7 +100,7 @@ export const AUTHENTICATED_NAV_ITEMS = [
     path: '/change-password',
     type: NAV_ITEM_TYPES.BUTTON,
     access: NAV_ACCESS_RULES.AUTHENTICATED,
-    enabled: true,
+    enabled: false, // Rendered in the authenticated user dropdown
     order: 7,
     icon: 'lock',  // Icon identifier for button styling
     style: 'primary'  // Button style variant
@@ -114,6 +117,7 @@ export const PUBLIC_NAV_ITEMS = [
     type: NAV_ITEM_TYPES.LINK,
     access: NAV_ACCESS_RULES.PUBLIC,
     enabled: true,
+    openInNewTab: true,
     order: 1
   },
   {
@@ -123,6 +127,7 @@ export const PUBLIC_NAV_ITEMS = [
     type: NAV_ITEM_TYPES.LINK,
     access: NAV_ACCESS_RULES.PUBLIC,
     enabled: true,
+    openInNewTab: true,
     order: 2
   },
   {
@@ -132,6 +137,7 @@ export const PUBLIC_NAV_ITEMS = [
     type: NAV_ITEM_TYPES.LINK,
     access: NAV_ACCESS_RULES.PUBLIC,
     enabled: true,
+    openInNewTab: true,
     order: 3
   },
   {

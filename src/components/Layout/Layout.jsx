@@ -5,6 +5,7 @@ import Header from './Header'
 import Footer from './Footer'
 import Sidebar from './Sidebar'
 import { HEADER_HEIGHT_CLASS } from '../../config/layout.config'
+import { isPublicPath } from '../../config/publicRoutes.config'
 
 /**
  * Layout Component
@@ -21,31 +22,7 @@ const Layout = () => {
 
   // Public pages render their own navigation experience and should not show
   // the shared authenticated shell even when the user is logged in.
-  const publicRoutes = [
-    '/',
-    '/home',
-    '/login',
-    '/enquiry',
-    '/solutions',
-    '/about',
-    '/services/pid-analysis',
-    '/services/pfd-conversion',
-    '/services/asset-integrity',
-    '/services/consulting',
-    '/data-governance',
-    '/security',
-    '/terms-of-service',
-    '/privacy-policy',
-    '/setup-password',
-    '/reset-password',
-    '/request-password-reset',
-    '/forgot-password',
-  ]
-
-  const publicRoutePrefixes = ['/services/', '/finance/approve/']
-  const isPublicRoute =
-    publicRoutes.includes(location.pathname) ||
-    publicRoutePrefixes.some((prefix) => location.pathname.startsWith(prefix))
+  const isPublicRoute = isPublicPath(location.pathname)
 
   const showSidebar = isAuthenticated && !isPublicRoute
   const showHeader = isAuthenticated && !isPublicRoute
@@ -57,7 +34,7 @@ const Layout = () => {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {showHeader && (
-        <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} showSidebar={showSidebar} />
+        <Header />
       )}
       <div className={`flex flex-1 ${contentOffsetClass}`}>
         {showSidebar && (

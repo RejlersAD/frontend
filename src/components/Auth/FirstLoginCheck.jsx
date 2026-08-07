@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import axios from 'axios';
 import FirstLoginPasswordReset from './FirstLoginPasswordReset';
 import { API_BASE_URL } from '../../config/api.config';
 import { STORAGE_KEYS } from '../../config/app.config';
+import { isPublicPath } from '../../config/publicRoutes.config';
 
 /**
  * First Login Check Component
@@ -12,6 +14,8 @@ import { STORAGE_KEYS } from '../../config/app.config';
  */
 const FirstLoginCheck = ({ children, onPasswordChanged }) => {
   const { isAuthenticated, user } = useSelector((state) => state.auth);
+  const location = useLocation();
+  const isPublicRoute = isPublicPath(location.pathname);
   const [checking, setChecking] = useState(false);
   const [mustResetPassword, setMustResetPassword] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -26,7 +30,7 @@ const FirstLoginCheck = ({ children, onPasswordChanged }) => {
 
   useEffect(() => {
     const checkFirstLogin = async () => {
-      if (!isAuthenticated || checked) {
+      if (isPublicRoute || !isAuthenticated || checked) {
         return;
       }
 
@@ -75,7 +79,12 @@ const FirstLoginCheck = ({ children, onPasswordChanged }) => {
     };
 
     checkFirstLogin();
-  }, [isAuthenticated, checked]);
+  }, [isAuthenticated, checked, isPublicRoute]);
+
+  // Public content never waits for authenticated password/account checks.
+  if (isPublicRoute) {
+    return children;
+  }
 
   // Show loading while checking
   if (checking) {
@@ -83,7 +92,7 @@ const FirstLoginCheck = ({ children, onPasswordChanged }) => {
       <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Checking authentication...</p>
+          <p className="text-gray-600">Checking account requirements...</p>
         </div>
       </div>
     );

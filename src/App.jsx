@@ -1,9 +1,10 @@
 import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useState, useEffect, useCallback } from 'react'
 import { API_BASE_URL, API_ENDPOINTS } from './config/api.config'
 import { FEATURE_FLAGS, ENV } from './config/features.config'
+import { isPublicPath } from './config/publicRoutes.config'
 import passwordExpiryService from './services/passwordExpiry.service'
 import Layout from './components/Layout/Layout'
 import FirstLoginCheck from './components/Auth/FirstLoginCheck'
@@ -198,6 +199,8 @@ function App() {
   useAIChampionTracker()
 
   const { isAuthenticated, user } = useSelector((state) => state.auth)
+  const location = useLocation()
+  const isPublicRoute = isPublicPath(location.pathname)
   const [userModules, setUserModules] = useState([])
   const [modulesLoaded, setModulesLoaded] = useState(false)
   const [mustChangePassword, setMustChangePassword] = useState(false)
@@ -378,10 +381,10 @@ function App() {
   return (
     <>
       {/* Password Expiry Banner - shown globally when password is expiring or expired */}
-      {isAuthenticated && <PasswordExpiryBanner />}
+      {isAuthenticated && !isPublicRoute && <PasswordExpiryBanner />}
       
       {/* Password Change Modal - shown globally when required */}
-      {isAuthenticated && mustChangePassword && (
+      {isAuthenticated && !isPublicRoute && mustChangePassword && (
         <ChangePasswordModal
           isOpen={true}
           isRequired={true}

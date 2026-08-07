@@ -14,6 +14,7 @@ import {
 } from "../../config/qhseModules.config";
 import {
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   HomeIcon,
   DocumentTextIcon,
@@ -23,7 +24,6 @@ import {
   UsersIcon,
   ChartBarIcon,
   XMarkIcon,
-  Bars3Icon,
   FolderIcon,
   BriefcaseIcon,
   CurrencyDollarIcon,
@@ -845,11 +845,13 @@ const Sidebar = ({
               </div>
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() => setIsCollapsed(true)}
                   className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   title="Collapse sidebar"
+                  aria-label="Collapse sidebar"
                 >
-                  <ChevronRightIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                  <ChevronLeftIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}
@@ -861,11 +863,13 @@ const Sidebar = ({
             </>
           ) : (
             <button
+              type="button"
               onClick={() => setIsCollapsed(false)}
               className="w-full flex justify-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               title="Expand sidebar"
+              aria-label="Expand sidebar"
             >
-              <Bars3Icon className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+              <ChevronRightIcon className="w-6 h-6 text-gray-600 dark:text-gray-400" />
             </button>
           )}
         </div>
@@ -1120,15 +1124,6 @@ const Sidebar = ({
         </div>
       </aside>
 
-      {/* Mobile menu button (hidden when top header is present to avoid duplicate toggles) */}
-      {!showHeader && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="lg:hidden fixed bottom-4 right-4 z-30 p-3 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all"
-        >
-          <Bars3Icon className="w-6 h-6" />
-        </button>
-      )}
     </>
   );
 };
