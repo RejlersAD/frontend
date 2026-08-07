@@ -61,10 +61,18 @@ export const BRANDING_CONFIG = {
   logo: {
     // Primary logo (standard display)
     primary: {
-      path: '/logo/rejlers-logo.png',
-      alt: 'RADAI - Rejlers Engineering Solutions',
+      path: '/assets/images/rejlers-logo.png',
+      alt: 'RADAI',
       height: '36px',
       width: 'auto'
+    },
+
+    // Official RADAI mark used on every controlled print/preview document.
+    print: {
+      path: '/assets/images/rejlers-logo.png',
+      alt: 'RADAI',
+      height: '52px',
+      width: '52px'
     },
     
     // Compact logo (for small displays)

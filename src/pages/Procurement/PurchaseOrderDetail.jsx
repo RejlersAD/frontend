@@ -337,9 +337,9 @@ const PurchaseOrderDetail = ({ initialEdit = false }) => {
           <div className="flex items-start justify-between gap-6">
             <div>
               <img
-                src={BRANDING_CONFIG.logo.primary.path}
-                alt={BRANDING_CONFIG.logo.primary.alt}
-                className="h-9 w-auto object-contain"
+                src={BRANDING_CONFIG.logo.print.path}
+                alt={BRANDING_CONFIG.logo.print.alt}
+                className="h-14 w-14 object-contain"
               />
               <p className="mt-2 text-[8px] leading-3 text-gray-600">
                 {BRANDING_CONFIG.contact.address.full}<br />

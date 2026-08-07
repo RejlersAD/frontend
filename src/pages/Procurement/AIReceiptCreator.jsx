@@ -136,7 +136,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders = [], init
         ...formData,
       });
       response = await apiClient.post(`/procurement/receipts/${response.data.id}/submit/`);
-      onReceiptCreated?.(response.data);
+      await onReceiptCreated?.(response.data);
       onClose?.();
     } catch (requestError) {
       setError(apiErrorMessage(requestError));
