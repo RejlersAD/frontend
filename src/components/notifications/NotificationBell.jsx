@@ -216,7 +216,8 @@ const NotificationBell = () => {
   }
 
   return (
-    <div className="relative z-50">
+    // Keep the bell trigger and its dropdown in the same positioned container.
+    <div className="relative z-50 shrink-0" data-notification-container>
       <button
         ref={bellRef}
         onClick={handleBellClick}

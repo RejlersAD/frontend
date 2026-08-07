@@ -22,24 +22,10 @@ const themeSlice = createSlice({
     toggleTheme: (state) => {
       state.mode = state.mode === THEME.LIGHT ? THEME.DARK : THEME.LIGHT
       localStorage.setItem(STORAGE_KEYS.THEME, state.mode)
-      
-      // Apply theme to document
-      if (state.mode === THEME.DARK) {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
     },
     setTheme: (state, action) => {
       state.mode = action.payload
       localStorage.setItem(STORAGE_KEYS.THEME, action.payload)
-      
-      // Apply theme to document
-      if (action.payload === THEME.DARK) {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
     },
   },
 })

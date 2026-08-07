@@ -32,7 +32,7 @@ const Layout = () => {
   const contentOffsetClass = showHeader ? HEADER_HEIGHT_CLASS : ''
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="app-theme-root min-h-screen flex flex-col bg-gray-50 text-gray-900 transition-colors duration-200 dark:bg-gray-900 dark:text-gray-100">
       {showHeader && (
         <Header />
       )}
@@ -46,7 +46,7 @@ const Layout = () => {
             showHeader={showHeader}
           />
         )}
-        <main className={`main-content flex-1 min-w-0 transition-all duration-300 overflow-x-hidden ${showHeader ? 'pt-2 sm:pt-3' : ''}`}>
+        <main className={`main-content flex-1 min-w-0 bg-gray-50 text-gray-900 transition-all duration-300 overflow-x-hidden dark:bg-gray-900 dark:text-gray-100 ${showHeader ? 'pt-2 sm:pt-3' : ''}`}>
           <Outlet />
         </main>
       </div>

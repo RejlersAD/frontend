@@ -7,6 +7,8 @@ import {
   ArrowRightOnRectangleIcon,
   ChevronDownIcon,
   KeyIcon,
+  MoonIcon,
+  SunIcon,
   UserCircleIcon,
 } from '@heroicons/react/24/outline'
 import { LOGO_CONFIG, getLogoPath } from '../../config/logo.config'
@@ -174,16 +176,6 @@ const Header = () => {
           </div>
 
           <div className="flex items-center space-x-6">
-            {isAuthenticated && <NotificationBell />}
-            
-            <button
-              onClick={handleThemeToggle}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 transition-all transform hover:scale-110"
-              aria-label="Toggle theme"
-            >
-              {mode === 'light' ? '🌙' : '☀️'}
-            </button>
-
             {/* SOFT-CODED: Dynamic navigation items from configuration */}
             {navItems.map(item => renderNavItem(item))}
 
@@ -261,6 +253,23 @@ const Header = () => {
                 )}
               </div>
             )}
+
+            {/* Utility controls stay at the far right, after the account menu. */}
+            <button
+              type="button"
+              onClick={handleThemeToggle}
+              className="shrink-0 rounded-lg border border-white/20 bg-white/10 p-2 backdrop-blur-sm transition-all hover:scale-110 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+              aria-label={mode === 'light' ? 'Enable dark mode' : 'Enable light mode'}
+              title={mode === 'light' ? 'Dark mode' : 'Light mode'}
+            >
+              {mode === 'light' ? (
+                <MoonIcon className="h-5 w-5 text-white" aria-hidden="true" />
+              ) : (
+                <SunIcon className="h-5 w-5 text-amber-300" aria-hidden="true" />
+              )}
+            </button>
+
+            {isAuthenticated && <NotificationBell />}
           </div>
         </div>
       </nav>

@@ -49,6 +49,81 @@ body {
   min-height: 100vh;
 }
 
+/* Application-wide dark-mode compatibility layer.
+   New components should still use explicit Tailwind `dark:` utilities. These
+   mappings ensure legacy light-only pages participate in the global theme.
+   Screen-only scoping keeps PO/PR print previews on their required white paper. */
+@media screen {
+  html,
+  body,
+  #root {
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  html.dark {
+    color-scheme: dark;
+    --app-selection-bg: rgba(96, 165, 250, 0.32);
+    --app-selection-text: #f8fafc;
+  }
+
+  html.dark body,
+  html.dark #root {
+    background-color: #111827;
+    color: #f1f5f9;
+  }
+
+  html.dark :where(.bg-white) {
+    background-color: #1f2937;
+  }
+
+  html.dark :where(.bg-gray-50, .bg-slate-50) {
+    background-color: #111827;
+  }
+
+  html.dark :where(.bg-gray-100, .bg-slate-100) {
+    background-color: #1e293b;
+  }
+
+  html.dark :where(.text-gray-900, .text-slate-900, .text-gray-800, .text-slate-800) {
+    color: #f1f5f9;
+  }
+
+  html.dark :where(.text-gray-700, .text-slate-700) {
+    color: #e2e8f0;
+  }
+
+  html.dark :where(.text-gray-600, .text-slate-600, .text-gray-500, .text-slate-500) {
+    color: #cbd5e1;
+  }
+
+  html.dark :where(.border-gray-100, .border-slate-100, .border-gray-200, .border-slate-200) {
+    border-color: #334155;
+  }
+
+  html.dark :where(.border-gray-300, .border-slate-300) {
+    border-color: #475569;
+  }
+
+  html.dark :where(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='range']) {
+    border-color: #475569;
+    background-color: #1e293b;
+    color: #f8fafc;
+  }
+
+  html.dark :where(input, textarea)::placeholder {
+    color: #94a3b8;
+  }
+
+  html.dark :where(table) {
+    color: #e2e8f0;
+  }
+
+  html.dark :where(.Toastify__toast) {
+    background-color: #1e293b;
+    color: #f8fafc;
+  }
+}
+
 /* Custom utility classes */
 .container-custom {
   @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;

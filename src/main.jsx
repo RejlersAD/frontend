@@ -9,6 +9,23 @@ import App from './App'
 import './index.css'
 import 'react-toastify/dist/ReactToastify.css'
 
+// Synchronize the Redux theme with the document root before React renders.
+// Keeping the class on <html> makes Tailwind's `dark:` variants apply to the
+// header, sidebar, page content, dialogs, dropdowns, and toast portals alike.
+let appliedTheme
+const syncDocumentTheme = () => {
+  const mode = store.getState().theme.mode
+  if (mode === appliedTheme) return
+
+  appliedTheme = mode
+  document.documentElement.classList.toggle('dark', mode === 'dark')
+  document.documentElement.dataset.theme = mode
+  document.documentElement.style.colorScheme = mode
+}
+
+syncDocumentTheme()
+store.subscribe(syncDocumentTheme)
+
 // PWA Service Worker Registration
 import { registerSW } from 'virtual:pwa-register'
 
