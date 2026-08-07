@@ -804,6 +804,14 @@ function App() {
           }
         />
         <Route
+          path="procurement/orders/:id/edit"
+          element={
+            <ModuleProtectedRoute moduleCode="procurement_orders">
+              <PurchaseOrderDetail initialEdit />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
           path="procurement/receipts"
           element={
             <ModuleProtectedRoute moduleCode="procurement_receipts">

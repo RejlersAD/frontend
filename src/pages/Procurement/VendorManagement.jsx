@@ -21,7 +21,9 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   DocumentArrowDownIcon,
-  PencilSquareIcon
+  PencilSquareIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { PageControlButtons } from '../../components/Common/PageControlButtons';
@@ -31,15 +33,14 @@ import AIVendorCreator from './AIVendorCreator';
 
 // Soft-coded layout configuration
 const LAYOUT_CONFIG = {
-  maxWidthDefault: 'max-w-7xl',        // Standard container width
-  maxWidthTable: 'max-w-full',         // Full width for table view
-  tableMinWidth: 'min-w-[1400px]',     // Minimum table width to show all columns
+  maxWidthDefault: 'max-w-full',
+  maxWidthTable: 'max-w-full',
+  tableMinWidth: 'min-w-[1400px]',
   cardGridCols: {
     sm: 'sm:grid-cols-2',
     lg: 'lg:grid-cols-3',
     xl: 'xl:grid-cols-4'
-  },
-  scrollIndicator: 'shadow-sm ring-1 ring-gray-900/5' // Visual scroll hint
+  }
 };
 
 const VendorManagement = () => {
@@ -56,6 +57,10 @@ const VendorManagement = () => {
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
   const pageControls = usePageControls({
     autoRefreshInterval: 60,
     features: { autoRefresh: true, fullscreen: true, sidebar: true }
@@ -66,16 +71,13 @@ const VendorManagement = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch all vendors with large page_size to avoid pagination issues
-      // Soft-coded: Use query parameter to get all records
       const response = await apiClient.get('/procurement/vendors/', {
         params: {
-          page_size: 1000  // Large enough to get all vendors in one request
+          page_size: 1000
         }
       });
       const data = response.data;
       
-      // Soft-coded data normalization - ensure array
       let normalizedData = [];
       if (Array.isArray(data)) {
         normalizedData = data;
@@ -86,11 +88,6 @@ const VendorManagement = () => {
       }
       
       setVendors(normalizedData);
-      
-      // Log for debugging
-      console.log(`✅ Loaded ${normalizedData.length} vendors from API`);
-      
-      // AI-powered vendor analytics
       generateAIRecommendations(normalizedData);
     } catch (error) {
       console.error('Error fetching vendors:', error);
@@ -99,7 +96,7 @@ const VendorManagement = () => {
         message: `Failed to load vendors: ${error.message}`,
         action: () => fetchVendors()
       });
-      setVendors([]); // Ensure array even on error
+      setVendors([]);
     } finally {
       setLoading(false);
     }
@@ -109,16 +106,16 @@ const VendorManagement = () => {
     fetchVendors();
   }, [pageControls.isRefreshing]);
 
-  /**
-   * AI Feature: Generate vendor recommendations and insights
-   */
+  // Reset to first page when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, filterRating]);
+
   const generateAIRecommendations = (vendorList) => {
     if (!Array.isArray(vendorList) || vendorList.length === 0) return;
 
-    // Soft-coded AI analytics
     const recommendations = [];
     
-    // Analyze vendor performance
     const topPerformers = vendorList
       .filter(v => v.rating >= 4 && v.status === 'active')
       .slice(0, 3);
@@ -132,7 +129,6 @@ const VendorManagement = () => {
       });
     }
 
-    // Check for vendors needing attention
     const needsReview = vendorList.filter(v => 
       v.status === 'pending' || (v.rating && v.rating < 3)
     );
@@ -146,7 +142,6 @@ const VendorManagement = () => {
       });
     }
 
-    // Certification compliance check
     const withoutCerts = vendorList.filter(v => 
       !v.certifications || v.certifications.length === 0
     );
@@ -163,20 +158,43 @@ const VendorManagement = () => {
     setAiRecommendations(recommendations);
   };
 
-  // Soft-coded filter logic with safe array handling
   const filteredVendors = Array.isArray(vendors) ? vendors.filter(vendor => {
-    // Soft-coded field access with fallbacks
     const name = vendor?.name || '';
     const vendorCode = vendor?.vendor_code || '';
     const status = vendor?.status || '';
     const rating = vendor?.rating || 0;
     
     const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         vendorCode.toLowerCase().includes(searchTerm.toLowerCase());
+                          vendorCode.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || status === filterStatus;
     const matchesRating = filterRating === 'all' || rating === parseInt(filterRating);
     return matchesSearch && matchesStatus && matchesRating;
   }) : [];
+
+  // Sorting
+  const sortedVendors = [...filteredVendors].sort((a, b) => {
+    const aVal = a[sortConfig.key] || '';
+    const bVal = b[sortConfig.key] || '';
+    if (sortConfig.direction === 'asc') {
+      return aVal > bVal ? 1 : -1;
+    }
+    return aVal < bVal ? 1 : -1;
+  });
+
+  // Pagination Logic
+  const totalItems = sortedVendors.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const currentVendors = sortedVendors.slice(startIndex, endIndex);
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const getStatusConfig = (status) => {
     return PROCUREMENT_CONFIG.statuses.vendor[status] || { label: status, color: 'gray', icon: ClockIcon };
@@ -208,16 +226,14 @@ const VendorManagement = () => {
     );
   };
 
-  const handleVendorCreated = async (vendorData) => {
-    // After successful creation, refresh vendor list
+  const handleVendorCreated = async () => {
     await fetchVendors();
     setShowAICreator(false);
     setEditMode(false);
     setSelectedVendor(null);
   };
 
-  const handleVendorUpdated = async (updatedVendor) => {
-    // After successful update, refresh vendor list
+  const handleVendorUpdated = async () => {
     await fetchVendors();
     setShowAICreator(false);
     setEditMode(false);
@@ -230,20 +246,6 @@ const VendorManagement = () => {
     setShowAICreator(true);
   };
 
-  /**
-   * Soft-coded sorting function
-   */
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
-
-  /**
-   * Soft-coded export to Excel function
-   */
   const handleExportToExcel = () => {
     const headers = ['Vendor Code', 'Vendor Name', 'Category', 'Contact Person', 'Contact Number', 'Email', 'Location', 'ICV', 'ADNOC', 'Tenure (yrs)', 'Trade License', 'VAT Number'];
     const rows = filteredVendors.map(v => [
@@ -270,7 +272,6 @@ const VendorManagement = () => {
   };
 
   const VendorStats = () => {
-    // Soft-coded stats calculation with safe array handling
     const safeVendors = Array.isArray(vendors) ? vendors : [];
     const stats = {
       total: safeVendors.length,
@@ -342,6 +343,139 @@ const VendorManagement = () => {
                 </dl>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Corporate Pagination Component
+  const PaginationUI = () => {
+    if (totalItems === 0) return null;
+
+    const renderPageNumbers = () => {
+      const pages = [];
+      const maxVisible = 5;
+      
+      let start = Math.max(1, currentPage - 2);
+      let end = Math.min(totalPages, start + maxVisible - 1);
+
+      if (end - start < maxVisible - 1) {
+        start = Math.max(1, end - maxVisible + 1);
+      }
+
+      if (start > 1) {
+        pages.push(
+          <button
+            key={1}
+            onClick={() => setCurrentPage(1)}
+            className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+          >
+            1
+          </button>
+        );
+        if (start > 2) {
+          pages.push(<span key="start-dots" className="px-3 py-2 text-sm text-gray-500 border border-gray-300 bg-white">...</span>);
+        }
+      }
+
+      for (let i = start; i <= end; i++) {
+        pages.push(
+          <button
+            key={i}
+            onClick={() => setCurrentPage(i)}
+            className={`px-3 py-2 text-sm font-medium border ${
+              currentPage === i
+                ? 'bg-indigo-600 text-white border-indigo-600 z-10'
+                : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {i}
+          </button>
+        );
+      }
+
+      if (end < totalPages) {
+        if (end < totalPages - 1) {
+          pages.push(<span key="end-dots" className="px-3 py-2 text-sm text-gray-500 border border-gray-300 bg-white">...</span>);
+        }
+        pages.push(
+          <button
+            key={totalPages}
+            onClick={() => setCurrentPage(totalPages)}
+            className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+          >
+            {totalPages}
+          </button>
+        );
+      }
+
+      return pages;
+    };
+
+    return (
+      <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 rounded-b-lg shadow-sm">
+        <div className="flex-1 flex justify-between sm:hidden">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+            disabled={currentPage === 1}
+            className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+        <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+          <div className="flex items-center space-x-6">
+            <p className="text-sm text-gray-700">
+              Showing <span className="font-semibold text-gray-900">{startIndex + 1}</span> to{' '}
+              <span className="font-semibold text-gray-900">{endIndex}</span> of{' '}
+              <span className="font-semibold text-gray-900">{totalItems}</span> results
+            </p>
+            <div className="flex items-center space-x-2">
+              <label htmlFor="rowsPerPage" className="text-sm text-gray-600 font-medium">Rows per page:</label>
+              <select
+                id="rowsPerPage"
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="py-1 px-2.5 border border-gray-300 bg-white rounded-md text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="sr-only">Previous</span>
+                <ChevronLeftIcon className="h-5 w-5" />
+              </button>
+              {renderPageNumbers()}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="sr-only">Next</span>
+                <ChevronRightIcon className="h-5 w-5" />
+              </button>
+            </nav>
           </div>
         </div>
       </div>
@@ -521,8 +655,8 @@ const VendorManagement = () => {
             </div>
 
             <div className="mt-4 flex justify-between items-center">
-              <p className="text-sm text-gray-500">
-                Showing {filteredVendors.length} of {Array.isArray(vendors) ? vendors.length : 0} vendors
+              <p className="text-sm text-gray-500 font-medium">
+                Showing {totalItems} {totalItems === 1 ? 'vendor' : 'vendors'} found
               </p>
               
               <div className="flex space-x-2">
@@ -576,14 +710,14 @@ const VendorManagement = () => {
           </div>
         </div>
 
-        {/* Vendors List */}
+        {/* Vendors List Section */}
         <div className={`${viewMode === 'table' ? LAYOUT_CONFIG.maxWidthTable : LAYOUT_CONFIG.maxWidthDefault} mx-auto px-4 sm:px-6 lg:px-8 mt-8`}>
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-              <p className="mt-4 text-sm text-gray-500">Loading vendors...</p>
+              <p className="mt-4 text-sm text-gray-500 font-medium">Loading vendors...</p>
             </div>
-          ) : filteredVendors.length === 0 ? (
+          ) : currentVendors.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-lg shadow">
               <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">No vendors found</h3>
@@ -594,86 +728,68 @@ const VendorManagement = () => {
               </p>
             </div>
           ) : viewMode === 'table' ? (
-            /* Table View - Full Width with Smooth Scrolling */
-            <div className="bg-white shadow-xl overflow-hidden rounded-lg border border-gray-200">
-              {/* Scroll hint indicator */}
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-2 border-b border-indigo-100">
-                <p className="text-xs text-indigo-700 font-medium flex items-center">
-                  <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                  </svg>
-                  Scroll horizontally to view all columns • Showing {filteredVendors.length} vendors
-                </p>
-              </div>
-              <div className="overflow-x-auto overflow-y-visible" style={{scrollbarWidth: 'thin', scrollbarColor: '#6366f1 #f3f4f6'}}>
+            /* Corporate Table View */
+            <div className="bg-white shadow-md overflow-hidden rounded-lg border border-gray-200">
+              <div className="overflow-x-auto overflow-y-visible" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                 <table className={`${LAYOUT_CONFIG.tableMinWidth} w-full divide-y divide-gray-200`}>
                   <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
                     <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 bg-gray-50" onClick={() => handleSort('vendor_code')}>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('vendor_code')}>
                         <div className="flex items-center space-x-1">
                           <span>Code</span>
                           {sortConfig.key === 'vendor_code' && (
-                            sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-4 w-4" /> : <ArrowDownIcon className="h-4 w-4" />
+                            sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-4 w-4 text-indigo-600" /> : <ArrowDownIcon className="h-4 w-4 text-indigo-600" />
                           )}
                         </div>
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 bg-gray-50" onClick={() => handleSort('name')}>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>
                         <div className="flex items-center space-x-1">
                           <span>Vendor Name</span>
                           {sortConfig.key === 'name' && (
-                            sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-4 w-4" /> : <ArrowDownIcon className="h-4 w-4" />
+                            sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-4 w-4 text-indigo-600" /> : <ArrowDownIcon className="h-4 w-4 text-indigo-600" />
                           )}
                         </div>
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Category</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Contact Person</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Contact Number</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Email</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">ICV</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">ADNOC</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Tenure</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Status</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Actions</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Category</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Contact Person</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Contact Number</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ICV</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ADNOC</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Tenure</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                      <th scope="col" className="px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredVendors
-                      .sort((a, b) => {
-                        const aVal = a[sortConfig.key] || '';
-                        const bVal = b[sortConfig.key] || '';
-                        if (sortConfig.direction === 'asc') {
-                          return aVal > bVal ? 1 : -1;
-                        }
-                        return aVal < bVal ? 1 : -1;
-                      })
-                      .map((vendor) => (
-                      <tr key={vendor.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{vendor.vendor_code}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{vendor.name}</td>
+                    {currentVendors.map((vendor) => (
+                      <tr key={vendor.id} className="hover:bg-indigo-50/30 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-600">{vendor.vendor_code}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{vendor.name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {Array.isArray(vendor.categories) && vendor.categories.length > 0 ? vendor.categories[0] : '-'}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.contact_person || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.phone || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.email || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{vendor.contact_person || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{vendor.phone || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{vendor.email || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {vendor.is_icv_certified ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
                               Yes
                             </span>
                           ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                               No
                             </span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {vendor.adnoc_approved ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
                               Yes
                             </span>
                           ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                               No
                             </span>
                           )}
@@ -699,119 +815,87 @@ const VendorManagement = () => {
                   </tbody>
                 </table>
               </div>
+              {/* Pagination Bar */}
+              <PaginationUI />
             </div>
           ) : (
-            /* Card View - Responsive Grid */
-            <div className={`grid grid-cols-1 gap-6 ${LAYOUT_CONFIG.cardGridCols.sm} ${LAYOUT_CONFIG.cardGridCols.lg} ${LAYOUT_CONFIG.cardGridCols.xl}`}>
-              {filteredVendors.map((vendor) => (
-                <div key={vendor.id} className="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200 border-2 border-transparent hover:border-indigo-500">
-                  <div className="p-6">
-                    {/* Vendor Header */}
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <BuildingOfficeIcon className="h-5 w-5 text-indigo-600" />
-                          <h3 className="text-lg font-semibold text-gray-900 truncate">
-                            {vendor.name}
-                          </h3>
-                        </div>
-                        <p className="mt-1 text-sm text-gray-500">Code: {vendor.vendor_code}</p>
-                      </div>
-                      {getStatusBadge(vendor.status)}
-                    </div>
-
-                    {/* Rating */}
-                    <div className="mt-4">
-                      {getRatingStars(vendor.rating)}
-                    </div>
-
-                    {/* Contact Info */}
-                    <div className="mt-4 space-y-2">
-                      {vendor.email && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <EnvelopeIcon className="h-4 w-4 mr-2 text-gray-400" />
-                          <span className="truncate">{vendor.email}</span>
-                        </div>
-                      )}
-                      {vendor.phone && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <PhoneIcon className="h-4 w-4 mr-2 text-gray-400" />
-                          <span>{vendor.phone}</span>
-                        </div>
-                      )}
-                      {vendor.country && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <GlobeAltIcon className="h-4 w-4 mr-2 text-gray-400" />
-                          <span>{vendor.country}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* ICV Badge - Prominent Display for Abu Dhabi Market */}
-                    {vendor.is_icv_certified && vendor.icv_percentage && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-lg p-3 border-2 border-red-200">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <svg className="h-5 w-5 text-red-600" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
-                              </svg>
-                              <span className="text-xs font-semibold text-red-900">ICV Certified</span>
-                            </div>
-                            <span className="text-2xl font-bold text-red-600">{parseFloat(vendor.icv_percentage).toFixed(1)}%</span>
+            /* Grid / Card View with Pagination */
+            <div>
+              <div className={`grid grid-cols-1 gap-6 ${LAYOUT_CONFIG.cardGridCols.sm} ${LAYOUT_CONFIG.cardGridCols.lg} ${LAYOUT_CONFIG.cardGridCols.xl}`}>
+                {currentVendors.map((vendor) => (
+                  <div key={vendor.id} className="bg-white overflow-hidden shadow-sm hover:shadow-md rounded-lg transition-shadow duration-200 border border-gray-200">
+                    <div className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <BuildingOfficeIcon className="h-5 w-5 text-indigo-600" />
+                            <h3 className="text-lg font-semibold text-gray-900 truncate">
+                              {vendor.name}
+                            </h3>
                           </div>
-                          {vendor.icv_certificate && (
-                            <div className="mt-2 text-xs text-red-700">
-                              Cert: {vendor.icv_certificate}
-                            </div>
-                          )}
-                          {vendor.icv_expiry_date && (
-                            <div className="mt-1 text-xs text-red-600">
-                              Valid until: {new Date(vendor.icv_expiry_date).toLocaleDateString()}
-                            </div>
-                          )}
+                          <p className="mt-1 text-sm text-gray-500">Code: {vendor.vendor_code}</p>
                         </div>
+                        {getStatusBadge(vendor.status)}
                       </div>
-                    )}
 
-                    {/* Certifications */}
-                    {vendor?.certifications && Array.isArray(vendor.certifications) && vendor.certifications.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <ShieldCheckIcon className="h-4 w-4 text-[#00a896]" />
-                          <span className="text-xs font-medium text-gray-700">Certifications:</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {vendor.certifications.slice(0, 3).map((cert, idx) => (
-                            <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#00a896] bg-opacity-10 text-[#00a896] border border-[#00a896] border-opacity-20">
-                              {cert}
-                            </span>
-                          ))}
-                          {vendor.certifications.length > 3 && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                              +{vendor.certifications.length - 3} more
-                            </span>
-                          )}
-                        </div>
+                      <div className="mt-4">
+                        {getRatingStars(vendor.rating)}
                       </div>
-                    )}
 
-                    {/* Actions */}
-                    <div className="mt-6 flex space-x-3">
-                      <button
-                        onClick={() => handleEditVendor(vendor)}
-                        className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-indigo-300 shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                      >
-                        <PencilSquareIcon className="h-4 w-4 mr-1" />
-                        Edit
-                      </button>
-                      <button className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Create PO
-                      </button>
+                      <div className="mt-4 space-y-2">
+                        {vendor.email && (
+                          <div className="flex items-center text-sm text-gray-600">
+                            <EnvelopeIcon className="h-4 w-4 mr-2 text-gray-400" />
+                            <span className="truncate">{vendor.email}</span>
+                          </div>
+                        )}
+                        {vendor.phone && (
+                          <div className="flex items-center text-sm text-gray-600">
+                            <PhoneIcon className="h-4 w-4 mr-2 text-gray-400" />
+                            <span>{vendor.phone}</span>
+                          </div>
+                        )}
+                        {vendor.country && (
+                          <div className="flex items-center text-sm text-gray-600">
+                            <GlobeAltIcon className="h-4 w-4 mr-2 text-gray-400" />
+                            <span>{vendor.country}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {vendor.is_icv_certified && vendor.icv_percentage && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-lg p-3 border border-red-200">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-xs font-semibold text-red-900">ICV Certified</span>
+                              </div>
+                              <span className="text-2xl font-bold text-red-600">{parseFloat(vendor.icv_percentage).toFixed(1)}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-6 flex space-x-3">
+                        <button
+                          onClick={() => handleEditVendor(vendor)}
+                          className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                        >
+                          <PencilSquareIcon className="h-4 w-4 mr-1" />
+                          Edit
+                        </button>
+                        <button className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                          Create PO
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              {/* Pagination Bar for Card View */}
+              <div className="mt-6">
+                <PaginationUI />
+              </div>
             </div>
           )}
         </div>

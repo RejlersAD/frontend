@@ -12,12 +12,15 @@ import {
   PencilIcon,
   PaperAirplaneIcon,
   CheckCircleIcon,
+  ArchiveBoxArrowDownIcon,
   XMarkIcon,
   PrinterIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
+import PurchaseOrderForm from './PurchaseOrderForm';
+import AIReceiptCreator from './AIReceiptCreator';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -47,7 +50,7 @@ const textOrDash = (value) => String(value || '').trim() || '—';
  * Purchase Order Detail Page - Soft-Coded Design
  * Displays comprehensive PO information with status tracking
  */
-const PurchaseOrderDetail = () => {
+const PurchaseOrderDetail = ({ initialEdit = false }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   
@@ -56,6 +59,24 @@ const PurchaseOrderDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(initialEdit);
+  const [showReceiptCreator, setShowReceiptCreator] = useState(false);
+  const [receivingSummary, setReceivingSummary] = useState(null);
+
+  useEffect(() => {
+    setShowEditForm(initialEdit);
+  }, [initialEdit]);
+
+  const closeEditForm = () => {
+    setShowEditForm(false);
+    navigate(`/procurement/orders/${id}`, { replace: true });
+  };
+
+  const handleOrderUpdated = (updatedOrder) => {
+    setOrder(updatedOrder);
+    setShowEditForm(false);
+    navigate(`/procurement/orders/${id}`, { replace: true });
+  };
 
   /**
    * Soft-coded data fetching with error handling
@@ -66,8 +87,12 @@ const PurchaseOrderDetail = () => {
         setLoading(true);
         setError(null);
         
-        const response = await apiClient.get(`/procurement/orders/${id}/`);
+        const [response, summaryResponse] = await Promise.all([
+          apiClient.get(`/procurement/orders/${id}/`),
+          apiClient.get(`/procurement/orders/${id}/receiving-summary/`).catch(() => null),
+        ]);
         setOrder(response.data);
+        setReceivingSummary(summaryResponse?.data || null);
       } catch (error) {
         console.error('Error fetching order details:', error);
         const statusCode = error.response?.status;
@@ -94,6 +119,16 @@ const PurchaseOrderDetail = () => {
     }
   }, [id, navigate]);
 
+  const handleReceiptCreated = async () => {
+    setShowReceiptCreator(false);
+    const [orderResponse, summaryResponse] = await Promise.all([
+      apiClient.get(`/procurement/orders/${id}/`),
+      apiClient.get(`/procurement/orders/${id}/receiving-summary/`),
+    ]);
+    setOrder(orderResponse.data);
+    setReceivingSummary(summaryResponse.data);
+  };
+
   /**
    * Soft-coded action handler: Send Order
    */
@@ -103,10 +138,8 @@ const PurchaseOrderDetail = () => {
 
     try {
       setActionLoading(true);
-      await apiClient.patch(`/procurement/orders/${id}/`, { status: 'sent' });
-      
-      // Update local state
-      setOrder(prev => ({ ...prev, status: 'sent' }));
+      const response = await apiClient.post(`/procurement/orders/${id}/send_to_vendor/`);
+      setOrder(response.data);
       alert('✅ Purchase Order sent successfully!');
     } catch (error) {
       console.error('Error sending order:', error);
@@ -504,6 +537,16 @@ const PurchaseOrderDetail = () => {
             
             {/* Action Buttons - Soft-coded based on status */}
             <div className="flex space-x-3">
+              {receivingSummary?.can_receive && (
+                <button
+                  type="button"
+                  onClick={() => setShowReceiptCreator(true)}
+                  className="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
+                >
+                  <ArchiveBoxArrowDownIcon className="mr-2 h-4 w-4" />
+                  Record Goods Receipt
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => window.print()}
@@ -524,19 +567,11 @@ const PurchaseOrderDetail = () => {
                 </button>
               )}
               
-              {(order.status === 'sent' || order.status === 'acknowledged' || order.status === 'in_progress') && (
-                <button
-                  onClick={handleMarkComplete}
-                  disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:opacity-50"
-                >
-                  <CheckCircleIcon className="h-4 w-4 mr-2" />
-                  {actionLoading ? 'Updating...' : 'Mark Complete'}
-                </button>
-              )}
-              
               <button
-                onClick={() => navigate(`/procurement/orders/${order.id}/edit`)}
+                onClick={() => {
+                  setShowEditForm(true);
+                  navigate(`/procurement/orders/${order.id}/edit`);
+                }}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
               >
                 <PencilIcon className="h-4 w-4 mr-2" />
@@ -549,6 +584,16 @@ const PurchaseOrderDetail = () => {
           <div className="mb-6">
             {getStatusBadge(order.status)}
           </div>
+
+          {receivingSummary && receivingSummary.lines.length > 0 && (
+            <div className="mb-6 rounded-lg border border-blue-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between text-sm">
+                <div><p className="font-semibold text-gray-900">Goods Receipt Progress</p><p className="text-gray-500">{receivingSummary.accepted_quantity} accepted of {receivingSummary.ordered_quantity} ordered</p></div>
+                <span className="text-lg font-bold text-blue-700">{receivingSummary.receipt_progress}%</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200"><div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${Math.min(Number(receivingSummary.receipt_progress), 100)}%` }} /></div>
+            </div>
+          )}
 
           {/* Main Content Grid - Soft-coded layout */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -599,6 +644,13 @@ const PurchaseOrderDetail = () => {
                   )}
                 </dl>
               </div>
+
+              {receivingSummary?.receipts?.length > 0 && (
+                <div className="rounded-lg bg-white p-6 shadow">
+                  <h2 className="mb-4 flex items-center text-lg font-semibold text-gray-900"><ArchiveBoxArrowDownIcon className="mr-2 h-5 w-5 text-emerald-600" />Goods Receipts</h2>
+                  <div className="space-y-3">{receivingSummary.receipts.map((receipt) => <div key={receipt.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3 text-sm"><div><p className="font-semibold text-gray-900">{receipt.receipt_number}</p><p className="text-xs text-gray-500">{receipt.receipt_date} · DN {receipt.delivery_note_number || '—'}</p></div><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">{receipt.status_display}</span></div>)}</div>
+                </div>
+              )}
 
               {/* Financial Information Card */}
               <div className="bg-white shadow rounded-lg p-6">
@@ -700,6 +752,25 @@ const PurchaseOrderDetail = () => {
         </div>
       </div>
     </div>
+
+    {showEditForm && (
+      <PurchaseOrderForm
+        isOpen={showEditForm}
+        editData={order}
+        onClose={closeEditForm}
+        onSuccess={handleOrderUpdated}
+      />
+    )}
+
+    {showReceiptCreator && (
+      <AIReceiptCreator
+        isOpen={showReceiptCreator}
+        initialOrderId={order.id}
+        orders={[order]}
+        onClose={() => setShowReceiptCreator(false)}
+        onReceiptCreated={handleReceiptCreated}
+      />
+    )}
     </>
   );
 };

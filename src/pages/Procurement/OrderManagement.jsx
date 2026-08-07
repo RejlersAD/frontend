@@ -401,9 +401,7 @@ const OrderManagement = () => {
       if (!confirmed) return;
 
       // Soft-coded API endpoint
-      await apiClient.patch(`/procurement/orders/${order.id}/`, {
-        status: 'sent'
-      });
+      await apiClient.post(`/procurement/orders/${order.id}/send_to_vendor/`);
 
       // Update local state - soft-coded state management
       setOrders(prevOrders => 

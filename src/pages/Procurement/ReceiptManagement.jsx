@@ -23,6 +23,16 @@ import { usePageControls } from '../../hooks/usePageControls';
 import { PROCUREMENT_CONFIG, getCategoryByCode, getStatusConfig } from '../../config/procurement.config';
 import AIReceiptCreator from './AIReceiptCreator';
 
+// Soft-coded layout configuration
+const LAYOUT_CONFIG = {
+  maxWidthDefault: 'max-w-full', // Updated from max-w-7xl to fill available screen width
+  cardGridCols: {
+    sm: 'sm:grid-cols-2',
+    lg: 'lg:grid-cols-3',
+    xl: 'xl:grid-cols-4'
+  }
+};
+
 const ReceiptManagement = () => {
   const [receipts, setReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +43,8 @@ const ReceiptManagement = () => {
   const [showAICreator, setShowAICreator] = useState(false);
   const [orders, setOrders] = useState([]);
   const [aiInsights, setAiInsights] = useState(null);
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [actionReceiptId, setActionReceiptId] = useState(null);
 
   const pageControls = usePageControls({
     autoRefreshInterval: 60,
@@ -79,8 +91,10 @@ const ReceiptManagement = () => {
       const response = await apiClient.get('/procurement/orders/');
       const data = response.data;
       // Filter only sent/acknowledged orders (ready for receipt)
-      const readyOrders = (Array.isArray(data.results) ? data.results : [])
-        .filter(o => o.status === 'sent' || o.status === 'acknowledged');
+      const orderList = Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []);
+      const readyOrders = orderList.filter((order) =>
+        ['sent', 'acknowledged', 'in_progress', 'partially_received'].includes(order.status)
+      );
       setOrders(readyOrders);
     } catch (error) {
       console.error('Error fetching orders:', error);
@@ -196,18 +210,18 @@ const ReceiptManagement = () => {
   // Soft-coded filter logic with safe array handling
   const filteredReceipts = Array.isArray(receipts) ? receipts.filter(receipt => {
     // Soft-coded field access with fallbacks
-    const grNumber = receipt?.gr_number || '';
+    const grNumber = receipt?.receipt_number || '';
     const poNumber = receipt?.po_number || '';
     const status = receipt?.status || '';
     const qualityPassed = receipt?.quality_check_passed;
     
     const matchesSearch = grNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         poNumber.toLowerCase().includes(searchTerm.toLowerCase());
+                          poNumber.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || status === filterStatus;
     const matchesQuality = filterQuality === 'all' || 
-                          (filterQuality === 'passed' && qualityPassed === true) ||
-                          (filterQuality === 'failed' && qualityPassed === false) ||
-                          (filterQuality === 'pending' && qualityPassed === null);
+                           (filterQuality === 'passed' && qualityPassed === true) ||
+                           (filterQuality === 'failed' && qualityPassed === false) ||
+                           (filterQuality === 'pending' && qualityPassed === null);
     return matchesSearch && matchesStatus && matchesQuality;
   }) : [];
 
@@ -215,6 +229,32 @@ const ReceiptManagement = () => {
     console.log('Creating receipt with AI data:', receiptData);
     // After successful creation, refresh receipt list
     await fetchReceipts();
+    await fetchOrders();
+  };
+
+  const runReceiptAction = async (receipt, action, payload = {}) => {
+    setActionReceiptId(receipt.id);
+    setError(null);
+    try {
+      await apiClient.post(`/procurement/receipts/${receipt.id}/${action}/`, payload);
+      await Promise.all([fetchReceipts(), fetchOrders()]);
+      setSelectedReceipt(null);
+    } catch (requestError) {
+      const data = requestError.response?.data;
+      setError({
+        type: 'validation',
+        message: data?.detail || data?.error || Object.values(data || {})[0] || requestError.message,
+        action: null,
+      });
+    } finally {
+      setActionReceiptId(null);
+    }
+  };
+
+  const handleRejectReceipt = (receipt) => {
+    const reason = window.prompt('Enter the delivery rejection reason (minimum 10 characters):');
+    if (reason === null) return;
+    runReceiptAction(receipt, 'reject_delivery', { reason });
   };
 
   const getStatusBadge = (status) => {
@@ -392,7 +432,7 @@ const ReceiptManagement = () => {
     <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
       <div className="py-6" style={pageControls.styles.content}>
         {/* Header */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className={`${LAYOUT_CONFIG.maxWidthDefault} mx-auto px-4 sm:px-6 lg:px-8`}>
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 flex items-center">
@@ -419,13 +459,13 @@ const ReceiptManagement = () => {
         </div>
 
         {/* Statistics */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className={`${LAYOUT_CONFIG.maxWidthDefault} mx-auto px-4 sm:px-6 lg:px-8 mt-8`}>
           <ReceiptStats />
         </div>
 
         {/* AI Insights */}
         {aiInsights && aiInsights.length > 0 && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+          <div className={`${LAYOUT_CONFIG.maxWidthDefault} mx-auto px-4 sm:px-6 lg:px-8 mt-6`}>
             <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border-2 border-purple-200">
               <div className="flex items-center space-x-2 mb-4">
                 <SparklesIcon className="h-6 w-6 text-purple-600" />
@@ -464,7 +504,7 @@ const ReceiptManagement = () => {
 
         {/* Error Message */}
         {error && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+          <div className={`${LAYOUT_CONFIG.maxWidthDefault} mx-auto px-4 sm:px-6 lg:px-8 mt-6`}>
             <div className={`rounded-md p-4 ${error.type === 'auth' ? 'bg-yellow-50 border-l-4 border-yellow-400' : 'bg-red-50 border-l-4 border-red-400'}`}>
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -505,7 +545,7 @@ const ReceiptManagement = () => {
         )}
 
         {/* Filters and Search */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className={`${LAYOUT_CONFIG.maxWidthDefault} mx-auto px-4 sm:px-6 lg:px-8 mt-8`}>
           <div className="bg-white shadow rounded-lg p-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               {/* Search */}
@@ -583,7 +623,7 @@ const ReceiptManagement = () => {
         </div>
 
         {/* Receipts List */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className={`${LAYOUT_CONFIG.maxWidthDefault} mx-auto px-4 sm:px-6 lg:px-8 mt-8`}>
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -610,7 +650,7 @@ const ReceiptManagement = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className={`grid grid-cols-1 gap-6 ${LAYOUT_CONFIG.cardGridCols.sm} ${LAYOUT_CONFIG.cardGridCols.lg} ${LAYOUT_CONFIG.cardGridCols.xl}`}>
               {filteredReceipts.map((receipt) => (
                 <div key={receipt.id} className="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200 border-2 border-transparent hover:border-indigo-500">
                   <div className="p-6">
@@ -620,7 +660,7 @@ const ReceiptManagement = () => {
                         <div className="flex items-center space-x-2">
                           <ArchiveBoxIcon className="h-5 w-5 text-indigo-600" />
                           <h3 className="text-lg font-semibold text-gray-900">
-                            {receipt.gr_number || `GR-${receipt.id}`}
+                            {receipt.receipt_number || `GR-${receipt.id}`}
                           </h3>
                         </div>
                         <p className="mt-1 text-sm text-gray-500">
@@ -637,10 +677,10 @@ const ReceiptManagement = () => {
 
                     {/* Receipt Details */}
                     <div className="space-y-3">
-                      {receipt.received_date && (
+                      {receipt.receipt_date && (
                         <div className="flex items-center text-sm text-gray-600">
                           <CalendarIcon className="h-4 w-4 mr-2 text-gray-400" />
-                          <span>Received: {new Date(receipt.received_date).toLocaleDateString()}</span>
+                          <span>Received: {new Date(receipt.receipt_date).toLocaleDateString()}</span>
                         </div>
                       )}
                       {receipt.inspector_name && (
@@ -679,13 +719,23 @@ const ReceiptManagement = () => {
 
                     {/* Actions */}
                     <div className="mt-6 flex space-x-3">
-                      <button className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                      <button onClick={() => setSelectedReceipt(receipt)} className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                         View Details
                       </button>
+                      {receipt.status === 'draft' && (
+                        <button disabled={actionReceiptId === receipt.id} onClick={() => runReceiptAction(receipt, 'submit')} className="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                          Submit
+                        </button>
+                      )}
                       {receipt.status === 'pending' && (
-                        <button className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                        <button disabled={actionReceiptId === receipt.id} onClick={() => runReceiptAction(receipt, 'accept')} className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
                           <CheckCircleIcon className="h-4 w-4 mr-1" />
                           Accept
+                        </button>
+                      )}
+                      {receipt.status === 'pending' && (
+                        <button disabled={actionReceiptId === receipt.id} onClick={() => handleRejectReceipt(receipt)} className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50" title="Reject delivery">
+                          Reject
                         </button>
                       )}
                     </div>
@@ -704,6 +754,21 @@ const ReceiptManagement = () => {
         onReceiptCreated={handleReceiptCreated}
         orders={orders}
       />
+
+      {selectedReceipt && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800">
+            <div className="flex items-start justify-between">
+              <div><h2 className="text-xl font-bold text-gray-900">{selectedReceipt.receipt_number}</h2><p className="text-sm text-gray-500">PO {selectedReceipt.po_number}</p></div>
+              <button onClick={() => setSelectedReceipt(null)} className="rounded p-1 hover:bg-gray-100"><XCircleIcon className="h-6 w-6" /></button>
+            </div>
+            <div className="mt-5 overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full text-sm"><thead className="bg-gray-50 text-left"><tr><th className="p-3">PO line</th><th className="p-3 text-right">Delivered</th><th className="p-3 text-right">Accepted</th><th className="p-3 text-right">Rejected</th></tr></thead><tbody>{(selectedReceipt.lines || []).map((line) => <tr key={line.id} className="border-t border-gray-100"><td className="p-3"><span className="font-medium">{line.line_number}. {line.description}</span><span className="ml-2 text-xs text-gray-500">{line.unit_of_measure}</span></td><td className="p-3 text-right">{line.delivered_quantity}</td><td className="p-3 text-right text-green-700">{line.accepted_quantity}</td><td className="p-3 text-right text-red-700">{line.rejected_quantity}</td></tr>)}</tbody></table>
+            </div>
+            <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-gray-500">Delivery note</dt><dd className="font-medium">{selectedReceipt.delivery_note_number || '—'}</dd></div><div><dt className="text-gray-500">Inspector</dt><dd className="font-medium">{selectedReceipt.inspector_name || '—'}</dd></div><div><dt className="text-gray-500">Status</dt><dd className="font-medium">{selectedReceipt.status_display || selectedReceipt.status}</dd></div><div><dt className="text-gray-500">Receipt date</dt><dd className="font-medium">{selectedReceipt.receipt_date}</dd></div></dl>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
