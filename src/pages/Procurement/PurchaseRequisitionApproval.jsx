@@ -24,6 +24,7 @@ import {
   InformationCircleIcon,
   ExclamationTriangleIcon,
   ArrowPathIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/outline';
 
 // Soft-coded rejection validation configuration
@@ -51,6 +52,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   const isFullyApproved = requisition.status === 'approved';
   const isRejected = requisition.status === 'rejected';
+  const isApprovalInProgress = ['submitted', 'in_review'].includes(
+    (requisition.status || '').toString().trim().toLowerCase()
+  );
 
   const normalizeApprovalStatus = (rawStatus) => {
     const normalized = (rawStatus || '').toString().trim().toLowerCase();
@@ -77,9 +81,13 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const level2HierarchyStage = findHierarchyStage(['vp operations', 'vice president', 'procurement manager']);
   const level2Label = level2HierarchyStage?.stage || level2HierarchyStage?.role || 'VP Operations';
 
-  const currentStage = approvalHierarchy.find(
-    (entry) => normalizeApprovalStatus(entry?.status) !== 'approved'
-  ) || null;
+  // Keep active-stage selection aligned with the backend workflow service. A
+  // rejected/completed stage is terminal and must never expose approval actions.
+  const currentStage = approvalHierarchy.find((entry) => {
+    const status = (entry?.status || 'pending').toString().trim().toLowerCase();
+    return status === 'pending' || status === 'in_review';
+  }) || null;
+  const currentStageLabel = currentStage?.stage || currentStage?.role || 'the current approver';
   const currentStageRole = `${currentStage?.role || ''} ${currentStage?.stage || ''}`.toLowerCase();
   const currentStageKey = currentStageRole.includes('engineering manager') || currentStageRole.includes('engineering review')
     ? 'eng_manager'
@@ -93,13 +101,35 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   const currentUserData = currentUser?.user || currentUser || {};
   const currentUserId = currentUserData?.id || currentUser?.user_id || currentUser?.id;
-  const currentUserRoles = currentUser?.roles || currentUserData?.roles || [];
+  const currentUserRolesRaw = currentUser?.roles || currentUserData?.roles;
+  const currentUserRoles = Array.isArray(currentUserRolesRaw) ? currentUserRolesRaw : [];
   const isSuperAdmin = currentUserData?.is_superuser === true || currentUserRoles.some(
     (role) => role?.code === 'super_admin' || role?.name === 'Super Administrator'
   );
   const assignedCurrentUserId = currentStage?.user_id || currentStage?.approver_id;
+  const isAssignedCurrentApprover = Boolean(
+    currentUserId && assignedCurrentUserId && String(currentUserId) === String(assignedCurrentUserId)
+  );
+  const vpPositionValues = [
+    currentUser?.job_title,
+    currentUserData?.job_title,
+    currentUser?.primary_role?.name,
+    currentUser?.primary_role?.code,
+    currentUserData?.primary_role?.name,
+    currentUserData?.primary_role?.code,
+    ...currentUserRoles.flatMap((role) => [role?.name, role?.code]),
+  ];
+  const holdsVpOperationsPosition = vpPositionValues.some((value) => {
+    const normalized = (value || '').toString().trim().toLowerCase().replace(/[_-]+/g, ' ');
+    const isVicePresident = normalized.includes('vice president') || /(^|\s)vp($|\s)/.test(normalized);
+    return isVicePresident && /operations?/.test(normalized);
+  });
   const canActOnCurrentStage = Boolean(
-    currentStage && (isSuperAdmin || (currentUserId && String(currentUserId) === String(assignedCurrentUserId)))
+    currentStage && (
+      currentStageKey === 'vp'
+        ? isAssignedCurrentApprover && holdsVpOperationsPosition
+        : isSuperAdmin || isAssignedCurrentApprover
+    )
   );
 
   const effectivePmStatus = pmHierarchyStage
@@ -118,28 +148,28 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       approveEndpoint: 'pm_approve',
       rejectEndpoint: 'pm_reject',
       statusField: 'pm_approval_status',
-      canApprove: !isFullyApproved && !isRejected && currentStageKey === 'pm' && canActOnCurrentStage
+      canApprove: isApprovalInProgress && currentStageKey === 'pm' && canActOnCurrentStage
     },
     eng_manager: {
       label: 'Engineering Manager',
       approveEndpoint: 'eng_manager_approve',
       rejectEndpoint: 'eng_manager_reject',
       statusField: 'eng_manager_approval_status',
-      canApprove: !isFullyApproved && !isRejected && currentStageKey === 'eng_manager' && canActOnCurrentStage
+      canApprove: isApprovalInProgress && currentStageKey === 'eng_manager' && canActOnCurrentStage
     },
     manager_projects: {
       label: 'Manager of Projects',
       approveEndpoint: 'manager_projects_approve',
       rejectEndpoint: 'manager_projects_reject',
       statusField: 'manager_projects_approval_status',
-      canApprove: !isFullyApproved && !isRejected && currentStageKey === 'manager_projects' && canActOnCurrentStage
+      canApprove: isApprovalInProgress && currentStageKey === 'manager_projects' && canActOnCurrentStage
     },
     vp: {
       label: 'Vice President of Operations',
       approveEndpoint: 'vp_approve',
       rejectEndpoint: 'vp_reject',
       statusField: 'vp_op_approval_status',
-      canApprove: !isFullyApproved && !isRejected && currentStageKey === 'vp' && canActOnCurrentStage
+      canApprove: isApprovalInProgress && currentStageKey === 'vp' && canActOnCurrentStage
     }
   };
 
@@ -171,6 +201,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       alert('Invalid approver type');
       return;
     }
+    if (!config.canApprove) {
+      alert(`Action Locked: Awaiting review by ${currentStageLabel}`);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -194,6 +228,11 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   const handleRejectClick = (approverType) => {
+    const config = APPROVER_CONFIG[approverType];
+    if (!config?.canApprove) {
+      alert(`Action Locked: Awaiting review by ${currentStageLabel}`);
+      return;
+    }
     setCurrentApproverType(approverType);
     setRejectionReason('');
     setRejectionError('');
@@ -686,6 +725,51 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                           </div>
                         </div>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Active stage is visible to everyone, but only its assigned approver can act. */}
+                {currentStage && isApprovalInProgress && !hasAnyApprovalCapability && (
+                  <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-6" role="status">
+                    <div className="flex items-start space-x-3">
+                      <div className="rounded-full bg-amber-100 p-2">
+                        <LockClosedIcon className="h-5 w-5 text-amber-700" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold text-amber-950">
+                          Action Locked: Awaiting review by {currentStageLabel}
+                        </h3>
+                        <p className="mt-1 text-sm text-amber-800">
+                          {currentStageKey === 'vp'
+                            ? 'Only the assigned user who holds the Vice President of Operations position can approve or reject this requisition.'
+                            : 'Only the approver assigned to this stage can approve or reject this requisition.'}
+                        </p>
+                        {currentStage?.user_name && (
+                          <p className="mt-2 text-xs font-medium text-amber-900">
+                            Assigned approver: {currentStage.user_name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-2 gap-2" aria-label="Locked approval actions">
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex cursor-not-allowed items-center justify-center space-x-2 rounded-lg bg-gray-300 px-4 py-2.5 font-medium text-gray-600 opacity-75"
+                      >
+                        <CheckCircleIcon className="h-5 w-5" />
+                        <span>Approve</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex cursor-not-allowed items-center justify-center space-x-2 rounded-lg bg-gray-300 px-4 py-2.5 font-medium text-gray-600 opacity-75"
+                      >
+                        <XCircleIcon className="h-5 w-5" />
+                        <span>Reject</span>
+                      </button>
                     </div>
                   </div>
                 )}
