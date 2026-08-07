@@ -66,10 +66,9 @@ const ApprovalCenter = ({ currentUser }) => {
   const fetchPendingProcurementApprovals = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.get('/procurement/requisitions/', {
-        params: { status: 'submitted,in_review', page_size: 50 }
+      const response = await apiClient.get('/procurement/requisitions/pending-for-me/', {
+        params: { page_size: 50 }
       });
-      
       const results = response.data.results || response.data || [];
       setApprovals(Array.isArray(results) ? results : []);
     } catch (error) {
