@@ -22,11 +22,11 @@ export const fetchUsers = createAsyncThunk(
   'rbac/fetchUsers',
   async (params = {}, { rejectWithValue }) => {
     try {
-      // 🔧 SOFT-CODED: Fetch all users by setting high page_size or using pagination
-      // User can override page_size if needed for specific use cases
+      // 🔧 SOFT-CODED: Fetch all users by setting high page_size
+      // Default to 1000 to ensure all users are fetched (current total: ~350)
       const fetchParams = {
         ...params,
-        page_size: params.page_size || 100,
+        page_size: params.page_size || 1000,
       };
       
       console.log('[fetchUsers] 📄 Fetching users with params:', fetchParams);
