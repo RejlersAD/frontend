@@ -16,6 +16,7 @@ import { useSelector } from 'react-redux';
 import rbacService from '../../services/rbac.service';
 import { getEngineeringDisciplines } from '../../config/engineeringStructure.config.js';
 import { getRoleName, getRoleDescription, formatRoleForDropdown } from '../../utils/roleDisplay.utils';
+import { HIDDEN_ROLE_CODES } from '../../config/rbacAccess.config';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── Soft-coded constants ──────────────────────────────────────────────────
@@ -709,9 +710,10 @@ function RoleManagement() {
   }, [selectedRole, notify]);
 
   const filteredRoles = useMemo(() => {
-    // Guard: exclude auto-generated per-user custom roles (API already filters them,
-    // this is a defensive client-side check in case an older API version returns them).
-    const visible = roles.filter((r) => !r.code.startsWith(CUSTOM_ROLE_PREFIX));
+    // Exclude auto-generated custom roles and soft-coded hidden roles (HIDDEN_ROLE_CODES).
+    const visible = roles.filter(
+      (r) => !r.code.startsWith(CUSTOM_ROLE_PREFIX) && !HIDDEN_ROLE_CODES.includes(r.code)
+    );
     const t = roleSearch.toLowerCase();
     return t ? visible.filter((r) => r.name.toLowerCase().includes(t) || r.code.toLowerCase().includes(t)) : visible;
   }, [roles, roleSearch]);

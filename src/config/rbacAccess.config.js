@@ -26,6 +26,23 @@ export const ACCESS_CONTROL_MODE = 'role_based';
 // custom-role-per-user hack — leave as `false` for production.
 export const ALLOW_PER_USER_MODULE_ASSIGNMENT = false;
 
+// Role codes hidden from the Roles & Permissions UI.
+// Add codes here to suppress legacy/deprecated roles without a DB migration.
+export const HIDDEN_ROLE_CODES = [
+  'civil_engineer',
+  'mechanical_engineer',
+  'process_engineer',
+  'electrical_engineer',
+  'instrument_engineer',
+  'piping_engineer',
+  'design_engineer',
+  'human_resource',
+  'engineer',
+  'onboarding',
+  'ict_admin',
+  'admin_it',
+];
+
 // Master switch for the "Access to All Users" bulk-module-assign flow.
 // Keep `false` — bulk-module grants must be applied via a role.
 export const ALLOW_BULK_MODULE_ASSIGNMENT = false;
