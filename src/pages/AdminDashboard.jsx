@@ -432,8 +432,8 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 py-6 sm:py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 px-3 py-5 sm:px-4 sm:py-6">
+      <div className="w-full">
         {/* Enhanced Header with Live Status */}
         <div className="mb-6 sm:mb-8">
           <div className="flex items-center justify-between flex-wrap gap-4">

@@ -772,7 +772,7 @@ const InvoiceTracker = () => {
           }}
         />
 
-        <div className="relative max-w-7xl mx-auto px-6 py-8 lg:py-10">
+        <div className="relative w-full px-3 py-8 sm:px-4 lg:py-10">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
               <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/15 text-[10px] font-bold uppercase tracking-widest text-white/90 mb-3">
@@ -813,7 +813,7 @@ const InvoiceTracker = () => {
       </div>
 
       {/* ── PIPELINE BAR (overlaps hero) ────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-6 -mt-12 relative">
+      <div className="relative w-full px-3 -mt-12 sm:px-4">
         <div className="rounded-2xl bg-white border border-gray-100 shadow-xl p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -832,7 +832,7 @@ const InvoiceTracker = () => {
       </div>
 
       {/* ── FILTERS ─────────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-6 mt-4">
+      <div className="w-full px-3 mt-4 sm:px-4">
         <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4 space-y-3">
           <div className="flex flex-col lg:flex-row lg:items-center gap-3">
             <div className="relative flex-1">
@@ -936,7 +936,7 @@ const InvoiceTracker = () => {
       </div>
 
       {/* ── TABLE ───────────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="w-full px-3 py-6 sm:px-4">
         <div className="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
             <div className="flex items-center gap-2">

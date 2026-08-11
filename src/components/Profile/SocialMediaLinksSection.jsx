@@ -47,7 +47,7 @@ const SocialMediaLinksSection = () => {
   const fetchLinks = async () => {
     try {
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
-      const res = await fetch(`${API_BASE_URL}/rbac/social-links/`, {
+      const res = await fetch(`${API_BASE_URL}/rbac/social-links/?mine=true`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Failed to fetch links');
@@ -97,8 +97,11 @@ const SocialMediaLinksSection = () => {
       });
 
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.url ? error.url[0] : (error.detail || 'Failed to save link'));
+        const error = await res.json().catch(() => ({}));
+        const fieldError = Object.values(error)
+          .flat()
+          .find(value => typeof value === 'string' && value.trim());
+        throw new Error(error.detail || error.error || fieldError || 'Failed to save link');
       }
 
       toast.success(editingId ? 'Link updated!' : 'Link added!');
