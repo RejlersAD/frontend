@@ -78,6 +78,7 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
   
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [expandedSections, setExpandedSections] = useState({});
 
   // Dynamic role list — excludes internal `custom_*` per-user roles.
@@ -109,7 +110,30 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
       setErrors(prev => ({ ...prev, [field]: null }));
     }
   };
-
+  // Check if email already exists (debounced)
+  const checkEmailExists = async (email) => {
+    if (!email || !email.includes('@')) return;
+    
+    setIsCheckingEmail(true);
+    try {
+      const response = await rbacService.getUsers({ search: email });
+      const existingUser = response.results?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+      
+      if (existingUser) {
+        setErrors(prev => ({ 
+          ...prev, 
+          email: `User already exists: ${existingUser.first_name} ${existingUser.last_name}` 
+        }));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[SimpleCreateUserForm] Error checking email:', error);
+      return false;
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  };
   const handleToggleRole = (roleId) => {
     setFormData(prev => ({
       ...prev,
@@ -163,6 +187,12 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
       return;
     }
 
+    // Check if email already exists before submitting
+    const emailExists = await checkEmailExists(formData.email);
+    if (emailExists) {
+      return; // Stop submission if email exists
+    }
+
     setIsLoading(true);
     
     try {
@@ -194,9 +224,25 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
         const backendErrors = {};
         Object.keys(error.response.data).forEach(key => {
           const errorValue = error.response.data[key];
-          backendErrors[key] = Array.isArray(errorValue) ? errorValue[0] : errorValue;
+          if (Array.isArray(errorValue)) {
+            backendErrors[key] = errorValue[0];
+          } else if (typeof errorValue === 'object') {
+            backendErrors[key] = JSON.stringify(errorValue);
+          } else {
+            backendErrors[key] = errorValue;
+          }
         });
         setErrors(backendErrors);
+        
+        // Show general error notification for email conflicts
+        if (backendErrors.email && backendErrors.email.includes('already exists')) {
+          setErrors(prev => ({
+            ...prev,
+            general: '❌ Cannot create user: This email address is already registered in the system. Please use a different email.'
+          }));
+        }
+      } else if (error.response?.status === 400) {
+        setErrors({ general: '❌ Invalid data provided. Please check all fields and try again.' });
       } else {
         setErrors({ general: FORM_CONFIG.messages.error });
       }
@@ -255,16 +301,27 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Email Address <span className="text-red-500 ml-1">*</span>
                 </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleChange('email', e.target.value)}
-                  className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all ${
-                    errors.email ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="user@example.com"
-                  disabled={isLoading}
-                />
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleChange('email', e.target.value)}
+                    onBlur={(e) => e.target.value && checkEmailExists(e.target.value)}
+                    className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all ${
+                      errors.email ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="user@example.com"
+                    disabled={isLoading || isCheckingEmail}
+                  />
+                  {isCheckingEmail && (
+                    <div className="absolute right-3 top-3">
+                      <svg className="animate-spin h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    </div>
+                  )}
+                </div>
                 {errors.email && (
                   <p className="text-xs text-red-600 mt-1 flex items-center">
                     <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -537,7 +594,7 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
         </button>
         <button
           onClick={handleSubmit}
-          disabled={isLoading}
+          disabled={isLoading || isCheckingEmail}
           className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           {isLoading ? (

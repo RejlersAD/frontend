@@ -66,12 +66,14 @@ const UserManagement = ({ pageControls }) => {
   const [allOrgsUserCount, setAllOrgsUserCount] = useState(null);
   const [activeUsersCount, setActiveUsersCount] = useState(0);
   const [inactiveUsersCount, setInactiveUsersCount] = useState(0);
+  const [hiddenUsersCount, setHiddenUsersCount] = useState(0);
 
   // Local state - UI
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [organizationFilter, setOrganizationFilter] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [showHiddenUsers, setShowHiddenUsers] = useState(false);
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
   
   // Local state - Pagination
@@ -570,6 +572,37 @@ const UserManagement = ({ pageControls }) => {
     };
   }, [dispatch, navigate]);
 
+  // ========== REFRESH ALL COUNTS: Dynamic stat cards ==========
+  // Centralized function to refresh all count cards after any user operation
+  const refreshAllCounts = useCallback(() => {
+    if (!isAuthenticated) return;
+    
+    // Total Users (company-wide for super admins)
+    rbacService.getTotalUserCount()
+      .then(res => setAllOrgsUserCount(res?.data?.count ?? null))
+      .catch(() => setAllOrgsUserCount(null));
+    
+    // Active Users count
+    rbacService.getUsers({ page_size: 1, status: 'active' })
+      .then(res => setActiveUsersCount(res?.data?.count ?? 0))
+      .catch(() => setActiveUsersCount(0));
+    
+    // Inactive Users count
+    rbacService.getUsers({ page_size: 1, status: 'inactive' })
+      .then(res => setInactiveUsersCount(res?.data?.count ?? 0))
+      .catch(() => setInactiveUsersCount(0));
+    
+    // Hidden Users count
+    rbacService.getUsers({ page_size: 1, show_hidden: 'only' })
+      .then(res => setHiddenUsersCount(res?.data?.count ?? 0))
+      .catch(() => setHiddenUsersCount(0));
+    
+    // Roles Available count
+    dispatch(fetchRoles());
+    
+    console.log('[UserManagement] 🔄 All stat counts refreshed');
+  }, [isAuthenticated, dispatch]);
+
   // ========== TOTAL USERS: company-wide count for super admins ==========
   // Regular admins get a 403 here (by design, org scoping) and just keep
   // seeing their org-scoped usersCount instead.
@@ -596,6 +629,27 @@ const UserManagement = ({ pageControls }) => {
       .then(res => setInactiveUsersCount(res?.data?.count ?? 0))
       .catch(() => setInactiveUsersCount(0));
   }, [isAuthenticated]);
+
+  // ========== HIDDEN USERS: lightweight count, independent of table page ==========
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    rbacService.getUsers({ page_size: 1, show_hidden: 'only' })
+      .then(res => setHiddenUsersCount(res?.data?.count ?? 0))
+      .catch(() => setHiddenUsersCount(0));
+  }, [isAuthenticated]);
+
+  // ========== RELOAD USERS: when toggling hidden users filter ==========
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    const params = {};
+    if (showHiddenUsers) {
+      params.show_hidden = 'only'; // Show ONLY hidden users
+    }
+    // If showHiddenUsers is false, default behavior excludes hidden users
+    
+    dispatch(fetchUsers(params));
+  }, [showHiddenUsers, isAuthenticated, dispatch]);
 
   // ========== ROLES: fire-and-forget background fetch ==========
   // Dispatched independently (not awaited by page-load) since this endpoint
@@ -822,10 +876,11 @@ const UserManagement = ({ pageControls }) => {
       const response = await rbacService.createUser(payload);
       console.log('[UserManagement] Create response:', response);
       
-      // Refresh users list
-      console.log('[UserManagement] Refreshing users list...');
+      // Refresh users list and all counts
+      console.log('[UserManagement] Refreshing users list and counts...');
       await dispatch(fetchUsers()).unwrap();
-      console.log('[UserManagement] Users list refreshed');
+      refreshAllCounts();
+      console.log('[UserManagement] Users list and counts refreshed');
       
       setNotification({
         show: true,
@@ -912,8 +967,9 @@ const UserManagement = ({ pageControls }) => {
       
       await rbacService.updateUser(selectedUser.id, payload);
       
-      // Refresh users list
+      // Refresh users list and all counts
       await dispatch(fetchUsers()).unwrap();
+      refreshAllCounts();
       
       setNotification({
         show: true,
@@ -985,8 +1041,9 @@ const UserManagement = ({ pageControls }) => {
       
       await rbacService.softDeleteUser(userId);
       
-      // Refresh users list
+      // Refresh users list and all counts
       await dispatch(fetchUsers()).unwrap();
+      refreshAllCounts();
       
       setNotification({
         show: true,
@@ -1543,8 +1600,9 @@ const UserManagement = ({ pageControls }) => {
       );
       console.log('[BulkDeactivate] Deactivation response:', response);
       
-      // Refresh users list
+      // Refresh users list and all counts
       await dispatch(fetchUsers()).unwrap();
+      refreshAllCounts();
       
       setNotification({
         show: true,
@@ -1906,7 +1964,7 @@ const UserManagement = ({ pageControls }) => {
       </div>
       
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
         <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -1921,13 +1979,26 @@ const UserManagement = ({ pageControls }) => {
           </div>
         </div>
         
-        <div className="bg-white rounded-xl shadow-lg p-6">
+        <button
+          onClick={() => {
+            setShowHiddenUsers(false);
+            setStatusFilter('active');
+            setCurrentPage(1);
+          }}
+          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-green-300 border transition-all ${
+            statusFilter === 'active' && !showHiddenUsers ? 'border-green-500 ring-2 ring-green-200' : 'border-transparent'
+          }`}
+          title="Click to view active users"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 text-sm">Active Users</p>
               <p className="text-3xl font-bold text-green-600 mt-1">
                 {activeUsersCount}
               </p>
+              {statusFilter === 'active' && !showHiddenUsers && (
+                <p className="text-xs text-green-600 mt-1 font-medium">Viewing active users</p>
+              )}
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1935,15 +2006,28 @@ const UserManagement = ({ pageControls }) => {
               </svg>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div className="bg-white rounded-xl shadow-lg p-6">
+        <button
+          onClick={() => {
+            setShowHiddenUsers(false);
+            setStatusFilter('inactive');
+            setCurrentPage(1);
+          }}
+          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-red-300 border transition-all ${
+            statusFilter === 'inactive' && !showHiddenUsers ? 'border-red-500 ring-2 ring-red-200' : 'border-transparent'
+          }`}
+          title="Click to view inactive users"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-600 text-sm">Inactive Users</p>
               <p className="text-3xl font-bold text-red-600 mt-1">
                 {inactiveUsersCount}
               </p>
+              {statusFilter === 'inactive' && !showHiddenUsers && (
+                <p className="text-xs text-red-600 mt-1 font-medium">Viewing inactive users</p>
+              )}
             </div>
             <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1951,7 +2035,36 @@ const UserManagement = ({ pageControls }) => {
               </svg>
             </div>
           </div>
-        </div>
+        </button>
+
+        <button
+          onClick={() => {
+            setShowHiddenUsers(true);
+            setStatusFilter('all');
+            setCurrentPage(1);
+          }}
+          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-orange-300 border transition-all ${
+            showHiddenUsers ? 'border-orange-500 ring-2 ring-orange-200' : 'border-transparent'
+          }`}
+          title="Click to view hidden users (test accounts, system users, etc.)"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm">Hidden Users</p>
+              <p className="text-3xl font-bold text-orange-600 mt-1">
+                {hiddenUsersCount}
+              </p>
+              {showHiddenUsers && (
+                <p className="text-xs text-orange-600 mt-1 font-medium">Viewing hidden users</p>
+              )}
+            </div>
+            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+              </svg>
+            </div>
+          </div>
+        </button>
 
         <button
           type="button"
@@ -2389,8 +2502,9 @@ const UserManagement = ({ pageControls }) => {
                 message: 'User created successfully!'
               });
               
-              // Refresh users list
+              // Refresh users list and all counts
               await dispatch(fetchUsers()).unwrap();
+              refreshAllCounts();
               
               // Close modal
               setShowCreateModal(false);
