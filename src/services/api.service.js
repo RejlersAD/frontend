@@ -22,6 +22,7 @@ const AUTH_RESILIENCE_CONFIG = {
     '/notifications/categories',
     '/usage_tracking/',
     '/activity/heartbeat',
+    '/rbac/ai-champion/champion/current/',
   ],
   // Endpoint URL substrings that should NOT trigger toast on timeout / network errors.
   // Polling endpoints especially must fail silently — otherwise a single slow worker
@@ -38,6 +39,7 @@ const AUTH_RESILIENCE_CONFIG = {
     '/health/',                          // warmup ping — caller treats failure as non-fatal
     '/process-datasheet/mov-job-status/', // MOV async job poller — server may be briefly busy with extraction
     '/rbac/ai-champion/track/',          // fire-and-forget telemetry (route view + AI usage); never block UX or spam toasts when a worker is busy with a long extraction
+    '/rbac/ai-champion/champion/current/',
   ],
   // Endpoints that should NEVER attempt a refresh (refresh endpoint itself, login, etc.)
   REFRESH_BLACKLIST: [
@@ -372,6 +374,16 @@ apiClient.interceptors.response.use(
       const silent = _isSilentAuthEndpoint(originalRequest?.url || '')
       if (silent) {
         return Promise.reject(error)
+      }
+
+      // Suppress 403 for non-admin endpoints
+      if (error.response?.status === 403) {
+        const silentForbidden = [
+          '/rbac/ai-champion/champion/current',
+        ]
+        if (silentForbidden.some(e => (originalRequest?.url || '').includes(e))) {
+          return Promise.reject(error)
+        }
       }
 
       let errorMessage = 'An error occurred';

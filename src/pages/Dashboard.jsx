@@ -4,11 +4,9 @@ import { useNavigate } from 'react-router-dom'
 import { fetchFeatures } from '../store/featureSlice'
 import ContactSupport from '../components/support/ContactSupport'
 import Documentation from '../components/documentation/Documentation'
-import GoogleAnalyticsRealtime from '../components/Dashboard/GoogleAnalyticsRealtime'
 import { API_BASE_URL } from '../config/api.config'
 import { FEATURE_FLAGS } from '../config/features.config'
 import analyticsService from '../services/analyticsService'
-import PersonalDashboard from './PersonalDashboard'
 import {
   BellIcon, ArrowPathIcon, SparklesIcon, FolderOpenIcon,
   DocumentTextIcon, CheckCircleIcon, ExclamationTriangleIcon,
@@ -18,9 +16,8 @@ import {
   BoltIcon, EyeIcon, DocumentMagnifyingGlassIcon, ChartBarIcon,
   CalendarDaysIcon, ArrowDownTrayIcon, FunnelIcon, KeyIcon,
   UserCircleIcon, BuildingOffice2Icon, UsersIcon, SignalIcon,
-  TrophyIcon, GlobeAltIcon,
+  TrophyIcon,
 } from '@heroicons/react/24/outline'
-import { USER_DISPLAY_CONFIG } from '../config/userDisplay.config'
 
 // ── Category metadata ─────────────────────────────────────────────────────────
 // SOFT-CODED: human_resource visibility controlled by FEATURE_FLAGS.enableHRModule
@@ -38,27 +35,16 @@ const CATEGORY_META = {
 }
 
 // ── Roadmap items ─────────────────────────────────────────────────────────────
-const ROADMAP = [
-  { id: 'wrench-sync', icon: '🔗', name: 'Wrench Bidirectional Sync',  description: 'Two-way live sync between Wrench SmartProject and RADAI.',    eta: 'Q2 2026', status: 'In Dev',    statusColor: 'bg-blue-100 text-blue-700'    },
-  { id: 'ai-bom',      icon: '🤖', name: 'AI Bill of Materials',        description: 'Auto-generate BoM from P&ID drawings via vision AI.',        eta: 'Q2 2026', status: 'Planning', statusColor: 'bg-violet-100 text-violet-700' },
-  { id: 'mobile',      icon: '📱', name: 'RADAI Mobile App',            description: 'Field-ready companion app for QHSE inspections & alerts.',    eta: 'Q3 2026', status: 'Planning', statusColor: 'bg-violet-100 text-violet-700' },
-  { id: 'pred-maint',  icon: '⚡', name: 'Predictive Maintenance',      description: 'ML anomaly detection on sensor data to prevent failures.',    eta: 'Q3 2026', status: 'Research', statusColor: 'bg-gray-100 text-gray-600'     },
-]
 
 // ── AI insight chips (static but contextual) ─────────────────────────────────
-const AI_INSIGHTS = [
+const AI_INSIGHTS_DEFAULT = [
   { id: 1, icon: '📈', text: 'Engineering throughput up 8.4% — AI identified peak processing at 10–11am', color: 'from-blue-50 to-blue-100/60',   border: 'border-blue-200',  label: 'Trend',    labelColor: 'bg-blue-100 text-blue-700'  },
   { id: 2, icon: '⚠️', text: 'QHSE checklist completion rate dropped 3% — recommended: schedule review', color: 'from-amber-50 to-amber-100/60', border: 'border-amber-200', label: 'Alert',    labelColor: 'bg-amber-100 text-amber-700'},
   { id: 3, icon: '✅', text: 'P&ID extraction accuracy holding at 94.2% — model performance nominal',     color: 'from-green-50 to-green-100/60', border: 'border-green-200', label: 'Status',   labelColor: 'bg-green-100 text-green-700'},
 ]
 
 // ── AI engine models ───────────────────────────────────────────────────────────
-const AI_MODELS = [
-  { name: 'Language Model',  sub: 'GPT-4o',         status: 'online',  color: '#22c55e' },
-  { name: 'Vision Engine',   sub: 'Custom CNN v3',  status: 'online',  color: '#22c55e' },
-  { name: 'OCR Pipeline',    sub: 'Tesseract Pro',  status: 'online',  color: '#22c55e' },
-  { name: 'Risk Analyzer',   sub: 'RADAI-ML v2',    status: 'standby', color: '#f59e0b' },
-]
+const AI_MODELS_DEFAULT = []
 
 // ── AI Champion advertisement ticker (soft-coded) ────────────────────────────
 // Compact marketing strip rendered below Quick Launch. Rotates messages
@@ -109,9 +95,24 @@ const TrendLineChart = ({ data, color = '#f97316', fillColor = 'rgba(249,115,22,
 }
 
 // ── Mini bar chart ────────────────────────────────────────────────────────────
-const MiniBarChart = ({ color = '#f97316', h = 52 }) => {
-  const bars   = [0.4, 0.7, 1.0, 0.6, 0.85, 0.5, 0.3]
-  const labels = ['M', 'T', 'W', 'T', 'F',  'S', 'S']
+const MiniBarChart = ({ color = '#f97316', h = 52, data }) => {
+  const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+  let bars, labels
+  if (data && Object.keys(data).length > 0) {
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const key = d.toISOString().slice(0, 10)
+      days.push({ count: data[key] || 0, label: DAY_LABELS[d.getDay()] })
+    }
+    const max = Math.max(...days.map(d => d.count), 1)
+    bars   = days.map(d => d.count / max)
+    labels = days.map(d => d.label)
+  } else {
+    bars   = [0.4, 0.7, 1.0, 0.6, 0.85, 0.5, 0.3]
+    labels = ['M', 'T', 'W', 'T', 'F',  'S', 'S']
+  }
   const w = 14, gap = 5
   const totalW = bars.length * w + (bars.length - 1) * gap
   return (
@@ -552,21 +553,48 @@ const Dashboard = () => {
   const [aiPulse,        setAiPulse]        = useState(false)
   const [usageData,      setUsageData]      = useState({ summary: {}, daily_totals: [], discipline_breakdown: [] })
   const [loadingUsage,   setLoadingUsage]   = useState(false)
+  const [personalData, setPersonalData] = useState(null)
+  const [awsData, setAwsData] = useState(null)
 
   // ── Derive RBAC access from Redux (no core logic change) ────────────────────
   const rbacData = rbacCurrentUser || user
   const rbacUser = rbacData?.user || rbacData
   const isAdmin  = !!(rbacUser?.is_staff || rbacUser?.is_superuser || rbacData?.roles?.some(r => r.code === 'super_admin' || r.name === 'Super Administrator'))
+  const isSuperAdmin = rbacUser?.is_superuser || rbacUser?.is_staff ||
+    rbacData?.roles?.some(r => r.code === 'super_admin')
   const userModuleCodes = useMemo(() => {
     if (isAdmin) return Object.keys(MODULE_CATEGORY_MAP)
     const mods = rbacData?.modules || rbacCurrentUser?.modules || []
     return Array.isArray(mods) ? mods.map(m => (typeof m === 'string' ? m : m.code)).filter(Boolean) : []
   }, [isAdmin, rbacData, rbacCurrentUser])
 
-  // ── Role-based routing: non-admins get PersonalDashboard ────────────────────
-  if (!isAdmin) {
-    return <PersonalDashboard />
+  const fetchUsage = async (days = usageRange) => {
+    try {
+      setLoadingUsage(true)
+      const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+      const res = await fetch(`${API_BASE_URL}/dashboard/usage/?days=${days}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setUsageData(data)
+      }
+    } catch { /* silent */ } finally {
+      setLoadingUsage(false)
+    }
   }
+
+  // Re-fetch usage whenever date range changes
+  useEffect(() => {
+    fetchUsage(usageRange)
+  }, [usageRange])
+
+  useEffect(() => {
+    if (activeTab === 'usage') {
+      fetchUsage(usageRange)
+    }
+  }, [activeTab])
+
 
   const userRoleLabel  = useMemo(() => {
     const u = rbacData || {}
@@ -578,7 +606,43 @@ const Dashboard = () => {
     return 'Standard User'
   }, [rbacData])
 
-  useEffect(() => { dispatch(fetchFeatures()); loadAll() }, [dispatch])
+  useEffect(() => {
+    dispatch(fetchFeatures())
+    loadAll()
+  }, [dispatch])
+  useEffect(() => {
+    let mounted = true
+    const fetchPersonal = async () => {
+      try {
+        const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+        const res = await fetch(`${API_BASE_URL}/dashboard/personal/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (res.ok && mounted) {
+          const data = await res.json()
+          setPersonalData(data)
+        }
+      } catch (e) {
+        console.warn('[Dashboard] personal fetch error:', e)
+      }
+    }
+    fetchPersonal()
+    const fetchAws = async () => {
+      try {
+        const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+        const res = await fetch(`${API_BASE_URL}/dashboard/aws-status/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (res.ok) setAwsData(await res.json())
+      } catch { /* silent */ }
+    }
+    fetchAws()
+    const interval = setInterval(() => {
+      fetchPersonal()
+      fetchAws()
+    }, 30000)
+    return () => { mounted = false; clearInterval(interval) }
+  }, [])
   useEffect(() => { const t = setInterval(loadAll, 30000); return () => clearInterval(t) }, [])
   useEffect(() => { const t = setInterval(() => setAiPulse(p => !p), 3000); return () => clearInterval(t) }, [])
 
@@ -596,20 +660,6 @@ const Dashboard = () => {
       if (res.ok) setMetricsData(await res.json())
     } catch { /* silent */ }
   }
-
-  const fetchUsage = async (days = usageRange) => {
-    try {
-      setLoadingUsage(true)
-      const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
-      const res   = await fetch(`${API_BASE_URL}/dashboard/usage/?days=${days}`, { headers: { Authorization: `Bearer ${token}` } })
-      if (res.ok) setUsageData(await res.json())
-    } catch { /* silent */ } finally {
-      setLoadingUsage(false)
-    }
-  }
-
-  // Re-fetch usage whenever date range changes
-  useEffect(() => { fetchUsage(usageRange) }, [usageRange])
 
   const fetchData = async () => {
     try {
@@ -636,23 +686,36 @@ const Dashboard = () => {
     return h < 12 ? 'Good Morning' : h < 18 ? 'Good Afternoon' : 'Good Evening'
   }
 
-  const displayName = USER_DISPLAY_CONFIG.formatting.getDisplayName(user)
   const unread      = notifications.filter(n => !n.is_read).length
   const health      = metricsData?.performance?.system_health
-  const totalDocs   = metricsData?.documents?.total_documents || 0
-  const activeUsers = metricsData?.users?.active_users || 0
+  const pendingApprovals = metricsData?.business?.pending_approvals ?? 0
+  const activeProjects   = metricsData?.business?.active_projects   ?? dashboardStats?.projects?.active_count ?? 0
+  const totalDocs   = isSuperAdmin
+    ? (metricsData?.documents?.total_documents || 0)
+    : (personalData?.usage_stats?.total_30d || 0)
+  const activeUsers = metricsData?.users?.total_users
+    || metricsData?.users?.active_users
+    || 0
   const totalUsers  = metricsData?.users?.total_users || 1
   const today       = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
-  const pipelineSegs = [
+  const pidCount  = metricsData?.documents?.pid_drawings   || 0
+  const pfdCount  = metricsData?.documents?.pfd_documents  || 0
+  const qhseCount = metricsData?.documents?.qhse_documents || 0
+  const pipelineTotal = pidCount + pfdCount + qhseCount
+  const pipelineSegs = pipelineTotal > 0 ? [
+    { label: 'P&ID',  value: Math.round((pidCount  / pipelineTotal) * 100), color: '#f97316' },
+    { label: 'PFD',   value: Math.round((pfdCount  / pipelineTotal) * 100), color: '#fbbf24' },
+    { label: 'QHSE',  value: Math.round((qhseCount / pipelineTotal) * 100), color: '#fbcfe8' },
+  ] : [
     { label: 'Approved',  value: 55, color: '#f97316' },
     { label: 'In Review', value: 30, color: '#fbbf24' },
     { label: 'Pending',   value: 15, color: '#fbcfe8' },
   ]
 
   const recommendations = useMemo(
-    () => buildRecommendations({ notifications, dashboardStats, metricsData, features, userModuleCodes, isAdmin }),
-    [notifications, dashboardStats, metricsData, features, userModuleCodes, isAdmin],
+    () => buildRecommendations({ notifications, dashboardStats: { ...dashboardStats, projects: { ...dashboardStats?.projects, active_count: activeProjects, pending_count: pendingApprovals } }, metricsData, features, userModuleCodes, isAdmin }),
+    [notifications, dashboardStats, metricsData, features, userModuleCodes, isAdmin, activeProjects, pendingApprovals],
   )
 
   const categorizedFeatures = useMemo(() =>
@@ -697,9 +760,6 @@ const Dashboard = () => {
   const featureActivity = useMemo(() => {
     if (!features) return []
     console.log('🔍 featureActivity: Processing features:', features.length);
-    const USES  = [2100, 1847, 1203, 956, 743, 520]
-    const TREND = [4,    7,    -2,   5,   8,   -1]
-    const CONF  = [94,   91,   88,   95,  87,   92]
     const seen  = new Set()
     // Filter by user's accessible module categories (backend also filters, this is belt-and-suspenders)
     const accessibleCats = isAdmin
@@ -711,18 +771,66 @@ const Dashboard = () => {
       .filter(f => isAdmin || !accessibleCats || accessibleCats.has(f.category))
       .filter(f => { if (seen.has(f.frontendRoute || f.frontend_route)) return false; seen.add(f.frontendRoute || f.frontend_route); return true })
       .slice(0, 6)
-      .map((f, i) => ({ ...f, uses: USES[i] || 400 + i * 200, trend: TREND[i] || 3, conf: CONF[i] || 90 }))
+      .map((f, i) => {
+        // Map feature codes to real UsageLog discipline_keys
+        const FEATURE_TO_DISCIPLINE = {
+          pid_analysis:       'pid',
+          pfd_converter:      'pfd',
+          crs_documents:      'crs',
+          sales_dashboard:    'sales',
+          sales_crm:          'sales',
+          sales_pipeline:     'sales',
+          sales_ai_insights:  'sales',
+          project_management: 'projects',
+          planning_package:   'projects',
+          admin_dashboard:    'other',
+          user_management:    'rbac',
+        }
+
+        const disciplineKey = FEATURE_TO_DISCIPLINE[f.id]
+          || FEATURE_TO_DISCIPLINE[f.category]
+          || f.id
+          || f.category
+
+        const matchUsage = usageData.discipline_breakdown?.find(
+          d => d.key === disciplineKey
+        )
+        const matchPersonal = personalData?.feature_usage_map?.[disciplineKey]
+        // If we have personal data, always use it regardless of other sources
+        if (personalData?.feature_usage_map != null) {
+          return { ...f, uses: matchPersonal?.count ?? 0, trend: 0, conf: 0 }
+        }
+        const matchMetrics = metricsData?.feature_usage_map?.[disciplineKey]
+
+        const personalCount = matchPersonal?.count
+        const usageCount = matchUsage?.count
+        const metricsCount = matchMetrics?.count
+
+        return {
+          ...f,
+          uses: personalCount != null ? personalCount : (usageCount != null ? usageCount : (metricsCount ?? 0)),
+          trend: 0,
+          conf: 0,
+        }
+      })
     
     console.log('🔍 featureActivity: Result:', result.length, 'features');
     result.forEach(f => console.log(`  - ${f.name} (${f.category})`));
     return result;
-  }, [features, isAdmin, userModuleCodes])
+  }, [features, isAdmin, userModuleCodes, personalData])
 
   const filteredActivity = useMemo(() =>
     activeCategory === 'all' ? featureActivity : featureActivity.filter(f => f.category === activeCategory)
   , [featureActivity, activeCategory])
 
   const docsDisplay = totalDocs >= 1000 ? `${(totalDocs / 1000).toFixed(1)}K` : (totalDocs || '1.2K')
+  const docsTrend = (() => {
+    const curr = metricsData?.documents?.total_documents || 0
+    const prev = metricsData?.documents?.total_documents_previous || 0
+    if (!curr || !prev) return null
+    const pct = ((curr - prev) / prev * 100).toFixed(1)
+    return pct > 0 ? `+${pct}%` : `${pct}%`
+  })()
 
   // ── Analytics: derive chart data from real metricsData ─────────────────────
   const trendPoints = useMemo(() => {
@@ -736,22 +844,27 @@ const Dashboard = () => {
   }, [totalDocs])
 
   const categoryBreakdown = useMemo(() => {
-    const total = Math.max(totalDocs, 1)
+    const pidCount  = metricsData?.documents?.pid_drawings   || 0
+    const pfdCount  = metricsData?.documents?.pfd_documents  || 0
+    const qhseCount = metricsData?.documents?.qhse_documents || 0
+    const crsCount  = metricsData?.documents?.crs_documents  || 0
+    const total = Math.max(pidCount + pfdCount + qhseCount + crsCount, 1)
     return [
-      { label: 'Engineering',  value: Math.round(total * 0.33), color: '#3b82f6',  pct: 33 },
-      { label: 'QHSE',         value: Math.round(total * 0.25), color: '#22c55e',  pct: 25 },
-      { label: 'Documents',    value: Math.round(total * 0.20), color: '#14b8a6',  pct: 20 },
-      { label: 'Projects',     value: Math.round(total * 0.14), color: '#8b5cf6',  pct: 14 },
-      { label: 'Sales & Other',value: Math.round(total * 0.08), color: '#f97316',  pct: 8  },
-    ]
-  }, [totalDocs])
+      { label: 'P&ID Drawings', value: pidCount,  color: '#3b82f6', pct: Math.round((pidCount  / total) * 100) },
+      { label: 'PFD Documents', value: pfdCount,  color: '#22c55e', pct: Math.round((pfdCount  / total) * 100) },
+      { label: 'QHSE',          value: qhseCount, color: '#14b8a6', pct: Math.round((qhseCount / total) * 100) },
+      { label: 'CRS Documents', value: crsCount,  color: '#8b5cf6', pct: Math.round((crsCount  / total) * 100) },
+    ].filter(c => c.value > 0)
+  }, [metricsData])
 
+  const docsToday = metricsData?.documents?.documents_today || 0
+  const docsYesterday = metricsData?.documents?.documents_yesterday || 0
   const kpiCards = useMemo(() => [
-    { label: 'Avg. Processing Time', value: '2.4s', sub: '↓ 0.3s vs last week',   good: true  },
-    { label: 'Error Rate',           value: loadingStats ? '—' : `${Math.max(0, 100 - (health || 96)).toFixed(1)}%`, sub: 'Below threshold',      good: true  },
-    { label: 'Queue Depth',          value: loadingStats ? '—' : (dashboardStats.projects?.pending_count || 0), sub: 'Documents pending',     good: (dashboardStats.projects?.pending_count || 0) < 20 },
-    { label: 'Throughput / hr',      value: loadingStats ? '—' : `${Math.round((totalDocs || 120) / 720)}`, sub: 'Docs per hour (30d avg)', good: true  },
-  ], [health, totalDocs, dashboardStats, loadingStats])
+    { label: 'System Health',    value: loadingStats ? '—' : health != null ? `${Math.round(health)}%` : '—', sub: health >= 90 ? 'All systems nominal' : 'Needs review', good: health >= 90 },
+    { label: 'Docs Today',       value: loadingStats ? '—' : docsToday, sub: `Yesterday: ${docsYesterday}`, good: docsToday >= docsYesterday },
+    { label: 'Pending Approvals', value: loadingStats ? '—' : (pendingApprovals || 0), sub: 'Awaiting action', good: (pendingApprovals || 0) < 10 },
+    { label: 'Throughput / hr',  value: loadingStats ? '—' : `${Math.round((totalDocs || 0) / 720)}`, sub: 'Docs per hour (30d avg)', good: true },
+  ], [health, totalDocs, pendingApprovals, loadingStats, docsToday, docsYesterday])
 
   const refreshLabel = lastRefreshed
     ? lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -780,7 +893,7 @@ const Dashboard = () => {
               <p className="text-sm text-gray-400 mt-0.5 flex items-center gap-2">
                 <span className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
-                  <span>{getGreeting()}, {displayName}</span>
+                  <span>{getGreeting()}, {personalData?.user_context?.name ?? user?.first_name ?? 'User'}</span>
                 </span>
                 <span className="text-gray-300">·</span>
                 <span>{today}</span>
@@ -853,7 +966,7 @@ const Dashboard = () => {
                     <div className="mb-1.5">
                       <div className="flex items-center gap-1 text-white/90 text-sm font-semibold">
                         <ArrowTrendingUpIcon className="w-3.5 h-3.5" />
-                        <span>+8.4%</span>
+                        <span>{docsTrend ?? '—'}</span>
                       </div>
                       <span className="text-[10px] text-white/60">vs last month</span>
                     </div>
@@ -863,7 +976,7 @@ const Dashboard = () => {
                   <div className="flex items-center gap-2 mb-4">
                     <CpuChipIcon className="w-3.5 h-3.5 text-white/60" />
                     <span className="text-[11px] text-white/70">AI Model Confidence</span>
-                    <span className="text-[11px] font-bold text-white bg-white/20 px-1.5 py-0.5 rounded-md">94.2%</span>
+                    <span className="text-[11px] font-bold text-white bg-white/20 px-1.5 py-0.5 rounded-md">{metricsData?.documents?.checklist_confidence ? `${metricsData.documents.checklist_confidence}%` : metricsData?.documents?.pfd_confidence ? `${metricsData.documents.pfd_confidence}%` : '—'}</span>
                     <span className="text-[10px] text-white/50 ml-auto">Last run: 3 min ago</span>
                   </div>
 
@@ -872,7 +985,10 @@ const Dashboard = () => {
 
                   {/* Breakdown row */}
                   <div className="grid grid-cols-3 pt-3 mt-2 border-t border-white/20 text-center">
-                    {[['Engineering', '58%'], ['QHSE', '27%'], ['Other', '15%']].map(([lbl, val], i) => (
+                    {(pipelineTotal > 0
+                      ? [['P&ID', `${Math.round((pidCount/pipelineTotal)*100)}%`], ['PFD', `${Math.round((pfdCount/pipelineTotal)*100)}%`], ['QHSE', `${Math.round((qhseCount/pipelineTotal)*100)}%`]]
+                      : [['Engineering', '58%'], ['QHSE', '27%'], ['Other', '15%']]
+                    ).map(([lbl, val], i) => (
                       <div key={i} className={i < 2 ? 'border-r border-white/20' : ''}>
                         <div className="text-[10px] text-white/65 mb-0.5">{lbl}</div>
                         <div className="text-base font-bold">{val}</div>
@@ -920,7 +1036,18 @@ const Dashboard = () => {
             {/* ── AI Insight chips ──────────────────────────────────────── */}
             <div className={`grid grid-cols-3 gap-3 ${ANIM.enabled ? 'radai-fadein' : ''}`}
               style={ANIM.enabled ? { animationDelay: `${ANIM.staggerMs * 2}ms` } : {}}>
-              {AI_INSIGHTS.map(ins => (
+              {(personalData?.insights?.length > 0
+                ? personalData.insights.slice(0, 3).map((ins, i) => ({
+                    id: ins.id,
+                    icon: ins.icon_key || '💡',
+                    text: ins.body,
+                    color: ['from-blue-50 to-blue-100/60','from-amber-50 to-amber-100/60','from-green-50 to-green-100/60'][i],
+                    border: ['border-blue-200','border-amber-200','border-green-200'][i],
+                    label: ins.insight_type || 'Insight',
+                    labelColor: ['bg-blue-100 text-blue-700','bg-amber-100 text-amber-700','bg-green-100 text-green-700'][i],
+                  }))
+                : AI_INSIGHTS_DEFAULT
+              ).map(ins => (
                 <div key={ins.id}
                   className={`relative overflow-hidden rounded-xl p-3.5 bg-gradient-to-br ${ins.color} border ${ins.border} flex items-start gap-3`}
                 >
@@ -945,11 +1072,9 @@ const Dashboard = () => {
 
               {/* Tabs */}
               <div className="px-5 pt-4 pb-0 flex items-center gap-6 border-b border-gray-100">
-                {[{ id: 'features',   label: 'Feature Activity',           icon: BoltIcon        },
-                  { id: 'analytics',  label: 'Analytics',                  icon: ChartBarIcon     },
-                  { id: 'roadmap',    label: 'AI Roadmap',                 icon: RocketLaunchIcon },
-                  { id: 'usage',      label: 'Usage',                      icon: SignalIcon       },
-                  { id: 'gaRealtime', label: 'Google Analytics — Real-time', icon: GlobeAltIcon     },
+                {[{ id: 'features',  label: 'Feature Activity', icon: BoltIcon     },
+                  { id: 'analytics', label: 'Analytics',        icon: ChartBarIcon  },
+                  { id: 'usage',     label: 'Usage',            icon: SignalIcon    },
                 ].map(tab => (
                   <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                     className={`pb-3 text-sm font-semibold border-b-2 transition flex items-center gap-1.5
@@ -1099,7 +1224,9 @@ const Dashboard = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xl font-extrabold text-gray-900">{docsDisplay}</span>
-                        <span className="text-xs font-semibold text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">↑ 8.4%</span>
+                        <span className="text-xs font-semibold text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">
+                          {docsTrend ?? '—'}
+                        </span>
                       </div>
                     </div>
                     <TrendLineChart
@@ -1145,34 +1272,6 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                </div>
-              )}
-
-              {/* Roadmap grid */}
-              {activeTab === 'roadmap' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
-                  {ROADMAP.map((item, idx) => (
-                    <div key={item.id}
-                      className="relative flex items-start gap-3 p-4 rounded-xl bg-gradient-to-br from-gray-50 to-white border border-gray-100 hover:border-orange-200 hover:shadow-sm transition overflow-hidden"
-                    >
-                      <div className="absolute top-3 right-3 text-[10px] font-bold text-gray-300"># {String(idx + 1).padStart(2, '0')}</div>
-                      <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-lg flex-shrink-0 shadow-sm">{item.icon}</div>
-                      <div className="flex-1 min-w-0 pr-6">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="text-sm font-bold text-gray-800">{item.name}</span>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${item.statusColor}`}>{item.status}</span>
-                        </div>
-                        <p className="text-[11px] text-gray-500 leading-relaxed">{item.description}</p>
-                        <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-2">
-                          <ClockIcon className="w-3 h-3" />
-                          <span>ETA {item.eta}</span>
-                          <span className="ml-auto text-[9px] text-gray-300 flex items-center gap-0.5">
-                            <CpuChipIcon className="w-2.5 h-2.5" /> AI-powered
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               )}
 
@@ -1273,12 +1372,6 @@ const Dashboard = () => {
                 )
               })()}
 
-              {/* ── Google Analytics Real-time tab ─────────────────────── */}
-              {activeTab === 'gaRealtime' && (
-                <div className="px-5 py-4">
-                  <GoogleAnalyticsRealtime isAdmin={isAdmin} />
-                </div>
-              )}
             </div>
 
             {/* ── Quick Launch ─────────────────────────────────────────────── */}
@@ -1402,20 +1495,24 @@ const Dashboard = () => {
                 <span className="text-xs font-bold text-gray-800">AI Engine Status</span>
               </div>
               <div className="space-y-2.5">
-                {AI_MODELS.map((m, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="w-2 h-2 flex-shrink-0 rounded-full" style={{ background: m.color, boxShadow: `0 0 6px ${m.color}` }} />
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-semibold text-gray-700 truncate">{m.name}</div>
-                        <div className="text-[9px] text-gray-400">{m.sub}</div>
+                {(metricsData?.ai_models?.length > 0 ? metricsData.ai_models : AI_MODELS_DEFAULT).length === 0 ? (
+                  <div className="text-[11px] text-gray-400 text-center py-2">No AI models configured</div>
+                ) : (
+                  (metricsData?.ai_models?.length > 0 ? metricsData.ai_models : AI_MODELS_DEFAULT).map((m, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2 h-2 flex-shrink-0 rounded-full" style={{ background: m.color, boxShadow: `0 0 6px ${m.color}` }} />
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-semibold text-gray-700 truncate">{m.name}</div>
+                          <div className="text-[9px] text-gray-400">{m.sub}</div>
+                        </div>
                       </div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${m.status === 'online' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {m.status}
+                      </span>
                     </div>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${m.status === 'online' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {m.status}
-                    </span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
@@ -1426,22 +1523,221 @@ const Dashboard = () => {
                 <BeakerIcon className="w-4 h-4 text-gray-400" />
               </div>
               <div className="flex items-center gap-3">
-                <AccuracyGauge value={health != null ? Math.round(health) : 89} />
+                <AccuracyGauge value={metricsData?.documents?.checklist_confidence || metricsData?.documents?.pfd_confidence || 0} />
                 <div className="space-y-1.5">
                   <div>
                     <div className="text-[9px] text-gray-400">P&ID Extraction</div>
-                    <div className="text-[11px] font-bold text-gray-800">94.2%</div>
+                    <div className="text-[11px] font-bold text-gray-800">{metricsData?.documents?.pfd_confidence ? `${metricsData.documents.pfd_confidence}%` : '—'}</div>
                   </div>
                   <div>
                     <div className="text-[9px] text-gray-400">Classification</div>
-                    <div className="text-[11px] font-bold text-gray-800">91.8%</div>
+                    <div className="text-[11px] font-bold text-gray-800">{metricsData?.documents?.checklist_confidence ? `${metricsData.documents.checklist_confidence}%` : '—'}</div>
                   </div>
                   <div>
                     <div className="text-[9px] text-gray-400">Risk Detection</div>
-                    <div className="text-[11px] font-bold text-gray-800">87.3%</div>
+                    <div className="text-[11px] font-bold text-gray-800">—</div>
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* AWS Data Status */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center"
+                    style={{ background: 'linear-gradient(135deg, #f97316, #ec4899)' }}>
+                    <SignalIcon className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-800">AWS Data Status</span>
+                </div>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                  awsData?.status === 'connected'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-red-100 text-red-600'
+                }`}>
+                  {awsData?.status === 'connected' ? 'Live' : awsData ? 'Offline' : '...'}
+                </span>
+              </div>
+
+              {!awsData && (
+                <div className="flex items-center justify-center py-3">
+                  <div className="w-4 h-4 border-2 border-orange-300 border-t-orange-600 rounded-full animate-spin" />
+                </div>
+              )}
+
+              {awsData?.status === 'offline' && (
+                <p className="text-[11px] text-red-500 text-center py-2">
+                  {awsData.message || 'Storage service unavailable'}
+                </p>
+              )}
+
+              {awsData?.status === 'connected' && awsData?.view === 'admin' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Total Files</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_files?.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Storage Used</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_size_gb} GB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Active Users</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_users}</span>
+                  </div>
+                  {awsData.file_breakdown?.length > 0 && (
+                    <div className="pt-1">
+                      <span className="text-[10px] text-gray-400 block mb-1">File Types</span>
+                      {awsData.file_breakdown.map((item, i) => (
+                        <div key={i} className="flex items-center gap-2 mb-1">
+                          <span className="text-[9px] font-bold text-gray-500 w-8">{item.type}</span>
+                          <div className="flex-1 h-1 rounded-full bg-gray-100 overflow-hidden">
+                            <div className="h-full rounded-full"
+                              style={{ width: `${item.percentage}%`, background: ['#f97316','#3b82f6','#22c55e','#8b5cf6','#f59e0b'][i] }}
+                            />
+                          </div>
+                          <span className="text-[9px] text-gray-500 w-8 text-right">{item.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-gray-50">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+                          const res = await fetch(`${API_BASE_URL}/dashboard/aws-report/?export=xlsx`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          })
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'AWS_Report.xlsx'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        } catch { /* silent */ }
+                      }}
+                      className="w-full text-center text-[9px] font-bold py-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
+                    >
+                      📥 Download Excel Report
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 pt-2 border-t border-gray-50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-[9px] text-gray-400">S3 Connected · Live</span>
+                  </div>
+                </div>
+              )}
+
+              {awsData?.status === 'connected' && awsData?.view === 'user' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Your Files</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_files}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Storage Used</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_size_mb} MB</span>
+                  </div>
+                  {awsData.last_upload && (
+                    <div className="flex justify-between">
+                      <span className="text-[10px] text-gray-400">Last Upload</span>
+                      <span className="text-[11px] font-bold text-gray-800">
+                        {new Date(awsData.last_upload).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-gray-50">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+                          const res = await fetch(`${API_BASE_URL}/dashboard/aws-report/?export=xlsx`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          })
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'AWS_Report.xlsx'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        } catch { /* silent */ }
+                      }}
+                      className="w-full text-center text-[9px] font-bold py-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
+                    >
+                      📥 Download Excel Report
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 pt-2 border-t border-gray-50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-[9px] text-gray-400">S3 Connected · Live</span>
+                  </div>
+                </div>
+              )}
+
+              {awsData?.status === 'connected' && awsData?.view === 'manager' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Department</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.department || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Team Files</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_files?.toLocaleString() || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Storage Used</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_size_gb} GB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Team Members</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.team_members}</span>
+                  </div>
+                  {awsData.most_active_user && (
+                    <div className="flex justify-between">
+                      <span className="text-[10px] text-gray-400">Most Active</span>
+                      <span className="text-[11px] font-bold text-gray-800 truncate max-w-24">{awsData.most_active_user}</span>
+                    </div>
+                  )}
+                  {awsData.last_upload && (
+                    <div className="flex justify-between">
+                      <span className="text-[10px] text-gray-400">Last Upload</span>
+                      <span className="text-[11px] font-bold text-gray-800">
+                        {new Date(awsData.last_upload).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-gray-50">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+                          const res = await fetch(`${API_BASE_URL}/dashboard/aws-report/?export=xlsx`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          })
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'AWS_Report.xlsx'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        } catch { /* silent */ }
+                      }}
+                      className="w-full text-center text-[9px] font-bold py-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
+                    >
+                      📥 Download Excel Report
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 pt-2 border-t border-gray-50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-[9px] text-gray-400">S3 Connected · Live</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Weekly activity */}
@@ -1450,15 +1746,19 @@ const Dashboard = () => {
                 <span className="text-xs font-bold text-gray-800">Weekly Activity</span>
                 <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">+5%</span>
               </div>
-              <MiniBarChart color="#f97316" h={52} />
+              <MiniBarChart color="#f97316" h={52} data={personalData?.usage_stats?.weekly_totals} />
               <div className="flex items-center justify-between mt-2">
                 <div>
                   <div className="text-[10px] text-gray-400">Completed</div>
-                  <div className="text-lg font-extrabold text-gray-900">874</div>
+                  <div className="text-lg font-extrabold text-gray-900">
+                    {personalData?.usage_stats?.total_30d ?? metricsData?.features?.usage_log_30d ?? 0}
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] text-gray-400">This week</div>
-                  <div className="text-[11px] font-bold text-orange-600">↑ 43 tasks</div>
+                  <div className="text-[11px] font-bold text-orange-600">
+                    ↑ {personalData?.usage_stats?.today ?? metricsData?.features?.usage_log_today ?? 0} today
+                  </div>
                 </div>
               </div>
             </div>
@@ -1468,7 +1768,7 @@ const Dashboard = () => {
               <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 text-center">
                 <WrenchScrewdriverIcon className="w-4 h-4 text-orange-400 mx-auto mb-1" />
                 <div className="text-lg font-extrabold text-gray-900 leading-none">
-                  {loadingStats ? '—' : (dashboardStats.engineering?.total_drawings || metricsData?.documents?.pid_drawings || 0)}
+                  {loadingStats ? '—' : (metricsData?.documents?.pid_drawings || 0)}
                 </div>
                 <div className="text-[9px] text-gray-400 mt-0.5">P&ID Drawings</div>
               </div>
@@ -1620,7 +1920,7 @@ const Dashboard = () => {
                 {/* Role */}
                 <div className="flex items-center gap-2 mb-2.5">
                   <UserCircleIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <span className="text-[11px] font-semibold text-gray-700 truncate">{userRoleLabel || 'User'}</span>
+                  <span className="text-[11px] font-semibold text-gray-700 truncate">{personalData?.user_context?.role_name ?? userRoleLabel ?? 'User'}</span>
                 </div>
                 {/* Module chips */}
                 <div className="flex flex-wrap gap-1.5">
