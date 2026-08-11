@@ -5,6 +5,7 @@ import { fetchUsers, fetchCurrentUser, fetchRoles } from '../store/slices/rbacSl
 import rbacService from '../services/rbac.service';
 import { STORAGE_KEYS } from '../config/app.config';
 import { isUserAdmin } from '../utils/rbac.utils';
+import { getRoleName, formatRoleForDropdown } from '../utils/roleDisplay.utils';
 import { withDashboardControls } from '@/hoc/withPageControls';
 import { PageControlButtons } from '@/components/PageControlButtons';
 import { 
@@ -1863,13 +1864,13 @@ const UserManagement = ({ pageControls }) => {
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
+              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
               title="Filter users by role — role list managed at /admin/roles"
             >
               <option value="all">All Roles</option>
               {assignableRoles.map(r => (
                 <option key={r.id} value={r.code}>
-                  {ROLE_LEVEL_LABELS[r.level] ? `L${r.level} · ` : ''}{r.name}
+                  {formatRoleForDropdown(r, true)}
                 </option>
               ))}
             </select>
@@ -2055,7 +2056,7 @@ const UserManagement = ({ pageControls }) => {
                               const isRecommended = role.code === ROLE_EDIT_CONFIG.defaultRoleCode;
                               return (
                                 <option key={role.id} value={role.id}>
-                                  {role.name} {isRecommended ? `⭐ ${ROLE_EDIT_CONFIG.recommendedBadgeText}` : ''}
+                                  {getRoleName(role)} {isRecommended ? `⭐ ${ROLE_EDIT_CONFIG.recommendedBadgeText}` : ''}
                                 </option>
                               );
                             })}
