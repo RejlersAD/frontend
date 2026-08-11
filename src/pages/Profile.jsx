@@ -167,6 +167,14 @@ const Profile = () => {
   const [isFetching, setIsFetching]           = useState(true);
   const [profileData, setProfileData]         = useState(null);
 
+  // Authentication and RBAC profile endpoints use slightly different shapes:
+  // auth may be flat or nested, while the profile API returns user.email.
+  const profileEmail = profileData?.user?.email
+    || profileData?.email
+    || user?.user?.email
+    || user?.email
+    || '';
+
   // Photo
   const [photoPreview, setPhotoPreview]       = useState(null);
   const [selectedFile, setSelectedFile]       = useState(null);
@@ -205,6 +213,7 @@ const Profile = () => {
   const [showCertForm, setShowCertForm] = useState(false);
 
   // Skill entry
+  const [newDiscipline, setNewDiscipline]     = useState('');
   const [selectedSkill, setSelectedSkill]   = useState('');
   const [skillProficiency, setSkillProficiency] = useState(3);
 
@@ -314,7 +323,11 @@ const Profile = () => {
         body: fd,
       });
       setUploadProgress(80);
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Update failed'); }
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        const fieldError = Object.values(error).flat().find(value => typeof value === 'string');
+        throw new Error(error.error || error.detail || fieldError || 'Update failed');
+      }
       const updated = await res.json();
       setUploadProgress(100);
       if (empDataChanged) {
@@ -348,7 +361,11 @@ const Profile = () => {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ engineer_profile: ep }),
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Update failed'); }
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        const fieldError = Object.values(error).flat().find(value => typeof value === 'string');
+        throw new Error(error.error || error.detail || fieldError || 'Update failed');
+      }
       toast.success(successMsg);
     } catch (err) {
       toast.error(err.message || 'Failed to save');
@@ -396,10 +413,28 @@ const Profile = () => {
     reader.readAsDataURL(file);
   };
 
+  const addDiscipline = () => {
+    const entered = newDiscipline.trim().replace(/\s+/g, ' ');
+    if (!entered) return;
+    if (entered.length > 100) { toast.error('Discipline name must be 100 characters or fewer'); return; }
+
+    const canonical = ENGINEERING_DISCIPLINES.find(d => d.toLowerCase() === entered.toLowerCase()) || entered;
+    if (ep.engineering_disciplines.some(d => d.toLowerCase() === canonical.toLowerCase())) {
+      toast.info('Discipline already selected');
+      return;
+    }
+    setEp(p => ({ ...p, engineering_disciplines: [...p.engineering_disciplines, canonical] }));
+    setNewDiscipline('');
+  };
+
   const addSkill = () => {
-    if (!selectedSkill) return;
-    if (ep.technical_skills.some(s => s.name === selectedSkill)) { toast.info('Skill already added'); return; }
-    setEp(p => ({ ...p, technical_skills: [...p.technical_skills, { name: selectedSkill, proficiency: skillProficiency }] }));
+    const entered = selectedSkill.trim().replace(/\s+/g, ' ');
+    if (!entered) return;
+    if (entered.length > 100) { toast.error('Skill name must be 100 characters or fewer'); return; }
+
+    const canonical = TECHNICAL_SKILLS_CATALOG.find(s => s.toLowerCase() === entered.toLowerCase()) || entered;
+    if (ep.technical_skills.some(s => String(s.name || '').toLowerCase() === canonical.toLowerCase())) { toast.info('Skill already added'); return; }
+    setEp(p => ({ ...p, technical_skills: [...p.technical_skills, { name: canonical, proficiency: skillProficiency }] }));
     setSelectedSkill(''); setSkillProficiency(3);
   };
   const removeSkill = (name) => setEp(p => ({ ...p, technical_skills: p.technical_skills.filter(s => s.name !== name) }));
@@ -444,6 +479,12 @@ const Profile = () => {
   };
   const currentExpertise  = EXPERTISE_LEVELS.find(e => e.value === ep.expertise_level);
   const currentAvail      = AVAILABILITY_STATUSES.find(a => a.value === ep.availability_status);
+  const disciplineOptions = [
+    ...ENGINEERING_DISCIPLINES,
+    ...ep.engineering_disciplines.filter(
+      selected => !ENGINEERING_DISCIPLINES.some(item => item.toLowerCase() === selected.toLowerCase())
+    ),
+  ];
   const completenessColor = completeness >= 80 ? 'bg-green-500' : completeness >= 50 ? 'bg-blue-500' : 'bg-yellow-400';
   const completenessText  = completeness >= 80 ? 'text-green-600' : completeness >= 50 ? 'text-blue-600' : 'text-yellow-600';
 
@@ -476,8 +517,8 @@ const Profile = () => {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto space-y-6">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 px-3 py-5 sm:px-4 sm:py-6">
+        <div className="w-full space-y-6">
 
           {/* ── Cross-link nav ── */}
           <PeopleNav activeId="profile" />
@@ -511,10 +552,10 @@ const Profile = () => {
                 </div>
 
                 <div className="flex-1 pb-0.5">
-                  <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-2xl font-bold text-white leading-tight pb-2">
                     {(formData.first_name || formData.last_name)
                       ? `${formData.first_name} ${formData.last_name}`.trim()
-                      : user?.email}
+                      : profileEmail}
                   </h1>
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     {formData.job_title && <span className="text-gray-600 font-medium">{formData.job_title}</span>}
@@ -605,7 +646,7 @@ const Profile = () => {
                   </div>
                   <div>
                     <label className={labelCls}>Email Address</label>
-                    <input type="email" value={user?.email || ''} disabled
+                    <input type="email" value={profileEmail} disabled
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed" />
                     <p className="text-xs text-gray-400 mt-1">Email cannot be changed</p>
                   </div>
@@ -800,7 +841,7 @@ const Profile = () => {
                   <h3 className="text-base font-semibold text-gray-900 mb-1">Engineering Disciplines</h3>
                   <p className="text-xs text-gray-400 mb-3">Select all disciplines you are competent in</p>
                   <div className="flex flex-wrap gap-2">
-                    {ENGINEERING_DISCIPLINES.map(d => (
+                    {disciplineOptions.map(d => (
                       <button key={d} type="button" onClick={() => toggleArr('engineering_disciplines', d)}
                         className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-all ${
                           ep.engineering_disciplines.includes(d)
@@ -812,19 +853,48 @@ const Profile = () => {
                       </button>
                     ))}
                   </div>
+                  <div className="mt-3 flex max-w-xl gap-2">
+                    <input
+                      type="text"
+                      value={newDiscipline}
+                      maxLength={100}
+                      onChange={e => setNewDiscipline(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDiscipline(); } }}
+                      className={`${inputCls} flex-1`}
+                      placeholder="Add another engineering discipline…"
+                    />
+                    <button
+                      type="button"
+                      onClick={addDiscipline}
+                      disabled={!newDiscipline.trim()}
+                      className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    >
+                      <Plus className="h-4 w-4" /> Add
+                    </button>
+                  </div>
                 </div>
 
                 <div>
                   <h3 className="text-base font-semibold text-gray-900 mb-1">Technical Skills &amp; Software</h3>
                   <p className="text-xs text-gray-400 mb-3">Add tools and competencies with proficiency level (★)</p>
                   <div className="flex gap-2 mb-4">
-                    <select value={selectedSkill} onChange={e => setSelectedSkill(e.target.value)}
-                      className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white text-gray-700">
-                      <option value="">Select a skill…</option>
-                      {TECHNICAL_SKILLS_CATALOG.filter(s => !ep.technical_skills.some(ts => ts.name === s)).map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        list="technical-skills-catalog"
+                        value={selectedSkill}
+                        maxLength={100}
+                        onChange={e => setSelectedSkill(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSkill(); } }}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
+                        placeholder="Select or type a technical skill…"
+                      />
+                      <datalist id="technical-skills-catalog">
+                        {TECHNICAL_SKILLS_CATALOG.filter(s => !ep.technical_skills.some(ts => String(ts.name || '').toLowerCase() === s.toLowerCase())).map(s => (
+                          <option key={s} value={s} />
+                        ))}
+                      </datalist>
+                    </div>
                     <div className="flex items-center gap-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3">
                       {[1, 2, 3, 4, 5].map(n => (
                         <button key={n} type="button" onClick={() => setSkillProficiency(n)}>

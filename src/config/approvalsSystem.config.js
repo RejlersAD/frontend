@@ -253,6 +253,52 @@ export const APPROVAL_TYPES = {
       trendCalculation: 'week_over_week'
     }
   },
+
+  PROFILE_DOCUMENT: {
+    id: 'profile_document',
+    label: 'ID Verification',
+    pluralLabel: 'Profile Documents',
+    icon: 'DocumentTextIcon',
+    color: 'blue',
+    gradientFrom: '#2563eb',
+    gradientTo: '#4338ca',
+    apiEndpoint: '/rbac/profile-documents/pending-verification/',
+    actionApiEndpoint: '/rbac/profile-documents/',
+    previewEndpoint: (item) => `/rbac/profile-documents/${item.id}/content/`,
+    actionEndpointMap: {
+      approve: 'verify',
+      reject: 'reject',
+    },
+    allowedRoles: ['super_admin', 'admin'],
+    requiresReportingManager: false,
+    filterLogic: 'role_based',
+    statusField: 'verification_status',
+    pendingStatuses: ['pending'],
+    stages: [
+      { stage: 1, role: 'admin', statusValue: 'pending', nextStatus: 'verified' }
+    ],
+    fieldMapping: {
+      employee_name: (item) => item.user_name || item.user_email,
+      document_name: (item) => item.document_type_label || item.document_type,
+    },
+    displayFields: [
+      { key: 'employee_name', label: 'Employee', type: 'text' },
+      { key: 'document_name', label: 'Document Type', type: 'badge' },
+      { key: 'document_number', label: 'Document Number', type: 'text' },
+      { key: 'issuing_authority', label: 'Issuing Authority', type: 'text' },
+      { key: 'issue_date', label: 'Issue Date', type: 'date' },
+      { key: 'expiry_date', label: 'Expiry Date', type: 'date' },
+      { key: 'created_at', label: 'Uploaded', type: 'date' },
+    ],
+    actions: ['view', 'approve', 'reject'],
+    kpi: {
+      enabled: true,
+      title: 'ID Verification',
+      subtitle: 'Documents pending review',
+      countField: 'count',
+      trendCalculation: 'week_over_week'
+    }
+  },
   
   DOCUMENT: {
     id: 'document',

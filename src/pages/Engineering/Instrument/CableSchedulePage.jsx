@@ -934,7 +934,6 @@ export default function CableSchedulePage() {
           ))}
         </div>
       </section>
-      )}
 
       {/* ─── Generator card OR Projects shell ──────────────────────── */}
       {!activeProject ? (

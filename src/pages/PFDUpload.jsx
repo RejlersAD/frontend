@@ -122,19 +122,9 @@ const PFDUpload = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50 py-6 sm:py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50 px-3 py-6 sm:px-4 sm:py-8">
+      <div className="w-full">
         <div className="mb-6 sm:mb-8">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center text-purple-600 hover:text-purple-800 mb-4"
-          >
-            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Dashboard
-          </button>
-          
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
               Upload PFD & Philosophy Documents
