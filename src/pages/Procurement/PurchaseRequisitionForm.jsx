@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Purchase Requisition Form Component
  * Aligned with RAD-OM-PRC-0001 FRM -1 Rev 0 template
  * 
@@ -31,11 +31,34 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'
 ]);
 
+const normalizeApiErrors = (payload) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
+  return Object.fromEntries(Object.entries(payload).map(([field, value]) => {
+    if (Array.isArray(value)) return [field, value.map(String).join(' ')];
+    if (value && typeof value === 'object') {
+      return [field, Object.values(value).flat(Infinity).map(String).join(' ')];
+    }
+    return [field, String(value)];
+  }));
+};
+
+const firstApiError = (errors) => {
+  const labels = {
+    po_number_reference: 'PO Number',
+    approval_workflow_config: 'Approval Workflow',
+    management_approval_evidence_file: 'Evidence of Approval',
+    non_field_errors: 'Submission',
+  };
+  const entry = Object.entries(errors)[0];
+  return entry ? `${labels[entry[0]] || entry[0].replaceAll('_', ' ')}: ${entry[1]}` : '';
+};
+
 const newLineItem = () => ({
   description: '',
   quantity: '1',
   unit: 'EA',
   unit_price: '',
+  budget: '',
   total: '0.00',
 });
 
@@ -48,20 +71,27 @@ const buildInitialFormData = (editData) => ({
   project_department: editData?.project_department || '',
   description_reason: editData?.description_reason || '',
   preferred_supplier_if_any: editData?.preferred_supplier_if_any || '',
-  price_description: editData?.price_description || '',
+  price_description: editData?.description_reason || editData?.price_description || '',
   total_price: editData?.total_price || '',
   currency: editData?.currency || 'USD',
-  price_remarks: editData?.price_remarks || '',
+  price_remarks: editData?.price_remarks || editData?.price_remarks_data?.negotiation_remarks || '',
   net_total_excl_vat: editData?.net_total_excl_vat || '',
   po_number_reference: editData?.po_number_reference || '',
   purchase_recommendation: editData?.purchase_recommendation || editData?.special_notes || '',
   vendor: editData?.vendor || null,
   vendor_selection_reason: editData?.vendor_selection_reason || '',
+  selected_vendors: Array.isArray(editData?.selected_vendors) ? editData.selected_vendors : [],
+  single_source_justification: editData?.single_source_justification || '',
+  project_details: Array.isArray(editData?.project_details) ? editData.project_details : [],
   approval_workflow_config: editData?.approval_workflow_config || [],
   price_remarks_data: editData?.price_remarks_data || {},
   items: Array.isArray(editData?.items) ? editData.items : [],
   requisition_type: editData?.requisition_type || 'project',
   priority: editData?.priority || 'normal',
+  po_applicable: Boolean(editData?.po_applicable),
+  management_approval: editData?.management_approval ?? null,
+  management_approval_remarks: editData?.management_approval_remarks || '',
+  management_approval_evidence: Array.isArray(editData?.management_approval_evidence) ? editData.management_approval_evidence : [],
 });
 
 const selectedApproversFromWorkflow = (workflow = []) => {
@@ -92,16 +122,23 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   const [formData, setFormData] = useState(() => buildInitialFormData(editData));
   
   const [files, setFiles] = useState([]);
+  const [managementEvidenceFile, setManagementEvidenceFile] = useState(null);
+  const [vendorSearch, setVendorSearch] = useState('');
+  const [showVendorOptions, setShowVendorOptions] = useState(false);
+  const [vendorLoadError, setVendorLoadError] = useState('');
+  const [prNumberStatus, setPrNumberStatus] = useState({ checking: false, available: null, message: '' });
   const [errors, setErrors] = useState({});
   const [autoSaving, setAutoSaving] = useState(false);
   const draftIdRef = useRef(editData?.id || null);
   const autoSaveInFlightRef = useRef(null);
   const formDataRef = useRef(formData);
+  const submissionInFlightRef = useRef(false);
+  const lastAutoSaveFingerprintRef = useRef('');
   
   // New state for dynamic features
   const [vendors, setVendors] = useState([]);
   const [vendorRecommendations, setVendorRecommendations] = useState([]);
-  const [, setLoadingVendors] = useState(false);
+  const [loadingVendors, setLoadingVendors] = useState(false);
   
   // Approval workflow state
   const [projectManagers, setProjectManagers] = useState([]);
@@ -125,8 +162,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     formDataRef.current = initialData;
     draftIdRef.current = editData?.id || null;
     autoSaveInFlightRef.current = null;
+    submissionInFlightRef.current = false;
+    const { approval_workflow_config: _workflow, ...initialAutoSavePayload } = initialData;
+    lastAutoSaveFingerprintRef.current = JSON.stringify(initialAutoSavePayload);
     setSelectedApprovers(selectedApproversFromWorkflow(editData?.approval_workflow_config || []));
     setFiles([]);
+    setManagementEvidenceFile(null);
+    setVendorSearch('');
+    setShowVendorOptions(false);
+    setVendorLoadError('');
+    setPrNumberStatus({ checking: false, available: null, message: '' });
     setErrors({});
     setUploadProgress(0);
     setProductSuggestions([]);
@@ -135,7 +180,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     setPoNumberSuggestions([]);
     setSuggestionStatus({});
     setShowProductDropdown(false);
-    setShowProjectDropdown(false);
     setShowSupplierDropdown(false);
     setShowPoDropdown(false);
   }, [isOpen, editData]);
@@ -149,7 +193,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   const [supplierSuggestions, setSupplierSuggestions] = useState([]);
   const [poNumberSuggestions, setPoNumberSuggestions] = useState([]);
   const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [showPoDropdown, setShowPoDropdown] = useState(false);
   const suggestionTimersRef = useRef({});
@@ -160,22 +203,37 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     if (!isOpen) return;
     fetchVendors();
     fetchApprovers();
+    fetchProjectSuggestions('', true);
   }, [isOpen]);
 
-  const fetchVendors = async () => {
+  const fetchVendors = async (query = '', vendorId = '') => {
+    const requestId = (suggestionRequestIdsRef.current.vendorOption || 0) + 1;
+    suggestionRequestIdsRef.current.vendorOption = requestId;
     try {
       setLoadingVendors(true);
-      const response = await apiClient.get('/procurement/vendors/', {
-        params: { page_size: 1000, status: 'active' }
+      setVendorLoadError('');
+      const response = await apiClient.get('/procurement/requisitions/vendor-options/', {
+        params: { q: query.trim(), id: vendorId || undefined, limit: vendorId ? 1 : 30 }
       });
-      const vendorData = response.data.results || response.data || [];
-      setVendors(Array.isArray(vendorData) ? vendorData : []);
+      if (suggestionRequestIdsRef.current.vendorOption !== requestId) return [];
+      const vendorData = response.data?.suggestions || [];
+      if (!vendorId) setVendors(Array.isArray(vendorData) ? vendorData : []);
+      return Array.isArray(vendorData) ? vendorData : [];
     } catch (error) {
       console.error('Error fetching vendors:', error);
-      setVendors([]);
+      if (suggestionRequestIdsRef.current.vendorOption === requestId) {
+        if (!vendorId) setVendors([]);
+        setVendorLoadError('Vendors could not be loaded. Select Retry to try again.');
+      }
+      return [];
     } finally {
-      setLoadingVendors(false);
+      if (suggestionRequestIdsRef.current.vendorOption === requestId) setLoadingVendors(false);
     }
+  };
+
+  const searchVendors = (query) => {
+    clearTimeout(suggestionTimersRef.current.vendorOption);
+    suggestionTimersRef.current.vendorOption = setTimeout(() => fetchVendors(query), 200);
   };
   
   const fetchApprovers = async () => {
@@ -186,7 +244,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'project_manager' } }),
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'engineering_manager' } }),
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'manager_projects' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'vp_operations' } }),
+        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'vp_delivery' } }),
       ]);
       
       const usersFrom = (response) => {
@@ -197,7 +255,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       setProjectManagers(usersFrom(pmResponse));
       setEngineeringManagers(usersFrom(emResponse));
       setManagerProjects(usersFrom(mpResponse));
-      setVpOperations(usersFrom(vpResponse));
+      const vpCandidates = usersFrom(vpResponse);
+      setVpOperations(vpCandidates.some(user => user.job_title_match)
+        ? vpCandidates.filter(user => user.job_title_match)
+        : vpCandidates);
     } catch (error) {
       console.error('Error fetching approvers:', error);
       setProjectManagers([]);
@@ -326,27 +387,147 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     setShowProductDropdown(false);
   };
 
-  const selectProject = (project) => {
-    setFormData(prev => ({ ...prev, project_department: project.value }));
+  const toggleProject = (project) => {
+    setFormData(prev => {
+      const current = Array.isArray(prev.project_details) ? prev.project_details : [];
+      const identity = project.project_id || project.value;
+      const isSelected = current.some(item => (item.project_id || item.value) === identity);
+      const projectDetails = isSelected
+        ? current.filter(item => (item.project_id || item.value) !== identity)
+        : [...current, project];
+      return {
+        ...prev,
+        project_details: projectDetails,
+        project_department: projectDetails.map(item => item.value || item.label).join('; '),
+      };
+    });
     setErrors(prev => ({ ...prev, project_department: null }));
-    closeSuggestions('project', setProjectSuggestions);
-    setShowProjectDropdown(false);
+  };
+
+  const addInternalProject = () => {
+    const internal = { value: 'Internal / General', label: 'Internal / General', source: 'internal' };
+    toggleProject(internal);
+  };
+
+  const removeProjectDetail = (index) => {
+    setFormData(prev => {
+      const projectDetails = (prev.project_details || []).filter((_, itemIndex) => itemIndex !== index);
+      return {
+        ...prev,
+        project_details: projectDetails,
+        project_department: projectDetails.map(item => item.value || item.label).join('; '),
+      };
+    });
+  };
+
+  const addVendorToShortlist = async (vendorId) => {
+    let selected = vendors.find(vendor => String(vendor.id) === String(vendorId));
+    if (!selected && vendorId) {
+      const matches = await fetchVendors('', vendorId);
+      selected = matches[0];
+    }
+    if (!selected) {
+      setErrors(prev => ({ ...prev, selected_vendors: 'The selected vendor could not be loaded. Please search again.' }));
+      return;
+    }
+    setFormData(prev => {
+      const shortlist = Array.isArray(prev.selected_vendors) ? prev.selected_vendors : [];
+      if (shortlist.some(vendor => String(vendor.vendor_id || vendor.id) === String(selected.id))) return prev;
+      return {
+        ...prev,
+        selected_vendors: [...shortlist, {
+          vendor_id: selected.id,
+          name: selected.name,
+          vendor_code: selected.vendor_code,
+          icv_percentage: selected.icv_percentage,
+          icv_expiry_date: selected.icv_expiry_date,
+          is_icv_certified: selected.is_icv_certified,
+        }],
+      };
+    });
+    setVendorSearch('');
+    setShowVendorOptions(false);
+    setErrors(prev => ({ ...prev, selected_vendors: null }));
+  };
+
+  const removeVendorFromShortlist = (vendorId) => {
+    setFormData(prev => {
+      const selectedVendors = (prev.selected_vendors || []).filter(
+        vendor => String(vendor.vendor_id || vendor.id) !== String(vendorId)
+      );
+      const selectedWasRemoved = String(prev.vendor || '') === String(vendorId);
+      return {
+        ...prev,
+        selected_vendors: selectedVendors,
+        ...(selectedWasRemoved ? {
+          vendor: null,
+          supplier_name: '',
+          supplier_business_id: '',
+          preferred_supplier_if_any: '',
+        } : {}),
+      };
+    });
+  };
+
+  const selectPreferredVendor = (vendorId) => {
+    const shortlistEntry = (formData.selected_vendors || []).find(
+      vendor => String(vendor.vendor_id || vendor.id) === String(vendorId)
+    );
+    const masterVendor = vendors.find(vendor => String(vendor.id) === String(vendorId));
+    setFormData(prev => ({
+      ...prev,
+      vendor: vendorId || null,
+      supplier_name: shortlistEntry?.name || masterVendor?.name || '',
+      supplier_business_id: masterVendor?.trade_license_number || masterVendor?.tax_id || masterVendor?.vendor_code || '',
+      preferred_supplier_if_any: shortlistEntry?.name || masterVendor?.name || '',
+    }));
+  };
+
+  const checkPrNumber = (number) => {
+    clearTimeout(suggestionTimersRef.current.prNumber);
+    const normalized = String(number || '').trim().toUpperCase();
+    if (normalized.length < 3) {
+      setPrNumberStatus({ checking: false, available: null, message: '' });
+      return;
+    }
+    setPrNumberStatus({ checking: true, available: null, message: 'Checking availability...' });
+    suggestionTimersRef.current.prNumber = setTimeout(async () => {
+      try {
+        const response = await apiClient.get('/procurement/requisitions/check-pr-number/', {
+          params: { number: normalized, exclude_id: editData?.id || draftIdRef.current || undefined },
+        });
+        setPrNumberStatus({
+          checking: false,
+          available: Boolean(response.data.available),
+          message: response.data.available ? 'PR number is available.' : (response.data.message || 'PR number already exists.'),
+        });
+      } catch (error) {
+        setPrNumberStatus({ checking: false, available: null, message: 'Could not verify PR number.' });
+      }
+    }, 350);
   };
 
   const selectPoNumber = (po) => {
     setFormData(prev => ({ ...prev, po_number_reference: po.po_number }));
+    setErrors(prev => ({ ...prev, po_number_reference: null }));
     closeSuggestions('po', setPoNumberSuggestions);
     setShowPoDropdown(false);
   };
 
   useEffect(() => {
-    if (formData.total_price) {
-      setFormData(prev => ({
-        ...prev,
-        net_total_excl_vat: prev.total_price
-      }));
-    }
+    setFormData(prev => ({
+      ...prev,
+      net_total_excl_vat: prev.total_price || ''
+    }));
   }, [formData.total_price]);
+
+  useEffect(() => {
+    setFormData(prev => {
+      const purchaseDescription = prev.description_reason || '';
+      if (prev.price_description === purchaseDescription) return prev;
+      return { ...prev, price_description: purchaseDescription };
+    });
+  }, [formData.description_reason]);
 
   useEffect(() => {
     if (!formData.items?.length) return;
@@ -354,7 +535,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       (sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)),
       0
     ).toFixed(2);
-    setFormData(prev => ({ ...prev, total_price: itemsTotal }));
+    const itemsBudget = formData.items.reduce(
+      (sum, item) => sum + (parseFloat(item.budget) || 0),
+      0
+    ).toFixed(2);
+    setFormData(prev => ({ ...prev, total_price: itemsTotal, estimated_budget: itemsBudget }));
   }, [formData.items]);
 
   useEffect(() => {
@@ -362,19 +547,27 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   }, [formData]);
 
   const handleAutoSave = useCallback(async () => {
+    if (submissionInFlightRef.current) return null;
     if (autoSaveInFlightRef.current) {
       return autoSaveInFlightRef.current;
     }
+
+    // Approver selections live in separate UI state and are persisted only by
+    // explicit Save/Submit actions. Auto-save must never erase them with [].
+    const { approval_workflow_config: _workflow, ...autoSavePayload } = formDataRef.current;
+    const fingerprint = JSON.stringify(autoSavePayload);
+    if (fingerprint === lastAutoSaveFingerprintRef.current) return null;
 
     const saveOperation = (async () => {
       setAutoSaving(true);
       try {
         const targetDraftId = editData?.id || draftIdRef.current;
         const response = targetDraftId
-          ? await apiClient.patch(`/procurement/requisitions/${targetDraftId}/`, formDataRef.current)
-          : await apiClient.post('/procurement/requisitions/', formDataRef.current);
+          ? await apiClient.patch(`/procurement/requisitions/${targetDraftId}/`, autoSavePayload)
+          : await apiClient.post('/procurement/requisitions/', autoSavePayload);
 
         draftIdRef.current = response.data.id;
+        lastAutoSaveFingerprintRef.current = fingerprint;
         if (response.data.pr_number) {
           setFormData(prev => ({ ...prev, pr_number: response.data.pr_number }));
         }
@@ -397,7 +590,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
 
     const autoSaveInterval = setInterval(() => {
       const latestForm = formDataRef.current;
-      if (latestForm.product_service || latestForm.description_reason) {
+      if (latestForm.pr_number && (latestForm.product_service || latestForm.description_reason)) {
         handleAutoSave().catch(() => {});
       }
     }, 30000);
@@ -472,20 +665,47 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
 
   const validateForm = () => {
     const newErrors = {};
+    if (!formData.pr_number?.trim()) {
+      newErrors.pr_number = 'Enter the PR number manually';
+    } else if (prNumberStatus.available === false) {
+      newErrors.pr_number = 'This PR number already exists';
+    }
     if (!formData.product_service?.trim()) {
       newErrors.product_service = 'Product/Service description is required';
     }
-    if (!formData.project_department?.trim()) {
-      newErrors.project_department = 'Project/Department is required';
+    if (!(formData.project_details || []).length) {
+      newErrors.project_department = 'Select at least one project or Internal / General';
     }
     if (!formData.description_reason?.trim()) {
-      newErrors.description_reason = 'Description and reason is required';
+      newErrors.description_reason = 'Purchase description is required';
     }
     if (!formData.price_description?.trim()) {
-      newErrors.price_description = 'Price description is required';
+      newErrors.price_description = 'Purchase description is required';
     }
     if (!formData.total_price || parseFloat(formData.total_price) <= 0) {
       newErrors.total_price = 'Valid total price is required';
+    }
+    if (!(formData.selected_vendors || []).length) {
+      newErrors.selected_vendors = 'Select at least one vendor';
+    }
+    if (!formData.vendor) {
+      newErrors.vendor = 'Select the supplier from the shortlisted vendors';
+    }
+    if ((formData.selected_vendors || []).length === 1 && !formData.single_source_justification?.trim()) {
+      newErrors.single_source_justification = 'Single source justification is required';
+    }
+    if (!formData.purchase_recommendation?.trim()) {
+      newErrors.purchase_recommendation = 'Purchase recommendation is mandatory';
+    }
+    if (formData.po_applicable && !formData.po_number_reference?.trim()) {
+      newErrors.po_number_reference = 'Enter a completed PO number';
+    }
+    if (formData.currency === 'AED' && parseFloat(formData.total_price) > 100000) {
+      if (formData.management_approval !== true) newErrors.management_approval = 'Management Approval must be Yes';
+      if (!formData.management_approval_remarks?.trim()) newErrors.management_approval_remarks = 'Approval remarks are required';
+      if (!managementEvidenceFile && !(formData.management_approval_evidence || []).length) {
+        newErrors.management_approval_evidence = 'Attach evidence of management approval';
+      }
     }
 
     const invalidItemIndex = (formData.items || []).findIndex(item => (
@@ -504,11 +724,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
 
   const handleSubmit = async (e, submitForApproval = false) => {
     e.preventDefault();
+    if (submissionInFlightRef.current) return;
+    if (!formData.pr_number?.trim() || prNumberStatus.available === false) {
+      setErrors(prev => ({ ...prev, pr_number: prNumberStatus.available === false ? 'This PR number already exists' : 'Enter the PR number manually' }));
+      return;
+    }
     if (submitForApproval && !validateForm()) {
       return;
     }
     
     setSubmitLoading(true);
+    submissionInFlightRef.current = true;
     
     try {
       const submitData = new FormData();
@@ -519,7 +745,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         const user = projectManagers.find(u => u.id === selectedApprovers.project_manager);
         approvalWorkflow.push({
           step: step++,
-          role: 'Project Manager',
+          level: 1,
+          stage: formData.requisition_type === 'general' ? 'Level 1 - Department Manager' : 'Level 1 - Project/Department Manager',
+          role: formData.requisition_type === 'general' ? 'Department Manager' : 'Project Manager',
           user_id: selectedApprovers.project_manager,
           user_name: user?.full_name || '',
           status: 'pending',
@@ -527,11 +755,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         });
       }
       
-      if (selectedApprovers.engineering_manager) {
+      if (formData.requisition_type === 'project' && selectedApprovers.engineering_manager) {
         const user = engineeringManagers.find(u => u.id === selectedApprovers.engineering_manager);
         approvalWorkflow.push({
           step: step++,
-          role: 'Engineering Manager',
+          level: 2,
+          stage: 'Level 2 - Manager of Engineering (Optional)',
+          role: 'Manager of Engineering (MoE)',
           user_id: selectedApprovers.engineering_manager,
           user_name: user?.full_name || '',
           status: 'pending',
@@ -539,11 +769,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         });
       }
       
-      if (selectedApprovers.manager_projects) {
+      if (formData.requisition_type === 'project' && selectedApprovers.manager_projects) {
         const user = managerProjects.find(u => u.id === selectedApprovers.manager_projects);
         approvalWorkflow.push({
           step: step++,
-          role: 'Manager of Projects',
+          level: 3,
+          stage: 'Level 3 - Manager of Projects',
+          role: 'Manager of Projects (MoP)',
           user_id: selectedApprovers.manager_projects,
           user_name: user?.full_name || '',
           status: 'pending',
@@ -555,7 +787,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         const user = vpOperations.find(u => u.id === selectedApprovers.vp_operations);
         approvalWorkflow.push({
           step: step++,
-          role: 'Vice President of Operations',
+          level: formData.requisition_type === 'general' ? 2 : 4,
+          stage: formData.requisition_type === 'general' ? 'Level 2 - Vice President' : 'Level 4 - VP Delivery',
+          role: formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery',
           user_id: selectedApprovers.vp_operations,
           user_name: user?.full_name || '',
           status: 'pending',
@@ -563,12 +797,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         });
       }
 
-      if (submitForApproval && approvalWorkflow.length === 0) {
+      const requiredApproversMissing = formData.requisition_type === 'general'
+        ? (!selectedApprovers.project_manager || !selectedApprovers.vp_operations)
+        : (!selectedApprovers.project_manager || !selectedApprovers.manager_projects || !selectedApprovers.vp_operations);
+      if (submitForApproval && requiredApproversMissing) {
         setErrors(prev => ({
           ...prev,
-          approval_workflow_config: 'Select at least one approver before submission.'
+          approval_workflow_config: formData.requisition_type === 'general'
+            ? 'Select the Level 1 Department Manager and Level 2 Vice President.'
+            : 'Select Level 1, Level 3 (MoP), and Level 4 (VP Delivery). Level 2 (MoE) is optional.'
         }));
-        alert('Select at least one approver before submitting the requisition.');
+        alert('Complete the required approval levels before submitting.');
         return;
       }
       
@@ -590,6 +829,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       files.forEach((file) => {
         submitData.append('attachments_files', file);
       });
+      if (managementEvidenceFile) {
+        submitData.append('management_approval_evidence_file', managementEvidenceFile);
+      }
       
       const config = {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -609,12 +851,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         : await apiClient.post('/procurement/requisitions/', submitData, config);
 
       draftIdRef.current = response.data.id;
+      const { approval_workflow_config: _workflow, ...savedAutoSavePayload } = formDataRef.current;
+      lastAutoSaveFingerprintRef.current = JSON.stringify(savedAutoSavePayload);
 
       if (submitForApproval) {
         if (response.data.status !== 'draft') {
           throw new Error(`Requisition cannot be submitted from status ${response.data.status}.`);
         }
-        response = await apiClient.post(`/procurement/requisitions/${response.data.id}/submit/`);
+        response = await apiClient.post(`/procurement/requisitions/${response.data.id}/submit/`, {
+          approval_workflow_config: approvalWorkflow,
+        });
       }
 
       const requisitionLabel = response.data.pr_number
@@ -628,14 +874,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       if (onClose) onClose();
     } catch (error) {
       console.error('Error submitting PR:', error);
-      if (error.response?.data) {
-        setErrors(error.response.data);
+      const apiErrors = normalizeApiErrors(error.response?.data);
+      if (Object.keys(apiErrors).length) {
+        setErrors(prev => ({ ...prev, ...apiErrors }));
       }
-      const apiMessage = error.response?.data?.error || error.response?.data?.detail;
+      const apiMessage = apiErrors.error || apiErrors.detail || firstApiError(apiErrors);
       alert(apiMessage || error.message || (submitForApproval
         ? 'Failed to submit requisition. Please check all required fields.'
         : 'Failed to save draft. Please try again.'));
     } finally {
+      submissionInFlightRef.current = false;
       setSubmitLoading(false);
       setUploadProgress(0);
     }
@@ -654,11 +902,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               <DocumentTextIcon className="h-8 w-8 text-purple-200" />
               <div>
                 <h2 className="text-xl font-bold">
-                  {editData ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
+                  {editData ? 'Edit Purchase Recommendation' : 'New Purchase Recommendation'}
                 </h2>
                 <p className="text-purple-100 text-xs mt-0.5">
                   RAD-OM-PRC-0001 FRM -1 Rev 0
-                  {formData.pr_number && ` • PR No: ${formData.pr_number}`}
+                  {formData.pr_number && ` ΓÇó PR No: ${formData.pr_number}`}
                 </p>
               </div>
             </div>
@@ -682,7 +930,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         <form
           id="pr-modal-form"
           onSubmit={(e) => handleSubmit(e, true)}
-          className="flex-1 overflow-y-auto overflow-x-hidden p-8 space-y-8"
+          className="flex flex-1 flex-col gap-8 overflow-y-auto overflow-x-hidden p-8"
         >
           {/* Section 1: Header Section */}
           <div className="border-b border-gray-200 pb-6">
@@ -691,18 +939,55 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               Header Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Recommendation Type</label>
+                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1">
+                  {['project', 'general'].map(type => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setFormData(prev => ({
+                        ...prev,
+                        requisition_type: type,
+                        ...(type === 'project'
+                          ? (() => {
+                              const projectDetails = (prev.project_details || []).filter(project => project.source !== 'internal');
+                              return {
+                                project_details: projectDetails,
+                                project_department: projectDetails.map(project => project.value || project.label).join('; '),
+                              };
+                            })()
+                          : {}),
+                      }))}
+                      className={`rounded-md px-5 py-2 text-sm font-semibold ${formData.requisition_type === type ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-600 hover:bg-white'}`}
+                    >
+                      {type === 'project' ? 'Project' : 'General / Internal'}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  PR Number
+                  PR Number <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   name="pr_number"
                   value={formData.pr_number}
-                  disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
-                  placeholder="Auto-generated"
+                  onChange={(event) => {
+                    const value = event.target.value.toUpperCase();
+                    setFormData(prev => ({ ...prev, pr_number: value }));
+                    setErrors(prev => ({ ...prev, pr_number: null }));
+                    checkPrNumber(value);
+                  }}
+                  className={`w-full rounded-lg border px-4 py-2 uppercase focus:ring-2 focus:ring-purple-500 ${errors.pr_number || prNumberStatus.available === false ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="Enter company PR number"
                 />
+                {(errors.pr_number || prNumberStatus.message) && (
+                  <p className={`mt-1 text-xs ${errors.pr_number || prNumberStatus.available === false ? 'text-red-600' : prNumberStatus.available ? 'text-emerald-600' : 'text-gray-500'}`}>
+                    {errors.pr_number || prNumberStatus.message}
+                  </p>
+                )}
               </div>
               
               <div>
@@ -728,17 +1013,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 >
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="low">Low</option>
+                  <option value="normal">Normal - 2-day review</option>
+                  <option value="high">High - 1-day review</option>
+                  <option value="urgent">Urgent - same-day review</option>
                 </select>
               </div>
             </div>
           </div>
 
-          {/* Section 2: Supplier Section */}
-          <div className="border-b border-gray-200 pb-6">
+          {/* Supplier information is derived from the selected vendor shortlist. */}
+          {false && <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">2</span>
               Supplier Information
@@ -796,10 +1080,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                           <div className="text-sm text-gray-600">ID: {supplier.supplier_business_id}</div>
                         )}
                         {supplier.rating && (
-                          <div className="text-xs text-yellow-600">★ {supplier.rating}/5</div>
+                          <div className="text-xs text-yellow-600">Γÿà {supplier.rating}/5</div>
                         )}
                         <div className="text-xs text-gray-400 mt-1">
-                          {supplier.source === 'master' ? '📁 Vendor Database' : '📝 Historical Data'}
+                          {supplier.source === 'master' ? '≡ƒôü Vendor Database' : '≡ƒô¥ Historical Data'}
                         </div>
                       </button>
                     ))}
@@ -823,13 +1107,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 />
               </div>
             </div>
-          </div>
+          </div>}
 
           {/* Section 3: Project/Product Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">3</span>
-              Project & Product Details
+              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">2</span>
+              Product / Service & Project Details
             </h3>
             <div className="space-y-4">
               <div className="relative">
@@ -887,61 +1171,66 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               
               <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Project/Department <span className="text-red-500">*</span>
-                  <span className="ml-2 text-xs text-gray-500">(Auto-suggests from projects)</span>
+                  Project / Department <span className="text-red-500">*</span>
+                  <span className="ml-2 text-xs text-gray-500">(Current ongoing projects; multiple selections allowed)</span>
                 </label>
-                <textarea
+                <select
                   name="project_department"
-                  value={formData.project_department}
-                  onChange={(e) => {
-                    handleChange(e);
-                    fetchProjectSuggestions(e.target.value);
-                    setShowProjectDropdown(true);
+                  value=""
+                  onChange={(event) => {
+                    if (event.target.value === '__internal__') {
+                      addInternalProject();
+                      return;
+                    }
+                    const project = projectSuggestions.find(item => String(item.project_id || item.value) === event.target.value);
+                    if (project) toggleProject(project);
                   }}
                   onFocus={() => {
-                    fetchProjectSuggestions(formData.project_department, true);
-                    setShowProjectDropdown(true);
+                    fetchProjectSuggestions('', true);
                   }}
-                  onBlur={() => setTimeout(() => setShowProjectDropdown(false), 200)}
-                  rows={3}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
                     errors.project_department ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  placeholder="Start typing to see project suggestions..."
-                />
-                {showProjectDropdown && suggestionStatus.project?.loading && (
+                >
+                  <option value="">-- Select an ongoing project --</option>
+                  {formData.requisition_type === 'general' && (
+                    <option
+                      value="__internal__"
+                      disabled={(formData.project_details || []).some(project => project.source === 'internal')}
+                    >
+                      Internal{(formData.project_details || []).some(project => project.source === 'internal') ? ' (Selected)' : ''}
+                    </option>
+                  )}
+                  {projectSuggestions.map((project, index) => {
+                    const identity = String(project.project_id || project.value);
+                    const selected = (formData.project_details || []).some(item => String(item.project_id || item.value) === identity);
+                    return (
+                      <option key={`${identity}-${index}`} value={identity} disabled={selected}>
+                        {project.label}{project.department ? ` - ${project.department}` : ''}{selected ? ' (Selected)' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                {suggestionStatus.project?.loading && (
                   <p className="mt-1 text-xs text-gray-500">Loading projects...</p>
                 )}
-                {showProjectDropdown && suggestionStatus.project?.error && (
+                {suggestionStatus.project?.error && (
                   <p className="mt-1 text-xs text-red-600">{suggestionStatus.project.error}</p>
                 )}
-                {showProjectDropdown && suggestionStatus.project?.loaded && !suggestionStatus.project?.error && projectSuggestions.length === 0 && (
-                  <p className="mt-1 text-xs text-gray-500">No matching projects or departments found.</p>
-                )}
-                {showProjectDropdown && projectSuggestions.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {projectSuggestions.map((project, index) => (
-                      <button
-                        type="button"
-                        key={`${project.source}-${project.project_number || project.value}-${index}`}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => selectProject(project)}
-                        className="block w-full px-4 py-3 text-left hover:bg-purple-50 border-b border-gray-100 last:border-0"
-                      >
-                        <div className="font-medium text-gray-900 text-sm">{project.label}</div>
-                        {project.department && (
-                          <div className="text-xs text-gray-600 mt-1">Dept: {project.department}</div>
-                        )}
-                        <div className="text-xs text-gray-400 mt-1">
-                          {project.source === 'master' ? '📁 Project Database' : '📝 Historical Data'}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                {suggestionStatus.project?.loaded && !suggestionStatus.project?.error && projectSuggestions.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-500">No current ongoing projects found.</p>
                 )}
                 {errors.project_department && (
                   <p className="mt-1 text-sm text-red-600">{errors.project_department}</p>
                 )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(formData.project_details || []).map((project, index) => (
+                    <span key={`${project.project_id || project.value}-${index}`} className="inline-flex items-center gap-2 rounded-full bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-800 ring-1 ring-purple-200">
+                      {project.source === 'internal' ? 'Internal' : (project.label || project.value)}
+                      <button type="button" onClick={() => removeProjectDetail(index)} className="text-purple-500 hover:text-red-600" aria-label="Remove project">├ù</button>
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -949,12 +1238,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
           {/* Section 4: Description Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">4</span>
-              Description and Reason
+              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">3</span>
+              Purchase Description
             </h3>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description and Reason for Purchase <span className="text-red-500">*</span>
+                Purchase Description <span className="text-red-500">*</span>
               </label>
               <textarea
                 name="description_reason"
@@ -975,37 +1264,65 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
           {/* Section 5: Vendor Selection Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">5</span>
+              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">4</span>
               Vendor Selection
             </h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Vendor from Database
+                   Vendor Shortlist <span className="text-red-500">*</span>
                 </label>
                 <div className="flex items-center gap-2">
-                  <select
-                    name="vendor"
-                    value={formData.vendor || ''}
-                    onChange={(e) => {
-                      const vendorId = e.target.value;
-                      const selectedVendor = vendors.find(v => v.id === vendorId);
-                      setFormData(prev => ({
-                        ...prev,
-                        vendor: vendorId,
-                        supplier_name: selectedVendor?.name || '',
-                        supplier_business_id: selectedVendor?.trade_license_number || '',
-                      }));
-                    }}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    <option value="">-- Select Vendor --</option>
-                    {Array.isArray(vendors) && vendors.map(vendor => (
-                      <option key={vendor.id} value={vendor.id}>
-                        {vendor.name} ({vendor.vendor_code}) - Rating: {vendor.rating || 'N/A'}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative flex-1">
+                    <input
+                      type="search"
+                      value={vendorSearch}
+                      onChange={(event) => {
+                        const query = event.target.value;
+                        setVendorSearch(query);
+                        setShowVendorOptions(true);
+                        searchVendors(query);
+                      }}
+                      onFocus={() => {
+                        setShowVendorOptions(true);
+                        if (!vendors.length) fetchVendors(vendorSearch);
+                      }}
+                      onBlur={() => setTimeout(() => setShowVendorOptions(false), 200)}
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-purple-500"
+                      placeholder="Search vendor name or code..."
+                      autoComplete="off"
+                    />
+                    {showVendorOptions && (
+                      <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                        {loadingVendors && <p className="px-4 py-3 text-sm text-gray-500">Loading vendors...</p>}
+                        {!loadingVendors && vendorLoadError && (
+                          <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-red-600">
+                            <span>{vendorLoadError}</span>
+                            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => fetchVendors(vendorSearch)} className="font-semibold text-purple-700">Retry</button>
+                          </div>
+                        )}
+                        {!loadingVendors && !vendorLoadError && vendors.length === 0 && (
+                          <p className="px-4 py-3 text-sm text-gray-500">No active vendors found.</p>
+                        )}
+                        {!loadingVendors && !vendorLoadError && vendors.map(vendor => {
+                          const alreadySelected = (formData.selected_vendors || []).some(item => String(item.vendor_id || item.id) === String(vendor.id));
+                          return (
+                            <button
+                              type="button"
+                              key={vendor.id}
+                              disabled={alreadySelected}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => addVendorToShortlist(vendor.id)}
+                              className="block w-full border-b border-gray-100 px-4 py-3 text-left last:border-0 hover:bg-purple-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
+                            >
+                              <span className="block text-sm font-medium text-gray-900">{vendor.name}</span>
+                              <span className="block text-xs text-gray-500">{vendor.vendor_code} · Rating: {vendor.rating || 'N/A'}{alreadySelected ? ' · Already shortlisted' : ''}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={getVendorRecommendations}
@@ -1016,8 +1333,27 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   </button>
                 </div>
                 <p className="mt-1 text-sm text-gray-500">
-                  Select from vendor master database or get AI-powered recommendations
+                  Select a vendor from the dropdown to add it automatically. ICV values and validity are copied from the vendor portal.
                 </p>
+                {errors.selected_vendors && <p className="mt-1 text-sm text-red-600">{errors.selected_vendors}</p>}
+                {(formData.selected_vendors || []).length > 0 && (
+                  <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+                    {(formData.selected_vendors || []).map(shortlisted => (
+                      <div key={shortlisted.vendor_id || shortlisted.id} className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 last:border-0">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{shortlisted.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {shortlisted.vendor_code || 'No vendor code'} · ICV {shortlisted.icv_percentage ?? 'N/A'}%
+                            {shortlisted.icv_expiry_date ? ` · Valid until ${shortlisted.icv_expiry_date}` : ' · Validity not recorded'}
+                          </p>
+                        </div>
+                        <button type="button" onClick={() => removeVendorFromShortlist(shortlisted.vendor_id || shortlisted.id)} className="rounded p-1 text-red-500 hover:bg-red-50" aria-label="Remove vendor">
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               
               {vendorRecommendations.length > 0 && (
@@ -1029,7 +1365,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                         <div>
                           <p className="font-medium text-gray-900">{rec.vendor_name}</p>
                           <p className="text-xs text-gray-600">
-                            Score: {rec.score} | {rec.reasons.join(' • ')}
+                            Score: {rec.score} | {rec.reasons.join(' ΓÇó ')}
                           </p>
                         </div>
                         <button
@@ -1037,10 +1373,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                           onClick={() => {
                             setFormData(prev => ({
                               ...prev,
-                              vendor: rec.vendor_id,
-                              supplier_name: rec.vendor_name,
                               vendor_selection_reason: `AI recommended (score: ${rec.score}): ${rec.reasons.join(', ')}`,
                             }));
+                            addVendorToShortlist(rec.vendor_id);
                           }}
                           className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
                         >
@@ -1054,17 +1389,37 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Preferred Supplier (if any)
+                   Selected Supplier <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  name="preferred_supplier_if_any"
-                  value={formData.preferred_supplier_if_any}
-                  onChange={handleChange}
+                <select
+                  value={formData.vendor || ''}
+                  onChange={(event) => selectPreferredVendor(event.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Velimor Middle East Consultancy LLC"
-                />
+                >
+                  <option value="">-- Select from shortlisted vendors --</option>
+                  {(formData.selected_vendors || []).map(shortlisted => (
+                    <option key={shortlisted.vendor_id || shortlisted.id} value={shortlisted.vendor_id || shortlisted.id}>{shortlisted.name}</option>
+                  ))}
+                </select>
+                {errors.vendor && <p className="mt-1 text-sm text-red-600">{errors.vendor}</p>}
               </div>
+
+              {(formData.selected_vendors || []).length === 1 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <label className="block text-sm font-semibold text-amber-900 mb-2">
+                    Single Source Justification <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    name="single_source_justification"
+                    value={formData.single_source_justification}
+                    onChange={handleChange}
+                    rows={3}
+                    className="w-full rounded-lg border border-amber-300 px-4 py-2 focus:ring-2 focus:ring-amber-500"
+                    placeholder="Explain why this purchase recommendation uses only one supplier..."
+                  />
+                  {errors.single_source_justification && <p className="mt-1 text-sm text-red-600">{errors.single_source_justification}</p>}
+                </div>
+              )}
               
               {formData.vendor_selection_reason && (
                 <div>
@@ -1087,24 +1442,26 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
           {/* Section 6: Pricing Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">6</span>
+              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">5</span>
               Pricing Details
             </h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Price Description <span className="text-red-500">*</span>
+                   Purchase Description <span className="text-red-500">*</span>
+                   <span className="ml-2 text-xs font-normal text-gray-500">(From Purchase Description section)</span>
                 </label>
                 <textarea
                   name="price_description"
                   value={formData.price_description}
-                  onChange={handleChange}
+                  readOnly
                   rows={2}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                  className={`w-full px-4 py-2 border rounded-lg bg-gray-50 text-gray-700 ${
                     errors.price_description ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  placeholder="Value Engineering Services -Package 1 &2 for 5900927 project"
+                  placeholder="Enter the Purchase Description above; it will appear here automatically."
                 />
+                <p className="mt-1 text-xs text-gray-500">Automatically synchronized to prevent duplicate or conflicting descriptions.</p>
                 {errors.price_description && (
                   <p className="mt-1 text-sm text-red-600">{errors.price_description}</p>
                 )}
@@ -1114,7 +1471,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-900">Line Items</h4>
-                    <p className="text-xs text-gray-500">Optional for legacy requests; totals are calculated automatically.</p>
+                    <p className="text-xs text-gray-500">Quantity, unit price, line budget, and total are captured together.</p>
                   </div>
                   <button
                     type="button"
@@ -1133,7 +1490,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                           value={item.description || ''}
                           onChange={(e) => updateLineItem(index, 'description', e.target.value)}
                           placeholder="Description"
-                          className="col-span-12 md:col-span-5 px-2 py-2 text-sm border border-gray-300 rounded"
+                          className="col-span-12 md:col-span-4 px-2 py-2 text-sm border border-gray-300 rounded"
                         />
                         <input
                           type="number"
@@ -1161,7 +1518,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                           aria-label={`Line item ${index + 1} unit price`}
                           className="col-span-4 md:col-span-2 px-2 py-2 text-sm border border-gray-300 rounded"
                         />
-                        <div className="col-span-10 md:col-span-2 px-2 py-2 text-sm text-right font-medium">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.budget ?? ''}
+                          onChange={(e) => updateLineItem(index, 'budget', e.target.value)}
+                          placeholder="Budget"
+                          aria-label={`Line item ${index + 1} budget`}
+                          className="col-span-4 md:col-span-2 px-2 py-2 text-sm border border-gray-300 rounded"
+                        />
+                        <div className="col-span-6 md:col-span-1 px-2 py-2 text-sm text-right font-medium">
                           {formData.currency} {item.total || '0.00'}
                         </div>
                         <button
@@ -1199,6 +1566,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                     <option value="EUR">EUR</option>
                     <option value="GBP">GBP</option>
                     <option value="SAR">SAR</option>
+                    <option value="INR">INR</option>
                   </select>
                 </div>
                 
@@ -1225,23 +1593,24 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Net Total (excl VAT)
+                    Net Total (excl. VAT)
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     name="net_total_excl_vat"
                     value={formData.net_total_excl_vat}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+                    readOnly
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
                     placeholder="4000.00"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Calculated from the pricing total before VAT.</p>
                 </div>
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Price Remarks
+                  Negotiation Remarks
                 </label>
                 <textarea
                   name="price_remarks"
@@ -1249,8 +1618,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   onChange={handleChange}
                   rows={2}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Included in HSE budget"
+                  placeholder="Record negotiation outcome, agreed savings, commercial clarifications, or final terms"
                 />
+                <p className="mt-1 text-xs text-gray-500">Replaces the former Discount % field.</p>
               </div>
               
               <div>
@@ -1325,49 +1695,39 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                         placeholder="e.g., Net 45 days"
                       />
                     </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Discount %
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.price_remarks_data?.discount_percentage || ''}
-                        onChange={(e) => {
-                          const discount = parseFloat(e.target.value) || 0;
-                          const totalPrice = parseFloat(formData.total_price) || 0;
-                          const discountAmount = (totalPrice * discount) / 100;
-                          
-                          setFormData(prev => ({
-                            ...prev,
-                            price_remarks_data: {
-                              ...prev.price_remarks_data,
-                              discount_percentage: discount,
-                              discount_amount: discountAmount.toFixed(2)
-                            }
-                          }));
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        placeholder="0"
-                      />
-                    </div>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Section 7: Reference Section */}
+          {/* Section 6: Reference Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">7</span>
+              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">6</span>
               Reference
             </h3>
             <div className="relative">
+              <fieldset>
+                <legend className="block text-sm font-semibold text-gray-800 mb-2">PO Applicable?</legend>
+                <div className="flex gap-6">
+                  {[true, false].map(value => (
+                    <label key={String(value)} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="radio"
+                        name="po_applicable_choice"
+                        checked={formData.po_applicable === value}
+                        onChange={() => setFormData(prev => ({ ...prev, po_applicable: value, ...(value ? {} : { po_number_reference: '' }) }))}
+                      />
+                      {value ? 'Yes' : 'No'}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              {formData.po_applicable && <div className="relative mt-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                PO Number (if applicable)
-                <span className="ml-2 text-xs text-gray-500">(Auto-suggests from existing POs)</span>
+                PO Number <span className="text-red-500">*</span>
+                <span className="ml-2 text-xs text-gray-500">(Only completed POs can be linked)</span>
               </label>
               <input
                 type="text"
@@ -1389,11 +1749,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               {showPoDropdown && suggestionStatus.po?.loading && (
                 <p className="mt-1 text-xs text-gray-500">Loading purchase orders...</p>
               )}
+
               {showPoDropdown && suggestionStatus.po?.error && (
                 <p className="mt-1 text-xs text-red-600">{suggestionStatus.po.error}</p>
               )}
               {showPoDropdown && suggestionStatus.po?.loaded && !suggestionStatus.po?.error && poNumberSuggestions.length === 0 && (
-                <p className="mt-1 text-xs text-gray-500">No matching purchase orders found.</p>
+                <p className={`mt-1 text-xs ${formData.po_number_reference.trim() ? 'text-red-600' : 'text-gray-500'}`}>
+                  {formData.po_number_reference.trim()
+                    ? 'No completed PO matches this number. Select an existing completed PO or choose No.'
+                    : 'No completed purchase orders are available.'}
+                </p>
               )}
               {showPoDropdown && poNumberSuggestions.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
@@ -1423,18 +1788,46 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   ))}
                 </div>
               )}
+              {errors.po_number_reference && <p className="mt-1 text-sm text-red-600">{errors.po_number_reference}</p>}
+              </div>}
             </div>
           </div>
 
-          {/* Section 8: Purchase Recommendation Section */}
+          {formData.currency === 'AED' && parseFloat(formData.total_price || 0) > 100000 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-4">
+              <div>
+                <h4 className="text-sm font-bold text-amber-900">Management Approval Required</h4>
+                <p className="text-xs text-amber-800">PR value exceeds AED 100,000. Complete this before the approval workflow.</p>
+              </div>
+              <div className="flex gap-6">
+                {[true, false].map(value => (
+                  <label key={String(value)} className="inline-flex items-center gap-2 text-sm font-medium text-gray-800">
+                    <input type="radio" name="management_approval" checked={formData.management_approval === value} onChange={() => setFormData(prev => ({ ...prev, management_approval: value }))} />
+                    {value ? 'Yes' : 'No'}
+                  </label>
+                ))}
+              </div>
+              {errors.management_approval && <p className="text-sm text-red-600">{errors.management_approval}</p>}
+              <textarea name="management_approval_remarks" value={formData.management_approval_remarks} onChange={handleChange} rows={2} className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm" placeholder="Management approval remarks" />
+              {errors.management_approval_remarks && <p className="text-sm text-red-600">{errors.management_approval_remarks}</p>}
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 mb-2">Evidence of Approval</label>
+                <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={(event) => setManagementEvidenceFile(event.target.files?.[0] || null)} className="block w-full text-sm" />
+                {(managementEvidenceFile || (formData.management_approval_evidence || []).length > 0) && <p className="mt-1 text-xs text-emerald-700">{managementEvidenceFile?.name || 'Existing evidence attached'}</p>}
+                {errors.management_approval_evidence && <p className="mt-1 text-sm text-red-600">{errors.management_approval_evidence}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Section 7: Purchase Recommendation Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">8</span>
+              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">7</span>
               Purchase Recommendation
             </h3>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Purchase Recommendation (if any)
+                Purchase Recommendation <span className="text-red-500">*</span>
               </label>
               <textarea
                 name="purchase_recommendation"
@@ -1444,24 +1837,27 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="Any special requirements or notes..."
               />
+              {errors.purchase_recommendation && <p className="mt-1 text-sm text-red-600">{errors.purchase_recommendation}</p>}
             </div>
           </div>
 
           {/* Section 9: Approval Workflow Section */}
-          <div className="border-b border-gray-200 pb-6">
+          <div className="order-last border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">9</span>
               Approval Workflow
             </h3>
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
-                Select approvers for each tier. The workflow will follow the order you configure.
+                {formData.requisition_type === 'project'
+                  ? 'Project workflow: Level 1 ΓåÆ optional Level 2 ΓåÆ Level 3 ΓåÆ Level 4.'
+                  : 'General workflow: Level 1 Department Manager ΓåÆ Level 2 Vice President.'}
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Project Manager
+                    Level 1 - {formData.requisition_type === 'general' ? 'Department Manager' : 'PM / Manager / Department Manager'} <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={selectedApprovers.project_manager || ''}
@@ -1473,20 +1869,20 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                       {loadingApprovers
                         ? 'Loading approvers...'
                         : projectManagers.length
-                          ? '-- Select Project Manager --'
+                          ? `-- Select ${formData.requisition_type === 'general' ? 'Department Manager' : 'Level 1 Approver'} --`
                           : 'No eligible approvers available'}
                     </option>
                     {projectManagers.map(user => (
                       <option key={user.id} value={user.id}>
-                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
+                        {user.job_title_match ? 'Γÿà ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
                       </option>
                     ))}
                   </select>
                 </div>
                 
-                <div>
+                <div className={formData.requisition_type === 'general' ? 'hidden' : ''}>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Engineering Manager
+                    Level 2 - Manager of Engineering (MoE) <span className="text-gray-400">(Optional)</span>
                   </label>
                   <select
                     value={selectedApprovers.engineering_manager || ''}
@@ -1498,20 +1894,20 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                       {loadingApprovers
                         ? 'Loading approvers...'
                         : engineeringManagers.length
-                          ? '-- Select Engineering Manager --'
+                          ? '-- Select MoE (Optional) --'
                           : 'No eligible approvers available'}
                     </option>
                     {engineeringManagers.map(user => (
                       <option key={user.id} value={user.id}>
-                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
+                        {user.job_title_match ? 'Γÿà ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
                       </option>
                     ))}
                   </select>
                 </div>
                 
-                <div>
+                <div className={formData.requisition_type === 'general' ? 'hidden' : ''}>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Manager of Projects
+                    Level 3 - Manager of Projects (MoP) <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={selectedApprovers.manager_projects || ''}
@@ -1523,12 +1919,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                       {loadingApprovers
                         ? 'Loading approvers...'
                         : managerProjects.length
-                          ? '-- Select Manager of Projects --'
+                          ? '-- Select MoP --'
                           : 'No eligible approvers available'}
                     </option>
                     {managerProjects.map(user => (
                       <option key={user.id} value={user.id}>
-                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
+                        {user.job_title_match ? 'Γÿà ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
                       </option>
                     ))}
                   </select>
@@ -1536,7 +1932,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Vice President of Operations
+                    Level {formData.requisition_type === 'general' ? '2' : '4'} - {formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'} <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={selectedApprovers.vp_operations || ''}
@@ -1548,12 +1944,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                       {loadingApprovers
                         ? 'Loading approvers...'
                         : vpOperations.length
-                          ? '-- Select VP Operations --'
+                          ? `-- Select ${formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'} --`
                           : 'No eligible approvers available'}
                     </option>
                     {vpOperations.map(user => (
                       <option key={user.id} value={user.id}>
-                        {user.job_title_match ? '★ ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
+                        {user.job_title_match ? 'Γÿà ' : ''}{user.full_name}{user.job_title ? ` - ${user.job_title}` : ''}
                       </option>
                     ))}
                   </select>
@@ -1585,17 +1981,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-xs text-blue-800">
-                  <strong>Note:</strong> The approval workflow will be built based on the approvers you select. 
-                  Empty fields will be skipped automatically.
+                  <strong>Sequential routing:</strong> each level becomes active only after the previous level is approved.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Section 10: Attachments Section */}
+          {/* Section 8: Attachments Section */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">10</span>
+              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">8</span>
               Attachments (Multiple Files Supported)
             </h3>
             <div className="space-y-4">

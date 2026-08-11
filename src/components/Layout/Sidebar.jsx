@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { updateUser } from "../../store/slices/authSlice";
@@ -14,6 +14,7 @@ import {
 } from "../../config/qhseModules.config";
 import {
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   HomeIcon,
   DocumentTextIcon,
@@ -23,7 +24,6 @@ import {
   UsersIcon,
   ChartBarIcon,
   XMarkIcon,
-  Bars3Icon,
   FolderIcon,
   BriefcaseIcon,
   CurrencyDollarIcon,
@@ -42,7 +42,7 @@ import {
  * Professional hierarchical menu for RADAI platform
  */
 
-// ── SOFT-CODED: Admin Module Codes ────────────────────────────────────────
+// ΓöÇΓöÇ SOFT-CODED: Admin Module Codes ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Array of module codes that grant access to the Admin section (9. Admin).
 // Add new admin features here to auto-enable admin section visibility.
 const ADMIN_MODULE_CODES = [
@@ -55,7 +55,7 @@ const ADMIN_MODULE_CODES = [
 ];
 
 // Strip HTML/script markup from string fields before persisting API data to
-// localStorage — defense-in-depth against stored-XSS if upstream data is
+// localStorage - defense-in-depth against stored-XSS if upstream data is
 // ever tainted (e.g. an unsanitized profile field round-tripped from the API).
 const sanitizeForStorage = (value) => {
   if (typeof value === "string") {
@@ -71,7 +71,7 @@ const sanitizeForStorage = (value) => {
   }
   return value;
 };
-// ───────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 const Sidebar = ({
   isOpen,
@@ -155,7 +155,7 @@ const Sidebar = ({
           localStorage.getItem("radai_access_token") ||
           localStorage.getItem("access");
         const apiUrl = `${API_BASE_URL}/rbac/users/me/`;
-        console.log("🔐 Fetching modules from:", apiUrl);
+        console.log("≡ƒöÉ Fetching modules from:", apiUrl);
         const response = await fetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -168,9 +168,9 @@ const Sidebar = ({
         }
 
         const data = await response.json();
-        console.log("🔐 Full user data:", data);
+        console.log("≡ƒöÉ Full user data:", data);
 
-        // ── Derive admin status from live API response ────────────────────
+        // ΓöÇΓöÇ Derive admin status from live API response ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         // SECURITY FIX: is_staff does NOT grant admin access
         // Only is_superuser flag or super_admin role grants admin section access
         const apiIsAdmin =
@@ -182,13 +182,13 @@ const Sidebar = ({
             data.modules.some((m) => ADMIN_MODULE_CODES.includes(m.code)));
         if (apiIsAdmin) {
           setFreshIsAdmin(true);
-          console.log("✅ Admin status confirmed from live API");
+          console.log("Γ£à Admin status confirmed from live API");
         } else {
           setFreshIsAdmin(false);
-          console.log("⚠️  Admin status: FALSE (no admin role or modules)");
+          console.log("ΓÜá∩╕Å  Admin status: FALSE (no admin role or modules)");
         }
 
-        // ── Sync Redux store with fresh auth data ─────────────────────────
+        // ΓöÇΓöÇ Sync Redux store with fresh auth data ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         // Dispatches only when the payload actually differs to avoid
         // triggering an infinite update loop (effect depends on user?.id,
         // not on the nested user.user object or roles).
@@ -220,11 +220,11 @@ const Sidebar = ({
               "radai_user_data",
               JSON.stringify(sanitizeForStorage(merged)),
             );
-            console.log("✅ User auth data persisted to localStorage");
+            console.log("Γ£à User auth data persisted to localStorage");
           } catch (_) {
             /* non-fatal */
           }
-          console.log("✅ User auth data synced from live API");
+          console.log("Γ£à User auth data synced from live API");
         }
 
         // Update Redux store with profile photo and other user data
@@ -234,13 +234,13 @@ const Sidebar = ({
         // would re-fire this effect and create an infinite update loop)
         if (data.profile_photo && data.profile_photo !== user?.profile_photo) {
           dispatch(updateUser({ profile_photo: data.profile_photo }));
-          console.log("✅ Profile photo updated in Redux store");
+          console.log("Γ£à Profile photo updated in Redux store");
         }
 
         if (data.modules && Array.isArray(data.modules)) {
           const moduleCodes = data.modules.map((m) => m.code);
           setUserModules(moduleCodes);
-          console.log("🔐 User accessible modules:", moduleCodes);
+          console.log("≡ƒöÉ User accessible modules:", moduleCodes);
         } else {
           console.warn("No modules found in response");
           setUserModules([]);
@@ -359,7 +359,7 @@ const Sidebar = ({
         // SOFT-CODED REMOVAL: P&ID Checker duplicate removed from COMMON section
         // P&ID functionality is available in Process Engineering section (1.1 Process -> P&ID)
         // This avoids menu confusion and maintains single source of truth
-        // SOFT-DISABLED: DesignIQ nav entry hidden — re-enable by uncommenting
+        // SOFT-DISABLED: DesignIQ nav entry hidden - re-enable by uncommenting
         // { id: 'designiq', title: '2.3 DesignIQ', icon: BeakerIcon, path: '/designiq', description: 'AI-powered design optimization', moduleCode: 'designiq', badge: 'AI' },
         {
           id: "pfd",
@@ -420,7 +420,7 @@ const Sidebar = ({
         },
       ],
     },
-    // ── Section 4: Human Resource ──────────────────────────────────────────
+    // ΓöÇΓöÇ Section 4: Human Resource ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // SOFT-CODED: Controlled by FEATURE_FLAGS.enableHRModule in features.config.js
     // SECURITY: Super administrators ALWAYS see HR, bypassing feature flag
     {
@@ -430,7 +430,7 @@ const Sidebar = ({
       type: "section",
       expanded: expandedSections.human_resource,
       enabled:
-        FEATURE_FLAGS.enableHRModule || hasSuperAdminRole || hasSuperuserFlag, // ⚠️ Super admin bypass
+        FEATURE_FLAGS.enableHRModule || hasSuperAdminRole || hasSuperuserFlag, // ΓÜá∩╕Å Super admin bypass
       children: [
         {
           id: "hrDashboard",
@@ -536,10 +536,10 @@ const Sidebar = ({
         },
         {
           id: "requisitions",
-          title: "7.4 Recommendations",
+          title: "7.4 Purchase Requisitions",
           icon: DocumentTextIcon,
           path: "/procurement/requisitions",
-          description: "Purchase recommendations",
+          description: "Purchase recommendation workflow",
           moduleCode: "procurement_requisitions", // granular: purchase requisitions
         },
         {
@@ -670,12 +670,12 @@ const Sidebar = ({
           (item.type === "section" || item.type === "subsection") &&
           item.children
         ) {
-          // 🔒 SECURITY: Check if section itself is explicitly disabled (e.g., feature flag)
+          // ≡ƒöÆ SECURITY: Check if section itself is explicitly disabled (e.g., feature flag)
           if (item.enabled === false) {
             return null; // Section disabled by feature flag (e.g., HR module)
           }
 
-          // 🔒 SECURITY: If section has a moduleCode requirement, check access
+          // ≡ƒöÆ SECURITY: If section has a moduleCode requirement, check access
           if (item.moduleCode && !hasModuleAccess(item)) {
             return null; // User doesn't have access to this section's required module
           }
@@ -696,7 +696,7 @@ const Sidebar = ({
             })
             .filter((child) => child !== null);
 
-          // 🔒 CRITICAL: Only show section if it has accessible children
+          // ≡ƒöÆ CRITICAL: Only show section if it has accessible children
           // This ensures Finance, Procurement, QHSE, Admin sections are hidden
           // when user has NO modules in those sections
           if (accessibleChildren.length > 0) {
@@ -717,7 +717,7 @@ const Sidebar = ({
 
   const filteredMenu = filterMenuByModules(menuStructure);
 
-  // SOFT-CODED: Request Access link disabled — remove the push() block to re-enable
+  // SOFT-CODED: Request Access link disabled - remove the push() block to re-enable
   // filteredMenu.push({
   //   id: 'requestAccess',
   //   title: 'Request Access',
@@ -845,11 +845,13 @@ const Sidebar = ({
               </div>
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() => setIsCollapsed(true)}
                   className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   title="Collapse sidebar"
+                  aria-label="Collapse sidebar"
                 >
-                  <ChevronRightIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                  <ChevronLeftIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}
@@ -861,11 +863,13 @@ const Sidebar = ({
             </>
           ) : (
             <button
+              type="button"
               onClick={() => setIsCollapsed(false)}
               className="w-full flex justify-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               title="Expand sidebar"
+              aria-label="Expand sidebar"
             >
-              <Bars3Icon className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+              <ChevronRightIcon className="w-6 h-6 text-gray-600 dark:text-gray-400" />
             </button>
           )}
         </div>
@@ -1120,15 +1124,6 @@ const Sidebar = ({
         </div>
       </aside>
 
-      {/* Mobile menu button (hidden when top header is present to avoid duplicate toggles) */}
-      {!showHeader && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="lg:hidden fixed bottom-4 right-4 z-30 p-3 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all"
-        >
-          <Bars3Icon className="w-6 h-6" />
-        </button>
-      )}
     </>
   );
 };

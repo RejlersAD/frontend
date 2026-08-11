@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ShoppingCartIcon,
@@ -21,9 +21,12 @@ import {
   EyeIcon,
   PlusIcon,
   PencilIcon,
-  TrashIcon
+  TrashIcon,
+  ArrowDownTrayIcon,
+  ChevronUpDownIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import * as XLSX from 'xlsx';
 import { PageControlButtons } from '../../components/Common/PageControlButtons';
 import { usePageControls } from '../../hooks/usePageControls';
 import { getStatusConfig, getOrderTabs } from '../../config/procurement.config';
@@ -60,6 +63,7 @@ const OrderManagement = () => {
   const [filterVendor, setFilterVendor] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [requisitionSort, setRequisitionSort] = useState({ key: 'created_at', direction: 'desc' });
   const [showAICreator, setShowAICreator] = useState(false);
   const [showPOForm, setShowPOForm] = useState(false);
   const [showPRForm, setShowPRForm] = useState(false);
@@ -266,7 +270,7 @@ const OrderManagement = () => {
     if (pendingOrders.length > 0) {
       insights.push({
         type: 'action_required',
-        title: '⚠️ Orders Awaiting Action',
+        title: '🔔 Orders Awaiting Action',
         count: pendingOrders.length,
         message: `${pendingOrders.length} order${pendingOrders.length > 1 ? 's' : ''} pending approval or submission`,
         priority: 'high'
@@ -314,7 +318,7 @@ const OrderManagement = () => {
     if (topVendor) {
       insights.push({
         type: 'vendor_analysis',
-        title: '🏢 Top Vendor',
+        title: '🏆 Top Vendor',
         vendor: topVendor[0],
         count: topVendor[1],
         message: `${topVendor[1]} orders with ${topVendor[0]}`,
@@ -349,17 +353,58 @@ const OrderManagement = () => {
     const priority = req?.priority || '';
     const requisitionType = req?.requisition_type || 'general';
     
-    const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         prNumber.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchText = [title, prNumber, req?.po_number_reference, req?.product_service, req?.project_department, req?.supplier_name]
+      .filter(Boolean).join(' ').toLowerCase();
+    const matchesSearch = searchText.includes(searchTerm.toLowerCase());
+    const approvalSummary = req?.approval_status_summary || status;
     const matchesStatus =
       filterStatus === 'all' ||
       (filterStatus === 'approved'
         ? APPROVED_REQUISITION_STATUSES.includes(status)
-        : status === filterStatus);
+        : ['overdue', 'under_review'].includes(filterStatus)
+          ? approvalSummary === filterStatus
+          : status === filterStatus);
     const matchesPriority = filterPriority === 'all' || priority === filterPriority;
     const matchesType = filterType === 'all' || requisitionType === filterType;
     return matchesSearch && matchesStatus && matchesPriority && matchesType;
+  }).sort((left, right) => {
+    const getValue = (item) => {
+      if (requisitionSort.key === 'pr_value') return Number(item.total_price || 0);
+      if (requisitionSort.key === 'approval_status') return item.approval_status_summary || item.status || '';
+      return item[requisitionSort.key] || '';
+    };
+    const a = getValue(left);
+    const b = getValue(right);
+    const comparison = typeof a === 'number'
+      ? a - b
+      : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+    return requisitionSort.direction === 'asc' ? comparison : -comparison;
   }) : [];
+
+  const toggleRequisitionSort = (key) => {
+    setRequisitionSort(previous => ({
+      key,
+      direction: previous.key === key && previous.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const exportRequisitionsToExcel = () => {
+    const rows = filteredRequisitions.map(req => ({
+      'PR No.': req.pr_number || '',
+      'PO Number': req.po_number_reference || '',
+      'Goods / Service Description': req.product_service || req.title || '',
+      'Project Details': req.project_department || '',
+      'Supplier Name': req.supplier_name || req.vendor_name || '',
+      'PR Value': Number(req.total_price || 0),
+      Currency: req.currency || '',
+      'Approval Status': (req.approval_status_summary || req.status || '').replaceAll('_', ' '),
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [18, 18, 42, 36, 30, 16, 12, 18].map(width => ({ width }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Requisitions');
+    XLSX.writeFile(workbook, `RADAI_Purchase_Requisitions_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
 
   const handleOrderCreated = async (orderData) => {
     console.log('Creating order with AI data:', orderData);
@@ -401,9 +446,7 @@ const OrderManagement = () => {
       if (!confirmed) return;
 
       // Soft-coded API endpoint
-      await apiClient.patch(`/procurement/orders/${order.id}/`, {
-        status: 'sent'
-      });
+      await apiClient.post(`/procurement/orders/${order.id}/send_to_vendor/`);
 
       // Update local state - soft-coded state management
       setOrders(prevOrders => 
@@ -411,14 +454,14 @@ const OrderManagement = () => {
       );
 
       // Soft-coded success notification
-      alert(`✅ Purchase Order ${order.po_number || order.id} sent successfully!`);
+      alert(`Γ£à Purchase Order ${order.po_number || order.id} sent successfully!`);
       
       // Refresh orders to get latest data
       await fetchOrders();
     } catch (error) {
       console.error('Error sending order:', error);
       // Soft-coded error handling
-      alert(`❌ Failed to send order: ${error.response?.data?.detail || error.message}`);
+      alert(`Γ¥î Failed to send order: ${error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -580,7 +623,7 @@ const OrderManagement = () => {
       );
 
       // Soft-coded success notification
-      alert(`✅ Requisition ${requisition.pr_number || requisition.id} converted to ${createdPoNumber || 'a Purchase Order'} successfully!`);
+      alert(`Γ£à Requisition ${requisition.pr_number || requisition.id} converted to ${createdPoNumber || 'a Purchase Order'} successfully!`);
       
       // Refresh data
       await fetchRequisitions();
@@ -588,7 +631,7 @@ const OrderManagement = () => {
     } catch (error) {
       console.error('Error converting requisition:', error);
       // Soft-coded error handling
-      alert(`❌ Failed to convert: ${error.response?.data?.error || error.response?.data?.detail || error.message}`);
+      alert(`Γ¥î Failed to convert: ${error.response?.data?.error || error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -799,8 +842,8 @@ const OrderManagement = () => {
       const stats = {
         total: safeReqs.length,
         draft: safeReqs.filter(r => r?.status === 'draft').length,
-        submitted: safeReqs.filter(r => r?.status === 'submitted').length,
-        inReview: safeReqs.filter(r => r?.status === 'in_review').length,
+        underReview: safeReqs.filter(r => r?.approval_status_summary === 'under_review').length,
+        overdue: safeReqs.filter(r => r?.approval_status_summary === 'overdue').length,
         approved: safeReqs.filter(r => APPROVED_REQUISITION_STATUSES.includes(r?.status)).length,
         rejected: safeReqs.filter(r => r?.status === 'rejected').length,
         converted: safeReqs.filter(r => r?.status === 'converted').length
@@ -851,14 +894,14 @@ const OrderManagement = () => {
                   <PaperAirplaneIcon className="h-6 w-6 text-white" />
                 </div>
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.submitted}</div>
-                  <div className="text-xs text-blue-600 font-medium mt-1">Submitted</div>
+                  <div className="text-3xl font-bold text-gray-900">{stats.underReview}</div>
+                  <div className="text-xs text-blue-600 font-medium mt-1">Under Review</div>
                 </div>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                 <div 
                   className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.total > 0 ? (stats.submitted / stats.total) * 100 : 0}%` }}
+                  style={{ width: `${stats.total > 0 ? (stats.underReview / stats.total) * 100 : 0}%` }}
                 />
               </div>
             </div>
@@ -891,14 +934,14 @@ const OrderManagement = () => {
                   <ClockIcon className="h-6 w-6 text-white" />
                 </div>
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.inReview}</div>
-                  <div className="text-xs text-yellow-600 font-medium mt-1">In Review</div>
+                  <div className="text-3xl font-bold text-gray-900">{stats.overdue}</div>
+                  <div className="text-xs text-red-600 font-medium mt-1">Overdue</div>
                 </div>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                 <div
                   className="bg-gradient-to-r from-yellow-400 to-amber-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.total > 0 ? (stats.inReview / stats.total) * 100 : 0}%` }}
+                  style={{ width: `${stats.total > 0 ? (stats.overdue / stats.total) * 100 : 0}%` }}
                 />
               </div>
             </div>
@@ -957,13 +1000,13 @@ const OrderManagement = () => {
                 ) : (
                   <DocumentTextIcon className="h-8 w-8 mr-3 text-purple-600" />
                 )}
-                {activeTab === 'purchaseOrders' ? 'Order Management' : 'Purchase Requisition Management'}
+                {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Requisitions'}
               </h1>
               <p className="mt-2 text-sm text-gray-600 flex items-center">
                 <SparklesIcon className="h-4 w-4 mr-1 text-purple-500" />
                 {activeTab === 'purchaseOrders'
                   ? 'AI-powered procurement with smart vendor selection and order tracking'
-                  : 'Create, review, approve, and convert purchase requisitions in one workspace'}
+                  : 'Create, review, approve, and track purchase recommendations in one workspace'}
               </p>
             </div>
             
@@ -1115,7 +1158,7 @@ const OrderManagement = () => {
               {/* Search */}
               <div className="md:col-span-2">
                 <label htmlFor="search" className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Requisitions'}
+                  {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Purchase Requisitions'}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -1130,7 +1173,7 @@ const OrderManagement = () => {
                     placeholder={
                       activeTab === 'purchaseOrders' 
                         ? 'Search by PO number or vendor...' 
-                        : 'Search by PR number or title...'
+                        : 'Search PR, PO, description, project, or supplier...'
                     }
                   />
                 </div>
@@ -1162,6 +1205,8 @@ const OrderManagement = () => {
                       <option value="draft">Draft</option>
                       <option value="submitted">Submitted</option>
                       <option value="in_review">In Review</option>
+                      <option value="under_review">Under Review (summary)</option>
+                      <option value="overdue">Overdue</option>
                       <option value="approved">Approved</option>
                       <option value="rejected">Rejected</option>
                       <option value="cancelled">Cancelled</option>
@@ -1206,7 +1251,6 @@ const OrderManagement = () => {
                     <option value="urgent">Urgent</option>
                     <option value="high">High</option>
                     <option value="normal">Normal</option>
-                    <option value="low">Low</option>
                   </select>
                 </div>
               )}
@@ -1220,6 +1264,15 @@ const OrderManagement = () => {
                 }
               </p>
               <div className="flex flex-wrap items-center gap-2">
+                {activeTab === 'purchaseRequisitions' && (
+                  <button
+                    type="button"
+                    onClick={exportRequisitionsToExcel}
+                    className="inline-flex h-9 items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    <ArrowDownTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Export Excel
+                  </button>
+                )}
                 {/* View Toggle - Soft-coded */}
                 <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
                   <button
@@ -1256,7 +1309,7 @@ const OrderManagement = () => {
                   className="inline-flex h-9 items-center px-3.5 border border-transparent text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
                   <PlusIcon className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                  {activeTab === 'purchaseOrders' ? 'Create Purchase Order' : 'Create Requisition'}
+                  {activeTab === 'purchaseOrders' ? 'Create Purchase Order' : 'Create Purchase Recommendation'}
                 </button>
               </div>
             </div>
@@ -1711,138 +1764,58 @@ const OrderManagement = () => {
             </div>
           ) : (
             // List View for Purchase Requisitions
-            <div className="bg-white shadow-md rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
+            <div className="overflow-x-auto rounded-lg bg-white shadow-md">
+              <table className="min-w-[1400px] divide-y divide-gray-200">
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      PR Number
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Title
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Priority
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Estimated Value
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
+                    {[
+                      ['pr_number', 'PR No.'],
+                      ['po_number_reference', 'PO Number'],
+                      ['product_service', 'Goods / Service Description'],
+                      ['project_department', 'Project Details'],
+                      ['supplier_name', 'Supplier Name'],
+                      ['pr_value', 'PR Value'],
+                      ['currency', 'Currency'],
+                      ['approval_status', 'Approval Status'],
+                    ].map(([key, label]) => (
+                      <th key={key} scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
+                        <button type="button" onClick={() => toggleRequisitionSort(key)} className="inline-flex items-center gap-1 hover:text-indigo-700">
+                          {label}<ChevronUpDownIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </th>
+                    ))}
+                    <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredRequisitions.map((req) => {
-                    const daysSinceCreation = req.created_date 
-                      ? Math.floor((new Date() - new Date(req.created_date)) / (1000 * 60 * 60 * 24))
-                      : 0;
-                    const isUrgent = req.priority === 'urgent' || req.priority === 'high';
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {filteredRequisitions.map(req => {
+                    const summary = req.approval_status_summary || req.status || 'draft';
+                    const statusClass = {
+                      overdue: 'bg-red-100 text-red-800',
+                      under_review: 'bg-amber-100 text-amber-800',
+                      approved: 'bg-emerald-100 text-emerald-800',
+                      rejected: 'bg-rose-100 text-rose-800',
+                    }[summary] || 'bg-gray-100 text-gray-700';
                     return (
-                      <tr key={req.id} className="hover:bg-gray-50 transition-colors duration-150">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                              <DocumentTextIcon className="h-5 w-5 text-white" />
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-semibold text-gray-900">{req.pr_number || `PR-${req.id}`}</div>
-                              <div className="text-xs text-gray-500">{req.requester_name || 'N/A'}</div>
-                            </div>
-                          </div>
+                      <tr key={req.id} className="align-top hover:bg-gray-50">
+                        <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-gray-900">{req.pr_number || '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">{req.po_number_reference || 'Not applicable'}</td>
+                        <td className="max-w-xs px-4 py-4 text-sm text-gray-800"><p className="line-clamp-2">{req.product_service || req.title || '—'}</p></td>
+                        <td className="max-w-xs px-4 py-4 text-sm text-gray-700"><p className="line-clamp-2">{req.project_department || 'Internal / General'}</p></td>
+                        <td className="max-w-[220px] px-4 py-4 text-sm text-gray-700">{req.supplier_name || req.vendor_name || '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-gray-900">{req.total_price ? Number(req.total_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">{req.currency || '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-4">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusClass}`}>{summary.replaceAll('_', ' ')}</span>
+                          {req.review_due_at && ['under_review', 'overdue'].includes(summary) && <p className="mt-1 text-[11px] text-gray-500">Due {new Date(req.review_due_at).toLocaleString()}</p>}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900 max-w-xs truncate">{req.title || 'No title'}</div>
-                          <div className="text-xs text-gray-500">{req.supplier_name || 'Supplier TBD'}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            {isUrgent && (
-                              <span className="flex h-2 w-2 relative mr-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                              </span>
-                            )}
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                              req.priority === 'urgent' ? 'bg-red-100 text-red-800' :
-                              req.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                              req.priority === 'normal' ? 'bg-blue-100 text-blue-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {req.priority ? req.priority.charAt(0).toUpperCase() + req.priority.slice(1) : 'N/A'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-bold text-purple-700">
-                            {(req.total_price || req.estimated_value) ? `~$${parseFloat(req.total_price || req.estimated_value).toLocaleString()}` : 'N/A'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getStatusBadge(req.status)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {req.created_date ? (
-                            <div>
-                              <div>{new Date(req.created_date).toLocaleDateString()}</div>
-                              <div className="text-xs text-gray-400">
-                                {daysSinceCreation === 0 ? 'Today' : `${daysSinceCreation}d ago`}
-                              </div>
-                            </div>
-                          ) : 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <td className="whitespace-nowrap px-4 py-4 text-right">
                           <div className="flex justify-end gap-1.5">
-                            <button
-                              onClick={() => handleOpenApproval(req)}
-                              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                            >
-                              <EyeIcon className="h-3.5 w-3.5 mr-1" />
-                              View
-                            </button>
-                            {canModifyRequisition(req) && (
-                              <button
-                                onClick={() => handleEditRequisition(req)}
-                                className="inline-flex items-center px-2.5 py-1.5 border border-amber-300 shadow-sm text-xs font-medium rounded-md text-amber-700 bg-amber-50 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
-                              >
-                                <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                                Edit
-                              </button>
-                            )}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && (
-                              <button
-                                onClick={() => handleConvertToPO(req)}
-                                className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                              >
-                                <ShoppingCartIcon className="h-3.5 w-3.5 mr-1" />
-                                Convert
-                              </button>
-                            )}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
-                              <button
-                                onClick={() => handleExportPRPDF(req)}
-                                className="inline-flex items-center px-2.5 py-1.5 border border-purple-300 shadow-sm text-xs font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                              >
-                                <DocumentTextIcon className="h-3.5 w-3.5 mr-1" />
-                                Export PDF
-                              </button>
-                            )}
-                            {canDeleteRequisition(req) && (
-                              <button
-                                onClick={() => handleDeleteRequisition(req)}
-                                className="inline-flex items-center px-2.5 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                                title="Delete this purchase requisition"
-                              >
-                                <TrashIcon className="h-3.5 w-3.5 mr-1" />
-                                Delete
-                              </button>
-                            )}
+                            <button onClick={() => handleOpenApproval(req)} className="rounded-md border border-gray-300 bg-white p-2 text-gray-700 hover:bg-gray-50" title="View"><EyeIcon className="h-4 w-4" /></button>
+                            {canModifyRequisition(req) && <button onClick={() => handleEditRequisition(req)} className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-700" title="Edit"><PencilIcon className="h-4 w-4" /></button>}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && <button onClick={() => handleConvertToPO(req)} className="rounded-md bg-purple-600 p-2 text-white" title="Convert to PO"><ShoppingCartIcon className="h-4 w-4" /></button>}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && <button onClick={() => handleExportPRPDF(req)} className="rounded-md border border-purple-300 bg-purple-50 p-2 text-purple-700" title="Export PDF"><DocumentTextIcon className="h-4 w-4" /></button>}
+                            {canDeleteRequisition(req) && <button onClick={() => handleDeleteRequisition(req)} className="rounded-md border border-red-300 bg-red-50 p-2 text-red-700" title="Delete"><TrashIcon className="h-4 w-4" /></button>}
                           </div>
                         </td>
                       </tr>
