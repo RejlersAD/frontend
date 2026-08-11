@@ -190,6 +190,42 @@ const ANIMATION_ENTRANCE_DELAY   = 0.05;       // seconds - stagger between card
 const ANIMATION_ENTRANCE_DURATION = '0.5s';    // Card entrance duration
 const ANIMATION_HOVER_DURATION   = CARD_TRANSITION_SPEED; // Hover animation speed
 
+// ── Soft-coded: NAVIGATION BUTTONS Configuration ──────────────────────────────
+// Control which navigation buttons appear in the header and where they navigate
+// This allows flexible switching between different P&ID tools
+
+// NAVIGATION BUTTONS - Define all available navigation options
+const NAV_BUTTONS_CONFIG = [
+  {
+    enabled: true,
+    label: 'P&ID Checker V2',
+    icon: 'Search',  // Uses lucide-react icons
+    route: '/engineering/process/pid-checker-v2',
+    gradient: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)',
+    shadowColor: 'rgba(236,72,153,0.4)',
+    hoverShadowColor: 'rgba(236,72,153,0.6)',
+    description: 'Extract line tags from P&ID drawings'
+  },
+  {
+    enabled: false,  // Disabled by default - set to true to show both buttons
+    label: 'Try V2 Beta',
+    icon: 'Sparkles',
+    route: '/engineering/process/pid-verification',
+    gradient: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+    shadowColor: 'rgba(99,102,241,0.4)',
+    hoverShadowColor: 'rgba(99,102,241,0.6)',
+    description: 'Try the new P&ID Verification V2'
+  }
+];
+
+// BUTTON STYLING
+const NAV_BUTTON_BORDER_RADIUS = '12px';
+const NAV_BUTTON_FONT_SIZE = '0.875rem';
+const NAV_BUTTON_FONT_WEIGHT = 600;
+const NAV_BUTTON_PADDING = '12px 20px';
+const NAV_BUTTON_GAP = '8px';
+const NAV_BUTTON_HOVER_LIFT = '-2px';
+
 // ── Soft-coded: icon rail nav button appearance ───────────────────────────────
 // NAV_RAIL_ENTRY_DELAY_MS   : stagger between each button's entry animation (ms)
 // NAV_RAIL_ENTRY_DURATION_MS: duration of the slide-in animation (ms)
@@ -2899,40 +2935,51 @@ const PIDVerification = () => {
                 </div>
               </div>
 
-              {/* Right: Quick Stats + Version Switcher */}
+              {/* Right: Quick Stats + Navigation Buttons */}
               <div className="flex items-center gap-6">
-                {/* Version Switcher Button */}
-                <button
-                  onClick={() => navigate('/engineering/process/pid-verification-v2')}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '12px 20px',
-                    borderRadius: '12px',
-                    fontSize: '0.875rem',
-                    fontWeight: 600,
-                    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                    color: 'white',
-                    border: 'none',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
-                    transition: 'all 0.2s ease',
-                    whiteSpace: 'nowrap'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.5)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)';
-                  }}
-                >
-                  <Sparkles style={{ width: '16px', height: '16px' }} />
-                  Try V2 Beta
-                  <ChevronRight style={{ width: '16px', height: '16px' }} />
-                </button>
+                {/* Navigation Buttons - Soft-coded from NAV_BUTTONS_CONFIG */}
+                {NAV_BUTTONS_CONFIG.filter(btn => btn.enabled).map((btnConfig, idx) => {
+                  // Icon mapping
+                  const IconComponent = btnConfig.icon === 'Sparkles' ? Sparkles 
+                    : btnConfig.icon === 'Search' ? Search 
+                    : Sparkles;
+                  
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => navigate(btnConfig.route)}
+                      title={btnConfig.description}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: NAV_BUTTON_GAP,
+                        padding: NAV_BUTTON_PADDING,
+                        borderRadius: NAV_BUTTON_BORDER_RADIUS,
+                        fontSize: NAV_BUTTON_FONT_SIZE,
+                        fontWeight: NAV_BUTTON_FONT_WEIGHT,
+                        background: btnConfig.gradient,
+                        color: 'white',
+                        border: 'none',
+                        cursor: 'pointer',
+                        boxShadow: `0 4px 14px ${btnConfig.shadowColor}`,
+                        transition: 'all 0.2s ease',
+                        whiteSpace: 'nowrap'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = `translateY(${NAV_BUTTON_HOVER_LIFT})`;
+                        e.currentTarget.style.boxShadow = `0 6px 20px ${btnConfig.hoverShadowColor}`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = `0 4px 14px ${btnConfig.shadowColor}`;
+                      }}
+                    >
+                      <IconComponent style={{ width: '16px', height: '16px' }} />
+                      {btnConfig.label}
+                      <ChevronRight style={{ width: '16px', height: '16px' }} />
+                    </button>
+                  );
+                })}
 
                 {/* Quick Stats (shown when projects exist) */}
                 {projects.length > 0 && (

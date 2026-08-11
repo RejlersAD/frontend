@@ -509,6 +509,54 @@ export const ROLE_DISPLAY_CONFIG = {
     description: 'Read-only access. No modules unless explicitly assigned.',
     discipline: 'General',
   },
+  default: {
+    label: 'Default',
+    shortLabel: 'Default',
+    badge: 'bg-green-100 text-green-800',
+    dot: 'bg-green-500',
+    description: 'Standard engineering modules plus HR self-service.',
+    discipline: 'General',
+  },
+  ict_admin: {
+    label: 'ICT Administrator',
+    shortLabel: 'ICT Admin',
+    badge: 'bg-indigo-100 text-indigo-800',
+    dot: 'bg-indigo-500',
+    description: 'Admin section only (Dashboard, Users, Roles, Wrench, AI Champion, Enquiries).',
+    discipline: 'Platform',
+  },
+  hr_admin: {
+    label: 'HR & Payroll Administrator',
+    shortLabel: 'HR Admin',
+    badge: 'bg-rose-100 text-rose-800',
+    dot: 'bg-rose-500',
+    description: 'Full access to HR, Payroll, Timesheet data. Sensitive role.',
+    discipline: 'Human Resources',
+  },
+  human_resource: {
+    label: 'Human Resource',
+    shortLabel: 'HR',
+    badge: 'bg-rose-100 text-rose-800',
+    dot: 'bg-rose-500',
+    description: 'Complete access to HR Management, Payroll, Timesheet, Onboarding/Offboarding.',
+    discipline: 'Human Resources',
+  },
+  onboarding: {
+    label: 'Onboarding/Offboarding Specialist',
+    shortLabel: 'Onboarding',
+    badge: 'bg-violet-100 text-violet-800',
+    dot: 'bg-violet-500',
+    description: 'Employee lifecycle specialist — onboarding pipeline, offboarding process, and HR self-service.',
+    discipline: 'Human Resources',
+  },
+  engineering_common_access: {
+    label: 'Engineering Common Access',
+    shortLabel: 'Eng Common',
+    badge: 'bg-blue-100 text-blue-800',
+    dot: 'bg-blue-500',
+    description: 'Full Engineering section access (1.1–1.7 + 2. COMMON).',
+    discipline: 'Engineering',
+  },
   // Fallback for unknown / legacy roles
   _default: {
     label: 'User',
@@ -534,6 +582,7 @@ export const getRoleDisplay = (roleCode) =>
  */
 export const ROLE_DISCIPLINE_ORDER = [
   'Platform',
+  'Engineering',
   'Process',
   'Electrical',
   'Instrument',
@@ -543,6 +592,7 @@ export const ROLE_DISCIPLINE_ORDER = [
   'QHSE',
   'Design',
   'Management',
+  'Human Resources',
   'General',
 ]
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Procurement Configuration - Oil & Gas Industry
  * Centralized procurement categories, standards, and workflows
  * 
@@ -11,7 +11,21 @@
 
 export const PROCUREMENT_CONFIG = {
   // Order Management Tabs - Soft-coded tab configuration
+  // Note: Order matters - Purchase Requisitions first, then Purchase Orders
   orderTabs: {
+    purchaseRequisitions: {
+      id: 'purchase_requisitions',
+      label: 'Purchase Requisitions',
+      description: 'Purchase recommendations awaiting approval',
+      icon: 'DocumentTextIcon',
+      color: 'purple',
+      apiEndpoint: '/procurement/requisitions/',
+      createLabel: 'Create Purchase Recommendation',
+      emptyMessage: 'No purchase requisitions found',
+      emptyDescription: 'Create a requisition to request materials or services.',
+      searchPlaceholder: 'Search by PR number or title...',
+      filterFields: ['status', 'priority', 'type']
+    },
     purchaseOrders: {
       id: 'purchase_orders',
       label: 'Purchase Orders',
@@ -24,19 +38,6 @@ export const PROCUREMENT_CONFIG = {
       emptyDescription: 'Get started by creating a new purchase order.',
       searchPlaceholder: 'Search by PO number or vendor...',
       filterFields: ['status', 'vendor', 'project']
-    },
-    purchaseRequisitions: {
-      id: 'purchase_requisitions',
-      label: 'Purchase Requisitions',
-      description: 'Internal purchase requests awaiting approval',
-      icon: 'DocumentTextIcon',
-      color: 'purple',
-      apiEndpoint: '/procurement/requisitions/',
-      createLabel: 'Create PR',
-      emptyMessage: 'No purchase requisitions found',
-      emptyDescription: 'Create a requisition to request materials or services.',
-      searchPlaceholder: 'Search by PR number or title...',
-      filterFields: ['status', 'priority', 'type']
     }
   },
 
@@ -299,6 +300,7 @@ export const PROCUREMENT_CONFIG = {
     requisition: {
       draft: { label: 'Draft', color: 'gray', icon: 'PencilIcon' },
       submitted: { label: 'Submitted', color: 'blue', icon: 'PaperAirplaneIcon' },
+      in_review: { label: 'In Review', color: 'yellow', icon: 'ClockIcon' },
       approved: { label: 'Approved', color: 'green', icon: 'CheckCircleIcon' },
       rejected: { label: 'Rejected', color: 'red', icon: 'XCircleIcon' },
       cancelled: { label: 'Cancelled', color: 'gray', icon: 'XMarkIcon' },
@@ -337,11 +339,11 @@ export const PROCUREMENT_CONFIG = {
 
   // Vendor Rating System
   vendorRatings: {
-    5: { label: 'Excellent', color: 'green', icon: '⭐⭐⭐⭐⭐' },
-    4: { label: 'Good', color: 'blue', icon: '⭐⭐⭐⭐' },
-    3: { label: 'Average', color: 'yellow', icon: '⭐⭐⭐' },
-    2: { label: 'Below Average', color: 'orange', icon: '⭐⭐' },
-    1: { label: 'Poor', color: 'red', icon: '⭐' }
+    5: { label: 'Excellent', color: 'green', icon: 'Γ¡ÉΓ¡ÉΓ¡ÉΓ¡ÉΓ¡É' },
+    4: { label: 'Good', color: 'blue', icon: 'Γ¡ÉΓ¡ÉΓ¡ÉΓ¡É' },
+    3: { label: 'Average', color: 'yellow', icon: 'Γ¡ÉΓ¡ÉΓ¡É' },
+    2: { label: 'Below Average', color: 'orange', icon: 'Γ¡ÉΓ¡É' },
+    1: { label: 'Poor', color: 'red', icon: 'Γ¡É' }
   }
 }
 

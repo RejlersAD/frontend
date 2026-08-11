@@ -15,6 +15,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useSelector } from 'react-redux';
 import rbacService from '../../services/rbac.service';
 import { getEngineeringDisciplines } from '../../config/engineeringStructure.config.js';
+import { getRoleName, getRoleDescription, formatRoleForDropdown } from '../../utils/roleDisplay.utils';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── Soft-coded constants ──────────────────────────────────────────────────
@@ -216,6 +217,7 @@ function toArray(res) {
 
 function RoleBadge({ role, selected, onClick }) {
   const c = getLevelColor(role.level);
+  const roleDisplayName = getRoleName(role); // Use centralized display logic
   return (
     <button
       onClick={() => onClick(role)}
@@ -227,7 +229,7 @@ function RoleBadge({ role, selected, onClick }) {
     >
       <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${c.dot}`} />
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${selected ? 'text-blue-900' : 'text-gray-800'}`}>{role.name}</p>
+        <p className={`text-sm font-medium truncate ${selected ? 'text-blue-900' : 'text-gray-800'}`}>{roleDisplayName}</p>
         <p className="text-xs text-gray-400 truncate">{getLevelLabel(role.level)} · {role.user_count ?? 0} users</p>
       </div>
       {SENSITIVE_ROLE_CODES.includes(role.code) && (
@@ -893,7 +895,7 @@ function RoleManagement() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         {(() => { const c = getLevelColor(selectedRole.level); return <span className={`w-3 h-3 rounded-full flex-shrink-0 ${c.dot}`} />; })()}
-                        <h2 className="text-lg font-bold text-gray-900">{selectedRole.name}</h2>
+                        <h2 className="text-lg font-bold text-gray-900">{getRoleName(selectedRole)}</h2>
                         {(() => { const c = getLevelColor(selectedRole.level); return (
                           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>{getLevelLabel(selectedRole.level)}</span>
                         ); })()}
@@ -904,7 +906,7 @@ function RoleManagement() {
                           <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">Sensitive</span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-500 mt-1">{selectedRole.description || '—'}</p>
+                      <p className="text-sm text-gray-500 mt-1">{getRoleDescription(selectedRole) || selectedRole.description || '—'}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
                         Code: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 text-xs">{selectedRole.code}</code>
                       </p>
