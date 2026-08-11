@@ -7,7 +7,6 @@ import Documentation from '../components/documentation/Documentation'
 import { API_BASE_URL } from '../config/api.config'
 import { FEATURE_FLAGS } from '../config/features.config'
 import analyticsService from '../services/analyticsService'
-import PersonalDashboard from './PersonalDashboard'
 import {
   BellIcon, ArrowPathIcon, SparklesIcon, FolderOpenIcon,
   DocumentTextIcon, CheckCircleIcon, ExclamationTriangleIcon,
@@ -19,7 +18,6 @@ import {
   UserCircleIcon, BuildingOffice2Icon, UsersIcon, SignalIcon,
   TrophyIcon,
 } from '@heroicons/react/24/outline'
-import { USER_DISPLAY_CONFIG } from '../config/userDisplay.config'
 
 // ── Category metadata ─────────────────────────────────────────────────────────
 // SOFT-CODED: human_resource visibility controlled by FEATURE_FLAGS.enableHRModule
@@ -556,11 +554,14 @@ const Dashboard = () => {
   const [usageData,      setUsageData]      = useState({ summary: {}, daily_totals: [], discipline_breakdown: [] })
   const [loadingUsage,   setLoadingUsage]   = useState(false)
   const [personalData, setPersonalData] = useState(null)
+  const [awsData, setAwsData] = useState(null)
 
   // ── Derive RBAC access from Redux (no core logic change) ────────────────────
   const rbacData = rbacCurrentUser || user
   const rbacUser = rbacData?.user || rbacData
   const isAdmin  = !!(rbacUser?.is_staff || rbacUser?.is_superuser || rbacData?.roles?.some(r => r.code === 'super_admin' || r.name === 'Super Administrator'))
+  const isSuperAdmin = rbacUser?.is_superuser || rbacUser?.is_staff ||
+    rbacData?.roles?.some(r => r.code === 'super_admin')
   const userModuleCodes = useMemo(() => {
     if (isAdmin) return Object.keys(MODULE_CATEGORY_MAP)
     const mods = rbacData?.modules || rbacCurrentUser?.modules || []
@@ -574,18 +575,11 @@ const Dashboard = () => {
       const res = await fetch(`${API_BASE_URL}/dashboard/usage/?days=${days}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
-      console.log('[Usage] status:', res.status, 'days:', days)
       if (res.ok) {
         const data = await res.json()
-        console.log('[Usage] total_requests:', data.summary?.total_requests)
-        console.log('[Usage] daily_totals length:', data.daily_totals?.length)
         setUsageData(data)
-      } else {
-        console.warn('[Usage] failed:', res.status, await res.text())
       }
-    } catch(e) {
-      console.error('[Usage] error:', e)
-    } finally {
+    } catch { /* silent */ } finally {
       setLoadingUsage(false)
     }
   }
@@ -597,15 +591,10 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (activeTab === 'usage') {
-      console.log('[Usage] Tab clicked, fetching...')
       fetchUsage(usageRange)
     }
   }, [activeTab])
 
-  // ── Role-based routing: non-admins get PersonalDashboard ────────────────────
-  if (!isAdmin) {
-    return <PersonalDashboard />
-  }
 
   const userRoleLabel  = useMemo(() => {
     const u = rbacData || {}
@@ -617,7 +606,10 @@ const Dashboard = () => {
     return 'Standard User'
   }, [rbacData])
 
-  useEffect(() => { dispatch(fetchFeatures()); loadAll() }, [dispatch])
+  useEffect(() => {
+    dispatch(fetchFeatures())
+    loadAll()
+  }, [dispatch])
   useEffect(() => {
     let mounted = true
     const fetchPersonal = async () => {
@@ -635,7 +627,20 @@ const Dashboard = () => {
       }
     }
     fetchPersonal()
-    const interval = setInterval(fetchPersonal, 30000)
+    const fetchAws = async () => {
+      try {
+        const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+        const res = await fetch(`${API_BASE_URL}/dashboard/aws-status/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (res.ok) setAwsData(await res.json())
+      } catch { /* silent */ }
+    }
+    fetchAws()
+    const interval = setInterval(() => {
+      fetchPersonal()
+      fetchAws()
+    }, 30000)
     return () => { mounted = false; clearInterval(interval) }
   }, [])
   useEffect(() => { const t = setInterval(loadAll, 30000); return () => clearInterval(t) }, [])
@@ -681,12 +686,13 @@ const Dashboard = () => {
     return h < 12 ? 'Good Morning' : h < 18 ? 'Good Afternoon' : 'Good Evening'
   }
 
-  const displayName = USER_DISPLAY_CONFIG.formatting.getDisplayName(user)
   const unread      = notifications.filter(n => !n.is_read).length
   const health      = metricsData?.performance?.system_health
   const pendingApprovals = metricsData?.business?.pending_approvals ?? 0
   const activeProjects   = metricsData?.business?.active_projects   ?? dashboardStats?.projects?.active_count ?? 0
-  const totalDocs   = metricsData?.documents?.total_documents || 0
+  const totalDocs   = isSuperAdmin
+    ? (metricsData?.documents?.total_documents || 0)
+    : (personalData?.usage_stats?.total_30d || 0)
   const activeUsers = metricsData?.users?.total_users
     || metricsData?.users?.active_users
     || 0
@@ -789,11 +795,20 @@ const Dashboard = () => {
         const matchUsage = usageData.discipline_breakdown?.find(
           d => d.key === disciplineKey
         )
+        const matchPersonal = personalData?.feature_usage_map?.[disciplineKey]
+        // If we have personal data, always use it regardless of other sources
+        if (personalData?.feature_usage_map != null) {
+          return { ...f, uses: matchPersonal?.count ?? 0, trend: 0, conf: 0 }
+        }
         const matchMetrics = metricsData?.feature_usage_map?.[disciplineKey]
+
+        const personalCount = matchPersonal?.count
+        const usageCount = matchUsage?.count
+        const metricsCount = matchMetrics?.count
 
         return {
           ...f,
-          uses: matchUsage?.count || matchMetrics?.count || 0,
+          uses: personalCount != null ? personalCount : (usageCount != null ? usageCount : (metricsCount ?? 0)),
           trend: 0,
           conf: 0,
         }
@@ -802,7 +817,7 @@ const Dashboard = () => {
     console.log('🔍 featureActivity: Result:', result.length, 'features');
     result.forEach(f => console.log(`  - ${f.name} (${f.category})`));
     return result;
-  }, [features, isAdmin, userModuleCodes])
+  }, [features, isAdmin, userModuleCodes, personalData])
 
   const filteredActivity = useMemo(() =>
     activeCategory === 'all' ? featureActivity : featureActivity.filter(f => f.category === activeCategory)
@@ -878,7 +893,7 @@ const Dashboard = () => {
               <p className="text-sm text-gray-400 mt-0.5 flex items-center gap-2">
                 <span className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
-                  <span>{getGreeting()}, {displayName}</span>
+                  <span>{getGreeting()}, {personalData?.user_context?.name ?? user?.first_name ?? 'User'}</span>
                 </span>
                 <span className="text-gray-300">·</span>
                 <span>{today}</span>
@@ -1526,6 +1541,205 @@ const Dashboard = () => {
               </div>
             </div>
 
+            {/* AWS Data Status */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center"
+                    style={{ background: 'linear-gradient(135deg, #f97316, #ec4899)' }}>
+                    <SignalIcon className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-800">AWS Data Status</span>
+                </div>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                  awsData?.status === 'connected'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-red-100 text-red-600'
+                }`}>
+                  {awsData?.status === 'connected' ? 'Live' : awsData ? 'Offline' : '...'}
+                </span>
+              </div>
+
+              {!awsData && (
+                <div className="flex items-center justify-center py-3">
+                  <div className="w-4 h-4 border-2 border-orange-300 border-t-orange-600 rounded-full animate-spin" />
+                </div>
+              )}
+
+              {awsData?.status === 'offline' && (
+                <p className="text-[11px] text-red-500 text-center py-2">
+                  {awsData.message || 'Storage service unavailable'}
+                </p>
+              )}
+
+              {awsData?.status === 'connected' && awsData?.view === 'admin' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Total Files</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_files?.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Storage Used</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_size_gb} GB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Active Users</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_users}</span>
+                  </div>
+                  {awsData.file_breakdown?.length > 0 && (
+                    <div className="pt-1">
+                      <span className="text-[10px] text-gray-400 block mb-1">File Types</span>
+                      {awsData.file_breakdown.map((item, i) => (
+                        <div key={i} className="flex items-center gap-2 mb-1">
+                          <span className="text-[9px] font-bold text-gray-500 w-8">{item.type}</span>
+                          <div className="flex-1 h-1 rounded-full bg-gray-100 overflow-hidden">
+                            <div className="h-full rounded-full"
+                              style={{ width: `${item.percentage}%`, background: ['#f97316','#3b82f6','#22c55e','#8b5cf6','#f59e0b'][i] }}
+                            />
+                          </div>
+                          <span className="text-[9px] text-gray-500 w-8 text-right">{item.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-gray-50">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+                          const res = await fetch(`${API_BASE_URL}/dashboard/aws-report/?export=xlsx`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          })
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'AWS_Report.xlsx'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        } catch { /* silent */ }
+                      }}
+                      className="w-full text-center text-[9px] font-bold py-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
+                    >
+                      📥 Download Excel Report
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 pt-2 border-t border-gray-50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-[9px] text-gray-400">S3 Connected · Live</span>
+                  </div>
+                </div>
+              )}
+
+              {awsData?.status === 'connected' && awsData?.view === 'user' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Your Files</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_files}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Storage Used</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_size_mb} MB</span>
+                  </div>
+                  {awsData.last_upload && (
+                    <div className="flex justify-between">
+                      <span className="text-[10px] text-gray-400">Last Upload</span>
+                      <span className="text-[11px] font-bold text-gray-800">
+                        {new Date(awsData.last_upload).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-gray-50">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+                          const res = await fetch(`${API_BASE_URL}/dashboard/aws-report/?export=xlsx`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          })
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'AWS_Report.xlsx'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        } catch { /* silent */ }
+                      }}
+                      className="w-full text-center text-[9px] font-bold py-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
+                    >
+                      📥 Download Excel Report
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 pt-2 border-t border-gray-50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-[9px] text-gray-400">S3 Connected · Live</span>
+                  </div>
+                </div>
+              )}
+
+              {awsData?.status === 'connected' && awsData?.view === 'manager' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Department</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.department || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Team Files</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_files?.toLocaleString() || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Storage Used</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.total_size_gb} GB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-gray-400">Team Members</span>
+                    <span className="text-[11px] font-bold text-gray-800">{awsData.team_members}</span>
+                  </div>
+                  {awsData.most_active_user && (
+                    <div className="flex justify-between">
+                      <span className="text-[10px] text-gray-400">Most Active</span>
+                      <span className="text-[11px] font-bold text-gray-800 truncate max-w-24">{awsData.most_active_user}</span>
+                    </div>
+                  )}
+                  {awsData.last_upload && (
+                    <div className="flex justify-between">
+                      <span className="text-[10px] text-gray-400">Last Upload</span>
+                      <span className="text-[11px] font-bold text-gray-800">
+                        {new Date(awsData.last_upload).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-gray-50">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
+                          const res = await fetch(`${API_BASE_URL}/dashboard/aws-report/?export=xlsx`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          })
+                          const blob = await res.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'AWS_Report.xlsx'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        } catch { /* silent */ }
+                      }}
+                      className="w-full text-center text-[9px] font-bold py-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
+                    >
+                      📥 Download Excel Report
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 pt-2 border-t border-gray-50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-[9px] text-gray-400">S3 Connected · Live</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Weekly activity */}
             <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-3">
@@ -1706,7 +1920,7 @@ const Dashboard = () => {
                 {/* Role */}
                 <div className="flex items-center gap-2 mb-2.5">
                   <UserCircleIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <span className="text-[11px] font-semibold text-gray-700 truncate">{userRoleLabel || 'User'}</span>
+                  <span className="text-[11px] font-semibold text-gray-700 truncate">{personalData?.user_context?.role_name ?? userRoleLabel ?? 'User'}</span>
                 </div>
                 {/* Module chips */}
                 <div className="flex flex-wrap gap-1.5">
