@@ -82,7 +82,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
       <nav className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            {showSidebar && (
+            {/* {showSidebar && (
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="p-2 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 transition-all"
@@ -90,7 +90,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
               >
                 <Bars3Icon className="w-6 h-6 text-white" />
               </button>
-            )}
+            )} */}
             <Link to="/" className="flex items-center space-x-3 group">
               <div className="relative">
                 <div className="absolute -inset-1 rounded-xl opacity-0 group-hover:opacity-100 transition duration-300 blur-sm" 
