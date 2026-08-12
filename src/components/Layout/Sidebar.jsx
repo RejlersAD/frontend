@@ -794,7 +794,13 @@ const Sidebar = ({
         //   path: '/admin/subscriptions',
         //   description: 'Plans & billing management'
         // }
-      ],
+      ]
+        .filter(child =>
+          !child.moduleCode ||
+          hasSuperAdminRole ||
+          hasSuperuserFlag ||
+          userModules.includes(child.moduleCode)
+        ),
     });
   }
 

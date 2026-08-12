@@ -23,6 +23,8 @@ const AUTH_RESILIENCE_CONFIG = {
     '/usage_tracking/',
     '/activity/heartbeat',
     '/rbac/ai-champion/champion/current/',
+    '/admin/',
+    '/rbac/users/me/',
   ],
   // Endpoint URL substrings that should NOT trigger toast on timeout / network errors.
   // Polling endpoints especially must fail silently — otherwise a single slow worker
