@@ -22,6 +22,7 @@ import {
   DEFAULT_LEVEL_COLOR,
   ROLE_LEVEL_LABELS,
   CUSTOM_ROLE_PREFIX,
+  HIDDEN_ROLE_CODES,
 } from '../config/rbacAccess.config';
 import MULTI_ROLE_CONFIG from '../config/multiRoleConfig';
 import MultiRoleModal from '../components/MultiRoleModal';
@@ -756,10 +757,13 @@ const UserManagement = ({ pageControls }) => {
 
   // ========== COMPUTED: ASSIGNABLE ROLES ==========
   // Roles the admin can pick from the filter dropdown and role-column display.
-  // Excludes per-user `custom_*` roles (those are internal artefacts, never
-  // shown in pickers). Source of truth: /admin/roles.
+  // Excludes per-user `custom_*` roles (internal artefacts) and soft-coded
+  // hidden roles (HIDDEN_ROLE_CODES). Source of truth: /admin/roles.
+  // This filter MUST match RoleManagement.jsx to ensure role consistency.
   const assignableRoles = useMemo(() => {
-    const filtered = (roles || []).filter(r => r?.code && !r.code.startsWith(CUSTOM_ROLE_PREFIX));
+    const filtered = (roles || []).filter(
+      r => r?.code && !r.code.startsWith(CUSTOM_ROLE_PREFIX) && !HIDDEN_ROLE_CODES.includes(r.code)
+    );
     console.log('[assignableRoles] Filtered roles:', filtered.length);
     console.log('[assignableRoles] Sample role:', filtered[0]);
     return filtered;
@@ -3003,7 +3007,7 @@ const UserManagement = ({ pageControls }) => {
         onSave={handleEditUser}
         organizations={organizations}
         modules={modules}
-        roles={roles}
+        roles={assignableRoles}
         currentUser={currentUser}
         loading={actionLoading[`edit_${selectedUser?.id}`]}
       />
