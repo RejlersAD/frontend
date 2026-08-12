@@ -44,7 +44,8 @@ const SUPER_ADMIN_ROLE_CODE  = 'super_admin';
 // SOFT-CODED: keep in sync with rbac_config.DEFAULT_ROLE_CONFIG['code']
 const DEFAULT_ROLE_CODE      = 'default';
 const SENSITIVE_ROLE_CODES   = ['hr_admin'];
-const SENSITIVE_MODULE_CODES = ['hr_management', 'payroll', 'timesheet'];
+// SOFT-CODED: Must match backend/apps/rbac/rbac_config.py SENSITIVE_MODULE_CODES
+const SENSITIVE_MODULE_CODES = ['hr_management', 'payroll', 'timesheet', 'hr_onboarding'];
 
 const CUSTOM_ROLE_LEVEL_OPTIONS_ADMIN = [2, 3, 4, 5, 6];
 const CUSTOM_ROLE_LEVEL_OPTIONS_SUPER = [1, 2, 3, 4, 5, 6];

@@ -85,7 +85,8 @@ export const CUSTOM_ROLE_PREFIX    = 'custom_';
 export const SENSITIVE_ROLE_CODES = ['hr_admin'];
 
 // Sensitive modules: highlighted with an amber shield in module lists.
-export const SENSITIVE_MODULE_CODES = ['hr_management', 'payroll', 'timesheet'];
+// SOFT-CODED: Must match backend/apps/rbac/rbac_config.py SENSITIVE_MODULE_CODES
+export const SENSITIVE_MODULE_CODES = ['hr_management', 'payroll', 'timesheet', 'hr_onboarding'];
 
 export const isSensitiveRole   = (code) => SENSITIVE_ROLE_CODES.includes(code);
 export const isSensitiveModule = (code) => SENSITIVE_MODULE_CODES.includes(code);
