@@ -161,20 +161,10 @@ const PFDUploadNew = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-teal-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-teal-50 px-3 py-8 sm:px-4">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center text-purple-600 hover:text-purple-800 mb-4 transition-colors"
-          >
-            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Dashboard
-          </button>
-          
           <div className="text-center mb-6">
             <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-teal-600 bg-clip-text text-transparent mb-3">
               ULTRA COMPLETE P&ID GENERATOR

@@ -934,7 +934,6 @@ export default function IOListPage() {
           ))}
         </div>
       </section>
-      )}
 
       {/* ─── Generator card OR Projects shell ──────────────────────── */}
       {!activeProject ? (

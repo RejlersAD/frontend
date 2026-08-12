@@ -46,7 +46,7 @@ const WorkExperienceSection = () => {
   const fetchExperiences = async () => {
     try {
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
-      const res = await fetch(`${API_BASE_URL}/rbac/work-experience/`, {
+      const res = await fetch(`${API_BASE_URL}/rbac/work-experience/?mine=true`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Failed to fetch experience');
@@ -107,12 +107,20 @@ const WorkExperienceSection = () => {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          // Optional date inputs use an empty string in React, while the API
+          // expects a real ISO date or null.
+          end_date: formData.end_date || null,
+        }),
       });
 
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.detail || 'Failed to save experience');
+        const error = await res.json().catch(() => ({}));
+        const fieldError = Object.values(error)
+          .flat()
+          .find(value => typeof value === 'string' && value.trim());
+        throw new Error(error.detail || error.error || fieldError || 'Failed to save experience');
       }
 
       toast.success(editingId ? 'Experience updated!' : 'Experience added!');

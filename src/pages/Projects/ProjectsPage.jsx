@@ -227,7 +227,7 @@ export default function ProjectsPage() {
           className="pointer-events-none absolute -bottom-32 -left-20 h-72 w-72 rounded-full bg-gradient-to-tr from-sky-400/10 via-emerald-300/10 to-transparent blur-3xl"
         />
 
-        <div className="relative max-w-7xl mx-auto px-6 pt-6 pb-2">
+        <div className="relative w-full px-3 pt-6 pb-2 sm:px-4">
           {/* Title row */}
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="min-w-0">
@@ -355,7 +355,7 @@ export default function ProjectsPage() {
         </div>
 
         {/* Tab bar */}
-        <div className="relative max-w-7xl mx-auto px-6 mt-4">
+        <div className="relative w-full px-3 mt-4 sm:px-4">
           <nav className="flex gap-1 overflow-x-auto">
             {PROJECT_VIEW_MODES.map((mode) => {
               const Icon = ICONS[mode.icon] || ChartBarIcon
@@ -387,7 +387,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* Body */}
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+      <div className="w-full px-3 py-6 space-y-6 sm:px-4">
         {selectedProject && (
           <ProjectHeaderStrip project={selectedProject} />
         )}

@@ -16,6 +16,7 @@ import { useSelector } from 'react-redux';
 import rbacService from '../../services/rbac.service';
 import { getEngineeringDisciplines } from '../../config/engineeringStructure.config.js';
 import { getRoleName, getRoleDescription, formatRoleForDropdown } from '../../utils/roleDisplay.utils';
+import { HIDDEN_ROLE_CODES } from '../../config/rbacAccess.config';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── Soft-coded constants ──────────────────────────────────────────────────
@@ -43,7 +44,8 @@ const SUPER_ADMIN_ROLE_CODE  = 'super_admin';
 // SOFT-CODED: keep in sync with rbac_config.DEFAULT_ROLE_CONFIG['code']
 const DEFAULT_ROLE_CODE      = 'default';
 const SENSITIVE_ROLE_CODES   = ['hr_admin'];
-const SENSITIVE_MODULE_CODES = ['hr_management', 'payroll', 'timesheet'];
+// SOFT-CODED: Must match backend/apps/rbac/rbac_config.py SENSITIVE_MODULE_CODES
+const SENSITIVE_MODULE_CODES = ['hr_management', 'payroll', 'timesheet', 'hr_onboarding'];
 
 const CUSTOM_ROLE_LEVEL_OPTIONS_ADMIN = [2, 3, 4, 5, 6];
 const CUSTOM_ROLE_LEVEL_OPTIONS_SUPER = [1, 2, 3, 4, 5, 6];
@@ -218,6 +220,10 @@ function toArray(res) {
 function RoleBadge({ role, selected, onClick }) {
   const c = getLevelColor(role.level);
   const roleDisplayName = getRoleName(role); // Use centralized display logic
+  // SOFT-CODED: Warn if role has no modules (users assigned to this role can't access any features)
+  const hasNoModules = !role.modules || role.modules.length === 0;
+  const isSensitive = SENSITIVE_ROLE_CODES.includes(role.code);
+  
   return (
     <button
       onClick={() => onClick(role)}
@@ -229,11 +235,25 @@ function RoleBadge({ role, selected, onClick }) {
     >
       <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${c.dot}`} />
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${selected ? 'text-blue-900' : 'text-gray-800'}`}>{roleDisplayName}</p>
+        <div className="flex items-center gap-2">
+          <p className={`text-sm font-medium truncate ${selected ? 'text-blue-900' : 'text-gray-800'}`}>
+            {roleDisplayName}
+          </p>
+          {hasNoModules && !role.is_system_role && (
+            <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium" title="No modules assigned - users cannot access features">
+              0 modules
+            </span>
+          )}
+        </div>
         <p className="text-xs text-gray-400 truncate">{getLevelLabel(role.level)} · {role.user_count ?? 0} users</p>
       </div>
-      {SENSITIVE_ROLE_CODES.includes(role.code) && (
+      {isSensitive && (
         <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="Sensitive role" />
+      )}
+      {hasNoModules && !role.is_system_role && (
+        <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" title="Warning: No modules assigned">
+          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+        </svg>
       )}
     </button>
   );
@@ -692,7 +712,18 @@ function RoleManagement() {
       });
       const role = res?.data ?? res;
       setRoles((prev) => [...prev, role]); setShowCreate(false); setCreateForm(EMPTY_FORM);
-      notify('success', `Role "${role.name}" created.`);
+      
+      // SOFT-CODED: Auto-select the new role and show modules tab
+      // This guides admins to assign modules immediately after creation
+      setSelectedRole(role);
+      setDetailTab('modules');
+      setAssignSearch(''); setAssignResults([]);
+      setShowAddPanel(false); setEditingUser(null);
+      setUserListSearch(''); setUserListPage(1); setUserListMeta(null);
+      
+      notify('success', `Role "${role.name}" created. Now assign modules below →`);
+      // SOFT-CODED: Show warning that role needs modules to be useful
+      notify('warning', '⚠️ This role has no modules yet. Users assigned to this role cannot access any features until you assign modules.', 8000);
     } catch (err) {
       setCreateError(err?.response?.data?.detail || Object.values(err?.response?.data || {}).flat().join(' ') || 'Failed.');
     } finally { setCreating(false); }
@@ -709,9 +740,10 @@ function RoleManagement() {
   }, [selectedRole, notify]);
 
   const filteredRoles = useMemo(() => {
-    // Guard: exclude auto-generated per-user custom roles (API already filters them,
-    // this is a defensive client-side check in case an older API version returns them).
-    const visible = roles.filter((r) => !r.code.startsWith(CUSTOM_ROLE_PREFIX));
+    // Exclude auto-generated custom roles and soft-coded hidden roles (HIDDEN_ROLE_CODES).
+    const visible = roles.filter(
+      (r) => !r.code.startsWith(CUSTOM_ROLE_PREFIX) && !HIDDEN_ROLE_CODES.includes(r.code)
+    );
     const t = roleSearch.toLowerCase();
     return t ? visible.filter((r) => r.name.toLowerCase().includes(t) || r.code.toLowerCase().includes(t)) : visible;
   }, [roles, roleSearch]);
@@ -951,6 +983,21 @@ function RoleManagement() {
                   {/* ── Module Access tab ── */}
                   {detailTab === 'modules' && (
                     <div className="p-6 max-w-3xl">
+                      {/* SOFT-CODED: Warning when role has no modules */}
+                      {selectedRole && (!selectedRole.modules || selectedRole.modules.length === 0) && (
+                        <div className="mb-4 flex items-start gap-3 px-4 py-3 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-800">
+                          <svg className="w-5 h-5 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <div>
+                            <p className="font-semibold mb-1">⚠️ This role has no modules assigned</p>
+                            <p className="text-xs text-amber-700">
+                              Users assigned to "<strong>{selectedRole.name}</strong>" cannot access any features until you assign modules below. 
+                              Toggle ON the modules this role should have access to.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       {!isSuperAdmin && (
                         <div className="mb-4 flex items-center gap-2 px-3 py-2.5 bg-blue-50 rounded-lg border border-blue-100 text-xs text-blue-600">
                           <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

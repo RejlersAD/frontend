@@ -392,7 +392,7 @@ const ReceiptManagement = () => {
     <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
       <div className="py-6" style={pageControls.styles.content}>
         {/* Header */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-3 sm:px-4">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 flex items-center">
@@ -419,13 +419,13 @@ const ReceiptManagement = () => {
         </div>
 
         {/* Statistics */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="w-full px-3 sm:px-4 mt-8">
           <ReceiptStats />
         </div>
 
         {/* AI Insights */}
         {aiInsights && aiInsights.length > 0 && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+          <div className="w-full px-3 sm:px-4 mt-6">
             <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border-2 border-purple-200">
               <div className="flex items-center space-x-2 mb-4">
                 <SparklesIcon className="h-6 w-6 text-purple-600" />
@@ -464,7 +464,7 @@ const ReceiptManagement = () => {
 
         {/* Error Message */}
         {error && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+          <div className="w-full px-3 sm:px-4 mt-6">
             <div className={`rounded-md p-4 ${error.type === 'auth' ? 'bg-yellow-50 border-l-4 border-yellow-400' : 'bg-red-50 border-l-4 border-red-400'}`}>
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -505,7 +505,7 @@ const ReceiptManagement = () => {
         )}
 
         {/* Filters and Search */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="w-full px-3 sm:px-4 mt-8">
           <div className="bg-white shadow rounded-lg p-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               {/* Search */}
@@ -583,7 +583,7 @@ const ReceiptManagement = () => {
         </div>
 
         {/* Receipts List */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="w-full px-3 sm:px-4 mt-8">
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
