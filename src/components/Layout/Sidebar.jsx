@@ -794,13 +794,13 @@ const Sidebar = ({
         //   path: '/admin/subscriptions',
         //   description: 'Plans & billing management'
         // }
-      ]
-        .filter(child =>
+      ].filter(
+        (child) =>
           !child.moduleCode ||
           hasSuperAdminRole ||
           hasSuperuserFlag ||
-          userModules.includes(child.moduleCode)
-        ),
+          userModules.includes(child.moduleCode),
+      ),
     });
   }
 
@@ -825,7 +825,7 @@ const Sidebar = ({
       {/* Sidebar */}
       <aside
         className={`
-          sticky top-0 z-30 ${showHeader ? 'mt-2 h-[calc(100vh-4.5rem)]' : 'h-screen'}
+          sticky top-0 z-30 ${showHeader ? "mt-2 h-[calc(100vh-4.5rem)]" : "h-screen"}
           ${isCollapsed ? SIDEBAR.collapsed.widthClass : SIDEBAR.expanded.widthClass} bg-white dark:bg-gray-800
           ${showHeader ? "border-0" : "border-r border-gray-200 dark:border-gray-700"}
           transform transition-all duration-300 ease-in-out
@@ -881,7 +881,9 @@ const Sidebar = ({
         </div>
 
         {/* Navigation Menu */}
-        <nav className={`flex-1 overflow-y-auto px-3 space-y-1 ${showHeader ? 'pt-6 pb-4' : 'py-4'}`}>
+        <nav
+          className={`flex-1 overflow-y-auto px-3 space-y-1 ${showHeader ? "pt-6 pb-4" : "py-4"}`}
+        >
           {filteredMenu.map((item) => (
             <div key={item.id}>
               {item.type === "single" ? (
@@ -1129,7 +1131,6 @@ const Sidebar = ({
           </div>
         </div>
       </aside>
-
     </>
   );
 };

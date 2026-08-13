@@ -206,7 +206,7 @@ const ProcurementDashboard = () => {
     <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
       <div className="py-6" style={pageControls.styles.content}>
         {/* Header */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 flex items-center">
@@ -233,7 +233,7 @@ const ProcurementDashboard = () => {
 
         {/* Error Message */}
         {error && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+          <div className="w-full px-4 sm:px-6 lg:px-8 mt-6">
             <div className={`rounded-md p-4 ${error.type === 'auth' ? 'bg-yellow-50 border-l-4 border-yellow-400' : 'bg-red-50 border-l-4 border-red-400'}`}>
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -274,7 +274,7 @@ const ProcurementDashboard = () => {
         )}
 
         {/* Statistics Cards */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8 mt-8">
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {statCards.map((card, index) => (
               <div key={index} className="bg-white overflow-hidden shadow rounded-lg">
@@ -307,7 +307,7 @@ const ProcurementDashboard = () => {
         </div>
 
         {/* Quick Actions */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8 mt-8">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {quickActions.map((action, index) => (
@@ -341,7 +341,7 @@ const ProcurementDashboard = () => {
         </div>
 
         {/* Oil & Gas Industry Metrics */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8 mt-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-medium text-gray-900 flex items-center">
               <ShieldCheckIcon className="h-6 w-6 mr-2 text-[#00a896]" />
@@ -376,7 +376,7 @@ const ProcurementDashboard = () => {
         </div>
 
         {/* Order Value Summary */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8 mt-8">
           <div className="bg-white shadow rounded-lg p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
               <ChartBarIcon className="h-6 w-6 mr-2 text-indigo-600" />
