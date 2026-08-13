@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   SparklesIcon,
   XMarkIcon,
@@ -17,7 +18,18 @@ import {
 import { PROCUREMENT_CONFIG, getCategoryByCode } from '../../config/procurement.config';
 import apiClient from '../../services/api.service';
 
+const createEmptyAISuggestions = () => ({
+  grNumber: null,
+  inspectionRequirements: null,
+  certRequirements: null,
+  qualityChecklist: null,
+  inspectorRecommendation: null,
+  acceptanceRecommendation: null,
+  defectAnalysis: null
+});
+
 const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
+  const availableOrders = Array.isArray(orders) ? orders : [];
   const [formData, setFormData] = useState({
     po_id: '',
     po_number: '',
@@ -42,17 +54,10 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
   });
 
   const [aiProcessing, setAiProcessing] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState({
-    grNumber: null,
-    inspectionRequirements: null,
-    certRequirements: null,
-    qualityChecklist: null,
-    inspectorRecommendation: null,
-    acceptanceRecommendation: null,
-    defectAnalysis: null
-  });
+  const [aiSuggestions, setAiSuggestions] = useState(createEmptyAISuggestions);
   const [selectedPO, setSelectedPO] = useState(null);
   const [aiInsights, setAiInsights] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
   /**
    * AI Feature 1: Auto-generate GR Number
@@ -699,7 +704,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
 
   const handlePOSelect = (e) => {
     const poId = e.target.value;
-    const po = orders.find(o => o.id === parseInt(poId));
+    const po = availableOrders.find(o => String(o.id) === String(poId));
     
     if (po) {
       setSelectedPO(po);
@@ -707,7 +712,9 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
         ...prev,
         po_id: poId,
         po_number: po.po_number,
-        quantity_received: po.total_quantity || 0
+        quantity_received: po.total_quantity || (Array.isArray(po.items)
+          ? po.items.reduce((sum, item) => sum + Number(item.quantity || item.ordered_qty || 0), 0)
+          : 0) || 1
       }));
       
       // Auto-trigger AI analysis
@@ -731,17 +738,67 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+    if (!selectedPO || !formData.po_id) {
+      addAiInsight('error', 'Purchase Order Required', 'Select a purchase order before recording the receipt.');
+      return;
+    }
+    if (Number(formData.quantity_received || 0) <= 0) {
+      addAiInsight('error', 'Quantity Required', 'Quantity received must be greater than zero.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      // Prepare data for API
+      const receivedQuantity = Number(formData.quantity_received || 0);
+      const rejectedQuantity = Number(formData.quantity_rejected || 0);
+      const acceptedQuantity = Math.max(0, receivedQuantity - rejectedQuantity);
+      const poItems = Array.isArray(selectedPO.items) ? selectedPO.items : [];
+      const itemsReceived = poItems.length > 0
+        ? poItems.map((item, index) => {
+            const ordered = Number(item.quantity || item.ordered_qty || 0);
+            return {
+              po_line_id: item.id || item.po_line_id || null,
+              line_number: item.line_number || index + 1,
+              item: item.description || item.item || item.name || `PO item ${index + 1}`,
+              uom: item.unit || item.uom || 'EA',
+              ordered_qty: ordered,
+              received_qty: ordered,
+              accepted_qty: ordered,
+              rejected_qty: 0,
+            };
+          })
+        : [{
+            line_number: 1,
+            item: selectedPO.title || selectedPO.description || 'Goods received against purchase order',
+            uom: 'LOT',
+            ordered_qty: receivedQuantity,
+            received_qty: receivedQuantity,
+            accepted_qty: acceptedQuantity,
+            rejected_qty: rejectedQuantity,
+          }];
+
+      const heatNumbers = Array.isArray(formData.heat_numbers)
+        ? formData.heat_numbers
+        : String(formData.heat_numbers || '').split(',').map(value => value.trim()).filter(Boolean);
+
+      // Map the UI model to the canonical Receipt API contract.
       const submitData = {
-        ...formData,
+        purchase_order: formData.po_id,
+        status: formData.status || 'pending',
+        items_received: itemsReceived,
+        inspector_name: formData.inspector_name || '',
+        inspection_agency: formData.inspection_agency || '',
+        inspection_report_number: formData.inspection_report_number || '',
         certificates_received: formData.certificates_received || [],
-        // Convert quality checks to proper format
-        dimensional_check_passed: formData.dimensional_check_passed,
-        visual_inspection_passed: formData.visual_inspection_passed,
-        material_verification_passed: formData.material_verification_passed,
-        quality_check_passed: formData.quality_check_passed
+        heat_numbers: heatNumbers,
+        ndt_performed: Boolean(formData.ndt_performed),
+        ndt_results: formData.ndt_results || '',
+        dimensional_check_passed: formData.dimensional_check_passed ?? true,
+        visual_inspection_passed: formData.visual_inspection_passed ?? true,
+        material_verification_passed: formData.material_verification_passed ?? true,
+        quality_check_passed: formData.quality_check_passed ?? true,
+        inspection_notes: `Packaging condition: ${formData.packaging_condition || 'not recorded'}`,
+        notes: formData.notes || '',
       };
       
       const response = await apiClient.post('/procurement/receipts/', submitData);
@@ -751,7 +808,13 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
       addAiInsight('success', 'Receipt Recorded', 'Goods receipt created successfully with AI quality analysis');
     } catch (error) {
       console.error('Error creating receipt:', error);
-      addAiInsight('error', 'Error', error.response?.data?.detail || 'Failed to create receipt');
+      const responseData = error.response?.data;
+      const validationMessage = responseData && typeof responseData === 'object'
+        ? Object.entries(responseData).map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`).join(' · ')
+        : null;
+      addAiInsight('error', 'Unable to Record Receipt', validationMessage || error.message || 'Failed to create receipt');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -779,7 +842,8 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
       status: 'pending'
     });
     setSelectedPO(null);
-    setAiSuggestions({});
+    setSubmitting(false);
+    setAiSuggestions(createEmptyAISuggestions());
     setAiInsights([]);
     onClose();
   };
@@ -797,14 +861,11 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-      <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={handleClose}></div>
-
-        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-
-        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div className="fixed inset-0 bg-gray-900/70 backdrop-blur-sm" aria-hidden="true" onClick={handleClose} />
+      <div className="relative flex min-h-full items-center justify-center p-4 sm:p-6">
+        <div className="relative w-full max-w-6xl overflow-hidden rounded-xl bg-white text-left shadow-2xl">
           {/* Header */}
           <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
             <div className="flex items-center justify-between">
@@ -870,7 +931,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                         className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                       >
                         <option value="">Choose a PO to receive...</option>
-                        {orders.map(order => (
+                        {availableOrders.map(order => (
                           <option key={order.id} value={order.id}>
                             {order.po_number} - {order.vendor_name} ({order.status})
                           </option>
@@ -1032,15 +1093,14 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Inspector Name *
+                            Inspector Name
                           </label>
                           <input
                             type="text"
                             value={formData.inspector_name}
                             onChange={(e) => setFormData({...formData, inspector_name: e.target.value})}
-                            required
                             className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="John Smith"
+                            placeholder="Optional inspector name"
                           />
                         </div>
 
@@ -1244,7 +1304,10 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                       )}
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {aiSuggestions.certRequirements?.certificates.map((cert, idx) => (
+                        {(Array.isArray(aiSuggestions.certRequirements?.certificates)
+                          ? aiSuggestions.certRequirements.certificates
+                          : Object.keys(PROCUREMENT_CONFIG.certifications || {}).map(code => code.toUpperCase())
+                        ).map((cert, idx) => (
                           <button
                             key={idx}
                             type="button"
@@ -1257,20 +1320,6 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                           >
                             {formData.certificates_received?.includes(cert) && '✓ '}
                             {cert}
-                          </button>
-                        )) || PROCUREMENT_CONFIG.materialCertifications.map((cert, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => toggleCertificate(cert.code)}
-                            className={`px-3 py-2 text-sm rounded border-2 transition-colors ${
-                              formData.certificates_received?.includes(cert.code)
-                                ? 'bg-green-500 text-white border-green-600'
-                                : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-500'
-                            }`}
-                          >
-                            {formData.certificates_received?.includes(cert.code) && '✓ '}
-                            {cert.code}
                           </button>
                         ))}
                       </div>
@@ -1404,18 +1453,23 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                 
                 <button
                   type="submit"
-                  disabled={!selectedPO || aiProcessing}
+                  disabled={!selectedPO || submitting}
                   className="inline-flex items-center px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <CheckCircleIcon className="h-5 w-5 mr-2" />
-                  Record Goods Receipt
+                  {submitting ? (
+                    <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  ) : (
+                    <CheckCircleIcon className="h-5 w-5 mr-2" />
+                  )}
+                  {submitting ? 'Recording...' : 'Record Goods Receipt'}
                 </button>
               </div>
             </div>
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

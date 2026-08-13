@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import PropTypes from 'prop-types';
 import {
   ArchiveBoxIcon,
   MagnifyingGlassIcon,
-  FunnelIcon,
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
@@ -11,17 +11,220 @@ import {
   BeakerIcon,
   ShieldCheckIcon,
   DocumentCheckIcon,
-  CubeIcon,
   CalendarIcon,
   UserGroupIcon,
   ArrowPathIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  PrinterIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { PageControlButtons } from '../../components/Common/PageControlButtons';
 import { usePageControls } from '../../hooks/usePageControls';
-import { PROCUREMENT_CONFIG, getCategoryByCode, getStatusConfig } from '../../config/procurement.config';
+import { getStatusConfig } from '../../config/procurement.config';
+import { BRANDING_CONFIG } from '../../config/branding.config';
 import AIReceiptCreator from './AIReceiptCreator';
+
+class ReceiptCreatorErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Goods Receipt creator failed to render:', error, info);
+  }
+
+  componentDidUpdate(previousProps) {
+    if (!previousProps.isOpen && this.props.isOpen && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  handleClose = () => {
+    this.setState({ error: null });
+    this.props.onClose();
+  };
+
+  render() {
+    if (!this.props.isOpen) return this.props.children;
+    if (!this.state.error) return this.props.children;
+    return createPortal(
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-900/70 p-4">
+        <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+          <h2 className="text-lg font-semibold text-red-700">Unable to open Goods Receipt form</h2>
+          <p className="mt-2 text-sm text-gray-600">The form encountered invalid receipt or purchase-order data. Close it and refresh the receipt list.</p>
+          <pre className="mt-4 max-h-32 overflow-auto rounded bg-gray-100 p-3 text-xs text-gray-700">{this.state.error.message}</pre>
+          <button type="button" onClick={this.handleClose} className="mt-4 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Close</button>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+}
+
+ReceiptCreatorErrorBoundary.propTypes = {
+  children: PropTypes.node.isRequired,
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+};
+
+const receiptText = (value) => (
+  value === null || value === undefined || value === '' ? '—' : String(value)
+);
+
+const receiptDate = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString('en-GB');
+};
+
+const listText = (value) => {
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+  return receiptText(value);
+};
+
+const inspectionResult = (value) => value === true ? 'PASS' : value === false ? 'FAIL' : 'PENDING';
+
+const ReceiptPrintContent = ({ receipt, printDate }) => {
+  const items = Array.isArray(receipt?.items_received) ? receipt.items_received : [];
+  const status = (receipt?.status_display || receipt?.status || '—').toUpperCase();
+
+  return (
+    <div className="gr-paper bg-white text-gray-950">
+      <header className="flex items-start justify-between gap-6 border-b-2 border-gray-900 pb-3">
+        <div>
+          <img src={BRANDING_CONFIG.logo.primary.path} alt={BRANDING_CONFIG.logo.primary.alt} className="h-10 w-auto object-contain" />
+          <p className="mt-2 max-w-[360px] text-[8px] leading-3 text-gray-600">
+            {BRANDING_CONFIG.brand.companyFull}<br />
+            {BRANDING_CONFIG.contact.address.full}<br />
+            Tel: {BRANDING_CONFIG.contact.phone.display}
+          </p>
+        </div>
+        <div className="text-right">
+          <h1 className="text-[21px] font-bold tracking-[0.12em]">GOODS RECEIPT NOTE</h1>
+          <p className="mt-1 text-[9px] font-semibold text-gray-600">Receiving & Quality Inspection Record</p>
+          <p className="mt-2 text-[11px] font-bold">{receiptText(receipt?.receipt_number)}</p>
+        </div>
+      </header>
+
+      <table className="mt-3 w-full border-collapse text-[8.5px]">
+        <tbody>
+          <tr>
+            <th className="w-[17%] border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">GRN Number</th>
+            <td className="w-[33%] border border-gray-400 px-2 py-1.5 font-bold">{receiptText(receipt?.receipt_number)}</td>
+            <th className="w-[17%] border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Receipt Date</th>
+            <td className="w-[33%] border border-gray-400 px-2 py-1.5">{receiptDate(receipt?.receipt_date)}</td>
+          </tr>
+          <tr>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">PO Number</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.po_number)}</td>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Delivery Note</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.delivery_note_number)}</td>
+          </tr>
+          <tr>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Received By</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.received_by_name)}</td>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Receipt Status</th>
+            <td className="border border-gray-400 px-2 py-1.5 font-bold">{status}</td>
+          </tr>
+          <tr>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Inspector</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspector_name)}</td>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Inspection Agency</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_agency)}</td>
+          </tr>
+          <tr>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Module</th>
+            <td className="border border-gray-400 px-2 py-1.5">Procurement · Goods Receipt</td>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Print Date</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptDate(printDate)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <section className="gr-print-block mt-3">
+        <h2 className="bg-gray-900 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white">Items Received</h2>
+        <table className="w-full border-collapse text-[8px]">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="w-[6%] border border-gray-400 px-1 py-1.5 text-center">No.</th>
+              <th className="w-[43%] border border-gray-400 px-2 py-1.5 text-left">Description</th>
+              <th className="w-[10%] border border-gray-400 px-1 py-1.5 text-center">UOM</th>
+              <th className="w-[11%] border border-gray-400 px-1 py-1.5 text-right">Ordered</th>
+              <th className="w-[11%] border border-gray-400 px-1 py-1.5 text-right">Received</th>
+              <th className="w-[11%] border border-gray-400 px-1 py-1.5 text-right">Accepted</th>
+              <th className="w-[8%] border border-gray-400 px-1 py-1.5 text-right">Rejected</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length ? items.map((item, index) => (
+              <tr key={item.po_line_id || index}>
+                <td className="border border-gray-400 px-1 py-2 text-center align-top">{item.line_number || index + 1}</td>
+                <td className="border border-gray-400 px-2 py-2 align-top">{receiptText(item.item || item.description)}</td>
+                <td className="border border-gray-400 px-1 py-2 text-center align-top">{receiptText(item.uom || item.unit)}</td>
+                <td className="border border-gray-400 px-1 py-2 text-right align-top">{receiptText(item.ordered_qty)}</td>
+                <td className="border border-gray-400 px-1 py-2 text-right align-top">{receiptText(item.received_qty ?? item.quantity)}</td>
+                <td className="border border-gray-400 px-1 py-2 text-right align-top">{receiptText(item.accepted_qty)}</td>
+                <td className="border border-gray-400 px-1 py-2 text-right align-top">{receiptText(item.rejected_qty)}</td>
+              </tr>
+            )) : (
+              <tr><td colSpan="7" className="border border-gray-400 px-2 py-5 text-center text-gray-500">No item breakdown recorded.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="gr-print-block mt-3">
+        <h2 className="bg-gray-900 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white">Quality Inspection Results</h2>
+        <table className="w-full border-collapse text-[8.5px]">
+          <thead><tr className="bg-gray-100"><th className="border border-gray-400 px-2 py-1.5 text-left">Inspection</th><th className="border border-gray-400 px-2 py-1.5 text-center">Result</th><th className="border border-gray-400 px-2 py-1.5 text-left">Reference / Remarks</th></tr></thead>
+          <tbody>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Visual inspection</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.visual_inspection_passed)}</td><td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_report_number)}</td></tr>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Dimensional inspection</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.dimensional_check_passed)}</td><td className="border border-gray-400 px-2 py-1.5">—</td></tr>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Material verification / PMI</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.material_verification_passed)}</td><td className="border border-gray-400 px-2 py-1.5">Heat No(s): {listText(receipt?.heat_numbers)}</td></tr>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Non-destructive testing (NDT)</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{receipt?.ndt_performed ? 'PERFORMED' : 'NOT PERFORMED'}</td><td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.ndt_results)}</td></tr>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Overall quality disposition</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.quality_check_passed)}</td><td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_notes)}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section className="gr-print-block mt-3 grid grid-cols-2 gap-3 text-[8.5px]">
+        <div className="border border-gray-400">
+          <h2 className="bg-gray-100 px-2 py-1.5 font-bold uppercase">Documents & Traceability</h2>
+          <div className="space-y-1 border-t border-gray-400 px-3 py-2">
+            <p><span className="font-semibold">Certificates:</span> {listText(receipt?.certificates_received)}</p>
+            <p><span className="font-semibold">Heat numbers:</span> {listText(receipt?.heat_numbers)}</p>
+            <p><span className="font-semibold">Attachments:</span> {Array.isArray(receipt?.attachments) ? receipt.attachments.length : 0}</p>
+          </div>
+        </div>
+        <div className="border border-gray-400">
+          <h2 className="bg-gray-100 px-2 py-1.5 font-bold uppercase">Remarks</h2>
+          <p className="min-h-[56px] whitespace-pre-wrap border-t border-gray-400 px-3 py-2">{receiptText(receipt?.notes || receipt?.inspection_notes)}</p>
+        </div>
+      </section>
+
+      <section className="gr-print-block mt-7 grid grid-cols-3 gap-6 text-[8.5px]">
+        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Received By</p><p>{receiptText(receipt?.received_by_name)}</p><p className="mt-3">Date: {receiptDate(receipt?.receipt_date)}</p></div>
+        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Inspected By</p><p>{receiptText(receipt?.inspector_name)}</p><p>{receiptText(receipt?.inspection_agency)}</p><p className="mt-3">Signature / Date:</p></div>
+        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Approved By</p><p>Procurement / Project Representative</p><p className="mt-3">Signature / Date:</p></div>
+      </section>
+
+      <footer className="gr-print-footer mt-6 flex justify-between border-t border-gray-400 pt-1 text-[7px] text-gray-500">
+        <span>Controlled document · Procurement / Goods Receipt · Printed {receiptDate(printDate)}</span>
+        <span>GRN: {receiptText(receipt?.receipt_number)} · Page <span className="gr-page-number" /></span>
+      </footer>
+    </div>
+  );
+};
+
+ReceiptPrintContent.propTypes = {
+  receipt: PropTypes.object.isRequired,
+  printDate: PropTypes.string.isRequired,
+};
 
 const ReceiptManagement = () => {
   const [receipts, setReceipts] = useState([]);
@@ -33,6 +236,11 @@ const ReceiptManagement = () => {
   const [showAICreator, setShowAICreator] = useState(false);
   const [orders, setOrders] = useState([]);
   const [aiInsights, setAiInsights] = useState(null);
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [acceptingId, setAcceptingId] = useState(null);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [printDate, setPrintDate] = useState(() => new Date().toISOString());
 
   const pageControls = usePageControls({
     autoRefreshInterval: 60,
@@ -196,7 +404,7 @@ const ReceiptManagement = () => {
   // Soft-coded filter logic with safe array handling
   const filteredReceipts = Array.isArray(receipts) ? receipts.filter(receipt => {
     // Soft-coded field access with fallbacks
-    const grNumber = receipt?.gr_number || '';
+    const grNumber = receipt?.receipt_number || receipt?.gr_number || '';
     const poNumber = receipt?.po_number || '';
     const status = receipt?.status || '';
     const qualityPassed = receipt?.quality_check_passed;
@@ -215,6 +423,65 @@ const ReceiptManagement = () => {
     console.log('Creating receipt with AI data:', receiptData);
     // After successful creation, refresh receipt list
     await fetchReceipts();
+  };
+
+  const openReceiptDetails = async (receipt) => {
+    setShowPrintPreview(false);
+    setSelectedReceipt(receipt);
+    setDetailLoading(true);
+    try {
+      const response = await apiClient.get(`/procurement/receipts/${receipt.id}/`);
+      setSelectedReceipt(response.data);
+    } catch (detailError) {
+      console.error('Error fetching receipt details:', detailError);
+      setError({ type: 'network', message: 'Failed to load the receipt details.' });
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const acceptReceipt = async (receipt) => {
+    setAcceptingId(receipt.id);
+    try {
+      const response = await apiClient.post(`/procurement/receipts/${receipt.id}/accept/`);
+      setReceipts(current => current.map(item => (
+        item.id === receipt.id ? { ...item, ...response.data } : item
+      )));
+      setSelectedReceipt(current => current?.id === receipt.id ? response.data : current);
+    } catch (acceptError) {
+      console.error('Error accepting receipt:', acceptError);
+      setError({
+        type: 'network',
+        message: acceptError.response?.data?.error || 'Failed to accept the goods receipt.'
+      });
+    } finally {
+      setAcceptingId(null);
+    }
+  };
+
+  const openPrintPreview = () => {
+    setPrintDate(new Date().toISOString());
+    setShowPrintPreview(true);
+  };
+
+  const printReceipt = () => {
+    const originalTitle = document.title;
+    const poNumber = String(selectedReceipt?.po_number || 'PO-Not-Recorded')
+      .replace(/[^a-zA-Z0-9_-]+/g, '-');
+    const printedOn = new Date(printDate);
+    const datePart = Number.isNaN(printedOn.getTime())
+      ? new Date().toISOString().slice(0, 10)
+      : printedOn.toISOString().slice(0, 10);
+    document.title = `${poNumber}_Procurement-Goods-Receipt_${datePart}`;
+
+    const restoreTitle = () => {
+      document.title = originalTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+    window.addEventListener('afterprint', restoreTitle);
+    window.print();
+    // Fallback for browsers that do not emit afterprint.
+    window.setTimeout(restoreTitle, 60000);
   };
 
   const getStatusBadge = (status) => {
@@ -390,6 +657,43 @@ const ReceiptManagement = () => {
 
   return (
     <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
+      {selectedReceipt && createPortal(
+        <>
+          <style>{`
+            .gr-print-document { display: none; }
+            @page { size: A4 portrait; margin: 10mm 10mm 12mm; }
+            @media print {
+              html, body { background: #fff !important; height: auto !important; overflow: visible !important; }
+              body { margin: 0 !important; padding: 0 !important; font-family: Arial, Helvetica, sans-serif; }
+              body > * { display: none !important; }
+              body > .gr-print-document {
+                display: block !important;
+                position: static !important;
+                width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+              }
+              .gr-print-document, .gr-print-document * {
+                visibility: visible !important;
+                box-sizing: border-box;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .gr-print-document table { width: 100%; border-collapse: collapse; }
+              .gr-print-document thead { display: table-header-group; }
+              .gr-print-document tr, .gr-print-block { break-inside: avoid; page-break-inside: avoid; }
+              .gr-print-footer { break-inside: avoid; page-break-inside: avoid; }
+              .gr-page-number::after { content: counter(page); }
+            }
+          `}</style>
+          <section className="gr-print-document" aria-label="Printable goods receipt note">
+            <ReceiptPrintContent receipt={selectedReceipt} printDate={printDate} />
+          </section>
+        </>,
+        document.body
+      )}
       <div className="py-6" style={pageControls.styles.content}>
         {/* Header */}
         <div className="w-full px-3 sm:px-4">
@@ -620,7 +924,7 @@ const ReceiptManagement = () => {
                         <div className="flex items-center space-x-2">
                           <ArchiveBoxIcon className="h-5 w-5 text-indigo-600" />
                           <h3 className="text-lg font-semibold text-gray-900">
-                            {receipt.gr_number || `GR-${receipt.id}`}
+                            {receipt.receipt_number || receipt.gr_number || `GR-${receipt.id}`}
                           </h3>
                         </div>
                         <p className="mt-1 text-sm text-gray-500">
@@ -637,10 +941,10 @@ const ReceiptManagement = () => {
 
                     {/* Receipt Details */}
                     <div className="space-y-3">
-                      {receipt.received_date && (
+                      {(receipt.receipt_date || receipt.received_date) && (
                         <div className="flex items-center text-sm text-gray-600">
                           <CalendarIcon className="h-4 w-4 mr-2 text-gray-400" />
-                          <span>Received: {new Date(receipt.received_date).toLocaleDateString()}</span>
+                          <span>Received: {new Date(receipt.receipt_date || receipt.received_date).toLocaleDateString()}</span>
                         </div>
                       )}
                       {receipt.inspector_name && (
@@ -679,13 +983,22 @@ const ReceiptManagement = () => {
 
                     {/* Actions */}
                     <div className="mt-6 flex space-x-3">
-                      <button className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                      <button
+                        type="button"
+                        onClick={() => openReceiptDetails(receipt)}
+                        className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                      >
                         View Details
                       </button>
                       {receipt.status === 'pending' && (
-                        <button className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                        <button
+                          type="button"
+                          onClick={() => acceptReceipt(receipt)}
+                          disabled={acceptingId === receipt.id}
+                          className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                        >
                           <CheckCircleIcon className="h-4 w-4 mr-1" />
-                          Accept
+                          {acceptingId === receipt.id ? 'Accepting...' : 'Accept'}
                         </button>
                       )}
                     </div>
@@ -697,13 +1010,153 @@ const ReceiptManagement = () => {
         </div>
       </div>
 
+      {/* Receipt Detail Modal */}
+      {selectedReceipt && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="receipt-detail-title">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <button
+              type="button"
+              aria-label="Close receipt details"
+              className="fixed inset-0 bg-gray-900/60"
+              onClick={() => { setShowPrintPreview(false); setSelectedReceipt(null); }}
+            />
+            <div className="relative w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 text-white">
+                <div>
+                  <h2 id="receipt-detail-title" className="text-xl font-semibold">Goods Receipt Details</h2>
+                  <p className="mt-1 text-sm text-indigo-100">
+                    {selectedReceipt.receipt_number || `GR-${selectedReceipt.id}`}
+                  </p>
+                </div>
+                <button type="button" onClick={() => { setShowPrintPreview(false); setSelectedReceipt(null); }} className="rounded-lg p-1 hover:bg-white/20" aria-label="Close">
+                  <XCircleIcon className="h-7 w-7" />
+                </button>
+              </div>
+
+              {detailLoading ? (
+                <div className="py-16 text-center">
+                  <div className="inline-block h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600" />
+                  <p className="mt-3 text-sm text-gray-500">Loading receipt details...</p>
+                </div>
+              ) : (
+                <div className="max-h-[75vh] overflow-y-auto p-6">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {[
+                      ['PO Number', selectedReceipt.po_number],
+                      ['Receipt Date', selectedReceipt.receipt_date ? new Date(selectedReceipt.receipt_date).toLocaleDateString() : null],
+                      ['Received By', selectedReceipt.received_by_name],
+                      ['Delivery Note', selectedReceipt.delivery_note_number],
+                      ['Inspector', selectedReceipt.inspector_name],
+                      ['Inspection Agency', selectedReceipt.inspection_agency],
+                      ['Inspection Report', selectedReceipt.inspection_report_number],
+                      ['Status', selectedReceipt.status_display || selectedReceipt.status],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+                        <p className="mt-1 text-sm font-medium text-gray-900">{value || 'Not recorded'}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold text-gray-900">Quality inspection</h3>
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
+                      {[
+                        ['Overall', selectedReceipt.quality_check_passed],
+                        ['Dimensional', selectedReceipt.dimensional_check_passed],
+                        ['Visual', selectedReceipt.visual_inspection_passed],
+                        ['Material', selectedReceipt.material_verification_passed],
+                      ].map(([label, passed]) => (
+                        <div key={label} className={`rounded-lg border p-3 text-center ${passed ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+                          <p className="text-xs font-medium">{label}</p>
+                          <p className="mt-1 font-semibold">{passed ? 'Passed' : 'Failed'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <h3 className="text-sm font-semibold text-gray-900">Items received</h3>
+                      {Array.isArray(selectedReceipt.items_received) && selectedReceipt.items_received.length > 0 ? (
+                        <div className="mt-3 space-y-2">
+                          {selectedReceipt.items_received.map((item, index) => (
+                            <div key={index} className="rounded bg-gray-50 p-3 text-sm text-gray-700">
+                              <p className="font-medium text-gray-900">{item.item || item.description || `Item ${index + 1}`}</p>
+                              <p className="mt-1">Ordered: {item.ordered_qty ?? '—'} · Received: {item.received_qty ?? item.quantity ?? '—'} · Accepted: {item.accepted_qty ?? '—'}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="mt-2 text-sm text-gray-500">No item breakdown recorded.</p>}
+                    </div>
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <h3 className="text-sm font-semibold text-gray-900">Compliance and traceability</h3>
+                      <dl className="mt-3 space-y-2 text-sm">
+                        <div><dt className="font-medium text-gray-700">Certificates</dt><dd className="text-gray-600">{Array.isArray(selectedReceipt.certificates_received) && selectedReceipt.certificates_received.length ? selectedReceipt.certificates_received.join(', ') : 'Not recorded'}</dd></div>
+                        <div><dt className="font-medium text-gray-700">Heat numbers</dt><dd className="text-gray-600">{Array.isArray(selectedReceipt.heat_numbers) && selectedReceipt.heat_numbers.length ? selectedReceipt.heat_numbers.join(', ') : (selectedReceipt.heat_numbers || 'Not recorded')}</dd></div>
+                        <div><dt className="font-medium text-gray-700">NDT performed</dt><dd className="text-gray-600">{selectedReceipt.ndt_performed ? 'Yes' : 'No'}</dd></div>
+                        {selectedReceipt.ndt_results && <div><dt className="font-medium text-gray-700">NDT results</dt><dd className="text-gray-600">{selectedReceipt.ndt_results}</dd></div>}
+                      </dl>
+                    </div>
+                  </div>
+
+                  {(selectedReceipt.inspection_notes || selectedReceipt.notes) && (
+                    <div className="mt-6 rounded-lg border border-gray-200 p-4">
+                      <h3 className="text-sm font-semibold text-gray-900">Notes</h3>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{selectedReceipt.inspection_notes || selectedReceipt.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+                <button type="button" onClick={openPrintPreview} className="inline-flex items-center rounded-md border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
+                  <PrinterIcon className="mr-2 h-4 w-4" />
+                  Print Preview
+                </button>
+                {selectedReceipt.status === 'pending' && (
+                  <button type="button" onClick={() => acceptReceipt(selectedReceipt)} disabled={acceptingId === selectedReceipt.id} className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
+                    {acceptingId === selectedReceipt.id ? 'Accepting...' : 'Accept Receipt'}
+                  </button>
+                )}
+                <button type="button" onClick={() => { setShowPrintPreview(false); setSelectedReceipt(null); }} className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* A4 Print Preview */}
+      {selectedReceipt && showPrintPreview && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-gray-900/80" role="dialog" aria-modal="true" aria-labelledby="gr-print-preview-title">
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-700 bg-gray-900 px-4 py-3 text-white shadow-lg sm:px-6">
+            <div>
+              <h2 id="gr-print-preview-title" className="font-semibold">Print Preview · Goods Receipt Note</h2>
+              <p className="text-xs text-gray-300">A4 portrait · {selectedReceipt.po_number} · Printed {receiptDate(printDate)}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={printReceipt} className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+                <PrinterIcon className="mr-2 h-4 w-4" />
+                Print / Save PDF
+              </button>
+              <button type="button" onClick={() => setShowPrintPreview(false)} className="rounded-md border border-gray-600 px-4 py-2 text-sm font-medium hover:bg-gray-800">Close Preview</button>
+            </div>
+          </div>
+          <div className="mx-auto my-6 w-[210mm] min-h-[297mm] bg-white p-[10mm] shadow-2xl">
+            <ReceiptPrintContent receipt={selectedReceipt} printDate={printDate} />
+          </div>
+        </div>
+      )}
+
       {/* AI Receipt Creator Modal */}
-      <AIReceiptCreator
-        isOpen={showAICreator}
-        onClose={() => setShowAICreator(false)}
-        onReceiptCreated={handleReceiptCreated}
-        orders={orders}
-      />
+      <ReceiptCreatorErrorBoundary isOpen={showAICreator} onClose={() => setShowAICreator(false)}>
+        <AIReceiptCreator
+          isOpen={showAICreator}
+          onClose={() => setShowAICreator(false)}
+          onReceiptCreated={handleReceiptCreated}
+          orders={orders}
+        />
+      </ReceiptCreatorErrorBoundary>
     </div>
   );
 };
