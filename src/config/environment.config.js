@@ -54,7 +54,13 @@ class EnvironmentConfig {
       if (hostname === 'radai.ae' || hostname === 'www.radai.ae') {
         return 'production'
       }
-      
+
+      // Preprod custom domain — explicit so it's correct regardless of which
+      // Vercel deployment/branch build actually serves this hostname.
+      if (hostname === 'test.radai.ae') {
+        return 'preprod'
+      }
+
       // Vercel deployments - check subdomain
       if (hostname.includes('vercel.app')) {
         if (hostname.includes('preprod')) {

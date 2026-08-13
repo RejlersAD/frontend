@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import apiClient from '../../services/api.service'
 import DatePicker from '../../components/DatePicker'
+import ExitRequestsHRView from '../../components/HR/ExitRequestsHRView'
 
 // ── Soft-coded API endpoints ──────────────────────────────────────────────
 // Note: apiClient baseURL already includes /api/v1, so paths are relative to that
@@ -800,6 +801,7 @@ export default function OnboardingOffboarding() {
     { id: 'overview', label: 'Overview', icon: HeroIcons.ChartBarIcon },
     { id: 'onboarding', label: 'Onboarding List', icon: HeroIcons.UserPlusIcon },
     { id: 'offboarding', label: 'Offboarding List', icon: HeroIcons.UserMinusIcon },
+    { id: 'exit-requests', label: 'Exit Requests', icon: HeroIcons.ArrowRightOnRectangleIcon },
     { id: 'create', label: 'Create New Employee', icon: HeroIcons.PlusCircleIcon },
   ]
 
@@ -848,6 +850,7 @@ export default function OnboardingOffboarding() {
         {activeTab === 'overview' && <OverviewTab onTabChange={setActiveTab} onOffboardingFilter={setOffboardingFilter} />}
         {activeTab === 'onboarding' && <OnboardingListTab />}
         {activeTab === 'offboarding' && <OffboardingListTab initialFilter={offboardingFilter} />}
+        {activeTab === 'exit-requests' && <ExitRequestsHRView />}
         {activeTab === 'create' && <CreateEmployeeTab />}
       </div>
     </div>

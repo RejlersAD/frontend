@@ -167,7 +167,8 @@
         "preprod": [
           "https://airflow-frontend-hsx7-git-preprod-rejlers.vercel.app",
           "https://airflow-frontend-hsx7.vercel.app",
-          "https://airflow-frontend-hsx7-git-preprod.vercel.app"
+          "https://airflow-frontend-hsx7-git-preprod.vercel.app",
+          "https://test.radai.ae"
         ],
         "production": ["https://radai.ae", "https://www.radai.ae"]
       }
@@ -181,7 +182,8 @@
         "preprod": [
           "https://airflow-frontend-hsx7-git-preprod-rejlers.vercel.app",
           "https://airflow-frontend-hsx7.vercel.app",
-          "https://airflow-frontend-hsx7-git-preprod.vercel.app"
+          "https://airflow-frontend-hsx7-git-preprod.vercel.app",
+          "https://test.radai.ae"
         ],
         "production": ["https://radai.ae", "https://www.radai.ae"]
       }

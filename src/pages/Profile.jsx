@@ -16,6 +16,8 @@ import AchievementSection from '../components/Profile/AchievementSection';
 import WorkExperienceSection from '../components/Profile/WorkExperienceSection';
 import SocialMediaLinksSection from '../components/Profile/SocialMediaLinksSection';
 import DocumentUploadSection from '../components/Profile/DocumentUploadSection';
+import ExitInitiationForm from '../components/Profile/ExitInitiationForm';
+import ExitRequestsList from '../components/Profile/ExitRequestsList';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Soft-coded engineering constants
@@ -163,6 +165,7 @@ const Profile = () => {
   const { user } = useSelector((s) => s.auth);
 
   const [activeTab, setActiveTab]             = useState('personal');
+  const [showExitForm, setShowExitForm]       = useState(false);
   const [isLoading, setIsLoading]             = useState(false);
   const [isFetching, setIsFetching]           = useState(true);
   const [profileData, setProfileData]         = useState(null);
@@ -1373,19 +1376,33 @@ const Profile = () => {
             {/* ── Tab: Exit ── */}
             {activeTab === 'exit' && (
               <div className="p-6 sm:p-8">
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                    <LogOut className="w-8 h-8 text-red-500" />
+                {!showExitForm ? (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-800">Exit Management</h3>
+                        <p className="text-sm text-gray-600 mt-1">
+                          View your exit requests or initiate a new resignation
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setShowExitForm(true)}
+                        className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white font-medium rounded-lg hover:from-red-700 hover:to-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all"
+                      >
+                        🚪 Initiate Exit Request
+                      </button>
+                    </div>
+                    <ExitRequestsList />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">Initiate Exit Process</h3>
-                  <p className="text-gray-500 mb-6">Start the offboarding process for this employee</p>
-                  <button
-                    onClick={() => toast.info('Offboarding workflow coming soon')}
-                    style={{padding:'12px 32px',background:'linear-gradient(135deg,#f43f8e,#ec4899)',border:'none',borderRadius:12,color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',boxShadow:'0 4px 14px rgba(244,63,142,0.4)'}}
-                  >
-                    🚪 Initiate Exit
-                  </button>
-                </div>
+                ) : (
+                  <ExitInitiationForm
+                    onSuccess={(data) => {
+                      toast.success('✅ Exit request submitted successfully!');
+                      setShowExitForm(false);
+                    }}
+                    onCancel={() => setShowExitForm(false)}
+                  />
+                )}
               </div>
             )}
 
