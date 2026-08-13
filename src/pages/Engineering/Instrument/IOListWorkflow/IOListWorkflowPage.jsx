@@ -1201,7 +1201,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag }) => {
 // ─────────────────────────────────────────────────────────────────────
 // Detail — Metadata tab
 // ─────────────────────────────────────────────────────────────────────
-const MetadataPanel = ({ doc }) => (
+const MetadataPanel = ({ doc, onPreviewPdf }) => (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div className={THEME.card}>
       <div className={`${THEME.cardHeader} flex items-center gap-2`}>
@@ -1231,10 +1231,10 @@ const MetadataPanel = ({ doc }) => (
         <Row label="Updated at"     value={doc.updated_at ? new Date(doc.updated_at).toLocaleString() : '—'} />
         {doc.pdf_url && (
           <div className="pt-2">
-            <a href={doc.pdf_url} target="_blank" rel="noreferrer"
-               className="inline-flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700">
+            <button type="button" onClick={onPreviewPdf}
+                    className="inline-flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700">
               <ExternalLink className="w-3.5 h-3.5" /> Open original PDF
-            </a>
+            </button>
           </div>
         )}
       </div>
@@ -1248,6 +1248,48 @@ const MetadataPanel = ({ doc }) => (
 const DetailView = ({ doc, onBack, onReExtract, onDownload, onDelete, busyAction }) => {
   const [activeTab, setActiveTab] = useState('overview')
   const [filterTag, setFilterTag] = useState('')
+  const [showPdfPreview, setShowPdfPreview] = useState(false)
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState('')
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false)
+  const [pdfPreviewError, setPdfPreviewError] = useState('')
+
+  const closePdfPreview = useCallback(() => {
+    setShowPdfPreview(false)
+    setPdfPreviewUrl('')
+    setPdfPreviewError('')
+  }, [])
+
+  const openPdfPreview = useCallback(async () => {
+    setShowPdfPreview(true)
+    setPdfPreviewLoading(true)
+    setPdfPreviewError('')
+    try {
+      const blob = await ioListWorkflowService.getOriginalPdf(doc.id)
+      setPdfPreviewUrl(window.URL.createObjectURL(blob))
+    } catch (error) {
+      setPdfPreviewError(
+        error.response?.data?.detail
+        || error.response?.data?.error
+        || error.message
+        || 'Unable to load the original PDF.',
+      )
+    } finally {
+      setPdfPreviewLoading(false)
+    }
+  }, [doc.id])
+
+  useEffect(() => () => {
+    if (pdfPreviewUrl) window.URL.revokeObjectURL(pdfPreviewUrl)
+  }, [pdfPreviewUrl])
+
+  useEffect(() => {
+    if (!showPdfPreview) return undefined
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') closePdfPreview()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showPdfPreview, closePdfPreview])
 
   return (
     <div className="space-y-4">
@@ -1309,7 +1351,57 @@ const DetailView = ({ doc, onBack, onReExtract, onDownload, onDelete, busyAction
       {activeTab === 'overview' && <OverviewPanel doc={doc} />}
       {activeTab === 'comments' && <CommentsPanel doc={doc} filterTag={filterTag} setFilterTag={setFilterTag} />}
       {activeTab === 'iolist'   && <IOListPanel   doc={doc} filterTag={filterTag} setFilterTag={setFilterTag} />}
-      {activeTab === 'metadata' && <MetadataPanel doc={doc} />}
+      {activeTab === 'metadata' && <MetadataPanel doc={doc} onPreviewPdf={openPdfPreview} />}
+
+      {showPdfPreview && doc.pdf_url && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/75 p-3 sm:p-6 flex items-center justify-center"
+             role="dialog" aria-modal="true" aria-label="Original PDF preview"
+             onMouseDown={(event) => {
+               if (event.target === event.currentTarget) closePdfPreview()
+             }}>
+          <div className="w-full h-full max-w-[1600px] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900 truncate">
+                  {doc.document_number || `Document #${doc.id}`} · Original PDF
+                </h3>
+                <p className="text-xs text-slate-500 truncate">{doc.pdf_url.split('/').pop()}</p>
+              </div>
+              <button type="button" onClick={closePdfPreview}
+                      aria-label="Close PDF preview"
+                      className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="relative w-full flex-1 bg-slate-100">
+              {pdfPreviewLoading && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                  <span className="text-sm">Loading original PDF…</span>
+                </div>
+              )}
+              {!pdfPreviewLoading && pdfPreviewError && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
+                  <AlertTriangle className="w-9 h-9 text-red-500" />
+                  <p className="text-sm font-medium text-slate-800">PDF preview could not be loaded</p>
+                  <p className="text-xs text-slate-500 max-w-xl">{pdfPreviewError}</p>
+                  <button type="button" onClick={openPdfPreview}
+                          className="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">
+                    Try again
+                  </button>
+                </div>
+              )}
+              {pdfPreviewUrl && !pdfPreviewError && (
+                <iframe
+                  title={`${doc.document_number || 'Document'} original PDF`}
+                  src={pdfPreviewUrl}
+                  className="absolute inset-0 w-full h-full border-0"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

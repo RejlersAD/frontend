@@ -16,6 +16,7 @@ export const IO_LIST_WORKFLOW_API = {
   documents:      '/instrument-io-workflow/documents/',
   documentById:   (id) => `/instrument-io-workflow/documents/${id}/`,
   reextract:      (id) => `/instrument-io-workflow/documents/${id}/re-extract/`,
+  originalPdf:    (id) => `/instrument-io-workflow/documents/${id}/original-pdf/`,
   exportXlsx:     (id) => `/instrument-io-workflow/documents/${id}/export-xlsx/`,
   patchRow:       (docId, rowId) => `/instrument-io-workflow/documents/${docId}/rows/${rowId}/`,
   diff:           '/instrument-io-workflow/diff/',

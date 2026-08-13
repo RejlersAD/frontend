@@ -41,6 +41,33 @@ const ONBOARDING_STATUS_CONFIG = {
   cancelled: { label: 'Cancelled', color: 'bg-rose-100 text-rose-700 border-rose-200' },
 }
 
+const ONBOARDING_WORKFLOW_STAGES = [
+  {
+    id: 'pre_hire',
+    label: 'Pre-Hire Initiation',
+    statuses: ['initiated', 'documentation'],
+    icon: HeroIcons.DocumentCheckIcon,
+  },
+  {
+    id: 'it_provisioning',
+    label: 'IT Provisioning',
+    statuses: ['equipment', 'access_provisioning'],
+    icon: HeroIcons.ComputerDesktopIcon,
+  },
+  {
+    id: 'orientation',
+    label: 'First Day Orientation',
+    statuses: ['training'],
+    icon: HeroIcons.AcademicCapIcon,
+  },
+  {
+    id: 'final_validation',
+    label: 'Final Checklist Validation',
+    statuses: ['completed'],
+    icon: HeroIcons.ClipboardDocumentCheckIcon,
+  },
+]
+
 const OFFBOARDING_STATUS_CONFIG = {
   initiated: { label: 'Initiated', color: 'bg-slate-100 text-slate-700 border-slate-200' },
   access_revocation: { label: 'Access Revoked', color: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -1856,12 +1883,136 @@ function OnboardingListTab() {
                     ))}
                   </div>
                   <div className="mt-3">
+                    <OnboardingWorkflowStatus employeeId={employee.user_id} />
+                  </div>
+                  <div className="mt-3">
                     <DocumentManagementSection employeeId={employee.user_id} employeeEmail={employee.email} />
                   </div>
                 </div>
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function OnboardingWorkflowStatus({ employeeId }) {
+  const [record, setRecord] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setError(false)
+
+    apiClient
+      .get(`${API_BASE}/onboarding/?user_id=${employeeId}`)
+      .then((res) => {
+        if (!active) return
+        const records = Array.isArray(res.data) ? res.data : (res.data.results || [])
+        setRecord(records[0] || null)
+      })
+      .catch((err) => {
+        console.error('Failed to load onboarding workflow:', err)
+        if (active) setError(true)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [employeeId])
+
+  const currentStageIndex = record
+    ? ONBOARDING_WORKFLOW_STAGES.findIndex((stage) => stage.statuses.includes(record.status))
+    : -1
+  const checklistComplete = Boolean(
+    record
+      && record.checklist_count > 0
+      && record.checklist_completed_count === record.checklist_count
+  )
+
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 p-4">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+          <HeroIcons.ArrowTrendingUpIcon className="w-5 h-5 text-blue-500" />
+          Onboarding Workflow Status
+        </h4>
+        {record && (
+          <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-1">
+            {record.progress_percentage || 0}% complete
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-5 text-sm text-slate-500">
+          <Spinner />
+          <span className="ml-2">Loading workflow...</span>
+        </div>
+      ) : error ? (
+        <p className="text-sm text-rose-600 bg-rose-50 rounded-lg px-3 py-2">
+          Unable to load onboarding workflow.
+        </p>
+      ) : !record ? (
+        <p className="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-2">
+          No onboarding workflow has been created for this employee.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {ONBOARDING_WORKFLOW_STAGES.map((stage, index) => {
+            const Icon = stage.icon
+            const isCancelled = record.status === 'cancelled'
+            const isFinalStage = stage.id === 'final_validation'
+            const isComplete = !isCancelled && (
+              index < currentStageIndex
+              || record.status === 'completed'
+              || (isFinalStage && checklistComplete)
+            )
+            const isCurrent = !isCancelled && !isComplete && index === currentStageIndex
+            const statusLabel = isCancelled
+              ? 'Cancelled'
+              : isComplete
+                ? 'Completed'
+                : isCurrent
+                  ? 'In Progress'
+                  : 'Pending'
+            const tone = isCancelled
+              ? 'border-rose-200 bg-rose-50 text-rose-700'
+              : isComplete
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : isCurrent
+                  ? 'border-blue-300 bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+                  : 'border-slate-200 bg-slate-50 text-slate-500'
+
+            return (
+              <div key={stage.id} className={`rounded-lg border p-3 ${tone}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  {isComplete ? (
+                    <HeroIcons.CheckCircleIcon className="w-4 h-4 flex-shrink-0" />
+                  ) : isCurrent ? (
+                    <span className="w-2 h-2 mt-1 rounded-full bg-blue-500 animate-pulse" />
+                  ) : (
+                    <HeroIcons.ClockIcon className="w-4 h-4 flex-shrink-0" />
+                  )}
+                </div>
+                <p className="text-xs font-semibold mt-2 min-h-[2rem]">{stage.label}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide mt-1">{statusLabel}</p>
+                {isFinalStage && (
+                  <p className="text-[10px] mt-1 opacity-80">
+                    {record.checklist_completed_count || 0} / {record.checklist_count || 0} items validated
+                  </p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -4456,9 +4607,9 @@ function DocumentManagementSection({ employeeId, employeeEmail }) {
   const loadDocuments = () => {
     setLoading(true)
     // ✅ UNIFIED API: Fetch documents from ProfileDocument table
-    // Filter by user_profile (linked via employee_id)
+    // Scope the admin document queryset to the employee currently being viewed.
     apiClient
-      .get(`/rbac/profile-documents/?user_profile__user=${employeeId}`)
+      .get(`/rbac/profile-documents/?user_id=${employeeId}&is_active=true`)
       .then((res) => {
         const data = Array.isArray(res.data) ? res.data : (res.data.results || [])
         setDocuments(data)
@@ -4485,10 +4636,11 @@ function DocumentManagementSection({ employeeId, employeeEmail }) {
 
     try {
       // ✅ UNIFIED API: Upload to ProfileDocument table
-      // Backend auto-assigns user_profile based on authenticated user
+      // Backend assigns the document to the selected employee for authorized admins.
       const formData = new FormData()
       formData.append('document_file', uploadData.file)
       formData.append('document_type', uploadData.document_type)
+      formData.append('target_user_id', employeeId)
       
       if (uploadData.document_number) formData.append('document_number', uploadData.document_number)
       if (uploadData.issue_date) formData.append('issue_date', uploadData.issue_date)

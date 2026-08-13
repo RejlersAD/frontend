@@ -61,7 +61,9 @@ const PAGE_CONFIG = {
 // is fully visible on a 768-px viewport without any scroll.
 const LAYOUT_CONFIG = {
   wrapper:        'w-full bg-gradient-to-br from-slate-50 via-white to-purple-50/40',
-  contentMaxW:    'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8',
+  // Match the main I/O workflow width. The previous max-w-7xl cap left large
+  // empty bands on both sides inside RADAI's wide engineering workspace.
+  contentMaxW:    'w-full max-w-[1700px] mx-auto px-3 sm:px-4',
   heroPaddingY:   'pt-4 pb-5 sm:pt-5 sm:pb-6',
   sectionGapY:    'pt-2',
   cardGapY:       'py-6',
@@ -753,7 +755,12 @@ export default function IOListPage() {
 
       if (!resp.ok) {
         let detail = `HTTP ${resp.status}`
-        try { const j = await resp.json(); detail = j.error || j.detail || detail } catch (_) {}
+        try {
+          const j = await resp.json()
+          detail = j.error || j.detail || detail
+        } catch {
+          detail = resp.statusText || detail
+        }
         throw new Error(detail)
       }
 
@@ -939,7 +946,7 @@ export default function IOListPage() {
       {!activeProject ? (
         <ProjectsShell onOpen={openProject} />
       ) : (
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <section className={`${LAYOUT_CONFIG.contentMaxW} py-8`}>
         <div className="rounded-2xl bg-white border border-gray-200 shadow-lg overflow-hidden">
           {/* card header — current stage title */}
           <div className={`px-6 py-5 bg-gradient-to-r ${PAGE_CONFIG.brandGradient} text-white flex items-center gap-4`}>

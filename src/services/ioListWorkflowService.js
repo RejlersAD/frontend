@@ -59,6 +59,16 @@ const ioListWorkflowService = {
     return data
   },
 
+  /** Fetch the original PDF as a Blob for an in-app preview. */
+  async getOriginalPdf(id) {
+    const { data } = await apiClient.get(IO_LIST_WORKFLOW_API.originalPdf(id), {
+      responseType: 'blob',
+    })
+    return data instanceof Blob
+      ? data
+      : new Blob([data], { type: 'application/pdf' })
+  },
+
   /** Delete a document. */
   async deleteDocument(id) {
     await apiClient.delete(IO_LIST_WORKFLOW_API.documentById(id))
