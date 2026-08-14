@@ -111,7 +111,10 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           // CRITICAL: Increase file size limit for precaching large bundles
           // Default 2 MB is too small for production builds with all features
-          maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10 MB
+          // The current full-feature bundle is ~14 MB before gzip (~2.6 MB
+          // transferred). Keep enough headroom for Workbox to complete the
+          // production build while retaining offline startup support.
+          maximumFileSizeToCacheInBytes: 20 * 1024 * 1024, // 20 MB
           // SOFT-CODED: Allow navigation to all routes (not just /)
           navigateFallback: 'index.html',
           navigateFallbackAllowlist: [/.*/], // Allow all paths for SPA routing

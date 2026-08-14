@@ -14,7 +14,7 @@ import NotificationDropdown from './NotificationDropdown'
 // ─── Soft-coded polling config ──────────────────────────────────────────────
 // Easy knobs — change these to retune polling without touching logic.
 const POLL_CONFIG = {
-  intervalMs:        120000,  // 2 min normal
+  intervalMs:        15000,   // Near-real-time approval notifications
   backoffMs:         600000,  // 10 min after repeated failures
   failureThreshold:  2,       // failures before backing off
   // When the app sets window.__RADAI_HEAVY_OP = true (uploads, exports, etc.)
@@ -28,11 +28,14 @@ const NotificationBell = () => {
   const [showDropdown, setShowDropdown] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(false)
+  const [decisionLoadingId, setDecisionLoadingId] = useState(null)
+  const [decisionMessage, setDecisionMessage] = useState('')
   const dropdownRef = useRef(null)
   const bellRef = useRef(null)
   const errorCountRef = useRef(0)
   const pollingIntervalRef = useRef(null)
   const unreadAbortRef = useRef(null)
+  const notificationListAbortRef = useRef(null)
 
   // Fetch unread count on mount and every 2 minutes (optimized from 60s) - only if authenticated
   useEffect(() => {
@@ -54,6 +57,9 @@ const NotificationBell = () => {
       }
       if (unreadAbortRef.current) {
         unreadAbortRef.current.abort()
+      }
+      if (notificationListAbortRef.current) {
+        notificationListAbortRef.current.abort()
       }
     }
   }, [isAuthenticated])
@@ -144,23 +150,34 @@ const NotificationBell = () => {
   }
 
   const fetchNotifications = async () => {
+    if (notificationListAbortRef.current) {
+      notificationListAbortRef.current.abort()
+    }
+    const controller = new AbortController()
+    notificationListAbortRef.current = controller
     setLoading(true)
     try {
       console.log('[NotificationBell] 📥 Fetching notifications...')
-      const data = await notificationService.getNotifications({
-        ordering: '-created_at',
-        page_size: 10
-      })
+      const data = await notificationService.getNotifications(
+        {
+          ordering: '-created_at',
+          page_size: 10
+        },
+        { signal: controller.signal },
+      )
       console.log('[NotificationBell] ✅ Notifications fetched:', data)
       setNotifications(data.results || data)
     } catch (error) {
-      console.error('[NotificationBell] ❌ Failed to fetch notifications:', error)
+      if (error.code === 'ERR_CANCELED') return
+      console.warn('[NotificationBell] Notification list fetch failed:', error.message)
       if (error.response?.status === 401) {
         console.error('[NotificationBell] ⚠️ User not authenticated')
       }
-      setNotifications([])
     } finally {
-      setLoading(false)
+      if (notificationListAbortRef.current === controller) {
+        notificationListAbortRef.current = null
+        setLoading(false)
+      }
     }
   }
 
@@ -215,6 +232,49 @@ const NotificationBell = () => {
     }
   }
 
+  const handleOffboardingDecision = async (notification, decision) => {
+    const offboardingId = notification.metadata?.offboarding_id
+    if (!offboardingId) return
+
+    let note = ''
+    if (decision === 'rejected') {
+      note = window.prompt('Enter the reason for rejecting this exit process:')
+      if (note === null) return
+      if (!note.trim()) {
+        setDecisionMessage('A rejection reason is required.')
+        return
+      }
+    } else if (!window.confirm('Approve this employee exit process?')) {
+      return
+    }
+
+    setDecisionLoadingId(notification.id)
+    setDecisionMessage('')
+    try {
+      const result = await notificationService.decideOffboarding(offboardingId, decision, note.trim())
+      setNotifications(prev => prev.map(item => (
+        item.metadata?.offboarding_id === offboardingId &&
+        item.metadata?.action_type === 'offboarding_project_manager_decision'
+          ? {
+              ...item,
+              is_read: true,
+              metadata: { ...item.metadata, decision_status: result.decision },
+            }
+          : item
+      )))
+      setDecisionMessage(`Exit process ${result.decision} successfully.`)
+      await fetchUnreadCount()
+    } catch (error) {
+      setDecisionMessage(
+        error.response?.data?.detail ||
+        error.response?.data?.decision ||
+        'Unable to record the Project Manager decision.'
+      )
+    } finally {
+      setDecisionLoadingId(null)
+    }
+  }
+
   return (
     <div className="relative z-50">
       <button
@@ -251,6 +311,9 @@ const NotificationBell = () => {
           onMarkAllAsRead={handleMarkAllAsRead}
           onDelete={handleDelete}
           onRefresh={fetchNotifications}
+          onOffboardingDecision={handleOffboardingDecision}
+          decisionLoadingId={decisionLoadingId}
+          decisionMessage={decisionMessage}
         />
       )}
     </div>

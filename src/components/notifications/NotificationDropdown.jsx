@@ -21,7 +21,10 @@ const NotificationDropdown = forwardRef(({
   onMarkAsRead,
   onMarkAllAsRead,
   onDelete,
-  onRefresh
+  onRefresh,
+  onOffboardingDecision,
+  decisionLoadingId,
+  decisionMessage
 }, ref) => {
 
   const getPriorityColor = (priority) => {
@@ -103,6 +106,11 @@ const NotificationDropdown = forwardRef(({
 
       {/* Notifications List */}
       <div className="overflow-y-auto max-h-[500px]">
+        {decisionMessage && (
+          <div className="mx-3 mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800">
+            {decisionMessage}
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -111,6 +119,7 @@ const NotificationDropdown = forwardRef(({
           <div className="flex flex-col items-center justify-center py-12 px-4">
             <BellSlashIcon className="w-16 h-16 text-slate-300 dark:text-slate-600 mb-3" />
             <p className="text-slate-600 dark:text-slate-400 font-medium">No notifications</p>
+            {/* eslint-disable-next-line react/no-unescaped-entities */}
             <p className="text-slate-400 dark:text-slate-500 text-sm mt-1">You're all caught up! 🎉</p>
           </div>
         ) : (
@@ -126,7 +135,7 @@ const NotificationDropdown = forwardRef(({
                   {/* Category Icon */}
                   <div className="flex-shrink-0 mt-1">
                     <span className="text-2xl">
-                      {getCategoryIcon(notification.category?.name)}
+                      {getCategoryIcon(notification.category_name || notification.category?.name)}
                     </span>
                   </div>
 
@@ -145,9 +154,9 @@ const NotificationDropdown = forwardRef(({
                         </p>
                         <div className="flex items-center space-x-3 text-xs text-slate-500 dark:text-slate-400">
                           <span>{formatTime(notification.created_at)}</span>
-                          {notification.category && (
+                          {(notification.category_name || notification.category?.name) && (
                             <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                              {notification.category.name}
+                              {notification.category_name || notification.category?.name}
                             </span>
                           )}
                         </div>
@@ -175,6 +184,36 @@ const NotificationDropdown = forwardRef(({
                     </div>
 
                     {/* Action Button */}
+                    {notification.metadata?.action_type === 'offboarding_project_manager_decision' && (
+                      notification.metadata?.decision_status === 'pending' ? (
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            disabled={decisionLoadingId === notification.id}
+                            onClick={() => onOffboardingDecision(notification, 'approved')}
+                            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            <CheckCircleIcon className="h-4 w-4" /> Approve
+                          </button>
+                          <button
+                            type="button"
+                            disabled={decisionLoadingId === notification.id}
+                            onClick={() => onOffboardingDecision(notification, 'rejected')}
+                            className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                          >
+                            <XMarkIcon className="h-4 w-4" /> Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <div className={`mt-2 text-xs font-semibold ${
+                          notification.metadata?.decision_status === 'approved'
+                            ? 'text-emerald-600'
+                            : 'text-rose-600'
+                        }`}>
+                          Exit process {notification.metadata?.decision_status}
+                        </div>
+                      )
+                    )}
                     {notification.action_url && (
                       <Link
                         to={notification.action_url}

@@ -27,6 +27,7 @@ import {
   Trophy,
   FileText,
   LogOut,
+  Search,
 } from "lucide-react";
 import { API_BASE_URL } from "../config/api.config";
 import {
@@ -288,6 +289,7 @@ const PROJECT_ASSIGNMENT_STATUSES = [
 ];
 
 const DEFAULT_PROJECT = {
+  project_id: "",
   name: "",
   project_manager_id: "",
   role: "",
@@ -298,6 +300,22 @@ const DEFAULT_PROJECT = {
   status: "active",
   client: "",
   location: "",
+};
+
+const buildProjectId = (projectName, projects = [], startDate = "") => {
+  const normalizedName = String(projectName || "").trim().replace(/\s+/g, " ");
+  if (!normalizedName) return "";
+  const dateYear = String(startDate || "").slice(0, 4);
+  const year = /^\d{4}$/.test(dateYear)
+    ? Number(dateYear)
+    : new Date().getFullYear();
+  const suffixPattern = new RegExp(`-(\\d{4})-${year}$`);
+  const highestSequence = projects.reduce((highest, project) => {
+    const match = String(project.project_id || "").match(suffixPattern);
+    return match ? Math.max(highest, Number(match[1])) : highest;
+  }, 0);
+  const nextSequence = Math.max(highestSequence, projects.length) + 1;
+  return `${normalizedName}-${String(nextSequence).padStart(4, "0")}-${year}`;
 };
 
 // Completeness weights — must sum to 100
@@ -425,6 +443,13 @@ const Profile = () => {
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [projectManagers, setProjectManagers] = useState([]);
   const [projectManagersLoading, setProjectManagersLoading] = useState(false);
+  const [projectManagerSearch, setProjectManagerSearch] = useState("");
+  const [showProjectManagerOptions, setShowProjectManagerOptions] = useState(false);
+
+  const generatedProjectId = useMemo(
+    () => buildProjectId(newProject.name, ep.current_projects, newProject.start_date),
+    [newProject.name, newProject.start_date, ep.current_projects],
+  );
 
   // Completeness
   const completeness = useMemo(() => {
@@ -445,23 +470,36 @@ const Profile = () => {
   }, []);
 
   useEffect(() => {
+    if (!showProjectForm || newProject.project_manager_id) return undefined;
     const token =
       localStorage.getItem("radai_access_token") ||
       localStorage.getItem("access");
-    setProjectManagersLoading(true);
-    fetch(
-      `${API_BASE_URL}/users/employees/project-managers/`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) =>
-        setProjectManagers(
-          Array.isArray(data) ? data : (data?.results ?? data?.employees ?? []),
-        ),
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setProjectManagersLoading(true);
+      fetch(
+        `${API_BASE_URL}/users/employees/project-managers/?search=${encodeURIComponent(projectManagerSearch.trim())}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        },
       )
-      .catch(() => setProjectManagers([]))
-      .finally(() => setProjectManagersLoading(false));
-  }, []);
+        .then((r) => (r.ok ? r.json() : []))
+        .then((data) =>
+          setProjectManagers(
+            Array.isArray(data) ? data : (data?.results ?? data?.employees ?? []),
+          ),
+        )
+        .catch((error) => {
+          if (error.name !== "AbortError") setProjectManagers([]);
+        })
+        .finally(() => setProjectManagersLoading(false));
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [projectManagerSearch, showProjectForm, newProject.project_manager_id]);
 
   useEffect(() => {
     const token =
@@ -814,6 +852,7 @@ const Profile = () => {
     }
     const projectAssignment = {
       ...newProject,
+      project_id: generatedProjectId,
       project_manager_id: selectedPoM.user_id || selectedPoM.id,
       project_manager_name:
         `${selectedPoM.first_name || ""} ${selectedPoM.last_name || ""}`.trim() ||
@@ -835,13 +874,31 @@ const Profile = () => {
     if (!savedProfile) return;
     setEp({ ...DEFAULT_EP, ...savedProfile });
     setNewProject(DEFAULT_PROJECT);
+    setProjectManagerSearch("");
+    setShowProjectManagerOptions(false);
     setShowProjectForm(false);
   };
-  const removeProject = (id) =>
-    setEp((p) => ({
-      ...p,
-      current_projects: (p.current_projects || []).filter((pr) => pr.id !== id),
-    }));
+  const removeProject = async (project, projectIndex) => {
+    const projectLabel = project.name || project.project_id || "this project";
+    if (!window.confirm(`Delete ${projectLabel} from your project assignments?`)) {
+      return;
+    }
+
+    const projectKey = String(project.project_id || project.id || "");
+    const nextProjects = (ep.current_projects || []).filter((candidate, index) => {
+      if (projectKey) {
+        return String(candidate.project_id || candidate.id || "") !== projectKey;
+      }
+      return index !== projectIndex;
+    });
+    const nextProfile = { ...ep, current_projects: nextProjects };
+    const savedProfile = await saveEngineerProfile(
+      "Project assignment deleted successfully!",
+      nextProfile,
+    );
+    if (!savedProfile) return;
+    setEp({ ...DEFAULT_EP, ...savedProfile });
+  };
   const updateProjectStatus = (id, status) =>
     setEp((p) => ({
       ...p,
@@ -2104,7 +2161,73 @@ const Profile = () => {
                         />
                       </div>
                       <div>
+                        <label className={labelCls}>Project ID</label>
+                        <input
+                          value={generatedProjectId}
+                          readOnly
+                          placeholder="Generated after entering project name"
+                          className={`${inputCls} bg-gray-100 font-mono text-gray-600`}
+                        />
+                        <p className="mt-1 text-xs text-gray-400">
+                          Generated automatically as Project Name-0000-YYYY.
+                        </p>
+                      </div>
+                      <div className="relative sm:col-span-2">
                         <label className={labelCls}>Project Manager (PoM) *</label>
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                          <input
+                            value={projectManagerSearch}
+                            onChange={(e) => {
+                              setProjectManagerSearch(e.target.value);
+                              setNewProject((project) => ({
+                                ...project,
+                                project_manager_id: "",
+                              }));
+                              setShowProjectManagerOptions(true);
+                            }}
+                            onFocus={() => setShowProjectManagerOptions(true)}
+                            placeholder={projectManagersLoading ? "Loading employees..." : "Search employee by name, ID, or email"}
+                            className={`${inputCls} pl-9`}
+                          />
+                        </div>
+                        {showProjectManagerOptions && (
+                          <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
+                            {projectManagersLoading ? (
+                              <p className="px-3 py-2 text-xs text-gray-500">Searching employees...</p>
+                            ) : projectManagers.length > 0 ? (
+                              projectManagers.map((manager) => {
+                                const managerId = manager.user_id || manager.id;
+                                const managerName =
+                                  `${manager.first_name || ""} ${manager.last_name || ""}`.trim() ||
+                                  manager.email;
+                                return (
+                                  <button
+                                    key={managerId}
+                                    type="button"
+                                    onClick={() => {
+                                      setNewProject((project) => ({
+                                        ...project,
+                                        project_manager_id: managerId,
+                                      }));
+                                      setProjectManagerSearch(managerName);
+                                      setShowProjectManagerOptions(false);
+                                    }}
+                                    className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:bg-blue-50"
+                                  >
+                                    <span className="min-w-0">
+                                      <span className="block truncate text-sm font-semibold text-gray-800">{managerName}</span>
+                                      <span className="block truncate text-xs text-gray-400">{manager.email}{manager.position ? ` · ${manager.position}` : ""}</span>
+                                    </span>
+                                    {manager.employee_number && <span className="shrink-0 text-xs font-medium text-gray-400">{manager.employee_number}</span>}
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <p className="px-3 py-2 text-xs text-amber-600">No matching active employees found.</p>
+                            )}
+                          </div>
+                        )}
                         <select
                           value={newProject.project_manager_id}
                           onChange={(e) =>
@@ -2114,7 +2237,7 @@ const Profile = () => {
                             }))
                           }
                           disabled={projectManagersLoading}
-                          className={inputCls}
+                          className="hidden"
                         >
                           <option value="">
                             {projectManagersLoading
@@ -2135,11 +2258,11 @@ const Profile = () => {
                           })}
                         </select>
                         <p className="mt-1 text-xs text-gray-400">
-                          Direct manager responsible for this project.
+                          Search all active employees and select the person directly responsible for this project.
                         </p>
                         {!projectManagersLoading && projectManagers.length === 0 && (
                           <p className="mt-1 text-xs font-medium text-amber-600">
-                            No active users with the Project Manager role were found.
+                            No matching active employees were found.
                           </p>
                         )}
                       </div>
@@ -2298,6 +2421,8 @@ const Profile = () => {
                         onClick={() => {
                           setShowProjectForm(false);
                           setNewProject(DEFAULT_PROJECT);
+                          setProjectManagerSearch("");
+                          setShowProjectManagerOptions(false);
                         }}
                         className="px-5 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-50 flex items-center gap-1.5"
                       >
@@ -2319,7 +2444,7 @@ const Profile = () => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {(ep.current_projects || []).map((pr) => {
+                    {(ep.current_projects || []).map((pr, projectIndex) => {
                       const si =
                         PROJECT_ASSIGNMENT_STATUSES.find(
                           (s) => s.value === pr.status,
@@ -2336,6 +2461,11 @@ const Profile = () => {
                                 <h4 className="font-bold text-gray-900 truncate">
                                   {pr.name}
                                 </h4>
+                                {pr.project_id && (
+                                  <p className="mt-0.5 font-mono text-[11px] font-semibold text-blue-600">
+                                    {pr.project_id}
+                                  </p>
+                                )}
                                 {pr.client && (
                                   <p className="text-xs text-gray-400 mt-0.5">
                                     {pr.client}
@@ -2352,9 +2482,11 @@ const Profile = () => {
                                   {si.label}
                                 </span>
                                 <button
-                                  onClick={() => removeProject(pr.id)}
-                                  title="Remove project"
-                                  className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                  type="button"
+                                  onClick={() => removeProject(pr, projectIndex)}
+                                  disabled={isLoading}
+                                  title="Delete project assignment"
+                                  className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:cursor-not-allowed disabled:opacity-40"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>

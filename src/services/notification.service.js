@@ -20,12 +20,19 @@ export const notificationService = {
    * @param {Object} params - Query parameters (priority, status, category, is_read)
    * @returns {Promise}
    */
-  getNotifications: async (params = {}) => {
+  getNotifications: async (params = {}, options = {}) => {
     try {
-      const response = await apiClient.get(NOTIFICATION_BASE_URL + '/', { params })
+      const response = await apiClient.get(NOTIFICATION_BASE_URL + '/', {
+        params,
+        timeout: NOTIFICATION_POLL_TIMEOUT_MS,
+        silentTimeout: true,
+        ...options,
+      })
       return response.data
     } catch (error) {
-      console.error('[Notification Service] Error fetching notifications:', error)
+      if (error.code !== 'ERR_CANCELED') {
+        console.warn('[Notification Service] Notification list unavailable:', error.message)
+      }
       throw error
     }
   },
@@ -156,6 +163,14 @@ export const notificationService = {
       console.error('[Notification Service] Error deleting notification:', error)
       throw error
     }
+  },
+
+  decideOffboarding: async (offboardingId, decision, note = '') => {
+    const response = await apiClient.post(
+      `/onboarding/offboarding/${offboardingId}/project-manager-decision/`,
+      { decision, note }
+    )
+    return response.data
   },
 
   /**
