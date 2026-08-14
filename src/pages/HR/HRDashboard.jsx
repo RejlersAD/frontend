@@ -22,6 +22,7 @@ import * as HeroIcons from '@heroicons/react/24/outline'
 import rbacService from '../../services/rbac.service'
 import timesheetService from '../../services/timesheet.service'
 import payrollService from '../../services/payroll.service'
+import apiClient from '../../services/api.service'
 import { fmtCurrency, PAYROLL_WORKFLOW_STAGES } from '../../config/hrPayroll.config'
 
 import {
@@ -73,6 +74,9 @@ const formatTime = (d) =>
 const STATUS_BADGE_STYLES = {
   active:    'bg-emerald-100 text-emerald-700 border-emerald-200',
   pending:   'bg-amber-100   text-amber-700   border-amber-200',
+  initiated: 'bg-blue-100    text-blue-700    border-blue-200',
+  'in progress': 'bg-violet-100 text-violet-700 border-violet-200',
+  'awaiting first login': 'bg-amber-100 text-amber-700 border-amber-200',
   inactive:  'bg-slate-100   text-slate-600   border-slate-200',
   suspended: 'bg-red-100     text-red-700     border-red-200',
   on_leave:  'bg-blue-100    text-blue-700    border-blue-200',
@@ -84,6 +88,7 @@ const STATUS_BADGE_STYLES = {
 const KpiReportModal = ({ reportId, ctx, onClose }) => {
   const [search, setSearch] = useState('')
   const config = HR_DASHBOARD_KPI_REPORTS[reportId]
+  const navigate = useNavigate()
 
   // Close on Escape
   useEffect(() => {
@@ -101,6 +106,28 @@ const KpiReportModal = ({ reportId, ctx, onClose }) => {
 
   const renderCell = (col, row) => {
     const val = col.render(row)
+    if (col.typeBadge) {
+      const type = String(val)
+      const typeConfig = type === 'Onboarding'
+        ? { icon: 'UserPlusIcon', classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+        : type === 'Offboarding'
+          ? { icon: 'UserMinusIcon', classes: 'bg-rose-50 text-rose-700 border-rose-200' }
+          : { icon: 'KeyIcon', classes: 'bg-amber-50 text-amber-700 border-amber-200' }
+      return (
+        <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold border ${typeConfig.classes}`}>
+          <Icon name={typeConfig.icon} className="w-3.5 h-3.5" />
+          {type}
+        </span>
+      )
+    }
+    if (col.actionLink) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-600">
+          {val}
+          <Icon name="ArrowRightIcon" className="w-3.5 h-3.5" />
+        </span>
+      )
+    }
     if (col.statusBadge) {
       const style =
         STATUS_BADGE_STYLES[String(val).toLowerCase()] ||
@@ -146,6 +173,18 @@ const KpiReportModal = ({ reportId, ctx, onClose }) => {
       return <span className="font-mono text-xs text-slate-500">{val}</span>
     }
     return val
+  }
+
+  const openLifecycleRequest = (row) => {
+    if (reportId !== 'pending_onboarding') return
+    if (row.request_type === 'Onboarding') {
+      navigate(`/hr/onboarding?tab=onboarding&user_id=${row.user_id}&record_id=${row.request_id}&action=it-checklist`)
+    } else if (row.request_type === 'Offboarding') {
+      navigate(`/hr/onboarding?tab=offboarding&record_id=${row.request_id}`)
+    } else {
+      navigate(`/hr/employees?user_id=${row.user_id}`)
+    }
+    onClose()
   }
 
   return (
@@ -243,7 +282,26 @@ const KpiReportModal = ({ reportId, ctx, onClose }) => {
                 {filteredRows.map((row, idx) => (
                   <tr
                     key={row.id || row.user?.id || row.employee_code || idx}
-                    className="hover:bg-slate-50/80 transition-colors"
+                    onClick={() => openLifecycleRequest(row)}
+                    onKeyDown={(event) => {
+                      if (reportId === 'pending_onboarding' && (event.key === 'Enter' || event.key === ' ')) {
+                        event.preventDefault()
+                        openLifecycleRequest(row)
+                      }
+                    }}
+                    role={reportId === 'pending_onboarding' ? 'button' : undefined}
+                    tabIndex={reportId === 'pending_onboarding' ? 0 : undefined}
+                    className={`transition-colors ${reportId === 'pending_onboarding'
+                      ? `cursor-pointer focus:outline-none focus:bg-blue-50 ${
+                        row.request_type === 'Onboarding'
+                          ? 'border-l-4 border-l-emerald-400 hover:bg-emerald-50/60'
+                          : row.request_type === 'Offboarding'
+                            ? 'border-l-4 border-l-rose-400 hover:bg-rose-50/60'
+                            : 'border-l-4 border-l-amber-400 hover:bg-amber-50/60'
+                      }`
+                      : 'hover:bg-slate-50/80'
+                    }`}
+                    title={reportId === 'pending_onboarding' ? `Open ${row.request_type} workflow` : undefined}
                   >
                     <td className="px-4 py-2.5 text-xs text-slate-400 font-mono">{idx + 1}</td>
                     {config.columns.map((col) => (
@@ -772,6 +830,7 @@ export default function HRDashboard() {
   const [live, setLive] = useState(null)
   const [daily, setDaily] = useState(null)
   const [monthly, setMonthly] = useState(null)
+  const [lifecycleRequests, setLifecycleRequests] = useState([])
 
   // KPI drill-down report — id of the tile that was clicked (null = closed)
   const [reportKpiId, setReportKpiId] = useState(null)
@@ -848,6 +907,17 @@ export default function HRDashboard() {
       setWorkforce([])
     } finally {
       setLoadingWorkforce(false)
+    }
+  }, [])
+
+  // Active Onboarding | Offboarding requests shown in Pending Onboarding.
+  const loadLifecycleRequests = useCallback(async () => {
+    try {
+      const response = await apiClient.get('/onboarding/onboarding/command-center-pending/')
+      setLifecycleRequests(Array.isArray(response.data) ? response.data : [])
+    } catch (err) {
+      console.warn('[HRDashboard] lifecycle requests load failed', err)
+      setLifecycleRequests([])
     }
   }, [])
 
@@ -968,10 +1038,11 @@ export default function HRDashboard() {
   // ── Initial mount
   useEffect(() => {
     loadWorkforce()
+    loadLifecycleRequests()
     loadTimesheets()
     loadPayrollData()
     loadAllLeaveRecords() // Load consolidated leave records
-  }, [loadWorkforce, loadTimesheets, loadPayrollData, loadAllLeaveRecords])
+  }, [loadWorkforce, loadLifecycleRequests, loadTimesheets, loadPayrollData, loadAllLeaveRecords])
 
   // ── Auto-refresh timer
   useEffect(() => {
@@ -979,9 +1050,10 @@ export default function HRDashboard() {
     const id = setInterval(() => {
       loadTimesheets()
       loadPayrollData()
+      loadLifecycleRequests()
     }, HR_DASHBOARD_POLL_MS)
     return () => clearInterval(id)
-  }, [autoRefresh, loadTimesheets, loadPayrollData])
+  }, [autoRefresh, loadTimesheets, loadPayrollData, loadLifecycleRequests])
 
   // ── Live clock for the header
   useEffect(() => {
@@ -999,8 +1071,8 @@ export default function HRDashboard() {
 
   // ── Derived data (memoised so re-renders stay cheap)
   const ctx = useMemo(
-    () => ({ workforce, live, daily, monthly }),
-    [workforce, live, daily, monthly]
+    () => ({ workforce, live, daily, monthly, lifecycleRequests }),
+    [workforce, live, daily, monthly, lifecycleRequests]
   )
   const liveFeed = useMemo(() => buildLiveFeed(live), [live])
   const deptBars = useMemo(() => buildDepartmentBreakdown(workforce), [workforce])
@@ -1113,7 +1185,7 @@ export default function HRDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => { loadTimesheets(); loadPayrollData() }}
+              onClick={() => { loadTimesheets(); loadPayrollData(); loadLifecycleRequests() }}
               disabled={loadingLive || loadingPayroll}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
             >

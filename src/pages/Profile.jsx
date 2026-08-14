@@ -39,6 +39,7 @@ import AchievementSection from "../components/Profile/AchievementSection";
 import WorkExperienceSection from "../components/Profile/WorkExperienceSection";
 import SocialMediaLinksSection from "../components/Profile/SocialMediaLinksSection";
 import DocumentUploadSection from "../components/Profile/DocumentUploadSection";
+import { InitiateExitModal } from "./HR/OnboardingOffboarding";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Soft-coded engineering constants
@@ -288,7 +289,9 @@ const PROJECT_ASSIGNMENT_STATUSES = [
 
 const DEFAULT_PROJECT = {
   name: "",
+  project_manager_id: "",
   role: "",
+  project_type: "",
   allocation: 50,
   start_date: "",
   end_date: "",
@@ -338,6 +341,7 @@ const Profile = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [profileData, setProfileData] = useState(null);
+  const [showExitModal, setShowExitModal] = useState(false);
 
   // Authentication and RBAC profile endpoints use slightly different shapes:
   // auth may be flat or nested, while the profile API returns user.email.
@@ -347,6 +351,12 @@ const Profile = () => {
     user?.user?.email ||
     user?.email ||
     "";
+  const profileUserId =
+    profileData?.user?.id ||
+    profileData?.user_id ||
+    user?.user?.id ||
+    user?.id ||
+    null;
 
   // Photo
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -413,6 +423,8 @@ const Profile = () => {
   // Project assignment entry
   const [newProject, setNewProject] = useState(DEFAULT_PROJECT);
   const [showProjectForm, setShowProjectForm] = useState(false);
+  const [projectManagers, setProjectManagers] = useState([]);
+  const [projectManagersLoading, setProjectManagersLoading] = useState(false);
 
   // Completeness
   const completeness = useMemo(() => {
@@ -430,6 +442,25 @@ const Profile = () => {
 
   useEffect(() => {
     fetchProfile();
+  }, []);
+
+  useEffect(() => {
+    const token =
+      localStorage.getItem("radai_access_token") ||
+      localStorage.getItem("access");
+    setProjectManagersLoading(true);
+    fetch(
+      `${API_BASE_URL}/users/employees/project-managers/`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) =>
+        setProjectManagers(
+          Array.isArray(data) ? data : (data?.results ?? data?.employees ?? []),
+        ),
+      )
+      .catch(() => setProjectManagers([]))
+      .finally(() => setProjectManagersLoading(false));
   }, []);
 
   useEffect(() => {
@@ -481,7 +512,7 @@ const Profile = () => {
         localStorage.getItem("access");
       const ctrl = new AbortController();
       const tid = setTimeout(() => ctrl.abort(), 20000);
-      const res = await fetch(`${API_BASE_URL}/rbac/users/me/`, {
+      const res = await fetch(`${API_BASE_URL}/rbac/users/me/?view=profile`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: ctrl.signal,
       });
@@ -581,6 +612,7 @@ const Profile = () => {
 
   const saveEngineerProfile = async (
     successMsg = "Engineering profile saved!",
+    profileData = ep,
   ) => {
     setIsLoading(true);
     try {
@@ -593,7 +625,7 @@ const Profile = () => {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ engineer_profile: ep }),
+        body: JSON.stringify({ engineer_profile: profileData }),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
@@ -604,9 +636,12 @@ const Profile = () => {
           error.error || error.detail || fieldError || "Update failed",
         );
       }
+      const updatedProfile = await res.json().catch(() => null);
       toast.success(successMsg);
+      return updatedProfile?.engineer_profile || profileData;
     } catch (err) {
       toast.error(err.message || "Failed to save");
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -757,7 +792,7 @@ const Profile = () => {
         : [...p[key], val],
     }));
 
-  const addProject = () => {
+  const addProject = async () => {
     if (!newProject.name.trim()) {
       toast.error("Project name is required");
       return;
@@ -766,13 +801,39 @@ const Profile = () => {
       toast.error("Your role on the project is required");
       return;
     }
-    setEp((p) => ({
-      ...p,
+    if (!newProject.project_manager_id) {
+      toast.error("Project Manager (PoM) is required");
+      return;
+    }
+    const selectedPoM = projectManagers.find(
+      (manager) => String(manager.user_id || manager.id) === String(newProject.project_manager_id),
+    );
+    if (!selectedPoM) {
+      toast.error("Select an active Project Manager from the list");
+      return;
+    }
+    const projectAssignment = {
+      ...newProject,
+      project_manager_id: selectedPoM.user_id || selectedPoM.id,
+      project_manager_name:
+        `${selectedPoM.first_name || ""} ${selectedPoM.last_name || ""}`.trim() ||
+        selectedPoM.email,
+      project_manager_email: selectedPoM.email || "",
+      id: Date.now(),
+    };
+    const nextProfile = {
+      ...ep,
       current_projects: [
-        ...(p.current_projects || []),
-        { ...newProject, id: Date.now() },
+        ...(ep.current_projects || []),
+        projectAssignment,
       ],
-    }));
+    };
+    const savedProfile = await saveEngineerProfile(
+      "Project assignment added and saved!",
+      nextProfile,
+    );
+    if (!savedProfile) return;
+    setEp({ ...DEFAULT_EP, ...savedProfile });
     setNewProject(DEFAULT_PROJECT);
     setShowProjectForm(false);
   };
@@ -861,7 +922,13 @@ const Profile = () => {
 
           {/* ── Profile Hero ── */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="h-28 bg-gradient-to-r from-blue-600 via-purple-600 to-teal-500" />
+            <div className="relative h-28 bg-gradient-to-r from-blue-600 via-purple-600 to-teal-500">
+              <h1 className="absolute bottom-4 left-40 right-6 truncate text-2xl font-bold leading-tight text-white sm:right-8">
+                {formData.first_name || formData.last_name
+                  ? `${formData.first_name} ${formData.last_name}`.trim()
+                  : profileEmail}
+              </h1>
+            </div>
 
             <div className="px-6 sm:px-8 pb-6">
               <div className="flex flex-col sm:flex-row sm:items-end gap-5 -mt-14 mb-5">
@@ -911,11 +978,6 @@ const Profile = () => {
                 </div>
 
                 <div className="flex-1 pb-0.5">
-                  <h1 className="text-2xl font-bold text-white leading-tight pb-2">
-                    {formData.first_name || formData.last_name
-                      ? `${formData.first_name} ${formData.last_name}`.trim()
-                      : profileEmail}
-                  </h1>
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     {formData.job_title && (
                       <span className="text-gray-600 font-medium">
@@ -2042,6 +2104,46 @@ const Profile = () => {
                         />
                       </div>
                       <div>
+                        <label className={labelCls}>Project Manager (PoM) *</label>
+                        <select
+                          value={newProject.project_manager_id}
+                          onChange={(e) =>
+                            setNewProject((project) => ({
+                              ...project,
+                              project_manager_id: e.target.value,
+                            }))
+                          }
+                          disabled={projectManagersLoading}
+                          className={inputCls}
+                        >
+                          <option value="">
+                            {projectManagersLoading
+                              ? "Loading Project Managers..."
+                              : "— Select Project Manager —"}
+                          </option>
+                          {projectManagers.map((manager) => {
+                            const managerId = manager.user_id || manager.id;
+                            const managerName =
+                              `${manager.first_name || ""} ${manager.last_name || ""}`.trim() ||
+                              manager.email;
+                            return (
+                              <option key={managerId} value={managerId}>
+                                {managerName}
+                                {manager.position ? ` — ${manager.position}` : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-400">
+                          Direct manager responsible for this project.
+                        </p>
+                        {!projectManagersLoading && projectManagers.length === 0 && (
+                          <p className="mt-1 text-xs font-medium text-amber-600">
+                            No active users with the Project Manager role were found.
+                          </p>
+                        )}
+                      </div>
+                      <div>
                         <label className={labelCls}>Client / Company</label>
                         <input
                           value={newProject.client}
@@ -2182,9 +2284,15 @@ const Profile = () => {
                     <div className="flex gap-3 pt-1">
                       <button
                         onClick={addProject}
-                        className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 flex items-center gap-1.5"
+                        disabled={isLoading}
+                        className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 flex items-center gap-1.5"
                       >
-                        <Check className="w-4 h-4" /> Add
+                        {isLoading ? (
+                          <Loader className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                        {isLoading ? "Saving..." : "Add & Save"}
                       </button>
                       <button
                         onClick={() => {
@@ -2206,7 +2314,7 @@ const Profile = () => {
                       No project assignments yet
                     </p>
                     <p className="text-sm text-gray-300 mt-1">
-                      Click "Add Project" to log your current work.
+                      Click &ldquo;Add Project&rdquo; to log your current work.
                     </p>
                   </div>
                 ) : (
@@ -2257,6 +2365,12 @@ const Profile = () => {
                                 <span className="flex items-center gap-1.5">
                                   <Briefcase className="w-3.5 h-3.5 text-gray-400" />{" "}
                                   {pr.role}
+                                </span>
+                              )}
+                              {pr.project_manager_name && (
+                                <span className="flex items-center gap-1.5" title={pr.project_manager_email || "Project Manager"}>
+                                  <User className="w-3.5 h-3.5 text-gray-400" />{" "}
+                                  PoM: {pr.project_manager_name}
                                 </span>
                               )}
                               {pr.location && (
@@ -2377,9 +2491,7 @@ const Profile = () => {
                     Start the offboarding process for this employee
                   </p>
                   <button
-                    onClick={() =>
-                      toast.info("Offboarding workflow coming soon")
-                    }
+                    onClick={() => setShowExitModal(true)}
                     style={{
                       padding: "12px 32px",
                       background: "linear-gradient(135deg,#f43f8e,#ec4899)",
@@ -2400,6 +2512,17 @@ const Profile = () => {
           </div>
         </div>
       </div>
+      {showExitModal && (
+        <InitiateExitModal
+          initialEmployeeId={profileUserId}
+          lockEmployee
+          onClose={() => setShowExitModal(false)}
+          onSuccess={() => {
+            setShowExitModal(false);
+            toast.success("Your exit request has been submitted to HR");
+          }}
+        />
+      )}
     </>
   );
 };

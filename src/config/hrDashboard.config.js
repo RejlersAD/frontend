@@ -121,6 +121,34 @@ export const HR_DASHBOARD_COPY = {
 // ─────────────────────────────────────────────────────────────────────────────
 const pct = (num, den) => (den > 0 ? `${Math.round((num / den) * 100)}%` : '0%')
 
+const buildPendingOnboardingRows = ({ workforce = [], lifecycleRequests = [] }) => {
+  const requests = Array.isArray(lifecycleRequests) ? lifecycleRequests : []
+  const requestUserIds = new Set(requests.map(row => String(row.user_id || '')).filter(Boolean))
+  const requestEmails = new Set(requests.map(row => String(row.employee_email || '').toLowerCase()).filter(Boolean))
+  const pendingAccounts = workforce
+    .filter(employee => employee.status === 'pending')
+    .filter(employee => {
+      const userId = String(employee.user_id || employee.id || employee.user?.id || '')
+      const email = String(getEmail(employee) || '').toLowerCase()
+      return !requestUserIds.has(userId) && !requestEmails.has(email)
+    })
+    .map(employee => ({
+      id: `account-${employee.user_id || employee.id}`,
+      user_id: employee.user_id || employee.id,
+      employee_name: fullName(employee),
+      employee_email: getEmail(employee),
+      employee_id: employee.employee_number || employee.employee_id,
+      department: employee.department,
+      request_type: 'Account Setup',
+      display_status: 'Awaiting First Login',
+      status: 'pending',
+      effective_date: employee.created_at,
+      created_at: employee.created_at,
+    }))
+
+  return [...requests, ...pendingAccounts]
+}
+
 export const HR_DASHBOARD_KPIS = [
   {
     id: 'headcount',
@@ -180,10 +208,10 @@ export const HR_DASHBOARD_KPIS = [
   {
     id: 'pending_onboarding',
     label: 'Pending Onboarding',
-    sub: 'Awaiting first login',
+    sub: 'Lifecycle requests',
     icon: 'UserPlusIcon',
     accent: 'from-purple-500 to-fuchsia-600',
-    compute: ({ workforce }) => workforce.filter((e) => e.status === 'pending').length,
+    compute: (ctx) => buildPendingOnboardingRows(ctx).length,
   },
   {
     id: 'mfa_adoption',
@@ -896,19 +924,21 @@ export const HR_DASHBOARD_KPI_REPORTS = {
 
   pending_onboarding: {
     title: 'Pending Onboarding',
-    description: 'Employees registered but awaiting first login or onboarding completion.',
+    description: 'Active Onboarding | Offboarding requests and employee accounts awaiting first login.',
     icon: 'UserPlusIcon',
     accentGradient: 'from-purple-500 to-fuchsia-600',
     emptyMsg: 'No employees pending onboarding.',
-    getRows: ({ workforce }) => workforce.filter((e) => e.status === 'pending'),
+    getRows: (ctx) => buildPendingOnboardingRows(ctx),
     searchFn: (r) =>
-      `${fullName(r)} ${getEmail(r)} ${r.department || ''}`.toLowerCase(),
+      `${r.employee_name || fullName(r)} ${r.employee_email || getEmail(r)} ${r.employee_id || ''} ${r.department || ''} ${r.request_type || ''}`.toLowerCase(),
     columns: [
-      { key: 'name',   label: 'Name',       render: (r) => fullName(r) || '—' },
-      { key: 'email',  label: 'Email',       render: (r) => getEmail(r) || '—', mono: true },
+      { key: 'type',   label: 'Request Type', render: (r) => r.request_type || 'Onboarding', typeBadge: true },
+      { key: 'name',   label: 'Employee',    render: (r) => r.employee_name || fullName(r) || '—' },
+      { key: 'emp_id', label: 'Employee ID', render: (r) => r.employee_id || '—', mono: true },
       { key: 'dept',   label: 'Department',  render: (r) => r.department || '—' },
-      { key: 'status', label: 'Status',      render: (r) => r.status || '—', statusBadge: true },
-      { key: 'reg',    label: 'Registered',  render: (r) => formatDate(r.created_at) },
+      { key: 'status', label: 'Status',      render: (r) => r.display_status || r.status || '—', statusBadge: true },
+      { key: 'date',   label: 'Joining / Exit Date', render: (r) => formatDate(r.effective_date) },
+      { key: 'action', label: 'Action', actionLink: true, render: (r) => r.request_type === 'Onboarding' ? 'Open IT Checklist' : r.request_type === 'Offboarding' ? 'Open Offboarding' : 'Open Account' },
     ],
   },
 

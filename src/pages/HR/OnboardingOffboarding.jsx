@@ -4,8 +4,9 @@
  * 
  * ✅ MIGRATED: Now uses EmployeeMaster backend (employee_master_id, auto-generated employee_number)
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { useSearchParams } from 'react-router-dom'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import apiClient from '../../services/api.service'
 import DatePicker from '../../components/DatePicker'
@@ -68,6 +69,49 @@ const ONBOARDING_WORKFLOW_STAGES = [
   },
 ]
 
+const ONBOARDING_CHECKLIST_STAGES = [
+  {
+    id: 'pre_hire',
+    label: 'Pre-Hire Initiation',
+    shortLabel: 'Pre-Hire',
+    owner: 'HR',
+    icon: HeroIcons.DocumentCheckIcon,
+    description: 'Hiring approval, employment documents, employee master data, and ownership',
+  },
+  {
+    id: 'it_provisioning',
+    label: 'IT Provisioning',
+    shortLabel: 'IT Provisioning',
+    owner: 'ICT',
+    icon: HeroIcons.ComputerDesktopIcon,
+    description: 'Equipment, accounts, MFA, VPN, access, and technical handover',
+  },
+  {
+    id: 'first_day',
+    label: 'First Day Orientation',
+    shortLabel: 'First Day',
+    owner: 'HR / Manager',
+    icon: HeroIcons.UserGroupIcon,
+    description: 'Welcome, introductions, safety, policies, and operational readiness',
+  },
+  {
+    id: 'final_validation',
+    label: 'Final Checklist Validation',
+    shortLabel: 'Final Validation',
+    owner: 'HR',
+    icon: HeroIcons.ClipboardDocumentCheckIcon,
+    description: 'Final HR review, acknowledgements, records, payroll, and workflow closure',
+  },
+]
+
+const OFFBOARDING_CHECKLIST_STAGES = [
+  { id: 'exit_initiation', label: 'Exit Initiation', shortLabel: 'Initiation', owner: 'HR', icon: HeroIcons.DocumentCheckIcon },
+  { id: 'access_revocation', label: 'Access Revocation', shortLabel: 'Access', owner: 'ICT', icon: HeroIcons.LockClosedIcon },
+  { id: 'asset_return', label: 'Asset Return', shortLabel: 'Assets', owner: 'ICT / HR', icon: HeroIcons.ComputerDesktopIcon },
+  { id: 'exit_clearance', label: 'Exit Interview & Clearance', shortLabel: 'Clearance', owner: 'HR', icon: HeroIcons.UserGroupIcon },
+  { id: 'final_settlement', label: 'Final Settlement', shortLabel: 'Settlement', owner: 'HR / Finance', icon: HeroIcons.BanknotesIcon },
+]
+
 const OFFBOARDING_STATUS_CONFIG = {
   initiated: { label: 'Initiated', color: 'bg-slate-100 text-slate-700 border-slate-200' },
   access_revocation: { label: 'Access Revoked', color: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -76,6 +120,7 @@ const OFFBOARDING_STATUS_CONFIG = {
   final_settlement: { label: 'Final Settlement', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
   completed: { label: 'Completed', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   cancelled: { label: 'Cancelled', color: 'bg-rose-100 text-rose-700 border-rose-200' },
+  rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700 border-red-200' },
 }
 
 const EXIT_REASON_CONFIG = {
@@ -812,9 +857,22 @@ const Spinner = () => (
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function OnboardingOffboarding() {
   const user = useSelector((state) => state.auth.user)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [searchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState(
+    ['overview', 'onboarding', 'offboarding', 'create'].includes(requestedTab) ? requestedTab : 'overview'
+  )
   // Filter applied to the Offboarding List tab when navigating there from an Overview card/button
   const [offboardingFilter, setOffboardingFilter] = useState(null)
+  const focusedUserId = searchParams.get('user_id')
+  const focusedRecordId = searchParams.get('record_id')
+  const requestedAction = searchParams.get('action')
+
+  useEffect(() => {
+    if (['overview', 'onboarding', 'offboarding', 'create'].includes(requestedTab)) {
+      setActiveTab(requestedTab)
+    }
+  }, [requestedTab])
 
   // Direct tab-bar navigation clears any pending filter (only Overview cards/buttons should set one)
   const goToTab = (tabId) => {
@@ -873,8 +931,13 @@ export default function OnboardingOffboarding() {
       {/* Tab Content */}
       <div>
         {activeTab === 'overview' && <OverviewTab onTabChange={setActiveTab} onOffboardingFilter={setOffboardingFilter} />}
-        {activeTab === 'onboarding' && <OnboardingListTab />}
-        {activeTab === 'offboarding' && <OffboardingListTab initialFilter={offboardingFilter} />}
+        {activeTab === 'onboarding' && (
+          <OnboardingListTab
+            focusedUserId={focusedUserId}
+            focusItChecklist={requestedAction === 'it-checklist'}
+          />
+        )}
+        {activeTab === 'offboarding' && <OffboardingListTab initialFilter={offboardingFilter} focusedRecordId={focusedRecordId} />}
         {activeTab === 'create' && <CreateEmployeeTab />}
       </div>
     </div>
@@ -889,7 +952,7 @@ const ONBOARDING_MODAL_TITLES = {
   all: 'All Onboarding Processes',
   upcoming: 'Employees Joining Soon',
   overdue: 'Overdue Onboarding Items',
-  completed: 'Onboarding Completed This Month',
+  completed: 'Completed Onboarding History — This Month',
 }
 
 // Maps a KPI/button action id to the onboarding modal filter it should apply
@@ -945,6 +1008,7 @@ function OverviewTab({ onTabChange, onOffboardingFilter }) {
   const [onboardingModalTitle, setOnboardingModalTitle] = useState('')
   const [onboardingModalItems, setOnboardingModalItems] = useState([])
   const [onboardingModalLoading, setOnboardingModalLoading] = useState(false)
+  const [onboardingDetail, setOnboardingDetail] = useState(null)
 
   useEffect(() => {
     loadStatistics()
@@ -966,6 +1030,21 @@ function OverviewTab({ onTabChange, onOffboardingFilter }) {
       })
       .catch((err) => console.error('Failed to load onboarding records:', err))
       .finally(() => setOnboardingModalLoading(false))
+  }
+
+  const openOnboardingDetail = (item) => {
+    const nameParts = (item.employee_name || 'Employee').trim().split(/\s+/)
+    setOnboardingDetail({
+      recordId: item.id,
+      employee: {
+        first_name: nameParts.shift() || 'Employee',
+        last_name: nameParts.join(' '),
+        employee_number: item.employee_id,
+        email: item.employee_email,
+        division: item.department,
+        job_title_uae: item.position,
+      },
+    })
   }
 
   const handleOnboardingAction = (action) => {
@@ -1256,16 +1335,27 @@ function OverviewTab({ onTabChange, onOffboardingFilter }) {
                   return (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3"
+                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"
                     >
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-slate-800">{item.employee_name}</div>
                         <div className="text-xs text-slate-500 mt-0.5">
                           Joining date: {item.joining_date ? new Date(item.joining_date).toLocaleDateString() : '—'}
                           {item.department ? ` • ${item.department}` : ''}
                         </div>
                       </div>
-                      <span className={`px-2 py-1 rounded text-xs border ${cfg.color}`}>{cfg.label}</span>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        <span className={`px-2 py-1 rounded text-xs border ${cfg.color}`}>{cfg.label}</span>
+                        <button
+                          type="button"
+                          onClick={() => openOnboardingDetail(item)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+                          title={`View ${item.employee_name} onboarding details`}
+                        >
+                          <HeroIcons.UserCircleIcon className="h-4 w-4" />
+                          View
+                        </button>
+                      </div>
                     </div>
                   )
                 })
@@ -1274,17 +1364,27 @@ function OverviewTab({ onTabChange, onOffboardingFilter }) {
           </div>
         </div>
       )}
+
+      {onboardingDetail && (
+        <OnboardingFullDetailsModal
+          recordId={onboardingDetail.recordId}
+          employee={onboardingDetail.employee}
+          onClose={() => setOnboardingDetail(null)}
+        />
+      )}
     </div>
   )
 }
 
 // ── Onboarding List Tab ────────────────────────────────────────────────────
-function OnboardingListTab() {
+function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
   const [employees, setEmployees] = useState([])
   const [fieldGroups, setFieldGroups] = useState([])
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [filters, setFilters] = useState({ search: '', status: '', branch: '' })
+  const [stats, setStats] = useState({ total: 0, urgent: 0, overdue: 0, completed: 0 })
   const [expandedRow, setExpandedRow] = useState(null)
+  const [detailEmployee, setDetailEmployee] = useState(null)
   const [editingField, setEditingField] = useState(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
@@ -1292,25 +1392,99 @@ function OnboardingListTab() {
   const [viewMode, setViewMode] = useState('compact') // 'cards' or 'compact'
   const [editingRow, setEditingRow] = useState(null) // userId of row being edited
   const [editFormData, setEditFormData] = useState({}) // Form data for inline editing
+  const focusedEmployeeOpened = useRef(false)
 
   useEffect(() => {
     loadEmployees()
-  }, [searchQuery])
+  }, [filters])
+
+  useEffect(() => {
+    let active = true
+    let alertTimer
+
+    apiClient.post(`${API_BASE}/onboarding/sync-missing/`)
+      .then((res) => {
+        const createdCount = res.data?.created_count || 0
+        if (active && createdCount > 0) {
+          setAlert({
+            type: 'success',
+            message: `${createdCount} employee${createdCount === 1 ? '' : 's'} added to the onboarding initiation cycle`,
+          })
+          alertTimer = window.setTimeout(() => setAlert(null), 5000)
+        }
+      })
+      .catch((err) => console.error('Failed to synchronize missing onboarding workflows:', err))
+
+    return () => {
+      active = false
+      if (alertTimer) window.clearTimeout(alertTimer)
+    }
+  }, [])
 
   const loadEmployees = () => {
     setLoading(true)
     const params = new URLSearchParams()
-    if (searchQuery) params.append('search', searchQuery)
+    params.append('onboarding_active', 'true')
+    if (filters.search) params.append('search', filters.search)
+    if (filters.status) params.append('onboarding_status', filters.status)
+    if (filters.branch) params.append('onboarding_branch', filters.branch)
 
-    apiClient
-      .get(`${API_ENDPOINTS.employees}/active_employees/?${params}`)
-      .then((res) => {
-        setEmployees(res.data.results || [])
-        setFieldGroups(res.data.field_groups || [])
+    Promise.all([
+      apiClient.get(`${API_ENDPOINTS.employees}/active_employees/?${params}`),
+      apiClient.get(`${API_BASE}/onboarding/statistics/`),
+    ])
+      .then(([employeeRes, statsRes]) => {
+        const data = employeeRes.data.results || []
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const joiningDays = (value) => value
+          ? Math.ceil((new Date(`${value}T00:00:00`) - today) / 86400000)
+          : null
+        setEmployees(data)
+        setFieldGroups(employeeRes.data.field_groups || [])
+        setStats({
+          total: data.length,
+          urgent: data.filter(item => {
+            const days = joiningDays(item.onboarding_joining_date)
+            return days !== null && days >= 0 && days <= 7
+          }).length,
+          overdue: data.filter(item => {
+            const days = joiningDays(item.onboarding_joining_date)
+            return days !== null && days < 0
+          }).length,
+          completed: statsRes.data?.completed_this_month || 0,
+        })
       })
       .catch((err) => console.error('Failed to load employees:', err))
       .finally(() => setLoading(false))
   }
+
+  const handleSyncWorkflows = () => {
+    setLoading(true)
+    apiClient.post(`${API_BASE}/onboarding/sync-missing/`)
+      .then((res) => {
+        const createdCount = res.data?.created_count || 0
+        setAlert({
+          type: 'success',
+          message: createdCount ? `${createdCount} onboarding workflow${createdCount === 1 ? '' : 's'} initiated` : 'Onboarding workflows are up to date',
+        })
+        loadEmployees()
+        window.setTimeout(() => setAlert(null), 4000)
+      })
+      .catch((err) => {
+        setAlert({ type: 'error', message: err.response?.data?.detail || 'Unable to synchronize onboarding workflows' })
+        setLoading(false)
+      })
+  }
+
+  useEffect(() => {
+    if (!focusedUserId || focusedEmployeeOpened.current || employees.length === 0) return
+    const employee = employees.find(item => String(item.user_id) === String(focusedUserId))
+    if (employee) {
+      focusedEmployeeOpened.current = true
+      setDetailEmployee(employee)
+    }
+  }, [employees, focusedUserId])
 
   const handleEdit = (userId, field, currentValue, source) => {
     setEditingField({ userId, field, source })
@@ -1501,48 +1675,70 @@ function OnboardingListTab() {
         </div>
       )}
 
-      {/* Search & View Toggle */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1 flex items-center gap-2">
-            <HeroIcons.MagnifyingGlassIcon className="w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by name, email, employee number, ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      {/* Quick Stats Banner */}
+      <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 p-4 text-white shadow-lg">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20 backdrop-blur-sm">
+              <HeroIcons.UserPlusIcon className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold opacity-90">Onboarding Pipeline</h3>
+              <p className="text-xs opacity-75">Active employee onboarding processes</p>
+            </div>
           </div>
-          
-          {/* View Mode Toggle */}
-          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setViewMode('cards')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                viewMode === 'cards'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Card View"
+              type="button"
+              onClick={handleSyncWorkflows}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold text-white ring-1 ring-white/30 transition hover:bg-white/25"
+              title="Initiate workflows for employees missing onboarding"
             >
-              <HeroIcons.Squares2X2Icon className="w-4 h-4" />
+              <HeroIcons.UserPlusIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Sync Workflows</span>
             </button>
             <button
-              onClick={() => setViewMode('compact')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                viewMode === 'compact'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Compact View"
+              type="button"
+              onClick={loadEmployees}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white/90 transition hover:bg-white/15 hover:text-white"
+              title="Reload onboarding records"
             >
-              <HeroIcons.ListBulletIcon className="w-4 h-4" />
+              <HeroIcons.ArrowPathIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
-          
-          <div className="text-sm text-slate-600 bg-slate-100 px-3 py-2 rounded-lg font-medium">
-            {employees.length} {employees.length === 1 ? 'Employee' : 'Employees'}
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg bg-white/10 p-3 backdrop-blur-sm"><div className="text-2xl font-bold">{stats.total}</div><div className="mt-1 text-xs opacity-80">Total Active</div></div>
+          <div className="rounded-lg bg-white/10 p-3 backdrop-blur-sm"><div className="flex items-center gap-1 text-2xl font-bold">{stats.urgent}{stats.urgent > 0 && <HeroIcons.ExclamationTriangleIcon className="h-4 w-4 animate-pulse" />}</div><div className="mt-1 text-xs opacity-80">Joining Soon (≤7 days)</div></div>
+          <div className="rounded-lg bg-white/10 p-3 backdrop-blur-sm"><div className="text-2xl font-bold">{stats.overdue}</div><div className="mt-1 text-xs opacity-80">Past Joining Date</div></div>
+          <div className="rounded-lg bg-white/10 p-3 backdrop-blur-sm"><div className="text-2xl font-bold">{stats.completed}</div><div className="mt-1 text-xs opacity-80">Completed This Month</div></div>
+        </div>
+      </div>
+
+      {/* Filters & View Toggle */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-700">Filters</span>
+            <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+              <button onClick={() => setViewMode('compact')} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${viewMode === 'compact' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`} title="List View"><HeroIcons.ListBulletIcon className="h-4 w-4" /></button>
+              <button onClick={() => setViewMode('cards')} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${viewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`} title="Card View"><HeroIcons.Squares2X2Icon className="h-4 w-4" /></button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="relative">
+              <HeroIcons.MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input type="text" placeholder="Search by name, email, employee number..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} className="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">All Active Statuses</option>
+              {ONBOARDING_ACTIVE_STATUSES.map(status => <option key={status} value={status}>{ONBOARDING_STATUS_CONFIG[status]?.label || status}</option>)}
+            </select>
+            <select value={filters.branch} onChange={(e) => setFilters({ ...filters, branch: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">All Branches</option>
+              {Object.entries(BRANCH_CONFIG).map(([value, config]) => <option key={value} value={value}>{config.label}</option>)}
+            </select>
           </div>
         </div>
       </div>
@@ -1551,13 +1747,13 @@ function OnboardingListTab() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-slate-200">
           <Spinner />
-          <span className="ml-2 text-slate-500 mt-2">Loading employees...</span>
+          <span className="ml-2 text-slate-500 mt-2">Loading active onboarding...</span>
         </div>
       ) : employees.length === 0 ? (
         <div className="bg-gradient-to-br from-slate-50 to-blue-50/30 rounded-xl border-2 border-dashed border-slate-300 p-16 text-center">
           <HeroIcons.InboxIcon className="w-16 h-16 mx-auto text-slate-300 mb-4" />
-          <p className="text-slate-500 font-medium">No employees found</p>
-          <p className="text-xs text-slate-400 mt-1">Try adjusting your search criteria</p>
+          <p className="text-slate-500 font-medium">No active onboarding found</p>
+          <p className="text-xs text-slate-400 mt-1">Completed and cancelled workflows are hidden</p>
         </div>
       ) : viewMode === 'cards' ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1575,7 +1771,7 @@ function OnboardingListTab() {
                     </h3>
                     {employee.preferred_given_name && (
                       <p className="text-xs text-blue-100 mt-0.5">
-                        "{employee.preferred_given_name}"
+                        &ldquo;{employee.preferred_given_name}&rdquo;
                       </p>
                     )}
                     <div className="mt-2 flex items-center gap-2">
@@ -1583,10 +1779,10 @@ function OnboardingListTab() {
                         <HeroIcons.IdentificationIcon className="w-3 h-3 mr-1" />
                         {employee.employee_number || 'No ID'}
                       </span>
-                      {employee.is_active && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-500/90 text-xs font-medium">
-                          <span className="w-1.5 h-1.5 bg-white rounded-full mr-1 animate-pulse" />
-                          Active
+                      {employee.onboarding_status && (
+                        <span className="inline-flex items-center rounded bg-white/20 px-2 py-0.5 text-xs font-medium backdrop-blur-sm">
+                          <span className="mr-1 h-1.5 w-1.5 rounded-full bg-white" />
+                          {ONBOARDING_STATUS_CONFIG[employee.onboarding_status]?.label || employee.onboarding_status}
                         </span>
                       )}
                     </div>
@@ -1633,56 +1829,13 @@ function OnboardingListTab() {
 
                 {/* Action Button */}
                 <button
-                  onClick={() => setExpandedRow(expandedRow === employee.user_id ? null : employee.user_id)}
+                  onClick={() => setDetailEmployee(employee)}
                   className="w-full mt-3 px-3 py-2 bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2 border border-slate-200 hover:border-blue-300"
                 >
-                  {expandedRow === employee.user_id ? (
-                    <>
-                      <HeroIcons.ChevronUpIcon className="w-4 h-4" />
-                      Hide Details
-                    </>
-                  ) : (
-                    <>
-                      <HeroIcons.ChevronDownIcon className="w-4 h-4" />
-                      View Full Details
-                    </>
-                  )}
+                  <HeroIcons.ArrowsPointingOutIcon className="w-4 h-4" />
+                  View Full Details
                 </button>
               </div>
-
-              {/* Expanded Details */}
-              {expandedRow === employee.user_id && (
-                <div className="border-t border-slate-200 bg-slate-50/50 p-4">
-                  <div className="space-y-4">
-                    {/* Employee Fields Grid */}
-                    <div className="grid grid-cols-1 gap-3">
-                      {fieldGroups.map((group) => (
-                        <div key={group.group} className="bg-white rounded-lg border border-slate-200 p-3">
-                          <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5 pb-2 border-b border-slate-100">
-                            <HeroIcons.TagIcon className="w-3.5 h-3.5 text-blue-500" />
-                            {group.group}
-                          </h4>
-                          <div className="space-y-2 mt-2">
-                            {group.fields.map((field) => (
-                              <div key={field.key} className="flex justify-between items-start gap-2 py-1">
-                                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide flex-shrink-0 pt-0.5">
-                                  {field.label}:
-                                </span>
-                                <div className="flex-1 text-right">
-                                  {renderFieldValue(employee, field)}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    
-                    {/* Document Upload Section */}
-                    <DocumentManagementSection employeeId={employee.user_id} employeeEmail={employee.email} />
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -1828,11 +1981,10 @@ function OnboardingListTab() {
                   ) : (
                     /* View Mode Actions */
                     <>
-                      {employee.is_active && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                          <span className="text-[10px] font-medium text-emerald-600 uppercase tracking-wide hidden lg:inline">Active</span>
-                        </div>
+                      {employee.onboarding_status && (
+                        <span className={`hidden rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide lg:inline-flex ${ONBOARDING_STATUS_CONFIG[employee.onboarding_status]?.color || 'border-slate-200 bg-slate-100 text-slate-700'}`}>
+                          {ONBOARDING_STATUS_CONFIG[employee.onboarding_status]?.label || employee.onboarding_status}
+                        </span>
                       )}
                       <button
                         onClick={() => handleQuickEdit(employee)}
@@ -1840,6 +1992,13 @@ function OnboardingListTab() {
                         title="Edit Employee"
                       >
                         <HeroIcons.PencilSquareIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setDetailEmployee(employee)}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="View Full Onboarding Details"
+                      >
+                        <HeroIcons.UserPlusIcon className="w-5 h-5" />
                       </button>
                       <button
                         onClick={() => setExpandedRow(expandedRow === employee.user_id ? null : employee.user_id)}
@@ -1894,6 +2053,629 @@ function OnboardingListTab() {
           ))}
         </div>
       )}
+
+      {detailEmployee && (
+        <OnboardingFullDetailsModal
+          employee={detailEmployee}
+          focusItChecklist={focusItChecklist}
+          onClose={() => setDetailEmployee(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function OnboardingFullDetailsModal({ employee, recordId = null, focusItChecklist = false, onClose }) {
+  const [record, setRecord] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [checklistSaving, setChecklistSaving] = useState(null)
+  const [checklistError, setChecklistError] = useState('')
+  const [activeChecklistStage, setActiveChecklistStage] = useState(
+    focusItChecklist ? 'it_provisioning' : 'pre_hire'
+  )
+  const printViewRef = useRef(null)
+  const checklistSectionRef = useRef(null)
+
+  useEffect(() => {
+    let active = true
+    const handleEscape = (event) => event.key === 'Escape' && onClose()
+    document.addEventListener('keydown', handleEscape)
+    document.body.style.overflow = 'hidden'
+
+    const detailRequest = recordId
+      ? apiClient.get(`${API_BASE}/onboarding/${recordId}/`)
+      : apiClient.get(`${API_BASE}/onboarding/?user_id=${employee.user_id}`)
+        .then((res) => {
+          const records = Array.isArray(res.data) ? res.data : (res.data.results || [])
+          return records[0]
+            ? apiClient.get(`${API_BASE}/onboarding/${records[0].id}/`)
+            : apiClient.post(`${API_BASE}/onboarding/ensure-employee-workflow/`, { user_id: employee.user_id })
+        })
+
+    detailRequest
+      .then((res) => {
+        if (active) setRecord(res?.data || null)
+      })
+      .catch((err) => {
+        console.error('Failed to load full onboarding details:', err)
+        if (active) setError('Unable to load the onboarding details. Please try again.')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+      document.removeEventListener('keydown', handleEscape)
+      document.body.style.overflow = ''
+    }
+  }, [employee.user_id, recordId, onClose])
+
+  const formatDate = (value, fallback = 'Not set') => {
+    if (!value) return fallback
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? fallback : parsed.toLocaleDateString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+    })
+  }
+
+  useEffect(() => {
+    if (!focusItChecklist || !record || !checklistSectionRef.current) return
+    const timer = window.setTimeout(() => {
+      checklistSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [focusItChecklist, record?.id])
+
+  const handleStartChecklistStage = async () => {
+    if (!record?.id || checklistSaving) return
+    setChecklistSaving('start')
+    setChecklistError('')
+    try {
+      const response = await apiClient.post(`${API_BASE}/onboarding/${record.id}/start-checklist-stage/`, {
+        stage: activeChecklistStage,
+      })
+      setRecord(response.data)
+    } catch (err) {
+      setChecklistError(err.response?.data?.detail || 'Unable to start this onboarding checklist stage.')
+    } finally {
+      setChecklistSaving(null)
+    }
+  }
+
+  const handleToggleChecklistItem = async (item) => {
+    if (checklistSaving || !canManageActiveStage) return
+    setChecklistSaving(item.id)
+    setChecklistError('')
+    try {
+      await apiClient.patch(`${API_BASE}/checklist/${item.id}/`, {
+        completed: !item.completed,
+      })
+      const refreshedRecord = await apiClient.get(`${API_BASE}/onboarding/${record.id}/`)
+      setRecord(refreshedRecord.data)
+    } catch (err) {
+      setChecklistError(err.response?.data?.detail || 'Unable to update the checklist item.')
+    } finally {
+      setChecklistSaving(null)
+    }
+  }
+
+  const checklistItems = record?.checklist_items || []
+  const activeChecklistConfig = ONBOARDING_CHECKLIST_STAGES.find(stage => stage.id === activeChecklistStage)
+  const ActiveChecklistIcon = activeChecklistConfig?.icon || HeroIcons.ClipboardDocumentListIcon
+  const activeChecklistItems = checklistItems.filter(item => item.stage === activeChecklistStage)
+  const activeChecklistDone = activeChecklistItems.filter(item => item.completed).length
+  const activeChecklistProgress = activeChecklistItems.length
+    ? Math.round((activeChecklistDone / activeChecklistItems.length) * 100)
+    : 0
+  const activeStagePermission = record?.checklist_stage_permissions?.[activeChecklistStage]
+  const workflowReadOnly = record?.status === 'completed' || record?.status === 'cancelled'
+  const canManageActiveStage = !workflowReadOnly && Boolean(activeStagePermission?.can_manage)
+  const canStartActiveStage = !workflowReadOnly && Boolean(activeStagePermission?.can_start)
+  const activeStageStarted = activeChecklistItems.length > 0
+  const checklistDone = checklistItems.filter(item => item.completed).length
+  const checklistProgress = checklistItems.length ? Math.round((checklistDone / checklistItems.length) * 100) : 0
+  const currentStage = record ? ONBOARDING_WORKFLOW_STAGES.findIndex(stage => stage.statuses.includes(record.status)) : -1
+  const statusConfig = record
+    ? (ONBOARDING_STATUS_CONFIG[record.status] || { label: record.status, color: 'bg-slate-100 text-slate-700' })
+    : null
+  const priorityStyles = {
+    low: 'bg-slate-100 text-slate-600 border-slate-200',
+    medium: 'bg-blue-50 text-blue-700 border-blue-200',
+    high: 'bg-amber-50 text-amber-700 border-amber-200',
+    critical: 'bg-rose-50 text-rose-700 border-rose-200',
+  }
+  const printDate = new Date().toLocaleDateString('en-CA')
+  const printFileName = [
+    `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
+    record?.employee_id || employee.employee_number || 'No-ID',
+    printDate,
+  ]
+    .map(value => String(value).replace(/[\\/:*?"<>|]+/g, '-').trim())
+    .filter(Boolean)
+    .join('_')
+
+  const handlePrintPreview = () => {
+    if (!printViewRef.current) return
+
+    const printWindow = window.open('', '_blank', 'width=1100,height=800')
+    if (!printWindow) {
+      window.alert('Print Preview was blocked. Please allow pop-ups for RADAI and try again.')
+      return
+    }
+
+    const printableView = printViewRef.current.cloneNode(true)
+    printableView.querySelectorAll('.onboarding-no-print').forEach(element => element.remove())
+    printableView.querySelector('header')?.remove()
+    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map(element => element.outerHTML)
+      .join('\n')
+    const documentNumber = `HR-ONB-${String(record?.employee_id || employee.employee_number || 'NO-ID').replace(/[^a-zA-Z0-9-]/g, '-')}-${printDate}`
+    const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
+    const escapePrintHtml = (value) => {
+      const container = document.createElement('div')
+      container.textContent = String(value)
+      return container.innerHTML
+    }
+    const safePrintFileName = escapePrintHtml(printFileName)
+    const safeEmployeeName = escapePrintHtml(employeeName)
+    const safeEmployeeId = escapePrintHtml(record?.employee_id || employee.employee_number || 'Not assigned')
+    const safeDocumentNumber = escapePrintHtml(documentNumber)
+
+    printWindow.document.open()
+    printWindow.document.write(`<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <base href="${window.location.origin}/" />
+          <title>${safePrintFileName}</title>
+          ${styles}
+          <style>
+            @page { size: A4 portrait; margin: 28mm 12mm 18mm; }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: white !important;
+              color: #333333 !important;
+              font-family: Arial, Helvetica, sans-serif !important;
+            }
+            body * { visibility: visible !important; }
+            .company-print-header {
+              position: fixed;
+              top: -23mm;
+              left: 0;
+              right: 0;
+              height: 18mm;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              border-bottom: 2px solid #2B3A55;
+              padding-bottom: 3mm;
+              background: white;
+            }
+            .company-print-header__brand { color: #2B3A55; font-size: 11pt; font-weight: 700; letter-spacing: .04em; }
+            .company-print-header__copy { text-align: right; line-height: 1.3; }
+            .company-print-header__copy strong { display: block; color: #2B3A55; font-size: 10pt; letter-spacing: .04em; }
+            .company-print-header__copy span { display: block; color: #484d52; font-size: 7.5pt; }
+            .company-print-footer {
+              position: fixed;
+              bottom: -13mm;
+              left: 0;
+              right: 0;
+              height: 9mm;
+              display: grid;
+              grid-template-columns: 1fr auto 1fr;
+              align-items: center;
+              gap: 4mm;
+              border-top: 1px solid #2B3A55;
+              color: #484d52;
+              font-size: 7pt;
+              background: white;
+            }
+            .company-print-footer__confidential { color: #2B3A55; font-weight: 700; letter-spacing: .05em; text-align: center; }
+            .company-print-footer__page { text-align: right; }
+            .company-print-footer__page::after { content: "Page " counter(page) " of " counter(pages); }
+            .company-document-title {
+              margin: 0 0 7mm;
+              border: 1px solid #2B3A55;
+              background: white;
+            }
+            .company-document-title__name {
+              padding: 4mm 5mm;
+              color: white;
+              background: #2B3A55;
+              border-left: 4mm solid #7FCAB5;
+              font-size: 16pt;
+              font-weight: 700;
+              letter-spacing: .02em;
+            }
+            .company-document-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              border-top: 1px solid #2B3A55;
+            }
+            .company-document-field { min-height: 13mm; padding: 2.5mm 4mm; border-right: 1px solid #cccccc; border-bottom: 1px solid #cccccc; }
+            .company-document-field:nth-child(3n) { border-right: 0; }
+            .company-document-field__label { display: block; color: #617AAD; font-size: 6.5pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+            .company-document-field__value { display: block; margin-top: 1.2mm; color: #2B3A55; font-size: 9pt; font-weight: 700; }
+            .onboarding-print-view {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              height: auto !important;
+              max-width: none !important;
+              overflow: visible !important;
+              border-radius: 0 !important;
+              background: white !important;
+              box-shadow: none !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .onboarding-print-content { overflow: visible !important; padding: 0 !important; }
+            .onboarding-print-view section { break-inside: auto !important; page-break-inside: auto !important; box-shadow: none !important; }
+            .onboarding-print-view article { break-inside: avoid !important; page-break-inside: avoid !important; }
+            .onboarding-print-view h3 { color: #2B3A55 !important; }
+          </style>
+        </head>
+        <body>
+          <header class="company-print-header">
+            <div class="company-print-header__brand">REJLERS ABU DHABI</div>
+            <div class="company-print-header__copy">
+              <strong>REJLERS ABU DHABI</strong>
+              <span>Engineering &amp; Design Consultancy</span>
+              <span>HR Controlled Document</span>
+            </div>
+          </header>
+          <footer class="company-print-footer">
+            <span>www.rejlers.com/ae</span>
+            <span class="company-print-footer__confidential">CONFIDENTIAL HR DOCUMENT</span>
+            <span class="company-print-footer__page"></span>
+          </footer>
+          <section class="company-document-title">
+            <div class="company-document-title__name">EMPLOYEE ONBOARDING OVERVIEW</div>
+            <div class="company-document-grid">
+              <div class="company-document-field"><span class="company-document-field__label">Employee</span><span class="company-document-field__value">${safeEmployeeName}</span></div>
+              <div class="company-document-field"><span class="company-document-field__label">Employee ID</span><span class="company-document-field__value">${safeEmployeeId}</span></div>
+              <div class="company-document-field"><span class="company-document-field__label">Issue Date</span><span class="company-document-field__value">${printDate}</span></div>
+              <div class="company-document-field"><span class="company-document-field__label">Document Number</span><span class="company-document-field__value">${safeDocumentNumber}</span></div>
+              <div class="company-document-field"><span class="company-document-field__label">Revision</span><span class="company-document-field__value">01</span></div>
+              <div class="company-document-field"><span class="company-document-field__label">Classification</span><span class="company-document-field__value">CONFIDENTIAL · HR</span></div>
+            </div>
+          </section>
+          ${printableView.outerHTML}
+        </body>
+      </html>`)
+    printWindow.document.close()
+
+    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true })
+    printWindow.setTimeout(() => {
+      printWindow.focus()
+      printWindow.print()
+    }, 750)
+  }
+
+  const handleCompanyPrintPreview = () => {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800')
+    if (!printWindow) {
+      window.alert('Print Preview was blocked. Please allow pop-ups for RADAI and try again.')
+      return
+    }
+
+    const escapeHtml = (value) => {
+      const node = document.createElement('div')
+      node.textContent = String(value ?? '')
+      return node.innerHTML
+    }
+    const valueOrDash = (value) => escapeHtml(value || '—')
+    const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
+    const documentNumber = `HR-ONB-${String(record?.employee_id || employee.employee_number || 'NO-ID').replace(/[^a-zA-Z0-9-]/g, '-')}-${printDate}`
+    const stageRows = ONBOARDING_WORKFLOW_STAGES.map((stage, index) => {
+      const cancelled = record.status === 'cancelled'
+      const complete = !cancelled && (index < currentStage || record.status === 'completed')
+      const current = !cancelled && !complete && index === currentStage
+      const stageStatus = cancelled ? 'Cancelled' : complete ? 'Completed' : current ? 'In Progress' : 'Pending'
+      const statusClass = stageStatus.toLowerCase().replaceAll(' ', '-')
+      return `<tr><td>${index + 1}</td><td>${escapeHtml(stage.label)}</td><td><span class="status ${statusClass}">${stageStatus}</span></td></tr>`
+    }).join('')
+    const checklistRows = checklistItems.length
+      ? checklistItems.map((item, index) => {
+        const stageLabel = ONBOARDING_CHECKLIST_STAGES.find(stage => stage.id === item.stage)?.label || 'General'
+        return `<tr>
+          <td>${index + 1}</td>
+          <td>${escapeHtml(stageLabel)}</td>
+          <td><strong>${escapeHtml(item.task_name)}</strong>${item.description ? `<div class="subtext">${escapeHtml(item.description)}</div>` : ''}</td>
+          <td>${escapeHtml(item.priority || 'medium')}</td>
+          <td>${escapeHtml(formatDate(item.due_date))}</td>
+          <td>${item.completed ? 'Completed' : 'Pending'}</td>
+          <td>${valueOrDash(item.completed_by_name)}</td>
+        </tr>`
+      }).join('')
+      : '<tr><td colspan="7" class="empty">No checklist items have been added.</td></tr>'
+    const historyRows = activityHistory.length
+      ? activityHistory.map(item => `<tr><td>${escapeHtml(formatDate(item.date))}</td><td><strong>${escapeHtml(item.title)}</strong><div class="subtext">${escapeHtml(item.detail)}</div></td></tr>`).join('')
+      : '<tr><td colspan="2" class="empty">No activity has been recorded.</td></tr>'
+    const employeeRows = [
+      ['Email', record.employee_email || employee.email],
+      ['Employee ID', record.employee_id || employee.employee_number],
+      ['Position', record.position || employee.job_title_uae || employee.job_title_finland],
+      ['Department', record.department || employee.division || employee.department],
+      ['Reporting Manager', record.reporting_manager || employee.manager_name],
+      ['Branch', BRANCH_CONFIG[record.branch]?.label || record.branch],
+      ['Target Completion', formatDate(record.target_completion_date)],
+      ['Initiated By', record.created_by_name],
+    ].map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${valueOrDash(value)}</td></tr>`).join('')
+
+    printWindow.document.open()
+    printWindow.document.write(`<!doctype html><html lang="en"><head>
+      <meta charset="utf-8"><base href="${window.location.origin}/"><title>${escapeHtml(printFileName)}</title>
+      <style>
+        @page { size: A4 portrait; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body { width: 210mm; min-height: 297mm; margin: 0; background: #fff; color: #333; font: 8pt Arial, Helvetica, sans-serif; }
+        body { padding: 7mm 9mm 6mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page-header { min-height: 10mm; display: flex; align-items: center; justify-content: space-between; gap: 8mm; margin-bottom: 2.5mm; padding-bottom: 2mm; border-bottom: 1.5px solid #2B3A55; }
+        .brand-copy { line-height: 1.25; }
+        .brand-copy strong { display: block; color: #2B3A55; font-size: 10pt; letter-spacing: .04em; }
+        .brand-copy span { color: #484d52; font-size: 6.5pt; }
+        .header-copy { text-align: right; line-height: 1.35; }
+        .header-copy strong { display: block; color: #2B3A55; font-size: 8pt; letter-spacing: .04em; }
+        .header-copy span { display: block; color: #484d52; font-size: 6.5pt; }
+        .page-footer { height: 6mm; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; margin-top: 2mm; padding-top: 1.5mm; border-top: 1px solid #2B3A55; color: #484d52; font-size: 6.3pt; background: #fff; }
+        .confidential { color: #2B3A55; font-weight: 700; letter-spacing: .05em; text-align: center; }
+        .page-number { text-align: right; }
+        .title-block { margin-bottom: 2.5mm; border: 1px solid #2B3A55; }
+        .report-title { padding: 2.5mm 3.5mm; color: #fff; background: #2B3A55; border-left: 3mm solid #7FCAB5; font-size: 12pt; font-weight: 700; }
+        .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+        .meta { min-height: 8mm; padding: 1.3mm 2.5mm; border-right: 1px solid #ccc; border-bottom: 1px solid #ccc; }
+        .meta:nth-child(3n) { border-right: 0; }
+        .label { display: block; color: #617AAD; font-size: 6pt; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+        .value { display: block; margin-top: .6mm; color: #2B3A55; font-size: 8pt; font-weight: 700; }
+        .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; margin-bottom: 2.5mm; }
+        .card { min-height: 10mm; padding: 1.5mm 2mm; border: 1px solid #ccc; border-top: 2px solid #617AAD; }
+        .card .value { margin-top: .8mm; font-size: 8.5pt; }
+        .section { margin-bottom: 2.5mm; break-inside: avoid; page-break-inside: avoid; }
+        .section-title { margin: 0 0 1.2mm; padding: 1.3mm 2mm; color: #2B3A55; background: #D3DAEA; border-left: 2mm solid #7FCAB5; font-size: 8.5pt; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        thead { display: table-header-group; }
+        th { padding: 1.3mm 1.8mm; background: #2B3A55; color: #fff; border: 1px solid #2B3A55; font-size: 6.3pt; text-align: left; text-transform: uppercase; }
+        td { padding: 1.3mm 1.8mm; border: 1px solid #ccc; vertical-align: top; overflow-wrap: anywhere; line-height: 1.25; }
+        tr { break-inside: avoid; page-break-inside: avoid; }
+        .subtext { margin-top: .5mm; color: #666; font-size: 6.5pt; line-height: 1.25; }
+        .status { display: inline-block; padding: .6mm 1.4mm; border-radius: 2mm; font-size: 6.3pt; font-weight: 700; }
+        .completed { color: #176b57; background: #D4EDE7; } .in-progress { color: #2B3A55; background: #D3DAEA; }
+        .pending { color: #666; background: #eee; } .cancelled { color: #9f3540; background: #FCE4E5; }
+        .employee-info th { width: 42mm; background: #f1f3f6; color: #2B3A55; border-color: #ccc; }
+        .empty { padding: 3mm; text-align: center; color: #777; font-style: italic; }
+      </style></head><body>
+      <header class="page-header"><div class="brand-copy"><strong>REJLERS ABU DHABI</strong><span>Engineering &amp; Design Consultancy</span></div><div class="header-copy"><strong>HR CONTROLLED DOCUMENT</strong><span>${escapeHtml(documentNumber)}</span></div></header>
+      <section class="title-block"><div class="report-title">EMPLOYEE ONBOARDING OVERVIEW</div><div class="meta-grid">
+        <div class="meta"><span class="label">Employee</span><span class="value">${escapeHtml(employeeName)}</span></div>
+        <div class="meta"><span class="label">Employee ID</span><span class="value">${valueOrDash(record.employee_id || employee.employee_number)}</span></div>
+        <div class="meta"><span class="label">Issue Date</span><span class="value">${printDate}</span></div>
+        <div class="meta"><span class="label">Document Number</span><span class="value">${escapeHtml(documentNumber)}</span></div>
+        <div class="meta"><span class="label">Revision</span><span class="value">01</span></div>
+        <div class="meta"><span class="label">Classification</span><span class="value">CONFIDENTIAL · HR</span></div>
+      </div></section>
+      <section class="summary">
+        <div class="card"><span class="label">Current Status</span><span class="value">${escapeHtml(statusConfig.label)}</span></div>
+        <div class="card"><span class="label">Joining Date</span><span class="value">${escapeHtml(formatDate(record.joining_date))}</span></div>
+        <div class="card"><span class="label">Checklist Progress</span><span class="value">${checklistDone} / ${checklistItems.length} (${checklistProgress}%)</span></div>
+        <div class="card"><span class="label">Assigned To</span><span class="value">${valueOrDash(record.assigned_to_name)}</span></div>
+      </section>
+      <section class="section"><h2 class="section-title">1. ONBOARDING STATUS</h2><table><thead><tr><th style="width:12mm">No.</th><th>Workflow Stage</th><th style="width:35mm">Status</th></tr></thead><tbody>${stageRows}</tbody></table></section>
+      <section class="section"><h2 class="section-title">2. CHECKLIST ITEMS</h2><table><thead><tr><th style="width:8mm">No.</th><th style="width:29mm">Stage</th><th>Task and Description</th><th style="width:17mm">Priority</th><th style="width:21mm">Due Date</th><th style="width:20mm">Status</th><th style="width:24mm">Completed By</th></tr></thead><tbody>${checklistRows}</tbody></table></section>
+      <section class="section"><h2 class="section-title">3. ACTIVITY HISTORY</h2><table><thead><tr><th style="width:32mm">Date</th><th>Activity</th></tr></thead><tbody>${historyRows}</tbody></table></section>
+      <section class="section"><h2 class="section-title">4. EMPLOYEE INFORMATION</h2><table class="employee-info"><tbody>${employeeRows}</tbody></table></section>
+      <footer class="page-footer"><span>www.rejlers.com/ae</span><span class="confidential">CONFIDENTIAL HR DOCUMENT</span><span class="page-number">Page 1 of 1</span></footer>
+      </body></html>`)
+    printWindow.document.close()
+    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true })
+    printWindow.setTimeout(() => { printWindow.focus(); printWindow.print() }, 750)
+  }
+
+  const activityHistory = record ? [
+    ...(record.actual_completion_date ? [{ id: 'completed', date: record.actual_completion_date, title: 'Onboarding completed', detail: 'The onboarding workflow was completed', tone: 'emerald' }] : []),
+    ...checklistItems.filter(item => item.completed_date).map(item => ({
+      id: `checklist-${item.id}`,
+      date: item.completed_date,
+      title: `Checklist completed: ${item.task_name}`,
+      detail: item.completed_by_name ? `Completed by ${item.completed_by_name}` : 'Checklist item marked complete',
+      tone: 'emerald',
+    })),
+    ...(record.updated_at ? [{ id: 'status', date: record.updated_at, title: `Status: ${statusConfig.label}`, detail: `${record.progress_percentage || 0}% of the workflow is complete`, tone: 'violet' }] : []),
+    ...((record.initiated_date || record.created_at) ? [{ id: 'initiated', date: record.initiated_date || record.created_at, title: 'Onboarding initiated', detail: record.created_by_name ? `Created by ${record.created_by_name}` : 'Onboarding record created', tone: 'blue' }] : []),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date)) : []
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-slate-950/60 backdrop-blur-sm p-2 sm:p-3" onClick={onClose}>
+      <style>{`
+        @media print {
+          @page { size: A4 portrait; margin: 12mm; }
+          body * { visibility: hidden !important; }
+          .onboarding-print-view, .onboarding-print-view * { visibility: visible !important; }
+          .onboarding-print-view {
+            position: absolute !important;
+            inset: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            max-width: none !important;
+            overflow: visible !important;
+            border-radius: 0 !important;
+            background: white !important;
+            box-shadow: none !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .onboarding-print-content { overflow: visible !important; }
+          .onboarding-no-print { display: none !important; }
+          .onboarding-print-view section,
+          .onboarding-print-view article { break-inside: avoid; }
+        }
+      `}</style>
+      <div ref={printViewRef} className="onboarding-print-view mx-auto flex h-full max-w-7xl flex-col overflow-hidden rounded-xl bg-slate-50 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <header className="flex items-center justify-between gap-3 bg-gradient-to-r from-blue-700 via-indigo-700 to-violet-700 px-4 py-3 text-white lg:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white/15 text-sm font-bold ring-1 ring-white/25">
+              {employee.first_name?.[0]}{employee.last_name?.[0]}
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-lg font-bold lg:text-xl">{employee.first_name} {employee.last_name}</h2>
+                {statusConfig && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold ring-1 ring-white/25">{statusConfig.label}</span>}
+              </div>
+              <p className="mt-1 truncate text-sm text-blue-100">Full Onboarding Overview · {employee.employee_number || employee.email}</p>
+            </div>
+          </div>
+          <div className="onboarding-no-print flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCompanyPrintPreview}
+              disabled={loading || Boolean(error) || !record}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-2.5 py-1.5 text-xs font-semibold text-white ring-1 ring-white/25 transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+              title={`Print or save as ${printFileName}.pdf`}
+            >
+              <HeroIcons.PrinterIcon className="h-4 w-4" />
+              Print Preview
+            </button>
+            <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white" title="Close full details">
+              <HeroIcons.XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+        </header>
+
+        <main className="onboarding-print-content flex-1 overflow-y-auto p-3 lg:p-4">
+          {loading ? (
+            <div className="flex min-h-[420px] items-center justify-center"><Spinner /><span className="ml-3 text-sm text-slate-500">Loading full onboarding overview...</span></div>
+          ) : error ? (
+            <div className="mx-auto mt-16 max-w-xl rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-rose-700"><HeroIcons.ExclamationCircleIcon className="mx-auto mb-3 h-8 w-8" /><p className="font-semibold">{error}</p></div>
+          ) : !record ? (
+            <div className="mx-auto mt-16 max-w-xl rounded-xl border border-slate-200 bg-white p-8 text-center"><HeroIcons.ClipboardDocumentListIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" /><h3 className="text-lg font-semibold text-slate-800">No onboarding workflow found</h3><p className="mt-2 text-sm text-slate-500">This employee does not yet have an onboarding record.</p></div>
+          ) : (
+            <div className="space-y-4">
+              <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ['Current Status', statusConfig.label, HeroIcons.SignalIcon, 'text-blue-700 bg-blue-50'],
+                  ['Joining Date', formatDate(record.joining_date), HeroIcons.CalendarDaysIcon, 'text-violet-700 bg-violet-50'],
+                  ['Checklist Progress', `${checklistDone} of ${checklistItems.length}`, HeroIcons.ClipboardDocumentCheckIcon, 'text-emerald-700 bg-emerald-50'],
+                  ['Assigned To', record.assigned_to_name || 'Not assigned', HeroIcons.UserCircleIcon, 'text-amber-700 bg-amber-50'],
+                ].map(([label, value, Icon, tone]) => (
+                  <div key={label} className="flex min-w-0 items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+                    <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md ${tone}`}><Icon className="h-3.5 w-3.5" /></div>
+                    <div className="min-w-0">
+                      <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+                      <p className="truncate text-xs font-bold text-slate-800">{value}</p>
+                    </div>
+                  </div>
+                ))}
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div><h3 className="flex items-center gap-1.5 text-base font-bold text-slate-900"><HeroIcons.ArrowTrendingUpIcon className="h-5 w-5 text-blue-600" />Status</h3><p className="mt-0.5 text-xs text-slate-500">Complete onboarding workflow and current stage</p></div>
+                  <div className="min-w-[200px]"><div className="mb-1 flex justify-between text-[11px] font-semibold text-slate-600"><span>Overall progress</span><span>{record.progress_percentage || 0}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500" style={{ width: `${Math.min(record.progress_percentage || 0, 100)}%` }} /></div></div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  {ONBOARDING_WORKFLOW_STAGES.map((stage, index) => {
+                    const Icon = stage.icon
+                    const cancelled = record.status === 'cancelled'
+                    const complete = !cancelled && (index < currentStage || record.status === 'completed')
+                    const current = !cancelled && !complete && index === currentStage
+                    const label = cancelled ? 'Cancelled' : complete ? 'Completed' : current ? 'In Progress' : 'Pending'
+                    const tone = cancelled ? 'border-rose-200 bg-rose-50' : complete ? 'border-emerald-200 bg-emerald-50' : current ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-slate-50'
+                    return (
+                      <div key={stage.id} className={`rounded-lg border px-2.5 py-2 ${tone}`}>
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-white shadow-sm"><Icon className={`h-3.5 w-3.5 ${complete ? 'text-emerald-600' : current ? 'text-blue-600' : 'text-slate-400'}`} /></div>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="truncate text-[11px] font-bold text-slate-800">{stage.label}</h4>
+                            <div className="mt-0.5 flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${complete ? 'bg-emerald-500' : current ? 'bg-blue-500 animate-pulse' : cancelled ? 'bg-rose-500' : 'bg-slate-300'}`} /><span className="text-[10px] font-semibold text-slate-600">{label}</span></div>
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-400">0{index + 1}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+                <section ref={checklistSectionRef} className={`rounded-xl border bg-white p-4 shadow-sm ${focusItChecklist ? 'border-violet-300 ring-2 ring-violet-100' : 'border-slate-200'}`}>
+                  <div className="mb-4 grid grid-cols-2 gap-1.5 rounded-lg bg-slate-100 p-1 lg:grid-cols-4">
+                    {ONBOARDING_CHECKLIST_STAGES.map(stage => {
+                      const StageIcon = stage.icon
+                      const stageItems = checklistItems.filter(item => item.stage === stage.id)
+                      const completedCount = stageItems.filter(item => item.completed).length
+                      const permission = record?.checklist_stage_permissions?.[stage.id]
+                      return (
+                        <button
+                          key={stage.id}
+                          type="button"
+                          onClick={() => { setActiveChecklistStage(stage.id); setChecklistError('') }}
+                          className={`rounded-md px-2 py-2 text-left transition ${activeChecklistStage === stage.id ? 'bg-white text-violet-700 shadow-sm ring-1 ring-violet-200' : 'text-slate-600 hover:bg-white/70'}`}
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <StageIcon className="h-4 w-4" />
+                            {permission?.can_manage ? <HeroIcons.PencilSquareIcon className="h-3.5 w-3.5 text-emerald-500" /> : <HeroIcons.LockClosedIcon className="h-3.5 w-3.5 text-slate-400" />}
+                          </span>
+                          <span className="mt-1.5 block text-[11px] font-bold">{stage.shortLabel}</span>
+                          <span className="mt-0.5 block text-[9px] font-semibold text-slate-400">{stageItems.length ? `${completedCount}/${stageItems.length} complete` : `Owner: ${permission?.owner_label || stage.owner}`}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <div><h3 className="flex items-center gap-1.5 text-base font-bold text-slate-900"><ActiveChecklistIcon className="h-5 w-5 text-violet-600" />{activeChecklistConfig?.label}</h3><p className="mt-0.5 text-xs text-slate-500">{activeChecklistConfig?.description}</p><p className="mt-0.5 text-[11px] font-semibold text-slate-400">RBAC owner: {activeStagePermission?.owner_label || activeChecklistConfig?.owner}</p></div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700 ring-1 ring-violet-200">{activeChecklistProgress}% complete</span>
+                      <button
+                        type="button"
+                        onClick={handleStartChecklistStage}
+                        disabled={activeStageStarted || !canStartActiveStage || Boolean(checklistSaving)}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-emerald-100 disabled:text-emerald-700"
+                      >
+                        {checklistSaving === 'start' ? <Spinner /> : activeStageStarted ? <HeroIcons.CheckCircleIcon className="h-4 w-4" /> : canStartActiveStage ? <HeroIcons.PlayIcon className="h-4 w-4" /> : <HeroIcons.LockClosedIcon className="h-4 w-4" />}
+                        {activeStageStarted ? 'Checklist Started' : canStartActiveStage ? 'Start Checklist' : 'View Only'}
+                      </button>
+                    </div>
+                  </div>
+                  {!canManageActiveStage && <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><HeroIcons.ShieldExclamationIcon className="h-4 w-4" />{canStartActiveStage ? 'You may initiate this stage, but checklist completion' : 'Your RBAC role has read-only access. This stage'} is managed by {activeStagePermission?.owner_label || activeChecklistConfig?.owner}.</div>}
+                  {checklistError && <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{checklistError}</div>}
+                  {activeChecklistItems.length === 0 ? (
+                    <div className="rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/30 px-6 py-10 text-center"><ActiveChecklistIcon className="mx-auto h-9 w-9 text-violet-400" /><p className="mt-3 text-sm font-semibold text-slate-700">{activeChecklistConfig?.label} has not started</p><p className="mt-1 text-xs text-slate-500">{canStartActiveStage ? 'Select Start Checklist to create this stage’s standard tasks.' : `A user with the ${activeStagePermission?.owner_label || activeChecklistConfig?.owner} role must start this stage.`}</p></div>
+                  ) : (
+                    <div className="space-y-2">{activeChecklistItems.map(item => (
+                      <article key={item.id} className={`rounded-lg border p-3 ${item.completed ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white'}`}>
+                        <div className="flex items-start gap-3"><button type="button" onClick={() => handleToggleChecklistItem(item)} disabled={Boolean(checklistSaving) || !canManageActiveStage} className={`mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${item.completed ? 'bg-emerald-500 text-white' : 'border-2 border-slate-300 bg-white text-transparent hover:border-violet-500'}`} title={!canManageActiveStage ? 'Read-only: your RBAC role cannot update this stage' : item.completed ? 'Mark as pending' : 'Mark as completed'}>{checklistSaving === item.id ? <Spinner /> : <HeroIcons.CheckIcon className="h-3.5 w-3.5" />}</button><div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-2"><h4 className={`font-semibold ${item.completed ? 'text-slate-600 line-through' : 'text-slate-900'}`}>{item.task_name}</h4><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${priorityStyles[item.priority] || priorityStyles.medium}`}>{item.priority || 'medium'}</span></div>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500"><span className="flex items-center gap-1"><HeroIcons.CalendarDaysIcon className="h-3.5 w-3.5" />Due {formatDate(item.due_date)}</span><span className="flex items-center gap-1"><HeroIcons.UserCircleIcon className="h-3.5 w-3.5" />{item.completed_by_name || 'Unassigned'}</span><span className="flex items-center gap-1"><HeroIcons.ClockIcon className="h-3.5 w-3.5" />{item.completed ? `Completed ${formatDate(item.completed_date)}` : 'Pending'}</span></div>
+                        </div></div>
+                      </article>
+                    ))}</div>
+                  )}
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="mb-4"><h3 className="flex items-center gap-1.5 text-base font-bold text-slate-900"><HeroIcons.ClockIcon className="h-5 w-5 text-indigo-600" />Activity History</h3><p className="mt-0.5 text-xs text-slate-500">Latest workflow and checklist activity</p></div>
+                  <div>{activityHistory.map((event, index) => (
+                    <div key={event.id} className="relative flex gap-3 pb-4 last:pb-0">{index < activityHistory.length - 1 && <div className="absolute left-[6px] top-4 h-full w-px bg-slate-200" />}<span className={`relative mt-1 h-3.5 w-3.5 flex-shrink-0 rounded-full border-[3px] border-white shadow-sm ${event.tone === 'emerald' ? 'bg-emerald-500' : event.tone === 'violet' ? 'bg-violet-500' : 'bg-blue-500'}`} /><div><p className="text-xs font-semibold text-slate-800">{event.title}</p><p className="mt-0.5 text-[11px] leading-4 text-slate-500">{event.detail}</p><p className="mt-1 text-[10px] font-medium text-slate-400">{formatDate(event.date)}</p></div></div>
+                  ))}</div>
+                </section>
+              </div>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h3 className="mb-3 flex items-center gap-1.5 text-base font-bold text-slate-900"><HeroIcons.UserIcon className="h-5 w-5 text-slate-600" />Employee Information</h3>
+                <dl className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">{[
+                  ['Email', record.employee_email || employee.email], ['Employee ID', record.employee_id || employee.employee_number],
+                  ['Position', record.position || employee.job_title_uae || employee.job_title_finland], ['Department', record.department || employee.division || employee.department],
+                  ['Reporting Manager', record.reporting_manager || employee.manager_name], ['Branch', BRANCH_CONFIG[record.branch]?.label || record.branch],
+                  ['Target Completion', formatDate(record.target_completion_date)], ['Initiated By', record.created_by_name || 'Not available'],
+                ].map(([label, value]) => <div key={label} className="border-b border-slate-100 pb-2"><dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 text-xs font-semibold text-slate-800">{value || 'Not set'}</dd></div>)}</dl>
+              </section>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   )
 }
@@ -2259,8 +3041,9 @@ const INITIATE_EXIT_FORM_FIELDS = [
     type: 'text',
     required: false,
     section: 'employee',
-    placeholder: 'Manager name',
-    tooltip: 'Direct supervisor/manager',
+    placeholder: 'Automatically selected manager',
+    tooltip: 'Uses the active project PoM; falls back to the employee line manager',
+    readOnly: true,
   },
   {
     id: 'branch',
@@ -2427,7 +3210,223 @@ const OFFBOARDING_FILTERS = [
 ]
 
 // ── Offboarding List Tab ───────────────────────────────────────────────────
-function OffboardingListTab({ initialFilter } = {}) {
+function OffboardingChecklistPanel({ recordId, onUpdated }) {
+  const [record, setRecord] = useState(null)
+  const [activeStage, setActiveStage] = useState('exit_initiation')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(null)
+  const [error, setError] = useState('')
+
+  const loadRecord = async () => {
+    const response = await apiClient.get(`${API_BASE}/offboarding/${recordId}/`)
+    setRecord(response.data)
+    if (onUpdated) onUpdated(response.data)
+    return response.data
+  }
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    apiClient.get(`${API_BASE}/offboarding/${recordId}/`)
+      .then(response => { if (active) setRecord(response.data) })
+      .catch(err => { if (active) setError(err.response?.data?.detail || 'Unable to load offboarding checklist.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [recordId])
+
+  const startStage = async () => {
+    const ongoingProjects = record?.ongoing_projects || []
+    if (ongoingProjects.length > 0) {
+      const projectDetails = ongoingProjects.map(project => {
+        const managers = project.project_managers?.length
+          ? project.project_managers.join(', ')
+          : 'PoM not assigned'
+        return `${project.name || project.code || 'Unnamed project'} — Project Manager: ${managers}`
+      }).join('\n')
+      const confirmed = window.confirm(
+        `This employee is assigned to an ongoing project:\n\n${projectDetails}\n\nPlease confirm with the Project Manager and clear the project assignment first. Do you want to continue starting this offboarding checklist stage?`
+      )
+      if (!confirmed) return
+    }
+
+    setSaving('start')
+    setError('')
+    try {
+      const response = await apiClient.post(`${API_BASE}/offboarding/${recordId}/start-checklist-stage/`, { stage: activeStage })
+      setRecord(response.data)
+      if (onUpdated) onUpdated(response.data)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.response?.data?.stage || 'Unable to start this checklist stage.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const toggleItem = async (item) => {
+    setSaving(item.id)
+    setError('')
+    try {
+      await apiClient.patch(`${API_BASE}/checklist/${item.id}/`, { completed: !item.completed })
+      await loadRecord()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Unable to update this checklist item.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  if (loading) return <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white py-8"><Spinner /><span className="ml-2 text-xs text-slate-500">Loading offboarding checklist...</span></div>
+  if (!record) return <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{error || 'Offboarding checklist is unavailable.'}</div>
+
+  const items = record.checklist_items || []
+  const stageItems = items.filter(item => item.stage === activeStage)
+  const completedCount = stageItems.filter(item => item.completed).length
+  const progress = stageItems.length ? Math.round((completedCount / stageItems.length) * 100) : 0
+  const config = OFFBOARDING_CHECKLIST_STAGES.find(stage => stage.id === activeStage)
+  const permission = record.checklist_stage_permissions?.[activeStage]
+  const readOnly = ['completed', 'cancelled', 'rejected'].includes(record.status)
+  const canManage = !readOnly && Boolean(permission?.can_manage)
+  const canStart = !readOnly && Boolean(permission?.can_start)
+  const StageIcon = config?.icon || HeroIcons.ClipboardDocumentListIcon
+  const printDate = new Date().toLocaleDateString('en-CA')
+  const printFileName = [record.employee_name, record.employee_id || 'No-ID', 'Offboarding-Signed-Off', printDate]
+    .map(value => String(value).replace(/[\\/:*?"<>|]+/g, '-').trim())
+    .filter(Boolean)
+    .join('_')
+  const ongoingProjects = record.ongoing_projects || []
+
+  const handleSignedOffPrint = () => {
+    const printWindow = window.open('', '_blank', 'width=1100,height=850')
+    if (!printWindow) {
+      window.alert('Print Preview was blocked. Please allow pop-ups and try again.')
+      return
+    }
+    const escapeHtml = (value) => {
+      const node = document.createElement('div')
+      node.textContent = String(value ?? '')
+      return node.innerHTML
+    }
+    const formatPrintDate = value => value ? new Date(value).toLocaleDateString() : '—'
+    const documentNumber = `HR-OFF-${String(record.employee_id || 'NO-ID').replace(/[^a-zA-Z0-9-]/g, '-')}-${printDate}`
+    const checklistRows = OFFBOARDING_CHECKLIST_STAGES.flatMap(stage => {
+      const rows = items.filter(item => item.stage === stage.id)
+      return rows.length
+        ? rows.map((item, index) => `<tr><td>${escapeHtml(stage.label)}</td><td>${index + 1}</td><td>${escapeHtml(item.task_name)}</td><td class="${item.completed ? 'done' : 'pending'}">${item.completed ? 'Completed' : 'Pending'}</td><td>${escapeHtml(item.completed_by_name || '—')}</td><td>${formatPrintDate(item.completed_date)}</td></tr>`)
+        : [`<tr><td>${escapeHtml(stage.label)}</td><td>—</td><td class="muted">Stage not started</td><td class="pending">Pending</td><td>—</td><td>—</td></tr>`]
+    }).join('')
+    const totalCompleted = items.filter(item => item.completed).length
+    const completionStatus = record.status === 'completed' ? 'SIGNED-OFF / COMPLETED' : 'PENDING SIGN-OFF'
+
+    printWindow.document.open()
+    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(printFileName)}</title><style>
+      @page { size: A4 portrait; margin: 16mm 12mm 15mm; }
+      * { box-sizing: border-box; } body { margin:0; color:#24324a; font-family:Arial,Helvetica,sans-serif; font-size:8.5pt; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      header { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #b4234d; padding-bottom:4mm; margin-bottom:5mm; }
+      .brand { font-size:12pt; font-weight:800; letter-spacing:.04em; } .control { text-align:right; color:#596579; font-size:7pt; line-height:1.45; }
+      h1 { margin:0 0 4mm; padding:3mm 4mm; color:white; background:#b4234d; font-size:14pt; letter-spacing:.03em; }
+      .meta { display:grid; grid-template-columns:repeat(3,1fr); border:1px solid #aeb7c5; margin-bottom:5mm; }
+      .field { min-height:14mm; padding:2.5mm 3mm; border-right:1px solid #d7dce4; border-bottom:1px solid #d7dce4; } .field:nth-child(3n){border-right:0}.field:nth-last-child(-n+3){border-bottom:0}
+      .label { display:block; color:#6b7690; font-size:6.5pt; font-weight:700; text-transform:uppercase; letter-spacing:.07em; } .value { display:block; margin-top:1mm; font-size:9pt; font-weight:700; }
+      .summary { display:flex; justify-content:space-between; align-items:center; padding:2.5mm 3mm; border:1px solid #e5a4b8; background:#fff3f6; margin-bottom:4mm; font-weight:700; }
+      table { width:100%; border-collapse:collapse; table-layout:fixed; } thead { display:table-header-group; } th { padding:2mm; color:white; background:#394a67; border:1px solid #394a67; font-size:7pt; text-align:left; }
+      td { padding:1.7mm 2mm; border:1px solid #cfd5df; vertical-align:top; line-height:1.25; } th:nth-child(1){width:20%}th:nth-child(2){width:5%}th:nth-child(3){width:35%}th:nth-child(4){width:11%}th:nth-child(5){width:17%}th:nth-child(6){width:12%}
+      tr { break-inside:avoid; } .done { color:#08785c; font-weight:700; } .pending { color:#b4234d; font-weight:700; } .muted { color:#778195; font-style:italic; }
+      .signatures { margin-top:6mm; break-inside:avoid; } .signatures h2 { margin:0 0 3mm; font-size:10pt; color:#394a67; }
+      .signature-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:4mm; } .signature { min-height:25mm; border:1px solid #aeb7c5; padding:3mm; } .signature strong { display:block; margin-bottom:9mm; color:#394a67; } .lines { display:grid; grid-template-columns:1fr 1fr; gap:4mm; color:#6b7690; font-size:7pt; } .line { border-top:1px solid #657087; padding-top:1mm; }
+      footer { margin-top:5mm; padding-top:2mm; border-top:1px solid #7b879a; display:flex; justify-content:space-between; color:#6b7690; font-size:7pt; }
+    </style></head><body>
+      <header><div class="brand">REJLERS ABU DHABI</div><div class="control">HR CONTROLLED DOCUMENT<br>CONFIDENTIAL<br>${escapeHtml(documentNumber)}</div></header>
+      <h1>EMPLOYEE OFFBOARDING CHECKLIST — SIGNED-OFF RECORD</h1>
+      <section class="meta">
+        <div class="field"><span class="label">Employee</span><span class="value">${escapeHtml(record.employee_name)}</span></div>
+        <div class="field"><span class="label">Employee ID</span><span class="value">${escapeHtml(record.employee_id || '—')}</span></div>
+        <div class="field"><span class="label">Department</span><span class="value">${escapeHtml(record.department || '—')}</span></div>
+        <div class="field"><span class="label">Position</span><span class="value">${escapeHtml(record.position || '—')}</span></div>
+        <div class="field"><span class="label">Last Working Day</span><span class="value">${formatPrintDate(record.last_working_day)}</span></div>
+        <div class="field"><span class="label">Exit Reason</span><span class="value">${escapeHtml(EXIT_REASON_CONFIG[record.exit_reason]?.label || record.exit_reason || '—')}</span></div>
+        <div class="field"><span class="label">Reporting Manager</span><span class="value">${escapeHtml(record.reporting_manager || '—')}</span></div>
+        <div class="field"><span class="label">Completion Date</span><span class="value">${formatPrintDate(record.actual_completion_date)}</span></div>
+        <div class="field"><span class="label">Issue Date</span><span class="value">${printDate}</span></div>
+      </section>
+      <div class="summary"><span>${escapeHtml(completionStatus)}</span><span>${totalCompleted} of ${items.length} tasks completed · ${record.progress_percentage || 0}% workflow progress</span></div>
+      <table><thead><tr><th>Stage</th><th>#</th><th>Checklist Item</th><th>Status</th><th>Completed By</th><th>Date</th></tr></thead><tbody>${checklistRows}</tbody></table>
+      <section class="signatures"><h2>Formal Sign-Off</h2><div class="signature-grid">
+        ${['Employee', 'Reporting Manager', 'Human Resources', 'ICT / Systems', 'Finance / Payroll'].map(role => `<div class="signature"><strong>${role}</strong><div class="lines"><span class="line">Name & Signature</span><span class="line">Date</span></div></div>`).join('')}
+        <div class="signature"><strong>Final HR Authorization</strong><div class="lines"><span class="line">Name & Signature</span><span class="line">Date / Stamp</span></div></div>
+      </div></section>
+      <footer><span>${escapeHtml(printFileName)}.pdf</span><span>CONFIDENTIAL HR DOCUMENT</span></footer>
+    </body></html>`)
+    printWindow.document.close()
+    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true })
+    printWindow.setTimeout(() => { printWindow.focus(); printWindow.print() }, 500)
+  }
+
+  return (
+    <section className="rounded-xl border border-rose-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3"><div><h4 className="flex items-center gap-2 text-sm font-bold text-slate-800"><HeroIcons.ClipboardDocumentCheckIcon className="h-5 w-5 text-rose-500" />Offboarding Checklist</h4><p className="mt-0.5 text-xs text-slate-500">RBAC-controlled exit workflow validation</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 ring-1 ring-rose-200">{items.filter(item => item.completed).length}/{items.length} complete</span><button type="button" onClick={handleSignedOffPrint} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-slate-900" title={`Print or save as ${printFileName}.pdf`}><HeroIcons.PrinterIcon className="h-4 w-4" />Signed-Off Print / PDF</button></div></div>
+      {ongoingProjects.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-amber-900" role="alert">
+          <div className="flex items-start gap-2.5">
+            <HeroIcons.ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="text-xs font-bold">Ongoing project assignment requires confirmation</p>
+              {ongoingProjects.map(project => (
+                <p key={`${project.source}-${project.id}`} className="mt-1 text-[11px] leading-5">
+                  This employee is under <span className="font-bold">{project.name || project.code || 'an ongoing project'}</span>. Please confirm with Project Manager <span className="font-bold">{project.project_managers?.length ? project.project_managers.join(', ') : 'Not assigned'}</span> and clear the project assignment first.
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="mb-4 grid grid-cols-2 gap-1.5 rounded-lg bg-slate-100 p-1 lg:grid-cols-5">
+        {OFFBOARDING_CHECKLIST_STAGES.map(stage => {
+          const Icon = stage.icon
+          const rows = items.filter(item => item.stage === stage.id)
+          const done = rows.filter(item => item.completed).length
+          const stagePermission = record.checklist_stage_permissions?.[stage.id]
+          return <button key={stage.id} type="button" onClick={() => { setActiveStage(stage.id); setError('') }} className={`rounded-md px-2 py-2 text-left transition ${activeStage === stage.id ? 'bg-white text-rose-700 shadow-sm ring-1 ring-rose-200' : 'text-slate-600 hover:bg-white/70'}`}><span className="flex items-center justify-between"><Icon className="h-4 w-4" />{stagePermission?.can_manage ? <HeroIcons.PencilSquareIcon className="h-3.5 w-3.5 text-emerald-500" /> : <HeroIcons.LockClosedIcon className="h-3.5 w-3.5 text-slate-400" />}</span><span className="mt-1 block text-[11px] font-bold">{stage.shortLabel}</span><span className="text-[9px] font-semibold text-slate-400">{rows.length ? `${done}/${rows.length} complete` : `Owner: ${stagePermission?.owner_label || stage.owner}`}</span></button>
+        })}
+      </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h5 className="flex items-center gap-1.5 text-sm font-bold text-slate-800"><StageIcon className="h-4 w-4 text-rose-500" />{config?.label}</h5><p className="mt-0.5 text-[11px] font-semibold text-slate-400">Owner: {permission?.owner_label || config?.owner}</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700">{progress}% complete</span><button type="button" onClick={startStage} disabled={stageItems.length > 0 || !canStart || Boolean(saving)} className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:bg-slate-200 disabled:text-slate-500">{saving === 'start' ? <Spinner /> : stageItems.length ? <HeroIcons.CheckCircleIcon className="h-4 w-4" /> : <HeroIcons.PlayIcon className="h-4 w-4" />}{stageItems.length ? 'Started' : canStart ? 'Start Checklist' : 'View Only'}</button></div></div>
+      {error && <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{String(error)}</div>}
+      {stageItems.length === 0 ? <div className="rounded-lg border-2 border-dashed border-rose-200 bg-rose-50/30 px-4 py-7 text-center"><StageIcon className="mx-auto h-7 w-7 text-rose-400" /><p className="mt-2 text-xs font-semibold text-slate-700">{config?.label} has not started</p><p className="mt-1 text-[11px] text-slate-500">{canStart ? 'Start this stage to create its standard tasks.' : `Managed by ${permission?.owner_label || config?.owner}.`}</p></div> : <div className="space-y-2">{stageItems.map(item => <article key={item.id} className={`rounded-lg border p-3 ${item.completed ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200'}`}><div className="flex items-start gap-3"><button type="button" onClick={() => toggleItem(item)} disabled={!canManage || Boolean(saving)} className={`mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full ${item.completed ? 'bg-emerald-500 text-white' : 'border-2 border-slate-300 text-transparent'} disabled:cursor-not-allowed disabled:opacity-50`}>{saving === item.id ? <Spinner /> : <HeroIcons.CheckIcon className="h-3.5 w-3.5" />}</button><div className="min-w-0 flex-1"><p className={`text-xs font-semibold ${item.completed ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{item.task_name}</p><div className="mt-1.5 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>Due {item.due_date ? new Date(item.due_date).toLocaleDateString() : 'Not set'}</span><span>{item.completed_by_name || 'Unassigned'}</span><span className="capitalize">{item.priority || 'medium'} priority</span></div></div></div></article>)}</div>}
+    </section>
+  )
+}
+
+function OffboardingChecklistModal({ record, onClose, onUpdated }) {
+  useEffect(() => {
+    const handleEscape = event => event.key === 'Escape' && onClose()
+    document.addEventListener('keydown', handleEscape)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handleEscape)
+      document.body.style.overflow = ''
+    }
+  }, [onClose])
+
+  const statusConfig = OFFBOARDING_STATUS_CONFIG[record.status] || OFFBOARDING_STATUS_CONFIG.initiated
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm" onClick={onClose}>
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl" onClick={event => event.stopPropagation()}>
+        <header className="flex items-center justify-between gap-3 bg-gradient-to-r from-rose-600 to-pink-600 px-5 py-4 text-white">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white/20"><HeroIcons.UserMinusIcon className="h-6 w-6" /></div>
+            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-lg font-bold">{record.employee_name}</h2><span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold">{statusConfig.label}</span></div><p className="mt-0.5 truncate text-xs text-rose-100">Offboarding Checklist · {record.employee_id || record.employee_email}</p></div>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-white/80 transition hover:bg-white/15 hover:text-white" title="Close offboarding checklist"><HeroIcons.XMarkIcon className="h-5 w-5" /></button>
+        </header>
+        <main className="flex-1 overflow-y-auto p-4">
+          <OffboardingChecklistPanel recordId={record.id} onUpdated={onUpdated} />
+        </main>
+      </div>
+    </div>
+  )
+}
+
+function OffboardingListTab({ initialFilter, focusedRecordId } = {}) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
@@ -2438,7 +3437,7 @@ function OffboardingListTab({ initialFilter } = {}) {
   })
   // Client-side date-range filter set when arriving from an Overview KPI card ('upcoming' | 'overdue' | 'completed' | 'all')
   const [dateFilter, setDateFilter] = useState(initialFilter?.dateFilter || 'all')
-  const [expandedRow, setExpandedRow] = useState(null)
+  const expandedRow = null
   const [editingField, setEditingField] = useState(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
@@ -2446,6 +3445,9 @@ function OffboardingListTab({ initialFilter } = {}) {
   const [viewMode, setViewMode] = useState('table') // 'table' or 'cards'
   const [stats, setStats] = useState({ total: 0, urgent: 0, overdue: 0, completed: 0 })
   const [showInitiateModal, setShowInitiateModal] = useState(false)
+  const [checklistRecord, setChecklistRecord] = useState(null)
+  const [actionRecordId, setActionRecordId] = useState(null)
+  const focusedRecordOpened = useRef(false)
 
   useEffect(() => {
     loadRecords()
@@ -2470,6 +3472,15 @@ function OffboardingListTab({ initialFilter } = {}) {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, dateFilter])
+
+  useEffect(() => {
+    if (!focusedRecordId || focusedRecordOpened.current || records.length === 0) return
+    const record = records.find(item => String(item.id) === String(focusedRecordId))
+    if (record) {
+      focusedRecordOpened.current = true
+      setChecklistRecord(record)
+    }
+  }, [focusedRecordId, records])
 
   const loadRecords = () => {
     setLoading(true)
@@ -2528,6 +3539,44 @@ function OffboardingListTab({ initialFilter } = {}) {
   const handleCancel = () => {
     setEditingField(null)
     setEditValue('')
+  }
+
+  const handleRejectOffboarding = async (record) => {
+    const projectNames = (record.ongoing_projects || [])
+      .map(project => `${project.code} - ${project.name}`)
+      .join(', ')
+    const reason = window.prompt(
+      `Reject ${record.employee_name}'s offboarding request?\n\nActive project(s): ${projectNames}\n\nEnter the rejection reason:`,
+      'Employee is assigned to an active project.',
+    )
+    if (reason === null) return
+    setActionRecordId(record.id)
+    try {
+      await apiClient.post(`${API_BASE}/offboarding/${record.id}/reject/`, { reason })
+      setAlert({ type: 'success', message: 'Offboarding request rejected and the employee was notified.' })
+      loadRecords()
+    } catch (err) {
+      setAlert({ type: 'error', message: err.response?.data?.detail || 'Unable to reject this offboarding request.' })
+    } finally {
+      setActionRecordId(null)
+      setTimeout(() => setAlert(null), 5000)
+    }
+  }
+
+  const handleDeleteOffboarding = async (record) => {
+    if (!window.confirm(`Permanently delete the offboarding process for ${record.employee_name}? This cannot be undone.`)) return
+    setActionRecordId(record.id)
+    try {
+      await apiClient.delete(`${API_BASE}/offboarding/${record.id}/`)
+      if (checklistRecord?.id === record.id) setChecklistRecord(null)
+      setAlert({ type: 'success', message: 'Offboarding process deleted successfully.' })
+      loadRecords()
+    } catch (err) {
+      setAlert({ type: 'error', message: err.response?.data?.detail || 'Unable to delete this offboarding process.' })
+    } finally {
+      setActionRecordId(null)
+      setTimeout(() => setAlert(null), 5000)
+    }
   }
 
   const renderFieldValue = (record, field, label, type = 'text') => {
@@ -2873,6 +3922,21 @@ function OffboardingListTab({ initialFilter } = {}) {
 
                 {/* Card Body */}
                 <div className="p-4 space-y-3">
+                  {record.has_ongoing_projects && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <div className="flex items-start gap-2">
+                        <HeroIcons.ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                        <div>
+                          <p className="text-xs font-bold text-amber-900">Assigned to active project</p>
+                          <p className="mt-0.5 text-[11px] text-amber-800">
+                            {(record.ongoing_projects || []).map(project => `${project.code} - ${project.name}`).join(', ')}
+                          </p>
+                          <p className="mt-1 text-[10px] text-amber-700">The responsible PoM was notified when this exit was initiated.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Last Working Day */}
                   <div className="bg-slate-50 rounded-lg p-3">
                     <div className="flex items-center justify-between">
@@ -2941,22 +4005,38 @@ function OffboardingListTab({ initialFilter } = {}) {
                   </div>
 
                   {/* Actions */}
-                  <button
-                    onClick={() => setExpandedRow(expandedRow === record.id ? null : record.id)}
-                    className="w-full mt-3 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2"
-                  >
-                    {expandedRow === record.id ? (
-                      <>
-                        <HeroIcons.ChevronUpIcon className="w-4 h-4" />
-                        Hide Full Details
-                      </>
-                    ) : (
-                      <>
-                        <HeroIcons.EyeIcon className="w-4 h-4" />
-                        View Full Details
-                      </>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setChecklistRecord(record)}
+                      className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition-all hover:bg-rose-100"
+                      title="Open Offboarding Checklist"
+                    >
+                      <HeroIcons.UserMinusIcon className="h-4 w-4" />
+                      Checklist
+                    </button>
+                    {record.can_manage_actions && record.has_ongoing_projects && OFFBOARDING_ACTIVE_STATUSES.includes(record.status) && (
+                      <button
+                        type="button"
+                        onClick={() => handleRejectOffboarding(record)}
+                        disabled={actionRecordId === record.id}
+                        className="flex items-center justify-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50"
+                        title="Reject because the employee is assigned to an active project"
+                      >
+                        <HeroIcons.XCircleIcon className="h-4 w-4" />Reject
+                      </button>
                     )}
-                  </button>
+                    {record.can_manage_actions && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteOffboarding(record)}
+                        disabled={actionRecordId === record.id}
+                        className="flex items-center justify-center rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                        title="Delete offboarding process"
+                      >
+                        <HeroIcons.TrashIcon className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Expanded Details (shown below card when expanded) */}
@@ -3008,7 +4088,7 @@ function OffboardingListTab({ initialFilter } = {}) {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">Exit Reason</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">Progress</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600">Details</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -3026,6 +4106,11 @@ function OffboardingListTab({ initialFilter } = {}) {
                           <div>
                             <p className="text-sm font-semibold text-slate-700">{record.employee_name}</p>
                             <p className="text-xs text-slate-500">{record.employee_email}</p>
+                            {record.has_ongoing_projects && (
+                              <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700" title={(record.ongoing_projects || []).map(project => `${project.code} - ${project.name}`).join(', ')}>
+                                <HeroIcons.ExclamationTriangleIcon className="h-3 w-3" />Active project assigned
+                              </p>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-600">{record.position}</td>
@@ -3062,22 +4147,37 @@ function OffboardingListTab({ initialFilter } = {}) {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => setExpandedRow(expandedRow === record.id ? null : record.id)}
-                            className="px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors flex items-center gap-1 mx-auto"
-                          >
-                            {expandedRow === record.id ? (
-                              <>
-                                <HeroIcons.ChevronUpIcon className="w-4 h-4" />
-                                Hide
-                              </>
-                            ) : (
-                              <>
-                                <HeroIcons.ChevronDownIcon className="w-4 h-4" />
-                                Show All
-                              </>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => setChecklistRecord(record)}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition-colors hover:bg-rose-50"
+                              title="Open Offboarding Checklist"
+                            >
+                              <HeroIcons.UserMinusIcon className="h-5 w-5" />
+                            </button>
+                            {record.can_manage_actions && record.has_ongoing_projects && OFFBOARDING_ACTIVE_STATUSES.includes(record.status) && (
+                              <button
+                                type="button"
+                                onClick={() => handleRejectOffboarding(record)}
+                                disabled={actionRecordId === record.id}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-amber-600 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                                title="Reject: employee has an active project assignment"
+                              >
+                                <HeroIcons.XCircleIcon className="h-5 w-5" />
+                              </button>
                             )}
-                          </button>
+                            {record.can_manage_actions && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOffboarding(record)}
+                                disabled={actionRecordId === record.id}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                                title="Delete offboarding process"
+                              >
+                                <HeroIcons.TrashIcon className="h-5 w-5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
 
@@ -3183,6 +4283,17 @@ function OffboardingListTab({ initialFilter } = {}) {
           </div>
         </div>
       )}
+
+      {checklistRecord && (
+        <OffboardingChecklistModal
+          record={checklistRecord}
+          onClose={() => setChecklistRecord(null)}
+          onUpdated={(updatedRecord) => {
+            setChecklistRecord(current => current ? { ...current, ...updatedRecord } : current)
+            loadRecords()
+          }}
+        />
+      )}
       
       {/* Initiate Exit Modal */}
       {showInitiateModal && (
@@ -3205,7 +4316,7 @@ function OffboardingListTab({ initialFilter } = {}) {
 // Smart form-based modal for creating new offboarding records
 // ═══════════════════════════════════════════════════════════════════════════
 
-function InitiateExitModal({ onClose, onSuccess }) {
+export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null, lockEmployee = false }) {
   // Form state
   const [formData, setFormData] = useState({})
   const [errors, setErrors] = useState({})
@@ -3215,8 +4326,30 @@ function InitiateExitModal({ onClose, onSuccess }) {
   // Data state
   const [employees, setEmployees] = useState([])
   const [hrManagers, setHrManagers] = useState([])
+  const [activeOffboardings, setActiveOffboardings] = useState([])
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [employeeSearch, setEmployeeSearch] = useState('')
+
+  const activeOffboardingLookup = useMemo(() => {
+    const byUserId = new Map()
+    const byEmail = new Map()
+
+    activeOffboardings.forEach(record => {
+      if (record.user_id) byUserId.set(String(record.user_id), record)
+      if (record.employee_email) byEmail.set(record.employee_email.toLowerCase(), record)
+    })
+
+    return { byUserId, byEmail }
+  }, [activeOffboardings])
+
+  const getActiveOffboarding = (employee) => {
+    if (!employee) return null
+    return activeOffboardingLookup.byUserId.get(String(employee.user_id))
+      || activeOffboardingLookup.byEmail.get((employee.email || '').toLowerCase())
+      || null
+  }
+
+  const selectedActiveOffboarding = getActiveOffboarding(selectedEmployee)
   
   // Initialize form with default values
   useEffect(() => {
@@ -3242,10 +4375,33 @@ function InitiateExitModal({ onClose, onSuccess }) {
       apiClient.get('/users/employees/active_employees/', {
         params: { role_filter: 'hr_manager', minimal: 'true' }
       }),
+      apiClient.get(`${API_BASE}/offboarding/active-employees/`),
     ])
-      .then(([empRes, hrRes]) => {
-        setEmployees(empRes.data.results || [])
+      .then(([empRes, hrRes, activeOffboardingRes]) => {
+        const employeeRows = empRes.data.results || []
+        setEmployees(employeeRows)
         setHrManagers(hrRes.data.results || [])
+        setActiveOffboardings(activeOffboardingRes.data || [])
+        const initialEmployee = initialEmployeeId
+          ? employeeRows.find(employee => String(employee.user_id) === String(initialEmployeeId))
+          : null
+        if (initialEmployee) {
+          const fullName = [initialEmployee.first_name, initialEmployee.last_name]
+            .filter(Boolean)
+            .join(' ') || initialEmployee.email.split('@')[0]
+          setSelectedEmployee(initialEmployee)
+          setFormData(previous => ({
+            ...previous,
+            employee_id: initialEmployee.employee_number || initialEmployee.employment_id || String(initialEmployee.user_id),
+            employee_name: fullName,
+            employee_email: initialEmployee.email,
+            user: initialEmployee.user_id,
+            position: initialEmployee.position || previous.position || '',
+            department: initialEmployee.department || previous.department || '',
+            reporting_manager: initialEmployee.reporting_manager || previous.reporting_manager || '',
+            branch: initialEmployee.branch || previous.branch || 'RAD',
+          }))
+        }
         console.log('✅ Loaded employees:', empRes.data.count, 'HR managers:', hrRes.data.count)
       })
       .catch((err) => {
@@ -3253,7 +4409,7 @@ function InitiateExitModal({ onClose, onSuccess }) {
         alert('Failed to load employee data. Please refresh the page.')
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [initialEmployeeId])
   
   // Calculate target completion date (30 days after last working day)
   useEffect(() => {
@@ -3282,7 +4438,7 @@ function InitiateExitModal({ onClose, onSuccess }) {
       
       setFormData(prev => ({
         ...prev,
-        employee_id: employeeId,
+        employee_id: employee.employee_number || employee.employment_id || employeeId,
         employee_name: fullName,
         employee_email: employee.email,
         user: employee.user_id,
@@ -3309,6 +4465,10 @@ function InitiateExitModal({ onClose, onSuccess }) {
   // Validate form
   const validateForm = () => {
     const newErrors = {}
+
+    if (selectedActiveOffboarding) {
+      newErrors.employee_id = 'This employee already has an active offboarding process.'
+    }
     
     INITIATE_EXIT_FORM_FIELDS.forEach(field => {
       if (field.required) {
@@ -3395,46 +4555,61 @@ function InitiateExitModal({ onClose, onSuccess }) {
       case 'select-search':
         return (
           <div>
-            <input
+            {!lockEmployee && <input
               type="text"
               placeholder={field.placeholder}
               value={employeeSearch}
               onChange={(e) => setEmployeeSearch(e.target.value)}
               className={commonClasses}
-            />
-            {employeeSearch && filteredEmployees.length > 0 && (
+            />}
+            {!lockEmployee && employeeSearch && filteredEmployees.length > 0 && (
               <div className="mt-1 max-h-48 overflow-y-auto border border-slate-200 rounded-lg bg-white shadow-lg">
-                {filteredEmployees.map(emp => (
-                  <button
-                    key={emp.user_id}
-                    type="button"
-                    onClick={() => {
-                      handleEmployeeSelect(emp.user_id.toString())
-                      setEmployeeSearch('')
-                    }}
-                    className="w-full px-3 py-2 text-left hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-b-0"
-                  >
-                    <div className="text-sm font-medium text-slate-800">
-                      {emp.first_name} {emp.last_name}
-                    </div>
-                    <div className="text-xs text-slate-500">{emp.email}</div>
-                    {emp.position && (
-                      <div className="text-xs text-slate-400">{emp.position}</div>
-                    )}
-                  </button>
-                ))}
+                {filteredEmployees.map(emp => {
+                  const activeOffboarding = getActiveOffboarding(emp)
+                  const activeLabel = activeOffboarding?.status === 'initiated' ? 'Initiated' : 'In Progress'
+
+                  return (
+                    <button
+                      key={emp.user_id}
+                      type="button"
+                      onClick={() => {
+                        handleEmployeeSelect(emp.user_id.toString())
+                        setEmployeeSearch('')
+                      }}
+                      className={`w-full px-3 py-2 text-left transition-colors border-b border-slate-100 last:border-b-0 ${activeOffboarding ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-blue-50'}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-medium text-slate-800">
+                          {emp.first_name} {emp.last_name}
+                        </div>
+                        {activeOffboarding && (
+                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-300">
+                            Offboarding: {activeLabel}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500">{emp.email}</div>
+                      {emp.position && (
+                        <div className="text-xs text-slate-400">{emp.position}</div>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
             {selectedEmployee && (
-              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className={`mt-2 p-3 rounded-lg border ${selectedActiveOffboarding ? 'bg-amber-50 border-amber-300' : 'bg-blue-50 border-blue-200'}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-semibold text-blue-900">
+                    <div className={`text-sm font-semibold ${selectedActiveOffboarding ? 'text-amber-900' : 'text-blue-900'}`}>
                       {selectedEmployee.first_name} {selectedEmployee.last_name}
                     </div>
-                    <div className="text-xs text-blue-700">{selectedEmployee.email}</div>
+                    <div className={`text-xs ${selectedActiveOffboarding ? 'text-amber-700' : 'text-blue-700'}`}>{selectedEmployee.email}</div>
+                    <div className={`mt-1 text-[11px] font-semibold ${selectedActiveOffboarding ? 'text-amber-800' : 'text-blue-800'}`}>
+                      Employee ID: {selectedEmployee.employee_number || selectedEmployee.employment_id || 'Not set'}
+                    </div>
                   </div>
-                  <button
+                  {!lockEmployee && <button
                     type="button"
                     onClick={() => {
                       setSelectedEmployee(null)
@@ -3447,12 +4622,25 @@ function InitiateExitModal({ onClose, onSuccess }) {
                         return newData
                       })
                     }}
-                    className="p-1 hover:bg-blue-100 rounded transition-colors"
+                    className={`p-1 rounded transition-colors ${selectedActiveOffboarding ? 'hover:bg-amber-100' : 'hover:bg-blue-100'}`}
                     title="Clear selection"
                   >
-                    <HeroIcons.XMarkIcon className="w-4 h-4 text-blue-600" />
-                  </button>
+                    <HeroIcons.XMarkIcon className={`w-4 h-4 ${selectedActiveOffboarding ? 'text-amber-700' : 'text-blue-600'}`} />
+                  </button>}
                 </div>
+                {selectedActiveOffboarding && (
+                  <div className="mt-3 flex items-start gap-2 border-t border-amber-200 pt-3">
+                    <HeroIcons.ExclamationTriangleIcon className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-amber-900">
+                        Offboarding already {selectedActiveOffboarding.status === 'initiated' ? 'initiated' : 'in progress'}
+                      </p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Last working day: {new Date(selectedActiveOffboarding.last_working_day).toLocaleDateString()}. Complete or cancel the existing process before starting another.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -3518,8 +4706,9 @@ function InitiateExitModal({ onClose, onSuccess }) {
             value={value}
             onChange={(e) => handleChange(field.field, e.target.value)}
             placeholder={field.placeholder}
-            className={commonClasses}
+            className={`${commonClasses} ${field.readOnly ? 'cursor-not-allowed bg-slate-100 text-slate-700' : ''}`}
             required={field.required}
+            readOnly={field.readOnly}
           />
         )
     }
@@ -3603,6 +4792,13 @@ function InitiateExitModal({ onClose, onSuccess }) {
                             )}
                           </label>
                           {renderField(field)}
+                          {field.field === 'reporting_manager' && selectedEmployee && (
+                            <p className="mt-1 text-[11px] font-medium text-slate-500">
+                              {selectedEmployee.reporting_manager_source === 'project_manager'
+                                ? `Project PoM${selectedEmployee.reporting_project_name ? ` · ${selectedEmployee.reporting_project_name}` : ''}`
+                                : 'Line Manager (no active project PoM assigned)'}
+                            </p>
+                          )}
                           {errors[field.field] && (
                             <p className="mt-1 text-xs text-rose-600">{errors[field.field]}</p>
                           )}
@@ -3633,7 +4829,7 @@ function InitiateExitModal({ onClose, onSuccess }) {
             <button
               type="submit"
               onClick={handleSubmit}
-              disabled={submitting || loading}
+              disabled={submitting || loading || Boolean(selectedActiveOffboarding)}
               className="px-6 py-2 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white rounded-lg text-sm font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {submitting ? (
