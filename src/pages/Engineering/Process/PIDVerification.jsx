@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
 import CrossRecommendationPanel from '../../../components/recommendations/CrossRecommendationPanel';
+import LegendSheetsModal from './components/LegendSheetsModal';
+import { listLegends, MODE_OCR, MODE_VISION, VISION_PROVIDERS, LEGEND_SECTIONS } from '../../../services/pidCheckerV2API';
 import {
   Upload as UploadIcon, FileText, CheckCircle, AlertTriangle,
   Loader, X, Download, Activity, Shield, GitBranch, Cpu, Clock,
@@ -12,7 +14,7 @@ import {
   Lightbulb, Eye, EyeOff, Hash, ClipboardList, Boxes, MapPin, Wrench, Network, Database, GripVertical,
   Search, ExternalLink, Sparkles, Maximize2, Minimize2, Wind,
   Gauge, CheckSquare, Factory, Droplet, Flame, Settings, Award, Waves, Cog, CircleDot as Valve,
-  BookOpen, HelpCircle, List, Star, FileCheck, PlayCircle,
+  BookOpen, HelpCircle, List, Star, FileCheck, PlayCircle, Key,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,6 +86,7 @@ const WORKFLOW_DIAGRAM_SCALE_X   = 1.0;   // 100% width — normal size
 const WORKFLOW_DIAGRAM_SCALE_Y   = 1.0;   // 100% height — normal size
 const WORKFLOW_DIAGRAM_SPACING   = 1.0;   // 100% padding — normal spacing
 const WORKFLOW_COMPACT_MODE      = false; // DISABLED: Use original card sizing
+const WORKFLOW_DIAGRAM_IMAGE_PATH = '/assets/images/P&ID_Final.png'; // Soft-coded: Workflow diagram image path
 
 // ── Soft-coded: INNOVATIVE WORKFLOW LAYOUT Configuration ─────────────────────
 // Smart workflow diagram with collapsible, compact, and split-screen modes
@@ -210,7 +213,7 @@ const NAV_BUTTONS_CONFIG = [
     enabled: false,  // Disabled by default - set to true to show both buttons
     label: 'Try V2 Beta',
     icon: 'Sparkles',
-    route: '/engineering/process/pid-verification',
+    route: '/engineering/process/pid-verification', // Old V2 route (now redirects)
     gradient: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
     shadowColor: 'rgba(99,102,241,0.4)',
     hoverShadowColor: 'rgba(99,102,241,0.6)',
@@ -1437,15 +1440,33 @@ const PIDVerification = () => {
   // ── Drawing image (lazy-loaded for overlay) ───────────────────────────────
   const [drawingImageUrl,     setDrawingImageUrl]     = useState(null);
   const [drawingImageLoading, setDrawingImageLoading] = useState(false);
-  // ── Legend Sheets — AI-powered extraction ─────────────────────────────────
-  const [legendSheets,       setLegendSheets]       = useState([]);
-  const [showLegendUpload,   setShowLegendUpload]   = useState(false);
-  const [legendUploadFiles,  setLegendUploadFiles]  = useState([]);
-  const [legendUploading,    setLegendUploading]    = useState(false);
-  const [showLegendPanel,    setShowLegendPanel]    = useState(false);
-  const [legendPanelSheet,   setLegendPanelSheet]   = useState(null);  // full detail
-  const [loadingLegendDetail,setLoadingLegendDetail]= useState(false);
-  const legendPollRef = useRef(null);
+  
+  // ── Legend Sheets — V2 System (Advanced Modal with Legend Manager) ────────
+  // SOFT-CODED: Using pid-checker-v2's LegendSheetsModal for unified legend management
+  // IMPORTANT: V1 and V2 share the same legend section ('line_list'), so legends are 
+  // synchronized across both versions. Any legend created in V1 is available in V2 and vice versa.
+  const LEGEND_SECTION = LEGEND_SECTIONS[0]?.id || 'line_list'; // Default section
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
+  const [activeLegend, setActiveLegend] = useState(null);
+  const [effectiveLegend, setEffectiveLegend] = useState(null);
+  
+  // ── Extraction Mode — OCR (Offline) vs AI Vision (BYOK) ───────────────────
+  // SOFT-CODED: Extraction mode constants from pid-checker-v2 API
+  const SS_KEY_PROVIDER = 'radai_pidv1_byok_provider';
+  const SS_KEY_APIKEY   = 'radai_pidv1_byok_apikey';
+  const SS_KEY_REMEMBER = 'radai_pidv1_byok_remember';
+  const [extractionMode, setExtractionMode] = useState(MODE_OCR);
+  const [visionProvider, setVisionProvider] = useState(
+    () => sessionStorage.getItem(SS_KEY_PROVIDER) || VISION_PROVIDERS[0].id
+  );
+  const [visionApiKey, setVisionApiKey] = useState(
+    () => sessionStorage.getItem(SS_KEY_APIKEY) || ''
+  );
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [rememberKey, setRememberKey] = useState(
+    () => sessionStorage.getItem(SS_KEY_REMEMBER) === '1'
+  );
+  
   // ── Findings filters (soft-coded, additive) ───────────────────────────────
   const [filterSeverity, setFilterSeverity] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -1453,8 +1474,46 @@ const PIDVerification = () => {
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => { fetchProjects(); }, []);
+  
+  // ── Refresh Active Legend (V2 System) ─────────────────────────────────────
+  const refreshActiveLegend = useCallback(async () => {
+    try {
+      const rows = await listLegends(LEGEND_SECTION);
+      const list = rows || [];
+      const active = list.find(l => l.is_active) || null;
+      setActiveLegend(active);
+      // Also track most recent as fallback
+      if (list.length > 0) {
+        const mostRecent = list.reduce((a, b) => 
+          new Date(b.created_at) > new Date(a.created_at) ? b : a
+        );
+        setEffectiveLegend(active || mostRecent);
+      } else {
+        setEffectiveLegend(null);
+      }
+    } catch (err) {
+      console.warn('[PIDVerification] Legend fetch failed', err);
+    }
+  }, [LEGEND_SECTION]);
+  
+  // Load active legend on mount
+  useEffect(() => { refreshActiveLegend(); }, [refreshActiveLegend]);
+  
+  // ── Persist Vision BYOK settings to sessionStorage ────────────────────────
+  useEffect(() => {
+    if (extractionMode === MODE_VISION) {
+      sessionStorage.setItem(SS_KEY_PROVIDER, visionProvider);
+      if (rememberKey && visionApiKey) {
+        sessionStorage.setItem(SS_KEY_APIKEY, visionApiKey);
+        sessionStorage.setItem(SS_KEY_REMEMBER, '1');
+      } else {
+        sessionStorage.removeItem(SS_KEY_APIKEY);
+        sessionStorage.removeItem(SS_KEY_REMEMBER);
+      }
+    }
+  }, [extractionMode, visionProvider, visionApiKey, rememberKey]);
 
-  // ── Drawing image loader — refetch whenever the active drawing changes ─────
+  // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => {
     let objectUrl = null;
     const docId = documentId || results?.document_id;
@@ -1660,7 +1719,20 @@ const PIDVerification = () => {
     }
   };
 
-  // ── Legend Sheets API helpers ──────────────────────────────────────────────
+  // ── OLD Legend Sheets API helpers (V1) — DEPRECATED, using V2 system now ──────
+  // These functions are commented out because they reference state variables that
+  // no longer exist after migrating to the V2 LegendSheetsModal system.
+  // If you need the old behavior, uncomment and restore the required state variables:
+  // - legendSheets, setLegendSheets
+  // - legendUploadFiles, setLegendUploadFiles  
+  // - legendUploading, setLegendUploading
+  // - showLegendUpload, setShowLegendUpload
+  // - legendPollRef (useRef)
+  // - showLegendPanel, setShowLegendPanel
+  // - legendPanelSheet, setLegendPanelSheet
+  // - loadingLegendDetail, setLoadingLegendDetail
+  
+  /*
   const fetchLegendSheets = async (projectId) => {
     if (!projectId) return;
     try {
@@ -1669,21 +1741,7 @@ const PIDVerification = () => {
         { headers: authHeader() },
       );
       setLegendSheets(res.data?.legend_sheets || []);
-    } catch (_) { /* non-fatal */ }
-  };
-
-  // Instrument Symbol Registry — fetch all symbols for the active project
-  const fetchInstrumentSymbols = async (projectId) => {
-    if (!projectId) return;
-    setLoadingInstrSymbols(true);
-    try {
-      const res = await axios.get(
-        `${API_PREFIX}/projects/${projectId}/instrument-symbols/`,
-        { headers: authHeader() },
-      );
-      setInstrSymbols(res.data?.symbols || []);
-    } catch (_) { /* non-fatal */ }
-    finally { setLoadingInstrSymbols(false); }
+    } catch (_) { }
   };
 
   const uploadLegendSheets = async () => {
@@ -1699,7 +1757,6 @@ const PIDVerification = () => {
       );
       setShowLegendUpload(false);
       setLegendUploadFiles([]);
-      // Start polling for status updates
       fetchLegendSheets(selectedProject.project_id);
       startLegendPoll(selectedProject.project_id);
       flash('success', 'Legend sheet(s) uploaded — AI extraction in progress…');
@@ -1712,7 +1769,6 @@ const PIDVerification = () => {
 
   const startLegendPoll = (projectId) => {
     if (legendPollRef.current) clearInterval(legendPollRef.current);
-    // Soft-coded: poll every 4 s, stop after 120 s
     const POLL_INTERVAL_MS = 4000;
     const POLL_MAX_MS      = 120000;
     const start = Date.now();
@@ -1762,9 +1818,23 @@ const PIDVerification = () => {
       flash('error', 'Retry failed');
     }
   };
+  */
 
-  // Cleanup legend poll on unmount
-  useEffect(() => () => { if (legendPollRef.current) clearInterval(legendPollRef.current); }, []);
+  // ── Instrument Symbol Registry — fetch all symbols for the active project ──
+  const fetchInstrumentSymbols = async (projectId) => {
+    if (!projectId) return;
+    setLoadingInstrSymbols(true);
+    try {
+      const res = await axios.get(
+        `${API_PREFIX}/projects/${projectId}/instrument-symbols/`,
+        { headers: authHeader() },
+      );
+      setInstrSymbols(res.data?.symbols || []);
+    } catch (_) { /* non-fatal */ }
+    finally { setLoadingInstrSymbols(false); }
+  };
+
+  // NOTE: Old legend polling cleanup removed — using V2 LegendSheetsModal system now
 
   // ── Unmount cleanup — kill status polling timers when leaving the page ────
   // Prevents zombie pollers from accumulating across navigations (each one
@@ -1834,13 +1904,15 @@ const PIDVerification = () => {
     setResults(null);
     fetchHistory(p.project_id);
     fetchLegendKnowledge(p.project_id);
-    fetchLegendSheets(p.project_id);
+    // fetchLegendSheets(p.project_id); // OLD V1 system - commented out
     fetchInstrumentSymbols(p.project_id);
+    // Refresh V2 legend system on project selection
+    refreshActiveLegend();
   };
 
   const handleBackToProjects = () => {
     clearInterval(pollRef.current);
-    if (legendPollRef.current) clearInterval(legendPollRef.current);
+    // if (legendPollRef.current) clearInterval(legendPollRef.current); // OLD V1 system - commented out
     setSelectedProject(null);
     setHistory([]);
     resetUpload();
@@ -1850,8 +1922,8 @@ const PIDVerification = () => {
     setLegendKnowledge(null);
     setLegendScope(null);
     setLegendBuiltAt(null);
-    setLegendSheets([]);
-    setShowLegendPanel(false);
+    // setLegendSheets([]); // OLD V1 system - commented out
+    // setShowLegendPanel(false); // OLD V1 system - commented out
     setMessage({ type:'', text:'' });
   };
 
@@ -2159,11 +2231,48 @@ const PIDVerification = () => {
 
   const handleUpload = async () => {
     if (!file) { setError('Please select a P&ID file first.'); return; }
+    
+    // SOFT-CODED: Validation for AI Vision mode requiring API key
+    if (extractionMode === MODE_VISION && !visionApiKey.trim()) {
+      setError('Please provide your API key for AI Vision analysis.');
+      return;
+    }
+    
     setError(''); setUploading(true); setResults(null); setDocStatus(null); setDocumentId(null);
 
     const fd = new FormData();
     fd.append('file', file);
     if (selectedProject) fd.append('project_id', selectedProject.project_id);
+    
+    // ══════════════════════════════════════════════════════════════════════
+    // SOFT-CODED: Extraction Mode & BYOK (Bring Your Own Key)
+    // ══════════════════════════════════════════════════════════════════════
+    // Maps frontend extraction modes to backend analysis modes:
+    //   MODE_OCR    → 'standard'          (Traditional OCR, no AI)
+    //   MODE_VISION → 'enhanced_openai'   (OpenAI GPT-4o Vision)
+    //            or → 'deep_claude'        (Claude Sonnet 4.5 Vision)
+    // 
+    // Backend expects:
+    //   - analysis_mode: 'standard' | 'enhanced_openai' | 'deep_claude' | 'hybrid'
+    //   - openai_api_key: User's OpenAI key (for enhanced_openai mode)
+    //   - claude_api_key: User's Claude key (for deep_claude mode)
+    // ══════════════════════════════════════════════════════════════════════
+    
+    if (extractionMode === MODE_OCR) {
+      // Standard OCR mode - no AI enhancement
+      fd.append('analysis_mode', 'standard');
+    } else if (extractionMode === MODE_VISION) {
+      // AI Vision mode - map provider to analysis mode
+      if (visionProvider === 'openai') {
+        fd.append('analysis_mode', 'enhanced_openai');
+        fd.append('openai_api_key', visionApiKey.trim());
+      } else if (visionProvider === 'claude') {
+        fd.append('analysis_mode', 'deep_claude');
+        fd.append('claude_api_key', visionApiKey.trim());
+      }
+    }
+    
+    // ══════════════════════════════════════════════════════════════════════
 
     try {
       const res = await axios.post(`${API_PREFIX}/upload-pid/`, fd, {
@@ -3363,7 +3472,7 @@ const PIDVerification = () => {
                       
                       {/* Actual Image */}
                       <img 
-                        src="/assets/images/PID_Workflow.png" 
+                        src={WORKFLOW_DIAGRAM_IMAGE_PATH} 
                         alt="P&ID Verification Workflow - 3 Stage Process: Upload Documents, AI Analysis, Quality Report"
                         onLoad={() => { setWorkflowImageLoaded(true); setWorkflowImageError(false); }}
                         onError={() => { setWorkflowImageError(true); setWorkflowImageLoaded(false); }}
@@ -5223,333 +5332,469 @@ const PIDVerification = () => {
           <div className="h-0.5" style={{ background:'linear-gradient(90deg,#3b82f6,#6366f1,#a855f7,#3b82f6)', backgroundSize:'200% auto', animation:'gradShift 4s linear infinite' }} />
         </div>
 
+        {/* ========== PROJECT-LEVEL LEGEND CONFIGURATION ========== */}
+        <div className="max-w-5xl mx-auto mb-6" style={{ animation:'fadeUp 0.5s ease-out 0.1s both' }}>
+          <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-lg">
+            <div className="px-5 py-3.5 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-slate-200 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                <BookOpen className="w-4.5 h-4.5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-slate-800 leading-tight">Project Legend Sheets</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Configured once, applied to all P&IDs in this project</p>
+              </div>
+              <button
+                onClick={() => setLegendModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm font-bold shadow-lg shadow-purple-500/30 hover:shadow-xl hover:shadow-purple-500/40 transition-all hover:-translate-y-0.5">
+                <Settings className="w-4 h-4" />
+                Manage Legends
+              </button>
+            </div>
+            
+            <div className="px-5 py-4">
+              <div className="flex items-start gap-4">
+                {/* Status Indicator */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${activeLegend ? 'bg-emerald-500 animate-pulse' : 'bg-blue-400'}`} />
+                    <span className="text-sm font-semibold text-slate-700">
+                      {activeLegend ? 'Custom Legend Active' : 'Using Built-in Defaults'}
+                    </span>
+                  </div>
+                  
+                  {activeLegend ? (
+                    <div className="pl-4.5">
+                      <p className="text-sm text-slate-600 mb-1">
+                        <span className="font-bold text-emerald-600">{activeLegend.name}</span>
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {activeLegend.definition?.fields?.length || 0} custom fields defined
+                        {activeLegend.definition?.sections && ` · ${Object.keys(activeLegend.definition.sections).length} sections`}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="pl-4.5">
+                      <p className="text-sm text-slate-600 mb-1">
+                        Industry-standard legend sheets with smart recognition
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Works automatically for 90%+ of engineering projects
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Info Badge */}
+                <div className="flex-shrink-0 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 max-w-xs">
+                  <div className="flex items-start gap-2">
+                    <Lightbulb className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-blue-800 mb-0.5">🔄 Synchronized Across Versions</p>
+                      <p className="text-xs text-blue-600 leading-snug mb-2">
+                        Legends configured here are automatically shared between V1 and V2. 
+                        Create once, use everywhere in <span className="font-bold">{selectedProject.project_name}</span>.
+                      </p>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">V1</span>
+                        <span className="text-blue-400">↔</span>
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">V2</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <FlashBanner />
 
-        {/* Upload card — two-column on lg+ screens */}
+        {/* ========== SMART WORKFLOW: STEP-BY-STEP UPLOAD ========== */}
         {!results && (
-          <div className="rounded-2xl p-5 sm:p-6 mb-5" style={{ ...T.panel, animation:'fadeUp 0.5s ease-out 0.2s both' }}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="max-w-5xl mx-auto">
+            {/* Progress Steps Indicator */}
+            <div className="mb-8 relative">
+              <div className="flex items-center justify-between">
+                {[
+                  { num: 1, label: 'Upload Drawing', icon: UploadIcon, active: !file },
+                  { num: 2, label: 'Choose Engine', icon: Zap, active: file && !extractionMode },
+                  { num: 3, label: 'Start Analysis', icon: PlayCircle, active: file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) }
+                ].map((step, idx) => (
+                  <div key={step.num} className="flex flex-col items-center flex-1 relative z-10">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-500 ${
+                      step.active 
+                        ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/50 scale-110' 
+                        : (file && step.num === 1) || (file && extractionMode && step.num === 2) || (file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) && step.num === 3)
+                          ? 'bg-emerald-500 text-white shadow-md' 
+                          : 'bg-slate-200 text-slate-400'
+                    }`}>
+                      <step.icon className="w-5 h-5" />
+                    </div>
+                    <span className={`mt-2 text-xs font-semibold transition-colors ${
+                      step.active ? 'text-blue-600' : 'text-slate-400'
+                    }`}>{step.label}</span>
+                    {idx < 2 && (
+                      <div className="absolute top-6 left-1/2 w-full h-0.5 -z-10">
+                        <div className={`h-full transition-all duration-500 ${
+                          (file && step.num === 1) || (file && extractionMode && step.num === 2) ? 'bg-emerald-500' : 'bg-slate-200'
+                        }`} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
 
-              {/* ── Left: drop-zone + selected file chip ─────────────── */}
-              <div className="flex flex-col gap-3">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">P&amp;ID Drawing (PDF) *</label>
+            {/* ========== STEP 1: UPLOAD CARD ========== */}
+            <div className="rounded-2xl overflow-hidden mb-5 border border-slate-200 bg-gradient-to-br from-white to-slate-50/30 backdrop-blur-xl shadow-xl transition-all duration-500"
+              style={{ animation:'fadeUp 0.5s ease-out 0.1s both' }}>
+              
+              {/* Card Header */}
+              <div className="px-6 py-4 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 border-b border-slate-200/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                    <UploadIcon className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-base font-bold text-slate-800">Upload P&ID Drawing</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Drag & drop or click to select your file</p>
+                  </div>
+                  {file && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200">
+                      <CheckCircle className="w-3.5 h-3.5" /> Ready
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Upload Area */}
+              <div className="p-6">
                 <div
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={handleDrop}
                   onClick={() => document.getElementById('pidv-file-input').click()}
-                  className={`border-2 border-dashed rounded-xl p-10 text-center transition-all duration-300 cursor-pointer flex-1 ${
-                    dragOver ? 'border-amber-400 bg-amber-50 shadow-lg shadow-amber-200/60'
-                    : file    ? 'border-emerald-400 bg-emerald-50'
-                    :            'border-slate-300 hover:border-blue-400 bg-white hover:bg-blue-50/40'
+                  className={`relative rounded-2xl p-12 text-center transition-all duration-300 cursor-pointer group ${
+                    dragOver 
+                      ? 'border-2 border-dashed border-amber-400 bg-gradient-to-br from-amber-50 to-orange-50 shadow-2xl scale-[1.02]'
+                      : file    
+                        ? 'border-2 border-emerald-400 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-lg'
+                        : 'border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-blue-50/30 hover:border-blue-400 hover:shadow-xl hover:scale-[1.01]'
                   }`}>
-                  <div className={`w-14 h-14 mx-auto mb-3 rounded-xl flex items-center justify-center transition-all ${
-                    dragOver ? 'bg-amber-100 animate-bounce' : file ? 'bg-emerald-50 border border-emerald-200' : 'bg-blue-50 border border-blue-200'
-                  }`}>
-                    {file ? <FileText className="w-7 h-7 text-emerald-500" /> : <UploadIcon className={`w-7 h-7 ${dragOver ? 'text-amber-500' : 'text-blue-500'}`} />}
+                  
+                  {/* Background Pattern */}
+                  <div className="absolute inset-0 opacity-5">
+                    <div className="absolute inset-0" style={{
+                      backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)',
+                      backgroundSize: '20px 20px'
+                    }} />
                   </div>
-                  <p className="text-sm font-semibold text-slate-700 mb-1">
-                    {file ? file.name : dragOver ? 'Drop your P&ID here' : 'Drag & drop or click to upload'}
-                  </p>
-                  <p className="text-xs text-slate-400">{file ? `${(file.size/1024/1024).toFixed(2)} MB` : 'PDF, PNG, JPG, TIFF, DWG · Max 50 MB'}</p>
-                  <input id="pidv-file-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.dwg" className="hidden" onChange={handleFileChange} />
-                </div>
-                {file && (
-                  <div className="flex items-center gap-2 bg-white border border-emerald-200 rounded-xl px-4 py-2.5">
-                    <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
-                    <span className="text-sm font-medium text-slate-800 truncate flex-1">{file.name}</span>
-                    <button onClick={e => { e.stopPropagation(); setFile(null); }} className="p-1 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
 
-              {/* ── Right: legend knowledge panel ────────────────────── */}
-              <div className="flex flex-col rounded-xl overflow-hidden border border-slate-200 h-fit">
-                <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2"
-                  style={{ background:'linear-gradient(135deg,#f8faff,#eef2ff)' }}>
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background:'linear-gradient(135deg,#2563eb,#1d4ed8)' }}>
-                    <Shield className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-700 uppercase tracking-wide leading-none">Legend Sheet</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Per-project · overrides global legend during analysis</p>
-                  </div>
-                  {/* Scope badge */}
-                  {legendScope === 'project' && (
-                    <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Project</span>
-                  )}
-                  {legendScope === 'global' && (
-                    <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Global fallback</span>
-                  )}
-                </div>
-                <div className="p-4 bg-white flex flex-col gap-3">
-                  {/* Prefix counters */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                      <span className="text-xs text-slate-500">Instrument prefixes</span>
-                      <span className="text-sm font-bold text-slate-700 ml-2">{legendKnowledge?.instrument_prefixes?.length ?? 0}</span>
+                  {/* Content */}
+                  <div className="relative z-10">
+                    <div className={`w-20 h-20 mx-auto mb-4 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                      dragOver 
+                        ? 'bg-amber-200 shadow-xl shadow-amber-500/50 rotate-12 scale-110' 
+                        : file 
+                          ? 'bg-emerald-200 shadow-lg shadow-emerald-500/30' 
+                          : 'bg-blue-100 group-hover:bg-blue-200 group-hover:scale-110'
+                    }`}>
+                      {file ? (
+                        <CheckCircle className="w-10 h-10 text-emerald-600" />
+                      ) : (
+                        <UploadIcon className={`w-10 h-10 transition-colors ${
+                          dragOver ? 'text-amber-600 animate-bounce' : 'text-blue-600'
+                        }`} />
+                      )}
                     </div>
-                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                      <span className="text-xs text-slate-500">Valve prefixes</span>
-                      <span className="text-sm font-bold text-slate-700 ml-2">{legendKnowledge?.valve_prefixes?.length ?? 0}</span>
-                    </div>
-                  </div>
-                  {/* Built-at info */}
-                  {legendScope === 'project' && legendBuiltAt && (
-                    <p className="text-xs text-emerald-600">
-                      Project legend built {new Date(legendBuiltAt).toLocaleDateString()}
-                    </p>
-                  )}
-                  {/* File picker — any format */}
-                  <input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp"
-                    onChange={e => setLegendFile(e.target.files?.[0] || null)}
-                    className="text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                  />
-                  {legendFile && (
-                    <p className="text-xs text-slate-500 truncate">Selected: {legendFile.name}</p>
-                  )}
-                  {/* Build button */}
-                  <button
-                    onClick={handleBuildLegend}
-                    disabled={buildingLegend || !legendFile}
-                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50 transition-all hover:-translate-y-px"
-                    style={{ background:'linear-gradient(135deg,#2563eb,#1d4ed8)', boxShadow:'0 3px 10px rgba(37,99,235,0.25)' }}
-                  >
-                    {buildingLegend ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
-                    {buildingLegend ? 'Building…' : 'Build Project Legend'}
-                  </button>
-                  {/* Clear project legend (only if project legend is active) */}
-                  {legendScope === 'project' && (
-                    <button
-                      onClick={handleClearProjectLegend}
-                      disabled={clearingLegend}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 border border-slate-200 bg-slate-50 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 transition-all"
-                    >
-                      {clearingLegend ? <Loader className="w-3 h-3 animate-spin" /> : null}
-                      {clearingLegend ? 'Clearing…' : 'Clear Project Legend'}
-                    </button>
-                  )}
-                  {legendKnowledge?.sources?.length > 0 && (
-                    <p className="text-xs text-slate-400 truncate">
-                      Sources: {legendKnowledge.sources.join(', ')}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-            </div>{/* end grid */}
-
-            {/* ── Legend Sheets — AI extraction card ──────────────────────── */}
-            <div className="mt-4 rounded-xl border border-slate-200 overflow-hidden">
-              {/* Header */}
-              <div className="px-4 py-3 flex items-center gap-2.5 border-b border-slate-100"
-                style={{ background:'linear-gradient(135deg,#f0fdf4,#dcfce7)' }}>
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background:'linear-gradient(135deg,#16a34a,#15803d)' }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-white">
-                    <path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/>
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-700 uppercase tracking-wide leading-none">Legend Sheets</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Upload legend sheets — AI extracts line types, numbering, abbreviations &amp; more</p>
-                </div>
-                {legendSheets.length > 0 && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">{legendSheets.length} sheet{legendSheets.length !== 1 ? 's' : ''}</span>
-                )}
-                <button
-                  onClick={() => setShowLegendUpload(v => !v)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:-translate-y-px"
-                  style={{ background:'linear-gradient(135deg,#16a34a,#15803d)', boxShadow:'0 2px 8px rgba(22,163,74,0.3)' }}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                  {showLegendUpload ? 'Cancel' : 'Add Legend'}
-                </button>
-              </div>
-
-              {/* Upload drop zone (shown only when panel is open) */}
-              {showLegendUpload && (
-                <div className="px-4 py-3 border-b border-slate-100 bg-white flex flex-col gap-3">
-                  <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 cursor-pointer hover:bg-emerald-50 transition-colors">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 text-emerald-400">
-                      <path d="M4 16l4-4 4 4M12 12V4M8 20h8M16 16l4-4 4 4"/>
-                      <path d="M4 20h4"/>
-                    </svg>
-                    <span className="text-xs font-semibold text-emerald-700">Drop legend files here, or click to browse</span>
-                    <span className="text-xs text-slate-400">PDF · PNG · JPG · TIFF · BMP</span>
-                    <input
-                      type="file"
-                      multiple
-                      accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp"
-                      className="sr-only"
-                      onChange={e => setLegendUploadFiles(Array.from(e.target.files || []))}
-                    />
-                  </label>
-                  {legendUploadFiles.length > 0 && (
-                    <ul className="flex flex-col gap-1">
-                      {legendUploadFiles.map((f, i) => (
-                        <li key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0">
-                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>
-                          </svg>
-                          <span className="truncate flex-1">{f.name}</span>
-                          <span className="text-slate-400">{(f.size/1024).toFixed(0)} KB</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <button
-                    onClick={uploadLegendSheets}
-                    disabled={legendUploading || !legendUploadFiles.length}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50 transition-all hover:-translate-y-px"
-                    style={{ background:'linear-gradient(135deg,#16a34a,#15803d)', boxShadow:'0 3px 10px rgba(22,163,74,0.25)' }}
-                  >
-                    {legendUploading
-                      ? <><Loader className="w-3.5 h-3.5 animate-spin" />Uploading…</>
-                      : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Upload &amp; Extract</>}
-                  </button>
-                </div>
-              )}
-
-              {/* Sheet list */}
-              {legendSheets.length > 0 && (
-                <div className="divide-y divide-slate-100 bg-white">
-                  {legendSheets.map(sheet => {
-                    // Soft-coded: status colours
-                    const STATUS_STYLE = {
-                      pending:    { bg:'bg-slate-100', text:'text-slate-500', dot:'bg-slate-400' },
-                      processing: { bg:'bg-amber-50',  text:'text-amber-600', dot:'bg-amber-400 animate-pulse' },
-                      completed:  { bg:'bg-emerald-50',text:'text-emerald-700', dot:'bg-emerald-500' },
-                      failed:     { bg:'bg-red-50',    text:'text-red-600',  dot:'bg-red-400' },
-                    };
-                    const ss = STATUS_STYLE[sheet.status] || STATUS_STYLE.pending;
-                    const cats = sheet.category_counts || {};
-                    const totalItems = Object.values(cats).reduce((a, b) => a + b, 0);
-
-                    return (
-                      <div key={sheet.legend_id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/60 transition-colors group">
-                        {/* File icon */}
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-slate-100">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-slate-500">
-                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>
-                          </svg>
-                        </div>
-                        {/* File name + meta */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-slate-700 truncate">{sheet.file_name}</p>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            {/* Status */}
-                            <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full ${ss.bg} ${ss.text}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
-                              {sheet.status}
-                            </span>
-                            {/* Extraction method */}
-                            {sheet.extraction_method && (
-                              <span className="text-xs text-slate-400">
-                                {sheet.extraction_method === 'ai_vision' ? '🤖 AI Vision' : '📝 Text parse'}
-                              </span>
-                            )}
-                            {/* Category count */}
-                            {sheet.status === 'completed' && totalItems > 0 && (
-                              <span className="text-xs text-emerald-600 font-medium">{totalItems} items extracted</span>
-                            )}
-                          </div>
-                        </div>
-                        {/* Actions */}
-                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {sheet.status === 'completed' && (
-                            <button
-                              onClick={() => openLegendDetail(sheet.legend_id)}
-                              title="View extracted data"
-                              className="w-7 h-7 rounded-lg border border-emerald-200 bg-emerald-50 flex items-center justify-center hover:bg-emerald-100 transition-colors"
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-emerald-600">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                              </svg>
-                            </button>
-                          )}
-                          {sheet.status === 'failed' && (
-                            <button
-                              onClick={() => retryLegendExtraction(sheet.legend_id)}
-                              title="Retry extraction"
-                              className="w-7 h-7 rounded-lg border border-amber-200 bg-amber-50 flex items-center justify-center hover:bg-amber-100 transition-colors"
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-amber-600">
-                                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
-                              </svg>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => deleteLegendSheet(sheet.legend_id)}
-                            title="Remove legend sheet"
-                            className="w-7 h-7 rounded-lg border border-red-200 bg-red-50 flex items-center justify-center hover:bg-red-100 transition-colors"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-red-500">
-                              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                              <path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
-                            </svg>
-                          </button>
+                    
+                    {file ? (
+                      <div className="space-y-2">
+                        <p className="text-lg font-bold text-slate-800">{file.name}</p>
+                        <p className="text-sm text-slate-500">{(file.size/1024/1024).toFixed(2)} MB</p>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setFile(null); }}
+                          className="inline-flex items-center gap-2 px-4 py-2 mt-3 rounded-lg bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 hover:border-red-300 transition-all text-sm font-medium">
+                          <X className="w-4 h-4" /> Remove File
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-lg font-bold text-slate-800">
+                          {dragOver ? '📁 Drop your file here!' : '📂 Choose a P&ID Drawing'}
+                        </p>
+                        <p className="text-sm text-slate-500 max-w-md mx-auto">
+                          {dragOver 
+                            ? 'Release to upload your P&ID drawing' 
+                            : 'Drag & drop or click to browse • PDF, PNG, JPG, TIFF, DWG'}
+                        </p>
+                        <div className="flex items-center justify-center gap-2 pt-2">
+                          <span className="text-xs text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-200">Max 50 MB</span>
+                          <span className="text-xs text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-200">Multi-page supported</span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {legendSheets.length === 0 && !showLegendUpload && (
-                <p className="px-4 py-4 text-xs text-slate-400 text-center bg-white">
-                  No legend sheets uploaded yet — click <strong>Add Legend</strong> to upload PDF/image legend files
-                </p>
-              )}
-            </div>
-            {/* ── End Legend Sheets card ─────────────────────────────────── */}
-
-            {/* ── Optional: AI Document Assist (Wrench) ─────────────────── */}
-            <div className="mt-5 rounded-2xl overflow-hidden border border-slate-200 bg-white">
-              <div
-                className="px-4 py-3 flex items-center gap-3 cursor-pointer select-none"
-                style={{ background: aiAssistEnabled
-                  ? 'linear-gradient(135deg,#eef2ff,#f0f9ff)'
-                  : 'linear-gradient(135deg,#fafbff,#f7f8ff)' }}
-                onClick={() => setAiAssistEnabled(v => !v)}
-              >
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background:'linear-gradient(135deg,#6366f1,#a855f7)' }}>
-                  <Sparkles className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800 leading-tight">
-                    AI Document Assist <span className="text-xs font-normal text-slate-400">(Wrench · optional)</span>
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Let RAD AI pick & recommend the right P&amp;ID PDF for this project from Wrench DMS
-                  </p>
-                </div>
-                <label
-                  className="inline-flex items-center cursor-pointer"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={aiAssistEnabled}
-                    onChange={() => setAiAssistEnabled(v => !v)}
-                  />
-                  <div className="w-10 h-5 bg-slate-200 rounded-full peer-checked:bg-indigo-500 transition-colors relative">
-                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${aiAssistEnabled ? 'translate-x-5' : ''}`} />
+                    )}
                   </div>
-                </label>
-                {aiAssistEnabled ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                  
+                  <input 
+                    id="pidv-file-input" 
+                    type="file" 
+                    accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.dwg" 
+                    className="hidden" 
+                    onChange={handleFileChange} 
+                  />
+                </div>
               </div>
+            </div>
 
-              {aiAssistEnabled && (
+            {/* ========== STEP 2: ANALYSIS CONFIGURATION ========== */}
+            {file && (
+              <div className="space-y-4" style={{ animation:'fadeUp 0.5s ease-out 0.2s both' }}>
+                
+                {/* Extraction Mode Card - PRIMARY SETTING */}
+                <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-lg hover:shadow-xl transition-all">
+                  <div className="px-6 py-4 bg-gradient-to-r from-blue-500/10 via-cyan-500/10 to-teal-500/10 border-b border-slate-200/50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                        <Zap className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-base font-bold text-slate-800">Processing Engine</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">Choose how to analyze your P&ID</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6 space-y-4">
+                    {/* Mode Selector */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        onClick={() => setExtractionMode(MODE_OCR)}
+                        className={`relative p-4 rounded-xl border-2 transition-all duration-300 group ${
+                          extractionMode === MODE_OCR
+                            ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-cyan-50 shadow-lg shadow-blue-500/20'
+                            : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-md'
+                        }`}>
+                        <div className="flex flex-col items-center text-center space-y-2">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
+                            extractionMode === MODE_OCR 
+                              ? 'bg-blue-100' 
+                              : 'bg-slate-50 group-hover:bg-blue-50'
+                          }`}>
+                            <FileText className={`w-6 h-6 ${extractionMode === MODE_OCR ? 'text-blue-600' : 'text-slate-400 group-hover:text-blue-500'}`} />
+                          </div>
+                          <div>
+                            <p className={`font-bold text-sm ${extractionMode === MODE_OCR ? 'text-blue-700' : 'text-slate-700'}`}>
+                              OCR (Offline)
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">Fast & local processing</p>
+                          </div>
+                          {extractionMode === MODE_OCR && (
+                            <CheckCircle className="absolute top-3 right-3 w-5 h-5 text-blue-600" />
+                          )}
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => setExtractionMode(MODE_VISION)}
+                        className={`relative p-4 rounded-xl border-2 transition-all duration-300 group ${
+                          extractionMode === MODE_VISION
+                            ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-pink-50 shadow-lg shadow-purple-500/20'
+                            : 'border-slate-200 bg-white hover:border-purple-300 hover:shadow-md'
+                        }`}>
+                        <div className="flex flex-col items-center text-center space-y-2">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
+                            extractionMode === MODE_VISION 
+                              ? 'bg-purple-100' 
+                              : 'bg-slate-50 group-hover:bg-purple-50'
+                          }`}>
+                            <Sparkles className={`w-6 h-6 ${extractionMode === MODE_VISION ? 'text-purple-600' : 'text-slate-400 group-hover:text-purple-500'}`} />
+                          </div>
+                          <div>
+                            <p className={`font-bold text-sm ${extractionMode === MODE_VISION ? 'text-purple-700' : 'text-slate-700'}`}>
+                              AI Vision (BYOK)
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">Advanced AI analysis</p>
+                          </div>
+                          {extractionMode === MODE_VISION && (
+                            <CheckCircle className="absolute top-3 right-3 w-5 h-5 text-purple-600" />
+                          )}
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* BYOK Configuration */}
+                    {extractionMode === MODE_VISION && (
+                      <div className="p-4 rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50/50 to-pink-50/50 space-y-3"
+                        style={{ animation:'fadeUp 0.3s ease-out both' }}>
+                        <div className="flex items-center gap-2 pb-2 border-b border-purple-200">
+                          <Key className="w-4 h-4 text-purple-600" />
+                          <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">API Configuration</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-2">AI Provider</label>
+                          <select
+                            value={visionProvider}
+                            onChange={(e) => setVisionProvider(e.target.value)}
+                            className="w-full px-3 py-2.5 text-sm border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+                            {VISION_PROVIDERS.map(p => (
+                              <option key={p.id} value={p.id}>{p.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-2">API Key</label>
+                          <div className="relative">
+                            <input
+                              type={showApiKey ? 'text' : 'password'}
+                              value={visionApiKey}
+                              onChange={(e) => setVisionApiKey(e.target.value)}
+                              placeholder="sk-proj-..."
+                              className="w-full px-3 py-2.5 pr-10 text-sm border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey(v => !v)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                              {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                          
+                          {/* Remember Key Checkbox */}
+                          <label className="flex items-center gap-2 mt-2 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={rememberKey}
+                              onChange={(e) => setRememberKey(e.target.checked)}
+                              className="w-4 h-4 text-purple-600 border-purple-300 rounded focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                            />
+                            <span className="text-xs text-slate-600 group-hover:text-slate-800 transition-colors">
+                              Remember key for this session
+                            </span>
+                          </label>
+                          
+                          <p className="text-xs text-purple-600 mt-1.5 flex items-center gap-1">
+                            <Shield className="w-3 h-3" /> Stored securely in session (auto-cleared on browser close)
+                          </p>
+                        </div>
+
+                        {/* AI Vision Recommendations */}
+                        <div className="mt-4 pt-4 border-t border-purple-200">
+                          <div className="flex items-start gap-2 mb-3">
+                            <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-xs font-bold text-purple-800 mb-1">✨ Why Use AI Vision?</p>
+                              <p className="text-xs text-slate-600 leading-relaxed">
+                                AI Vision provides superior accuracy for complex P&IDs with handwritten notes, 
+                                overlapping symbols, or poor scan quality. Recommended for critical compliance checks.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 bg-purple-50/50 rounded-lg p-3 border border-purple-100">
+                            <p className="text-xs font-semibold text-purple-900 mb-2">📋 Best Practices:</p>
+                            <ul className="space-y-1.5 text-xs text-slate-700">
+                              <li className="flex items-start gap-2">
+                                <span className="text-purple-600 font-bold flex-shrink-0">•</span>
+                                <span><strong>High-quality scans:</strong> Use 300+ DPI for best results</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                <span className="text-purple-600 font-bold flex-shrink-0">•</span>
+                                <span><strong>Complex drawings:</strong> Vision excels at multi-layered, annotated P&IDs</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                <span className="text-purple-600 font-bold flex-shrink-0">•</span>
+                                <span><strong>Custom symbols:</strong> Better recognition of non-standard equipment</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                <span className="text-purple-600 font-bold flex-shrink-0">•</span>
+                                <span><strong>API costs:</strong> ~$0.01-0.05 per page depending on provider</span>
+                              </li>
+                            </ul>
+                          </div>
+
+                          <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+                            <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Your API key is never stored on our servers</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========== STEP 3: START ANALYSIS (CTA) ========== */}
+            {file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) && (
+              <div className="mt-8 text-center" style={{ animation:'fadeUp 0.5s ease-out 0.3s both' }}>
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading}
+                  className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white font-bold text-lg shadow-2xl shadow-indigo-500/50 hover:shadow-indigo-500/70 transition-all duration-300 hover:scale-105 hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0">
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  {uploading ? (
+                    <>
+                      <Loader className="w-6 h-6 animate-spin" />
+                      <span>Analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlayCircle className="w-6 h-6" />
+                      <span>Start AI Analysis</span>
+                      <Sparkles className="w-5 h-5 animate-pulse" />
+                    </>
+                  )}
+                </button>
+                <p className="text-xs text-slate-500 mt-3">
+                  ✨ Advanced AI will analyze your P&ID for compliance, errors & optimization opportunities
+                </p>
+              </div>
+            )}
+
+            {/* ========== OPTIONAL: AI DOCUMENT ASSIST (WRENCH) ========== */}
+            {file && (
+              <div className="mt-6 rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-lg hover:shadow-xl transition-all"
+                style={{ animation:'fadeUp 0.5s ease-out 0.4s both' }}>
+                <div
+                  className="px-6 py-4 flex items-center gap-3 cursor-pointer select-none"
+                  style={{ background: aiAssistEnabled
+                    ? 'linear-gradient(135deg,#eef2ff,#f0f9ff)'
+                    : 'linear-gradient(135deg,#fafbff,#f7f8ff)' }}
+                  onClick={() => setAiAssistEnabled(v => !v)}
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background:'linear-gradient(135deg,#6366f1,#a855f7)' }}>
+                    <Sparkles className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-base font-bold text-slate-800 leading-tight">
+                      AI Document Assist <span className="text-xs font-normal text-slate-400">(Optional)</span>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Let AI pick & recommend the right P&ID from Wrench DMS
+                    </p>
+                  </div>
+                  <label
+                    className="inline-flex items-center cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={aiAssistEnabled}
+                      onChange={() => setAiAssistEnabled(v => !v)}
+                    />
+                    <div className="w-11 h-6 bg-slate-200 rounded-full peer-checked:bg-indigo-500 transition-colors relative">
+                      <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${aiAssistEnabled ? 'translate-x-5' : ''}`} />
+                    </div>
+                  </label>
+                  {aiAssistEnabled ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                </div>
+
+                {aiAssistEnabled && (
                 <div className="px-4 py-4 border-t border-slate-100 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
@@ -5736,28 +5981,28 @@ const PIDVerification = () => {
                   )}
                 </div>
               )}
-            </div>
-            {/* ── End AI Document Assist ─────────────────────────────────── */}
-
-            {error && (
-              <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
+          </div>
+        )}
 
-            <button onClick={handleUpload} disabled={uploading || !file}
-              className={`mt-4 w-full py-3 px-6 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                uploading || !file ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                : 'text-white shadow-lg hover:-translate-y-px active:translate-y-0'
-              }`}
-              style={uploading || !file ? undefined : { background:'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow:'0 4px 14px rgba(99,102,241,0.35)' }}>
-              {uploading ? <><Loader className="w-4 h-4 animate-spin" />Uploading…</> : <><Cpu className="w-4 h-4" />Run P&amp;ID Verification</>}
-            </button>
+        {/* ========== ERROR BANNER (IF ANY) ========== */}
+        {!results && error && (
+          <div className="max-w-5xl mx-auto mt-5">
+            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3 shadow-lg">
+              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-red-800 mb-1">Upload Error</p>
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
-            {(polling || docStatus === 'processing') && (
-              <AnalysisLoader elapsedSec={elapsedSec} fileName={file?.name} />
-            )}
+        {/* ========== ANALYSIS LOADER ========== */}
+        {!results && (polling || docStatus === 'processing') && (
+          <div className="max-w-5xl mx-auto mt-8">
+            <AnalysisLoader elapsedSec={elapsedSec} fileName={file?.name} />
           </div>
         )}
 
@@ -16885,389 +17130,11 @@ const PIDVerification = () => {
 
       </div>
 
-      {/* ── Legend Sheet Detail Panel (slide-in drawer) ──────────────────── */}
-      {showLegendPanel && (
-        <div className="fixed inset-0 z-50 flex items-stretch justify-end pointer-events-none">
-          {/* dim backdrop */}
-          <div
-            className="absolute inset-0 bg-slate-900/40 pointer-events-auto"
-            onClick={() => setShowLegendPanel(false)}
-          />
-          {/* Drawer */}
-          <div className="relative w-full max-w-xl pointer-events-auto flex flex-col bg-white shadow-2xl"
-            style={{ animation: 'legendDrawerIn 0.25s ease-out' }}>
-            <style>{`
-              @keyframes legendDrawerIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to   { transform: translateX(0);    opacity: 1; }
-              }
-            `}</style>
-
-            {/* Drawer header */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100"
-              style={{ background:'linear-gradient(135deg,#f0fdf4,#dcfce7)' }}>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background:'linear-gradient(135deg,#16a34a,#15803d)' }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-white">
-                  <path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/>
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-800 truncate">
-                  {loadingLegendDetail ? 'Loading…' : (legendPanelSheet?.file_name || 'Legend Sheet')}
-                </p>
-                <p className="text-xs text-slate-400">
-                  {legendPanelSheet?.extracted_data?.extraction_method === 'ai_vision' ? '🤖 Extracted via AI Vision' : '📝 Extracted via text parse'}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowLegendPanel(false)}
-                className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-slate-500">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-
-            {/* Drawer body — scrollable */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {loadingLegendDetail && (
-                <div className="flex items-center justify-center py-16 gap-3">
-                  <Loader className="w-5 h-5 animate-spin text-emerald-500" />
-                  <span className="text-sm text-slate-400">Extracting data…</span>
-                </div>
-              )}
-
-              {!loadingLegendDetail && !legendPanelSheet && (
-                <p className="text-sm text-slate-400 text-center py-16">No data available</p>
-              )}
-
-              {!loadingLegendDetail && legendPanelSheet && (() => {
-                const d = legendPanelSheet.extracted_data || {};
-
-                // ── Soft-coded: drawer section definitions ─────────────────
-                // Add/remove entries here to change which categories appear.
-                const SECTIONS = [
-                  {
-                    key:   'line_representation',
-                    title: 'Line Representation',
-                    icon:  '—',
-                    empty: 'No line types found',
-                    render: (items) => (
-                      <div className="flex flex-col gap-1.5">
-                        {items.map((row, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs">
-                            <span className="font-mono font-bold text-slate-700 w-24 flex-shrink-0 truncate">{row.key || '—'}</span>
-                            <span className="flex-1 text-slate-500">{row.description}</span>
-                            <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-slate-500 text-[10px] font-medium ${
-                              row.line_style === 'solid'  ? 'bg-blue-50 text-blue-600'  :
-                              row.line_style === 'dashed' ? 'bg-amber-50 text-amber-600':
-                              row.line_style === 'dotted' ? 'bg-purple-50 text-purple-600' :
-                              'bg-slate-100'
-                            }`}>{row.line_style}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'line_numbering_piping',
-                    title: 'Line Numbering — Piping',
-                    icon:  '⌗',
-                    empty: 'No piping numbering format found',
-                    render: (val) => (
-                      <div className="space-y-2">
-                        {val.format && (
-                          <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
-                            <p className="text-xs text-blue-500 font-medium mb-1">Format</p>
-                            <p className="font-mono text-sm font-bold text-blue-700">{val.format}</p>
-                            {val.example && <p className="text-xs text-blue-500 mt-1">e.g. <span className="font-mono">{val.example}</span></p>}
-                          </div>
-                        )}
-                        {val.fields?.length > 0 && (
-                          <div className="flex flex-col gap-1">
-                            {val.fields.map((f, i) => (
-                              <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                                <span className="w-5 h-5 rounded flex items-center justify-center bg-blue-100 text-blue-700 font-bold text-[10px] flex-shrink-0 mt-0.5">{f.position}</span>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-slate-700">{f.name}</p>
-                                  <p className="text-slate-400 truncate">{f.description}</p>
-                                </div>
-                                {f.example && <span className="font-mono text-slate-500 text-[10px]">{f.example}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ),
-                    isObj: true,
-                  },
-                  {
-                    key:   'line_numbering_pipeline',
-                    title: 'Line Numbering — Pipeline',
-                    icon:  '⌗',
-                    empty: 'No pipeline numbering format found',
-                    render: (val) => (
-                      <div className="space-y-2">
-                        {val.format && (
-                          <div className="p-3 rounded-lg bg-purple-50 border border-purple-100">
-                            <p className="text-xs text-purple-500 font-medium mb-1">Format</p>
-                            <p className="font-mono text-sm font-bold text-purple-700">{val.format}</p>
-                            {val.example && <p className="text-xs text-purple-400 mt-1">e.g. <span className="font-mono">{val.example}</span></p>}
-                          </div>
-                        )}
-                        {val.fields?.length > 0 && (
-                          <div className="flex flex-col gap-1">
-                            {val.fields.map((f, i) => (
-                              <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                                <span className="w-5 h-5 rounded flex items-center justify-center bg-purple-100 text-purple-700 font-bold text-[10px] flex-shrink-0 mt-0.5">{f.position}</span>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-slate-700">{f.name}</p>
-                                  <p className="text-slate-400 truncate">{f.description}</p>
-                                </div>
-                                {f.example && <span className="font-mono text-slate-500 text-[10px]">{f.example}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ),
-                    isObj: true,
-                  },
-                  {
-                    key:   'abbreviations_process',
-                    title: 'Abbreviations — Process',
-                    icon:  'Aa',
-                    empty: 'No abbreviations found',
-                    render: (items) => (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {items.map((a, i) => (
-                          <div key={i} className="flex items-start gap-1.5 bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-amber-700 text-xs w-12 flex-shrink-0">{a.abbr}</span>
-                            <span className="text-xs text-slate-500 leading-tight flex-1 min-w-0 truncate" title={a.full_name}>{a.full_name}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'inline_equipment',
-                    title: 'In-Line Equipment',
-                    icon:  '⊕',
-                    empty: 'No in-line equipment found',
-                    render: (items) => (
-                      <div className="flex flex-col gap-1.5">
-                        {items.map((e, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs">
-                            <span className="font-mono font-bold text-slate-700 w-16 flex-shrink-0 truncate">{e.symbol}</span>
-                            <span className="flex-1 text-slate-500">{e.description}</span>
-                            {e.type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0 capitalize">{e.type}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'service_codes',
-                    title: 'Service Codes',
-                    icon:  '⬡',
-                    empty: 'No service codes found',
-                    render: (obj) => (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {Object.entries(obj).map(([k, v], i) => (
-                          <div key={i} className="flex items-start gap-1.5 bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-emerald-700 text-xs w-10 flex-shrink-0">{k}</span>
-                            <span className="text-xs text-slate-500 leading-tight flex-1 min-w-0 truncate" title={v}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                    isObj: true,
-                    asEntries: true,
-                  },
-                  {
-                    key:   'insulation_codes',
-                    title: 'Insulation Codes',
-                    icon:  '▣',
-                    empty: 'No insulation codes found',
-                    render: (obj) => (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {Object.entries(obj).map(([k, v], i) => (
-                          <div key={i} className="flex items-start gap-1.5 bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-sky-700 text-xs w-8 flex-shrink-0">{k}</span>
-                            <span className="text-xs text-slate-500 leading-tight flex-1 min-w-0 truncate" title={v}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                    isObj: true,
-                    asEntries: true,
-                  },
-                  {
-                    key:   'piping_specs',
-                    title: 'Piping Specs',
-                    icon:  '≡',
-                    empty: 'No piping specs found',
-                    render: (obj) => (
-                      <div className="flex flex-col gap-1.5">
-                        {Object.entries(obj).map(([k, v], i) => (
-                          <div key={i} className="flex items-start gap-2 bg-slate-50 rounded px-2 py-1.5 border border-slate-100 text-xs">
-                            <span className="font-mono font-bold text-rose-700 w-20 flex-shrink-0 truncate">{k}</span>
-                            <span className="text-slate-500 flex-1 min-w-0">{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                    isObj: true,
-                    asEntries: true,
-                  },
-                  // ── Soft-coded NEW sections (legend coverage extension) ─────────
-                  // These mirror the backend schema additions in legend_extractor.py.
-                  // Each section is purely additive — present only when AI returns data.
-                  {
-                    key:   'equipment_class_codes',
-                    title: 'Equipment Class Codes',
-                    icon:  '⛁',
-                    empty: 'No equipment class codes found',
-                    render: (obj) => (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {Object.entries(obj).map(([k, v], i) => (
-                          <div key={i} className="flex items-start gap-1.5 bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-indigo-700 text-xs w-10 flex-shrink-0">{k}</span>
-                            <span className="text-xs text-slate-500 leading-tight flex-1 min-w-0 truncate" title={v}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                    isObj: true,
-                    asEntries: true,
-                  },
-                  {
-                    key:   'drawing_references',
-                    title: 'Drawing & Code References',
-                    icon:  '※',
-                    empty: 'No drawing or code references found',
-                    render: (items) => (
-                      <div className="flex flex-col gap-1.5">
-                        {items.map((r, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-teal-700 w-32 flex-shrink-0 truncate" title={r.ref}>{r.ref || '—'}</span>
-                            <span className="flex-1 text-slate-500 min-w-0">{r.description || ''}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'tie_in_symbols',
-                    title: 'Tie-in / Off-page Connectors',
-                    icon:  '⇄',
-                    empty: 'No tie-in or off-page symbols found',
-                    render: (items) => (
-                      <div className="flex flex-col gap-1.5">
-                        {items.map((t, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                            <span className="font-mono font-bold text-fuchsia-700 w-16 flex-shrink-0 truncate">{t.symbol || '—'}</span>
-                            <span className="flex-1 text-slate-500 min-w-0">{t.description || ''}</span>
-                            {t.type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-fuchsia-50 text-fuchsia-600 flex-shrink-0 capitalize">{String(t.type).replace(/_/g,' ')}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    key:   'general_notes',
-                    title: 'General Notes',
-                    icon:  '✎',
-                    empty: 'No general notes found',
-                    render: (items) => (
-                      <ol className="list-decimal list-inside flex flex-col gap-1 text-xs text-slate-600">
-                        {items.map((n, i) => (
-                          <li key={i} className="leading-snug">{n}</li>
-                        ))}
-                      </ol>
-                    ),
-                  },
-                ];
-
-                return (
-                  <>
-                    {SECTIONS.map(sec => {
-                      const val = d[sec.key];
-                      const isEmpty = !val ||
-                        (Array.isArray(val) && val.length === 0) ||
-                        (typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length === 0 && !val.format);
-                      if (isEmpty) return null;
-
-                      return (
-                        <div key={sec.key} className="rounded-xl border border-slate-200 overflow-hidden">
-                          {/* Section header */}
-                          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50">
-                            <span className="font-mono text-sm font-bold text-slate-400 w-6 text-center">{sec.icon}</span>
-                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{sec.title}</span>
-                            <span className="ml-auto text-xs text-slate-400">
-                              {Array.isArray(val) ? `${val.length} items` :
-                               sec.asEntries ? `${Object.keys(val).length} codes` :
-                               val.fields?.length ? `${val.fields.length} fields` : ''}
-                            </span>
-                          </div>
-                          <div className="p-3 bg-white">
-                            {isEmpty ? (
-                              <p className="text-xs text-slate-400 italic">{sec.empty}</p>
-                            ) : (
-                              sec.render(val)
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Instrument + Valve prefixes */}
-                    {(d.instrument_prefixes?.length > 0 || d.valve_prefixes?.length > 0) && (
-                      <div className="rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50">
-                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Tag Prefixes</span>
-                        </div>
-                        <div className="p-3 bg-white flex flex-col gap-2">
-                          {d.instrument_prefixes?.length > 0 && (
-                            <div>
-                              <p className="text-xs text-slate-400 font-medium mb-1">Instrument</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {d.instrument_prefixes.map((p, i) => (
-                                  <span key={i} className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-bold">{p}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {d.valve_prefixes?.length > 0 && (
-                            <div>
-                              <p className="text-xs text-slate-400 font-medium mb-1">Valve</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {d.valve_prefixes.map((p, i) => (
-                                  <span key={i} className="font-mono text-xs px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-bold">{p}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Extraction metadata */}
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-400 space-y-0.5">
-                      <p>Extracted: {legendPanelSheet.updated_at ? new Date(legendPanelSheet.updated_at).toLocaleString() : '—'}</p>
-                      {d.raw_text_chars !== undefined && <p>Raw text chars: {d.raw_text_chars}</p>}
-                      {d.extraction_method && <p>Method: {d.extraction_method}</p>}
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-      {/* ── End Legend Sheet Detail Panel ────────────────────────────────── */}
+      {/* ── OLD Legend Sheet Detail Panel - REMOVED ───────────────────────────
+          The old V1 legend panel drawer has been removed. Use the V2 LegendSheetsModal
+          instead (button in the Legend Sheets card opens the advanced modal).
+          Old state variables removed: showLegendPanel, legendPanelSheet, loadingLegendDetail
+      ────────────────────────────────────────────────────────────────────────── */}
 
       {/* ── Fullscreen Workflow Modal ──────────────────────────────────────── */}
       {workflowFullscreen && (
@@ -17380,7 +17247,7 @@ const PIDVerification = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <img 
-              src="/assets/images/PID_Workflow.png" 
+              src={WORKFLOW_DIAGRAM_IMAGE_PATH} 
               alt="P&ID Verification Workflow - Full Screen"
               style={{
                 width: '100%',
@@ -17419,6 +17286,17 @@ const PIDVerification = () => {
         </div>
       )}
       {/* ── End Fullscreen Workflow Modal ──────────────────────────────────── */}
+
+      {/* ── Legend Sheets Modal (V2 Advanced System) ──────────────────────── */}
+      <LegendSheetsModal
+        open={legendModalOpen}
+        onClose={() => { setLegendModalOpen(false); refreshActiveLegend(); }}
+        section={LEGEND_SECTION}
+        onActiveChange={(legend) => {
+          setActiveLegend(legend);
+          if (legend) setEffectiveLegend(legend);
+        }}
+      />
 
     </DarkBg>
   );

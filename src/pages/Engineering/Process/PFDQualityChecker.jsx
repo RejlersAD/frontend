@@ -1,6 +1,7 @@
 ﻿import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
+import { ROUTES } from '../../../config/routes.config';
 import CrossRecommendationPanel from '../../../components/recommendations/CrossRecommendationPanel';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
 import {
@@ -1314,7 +1315,7 @@ const PFDQualityChecker = () => {
                 style={{ animation:'chipPop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.55s both' }}>
                 <Activity className="w-3.5 h-3.5" style={{ animation:'pulse2 2s ease-in-out infinite' }} />
                 Cross-linked with
-                <a href="/engineering/process/pid-verification"
+                <a href={ROUTES.PID_VERIFICATION}
                   className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-blue-900 transition-colors">
                   P&amp;ID Verification <ExternalLink className="w-3 h-3" />
                 </a>
@@ -1658,7 +1659,7 @@ const PFDQualityChecker = () => {
               ))}
             </div>
             {/* Interconnect — jump to matching P&ID verification */}
-            <a href="/engineering/process/pid-verification"
+            <a href={ROUTES.PID_VERIFICATION}
               className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl transition-all text-xs font-semibold flex-shrink-0">
               <Activity className="w-3.5 h-3.5" />P&amp;ID Verify
               <ExternalLink className="w-3 h-3" />
@@ -2742,7 +2743,7 @@ const PFDQualityChecker = () => {
                       <p className="text-xs text-slate-500">Link this PFD to its matching P&amp;ID verification</p>
                     </div>
                   </div>
-                  <a href="/engineering/process/pid-verification"
+                  <a href={ROUTES.PID_VERIFICATION}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white rounded-xl transition-all hover:-translate-y-px"
                     style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow:'0 3px 10px rgba(99,102,241,0.25)' }}>
                     Open P&amp;ID Verify <ExternalLink className="w-3 h-3" />

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { ROUTES } from '../config/routes.config'
 import { REJLERS_COLORS, BRAND_TEXT } from '../config/theme.config'
 import { LOGO_CONFIG, getLogoPath } from '../config/logo.config'
 import { FOOTER_CONFIG } from '../config/footer.config'
@@ -971,7 +972,7 @@ const Home = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5-5 5M6 12h12"/>
                   </svg>
                 </Link>
-                <Link to="/engineering/process/pid-verification"
+                <Link to={ROUTES.PID_VERIFICATION}
                   className="group inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl font-bold text-base transition-all duration-300 hover:scale-105"
                   style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(127,202,181,0.35)', color: '#7FCAB5', backdropFilter: 'blur(8px)' }}>
                   <span>Analyse a P&amp;ID</span>
@@ -1606,7 +1607,7 @@ const Home = () => {
                 <h4 className="text-white font-bold mb-4">Platform</h4>
                 <ul className="space-y-2">
                   {[
-                    { label:'P&ID Quality Checker', to:'/engineering/process/pid-verification' },
+                    { label:'P&ID Quality Checker', to: ROUTES.PID_VERIFICATION }, // SOFT-CODED
                     // SOFT-CODED: PFD Verification disabled
                     // { label:'PFD Verification',     to:'/designiq/pfd-verification' },
                     { label:'QHSE Management',      to:'/qhse' },

@@ -4,6 +4,7 @@
  * This provides a flexible, soft-coded structure for engineering modules
  */
 
+import { ROUTES } from './routes.config'
 import {
   BeakerIcon,
   WrenchIcon,
@@ -67,7 +68,7 @@ export const ENGINEERING_DISCIPLINES = {
         fullName: 'P&ID Quality Control',
 
         icon: DocumentChartBarIcon,
-        path: '/engineering/process/pid-verification',
+        path: ROUTES.PID_VERIFICATION, // SOFT-CODED: Using centralized route config
         description: 'AI-powered P&ID drawing verification and tag validation',
         moduleCode: 'pid_analysis',
         badge: 'NEW'

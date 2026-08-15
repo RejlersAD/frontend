@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ROUTES } from '../../../config/routes.config'
 import {
   ArrowLeft, BookOpen, FileText, Workflow, CheckCircle2, Upload, Table2, Sparkles,
   Zap, Shield, Clock, Layers, Download, Eye, AlertCircle, ChevronRight, Lightbulb,
@@ -17,6 +18,8 @@ const PAGE_KICKER = 'Documentation & Workflow'
 const PAGE_SUBTITLE = 'A modern extraction engine for pipeline line tags — from PDF ingestion through legend-aware parsing, OCR, vision AI, and audit-ready exports.'
 const BACK_ROUTE = '/engineering/process/pid-checker-v2'
 const BACK_LABEL = 'Back to Checker'
+const BACK_TO_V1_LABEL = 'Back to V1'
+const BACK_TO_V1_TITLE = 'Return to P&ID Verification V1 (Quality Checker)'
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 const THEME = {
@@ -257,20 +260,38 @@ export default function PIDCheckerV2Docs() {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             flexWrap: 'wrap', gap: 12,
           }}>
-            <button
-              type="button"
-              onClick={() => navigate(BACK_ROUTE)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '8px 14px', borderRadius: 999,
-                background: 'rgba(255,255,255,0.1)', color: '#fff',
-                border: '1px solid rgba(255,255,255,0.2)',
-                fontWeight: 600, fontSize: 12, cursor: 'pointer',
-                backdropFilter: 'blur(6px)',
-              }}
-            >
-              <ArrowLeft size={14} /> {BACK_LABEL}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => navigate(BACK_ROUTE)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', borderRadius: 999,
+                  background: 'rgba(255,255,255,0.1)', color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  fontWeight: 600, fontSize: 12, cursor: 'pointer',
+                  backdropFilter: 'blur(6px)',
+                }}
+              >
+                <ArrowLeft size={14} /> {BACK_LABEL}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate(ROUTES.PID_VERIFICATION)}
+                title={BACK_TO_V1_TITLE}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', borderRadius: 999,
+                  background: 'rgba(124,58,237,0.15)', color: '#c4b5fd',
+                  border: '1px solid rgba(124,58,237,0.3)',
+                  fontWeight: 600, fontSize: 12, cursor: 'pointer',
+                  backdropFilter: 'blur(6px)',
+                }}
+              >
+                <ArrowLeft size={14} /> {BACK_TO_V1_LABEL}
+              </button>
+            </div>
 
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -781,20 +802,36 @@ export default function PIDCheckerV2Docs() {
                   Upload a P&ID and watch the workflow above run end-to-end.
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate(BACK_ROUTE)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '10px 18px', borderRadius: 10,
-                  background: '#fff', color: THEME.primary,
-                  border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  flexShrink: 0,
-                }}
-              >
-                Open Checker <ArrowLeft size={14} style={{ transform: 'rotate(180deg)' }} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => navigate(ROUTES.PID_VERIFICATION)}
+                  title={BACK_TO_V1_TITLE}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    padding: '10px 18px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.15)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                    backdropFilter: 'blur(6px)',
+                  }}
+                >
+                  {BACK_TO_V1_LABEL} <ArrowLeft size={14} style={{ transform: 'rotate(180deg)' }} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(BACK_ROUTE)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    padding: '10px 18px', borderRadius: 10,
+                    background: '#fff', color: THEME.primary,
+                    border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  }}
+                >
+                  Open Checker <ArrowLeft size={14} style={{ transform: 'rotate(180deg)' }} />
+                </button>
+              </div>
             </div>
           </main>
         </div>

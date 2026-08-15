@@ -52,6 +52,7 @@ export const VISION_PROVIDERS = [
  *   forceOcr?: boolean,
  *   provider?: 'openai'|'claude',
  *   apiKey?: string,
+ *   projectId?: number,
  *   onProgress?: (pct:number)=>void
  * }} [opts]
  */
@@ -68,6 +69,9 @@ export async function extractLineTags(file, opts = {}) {
   if (mode === MODE_VISION) {
     if (opts.provider) form.append('provider', opts.provider)
     if (opts.apiKey)   form.append('api_key', opts.apiKey)
+  }
+  if (opts.projectId) {
+    form.append('project_id', opts.projectId)
   }
 
   const res = await apiClient.post(EXTRACT_ENDPOINT, form, {

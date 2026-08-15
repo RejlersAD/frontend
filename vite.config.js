@@ -102,7 +102,7 @@ export default defineConfig(({ mode }) => {
               name: 'PID Verification',
               short_name: 'PID',
               description: 'PID Verification Tool',
-              url: '/engineering/process/pid-verification',
+              url: '/engineering/process/pid-verification-v1', // SOFT-CODED: Updated to V1 route
               icons: [{ src: '/assets/icon-192x192.png', sizes: '192x192' }]
             }
           ]

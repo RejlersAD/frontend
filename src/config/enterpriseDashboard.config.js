@@ -3,7 +3,7 @@
  * Soft-coded constants for the intelligent enterprise dashboard
  * All layout, timing, and behavior settings centralized here
  */
-
+import { ROUTES } from './routes.config'
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // API & POLLING CONFIGURATION
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -180,7 +180,7 @@ export const ADMIN_QUICK_ACTIONS = [
   { id: 'generate-payroll', label: 'Generate Payroll', icon: '💰', route: '/hr/payroll', color: 'amber' },
   { id: 'approve-leave', label: 'Approve Leave', icon: '✅', route: null, color: 'green' },
   { id: 'procurement', label: 'Procurement', icon: '🛒', route: '/procurement', color: 'purple' },
-  { id: 'upload-doc', label: 'Upload Document', icon: '📤', route: '/engineering/process/pid-verification', color: 'teal' },
+  { id: 'upload-doc', label: 'Upload Document', icon: '📤', route: ROUTES.PID_VERIFICATION, color: 'teal' }, // SOFT-CODED
   { id: 'reports', label: 'View Reports', icon: '📊', route: '/admin/reports', color: 'indigo' },
   { id: 'settings', label: 'Settings', icon: '⚙️', route: '/admin', color: 'slate' },
 ]
@@ -189,7 +189,7 @@ export const USER_QUICK_ACTIONS = [
   { id: 'apply-leave', label: 'Apply Leave', icon: '🏖️', route: null, color: 'blue' },
   { id: 'view-payslip', label: 'View Payslip', icon: '💰', route: '/finance/salary-slip', color: 'amber' },
   { id: 'request-procurement', label: 'Request Procurement', icon: '🛒', route: '/procurement', color: 'purple' },
-  { id: 'upload-doc', label: 'Upload Documents', icon: '📤', route: '/engineering/process/pid-verification', color: 'teal' },
+  { id: 'upload-doc', label: 'Upload Documents', icon: '📤', route: ROUTES.PID_VERIFICATION, color: 'teal' }, // SOFT-CODED
   { id: 'view-attendance', label: 'View Attendance', icon: '📅', route: null, color: 'green' },
   { id: 'raise-ticket', label: 'Raise Ticket', icon: '🎫', route: '/contact-support', color: 'rose' },
 ]

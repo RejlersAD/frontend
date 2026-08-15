@@ -466,6 +466,27 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
           </button>
         </div>
 
+        {/* Sync Info Banner */}
+        <div style={{
+          padding: '10px 22px', background: 'linear-gradient(135deg, #eff6ff, #eef2ff)',
+          borderBottom: `1px solid ${THEME_BORDER}`, display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span style={{ fontSize: 16 }}>🔄</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1e40af', marginBottom: 2 }}>
+              Synchronized Across Versions
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
+              Legends are shared between V1 (P&ID Verification) and V2 (Line List Extractor). Create once, use everywhere.
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600 }}>
+            <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V1</span>
+            <span style={{ color: '#94a3b8' }}>↔</span>
+            <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V2</span>
+          </div>
+        </div>
+
         {/* Body: two columns */}
         <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', flex: 1, minHeight: 0 }}>
           {/* ── Left: list ──────────────────────────────────────── */}

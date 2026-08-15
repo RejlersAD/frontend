@@ -12,6 +12,8 @@
  * - Permission-based access control
  */
 
+import { ROUTES } from './routes.config';
+
 // SOFT-CODED: P&ID Feature Naming Configuration (centralized)
 // Easy to modify P&ID related naming across the application
 const PID_NAMING_CONFIG = {
@@ -69,7 +71,7 @@ export const FEATURES_CATALOG = {
         shortName: PID_NAMING_CONFIG.shortName,
         description: PID_NAMING_CONFIG.fullDescription,
         longDescription: PID_NAMING_CONFIG.detailedDescription,
-        path: '/engineering/process/pid-verification', // SOFT-CODED: redirected from /pid/upload
+        path: ROUTES.PID_VERIFICATION, // SOFT-CODED: Using centralized route config
         moduleCode: 'pid_analysis',
         status: FEATURE_STATUS.ACTIVE,
         badges: [FEATURE_BADGES.AI_POWERED, FEATURE_BADGES.POPULAR],
@@ -290,7 +292,7 @@ export const FEATURES_CATALOG = {
         id: 'common-pid-checker-removed',
         name: '(Moved) P&ID Checker',
         status: FEATURE_STATUS.MOVED_TO_PROCESS_ENGINEERING,
-        redirectPath: '/engineering/process/pid-verification', // SOFT-CODED: redirected from /pid/upload
+        redirectPath: ROUTES.PID_VERIFICATION, // SOFT-CODED: Using centralized route config
         note: 'Feature moved to Process Engineering -> P&ID for better organization'
       },
       {

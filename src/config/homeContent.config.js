@@ -8,6 +8,7 @@
  * @purpose Centralized home page content management
  */
 
+import { ROUTES } from './routes.config';
 import { REJLERS_COLORS } from './theme.config';
 
 /**
@@ -148,7 +149,7 @@ export const MODULES_CONFIG = {
       name: 'P&ID Design Verification',
       description: 'AI-powered engineering review for oil & gas P&ID drawings with comprehensive compliance checking',
       icon: '📋',
-      route: '/engineering/process/pid-verification', // SOFT-CODED: redirected from /pid/upload
+      route: ROUTES.PID_VERIFICATION, // SOFT-CODED: Using centralized route config
       category: 'Engineering',
       gradient: { from: 'blue-500', to: 'indigo-600' },
       capabilities: [
@@ -337,7 +338,7 @@ export const KEY_FEATURES = {
       description: 'AI-powered compliance checking against ADNOC, Shell DEP, and international standards.',
       icon: 'check-circle',
       gradient: { from: REJLERS_COLORS.secondary.green.base, to: REJLERS_COLORS.secondary.green.accent },
-      link: '/engineering/process/pid-verification' // SOFT-CODED: redirected from /pid/upload
+      link: ROUTES.PID_VERIFICATION // SOFT-CODED: Using centralized route config
     },
     {
       id: 'pfd',

@@ -11,6 +11,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '../../../config/routes.config';
 import {
   CloudArrowUpIcon,
   CheckCircleIcon,
@@ -379,7 +380,7 @@ const RECOMMENDED_FEATURES = [
     items: [
       { to: '/engineering/process/equipment-list',   icon: '⚙️', title: 'Equipment List',        tagline: 'Auto-register equipment from P&IDs',   benefit: 'Saves ~6 hrs / drawing',  accent: '#7c3aed' },
       { to: '/engineering/process/line-list',        icon: '🔢', title: 'Line List',             tagline: 'Piping line register with specs',      benefit: 'OCR-assisted',            accent: '#0891b2' },
-      { to: '/engineering/process/pid-verification', icon: '🔍', title: 'P&ID Verification',     tagline: 'AI rule-engine for P&ID quality',      benefit: 'Catches 40+ issue types', accent: '#059669' },
+      { to: ROUTES.PID_VERIFICATION, icon: '🔍', title: 'P&ID Verification',     tagline: 'AI rule-engine for P&ID quality',      benefit: 'Catches 40+ issue types', accent: '#059669' }, // SOFT-CODED
       { to: '/engineering/process/pfd-quality-checker', icon: '📊', title: 'PFD Quality Checker', tagline: 'Five-stage PFD analysis',            benefit: 'Stream + mass balance',   accent: '#0284c7' },
     ],
   },

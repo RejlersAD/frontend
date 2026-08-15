@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../../config/api.config';
+import { ROUTES } from '../../config/routes.config';
 import { Link2, Search, ExternalLink, Database, Loader, Sparkles } from 'lucide-react';
 
 const API_PREFIX = `${API_BASE_URL}/cross-recommendation`;
@@ -11,7 +12,7 @@ const authHeader = () => {
 };
 
 const routeByType = {
-  pid: '/engineering/process/pid-verification',
+  pid: ROUTES.PID_VERIFICATION, // SOFT-CODED: Using centralized route config
   pfd: '/engineering/process/pfd-quality-checker',
 };
 

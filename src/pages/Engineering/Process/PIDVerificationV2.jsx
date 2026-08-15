@@ -2,6 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
+import { ROUTES } from '../../../config/routes.config';
 import CrossRecommendationPanel from '../../../components/recommendations/CrossRecommendationPanel';
 import {
   Upload as UploadIcon, FileText, CheckCircle, AlertTriangle,
@@ -3461,7 +3462,7 @@ const PIDVerificationV2 = () => {
               <div className="flex items-center gap-6">
                 {/* Back to V1 (Legacy) Button */}
                 <button
-                  onClick={() => navigate('/engineering/process/pid-verification-v1')}
+                  onClick={() => navigate(ROUTES.PID_VERIFICATION)} // SOFT-CODED
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -7057,7 +7058,7 @@ const PIDVerificationV2 = () => {
                         : <><RefreshCw className="w-3.5 h-3.5" /> Re-check</>
                       }
                     </button>
-                    <button onClick={() => navigate(`/engineering/process/pid-verification/report/${documentId}`)}
+                    <button onClick={() => navigate(`${ROUTES.PID_VERIFICATION_REPORT}/${documentId}`)} // SOFT-CODED
                       title="Open the 5-tab comparison report (General / Legend / Line List / Equipment / Instrument)"
                       className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px"
                       style={{ background:'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow:'0 3px 10px rgba(79,70,229,0.25)' }}>
