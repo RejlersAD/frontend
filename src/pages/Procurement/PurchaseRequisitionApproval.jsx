@@ -1,6 +1,6 @@
 ﻿/**
  * Purchase Requisition Approval Component
- * Dynamic multi-tier approval workflow (PM ΓåÆ Engineering Manager ΓåÆ Manager of Projects ΓåÆ VP Operations)
+ * Dynamic multi-tier approval workflow (PM -> Engineering Manager -> Manager of Projects -> VP Operations)
  * 
  * Features:
  * - Dynamic Approval History mapping over all configured workflow stages
@@ -11,6 +11,7 @@
 
 import React, { useState, useRef } from 'react';
 import apiClient from '../../services/api.service';
+import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
 import {
   XMarkIcon,
   CheckCircleIcon,
@@ -73,10 +74,20 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       : [];
 
   // Active stage determination
-  const currentStage = approvalHierarchy.find((entry) => {
+  const pendingStages = approvalHierarchy.filter((entry) => {
     const status = (entry?.status || 'pending').toString().trim().toLowerCase();
     return status === 'pending' || status === 'in_review';
-  }) || null;
+  });
+  const activeLevel = pendingStages.length
+    ? Math.min(...pendingStages.map((entry, index) => Number(entry?.level) || (approvalHierarchy.indexOf(entry) + 1 || index + 1)))
+    : null;
+  const activeLevelStages = pendingStages.filter((entry) => (Number(entry?.level) || approvalHierarchy.indexOf(entry) + 1) === activeLevel);
+
+  const currentUserData = currentUser?.user || currentUser || {};
+  const currentUserId = currentUserData?.id || currentUser?.user_id || currentUser?.id;
+  const currentStage = activeLevelStages.find(entry => String(entry?.user_id || entry?.approver_id) === String(currentUserId))
+    || activeLevelStages[0]
+    || null;
 
   const currentStageLabel = currentStage?.stage || currentStage?.role || 'the current approver';
   const currentStageRole = `${currentStage?.role || ''} ${currentStage?.stage || ''}`.toLowerCase();
@@ -87,13 +98,11 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       ? 'manager_projects'
       : currentStageRole.includes('vp operations') || currentStageRole.includes('vice president') || currentStageRole.includes('procurement manager')
         ? 'vp'
-        : currentStageRole.includes('project manager') || currentStageRole.includes('department manager') || currentStageRole.includes('technical review')
+        : currentStageRole.includes('level 1 approver') || currentStageRole.includes('project manager') || currentStageRole.includes('department manager') || currentStageRole.includes('technical review')
           ? 'pm'
           : null;
 
   // Authorization Evaluation
-  const currentUserData = currentUser?.user || currentUser || {};
-  const currentUserId = currentUserData?.id || currentUser?.user_id || currentUser?.id;
   const issuedByValue = requisition.issued_by?.id || requisition.issued_by_id || requisition.issued_by;
   const isCurrentUserIssuer = Boolean(
     currentUserId && issuedByValue && String(currentUserId) === String(issuedByValue)
@@ -137,7 +146,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   const APPROVER_CONFIG = {
     pm: {
-      label: 'Project Manager',
+      label: activeLevel === 1 ? 'Level 1 Approver' : 'Project Manager',
       approveEndpoint: 'pm_approve',
       rejectEndpoint: 'pm_reject',
       canApprove: isApprovalInProgress && currentStageKey === 'pm' && canActOnCurrentStage
@@ -312,7 +321,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                 <div>
                   <h2 className="text-2xl font-bold">Purchase Requisition Review</h2>
                   <p className="text-indigo-100 text-sm mt-1">
-                    PR No: {requisition.pr_number} ΓÇó Status: {requisition.status_display || requisition.status}
+                    PR No: {requisition.pr_number} <span aria-hidden="true">&middot;</span> Status: {requisition.status_display || requisition.status}
                   </p>
                 </div>
               </div>
@@ -341,6 +350,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
               
               {/* Left Column - PR Form Information */}
               <div className="lg:col-span-2 space-y-6">
+                <PurchaseRequisitionDocumentPreview requisition={requisition} />
+                <div className="hidden">
                 <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                     <InformationCircleIcon className="h-5 w-5 mr-2 text-indigo-600" />
@@ -455,6 +466,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                     )}
                   </div>
                 </div>
+                </div>
               </div>
               {/* Right Column - Dynamic Approval History & Action Controls */}
               <div className="space-y-6">
@@ -546,7 +558,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                         {(isCurrentUserIssuer || isSuperAdmin) ? (
                           <button type="button" onClick={handleSubmitForApproval} disabled={loading} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
                             <PaperAirplaneIcon className="h-4 w-4" />
-                            {loading ? 'SubmittingΓÇª' : 'Submit for Approval'}
+                            {loading ? 'Submitting...' : 'Submit for Approval'}
                           </button>
                         ) : (
                           <p className="mt-3 text-xs font-semibold text-blue-900">The requisition issuer must submit this draft.</p>

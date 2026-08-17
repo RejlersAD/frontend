@@ -23,6 +23,7 @@ import {
   PencilIcon,
   TrashIcon,
   ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
   ChevronUpDownIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
@@ -33,7 +34,114 @@ import { getStatusConfig, getOrderTabs } from '../../config/procurement.config';
 import AIPurchaseOrderCreator from './AIPurchaseOrderCreator';
 import PurchaseRequisitionForm from './PurchaseRequisitionForm';
 import PurchaseRequisitionApproval from './PurchaseRequisitionApproval';
+import PurchaseRequisitionExcelImport from './PurchaseRequisitionExcelImport';
+import PurchaseRequisitionPdfImport from './PurchaseRequisitionPdfImport';
+import PurchaseOrderExcelImport from './PurchaseOrderExcelImport';
+import PurchaseOrderPdfImport from './PurchaseOrderPdfImport';
 import PurchaseOrderForm from './PurchaseOrderForm';
+
+const PR_REGISTER_COLUMNS = [
+  ['SN', 8],
+  ['PR Number', 24],
+  ['PR Accepted Date', 18],
+  ['PO Number', 28],
+  ['Ord.Date', 16],
+  ['Suppl.Name', 34],
+  ['Summary of Purchase /Activity', 48],
+  ['Project short name/ Code', 25],
+  ['OA date', 16],
+  ['Delivery/ Completion Date', 22],
+  ['Payment terms', 36],
+  ['PO Amount w/o VAT', 20],
+  ['PO Currency', 14],
+  ['PO Amount including VAT', 22],
+  ['Amount Excl VAT in AED', 22],
+  ['Budget in AED', 18],
+  ['Initial Proposal in AED', 22],
+  ['Final Negotiated price in AED', 25],
+  ['%Savings from Budget', 20],
+  ['% Negotiated', 16],
+  ['Country (of Vendor/SC)', 24],
+  ['PO Status', 16],
+  ['ICV', 14],
+  ['Remarks', 48],
+];
+
+const PO_REGISTER_COLUMNS = [
+  ['PO Number', 28],
+  ['PR Number', 26],
+  ['PR Accepted Date', 18],
+  ['Suppl.Name', 34],
+  ['Summary of Purchase', 48],
+  ['Project short name/ Code', 26],
+  ['Ord.Date', 16],
+  ['OA date', 16],
+  ['Delivery Date', 20],
+  ['Payment terms', 36],
+  ['Amount Curr.', 18],
+  ['Curr.', 10],
+  ['Amount including VAT', 22],
+  ['Amount Inc VAT in AED', 23],
+  ['Country', 16],
+  ['Remarks', 42],
+];
+
+const getPORegisterValue = (order, column) => {
+  const attachments = order?.attachments || [];
+  const source = (
+    attachments.find(item => item?.type === 'signed_purchase_order_pdf' && item?.procurement_register)
+    || attachments.find(item => item?.procurement_register)
+  )?.procurement_register || {};
+  if (source[column] !== undefined && source[column] !== null && source[column] !== '') {
+    return source[column];
+  }
+  const netAmount = Number(order?.total_amount || 0);
+  const taxAmount = Number(order?.tax_amount || 0);
+  const amountWithVat = netAmount + taxAmount;
+  const fallbacks = {
+    'PO Number': order?.po_number,
+    'PR Number': order?.pr_number,
+    'Suppl.Name': order?.vendor_name,
+    'Summary of Purchase': order?.description || order?.title,
+    'Project short name/ Code': order?.project_number || order?.project_display,
+    'Ord.Date': order?.po_date,
+    'Delivery Date': order?.expected_delivery,
+    'Payment terms': order?.payment_terms,
+    'Amount Curr.': order?.total_amount,
+    'Curr.': order?.currency,
+    'Amount including VAT': amountWithVat || '',
+    'Amount Inc VAT in AED': order?.currency === 'AED' ? (amountWithVat || '') : '',
+    Remarks: order?.notes,
+  };
+  return fallbacks[column] ?? '';
+};
+
+const getPRRegisterValue = (requisition, column, rowIndex = 0) => {
+  const register = requisition?.price_remarks_data?.procurement_register || {};
+  if (register[column] !== undefined && register[column] !== null && register[column] !== '') {
+    return register[column];
+  }
+  const fallbacks = {
+    SN: rowIndex + 1,
+    'PR Number': requisition?.pr_number,
+    'PR Accepted Date': requisition?.issued_date,
+    'PO Number': requisition?.po_number_reference,
+    'Suppl.Name': requisition?.supplier_name || requisition?.vendor_name,
+    'Summary of Purchase /Activity': requisition?.product_service || requisition?.title,
+    'Project short name/ Code': requisition?.project_department || requisition?.project,
+    'Delivery/ Completion Date': requisition?.required_date,
+    'Payment terms': requisition?.price_remarks_data?.payment_terms,
+    'PO Amount w/o VAT': requisition?.total_price,
+    'PO Currency': requisition?.currency,
+    'Amount Excl VAT in AED': requisition?.price_remarks_data?.amount_excl_vat_aed,
+    'Budget in AED': requisition?.estimated_budget || requisition?.price_remarks_data?.budget_in_aed,
+    'Country (of Vendor/SC)': requisition?.price_remarks_data?.vendor_country,
+    'PO Status': requisition?.price_remarks_data?.source_po_status || requisition?.status,
+    ICV: requisition?.price_remarks_data?.icv,
+    Remarks: requisition?.notes || requisition?.price_remarks,
+  };
+  return fallbacks[column] ?? '';
+};
 
 const OrderManagement = () => {
   // Navigation hook for soft-coded routing
@@ -47,7 +155,7 @@ const OrderManagement = () => {
   const orderTabs = getOrderTabs();
   
   // View mode state - soft-coded toggle between card and list view
-  const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
+  const [viewMode, setViewMode] = useState('list');
   
   // Purchase Orders state
   const [orders, setOrders] = useState([]);
@@ -63,10 +171,18 @@ const OrderManagement = () => {
   const [filterVendor, setFilterVendor] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [orderPage, setOrderPage] = useState(1);
+  const [orderPageSize, setOrderPageSize] = useState(25);
   const [requisitionSort, setRequisitionSort] = useState({ key: 'created_at', direction: 'desc' });
+  const [requisitionPage, setRequisitionPage] = useState(1);
+  const [requisitionPageSize, setRequisitionPageSize] = useState(25);
   const [showAICreator, setShowAICreator] = useState(false);
   const [showPOForm, setShowPOForm] = useState(false);
   const [showPRForm, setShowPRForm] = useState(false);
+  const [showPRExcelImport, setShowPRExcelImport] = useState(false);
+  const [showPRPdfImport, setShowPRPdfImport] = useState(false);
+  const [showPOExcelImport, setShowPOExcelImport] = useState(false);
+  const [showPOPdfImport, setShowPOPdfImport] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedRequisition, setSelectedRequisition] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
@@ -116,6 +232,8 @@ const OrderManagement = () => {
     setFilterVendor('all');
     setFilterPriority('all');
     setFilterType('all');
+    setViewMode('list');
+    setRequisitionPage(1);
     navigate(
       newTab === 'purchaseRequisitions'
         ? '/procurement/requisitions'
@@ -128,7 +246,7 @@ const OrderManagement = () => {
       setLoading(true);
       setError(null);
       
-      const response = await apiClient.get('/procurement/orders/');
+      const response = await apiClient.get('/procurement/orders/?page_size=10000');
       
       // Soft-coded data normalization - ensure array
       let normalizedData = [];
@@ -344,6 +462,15 @@ const OrderManagement = () => {
     return matchesSearch && matchesStatus && matchesVendor;
   }) : [];
 
+  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / orderPageSize));
+  const currentOrderPage = Math.min(orderPage, orderTotalPages);
+  const orderPageStart = (currentOrderPage - 1) * orderPageSize;
+  const paginatedOrders = filteredOrders.slice(orderPageStart, orderPageStart + orderPageSize);
+
+  useEffect(() => {
+    setOrderPage(1);
+  }, [searchTerm, filterStatus, filterVendor, orderPageSize]);
+
   // Soft-coded filter logic for requisitions
   const filteredRequisitions = Array.isArray(requisitions) ? requisitions.filter(req => {
     // Soft-coded field access with fallbacks
@@ -371,6 +498,9 @@ const OrderManagement = () => {
     const getValue = (item) => {
       if (requisitionSort.key === 'pr_value') return Number(item.total_price || 0);
       if (requisitionSort.key === 'approval_status') return item.approval_status_summary || item.status || '';
+      if (PR_REGISTER_COLUMNS.some(([column]) => column === requisitionSort.key)) {
+        return getPRRegisterValue(item, requisitionSort.key);
+      }
       return item[requisitionSort.key] || '';
     };
     const a = getValue(left);
@@ -388,19 +518,28 @@ const OrderManagement = () => {
     }));
   };
 
+  const requisitionTotalPages = Math.max(1, Math.ceil(filteredRequisitions.length / requisitionPageSize));
+  const currentRequisitionPage = Math.min(requisitionPage, requisitionTotalPages);
+  const requisitionPageStart = (currentRequisitionPage - 1) * requisitionPageSize;
+  const paginatedRequisitions = filteredRequisitions.slice(
+    requisitionPageStart,
+    requisitionPageStart + requisitionPageSize,
+  );
+
+  useEffect(() => {
+    setRequisitionPage(1);
+  }, [searchTerm, filterStatus, filterPriority, filterType, requisitionPageSize]);
+
+  useEffect(() => {
+    setViewMode('list');
+  }, [activeTab]);
+
   const exportRequisitionsToExcel = () => {
-    const rows = filteredRequisitions.map(req => ({
-      'PR No.': req.pr_number || '',
-      'PO Number': req.po_number_reference || '',
-      'Goods / Service Description': req.product_service || req.title || '',
-      'Project Details': req.project_department || '',
-      'Supplier Name': req.supplier_name || req.vendor_name || '',
-      'PR Value': Number(req.total_price || 0),
-      Currency: req.currency || '',
-      'Approval Status': (req.approval_status_summary || req.status || '').replaceAll('_', ' '),
-    }));
+    const rows = filteredRequisitions.map((req, rowIndex) => Object.fromEntries(
+      PR_REGISTER_COLUMNS.map(([column]) => [column, getPRRegisterValue(req, column, rowIndex)]),
+    ));
     const worksheet = XLSX.utils.json_to_sheet(rows);
-    worksheet['!cols'] = [18, 18, 42, 36, 30, 16, 12, 18].map(width => ({ width }));
+    worksheet['!cols'] = PR_REGISTER_COLUMNS.map(([, width]) => ({ width }));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Requisitions');
     XLSX.writeFile(workbook, `RADAI_Purchase_Requisitions_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -1260,18 +1399,54 @@ const OrderManagement = () => {
               <p className="text-xs text-gray-500">
                 {activeTab === 'purchaseOrders' 
                   ? `Showing ${filteredOrders.length} of ${Array.isArray(orders) ? orders.length : 0} purchase orders`
-                  : `Showing ${filteredRequisitions.length} of ${Array.isArray(requisitions) ? requisitions.length : 0} requisitions`
+                  : filteredRequisitions.length > 0
+                    ? `Showing ${requisitionPageStart + 1}-${Math.min(requisitionPageStart + requisitionPageSize, filteredRequisitions.length)} of ${filteredRequisitions.length} filtered requisitions (${Array.isArray(requisitions) ? requisitions.length : 0} total)`
+                    : `Showing 0 of ${Array.isArray(requisitions) ? requisitions.length : 0} requisitions`
                 }
               </p>
               <div className="flex flex-wrap items-center gap-2">
+                {activeTab === 'purchaseOrders' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowPOPdfImport(true)}
+                      className="inline-flex h-9 items-center rounded-lg border border-purple-300 bg-purple-50 px-3 text-xs font-semibold text-purple-700 hover:bg-purple-100"
+                    >
+                      <DocumentTextIcon className="mr-1.5 h-3.5 w-3.5" /> Import Signed PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPOExcelImport(true)}
+                      className="inline-flex h-9 items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      <ArrowUpTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Import Excel
+                    </button>
+                  </>
+                )}
                 {activeTab === 'purchaseRequisitions' && (
-                  <button
-                    type="button"
-                    onClick={exportRequisitionsToExcel}
-                    className="inline-flex h-9 items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                  >
-                    <ArrowDownTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Export Excel
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowPRPdfImport(true)}
+                      className="inline-flex h-9 items-center rounded-lg border border-purple-300 bg-purple-50 px-3 text-xs font-semibold text-purple-700 hover:bg-purple-100"
+                    >
+                      <DocumentTextIcon className="mr-1.5 h-3.5 w-3.5" /> Import Signed PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPRExcelImport(true)}
+                      className="inline-flex h-9 items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      <ArrowUpTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Import Excel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportRequisitionsToExcel}
+                      className="inline-flex h-9 items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      <ArrowDownTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Export Excel
+                    </button>
+                  </>
                 )}
                 {/* View Toggle - Soft-coded */}
                 <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
@@ -1349,7 +1524,7 @@ const OrderManagement = () => {
             </div>
           ) : viewMode === 'card' ? (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredOrders.map((order) => {
+              {paginatedOrders.map((order) => {
                 const isOverdue = order.delivery_date && new Date(order.delivery_date) < new Date() && order.status !== 'completed';
                 const completionRate = order.items_count ? ((order.received_items || 0) / order.items_count) * 100 : 0;
                 
@@ -1483,70 +1658,31 @@ const OrderManagement = () => {
             </div>
           ) : (
             // List View for Purchase Orders
-            <div className="bg-white shadow-md rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
+            <div className="overflow-x-auto rounded-lg bg-white shadow-md">
+              <table className="min-w-[3300px] divide-y divide-gray-200">
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      PO Number
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Vendor
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Delivery Date
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Amount
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
+                    {PO_REGISTER_COLUMNS.map(([column]) => (
+                      <th key={column} scope="col" className="whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
+                        {column}
+                      </th>
+                    ))}
+                    <th scope="col" className="sticky right-0 bg-gray-100 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600 shadow-[-4px_0_8px_rgba(0,0,0,0.05)]">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredOrders.map((order) => {
-                    const isOverdue = order.delivery_date && new Date(order.delivery_date) < new Date() && order.status !== 'completed';
-                    return (
-                      <tr key={order.id} className="hover:bg-gray-50 transition-colors duration-150">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-600">
-                              <ShoppingCartIcon className="h-4 w-4 text-white" />
-                            </div>
-                            <div className="ml-3">
-                              <div className="text-sm font-semibold text-gray-900">{order.po_number || `PO-${order.id}`}</div>
-                              <div className="text-xs text-gray-500">{order.project || 'No project'}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{order.vendor_name || 'N/A'}</div>
-                          <div className="text-xs text-gray-500">{order.shipping_address ? order.shipping_address.substring(0, 30) + '...' : ''}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {order.delivery_date ? (
-                            <div className={`text-sm ${isOverdue ? 'text-red-600 font-semibold' : 'text-gray-900'}`}>
-                              {new Date(order.delivery_date).toLocaleDateString()}
-                              {isOverdue && <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Overdue</span>}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">Not set</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-semibold tabular-nums text-teal-800">
-                            {formatCurrency(order.total_amount, order.currency)}
-                          </div>
-                          {order.currency && <div className="text-xs text-gray-500">{order.currency}</div>}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getStatusBadge(order.status)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {paginatedOrders.map((order) => (
+                      <tr key={order.id} className="align-top transition-colors hover:bg-gray-50">
+                        {PO_REGISTER_COLUMNS.map(([column]) => {
+                          const value = getPORegisterValue(order, column);
+                          const wideColumn = ['Suppl.Name', 'Summary of Purchase', 'Payment terms', 'Remarks'].includes(column);
+                          return (
+                            <td key={column} className={`px-3 py-3 text-xs text-gray-700 ${wideColumn ? 'max-w-[360px]' : 'whitespace-nowrap'}`} title={value ? String(value) : ''}>
+                              <p className={wideColumn ? 'line-clamp-3' : ''}>{value !== '' && value !== null && value !== undefined ? String(value) : '—'}</p>
+                            </td>
+                          );
+                        })}
+                        <td className="sticky right-0 whitespace-nowrap bg-white px-4 py-3 text-right text-sm font-medium shadow-[-4px_0_8px_rgba(0,0,0,0.05)]">
                           <div className="flex justify-end gap-2">
                             <button
                               type="button"
@@ -1588,8 +1724,7 @@ const OrderManagement = () => {
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1617,7 +1752,7 @@ const OrderManagement = () => {
             </div>
           ) : viewMode === 'card' ? (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredRequisitions.map((req) => {
+              {paginatedRequisitions.map((req) => {
                 const daysSinceCreation = req.created_date 
                   ? Math.floor((new Date() - new Date(req.created_date)) / (1000 * 60 * 60 * 24))
                   : 0;
@@ -1765,51 +1900,37 @@ const OrderManagement = () => {
           ) : (
             // List View for Purchase Requisitions
             <div className="overflow-x-auto rounded-lg bg-white shadow-md">
-              <table className="min-w-[1400px] divide-y divide-gray-200">
+              <table className="min-w-[4700px] divide-y divide-gray-200">
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
-                    {[
-                      ['pr_number', 'PR No.'],
-                      ['po_number_reference', 'PO Number'],
-                      ['product_service', 'Goods / Service Description'],
-                      ['project_department', 'Project Details'],
-                      ['supplier_name', 'Supplier Name'],
-                      ['pr_value', 'PR Value'],
-                      ['currency', 'Currency'],
-                      ['approval_status', 'Approval Status'],
-                    ].map(([key, label]) => (
-                      <th key={key} scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
-                        <button type="button" onClick={() => toggleRequisitionSort(key)} className="inline-flex items-center gap-1 hover:text-indigo-700">
-                          {label}<ChevronUpDownIcon className="h-3.5 w-3.5" />
+                    {PR_REGISTER_COLUMNS.map(([column]) => (
+                      <th key={column} scope="col" className="whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
+                        <button type="button" onClick={() => toggleRequisitionSort(column)} className="inline-flex items-center gap-1 hover:text-indigo-700">
+                          {column}<ChevronUpDownIcon className="h-3.5 w-3.5" />
                         </button>
                       </th>
                     ))}
-                    <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">Actions</th>
+                    <th scope="col" className="sticky right-0 bg-gray-100 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600 shadow-[-4px_0_8px_rgba(0,0,0,0.05)]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
-                  {filteredRequisitions.map(req => {
-                    const summary = req.approval_status_summary || req.status || 'draft';
-                    const statusClass = {
-                      overdue: 'bg-red-100 text-red-800',
-                      under_review: 'bg-amber-100 text-amber-800',
-                      approved: 'bg-emerald-100 text-emerald-800',
-                      rejected: 'bg-rose-100 text-rose-800',
-                    }[summary] || 'bg-gray-100 text-gray-700';
-                    return (
+                  {paginatedRequisitions.map((req, rowIndex) => (
                       <tr key={req.id} className="align-top hover:bg-gray-50">
-                        <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-gray-900">{req.pr_number || '—'}</td>
-                        <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">{req.po_number_reference || 'Not applicable'}</td>
-                        <td className="max-w-xs px-4 py-4 text-sm text-gray-800"><p className="line-clamp-2">{req.product_service || req.title || '—'}</p></td>
-                        <td className="max-w-xs px-4 py-4 text-sm text-gray-700"><p className="line-clamp-2">{req.project_department || 'Internal / General'}</p></td>
-                        <td className="max-w-[220px] px-4 py-4 text-sm text-gray-700">{req.supplier_name || req.vendor_name || '—'}</td>
-                        <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-gray-900">{req.total_price ? Number(req.total_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}</td>
-                        <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">{req.currency || '—'}</td>
-                        <td className="whitespace-nowrap px-4 py-4">
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusClass}`}>{summary.replaceAll('_', ' ')}</span>
-                          {req.review_due_at && ['under_review', 'overdue'].includes(summary) && <p className="mt-1 text-[11px] text-gray-500">Due {new Date(req.review_due_at).toLocaleString()}</p>}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right">
+                        {PR_REGISTER_COLUMNS.map(([column]) => {
+                          const value = getPRRegisterValue(req, column, requisitionPageStart + rowIndex);
+                          const wideColumn = [
+                            'Suppl.Name',
+                            'Summary of Purchase /Activity',
+                            'Payment terms',
+                            'Remarks',
+                          ].includes(column);
+                          return (
+                            <td key={column} className={`px-3 py-3 text-xs text-gray-700 ${wideColumn ? 'max-w-[360px]' : 'whitespace-nowrap'}`} title={value ? String(value) : ''}>
+                              <p className={wideColumn ? 'line-clamp-3' : ''}>{value !== '' && value !== null && value !== undefined ? String(value) : '—'}</p>
+                            </td>
+                          );
+                        })}
+                        <td className="sticky right-0 whitespace-nowrap bg-white px-4 py-4 text-right shadow-[-4px_0_8px_rgba(0,0,0,0.05)]">
                           <div className="flex justify-end gap-1.5">
                             <button onClick={() => handleOpenApproval(req)} className="rounded-md border border-gray-300 bg-white p-2 text-gray-700 hover:bg-gray-50" title="View"><EyeIcon className="h-4 w-4" /></button>
                             {canModifyRequisition(req) && <button onClick={() => handleEditRequisition(req)} className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-700" title="Edit"><PencilIcon className="h-4 w-4" /></button>}
@@ -1819,12 +1940,95 @@ const OrderManagement = () => {
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
+                  ))}
                 </tbody>
               </table>
             </div>
           ))}
+
+          {activeTab === 'purchaseOrders' && filteredOrders.length > 0 && (
+            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-xs text-gray-600">
+                <label htmlFor="order-page-size" className="font-medium">Rows per page</label>
+                <select
+                  id="order-page-size"
+                  value={orderPageSize}
+                  onChange={(event) => setOrderPageSize(Number(event.target.value))}
+                  className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  {[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+                </select>
+                <span>
+                  {orderPageStart + 1}-{Math.min(orderPageStart + orderPageSize, filteredOrders.length)} of {filteredOrders.length}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button type="button" onClick={() => setOrderPage(1)} disabled={currentOrderPage === 1} className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">First</button>
+                <button type="button" onClick={() => setOrderPage(page => Math.max(1, page - 1))} disabled={currentOrderPage === 1} className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                <span className="min-w-[90px] text-center text-xs font-semibold text-gray-700">Page {currentOrderPage} of {orderTotalPages}</span>
+                <button type="button" onClick={() => setOrderPage(page => Math.min(orderTotalPages, page + 1))} disabled={currentOrderPage === orderTotalPages} className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+                <button type="button" onClick={() => setOrderPage(orderTotalPages)} disabled={currentOrderPage === orderTotalPages} className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Last</button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'purchaseRequisitions' && filteredRequisitions.length > 0 && (
+            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-xs text-gray-600">
+                <label htmlFor="requisition-page-size" className="font-medium">Rows per page</label>
+                <select
+                  id="requisition-page-size"
+                  value={requisitionPageSize}
+                  onChange={(event) => setRequisitionPageSize(Number(event.target.value))}
+                  className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  {[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+                </select>
+                <span>
+                  {requisitionPageStart + 1}-{Math.min(requisitionPageStart + requisitionPageSize, filteredRequisitions.length)} of {filteredRequisitions.length}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRequisitionPage(1)}
+                  disabled={currentRequisitionPage === 1}
+                  className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  First
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequisitionPage(page => Math.max(1, page - 1))}
+                  disabled={currentRequisitionPage === 1}
+                  className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <span className="min-w-[90px] text-center text-xs font-semibold text-gray-700">
+                  Page {currentRequisitionPage} of {requisitionTotalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRequisitionPage(page => Math.min(requisitionTotalPages, page + 1))}
+                  disabled={currentRequisitionPage === requisitionTotalPages}
+                  className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequisitionPage(requisitionTotalPages)}
+                  disabled={currentRequisitionPage === requisitionTotalPages}
+                  className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Last
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
       {/* AI Creator Modals - Conditional based on active tab */}
@@ -1878,6 +2082,36 @@ const OrderManagement = () => {
           editData={editingRequisition}  // Pass the requisition being edited
         />
       )}
+
+      <PurchaseRequisitionExcelImport
+        isOpen={showPRExcelImport}
+        onClose={() => setShowPRExcelImport(false)}
+        onImported={() => fetchRequisitions()}
+      />
+
+      <PurchaseRequisitionPdfImport
+        isOpen={showPRPdfImport}
+        onClose={() => setShowPRPdfImport(false)}
+        onImported={() => fetchRequisitions()}
+      />
+
+      <PurchaseOrderExcelImport
+        isOpen={showPOExcelImport}
+        onClose={() => setShowPOExcelImport(false)}
+        onImported={() => {
+          fetchOrders();
+          fetchRequisitions();
+        }}
+      />
+
+      <PurchaseOrderPdfImport
+        isOpen={showPOPdfImport}
+        onClose={() => setShowPOPdfImport(false)}
+        onImported={() => {
+          fetchOrders();
+          fetchRequisitions();
+        }}
+      />
 
       {/* Purchase Requisition Approval Modal */}
       <PurchaseRequisitionApproval

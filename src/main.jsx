@@ -12,8 +12,9 @@ import 'react-toastify/dist/ReactToastify.css'
 // PWA Service Worker Registration
 import { registerSW } from 'virtual:pwa-register'
 
-// Register service worker for PWA functionality
-if ('serviceWorker' in navigator) {
+// Register the PWA only for production builds. In development, remove any
+// previously registered worker so it cannot keep serving stale source files.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   registerSW({
     immediate: true,
     onNeedRefresh() {
@@ -29,6 +30,10 @@ if ('serviceWorker' in navigator) {
     onRegisterError(error) {
       console.error('❌ Service Worker registration failed:', error)
     }
+  })
+} else if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => registration.unregister())
   })
 }
 

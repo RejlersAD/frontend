@@ -136,7 +136,7 @@ export default defineConfig(({ mode }) => {
           ]
         },
         devOptions: {
-          enabled: true, // Enable PWA in development mode
+          enabled: false, // Avoid stale cached application code during development
           type: 'module',
           navigateFallback: 'index.html',
           navigateFallbackAllowlist: [/.*/] // Allow all paths in dev mode
@@ -168,6 +168,13 @@ export default defineConfig(({ mode }) => {
         interval: 1000,
       },
       proxy: {
+        // Local signed procurement documents use Django's MEDIA_URL. Proxy
+        // them through Vite so relative attachment URLs open from previews.
+        '/media': {
+          target: apiUrl,
+          changeOrigin: true,
+          secure: false,
+        },
         '/api': {
           target: apiUrl,
           changeOrigin: true,
