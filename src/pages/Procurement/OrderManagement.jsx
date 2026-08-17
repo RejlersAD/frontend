@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ShoppingCartIcon,
@@ -24,7 +25,9 @@ import {
   TrashIcon,
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
-  ChevronUpDownIcon
+  ChevronUpDownIcon,
+  PrinterIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import * as XLSX from 'xlsx';
@@ -185,6 +188,9 @@ const OrderManagement = () => {
   const [showPOPdfImport, setShowPOPdfImport] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedRequisition, setSelectedRequisition] = useState(null);
+  const [prPrintPreview, setPrPrintPreview] = useState(null);
+  const [prPrintPreviewLoadingId, setPrPrintPreviewLoadingId] = useState(null);
+  const prPdfFrameRef = useRef(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [vendors, setVendors] = useState([]);
   const [projects, setProjects] = useState([]);  // Smart project lookup for PO creation
@@ -774,12 +780,19 @@ const OrderManagement = () => {
     }
   };
 
-  const handleExportPRPDF = async (requisition) => {
+  useEffect(() => () => {
+    if (prPrintPreview?.url) window.URL.revokeObjectURL(prPrintPreview.url);
+  }, [prPrintPreview?.url]);
+
+  const closePRPrintPreview = () => setPrPrintPreview(null);
+
+  const handlePrintPreviewPR = async (requisition) => {
     if (!requisition || !requisition.id) {
-      console.error('Invalid requisition data for export');
+      console.error('Invalid requisition data for print preview');
       return;
     }
 
+    setPrPrintPreviewLoadingId(requisition.id);
     try {
       const response = await apiClient.get(`/procurement/requisitions/${requisition.id}/export_pdf/`, {
         responseType: 'blob',
@@ -792,21 +805,28 @@ const OrderManagement = () => {
 
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      setPrPrintPreview({
+        url,
+        filename,
+        prNumber: requisition.pr_number || `PR-${requisition.id}`,
+      });
     } catch (error) {
-      console.error('Error exporting requisition PDF:', error);
+      console.error('Error loading requisition print preview:', error);
       const errorMsg =
         error.response?.data?.error ||
         error.response?.data?.detail ||
-        'Failed to export requisition PDF.';
+        'Failed to load requisition print preview.';
       alert(errorMsg);
+    } finally {
+      setPrPrintPreviewLoadingId(null);
     }
+  };
+
+  const printRequisitionPreview = () => {
+    const frameWindow = prPdfFrameRef.current?.contentWindow;
+    if (!frameWindow) return;
+    frameWindow.focus();
+    frameWindow.print();
   };
 
   const getStatusBadge = (status) => {
@@ -1876,10 +1896,11 @@ const OrderManagement = () => {
                       )}
                       {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
                         <button 
-                          onClick={() => handleExportPRPDF(req)}
-                          className="inline-flex justify-center items-center px-2.5 py-2 border border-purple-300 shadow-sm text-xs font-medium rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200">
+                          onClick={() => handlePrintPreviewPR(req)}
+                          disabled={prPrintPreviewLoadingId === req.id}
+                          className="inline-flex justify-center items-center px-2.5 py-2 border border-purple-300 shadow-sm text-xs font-medium rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 disabled:opacity-50">
                           <DocumentTextIcon className="h-3.5 w-3.5 mr-1" />
-                          <span>Export PDF</span>
+                          <span>{prPrintPreviewLoadingId === req.id ? 'Loading...' : 'Print Preview'}</span>
                         </button>
                       )}
                       {canDeleteRequisition(req) && (
@@ -1935,7 +1956,7 @@ const OrderManagement = () => {
                             <button onClick={() => handleOpenApproval(req)} className="rounded-md border border-gray-300 bg-white p-2 text-gray-700 hover:bg-gray-50" title="View"><EyeIcon className="h-4 w-4" /></button>
                             {canModifyRequisition(req) && <button onClick={() => handleEditRequisition(req)} className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-700" title="Edit"><PencilIcon className="h-4 w-4" /></button>}
                             {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && <button onClick={() => handleConvertToPO(req)} className="rounded-md bg-purple-600 p-2 text-white" title="Convert to PO"><ShoppingCartIcon className="h-4 w-4" /></button>}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && <button onClick={() => handleExportPRPDF(req)} className="rounded-md border border-purple-300 bg-purple-50 p-2 text-purple-700" title="Export PDF"><DocumentTextIcon className="h-4 w-4" /></button>}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && <button onClick={() => handlePrintPreviewPR(req)} disabled={prPrintPreviewLoadingId === req.id} className="rounded-md border border-purple-300 bg-purple-50 p-2 text-purple-700 disabled:opacity-50" title="Print Preview"><DocumentTextIcon className="h-4 w-4" /></button>}
                             {canDeleteRequisition(req) && <button onClick={() => handleDeleteRequisition(req)} className="rounded-md border border-red-300 bg-red-50 p-2 text-red-700" title="Delete"><TrashIcon className="h-4 w-4" /></button>}
                           </div>
                         </td>
@@ -2113,6 +2134,28 @@ const OrderManagement = () => {
         }}
       />
 
+      {prPrintPreview && (
+        <div className="fixed inset-0 z-[80] flex flex-col bg-slate-950/90" role="dialog" aria-modal="true" aria-labelledby="pr-print-preview-title">
+          <div className="flex items-center justify-between border-b border-white/10 bg-slate-900 px-5 py-3 text-white">
+            <div>
+              <h2 id="pr-print-preview-title" className="font-semibold">Print Preview · {prPrintPreview.prNumber}</h2>
+              <p className="text-xs text-slate-300">Preview only — no file is downloaded automatically.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={printRequisitionPreview} className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500">
+                <PrinterIcon className="h-4 w-4" /> Print
+              </button>
+              <button type="button" onClick={closePRPrintPreview} className="rounded-md border border-white/20 p-2 text-slate-200 hover:bg-white/10" aria-label="Close print preview">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 p-4">
+            <iframe ref={prPdfFrameRef} src={`${prPrintPreview.url}#toolbar=0&navpanes=0&scrollbar=1`} title={`${prPrintPreview.filename} print preview`} className="h-full w-full rounded-lg bg-white shadow-2xl" />
+          </div>
+        </div>
+      )}
+
       {/* Purchase Requisition Approval Modal */}
       <PurchaseRequisitionApproval
         isOpen={showApprovalModal}
@@ -2122,7 +2165,6 @@ const OrderManagement = () => {
         }}
         requisition={selectedRequisition}
         currentUser={currentUser}
-        onExportPDF={handleExportPRPDF}
         onApprovalComplete={handleApprovalComplete}
       />
       </div>

@@ -38,7 +38,7 @@ const REJECTION_CONFIG = {
   }
 };
 
-const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete, onExportPDF }) => {
+const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete }) => {
   const [loading, setLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [currentApproverType, setCurrentApproverType] = useState(null);
