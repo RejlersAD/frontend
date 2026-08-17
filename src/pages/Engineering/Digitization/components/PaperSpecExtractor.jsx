@@ -648,12 +648,51 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
   // BYOK (Bring Your Own Key) — optional user-supplied fields for attribution and custom AI usage.
   const [documentName, setDocumentName]     = useState('');
   const [engineerName, setEngineerName]     = useState('');
+  const [aiProvider, setAiProvider]         = useState(() => {
+    try {
+      return sessionStorage.getItem('radai_spec_ai_provider') || '';
+    } catch (_) { return ''; }
+  });
+  const [aiModel, setAiModel]               = useState(() => {
+    try {
+      return sessionStorage.getItem('radai_spec_ai_model') || '';
+    } catch (_) { return ''; }
+  });
   const [userApiKey, setUserApiKey]         = useState(() => {
     try {
-      return sessionStorage.getItem('radai_spec_user_openai_key') || '';
+      const provider = sessionStorage.getItem('radai_spec_ai_provider') || '';
+      if (provider === 'openai') {
+        return sessionStorage.getItem('radai_spec_user_openai_key') || '';
+      } else if (provider === 'claude') {
+        return sessionStorage.getItem('radai_spec_user_claude_key') || '';
+      }
+      return '';
     } catch (_) { return ''; }
   });
   const [showApiKey, setShowApiKey]         = useState(false);
+
+  // Soft-coded AI provider & model options from backend config (BYOK)
+  const [byokConfig, setByokConfig]         = useState({
+    enabled: true,
+    supported_providers: ['openai', 'claude'],
+    openai_models: [
+      {id: 'gpt-4o', label: 'GPT-4o (Latest)', description: 'Most capable', recommended: true},
+      {id: 'gpt-4o-mini', label: 'GPT-4o Mini', description: 'Faster, cost-effective'},
+    ],
+    claude_models: [
+      {id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', description: 'Best balance', recommended: true},
+      {id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', description: 'Fastest'},
+      {id: 'claude-3-opus-20240229', label: 'Claude 3 Opus', description: 'Highest quality'},
+    ],
+    provider_labels: {
+      openai: 'Your OpenAI API Key',
+      claude: 'Your Claude API Key (Anthropic)',
+    },
+    api_key_patterns: {
+      openai: /^sk-[A-Za-z0-9_\-]{18,}$/,
+      claude: /^sk-ant-[A-Za-z0-9_\-]{20,}$/,
+    },
+  });
 
   const [job, setJob]                       = useState(null);
   const [document, setDocument]             = useState(null);
@@ -676,7 +715,23 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
     (async () => {
       try {
         const c = await specCustomizationAPI.getConfig();
-        if (!cancelled) setConfig(c);
+        if (!cancelled) {
+          setConfig(c);
+          // Update BYOK config from backend if available
+          if (c.byok) {
+            const newByokConfig = {
+              enabled: c.byok.enabled,
+              openai_models: c.byok.openai_models || [],
+              claude_models: c.byok.claude_models || [],
+              provider_labels: c.byok.provider_labels || {},
+              api_key_patterns: {
+                openai: /^sk-[A-Za-z0-9_\-]{18,}$/,
+                claude: /^sk-ant-[A-Za-z0-9_\-]{20,}$/,
+              },
+            };
+            setByokConfig(newByokConfig);
+          }
+        }
       } catch (e) { /* ignore */ }
     })();
     return () => { cancelled = true; };
@@ -840,7 +895,9 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
         projectId,
         title: documentName.trim(),                    // BYOK: document name
         engineerName: engineerName.trim(),             // BYOK: engineer attribution
-        userOpenaiApiKey: userApiKey.trim(),           // BYOK: user's OpenAI API key
+        userApiKey: userApiKey.trim(),                 // BYOK: user's API key (OpenAI or Claude)
+        userAiProvider: aiProvider.trim(),             // BYOK: AI provider ("openai" or "claude")
+        userAiModel: aiModel.trim(),                   // BYOK: AI model ID
         onUploadProgress: (evt) => {
           if (!evt.total) return;
           const pct = Math.round((evt.loaded / evt.total) * 100);
@@ -1124,48 +1181,150 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                       className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm bg-white dark:bg-slate-800 dark:text-white"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                      <span>
-                        Your OpenAI API Key <span className="text-slate-400 font-normal">(optional — BYOK)</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowApiKey(v => !v)}
-                        className="text-xs text-pink-700 dark:text-pink-300 hover:text-pink-900 dark:hover:text-pink-100"
-                      >
-                        {showApiKey ? 'Hide' : 'Show'}
-                      </button>
-                    </label>
-                    <input
-                      type={showApiKey ? 'text' : 'password'}
-                      value={userApiKey}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setUserApiKey(val);
-                        try {
-                          if (val) sessionStorage.setItem('radai_spec_user_openai_key', val);
-                          else sessionStorage.removeItem('radai_spec_user_openai_key');
-                        } catch (_) { /* ignore */ }
-                      }}
-                      placeholder="sk-... (leave empty to use platform key)"
-                      autoComplete="off"
-                      spellCheck={false}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm font-mono ${
-                        userApiKey.trim() && !/^sk-[A-Za-z0-9_\-]{18,}$/.test(userApiKey.trim())
-                          ? 'border-red-400 bg-red-50 dark:bg-red-900/20'
-                          : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white'
-                      }`}
-                    />
-                    {userApiKey.trim() && !/^sk-[A-Za-z0-9_\-]{18,}$/.test(userApiKey.trim()) && (
-                      <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
-                        This does not look like an OpenAI API key. Valid keys start with <code>sk-</code> and are 20+ characters. Your key will be ignored and the platform key will be used instead.
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Your key is used for OpenAI GPT-4o Vision calls during extraction. Held in your browser session and wiped from our servers immediately after extraction completes.
-                    </p>
-                  </div>
+                  
+                  {/* BYOK: AI Provider & Model Selection */}
+                  {byokConfig.enabled && (
+                    <div className="space-y-3 p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-purple-900 dark:text-purple-200">
+                        <SparklesIcon className="w-4 h-4" />
+                        <span>Bring Your Own AI Key (BYOK)</span>
+                        <span className="text-xs font-normal text-purple-600 dark:text-purple-400">(Optional — use your own API)</span>
+                      </div>
+                      
+                      {/* AI Provider Selection */}
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                          AI Provider
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiProvider('openai');
+                              setAiModel('gpt-4o');
+                              setUserApiKey('');
+                              try {
+                                sessionStorage.setItem('radai_spec_ai_provider', 'openai');
+                                sessionStorage.setItem('radai_spec_ai_model', 'gpt-4o');
+                                sessionStorage.removeItem('radai_spec_user_openai_key');
+                                sessionStorage.removeItem('radai_spec_user_claude_key');
+                              } catch (_) {}
+                            }}
+                            className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
+                              aiProvider === 'openai'
+                                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="font-semibold text-sm text-slate-900 dark:text-white">OpenAI</div>
+                            <div className="text-xs text-slate-600 dark:text-slate-400">GPT-4o models</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiProvider('claude');
+                              setAiModel('claude-3-5-sonnet-20241022');
+                              setUserApiKey('');
+                              try {
+                                sessionStorage.setItem('radai_spec_ai_provider', 'claude');
+                                sessionStorage.setItem('radai_spec_ai_model', 'claude-3-5-sonnet-20241022');
+                                sessionStorage.removeItem('radai_spec_user_openai_key');
+                                sessionStorage.removeItem('radai_spec_user_claude_key');
+                              } catch (_) {}
+                            }}
+                            className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
+                              aiProvider === 'claude'
+                                ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/30'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="font-semibold text-sm text-slate-900 dark:text-white">Claude</div>
+                            <div className="text-xs text-slate-600 dark:text-slate-400">Anthropic models</div>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Model Selection */}
+                      {aiProvider && (
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                            Model Selection
+                          </label>
+                          <select
+                            value={aiModel}
+                            onChange={(e) => {
+                              setAiModel(e.target.value);
+                              try {
+                                sessionStorage.setItem('radai_spec_ai_model', e.target.value);
+                              } catch (_) {}
+                            }}
+                            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white dark:bg-slate-800 dark:text-white"
+                          >
+                            {(aiProvider === 'openai' ? byokConfig.openai_models : byokConfig.claude_models).map((model) => (
+                              <option key={model.id} value={model.id}>
+                                {model.label} {model.recommended ? '⭐' : ''} - {model.description}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* API Key Input */}
+                      {aiProvider && (
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                            <span>
+                              {byokConfig.provider_labels[aiProvider]}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey(v => !v)}
+                              className="text-xs text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100"
+                            >
+                              {showApiKey ? 'Hide' : 'Show'}
+                            </button>
+                          </label>
+                          <input
+                            type={showApiKey ? 'text' : 'password'}
+                            value={userApiKey}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setUserApiKey(val);
+                              try {
+                                const storageKey = aiProvider === 'openai' ? 'radai_spec_user_openai_key' : 'radai_spec_user_claude_key';
+                                if (val) sessionStorage.setItem(storageKey, val);
+                                else sessionStorage.removeItem(storageKey);
+                              } catch (_) {}
+                            }}
+                            placeholder={aiProvider === 'openai' ? 'sk-... (leave empty to use platform)' : 'sk-ant-... (leave empty to use platform)'}
+                            autoComplete="off"
+                            spellCheck={false}
+                            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm font-mono ${
+                              userApiKey.trim() && !byokConfig.api_key_patterns[aiProvider].test(userApiKey.trim())
+                                ? 'border-red-400 bg-red-50 dark:bg-red-900/20'
+                                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white'
+                            }`}
+                          />
+                          {userApiKey.trim() && !byokConfig.api_key_patterns[aiProvider].test(userApiKey.trim()) && (
+                            <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
+                              Invalid {aiProvider === 'openai' ? 'OpenAI' : 'Claude'} API key format. 
+                              {aiProvider === 'openai' ? ' Keys start with sk- (20+ chars)' : ' Keys start with sk-ant- (25+ chars)'}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            Your key is used for {aiProvider === 'openai' ? 'OpenAI GPT-4o' : 'Claude'} Vision calls. 
+                            Held in browser session and wiped from servers after extraction.
+                          </p>
+                        </div>
+                      )}
+
+                      {!aiProvider && (
+                        <p className="text-xs text-slate-600 dark:text-slate-400 italic">
+                          👆 Select a provider above to use your own API key, or leave empty to use the platform's key.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

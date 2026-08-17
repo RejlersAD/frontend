@@ -129,7 +129,7 @@ const specCustomizationAPI = {
    *      presign error, network blip) silently falls back to the legacy
    *      multipart upload below — UX stays identical.
    */
-  async upload({ file, projectId, title, documentNumber, engineerName, userOpenaiApiKey, onUploadProgress } = {}) {
+  async upload({ file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress } = {}) {
     // ── Path A: direct-to-S3 (presigned) ─────────────────────────────
     const wantsPresign =
       SPEC_API_CONFIG.presignedUpload.enabled &&
@@ -138,7 +138,7 @@ const specCustomizationAPI = {
     if (wantsPresign) {
       try {
         const presigned = await this._tryPresignedUpload({
-          file, projectId, title, documentNumber, engineerName, userOpenaiApiKey, onUploadProgress,
+          file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress,
         });
         if (presigned) return presigned;
         // presigned === null → backend signalled `enabled: false`; fall through.
@@ -155,8 +155,10 @@ const specCustomizationAPI = {
     if (projectId)         fd.append('project_id', projectId);
     if (title)             fd.append('title', title);
     if (documentNumber)    fd.append('document_number', documentNumber);
-    if (engineerName)      fd.append('engineer_name', engineerName);              // BYOK attribution
-    if (userOpenaiApiKey)  fd.append('user_openai_api_key', userOpenaiApiKey);   // BYOK user API key
+    if (engineerName)      fd.append('engineer_name', engineerName);         // BYOK attribution
+    if (userApiKey)        fd.append('user_api_key', userApiKey);            // BYOK user API key (OpenAI or Claude)
+    if (userAiProvider)    fd.append('user_ai_provider', userAiProvider);    // BYOK provider: "openai" or "claude"
+    if (userAiModel)       fd.append('user_ai_model', userAiModel);          // BYOK model ID
     const { data } = await apiClient.post(path(SPEC_API_CONFIG.uploadPath), fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress,
@@ -176,7 +178,7 @@ const specCustomizationAPI = {
    * explicitly says the feature is unavailable (so the caller knows to fall
    * back rather than retry).
    */
-  async _tryPresignedUpload({ file, projectId, title, documentNumber, engineerName, userOpenaiApiKey, onUploadProgress }) {
+  async _tryPresignedUpload({ file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress }) {
     // Step 1 — ask backend for a presigned PUT URL.
     const presignResp = await apiClient.post(
       path(SPEC_API_CONFIG.uploadPresignPath),
@@ -212,7 +214,9 @@ const specCustomizationAPI = {
         title:                title || '',
         document_number:      documentNumber || '',
         engineer_name:        engineerName || '',             // BYOK attribution
-        user_openai_api_key:  userOpenaiApiKey || '',        // BYOK user API key
+        user_api_key:         userApiKey || '',               // BYOK user API key (OpenAI or Claude)
+        user_ai_provider:     userAiProvider || '',           // BYOK provider: "openai" or "claude"
+        user_ai_model:        userAiModel || '',              // BYOK model ID
       },
       { timeout: SPEC_API_CONFIG.uploadTimeoutMs },
     );
