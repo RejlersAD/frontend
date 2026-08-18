@@ -492,6 +492,15 @@ const OrderManagement = () => {
     const matchesStatus = filterStatus === 'all' || status === filterStatus;
     const matchesVendor = filterVendor === 'all' || vendorId === filterVendor;
     return matchesSearch && matchesStatus && matchesVendor;
+  }).sort((a, b) => {
+    const aCreated = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const bCreated = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    if (aCreated !== bCreated) return bCreated - aCreated;
+    return (b.po_number || '').localeCompare(
+      a.po_number || '',
+      undefined,
+      { numeric: true, sensitivity: 'base' }
+    );
   }) : [];
 
   const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / orderPageSize));
@@ -872,6 +881,21 @@ const OrderManagement = () => {
     return (
       <span className={`inline-flex shrink-0 items-center px-2 py-0.5 rounded-full text-[11px] leading-4 font-medium border ${colorClasses[config.color]}`}>
         {config.label}
+      </span>
+    );
+  };
+
+  const getPriorityBadge = (priority = 'normal') => {
+    const normalized = String(priority || 'normal').toLowerCase();
+    const styles = {
+      urgent: 'border-rose-200 bg-rose-50 text-rose-700',
+      high: 'border-amber-200 bg-amber-50 text-amber-700',
+      normal: 'border-sky-200 bg-sky-50 text-sky-700',
+      low: 'border-slate-200 bg-slate-50 text-slate-600',
+    };
+    return (
+      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${styles[normalized] || styles.normal}`}>
+        {normalized}
       </span>
     );
   };
@@ -1704,75 +1728,122 @@ const OrderManagement = () => {
             </div>
           ) : (
             // List View for Purchase Orders
-            <div className="overflow-x-auto rounded-lg bg-white shadow-md">
-              <table className="min-w-[3300px] divide-y divide-gray-200">
-                <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-xl font-bold tracking-tight text-slate-900">Purchase Orders</h3>
+                  <p className="mt-1 text-xs text-slate-500">Track suppliers, order values, delivery dates, and fulfilment status.</p>
+                </div>
+                <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  {filteredOrders.length} record{filteredOrders.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div className="max-h-[68vh] overflow-auto">
+              <table className="w-full min-w-[1280px] table-fixed border-separate border-spacing-0">
+                <colgroup>
+                  <col className="w-[145px]" />
+                  <col className="w-[130px]" />
+                  <col className="w-[170px]" />
+                  <col className="w-[220px]" />
+                  <col className="w-[165px]" />
+                  <col className="w-[115px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[135px]" />
+                  <col className="w-[115px]" />
+                  <col className="w-[170px]" />
+                </colgroup>
+                <thead className="sticky top-0 z-20 bg-slate-200/95 backdrop-blur">
                   <tr>
-                    {PO_REGISTER_COLUMNS.map(([column]) => (
-                      <th key={column} scope="col" className="whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
+                    {['PO Number', 'PR Number', 'Supplier', 'Summary', 'Project / Department', 'Order Date', 'Delivery Date', 'Amount', 'Status'].map((column) => (
+                      <th key={column} scope="col" className="border-b border-r border-slate-300 bg-slate-200 px-4 py-3.5 text-left text-sm font-bold uppercase tracking-wide text-slate-700">
                         {column}
                       </th>
                     ))}
-                    <th scope="col" className="sticky right-0 bg-gray-100 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600 shadow-[-4px_0_8px_rgba(0,0,0,0.05)]">Actions</th>
+                    <th scope="col" className="sticky right-0 z-30 border-b border-l border-indigo-200 bg-indigo-50 px-4 py-3.5 text-right text-sm font-bold uppercase tracking-wide text-indigo-700 shadow-[-6px_0_12px_rgba(15,23,42,0.04)]">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {paginatedOrders.map((order) => (
-                      <tr key={order.id} className="align-top transition-colors hover:bg-gray-50">
-                        {PO_REGISTER_COLUMNS.map(([column]) => {
-                          const value = getPORegisterValue(order, column);
-                          const wideColumn = ['Suppl.Name', 'Summary of Purchase', 'Payment terms', 'Remarks'].includes(column);
-                          return (
-                            <td key={column} className={`px-3 py-3 text-xs text-gray-700 ${wideColumn ? 'max-w-[360px]' : 'whitespace-nowrap'}`} title={value ? String(value) : ''}>
-                              <p className={wideColumn ? 'line-clamp-3' : ''}>{value !== '' && value !== null && value !== undefined ? String(value) : '—'}</p>
-                            </td>
-                          );
-                        })}
-                        <td className="sticky right-0 whitespace-nowrap bg-white px-4 py-3 text-right text-sm font-medium shadow-[-4px_0_8px_rgba(0,0,0,0.05)]">
-                          <div className="flex justify-end gap-2">
+                <tbody className="bg-white">
+                  {paginatedOrders.map((order) => {
+                    const summary = order.description || order.title || 'Untitled order';
+                    const projectDepartment = order.project_number || order.project_display || '—';
+                    const orderDate = order.po_date || order.created_at;
+                    const deliveryDate = order.expected_delivery || order.delivery_date;
+                    return (
+                      <tr key={order.id} className="group transition-colors hover:bg-slate-50">
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5">
+                          <button type="button" onClick={() => handleViewOrderDetails(order.id)} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
+                            {order.po_number || `PO-${order.id}`}
+                          </button>
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                          <p className="truncate" title={order.pr_number || ''}>{order.pr_number || '—'}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                          <p className="truncate" title={order.vendor_name || ''}>{order.vendor_name || 'No supplier assigned'}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5">
+                          <p className="truncate text-sm font-medium text-slate-800" title={summary}>{summary}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                          <p className="line-clamp-2" title={projectDepartment}>{projectDepartment}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                          {orderDate ? new Date(orderDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                          {deliveryDate ? new Date(deliveryDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-sm font-semibold tabular-nums text-slate-800">
+                          {formatCurrency(order.total_amount, order.currency || 'AED')}
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5">{getStatusBadge(order.status)}</td>
+                        <td className="sticky right-0 border-b border-l border-slate-200 bg-white px-3 py-3.5 shadow-[-6px_0_12px_rgba(15,23,42,0.04)] group-hover:bg-slate-50">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => handleViewOrderDetails(order.id)}
-                              className="inline-flex h-8 items-center rounded-md bg-indigo-600 px-2.5 text-xs font-semibold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                              className="inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 p-1.5 text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-100"
+                              title="View"
                             >
-                              <EyeIcon className="h-3.5 w-3.5 mr-1" />
-                              View
+                              <EyeIcon className="h-4 w-4" />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleEditOrder(order)}
-                              className="inline-flex h-8 items-center rounded-md border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                              className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                              title="Edit"
                             >
-                              <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                              Edit
+                              <PencilIcon className="h-4 w-4" />
                             </button>
                             {order.status === 'draft' && (
                               <button
                                 type="button"
                                 onClick={() => handleSendOrder(order)}
-                                className="inline-flex h-8 items-center rounded-md border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100"
+                                title="Send"
                               >
-                                <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1" />
-                                Send
+                                <PaperAirplaneIcon className="h-4 w-4" />
                               </button>
                             )}
                             {['draft', 'pending', 'cancelled'].includes(order.status) && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteOrder(order)}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 p-1.5 text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-100"
                                 title="Delete purchase order"
                                 aria-label={`Delete purchase order ${order.po_number || order.id}`}
                               >
-                                <TrashIcon className="h-3.5 w-3.5" />
+                                <TrashIcon className="h-4 w-4" />
                               </button>
                             )}
                           </div>
                         </td>
                       </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
+              </div>
             </div>
           )) : (
             // Purchase Requisitions Tab Content
@@ -1946,50 +2017,97 @@ const OrderManagement = () => {
             </div>
           ) : (
             // List View for Purchase Requisitions
-            <div className="overflow-x-auto rounded-lg bg-white shadow-md">
-              <table className="min-w-[4700px] divide-y divide-gray-200">
-                <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-xl font-bold tracking-tight text-slate-900">Purchase Requisitions</h3>
+                  <p className="mt-1 text-xs text-slate-500">Review requests, approval status, suppliers, and values.</p>
+                </div>
+                <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  {filteredRequisitions.length} record{filteredRequisitions.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div className="max-h-[68vh] overflow-auto">
+              <table className="w-full min-w-[1180px] table-fixed border-separate border-spacing-0">
+                <colgroup>
+                  <col className="w-[135px]" />
+                  <col className="w-[105px]" />
+                  <col className="w-[220px]" />
+                  <col className="w-[165px]" />
+                  <col className="w-[150px]" />
+                  <col className="w-[125px]" />
+                  <col className="w-[90px]" />
+                  <col className="w-[115px]" />
+                  <col className="w-[150px]" />
+                </colgroup>
+                <thead className="sticky top-0 z-20 bg-slate-200/95 backdrop-blur">
                   <tr>
-                    {PR_REGISTER_COLUMNS.map(([column]) => (
-                      <th key={column} scope="col" className="whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
-                        <button type="button" onClick={() => toggleRequisitionSort(column)} className="inline-flex items-center gap-1 hover:text-indigo-700">
-                          {column}<ChevronUpDownIcon className="h-3.5 w-3.5" />
+                    {[
+                      ['PR number', 'PR Number'],
+                      ['Date', 'PR Accepted Date'],
+                      ['Request', 'Summary of Purchase /Activity'],
+                      ['Project / Department', 'Project short name/ Code'],
+                      ['Supplier', 'Suppl.Name'],
+                      ['Amount', 'PO Amount w/o VAT'],
+                      ['Priority', 'priority'],
+                      ['Status', 'PO Status'],
+                    ].map(([label, sortKey]) => (
+                      <th key={label} scope="col" className="border-b border-r border-slate-300 bg-slate-200 px-4 py-3.5 text-left text-sm font-bold uppercase tracking-wide text-slate-700 last:border-r-0">
+                        <button type="button" onClick={() => toggleRequisitionSort(sortKey)} className="inline-flex items-center gap-1 hover:text-indigo-700">
+                          {label}<ChevronUpDownIcon className="h-3.5 w-3.5" />
                         </button>
                       </th>
                     ))}
-                    <th scope="col" className="sticky right-0 bg-gray-100 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600 shadow-[-4px_0_8px_rgba(0,0,0,0.05)]">Actions</th>
+                    <th scope="col" className="sticky right-0 z-30 border-b border-l border-indigo-200 bg-indigo-50 px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-indigo-700 shadow-[-6px_0_12px_rgba(15,23,42,0.04)]">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {paginatedRequisitions.map((req, rowIndex) => (
-                      <tr key={req.id} className="align-top hover:bg-gray-50">
-                        {PR_REGISTER_COLUMNS.map(([column]) => {
-                          const value = getPRRegisterValue(req, column, requisitionPageStart + rowIndex);
-                          const wideColumn = [
-                            'Suppl.Name',
-                            'Summary of Purchase /Activity',
-                            'Payment terms',
-                            'Remarks',
-                          ].includes(column);
-                          return (
-                            <td key={column} className={`px-3 py-3 text-xs text-gray-700 ${wideColumn ? 'max-w-[360px]' : 'whitespace-nowrap'}`} title={value ? String(value) : ''}>
-                              <p className={wideColumn ? 'line-clamp-3' : ''}>{value !== '' && value !== null && value !== undefined ? String(value) : '—'}</p>
-                            </td>
-                          );
-                        })}
-                        <td className="sticky right-0 whitespace-nowrap bg-white px-4 py-4 text-right shadow-[-4px_0_8px_rgba(0,0,0,0.05)]">
-                          <div className="flex justify-end gap-1.5">
-                            <button onClick={() => handleOpenApproval(req)} className="rounded-md border border-gray-300 bg-white p-2 text-gray-700 hover:bg-gray-50" title="View"><EyeIcon className="h-4 w-4" /></button>
-                            {canModifyRequisition(req) && <button onClick={() => handleEditRequisition(req)} className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-700" title="Edit"><PencilIcon className="h-4 w-4" /></button>}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && <button onClick={() => handleConvertToPO(req)} className="rounded-md bg-purple-600 p-2 text-white" title="Convert to PO"><ShoppingCartIcon className="h-4 w-4" /></button>}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && <button onClick={() => handlePrintPreviewPR(req)} disabled={prPrintPreviewLoadingId === req.id} className="rounded-md border border-purple-300 bg-purple-50 p-2 text-purple-700 disabled:opacity-50" title="Print Preview"><DocumentTextIcon className="h-4 w-4" /></button>}
-                            {canDeleteRequisition(req) && <button onClick={() => handleDeleteRequisition(req)} className="rounded-md border border-red-300 bg-red-50 p-2 text-red-700" title="Delete"><TrashIcon className="h-4 w-4" /></button>}
+                <tbody className="bg-white">
+                  {paginatedRequisitions.map((req) => {
+                    const requestSummary = req.product_service || req.title || 'Untitled request';
+                    const projectDepartment = req.project_department || req.project || '—';
+                    const supplier = req.supplier_name || req.vendor_name || 'Not selected';
+                    const requestDate = req.issued_date || req.created_date;
+                    return (
+                      <tr key={req.id} className="group transition-colors hover:bg-slate-50">
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 align-middle">
+                          <button type="button" onClick={() => handleOpenApproval(req)} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
+                            {req.pr_number || `PR-${req.id}`}
+                          </button>
+                          {req.po_number_reference && <p className="mt-1 truncate text-[11px] text-slate-400">PO: {req.po_number_reference}</p>}
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                          {requestDate ? new Date(requestDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 align-middle">
+                          <p className="truncate text-sm font-medium text-slate-800" title={requestSummary}>{requestSummary}</p>
+                          <p className="mt-1 truncate text-xs text-slate-500">{req.requester_name || req.issued_by_name || 'Requester not specified'}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                          <p className="line-clamp-2" title={projectDepartment}>{projectDepartment}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                          <p className="truncate" title={supplier}>{supplier}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-sm font-semibold tabular-nums text-slate-800">
+                          {formatCurrency(req.total_price || req.estimated_value, req.currency || 'AED')}
+                        </td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5">{getPriorityBadge(req.priority)}</td>
+                        <td className="border-b border-r border-slate-200 px-4 py-3.5">{getStatusBadge(req.status)}</td>
+                        <td className="sticky right-0 border-b border-l border-slate-200 bg-white px-3 py-3.5 shadow-[-6px_0_12px_rgba(15,23,42,0.04)] group-hover:bg-slate-50">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button onClick={() => handleOpenApproval(req)} className="rounded-lg border border-sky-200 bg-sky-50 p-1.5 text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-100" title="View"><EyeIcon className="h-4 w-4" /></button>
+                            {canModifyRequisition(req) && <button onClick={() => handleEditRequisition(req)} className="rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100" title="Edit"><PencilIcon className="h-4 w-4" /></button>}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && <button onClick={() => handleConvertToPO(req)} className="rounded-lg bg-indigo-600 p-1.5 text-white shadow-sm transition hover:bg-indigo-700" title="Convert to PO"><ShoppingCartIcon className="h-4 w-4" /></button>}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && <button onClick={() => handlePrintPreviewPR(req)} disabled={prPrintPreviewLoadingId === req.id} className="rounded-lg border border-violet-200 bg-violet-50 p-1.5 text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-100 disabled:opacity-50" title="Print Preview"><DocumentTextIcon className="h-4 w-4" /></button>}
+                            {canDeleteRequisition(req) && <button onClick={() => handleDeleteRequisition(req)} className="rounded-lg border border-rose-200 bg-rose-50 p-1.5 text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-100" title="Delete"><TrashIcon className="h-4 w-4" /></button>}
                           </div>
                         </td>
                       </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
+              </div>
             </div>
           ))}
 

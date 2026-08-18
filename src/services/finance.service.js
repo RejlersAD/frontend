@@ -25,6 +25,72 @@ const financeService = {
   },
 
   /**
+   * OCR a procurement vendor invoice without recording anything.
+   * The returned hash must be sent back during reviewed import so a different
+   * PDF cannot accidentally be saved after the user finishes reviewing.
+   */
+  async previewProcurementInvoice(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post(
+      `${API_BASE}/invoices/import-preview/`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 180000,
+      }
+    );
+    const queued = response.data;
+    if (!queued?.job_id) return queued;
+    const deadline = Date.now() + 180000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const jobResponse = await apiClient.get(
+        `${API_BASE}/invoices/ocr-jobs/${queued.job_id}/`
+      );
+      const job = jobResponse.data;
+      if (job.status === 'completed') return job.result;
+      if (job.status === 'failed') {
+        const error = new Error(job.error_message || 'Invoice OCR processing failed.');
+        error.response = { data: { error: error.message } };
+        throw error;
+      }
+    }
+    throw new Error('Invoice OCR is still processing. Please try again shortly.');
+  },
+
+  async recordPayableOperation(invoiceId, payload) {
+    const response = await apiClient.post(
+      `${API_BASE}/invoices/${invoiceId}/payment-operations/`, payload
+    );
+    return response.data;
+  },
+
+  async runThreeWayMatch(invoiceId) {
+    const response = await apiClient.post(
+      `${API_BASE}/invoices/${invoiceId}/run-three-way-match/`
+    );
+    return response.data;
+  },
+
+  /** Save fields confirmed by the reviewer and optionally link a confirmed PO. */
+  async importReviewedProcurementInvoice(file, reviewedData, sourceFileSha256) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('reviewed_data', JSON.stringify(reviewedData));
+    formData.append('source_file_sha256', sourceFileSha256);
+    const response = await apiClient.post(
+      `${API_BASE}/invoices/import-reviewed/`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 180000,
+      }
+    );
+    return response.data;
+  },
+
+  /**
    * Get list of invoices with optional filtering
    */
   async getInvoices(filters = {}) {
@@ -34,6 +100,12 @@ const financeService = {
     if (filters.search) params.append('search', filters.search);
     
     const response = await apiClient.get(`${API_BASE}/invoices/?${params.toString()}`);
+    return response.data;
+  },
+
+  /** Read-only normalized A/R + A/P totals, kept separate by currency. */
+  async getCombinedInvoiceSummary() {
+    const response = await apiClient.get(`${API_BASE}/invoices/combined-summary/`);
     return response.data;
   },
 

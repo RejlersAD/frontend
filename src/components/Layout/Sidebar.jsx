@@ -410,13 +410,28 @@ const Sidebar = ({
       expanded: expandedSections.finance,
       children: [
         {
-          id: "financeInvoiceTracker",
-          title: "3.1 Invoice Tracker",
-          path: "/finance/invoice-tracker",
+          id: "financeDashboard",
+          title: "3.1 Finance Dashboard",
+          path: "/finance",
+          icon: ChartBarIcon,
+          moduleCode: "finance",
+          description: "Combined accounts receivable and payable summary",
+        },
+        {
+          id: "financeIncomingInvoices",
+          title: "3.2 Incoming Invoices",
+          path: "/finance/incoming-invoices",
           icon: DocumentTextIcon,
           moduleCode: "finance",
-          description:
-            "Read-only pipeline view of invoices across the approval workflow",
+          description: "Vendor invoices received for procurement and payment",
+        },
+        {
+          id: "financeOutgoingInvoices",
+          title: "3.3 Outgoing Invoices",
+          path: "/finance/outgoing-invoices",
+          icon: DocumentPlusIcon,
+          moduleCode: "finance",
+          description: "Customer invoices issued for collection",
         },
       ],
     },

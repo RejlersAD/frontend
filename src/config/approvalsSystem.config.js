@@ -119,8 +119,8 @@ export const APPROVAL_TYPES = {
     apiEndpoint: '/procurement/requisitions/pending-for-me/',
     actionApiEndpoint: '/procurement/requisitions/',
     moduleCode: 'procurement_requisitions',
-    // Role-based access control
-    allowedRoles: ['project_manager', 'procurement_manager', 'procurement_admin', 'finance_manager', 'super_admin', 'admin'],
+    // Assignment, rather than role, grants access to the employee's approval queue.
+    allowedRoles: [],
     requiresReportingManager: false,
     filterLogic: 'current_user_endpoint',
     statusField: 'status',
@@ -154,6 +154,46 @@ export const APPROVAL_TYPES = {
       countField: 'pending_count',
       trendCalculation: 'week_over_week'
     }
+  },
+
+  PURCHASE_ORDER: {
+    id: 'purchase_order',
+    label: 'Purchase Order Approval',
+    pluralLabel: 'Purchase Orders',
+    icon: 'ShoppingCartIcon',
+    color: 'blue',
+    gradientFrom: '#2563eb',
+    gradientTo: '#1d4ed8',
+    apiEndpoint: '/procurement/orders/pending-for-me/',
+    actionApiEndpoint: '/procurement/orders/',
+    // Assignment, rather than role, grants access to this personal queue.
+    allowedRoles: [],
+    requiresReportingManager: false,
+    filterLogic: 'current_user_endpoint',
+    statusField: 'approval_status',
+    pendingStatuses: ['pending'],
+    stages: [],
+    fieldMapping: {
+      order_number: (item) => item.po_number,
+      supplier_name: (item) => item.vendor_name,
+      amount: (item) => item.total_amount,
+      approval_stage: (item) => item.approval_stage,
+    },
+    displayFields: [
+      { key: 'order_number', label: 'PO Number', type: 'text' },
+      { key: 'title', label: 'Title', type: 'text' },
+      { key: 'supplier_name', label: 'Supplier', type: 'text' },
+      { key: 'amount', label: 'Amount', type: 'currency' },
+      { key: 'approval_stage', label: 'Your Approval', type: 'badge' },
+    ],
+    actions: ['approve', 'reject', 'view'],
+    kpi: {
+      enabled: true,
+      title: 'PO Approvals',
+      subtitle: 'Assigned to you',
+      countField: 'pending_count',
+      trendCalculation: 'week_over_week',
+    },
   },
   
   INVOICE: {

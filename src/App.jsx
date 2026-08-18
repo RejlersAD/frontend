@@ -55,7 +55,10 @@ import QHSEHub from './pages/QHSE/QHSEHub'
 // import InvoiceUpload from './pages/Finance/InvoiceUpload'
 // SOFT-CODED: InvoiceList / InvoiceDetail routes retired — keep files for future revival
 // import InvoiceList from './pages/Finance/InvoiceList'
+import InvoiceManagementHub from './pages/Finance/InvoiceManagementHub'
 import InvoiceTracker from './pages/Finance/InvoiceTracker'
+import ProcurementInvoiceTracker from './pages/Finance/ProcurementInvoiceTracker'
+import InvoiceRegisterDetail from './pages/Finance/InvoiceRegisterDetail'
 import SalarySlip from './pages/Finance/SalarySlip'
 import HREmployees from './pages/HR/HREmployees'
 import HRDashboard from './pages/HR/HRDashboard'
@@ -65,7 +68,6 @@ import OnboardingOffboarding from './pages/HR/OnboardingOffboarding'
 import SiteVisits from './pages/HR/SiteVisits'
 // import InvoiceDetail from './pages/Finance/InvoiceDetail'
 import InvoiceApproval from './pages/Finance/InvoiceApproval'
-import FinanceHub from './pages/Finance/FinanceHub'
 import InternalSalesDashboard from './pages/InternalSalesDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import UserManagement from './pages/UserManagement'
@@ -649,20 +651,45 @@ function App() {
           path="finance"
           element={
             <ModuleProtectedRoute moduleCode="finance">
-              <FinanceHub />
+              <InvoiceManagementHub />
             </ModuleProtectedRoute>
           }
         />
         {/* SOFT-CODED: /finance/upload route retired — link removed from UI */}
         {/* SOFT-CODED: /finance/invoices and /finance/invoices/:id routes retired — link removed from UI */}
         <Route
-          path="finance/invoice-tracker"
+          path="finance/incoming-invoices"
+          element={
+            <ModuleProtectedRoute moduleCode="finance">
+              <ProcurementInvoiceTracker />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="finance/incoming-invoices/:id"
+          element={
+            <ModuleProtectedRoute moduleCode="finance">
+              <InvoiceRegisterDetail direction="incoming" />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="finance/outgoing-invoices"
           element={
             <ModuleProtectedRoute moduleCode="finance">
               <InvoiceTracker />
             </ModuleProtectedRoute>
           }
         />
+        <Route
+          path="finance/outgoing-invoices/:id"
+          element={
+            <ModuleProtectedRoute moduleCode="finance">
+              <InvoiceRegisterDetail direction="outgoing" />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route path="finance/invoice-tracker" element={<Navigate to="/finance" replace />} />
         <Route
           path="finance/salary-slip"
           element={

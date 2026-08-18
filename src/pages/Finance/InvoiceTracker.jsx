@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   AdjustmentsHorizontalIcon,
   ArrowPathIcon,
@@ -24,6 +25,8 @@ import {
   BoltIcon,
   CalculatorIcon,
   CheckCircleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ClockIcon,
   DocumentArrowUpIcon,
   ExclamationTriangleIcon,
@@ -664,6 +667,7 @@ const InvoiceDetailDrawer = ({ invoice, onClose, onChanged }) => {
 
 // ─── Main page ──────────────────────────────────────────────────────────────
 const InvoiceTracker = () => {
+  const navigate = useNavigate()
   const [invoices, setInvoices]       = useState([])
   const [stats, setStats]             = useState(null)
   const [loading, setLoading]         = useState(true)
@@ -681,7 +685,8 @@ const InvoiceTracker = () => {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [importOpen, setImportOpen]     = useState(false)
   const [lastFetched, setLastFetched]   = useState(null)
-  const [selectedInvoice, setSelectedInvoice] = useState(null)
+  const [page, setPage]                 = useState(1)
+  const [pageInfo, setPageInfo]         = useState({ count: 0, next: null, previous: null })
 
   const buildFilters = useCallback(() => {
     const f = {}
@@ -693,9 +698,10 @@ const InvoiceTracker = () => {
     if (searchTerm.trim()) f.search = searchTerm.trim()
     if (dateFrom) f.date_from = dateFrom
     if (dateTo)   f.date_to   = dateTo
+    f.page = page
     f.page_size = TRACKER_API_CONFIG.pageSize
     return f
-  }, [categoryFilter, statusFilter, currencyFilter, accountFilter, projectFilter, searchTerm, dateFrom, dateTo])
+  }, [categoryFilter, statusFilter, currencyFilter, accountFilter, projectFilter, searchTerm, dateFrom, dateTo, page])
 
   const fetchData = useCallback(async () => {
     try {
@@ -707,6 +713,9 @@ const InvoiceTracker = () => {
       ])
       const rows = Array.isArray(list) ? list : list?.results || []
       setInvoices(rows)
+      setPageInfo(Array.isArray(list)
+        ? { count: list.length, next: null, previous: null }
+        : { count: list?.count || 0, next: list?.next || null, previous: list?.previous || null })
       if (s) setStats(s)
       setLastFetched(new Date())
     } catch (err) {
@@ -719,6 +728,10 @@ const InvoiceTracker = () => {
   }, [buildFilters])
 
   useEffect(() => { setLoading(true); fetchData() }, [fetchData])
+
+  useEffect(() => {
+    setPage(1)
+  }, [categoryFilter, statusFilter, currencyFilter, accountFilter, projectFilter, searchTerm, dateFrom, dateTo])
 
   useEffect(() => {
     if (!TRACKER_API_CONFIG.refreshMs) return
@@ -1047,7 +1060,7 @@ const InvoiceTracker = () => {
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex items-center gap-1">
                             <button
-                              onClick={() => setSelectedInvoice(inv)}
+                              onClick={() => navigate(`/finance/outgoing-invoices/${inv.id}`)}
                               className="opacity-60 group-hover:opacity-100 transition-opacity p-1 rounded-md text-gray-500 hover:bg-indigo-50 hover:text-indigo-700"
                               title="View all 28 columns + auto-calc breakdown"
                             >
@@ -1061,10 +1074,15 @@ const InvoiceTracker = () => {
                   })}
                 </tbody>
               </table>
-              <div className="px-5 py-3 text-[11px] text-gray-400 bg-gray-50/50 border-t border-gray-100 flex items-center justify-between">
+              <div className="px-5 py-3 text-[11px] text-gray-500 bg-gray-50/50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
                 <span>
                   Showing {invoices.length} row{invoices.length === 1 ? '' : 's'} · page size {TRACKER_API_CONFIG.pageSize}
                 </span>
+                <div className="inline-flex items-center gap-2">
+                  <button type="button" disabled={!pageInfo.previous || loading} onClick={() => setPage((value) => Math.max(1, value - 1))} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeftIcon className="h-3.5 w-3.5" /> Previous</button>
+                  <span className="font-semibold text-gray-700">Page {page} of {Math.max(1, Math.ceil(pageInfo.count / TRACKER_API_CONFIG.pageSize))}</span>
+                  <button type="button" disabled={!pageInfo.next || loading} onClick={() => setPage((value) => value + 1)} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40">Next <ChevronRightIcon className="h-3.5 w-3.5" /></button>
+                </div>
                 <span className="inline-flex items-center gap-1">
                   <LiveDot /> auto-refresh every {Math.round(TRACKER_API_CONFIG.refreshMs / 1000)}s
                 </span>

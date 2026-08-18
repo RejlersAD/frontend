@@ -18,6 +18,7 @@ import {
 import apiClient from '../../services/api.service';
 import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
+import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -247,10 +248,91 @@ const PurchaseOrderDetail = () => {
   const approvalSignatureSource = /^(data:image\/|https?:\/\/|\/)/i.test(order.approval_signature || '')
     ? order.approval_signature
     : null;
+  const printableAttachments = (Array.isArray(order.attachments) ? order.attachments : [])
+    .map((attachment) => {
+      if (typeof attachment === 'string') {
+        return { name: attachment.split('/').pop() || attachment };
+      }
+      return {
+        ...attachment,
+        name: attachment.name || attachment.file_name || attachment.filename || 'Attachment',
+      };
+    });
+  const printableVendor = {
+    name: order.vendor_name,
+    address: order.vendor_address || order.seller_address,
+    country: order.vendor_country || order.country,
+  };
+  const printablePrReference = {
+    id: order.pr_reference,
+    pr_number: order.pr_number,
+  };
 
   return (
     <>
       {createPortal(
+        <section className="po-print-document" aria-label="Printable purchase order">
+          <style>{`
+            .po-print-document { display: none; }
+            @page { size: A4 portrait; margin: 0; }
+            @media print {
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+                color: #111827 !important;
+                height: auto !important;
+                overflow: visible !important;
+              }
+              body > * { display: none !important; }
+              body > .po-print-document {
+                display: block !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+              }
+              .po-print-document, .po-print-document * {
+                box-sizing: border-box;
+                visibility: visible !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .po-template-document, .po-template-pages { margin: 0 !important; padding: 0 !important; }
+              .po-template-page {
+                width: 210mm !important;
+                max-width: none !important;
+                min-height: 297mm !important;
+                height: 297mm !important;
+                margin: 0 !important;
+                padding: 14mm 16mm 10mm !important;
+                border: 0 !important;
+                box-shadow: none !important;
+                break-after: page;
+                page-break-after: always;
+                overflow: hidden !important;
+              }
+              .po-template-page:last-child {
+                break-after: auto;
+                page-break-after: auto;
+              }
+              .po-template-page table { border-collapse: collapse; }
+              .po-template-page tr { break-inside: avoid; page-break-inside: avoid; }
+              a { color: inherit !important; text-decoration: none !important; }
+            }
+          `}</style>
+          <PurchaseOrderLivePreview
+            formData={order}
+            vendor={printableVendor}
+            prReference={printablePrReference}
+            files={printableAttachments}
+            documentOnly
+          />
+        </section>,
+        document.body
+      )}
+
+      {false && createPortal(
         <>
           <style>{`
         .po-print-document { display: none; }

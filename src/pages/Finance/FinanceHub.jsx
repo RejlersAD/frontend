@@ -23,12 +23,12 @@ import {
 const MODULES = [
   {
     key: 'invoice-tracker',
-    title: 'Invoice Tracker',
-    description: 'Real-time pipeline view of invoices across the approval workflow — read-only with filters and export.',
+    title: 'Invoice Management',
+    description: 'Unified customer receivables and procurement payables with separate workflows and a combined summary.',
     icon: Receipt,
-    path: '/finance/invoice-tracker',
+    path: '/finance',
     gradient: 'from-indigo-500 via-indigo-600 to-indigo-700',
-    badge: 'Live',
+    badge: 'A/R + A/P',
   },
   {
     key: 'sales',

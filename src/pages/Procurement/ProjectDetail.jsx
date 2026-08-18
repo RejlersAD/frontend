@@ -530,7 +530,7 @@ const ProjectDetail = () => {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-gray-900">Invoice Reconciliation</h2>
               <button
-                onClick={() => navigate('/finance/invoice-tracker')}
+                onClick={() => navigate('/finance/incoming-invoices')}
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
               >
                 <ExternalLink className="w-4 h-4" />
@@ -544,7 +544,7 @@ const ProjectDetail = () => {
                 View and manage invoices in the Invoice Tracker with automatic PO reconciliation
               </p>
               <button
-                onClick={() => navigate('/finance/invoice-tracker')}
+                onClick={() => navigate('/finance/incoming-invoices')}
                 className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors inline-flex items-center gap-2"
               >
                 <ExternalLink className="w-5 h-5" />

@@ -11,7 +11,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { API_BASE_URL } from '../config/api.config'
 import { API_CONFIG, LAYOUT_CONFIG } from '../config/enterpriseDashboard.config'
 import {
@@ -71,6 +71,7 @@ const ICON_MAP = {
 const ApprovalsPageDynamic = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useSelector(s => s.auth)
   const rbacData = useSelector(s => s.rbac?.currentUser)
 
@@ -82,7 +83,7 @@ const ApprovalsPageDynamic = () => {
   const [notifications, setNotifications] = useState([])
   const [managerHierarchy, setManagerHierarchy] = useState([])
   const [directReports, setDirectReports] = useState([])
-  const [selectedApprovalType, setSelectedApprovalType] = useState(null)
+  const [selectedApprovalType, setSelectedApprovalType] = useState(searchParams.get('tab'))
 
   // Get auth token
   const token = useMemo(() => {
@@ -445,6 +446,12 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState(selectedType || approvalTypes[0]?.key)
 
+  useEffect(() => {
+    if (selectedType && approvalTypes.some((type) => type.key === selectedType)) {
+      setActiveTab(selectedType)
+    }
+  }, [selectedType, approvalTypes])
+
   // Professional action modal state (replaces window.alert/confirm/prompt)
   const [modalState, setModalState] = useState({ isOpen: false, mode: null, item: null, actionId: null })
   const [submitting, setSubmitting] = useState(false)
@@ -597,9 +604,11 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(
-          (activeConfig.id === 'procurement' || activeConfig.id === 'profile_document') && actionId === 'reject'
-            ? { reason: comment || '' }
-            : { note: comment || '', signature: '' }
+          activeConfig.id === 'purchase_order'
+            ? { note: comment || '', reason: comment || '', approval_stage: item.approval_stage }
+            : (activeConfig.id === 'procurement' || activeConfig.id === 'profile_document') && actionId === 'reject'
+              ? { reason: comment || '' }
+              : { note: comment || '', signature: '' }
         )
       })
 
@@ -691,7 +700,7 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
         ) : (
           approvals.map((item, index) => (
             <ApprovalCard
-              key={item.id || index}
+              key={item.approval_queue_id || item.id || index}
               item={item}
               config={activeConfig}
               onAction={handleAction}
