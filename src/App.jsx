@@ -785,6 +785,14 @@ function App() {
           }
         />
         <Route
+          path="procurement/requisitions/:id"
+          element={
+            <ModuleProtectedRoute moduleCode="procurement_requisitions">
+              <OrderManagement />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
           path="procurement/orders"
           element={
             <ModuleProtectedRoute moduleCode="procurement_orders">

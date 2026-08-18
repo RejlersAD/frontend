@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ShoppingCartIcon,
   MagnifyingGlassIcon,
@@ -150,6 +150,7 @@ const OrderManagement = () => {
   // Navigation hook for soft-coded routing
   const navigate = useNavigate();
   const location = useLocation();
+  const { id: requisitionRouteId } = useParams();
   
   // The route is the source of truth so both entry points render one experience.
   const activeTab = location.pathname.startsWith('/procurement/requisitions')
@@ -364,6 +365,7 @@ const OrderManagement = () => {
     );
     setShowApprovalModal(false);
     setSelectedRequisition(null);
+    if (requisitionRouteId) navigate('/procurement/requisitions', { replace: true });
   };
 
   useEffect(() => {
@@ -379,6 +381,30 @@ const OrderManagement = () => {
     fetchProjects();
     fetchCurrentUser();
   }, [pageControls.isRefreshing, activeTab]);
+
+  useEffect(() => {
+    if (!requisitionRouteId || activeTab !== 'purchaseRequisitions') return undefined;
+
+    let cancelled = false;
+    const openAssignedRequisition = async () => {
+      try {
+        const response = await apiClient.get(`/procurement/requisitions/${requisitionRouteId}/`);
+        if (cancelled) return;
+        setSelectedRequisition(response.data);
+        setShowApprovalModal(true);
+      } catch (routeError) {
+        if (cancelled) return;
+        console.error('Failed to open requisition from notification:', routeError);
+        const message = routeError.response?.status === 404
+          ? 'The assigned Purchase Requisition could not be found or is no longer available.'
+          : routeError.response?.data?.detail || 'Failed to open the assigned Purchase Requisition.';
+        setError({ type: 'record', message, action: () => navigate('/procurement/requisitions') });
+      }
+    };
+
+    openAssignedRequisition();
+    return () => { cancelled = true; };
+  }, [activeTab, navigate, requisitionRouteId]);
 
   /**
    * AI Feature: Generate order insights and recommendations
@@ -2162,6 +2188,7 @@ const OrderManagement = () => {
         onClose={() => {
           setShowApprovalModal(false);
           setSelectedRequisition(null);
+          if (requisitionRouteId) navigate('/procurement/requisitions', { replace: true });
         }}
         requisition={selectedRequisition}
         currentUser={currentUser}
