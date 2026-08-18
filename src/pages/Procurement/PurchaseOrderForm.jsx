@@ -1049,7 +1049,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       });
       
       // Set status
-      submitData.set('status', sendToVendor ? 'sent' : 'draft');
+      submitData.set('status', sendToVendor ? 'sent' : (editData?.status || 'draft'));
       
       // Append files
       files.forEach((file) => {
@@ -2421,16 +2421,18 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
               disabled={submitLoading || !hasRequiredRequisition}
               className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
             >
-              {submitLoading ? 'Saving...' : 'Save Draft'}
+              {submitLoading ? 'Saving...' : editData ? 'Save Changes' : 'Save Draft'}
             </button>
-            <button
-              type="button"
-              onClick={(e) => handleSubmit(e, true)}
-              disabled={submitLoading || !hasRequiredRequisition}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {submitLoading ? 'Sending...' : 'Send to Vendor'}
-            </button>
+            {(!editData || editData.status === 'draft') && (
+              <button
+                type="button"
+                onClick={(e) => handleSubmit(e, true)}
+                disabled={submitLoading || !hasRequiredRequisition}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {submitLoading ? 'Sending...' : 'Send to Vendor'}
+              </button>
+            )}
           </div>
         </div>
       </div>

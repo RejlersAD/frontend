@@ -654,6 +654,10 @@ const OrderManagement = () => {
       console.error('Invalid order data');
       return;
     }
+    if (order.status === 'completed') {
+      alert('Completed purchase orders are read-only and cannot be edited.');
+      return;
+    }
     
     // Set the order to edit and open the form
     setEditingOrder(order);
@@ -1694,13 +1698,15 @@ const OrderManagement = () => {
                         <EyeIcon className="mr-1.5 h-3.5 w-3.5" />
                         <span>View</span>
                       </button>
-                      <button 
-                        type="button"
-                        onClick={() => handleEditOrder(order)}
-                        className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
-                        <PencilIcon className="h-3.5 w-3.5 mr-1.5" />
-                        <span>Edit</span>
-                      </button>
+                      {order.status !== 'completed' && (
+                        <button
+                          type="button"
+                          onClick={() => handleEditOrder(order)}
+                          className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                          <PencilIcon className="h-3.5 w-3.5 mr-1.5" />
+                          <span>Edit</span>
+                        </button>
+                      )}
                       {order.status === 'draft' && (
                         <button 
                           type="button"
@@ -1807,14 +1813,16 @@ const OrderManagement = () => {
                             >
                               <EyeIcon className="h-4 w-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleEditOrder(order)}
-                              className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
-                              title="Edit"
-                            >
-                              <PencilIcon className="h-4 w-4" />
-                            </button>
+                            {order.status !== 'completed' && (
+                              <button
+                                type="button"
+                                onClick={() => handleEditOrder(order)}
+                                className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                                title="Edit"
+                              >
+                                <PencilIcon className="h-4 w-4" />
+                              </button>
+                            )}
                             {order.status === 'draft' && (
                               <button
                                 type="button"

@@ -19,6 +19,7 @@ import apiClient from '../../services/api.service';
 import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
+import PurchaseOrderForm from './PurchaseOrderForm';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -57,6 +58,7 @@ const PurchaseOrderDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
 
   /**
    * Soft-coded data fetching with error handling
@@ -617,15 +619,29 @@ const PurchaseOrderDetail = () => {
                 </button>
               )}
               
-              <button
-                onClick={() => navigate(`/procurement/orders/${order.id}/edit`)}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <PencilIcon className="h-4 w-4 mr-2" />
-                Edit
-              </button>
+              {order.status !== 'completed' && (
+                <button
+                  onClick={() => setShowEditForm(true)}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  <PencilIcon className="h-4 w-4 mr-2" />
+                  Edit
+                </button>
+              )}
             </div>
           </div>
+
+          {showEditForm && order.status !== 'completed' && (
+            <PurchaseOrderForm
+              isOpen={showEditForm}
+              editData={order}
+              onClose={() => setShowEditForm(false)}
+              onSuccess={(updatedOrder) => {
+                setOrder(updatedOrder);
+                setShowEditForm(false);
+              }}
+            />
+          )}
 
           {/* Status Badge */}
           <div className="mb-6">
