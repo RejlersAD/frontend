@@ -28,8 +28,13 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
 
   // Initialize selected roles from user's current roles
   useEffect(() => {
+    console.log('[MultiRoleModal] Initializing with user:', user?.id, user?.email);
+    console.log('[MultiRoleModal] Available roles:', availableRoles?.length, 'roles');
+    console.log('[MultiRoleModal] System roles (after filtering):', systemRoles?.length, 'roles');
+    
     if (user && user.roles) {
       const userRoleIds = user.roles.map(r => r.id || r.role_id);
+      console.log('[MultiRoleModal] User current roles:', userRoleIds);
       setSelectedRoles(userRoleIds);
       
       // Find and set primary role
@@ -41,7 +46,7 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
         setPrimaryRoleId(userRoleIds[0]);
       }
     }
-  }, [user]);
+  }, [user, systemRoles]);
 
   // Filter roles based on search query (only system roles, no custom roles)
   const filteredRoles = useMemo(() => {
@@ -82,32 +87,40 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
   }, [filteredRoles]);
 
   const handleRoleToggle = (roleId) => {
+    console.log('[MultiRoleModal] Toggling role:', roleId);
     setSelectedRoles(prev => {
       const isSelected = prev.includes(roleId);
+      console.log('[MultiRoleModal] Role currently selected:', isSelected);
       
       if (isSelected) {
         // Removing role
         const newRoles = prev.filter(id => id !== roleId);
+        console.log('[MultiRoleModal] Removing role. New roles:', newRoles);
         
         // If removing primary role, auto-select new primary
         if (roleId === primaryRoleId && newRoles.length > 0) {
           setPrimaryRoleId(newRoles[0]);
+          console.log('[MultiRoleModal] Auto-setting new primary role:', newRoles[0]);
         } else if (newRoles.length === 0) {
           setPrimaryRoleId(null);
+          console.log('[MultiRoleModal] No roles left, clearing primary');
         }
         
         return newRoles;
       } else {
         // Adding role
         const newRoles = [...prev, roleId];
+        console.log('[MultiRoleModal] Adding role. New roles:', newRoles);
         
         // Auto-set as primary if it's the first role
         if (newRoles.length === 1 && MULTI_ROLE_CONFIG.primaryRoleConfig.autoSetPrimary) {
           setPrimaryRoleId(roleId);
+          console.log('[MultiRoleModal] Auto-setting as primary role (first role)');
         }
         
         // Check max roles validation
         if (MULTI_ROLE_CONFIG.validation.maxRoles && newRoles.length > MULTI_ROLE_CONFIG.validation.maxRoles) {
+          console.warn('[MultiRoleModal] Max roles exceeded:', newRoles.length, 'Max:', MULTI_ROLE_CONFIG.validation.maxRoles);
           alert(`Maximum ${MULTI_ROLE_CONFIG.validation.maxRoles} roles allowed per user`);
           return prev;
         }
@@ -173,10 +186,21 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
     const recommended = isRoleRecommended(role.code);
     const isProtected = MULTI_ROLE_CONFIG.validation.protectedRoles.includes(role.code);
 
+    const handleCheckboxChange = (e) => {
+      // Allow checkbox to work independently
+      e.stopPropagation();
+      handleRoleToggle(role.id);
+    };
+
+    const handleContainerClick = () => {
+      // Click on container also toggles role
+      handleRoleToggle(role.id);
+    };
+
     return (
       <div
         className={`
-          p-3 rounded-lg border-2 transition-all cursor-pointer
+          p-3 rounded-lg border-2 transition-all cursor-pointer relative
           ${selected 
             ? primary
               ? 'border-blue-500 bg-blue-50'
@@ -184,20 +208,21 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
             : 'border-gray-200 bg-white hover:border-gray-300'
           }
         `}
-        onClick={() => handleRoleToggle(role.id)}
+        onClick={handleContainerClick}
         onMouseEnter={() => setHoveredRole(role.id)}
         onMouseLeave={() => setHoveredRole(null)}
+        style={{ pointerEvents: 'auto' }}
       >
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3 flex-1">
             {/* Checkbox */}
-            <div className="mt-0.5">
+            <div className="mt-0.5" style={{ pointerEvents: 'auto' }}>
               <input
                 type="checkbox"
                 checked={selected}
-                onChange={() => handleRoleToggle(role.id)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                onClick={(e) => e.stopPropagation()}
+                onChange={handleCheckboxChange}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                style={{ pointerEvents: 'auto' }}
               />
             </div>
 
@@ -269,14 +294,15 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        {/* Background overlay */}
+        {/* Background overlay - z-index handled by parent */}
         <div 
-          className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
+          className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 -z-10"
           onClick={onClose}
+          aria-hidden="true"
         />
 
-        {/* Modal panel */}
-        <div className={`inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle ${MULTI_ROLE_CONFIG.modalSettings.width} w-full`}>
+        {/* Modal panel - ensure it's above overlay with relative positioning */}
+        <div className={`relative inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle ${MULTI_ROLE_CONFIG.modalSettings.width} w-full z-10`}>
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
             <div className="flex items-center justify-between">
@@ -345,7 +371,24 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
 
           {/* Role Selection */}
           <div className={`px-6 py-4 overflow-y-auto ${MULTI_ROLE_CONFIG.modalSettings.maxHeight}`}>
-            {filteredRoles.length === 0 ? (
+            {/* Warning when no roles available */}
+            {systemRoles.length === 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-6 h-6 text-amber-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">No Roles Available</p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      No system roles are currently available. Please contact your administrator or check the Roles management page.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {filteredRoles.length === 0 && systemRoles.length > 0 ? (
               <div className="text-center py-8">
                 <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -354,7 +397,7 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
                   {searchQuery ? MULTI_ROLE_CONFIG.roleSelectionConfig.noResultsMessage : MULTI_ROLE_CONFIG.roleSelectionConfig.emptyStateMessage}
                 </p>
               </div>
-            ) : MULTI_ROLE_CONFIG.features.enableRoleGrouping ? (
+            ) : systemRoles.length > 0 && (MULTI_ROLE_CONFIG.features.enableRoleGrouping ? (
               <>
                 <RoleGroupSection title="⭐ Recommended Roles" roles={groupedRoles.recommended} icon="⭐" />
                 <RoleGroupSection title="🛡️ Admin Roles" roles={groupedRoles.admin} icon="🛡️" />
@@ -366,7 +409,7 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
                   <RoleItem key={role.id} role={role} />
                 ))}
               </div>
-            )}
+            ))}
           </div>
 
           {/* Summary */}

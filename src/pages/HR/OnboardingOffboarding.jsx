@@ -3115,15 +3115,38 @@ const INITIATE_EXIT_FORM_FIELDS = [
     tooltip: 'Standard notice period in days',
   },
   {
-    id: 'assigned_to',
-    label: 'Assign To HR',
-    field: 'assigned_to',
+    id: 'project_assignments',
+    label: 'Project Assignments & Manager Approvals',
+    field: 'project_assignments',
+    type: 'project-assignments',
+    required: false,
+    section: 'tracking',
+    tooltip: 'Add projects the employee is working on and assign project managers for approval. Required for employees assigned to active projects.',
+    helpText: 'Step 1: Project managers must approve before proceeding to HR approvals. Add each project separately.',
+  },
+  {
+    id: 'hr_coordinator',
+    label: 'HR Coordinator',
+    field: 'hr_coordinator',
     type: 'select',
     required: false,
     section: 'tracking',
-    placeholder: 'Select HR manager (optional)',
-    tooltip: 'HR personnel responsible for this offboarding',
+    placeholder: 'Select HR coordinator...',
+    tooltip: 'HR Coordinator responsible for processing exit documentation and clearances',
     options: [], // Will be populated from API
+    helpText: 'Step 2: HR Coordinator processes documentation after project manager approval',
+  },
+  {
+    id: 'hr_approver',
+    label: 'HR Final Approver',
+    field: 'hr_approver',
+    type: 'select',
+    required: false,
+    section: 'tracking',
+    placeholder: 'Select HR approver...',
+    tooltip: 'HR Manager/Approver for final exit approval and settlement',
+    options: [], // Will be populated from API
+    helpText: 'Step 3: HR Approver provides final approval for exit process',
   },
   {
     id: 'notes',
@@ -3156,9 +3179,9 @@ const INITIATE_EXIT_FORM_SECTIONS = [
   },
   {
     id: 'tracking',
-    label: 'Process Tracking',
+    label: 'Process Tracking & Approvals',
     icon: HeroIcons.ClipboardDocumentCheckIcon,
-    description: 'Assignment and notes',
+    description: 'Three-step approval workflow: Project Managers → HR Coordinator → HR Approver',
   },
 ]
 
@@ -4326,9 +4349,15 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
   // Data state
   const [employees, setEmployees] = useState([])
   const [hrManagers, setHrManagers] = useState([])
+  const [projectManagers, setProjectManagers] = useState([]) // ✨ Project managers for approval flow
+  const [hrCoordinators, setHrCoordinators] = useState([]) // ✨ HR coordinators
+  const [hrApprovers, setHrApprovers] = useState([]) // ✨ HR approvers
   const [activeOffboardings, setActiveOffboardings] = useState([])
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [employeeSearch, setEmployeeSearch] = useState('')
+  const [projectAssignments, setProjectAssignments] = useState([]) // ✨ NEW: Dynamic project assignments with managers
+  const [showAllEmployeesForPM, setShowAllEmployeesForPM] = useState(false) // ✨ Toggle to show all employees when no project managers
+  const [pmSearchTerms, setPmSearchTerms] = useState({}) // ✨ Search terms for each project assignment's PM list
 
   const activeOffboardingLookup = useMemo(() => {
     const byUserId = new Map()
@@ -4362,8 +4391,8 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
     setFormData(defaults)
   }, [])
   
-  // Load employees and HR managers
-  // ✅ ENHANCED: Smart API calls with role filtering and minimal mode
+  // Load employees, HR managers, project managers, HR coordinators, and HR approvers
+  // ✅ ENHANCED: Smart API calls with role filtering and minimal mode for approval workflow
   useEffect(() => {
     setLoading(true)
     Promise.all([
@@ -4375,12 +4404,46 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
       apiClient.get('/users/employees/active_employees/', {
         params: { role_filter: 'hr_manager', minimal: 'true' }
       }),
+      // ✨ NEW: Project managers for approval flow
+      apiClient.get('/users/employees/active_employees/', {
+        params: { role_filter: 'project_manager', minimal: 'true' }
+      }),
+      // ✨ NEW: HR Coordinators for Step 2 approval
+      apiClient.get('/users/employees/active_employees/', {
+        params: { role_filter: 'hr_coordinator', minimal: 'true' }
+      }),
+      // ✨ NEW: HR Approvers for Step 3 approval (typically HR managers or senior HR)
+      apiClient.get('/users/employees/active_employees/', {
+        params: { role_filter: 'hr_approver', minimal: 'true' }
+      }),
+      // Active offboarding records
       apiClient.get(`${API_BASE}/offboarding/active-employees/`),
     ])
-      .then(([empRes, hrRes, activeOffboardingRes]) => {
+      .then(([empRes, hrRes, pmRes, hrCoordRes, hrApproverRes, activeOffboardingRes]) => {
         const employeeRows = empRes.data.results || []
         setEmployees(employeeRows)
         setHrManagers(hrRes.data.results || [])
+        
+        // ✨ SOFT-CODED FALLBACK: If no users with project_manager role exist,
+        // automatically fall back to all active employees for flexibility
+        const projectManagerRows = pmRes.data.results || []
+        if (projectManagerRows.length === 0) {
+          console.warn('⚠️ No users with project_manager role found. Using all active employees as fallback.')
+          setProjectManagers(employeeRows)
+          setShowAllEmployeesForPM(true)
+        } else {
+          setProjectManagers(projectManagerRows)
+          setShowAllEmployeesForPM(false)
+        }
+        
+        // ✨ SOFT-CODED FALLBACK: Same pattern for HR Coordinators
+        const hrCoordRows = hrCoordRes.data.results || []
+        setHrCoordinators(hrCoordRows.length > 0 ? hrCoordRows : employeeRows)
+        
+        // ✨ SOFT-CODED FALLBACK: Same pattern for HR Approvers
+        const hrApproverRows = hrApproverRes.data.results || []
+        setHrApprovers(hrApproverRows.length > 0 ? hrApproverRows : employeeRows)
+        
         setActiveOffboardings(activeOffboardingRes.data || [])
         const initialEmployee = initialEmployeeId
           ? employeeRows.find(employee => String(employee.user_id) === String(initialEmployeeId))
@@ -4402,7 +4465,11 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
             branch: initialEmployee.branch || previous.branch || 'RAD',
           }))
         }
-        console.log('✅ Loaded employees:', empRes.data.count, 'HR managers:', hrRes.data.count)
+        console.log('✅ Loaded employees:', empRes.data.count, 'HR managers:', hrRes.data.count, 
+                    'Project managers:', projectManagerRows.length, 
+                    '(fallback to all:', projectManagerRows.length === 0 ? 'YES' : 'NO' + ')',
+                    'HR coordinators:', hrCoordRows.length, 
+                    'HR approvers:', hrApproverRows.length)
       })
       .catch((err) => {
         console.error('Failed to load employees:', err)
@@ -4517,10 +4584,17 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
         last_working_day: formData.last_working_day,
         notice_period_days: formData.notice_period_days || 30,
         target_completion_date: formData.target_completion_date || formData.last_working_day,
-        assigned_to: formData.assigned_to || null,
         notes: formData.notes || '',
         status: 'initiated',
         progress_percentage: 0,
+        // ✨ NEW: Three-step approval workflow with project-based assignments
+        project_assignments: projectAssignments.map(pa => ({
+          project_number: pa.project_number,
+          project_name: pa.project_name || '',
+          project_manager_ids: pa.project_manager_ids || []
+        })),
+        hr_coordinator: formData.hr_coordinator || null,
+        hr_approver: formData.hr_approver || null,
       }
       
       await apiClient.post(`${API_BASE}/offboarding/`, payload)
@@ -4550,6 +4624,30 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
     const error = errors[field.field]
     
     const commonClasses = `w-full px-3 py-2 border ${error ? 'border-rose-500' : 'border-slate-300'} rounded-lg text-sm focus:outline-none focus:ring-2 ${error ? 'focus:ring-rose-500' : 'focus:ring-rose-500'}`
+    
+    // ✨ Dynamically populate options based on field type
+    let fieldOptions = field.options || []
+    if (field.id === 'assigned_to') {
+      fieldOptions = hrManagers.map(hr => ({
+        value: hr.user_id,
+        label: `${hr.first_name} ${hr.last_name}`.trim() || hr.email
+      }))
+    } else if (field.id === 'project_managers') {
+      fieldOptions = projectManagers.map(pm => ({
+        value: pm.user_id,
+        label: `${pm.first_name} ${pm.last_name}`.trim() || pm.email
+      }))
+    } else if (field.id === 'hr_coordinator') {
+      fieldOptions = hrCoordinators.map(hr => ({
+        value: hr.user_id,
+        label: `${hr.first_name} ${hr.last_name}`.trim() || hr.email
+      }))
+    } else if (field.id === 'hr_approver') {
+      fieldOptions = hrApprovers.map(hr => ({
+        value: hr.user_id,
+        label: `${hr.first_name} ${hr.last_name}`.trim() || hr.email
+      }))
+    }
     
     switch (field.type) {
       case 'select-search':
@@ -4646,6 +4744,253 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
           </div>
         )
       
+      case 'project-assignments':
+        // ✨ NEW: Dynamic project assignments with project numbers and managers
+        return (
+          <div className="space-y-3">
+            {projectAssignments.map((assignment, index) => (
+              <div key={index} className="p-4 border border-slate-300 rounded-lg bg-slate-50">
+                <div className="flex items-start justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-slate-800">Project {index + 1}</h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjectAssignments(projectAssignments.filter((_, i) => i !== index))
+                    }}
+                    className="p-1 text-rose-600 hover:bg-rose-100 rounded transition-colors"
+                    title="Remove project"
+                  >
+                    <HeroIcons.TrashIcon className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Project Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={assignment.project_number || ''}
+                      onChange={(e) => {
+                        const updated = [...projectAssignments]
+                        updated[index].project_number = e.target.value
+                        setProjectAssignments(updated)
+                      }}
+                      placeholder="e.g., PRJ-2024-001"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Project Name (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={assignment.project_name || ''}
+                      onChange={(e) => {
+                        const updated = [...projectAssignments]
+                        updated[index].project_name = e.target.value
+                        setProjectAssignments(updated)
+                      }}
+                      placeholder="e.g., UAE Oil Refinery Expansion"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-2">
+                      Project Manager(s) <span className="text-rose-500">*</span>
+                    </label>
+                    
+                    {/* ✨ Info banner when using fallback to all employees */}
+                    {showAllEmployeesForPM && (
+                      <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                        ℹ️ <strong>Note:</strong> Showing all active employees. No users assigned the "Project Manager" role yet.
+                      </div>
+                    )}
+                    
+                    {/* ✨ SOFT-CODED: Search/filter input for easier manager selection */}
+                    {projectManagers.length > 5 && (
+                      <div className="mb-2">
+                        <input
+                          type="text"
+                          placeholder="🔍 Search by name, email, or department..."
+                          value={pmSearchTerms[index] || ''}
+                          onChange={(e) => {
+                            setPmSearchTerms({ ...pmSearchTerms, [index]: e.target.value })
+                          }}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+                    
+                    {/* Checkbox-based multi-select (more user-friendly than native multi-select) */}
+                    <div className="border border-slate-300 rounded-lg p-3 max-h-[240px] overflow-y-auto bg-white">
+                      {projectManagers.length === 0 ? (
+                        <p className="text-sm text-slate-500 text-center py-2">No employees available</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {projectManagers
+                            .filter(pm => {
+                              // ✨ SOFT-CODED: Filter by search term (case-insensitive)
+                              const searchTerm = (pmSearchTerms[index] || '').toLowerCase().trim()
+                              if (!searchTerm) return true
+                              
+                              const fullName = `${pm.first_name || ''} ${pm.last_name || ''}`.toLowerCase()
+                              const email = (pm.email || '').toLowerCase()
+                              const department = (pm.department || '').toLowerCase()
+                              const position = (pm.position || '').toLowerCase()
+                              
+                              return fullName.includes(searchTerm) || 
+                                     email.includes(searchTerm) || 
+                                     department.includes(searchTerm) ||
+                                     position.includes(searchTerm)
+                            })
+                            .map(pm => {
+                            const isSelected = (assignment.project_manager_ids || []).includes(pm.user_id)
+                            return (
+                              <label
+                                key={pm.user_id}
+                                className={`flex items-start gap-3 p-2 rounded hover:bg-slate-50 cursor-pointer transition-colors ${
+                                  isSelected ? 'bg-blue-50 border border-blue-200' : 'border border-transparent'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    const updated = [...projectAssignments]
+                                    const currentIds = updated[index].project_manager_ids || []
+                                    
+                                    if (e.target.checked) {
+                                      // Add manager
+                                      updated[index].project_manager_ids = [...currentIds, pm.user_id]
+                                    } else {
+                                      // Remove manager
+                                      updated[index].project_manager_ids = currentIds.filter(id => id !== pm.user_id)
+                                    }
+                                    setProjectAssignments(updated)
+                                  }}
+                                  className="mt-0.5 h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-slate-900">
+                                    {pm.first_name} {pm.last_name}
+                                  </div>
+                                  <div className="text-xs text-slate-500 truncate">
+                                    {pm.email}
+                                  </div>
+                                  {pm.department && (
+                                    <div className="text-xs text-slate-400">
+                                      {pm.department}
+                                    </div>
+                                  )}
+                                  {pm.position && (
+                                    <div className="text-xs text-slate-400">
+                                      {pm.position}
+                                    </div>
+                                  )}
+                                </div>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Selected managers summary */}
+                    {assignment.project_manager_ids && assignment.project_manager_ids.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs text-slate-600 mb-1">
+                          Selected: {assignment.project_manager_ids.length} manager(s)
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {assignment.project_manager_ids.map(pmId => {
+                            const pm = projectManagers.find(p => p.user_id === pmId)
+                            if (!pm) return null
+                            return (
+                              <span key={pmId} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                                {pm.first_name} {pm.last_name}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...projectAssignments]
+                                    updated[index].project_manager_ids = updated[index].project_manager_ids.filter(id => id !== pmId)
+                                    setProjectAssignments(updated)
+                                  }}
+                                  className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                                  title="Remove manager"
+                                >
+                                  <HeroIcons.XMarkIcon className="w-3 h-3" />
+                                </button>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {(!assignment.project_manager_ids || assignment.project_manager_ids.length === 0) && (
+                      <p className="mt-2 text-xs text-amber-600">
+                        ⚠️ Please select at least one project manager
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            <button
+              type="button"
+              onClick={() => {
+                setProjectAssignments([
+                  ...projectAssignments,
+                  { project_number: '', project_name: '', project_manager_ids: [] }
+                ])
+              }}
+              className="w-full px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition-colors flex items-center justify-center gap-2"
+            >
+              <HeroIcons.PlusIcon className="w-4 h-4" />
+              Add Project Assignment
+            </button>
+            
+            {field.helpText && (
+              <p className="text-xs text-slate-600 mt-2">
+                💡 {field.helpText}
+              </p>
+            )}
+          </div>
+        )
+      
+      case 'multi-select':
+        // ✨ Multi-select for project managers (DEPRECATED - use project-assignments instead)
+        const selectedValues = []
+        return (
+          <div>
+            <select
+              multiple
+              value={selectedValues}
+              onChange={(e) => {
+                const options = Array.from(e.target.selectedOptions)
+                const values = options.map(opt => parseInt(opt.value))
+                handleChange(field.field, values)
+              }}
+              className={`${commonClasses} min-h-[120px]`}
+              required={field.required}
+            >
+              {fieldOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              {field.helpText || 'Hold Ctrl (Cmd on Mac) to select multiple options'}
+            </p>
+          </div>
+        )
+      
       case 'select':
         return (
           <select
@@ -4655,7 +5000,7 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
             required={field.required}
           >
             <option value="">{field.placeholder || `Select ${field.label}`}</option>
-            {field.options?.map(opt => (
+            {fieldOptions.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>

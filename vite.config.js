@@ -147,15 +147,14 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
       },
-      // Force a single instance of styled-components so all chunks share the
+      // Force a single instance of emotion so all chunks share the
       // same initialised module — prevents "styled_default is not a function"
       // when multiple vendor chunks each try to initialise their own copy.
-      dedupe: ['styled-components', '@emotion/react', '@emotion/styled', 'react', 'react-dom'],
+      dedupe: ['@emotion/react', '@emotion/styled', 'react', 'react-dom'],
     },
     // Soft-coded: expose backend mode to the React app as a compile-time constant
     // Use in components: if (import.meta.env.VITE_IS_PROD_BACKEND === 'true') { ... }
-    // process.env.NODE_ENV is also defined so styled-components v6 can detect
-    // the runtime environment — without this styled_default can be undefined in ESM scope.
+    // process.env.NODE_ENV is defined for libraries that check the environment
     define: {
       '__PROD_BACKEND__': JSON.stringify(IS_PROD_BACKEND),
       'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
@@ -224,12 +223,11 @@ export default defineConfig(({ mode }) => {
     },
     // Soft-coded: explicitly pre-bundle packages that use non-standard ESM
     // default exports so Vite's esbuild can wrap them correctly.
-    // Root cause: @mui/material's TouchRipple imports styled via @mui/styled-engine
-    // which re-exports @emotion/styled. Without pre-bundling @emotion/styled,
-    // the default export resolves to undefined → "styled_default is not a function".
+    // Root cause: @mui/material uses @emotion/styled via @mui/styled-engine.
+    // Without pre-bundling @emotion packages, the default export can resolve 
+    // to undefined → "styled_default is not a function".
     optimizeDeps: {
       include: [
-        'styled-components',
         '@emotion/styled',
         '@emotion/react',
         '@mui/styled-engine',
