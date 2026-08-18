@@ -21,7 +21,10 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   DocumentArrowDownIcon,
-  PencilSquareIcon
+  PencilSquareIcon,
+  TrashIcon,
+  ExclamationTriangleIcon,
+  PowerIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { PageControlButtons } from '../../components/Common/PageControlButtons';
@@ -55,6 +58,11 @@ const VendorManagement = () => {
   const [aiRecommendations, setAiRecommendations] = useState(null);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+  
+  // Confirmation modal states
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const pageControls = usePageControls({
     autoRefreshInterval: 60,
@@ -228,6 +236,80 @@ const VendorManagement = () => {
     setSelectedVendor(vendor);
     setEditMode(true);
     setShowAICreator(true);
+  };
+
+  /**
+   * Handle vendor deletion with confirmation
+   */
+  const handleDeleteVendor = (vendor) => {
+    setConfirmAction({
+      type: 'delete',
+      vendor: vendor,
+      title: 'Delete Vendor',
+      message: `Are you sure you want to delete "${vendor.name}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      confirmStyle: 'danger',
+      onConfirm: async () => {
+        try {
+          setActionLoading(true);
+          await apiClient.delete(`/procurement/vendors/${vendor.id}/`);
+          console.log(`✅ Vendor ${vendor.vendor_code} deleted successfully`);
+          await fetchVendors(); // Refresh the list
+          setShowConfirmModal(false);
+          setConfirmAction(null);
+        } catch (error) {
+          console.error('Error deleting vendor:', error);
+          setError({
+            type: 'network',
+            message: `Failed to delete vendor: ${error.response?.data?.detail || error.message}`,
+            action: () => handleDeleteVendor(vendor)
+          });
+        } finally {
+          setActionLoading(false);
+        }
+      }
+    });
+    setShowConfirmModal(true);
+  };
+
+  /**
+   * Handle vendor status toggle (activate/deactivate)
+   */
+  const handleToggleStatus = (vendor) => {
+    const newStatus = vendor.status === 'active' ? 'inactive' : 'active';
+    const actionLabel = newStatus === 'active' ? 'Activate' : 'Deactivate';
+    
+    setConfirmAction({
+      type: 'toggle',
+      vendor: vendor,
+      newStatus: newStatus,
+      title: `${actionLabel} Vendor`,
+      message: `Are you sure you want to ${actionLabel.toLowerCase()} "${vendor.name}"?`,
+      confirmLabel: actionLabel,
+      confirmStyle: newStatus === 'active' ? 'success' : 'warning',
+      onConfirm: async () => {
+        try {
+          setActionLoading(true);
+          await apiClient.patch(`/procurement/vendors/${vendor.id}/`, {
+            status: newStatus
+          });
+          console.log(`✅ Vendor ${vendor.vendor_code} status updated to ${newStatus}`);
+          await fetchVendors(); // Refresh the list
+          setShowConfirmModal(false);
+          setConfirmAction(null);
+        } catch (error) {
+          console.error('Error updating vendor status:', error);
+          setError({
+            type: 'network',
+            message: `Failed to update vendor status: ${error.response?.data?.detail || error.message}`,
+            action: () => handleToggleStatus(vendor)
+          });
+        } finally {
+          setActionLoading(false);
+        }
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   /**
@@ -685,14 +767,43 @@ const VendorManagement = () => {
                           {getStatusBadge(vendor.status)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button
-                            onClick={() => handleEditVendor(vendor)}
-                            className="text-indigo-600 hover:text-indigo-900 inline-flex items-center space-x-1 px-3 py-1.5 rounded-md hover:bg-indigo-50 transition-colors"
-                            title="Edit vendor"
-                          >
-                            <PencilSquareIcon className="h-4 w-4" />
-                            <span>Edit</span>
-                          </button>
+                          <div className="flex items-center space-x-2">
+                            {/* Edit Button */}
+                            <button
+                              onClick={() => handleEditVendor(vendor)}
+                              className="text-indigo-600 hover:text-indigo-900 inline-flex items-center space-x-1 px-2 py-1.5 rounded-md hover:bg-indigo-50 transition-colors"
+                              title="Edit vendor"
+                            >
+                              <PencilSquareIcon className="h-4 w-4" />
+                              <span className="hidden xl:inline">Edit</span>
+                            </button>
+                            
+                            {/* Activate/Deactivate Button */}
+                            <button
+                              onClick={() => handleToggleStatus(vendor)}
+                              className={`${
+                                vendor.status === 'active'
+                                  ? 'text-orange-600 hover:text-orange-900 hover:bg-orange-50'
+                                  : 'text-green-600 hover:text-green-900 hover:bg-green-50'
+                              } inline-flex items-center space-x-1 px-2 py-1.5 rounded-md transition-colors`}
+                              title={vendor.status === 'active' ? 'Deactivate vendor' : 'Activate vendor'}
+                            >
+                              <PowerIcon className="h-4 w-4" />
+                              <span className="hidden xl:inline">
+                                {vendor.status === 'active' ? 'Deactivate' : 'Activate'}
+                              </span>
+                            </button>
+                            
+                            {/* Delete Button */}
+                            <button
+                              onClick={() => handleDeleteVendor(vendor)}
+                              className="text-red-600 hover:text-red-900 inline-flex items-center space-x-1 px-2 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                              title="Delete vendor"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                              <span className="hidden xl:inline">Delete</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -797,16 +908,33 @@ const VendorManagement = () => {
                     )}
 
                     {/* Actions */}
-                    <div className="mt-6 flex space-x-3">
+                    <div className="mt-6 flex flex-col space-y-2">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleEditVendor(vendor)}
+                          className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-indigo-300 shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        >
+                          <PencilSquareIcon className="h-4 w-4 mr-1" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleToggleStatus(vendor)}
+                          className={`flex-1 inline-flex justify-center items-center px-3 py-2 border shadow-sm text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                            vendor.status === 'active'
+                              ? 'border-orange-300 text-orange-700 bg-white hover:bg-orange-50 focus:ring-orange-500'
+                              : 'border-green-300 text-green-700 bg-white hover:bg-green-50 focus:ring-green-500'
+                          }`}
+                        >
+                          <PowerIcon className="h-4 w-4 mr-1" />
+                          {vendor.status === 'active' ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </div>
                       <button
-                        onClick={() => handleEditVendor(vendor)}
-                        className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-indigo-300 shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        onClick={() => handleDeleteVendor(vendor)}
+                        className="w-full inline-flex justify-center items-center px-3 py-2 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                       >
-                        <PencilSquareIcon className="h-4 w-4 mr-1" />
-                        Edit
-                      </button>
-                      <button className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Create PO
+                        <TrashIcon className="h-4 w-4 mr-1" />
+                        Delete Vendor
                       </button>
                     </div>
                   </div>
@@ -816,6 +944,87 @@ const VendorManagement = () => {
           )}
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && confirmAction && (
+        <div className="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            {/* Background overlay */}
+            <div 
+              className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+              aria-hidden="true"
+              onClick={() => !actionLoading && setShowConfirmModal(false)}
+            ></div>
+
+            {/* Center modal */}
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+            <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+              <div className="sm:flex sm:items-start">
+                <div className={`mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10 ${
+                  confirmAction.confirmStyle === 'danger' ? 'bg-red-100' :
+                  confirmAction.confirmStyle === 'warning' ? 'bg-yellow-100' :
+                  'bg-green-100'
+                }`}>
+                  {confirmAction.confirmStyle === 'danger' ? (
+                    <TrashIcon className="h-6 w-6 text-red-600" aria-hidden="true" />
+                  ) : confirmAction.confirmStyle === 'warning' ? (
+                    <ExclamationTriangleIcon className="h-6 w-6 text-yellow-600" aria-hidden="true" />
+                  ) : (
+                    <CheckCircleIcon className="h-6 w-6 text-green-600" aria-hidden="true" />
+                  )}
+                </div>
+                <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                    {confirmAction.title}
+                  </h3>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500">
+                      {confirmAction.message}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={confirmAction.onConfirm}
+                  className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm ${
+                    confirmAction.confirmStyle === 'danger' 
+                      ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' :
+                    confirmAction.confirmStyle === 'warning'
+                      ? 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500'
+                      : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                  } ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {actionLoading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Processing...
+                    </>
+                  ) : (
+                    confirmAction.confirmLabel
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => setShowConfirmModal(false)}
+                  className={`mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm ${
+                    actionLoading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI Vendor Creator/Editor Modal */}
       <AIVendorCreator
