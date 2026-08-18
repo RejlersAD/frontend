@@ -78,6 +78,9 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [edits, setEdits] = useState({});
+  const [manualSignatures, setManualSignatures] = useState({});
+  const [employees, setEmployees] = useState([]);
+  const [employeeLoadError, setEmployeeLoadError] = useState('');
 
   useEffect(() => {
     if (!file) {
@@ -89,6 +92,22 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     return () => window.URL.revokeObjectURL(url);
   }, [file]);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let active = true;
+    setEmployeeLoadError('');
+    apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' } })
+      .then((response) => {
+        if (!active) return;
+        const payload = response.data?.data || response.data || {};
+        setEmployees(Array.isArray(payload.users) ? payload.users : []);
+      })
+      .catch(() => {
+        if (active) setEmployeeLoadError('Employee search is unavailable. You can still edit signer names manually.');
+      });
+    return () => { active = false; };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const reset = () => {
@@ -98,6 +117,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setPreview(null);
     setResult(null);
     setEdits({});
+    setManualSignatures({});
   };
 
   const close = () => {
@@ -111,6 +131,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setPreview(null);
     setResult(null);
     setEdits({});
+    setManualSignatures({});
     setError('');
   };
 
@@ -148,6 +169,9 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       const manualOverrides = Object.fromEntries(
         EDITABLE_FIELDS.map(([key]) => [key, edits[key] ?? '']),
       );
+      const manualSignatureOverrides = Object.fromEntries(
+        Object.entries(manualSignatures).filter(([, verified]) => verified),
+      );
       const data = await submitSignedRequisitionPdf(file, {
         expected_pr_number: expectedPrNumber,
         approval_date: edits.approval_date || '',
@@ -156,7 +180,14 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
         mop_name: edits.mop_name || '',
         vp_name: edits.vp_name || '',
         manual_overrides: JSON.stringify(manualOverrides),
+        manual_signature_overrides: JSON.stringify(manualSignatureOverrides),
       });
+      const unacknowledgedSignatures = Object.keys(manualSignatureOverrides).filter(
+        (role) => !data.approval_detection?.signatures?.[role],
+      );
+      if (unacknowledgedSignatures.length) {
+        throw new Error(`Manual signature verification was not saved for: ${unacknowledgedSignatures.map((role) => ROLE_LABELS[role]).join(', ')}. Please retry.`);
+      }
       setResult(data);
       onImported?.(data);
     } catch (requestError) {
@@ -247,14 +278,47 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
 
                   <div className="rounded-xl border border-gray-200 p-3">
                     <p className="text-sm font-semibold text-gray-800">Approval evidence</p>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      {Object.entries(ROLE_LABELS).map(([key, label]) => (
-                        <label key={key} className="text-xs font-semibold text-gray-700">
-                          {label}
-                          <input value={edits[`${key}_name`] || ''} onChange={(event) => setEdits((current) => ({ ...current, [`${key}_name`]: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                          <span className={`mt-1 inline-flex items-center gap-1 ${detection.signatures?.[key] ? 'text-emerald-700' : 'text-red-700'}`}><CheckBadgeIcon className="h-4 w-4" />{detection.signatures?.[key] ? 'Signature detected' : 'Signature not detected'}</span>
-                        </label>
+                    <p className="mt-1 text-xs text-gray-500">Search active employees or edit a signer name. If detection missed a visible signature, confirm it after checking the PDF.</p>
+                    {employeeLoadError && <p className="mt-2 text-xs text-amber-700">{employeeLoadError}</p>}
+                    <datalist id="approved-pr-active-employees">
+                      {employees.map((employee) => (
+                        <option key={employee.id} value={employee.full_name || employee.username || employee.email}>
+                          {[employee.email, employee.job_title, employee.department].filter(Boolean).join(' · ')}
+                        </option>
                       ))}
+                    </datalist>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {Object.entries(ROLE_LABELS).map(([key, label]) => {
+                        const automaticallyDetected = Boolean(detection.signatures?.[key]);
+                        const manuallyVerified = Boolean(manualSignatures[key]);
+                        return (
+                          <div key={key} className={`rounded-lg border p-3 ${automaticallyDetected || manuallyVerified ? 'border-emerald-200 bg-emerald-50/40' : 'border-red-200 bg-red-50/40'}`}>
+                            <label className="text-xs font-semibold text-gray-700">
+                              {label}
+                              <input
+                                list="approved-pr-active-employees"
+                                value={edits[`${key}_name`] || ''}
+                                onChange={(event) => setEdits((current) => ({ ...current, [`${key}_name`]: event.target.value }))}
+                                placeholder="Search or enter signer"
+                                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                              />
+                            </label>
+                            {automaticallyDetected ? (
+                              <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckBadgeIcon className="h-4 w-4" />Signature detected automatically</span>
+                            ) : (
+                              <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs font-semibold text-red-700">
+                                <input
+                                  type="checkbox"
+                                  checked={manuallyVerified}
+                                  onChange={(event) => setManualSignatures((current) => ({ ...current, [key]: event.target.checked }))}
+                                  className="mt-0.5 h-4 w-4 rounded border-red-300 text-emerald-600"
+                                />
+                                <span>{manuallyVerified ? 'Signature manually verified in PDF' : 'Signature not detected — verify it visually'}</span>
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })}
                       <label className="text-xs font-semibold text-gray-700 sm:col-span-2">
                         Approval Date
                         <input type="date" value={edits.approval_date || ''} onChange={(event) => setEdits((current) => ({ ...current, approval_date: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
@@ -276,7 +340,9 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                     <div key={key} className="rounded-lg border border-gray-200 p-3">
                       <p className="text-xs text-gray-500">{label}</p>
                       <p className="mt-1 text-sm font-semibold text-gray-800">{detection.approver_names?.[key] || 'Name not detected'}</p>
-                      <p className={`mt-1 text-xs font-semibold ${detection.signatures?.[key] ? 'text-emerald-700' : 'text-red-700'}`}>{detection.signatures?.[key] ? 'Signature detected' : 'Signature not detected'}</p>
+                      <p className={`mt-1 text-xs font-semibold ${detection.signatures?.[key] ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {detection.signature_sources?.[key] === 'manual' ? 'Signature manually verified' : detection.signatures?.[key] ? 'Signature detected' : 'Signature not detected'}
+                      </p>
                     </div>
                   ))}
                 </div>
