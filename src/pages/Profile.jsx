@@ -2644,6 +2644,8 @@ const Profile = () => {
           </div>
         </div>
       </div>
+
+      {/* Exit Modal */}
       {showExitModal && (
         <InitiateExitModal
           initialEmployeeId={profileUserId}
