@@ -20,6 +20,7 @@ import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 import PurchaseOrderForm from './PurchaseOrderForm';
+import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -59,6 +60,24 @@ const PurchaseOrderDetail = () => {
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+
+  const handlePrintPurchaseOrder = () => {
+    const filename = buildProcurementPdfFilename(
+      order?.po_number || `PO-${id}`,
+      'po',
+      order?.po_date,
+    );
+    const previousTitle = document.title;
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+
+    document.title = filename.replace(/\.pdf$/i, '');
+    window.addEventListener('afterprint', restoreTitle, { once: true });
+    window.print();
+    window.setTimeout(restoreTitle, 1000);
+  };
 
   /**
    * Soft-coded data fetching with error handling
@@ -590,7 +609,7 @@ const PurchaseOrderDetail = () => {
             <div className="flex space-x-3">
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={handlePrintPurchaseOrder}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
               >
                 <PrinterIcon className="h-4 w-4 mr-2" />
