@@ -18,6 +18,24 @@ const getAuthHeaders = () => {
 };
 
 /**
+ * Date fields that the backend rejects as "" (empty string) — must be null instead.
+ * Sanitizes in place and also returns the object for convenience.
+ */
+const QHSE_PROJECT_DATE_FIELDS = [
+  'projectStartingDate', 'projectClosingDate', 'projectExtension',
+  'projectQualityPlanStatusIssueDate', 'projectAudit1', 'projectAudit2',
+  'projectAudit3', 'projectAudit4', 'clientAudit1', 'clientAudit2'
+];
+const sanitizeProjectDates = (data) => {
+  QHSE_PROJECT_DATE_FIELDS.forEach((field) => {
+    if (data[field] === '' || data[field] === undefined) {
+      data[field] = null;
+    }
+  });
+  return data;
+};
+
+/**
  * Handle API responses
  * Supports DRF field-level validation error dicts: { fieldName: ["msg", ...], ... }
  * as well as the standard { detail: "..." } format.
@@ -90,7 +108,7 @@ export const qhseProjectsAPI = {
     const response = await fetch(`${API_BASE_URL}/qhse/projects/`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(projectData)
+      body: JSON.stringify(sanitizeProjectDates({ ...projectData }))
     });
     return handleResponse(response);
   },
@@ -105,7 +123,7 @@ export const qhseProjectsAPI = {
     const response = await fetch(`${API_BASE_URL}/qhse/projects/${id}/`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify(projectData)
+      body: JSON.stringify(sanitizeProjectDates({ ...projectData }))
     });
     return handleResponse(response);
   },
@@ -120,7 +138,7 @@ export const qhseProjectsAPI = {
     const response = await fetch(`${API_BASE_URL}/qhse/projects/${id}/`, {
       method: 'PATCH',
       headers: getAuthHeaders(),
-      body: JSON.stringify(projectData)
+      body: JSON.stringify(sanitizeProjectDates({ ...projectData }))
     });
     return handleResponse(response);
   },
