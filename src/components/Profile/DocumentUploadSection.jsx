@@ -170,8 +170,24 @@ const DocumentUploadSection = () => {
       });
 
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.detail || 'Upload failed');
+        const responseText = await res.text().catch(() => '');
+        let errorMessage = 'Upload failed';
+
+        if (responseText) {
+          try {
+            const error = JSON.parse(responseText);
+            const fieldError = Object.values(error)
+              .flat()
+              .find(value => typeof value === 'string' && value.trim());
+            errorMessage = error.detail || error.error || fieldError || errorMessage;
+          } catch {
+            if (!responseText.trim().startsWith('<')) {
+              errorMessage = responseText.trim();
+            }
+          }
+        }
+
+        throw new Error(errorMessage);
       }
 
       const actionMessage = isEditingDetails 
@@ -604,7 +620,7 @@ const DocumentUploadSection = () => {
                   <div>
                     <p className="text-sm font-medium text-orange-900">Editing Document Details</p>
                     <p className="text-xs text-orange-700 mt-1">
-                      You are updating the document information only. To replace the file, use the "Replace File" button.
+                      You are updating the document information only. To replace the file, use the &quot;Replace File&quot; button.
                     </p>
                   </div>
                 </div>

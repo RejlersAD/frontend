@@ -140,7 +140,7 @@ export const calculateHealthSafetyMetrics = (projects) => {
       safetyPerformance: 'N/A',
       riskScore: 0
     };
-  };
+  }
 
   let totalIncidents = 0;
   let totalNearMiss = 0;
@@ -412,9 +412,12 @@ export const generateSafetyChecklist = (projects) => {
     {
       name: 'Project On Schedule',
       check: (p) => {
+        if (p.projectCompletionPercent === '100%') return true;
+        if (!p.projectClosingDate) return true;
         const closing = new Date(p.projectClosingDate);
+        if (Number.isNaN(closing.getTime())) return true;
         const today = new Date();
-        return p.projectCompletionPercent === '100%' || closing > today;
+        return closing > today;
       },
       weight: 1
     }
