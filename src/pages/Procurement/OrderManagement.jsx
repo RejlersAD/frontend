@@ -582,7 +582,7 @@ const OrderManagement = () => {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     worksheet['!cols'] = PR_REGISTER_COLUMNS.map(([, width]) => ({ width }));
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Requisitions');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Recommendations');
     XLSX.writeFile(workbook, `RADAI_Purchase_Requisitions_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
@@ -1213,7 +1213,7 @@ const OrderManagement = () => {
                 ) : (
                   <DocumentTextIcon className="h-8 w-8 mr-3 text-purple-600" />
                 )}
-                {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Requisitions'}
+                {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Recommendations'}
               </h1>
               <p className="mt-2 text-sm text-gray-600 flex items-center">
                 <SparklesIcon className="h-4 w-4 mr-1 text-purple-500" />
@@ -1371,7 +1371,7 @@ const OrderManagement = () => {
               {/* Search */}
               <div className="md:col-span-2">
                 <label htmlFor="search" className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Purchase Requisitions'}
+                  {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Purchase Recommendations'}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -2028,7 +2028,7 @@ const OrderManagement = () => {
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-xl font-bold tracking-tight text-slate-900">Purchase Requisitions</h3>
+                  <h3 className="text-xl font-bold tracking-tight text-slate-900">Purchase Recommendations</h3>
                   <p className="mt-1 text-xs text-slate-500">Review requests, approval status, suppliers, and values.</p>
                 </div>
                 <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">

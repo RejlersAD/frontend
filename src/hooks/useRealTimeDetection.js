@@ -9,7 +9,7 @@ const WS_BASE_URL = API_BASE_URL.replace('http', 'ws').replace('https', 'wss');
 
 export const useRealTimeDetection = (options = {}) => {
   const {
-    autoConnect = true,
+    autoConnect = false,
     reconnectInterval = 5000,
     onAlert = null,
     onAnomaly = null,
@@ -192,7 +192,7 @@ export const useRealTimeDetection = (options = {}) => {
  * Real-time system performance metrics
  */
 export const useSystemMetrics = (options = {}) => {
-  const { autoConnect = true } = options;
+  const { autoConnect = false } = options;
 
   const [isConnected, setIsConnected] = useState(false);
   const [metrics, setMetrics] = useState(null);

@@ -494,8 +494,8 @@ export const FEATURES_CATALOG = {
       },
       {
         id: 'procurement-requisitions',
-        name: 'Purchase Requisitions',
-        shortName: 'Requisitions',
+        name: 'Purchase Recommendations',
+        shortName: 'Recommendations',
         description: 'AI-powered purchase recommendations and requisitions',
         path: '/procurement/requisitions',
         moduleCode: 'procurement',

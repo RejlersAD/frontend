@@ -77,8 +77,6 @@ const DocumentUploadSection = () => {
   };
 
   const extractMetadata = async (file, documentType) => {
-    // ✅ SOFT-CODED: Metadata extraction is fully optional
-    // If it fails, user can still upload document with manual entry
     setIsExtracting(true);
     try {
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
@@ -91,47 +89,27 @@ const DocumentUploadSection = () => {
         headers: { Authorization: `Bearer ${token}` },
         body: extractionData,
       });
-      
-      // ✅ SOFT-CODED: Handle network errors gracefully
-      if (!res.ok && res.status >= 500) {
-        // Server error, skip extraction and allow manual entry
-        console.warn('Metadata extraction unavailable (server error), proceeding with manual entry');
-        toast.info('Auto-detection unavailable. Please enter document details manually.');
-        return;
-      }
-      
-      const result = await res.json().catch(() => ({ extraction_available: false }));
-      
-      // ✅ SOFT-CODED: Check if extraction is available on server
-      if (result.extraction_available === false) {
-        console.info('Metadata extraction not available on server');
-        toast.info(result.detail || 'Please enter document details manually.');
-        return;
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(result.detail || 'Automatic detection was not available');
       }
 
-      // Apply extracted fields if any
-      if (result.document_number || result.issuing_authority || result.issue_date || result.expiry_date) {
-        setFormData(prev => ({
-          ...prev,
-          document_number: result.document_number || prev.document_number,
-          issuing_authority: result.issuing_authority || prev.issuing_authority,
-          issue_date: result.issue_date || prev.issue_date,
-          expiry_date: result.expiry_date || prev.expiry_date,
-        }));
-      }
+      setFormData(prev => ({
+        ...prev,
+        document_number: result.document_number || prev.document_number,
+        issuing_authority: result.issuing_authority || prev.issuing_authority,
+        issue_date: result.issue_date || prev.issue_date,
+        expiry_date: result.expiry_date || prev.expiry_date,
+      }));
 
       if (result.detected_fields?.length) {
         toast.success(`${result.detected_fields.length} document detail(s) detected. Please verify them.`);
       } else {
-        toast.info('No details detected automatically. Please complete the fields manually.');
+        toast.info('No details were detected. Please complete the fields manually.');
       }
     } catch (err) {
-      // ✅ SOFT-CODED: Network errors shouldn't block document upload
-      console.warn('Metadata extraction failed:', err);
-      // Only show toast if it's not a network error
-      if (!err.message?.includes('Failed to fetch')) {
-        toast.info('Auto-detection unavailable. Please enter details manually.');
-      }
+      console.error(err);
+      toast.info(`${err.message}. You can enter the details manually.`);
     } finally {
       setIsExtracting(false);
     }
@@ -192,38 +170,8 @@ const DocumentUploadSection = () => {
       });
 
       if (!res.ok) {
-        // ✅ SOFT-CODED: Better error handling with detailed messages
-        const error = await res.json().catch(() => ({}));
-        
-        // Extract specific field errors if available
-        let errorMessage = error.detail || error.error || 'Upload failed';
-        
-        // Check for field-specific errors and provide user-friendly messages
-        if (error.user_profile) {
-          errorMessage = `Profile error: ${Array.isArray(error.user_profile) ? error.user_profile[0] : error.user_profile}`;
-        } else if (error.document_file) {
-          const fileError = Array.isArray(error.document_file) ? error.document_file[0] : error.document_file;
-          // Check if it's a file size or format error
-          if (fileError.includes('size') || fileError.includes('MB')) {
-            errorMessage = `File too large: ${fileError}`;
-          } else if (fileError.includes('format') || fileError.includes('Invalid')) {
-            errorMessage = `Invalid file format: ${fileError}`;
-          } else {
-            errorMessage = `File error: ${fileError}`;
-          }
-        } else if (error.document_type) {
-          errorMessage = `Document type error: ${Array.isArray(error.document_type) ? error.document_type[0] : error.document_type}`;
-        } else if (error.non_field_errors) {
-          errorMessage = Array.isArray(error.non_field_errors) ? error.non_field_errors[0] : error.non_field_errors;
-        }
-        
-        // Check for AWS S3 errors
-        if (errorMessage.includes('S3') || errorMessage.includes('storage') || errorMessage.includes('bucket')) {
-          errorMessage = 'Storage system error. Please try again or contact support if the issue persists.';
-        }
-        
-        console.error('Document upload error:', error);
-        throw new Error(errorMessage);
+        const error = await res.json();
+        throw new Error(error.detail || 'Upload failed');
       }
 
       const actionMessage = isEditingDetails 
@@ -234,7 +182,7 @@ const DocumentUploadSection = () => {
       resetForm();
       fetchDocuments();
     } catch (err) {
-      console.error('Upload failed:', err);
+      console.error(err);
       toast.error(err.message || DOCUMENT_UPLOAD_CONFIG.messages.uploadFailed);
     } finally {
       setIsLoading(false);

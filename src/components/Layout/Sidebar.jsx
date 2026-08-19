@@ -137,14 +137,6 @@ const Sidebar = ({
   const hasAdminModule = userModules.some((code) =>
     ADMIN_MODULE_CODES.includes(code),
   );
-  // SOFT-CODED: Any role that grants a real HR module code unlocks the
-  // "4. Human Resource" section even when FEATURE_FLAGS.enableHRModule is
-  // globally off — otherwise per-user custom roles (e.g. Onboarding-only
-  // access) are silently hidden despite having the module granted via RBAC.
-  const HR_MODULE_CODES = ["hr_management", "payroll", "hr_onboarding"];
-  const hasAnyHRModule = userModules.some((code) =>
-    HR_MODULE_CODES.includes(code),
-  );
 
   // isAdmin: MODULE-BASED access control (soft-coded)
   // Does NOT use is_staff flag - only is_superuser, super_admin/admin/ict_admin role, or admin modules
@@ -443,12 +435,9 @@ const Sidebar = ({
         },
       ],
     },
-    // ── Section 4: Human Resource ──────────────────────────────────────────
+    // ΓöÇΓöÇ Section 4: Human Resource ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // SOFT-CODED: Controlled by FEATURE_FLAGS.enableHRModule in features.config.js
-    // SECURITY: Super administrators ALWAYS see HR, bypassing feature flag.
-    // Also unlocked for any role that grants an actual HR module (RBAC-based),
-    // so per-user custom roles (e.g. Onboarding-only) work even when the
-    // global feature flag is off.
+    // SECURITY: Super administrators ALWAYS see HR, bypassing feature flag
     {
       id: "human_resource",
       title: getSectionTitle("human_resource"),
@@ -456,10 +445,7 @@ const Sidebar = ({
       type: "section",
       expanded: expandedSections.human_resource,
       enabled:
-        FEATURE_FLAGS.enableHRModule ||
-        hasSuperAdminRole ||
-        hasSuperuserFlag ||
-        hasAnyHRModule,
+        FEATURE_FLAGS.enableHRModule || hasSuperAdminRole || hasSuperuserFlag, // ΓÜá∩╕Å Super admin bypass
       children: [
         {
           id: "hrDashboard",
@@ -565,11 +551,11 @@ const Sidebar = ({
         },
         {
           id: "requisitions",
-          title: "7.4 Purchase Requisitions",
+          title: "7.4 Purchase Recommendations",
           icon: DocumentTextIcon,
           path: "/procurement/requisitions",
           description: "Purchase recommendation workflow",
-          moduleCode: "procurement_requisitions", // granular: purchase requisitions
+          moduleCode: "procurement_requisitions", // stable permission code for purchase recommendations
         },
         {
           id: "purchaseOrders",
@@ -605,18 +591,18 @@ const Sidebar = ({
           moduleCode: "qhse",
         },
         {
-          id: "projectQualityDetails",
+          id: "detailedView",
           title: "8.2 Project Quality Details",
           icon: TableCellsIcon,
-          path: "/qhse/general/quality",
-          description: "Detailed project quality analysis and reporting",
+          path: "/qhse/general/detailed",
+          description: "Detailed project quality view",
           moduleCode: "qhse_detailed",
         },
         {
           id: "qualityManagement",
           title: "8.3 Quality Management",
           icon: ChartBarIcon,
-          path: "/qhse/general/quality-management",
+          path: "/qhse/general/quality",
           description: "Quality metrics and audits",
           moduleCode: "qhse_quality",
         },

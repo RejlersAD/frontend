@@ -532,13 +532,14 @@ const ProcurementInvoiceTracker = () => {
   return (
     <div className="min-h-screen bg-slate-50 p-4 lg:p-7">
       <div className="mx-auto max-w-[1600px]">
-        <div className="overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-violet-950 p-6 text-white shadow-xl">
-          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
-            <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-300">Finance + Procurement · Accounts Payable</p><h1 className="mt-2 text-3xl font-extrabold">Procurement Invoice Tracker</h1><p className="mt-2 max-w-2xl text-sm text-slate-300">Capture signed vendor invoices, validate OCR against company master data, and reconcile PO and receipt evidence before payment.</p></div>
+        <div className="relative overflow-hidden rounded-2xl border border-blue-500/30 bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 p-6 text-white shadow-xl shadow-blue-950/10">
+          <div className="pointer-events-none absolute inset-0"><div className="absolute -left-24 -top-32 h-72 w-72 rounded-full bg-white/20 blur-3xl" /><div className="absolute -right-20 top-4 h-64 w-64 rounded-full bg-cyan-100/25 blur-3xl" /></div>
+          <div className="relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+            <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-100">Finance + Procurement · Accounts Payable</p><h1 className="mt-2 text-3xl font-extrabold">Procurement Invoice Tracker</h1><p className="mt-2 max-w-2xl text-sm text-white/85">Capture signed vendor invoices, validate OCR against company master data, and reconcile PO and receipt evidence before payment.</p></div>
             <button onClick={() => setImportOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-bold text-indigo-800 shadow-lg hover:bg-indigo-50"><ArrowUpTrayIcon className="h-5 w-5" /> Import Invoice PDF</button>
           </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[[BanknotesIcon, 'Total invoices', stats.total], [DocumentMagnifyingGlassIcon, 'In review', stats.review], [ExclamationTriangleIcon, 'Match exceptions', stats.exceptions], [CheckCircleIcon, 'Matched / verified', stats.ready]].map(([Icon, label, value]) => <div key={label} className="rounded-xl border border-white/10 bg-white/10 p-4 backdrop-blur"><Icon className="h-5 w-5 text-indigo-300" /><p className="mt-2 text-2xl font-bold">{value}</p><p className="text-xs text-slate-300">{label}</p></div>)}
+          <div className="relative mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[[BanknotesIcon, 'Total invoices', stats.total], [DocumentMagnifyingGlassIcon, 'In review', stats.review], [ExclamationTriangleIcon, 'Match exceptions', stats.exceptions], [CheckCircleIcon, 'Matched / verified', stats.ready]].map(([Icon, label, value]) => <div key={label} className="rounded-xl border border-white/15 bg-white/10 p-4 shadow-sm backdrop-blur"><Icon className="h-5 w-5 text-cyan-100" /><p className="mt-2 text-2xl font-bold">{value}</p><p className="text-xs text-white/75">{label}</p></div>)}
           </div>
         </div>
 

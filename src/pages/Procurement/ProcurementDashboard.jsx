@@ -383,7 +383,7 @@ const ProcurementDashboard = () => {
               Total Order Value
             </h2>
             <div className="text-4xl font-bold text-indigo-600">
-              ${loading ? '...' : (stats.orders?.total_value ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${loading ? '...' : stats.orders.total_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="mt-2 text-sm text-gray-500">
               Across {stats.orders.total} purchase orders

@@ -285,7 +285,7 @@ function App() {
 
   // Module Protected Route wrapper
   // SOFT-CODED: stable reference via useCallback prevents remount loop
-  const ModuleProtectedRoute = useCallback(({ children, moduleCode, moduleCodes }) => {
+  const ModuleProtectedRoute = useCallback(({ children, moduleCode }) => {
     if (!isAuthenticated) {
       return <Navigate to="/login" replace />
     }
@@ -317,8 +317,7 @@ function App() {
     }
     
     // Check if user has access to the required module
-    const codesToCheck = moduleCodes || (moduleCode ? [moduleCode] : [])
-    if (codesToCheck.some(code => userModules.includes(code))) {
+    if (userModules.includes(moduleCode)) {
       return children
     }
     
@@ -1325,7 +1324,7 @@ function App() {
         <Route
           path="qhse"
           element={
-            <ModuleProtectedRoute moduleCodes={["qhse", "qhse_detailed", "qhse_quality", "qhse_health_safety", "qhse_environmental", "qhse_energy"]}>
+            <ModuleProtectedRoute moduleCode="qhse">
               <QHSEHub />
             </ModuleProtectedRoute>
           }
@@ -1333,7 +1332,7 @@ function App() {
         <Route
           path="qhse/general/*"
           element={
-            <ModuleProtectedRoute moduleCodes={["qhse", "qhse_detailed", "qhse_quality", "qhse_health_safety", "qhse_environmental", "qhse_energy"]}>
+            <ModuleProtectedRoute moduleCode="qhse">
               <GeneralQHSE />
             </ModuleProtectedRoute>
           }
@@ -1342,7 +1341,7 @@ function App() {
         {/* <Route
           path="qhse/interconnected-demo/:projectId?"
           element={
-            <ModuleProtectedRoute moduleCodes={["qhse", "qhse_detailed", "qhse_quality", "qhse_health_safety", "qhse_environmental", "qhse_energy"]}>
+            <ModuleProtectedRoute moduleCode="qhse">
               <QHSEInterconnectedDemo />
             </ModuleProtectedRoute>
           }

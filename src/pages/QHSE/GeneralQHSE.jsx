@@ -17,7 +17,7 @@ import DashSummaryCard from './components/Dashboard/DashSummaryCard';
 import QHSEOverviewChart from './components/Dashboard/OverviewChart';
 import ProjectStatus from './components/Dashboard/ProjectStatus';
 import SummaryView from './components/SummayView/Page';
-import ProjectQualityDetails from './ProjectQualityDetails';
+import DetailedView from './components/DetailedView/DetailedView';
 import QualityManagement from './QualityManagement';
 import HealthSafety from './HealthSafety';
 import Environmental from './Environmental';
@@ -43,9 +43,9 @@ const GeneralQHSE = () => {
         <Route index element={<QHSEDashboard />} />
         <Route path="/" element={<QHSEDashboard />} />
         <Route path="/summary" element={<SummaryViewWrapper />} />
-        <Route path="/quality" element={<ProjectQualityDetailsWrapper />} />
-        <Route path="/quality-management" element={<QualityManagementWrapper />} />
+        <Route path="/detailed" element={<DetailedViewWrapper />} />
         <Route path="/projects" element={<ProjectsWrapper />} />
+        <Route path="/quality" element={<QualityManagement />} />
         <Route path="/health-safety" element={<HealthSafety />} />
         {/* SOFT-CODED: Environmental and Energy routes disabled - not related to project quality */}
         {/* <Route path="/environmental" element={<Environmental />} /> */}
@@ -170,7 +170,14 @@ const QHSEDashboard = () => {
       color: 'from-blue-500 to-blue-600',
       iconColor: 'text-blue-500'
     },
-    // SOFT-CODED: Detailed View removed - comprehensive data table functionality merged into Summary View
+    {
+      title: 'Detailed View',
+      description: 'Comprehensive project data table',
+      icon: TableCellsIcon,
+      path: '/qhse/general/detailed',
+      color: 'from-indigo-500 to-indigo-600',
+      iconColor: 'text-indigo-500'
+    },
     {
       title: 'Project Management',
       description: 'Create and manage QHSE projects',
@@ -335,18 +342,10 @@ const SummaryViewWrapper = () => {
   );
 };
 
-const ProjectQualityDetailsWrapper = () => {
-  return (
-    <div className="max-w-[1920px] mx-auto">
-      <ProjectQualityDetails />
-    </div>
-  );
-};
-
-const QualityManagementWrapper = () => {
+const DetailedViewWrapper = () => {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1920px] mx-auto">
-      <QualityManagement />
+      <DetailedView />
     </div>
   );
 };

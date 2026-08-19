@@ -150,10 +150,7 @@ const HealthSafety = ({ pageControls }) => {
         {[
           { id: 'overview', label: 'Overview', icon: BarChart3 },
           { id: 'incidents', label: 'Incidents', icon: AlertCircle },
-          // Soft-coded: Only show Risk Assessment tab if feature flag is enabled
-          ...(HEALTH_SAFETY_FEATURES.enableRiskAssessmentView ? [
-            { id: 'risk', label: 'Risk Assessment', icon: AlertTriangle }
-          ] : []),
+          { id: 'risk', label: 'Risk Assessment', icon: AlertTriangle },
           { id: 'performance', label: 'Performance', icon: TrendingUp }
         ].map(view => (
           <button
@@ -235,8 +232,7 @@ const HealthSafety = ({ pageControls }) => {
         />
       )}
 
-      {/* Soft-coded: Only render Risk Assessment view if feature flag is enabled */}
-      {selectedView === 'risk' && HEALTH_SAFETY_FEATURES.enableRiskAssessmentView && (
+      {selectedView === 'risk' && (
         <RiskAssessmentView 
           highRiskProjects={highRiskProjects}
           safetyChecklist={safetyChecklist}
