@@ -139,6 +139,17 @@ const financeService = {
   },
 
   /**
+   * Load an invoice PDF through the authenticated API client so callers can
+   * handle missing files without rendering the API error page in an iframe.
+   */
+  async getInvoicePreviewBlob(id) {
+    const response = await apiClient.get(`${API_BASE}/invoices/${id}/preview/`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  /**
    * Approve an invoice
    */
   async approveInvoice(approvalToken, comments = '') {

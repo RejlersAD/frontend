@@ -82,6 +82,59 @@ const FinancialCard = ({ label, value, emphasis }) => (
 );
 FinancialCard.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string.isRequired, emphasis: PropTypes.bool };
 
+const InvoicePdfPreview = ({ invoice }) => {
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(true);
+  const [previewError, setPreviewError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    setPreviewLoading(true);
+    setPreviewError('');
+    setPreviewUrl('');
+
+    financeService.getInvoicePreviewBlob(invoice.id)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewUrl(objectUrl);
+      })
+      .catch((requestError) => {
+        if (!active) return;
+        setPreviewError(requestError?.response?.status === 404
+          ? 'The invoice record exists, but its original PDF is missing from document storage.'
+          : 'The invoice PDF could not be loaded.');
+      })
+      .finally(() => { if (active) setPreviewLoading(false); });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [invoice.id, retryKey]);
+
+  if (previewLoading) {
+    return <div className="flex h-[720px] items-center justify-center gap-2 text-sm text-slate-500"><ArrowPathIcon className="h-5 w-5 animate-spin" /> Loading invoice PDF…</div>;
+  }
+
+  if (previewError) {
+    return (
+      <div className="flex h-[720px] flex-col items-center justify-center px-8 text-center">
+        <span className="rounded-2xl bg-amber-100 p-4 text-amber-700"><DocumentTextIcon className="h-9 w-9" /></span>
+        <h2 className="mt-4 text-lg font-bold text-slate-900">Original PDF unavailable</h2>
+        <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">{previewError}</p>
+        <p className="mt-1 max-w-sm text-xs text-slate-500">Ask a finance administrator to restore the source PDF in document storage.</p>
+        <button type="button" onClick={() => setRetryKey((value) => value + 1)} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700"><ArrowPathIcon className="h-4 w-4" /> Retry preview</button>
+      </div>
+    );
+  }
+
+  return <iframe title={`Invoice ${invoice.invoice_number}`} src={previewUrl} className="h-[720px] w-full" />;
+};
+InvoicePdfPreview.propTypes = { invoice: PropTypes.object.isRequired };
+
 const IncomingDetail = ({ invoice, onChanged = () => window.location.reload() }) => {
   const allocations = invoice.po_allocations || [];
   const [working, setWorking] = useState(false);
@@ -112,7 +165,7 @@ const IncomingDetail = ({ invoice, onChanged = () => window.location.reload() })
     <div className="grid gap-5 xl:grid-cols-[minmax(420px,0.9fr)_minmax(600px,1.1fr)]">
       <div className="space-y-4">
         <div className="sticky top-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
-          <iframe title={`Invoice ${invoice.invoice_number}`} src={financeService.getInvoicePreviewUrl(invoice.id)} className="h-[720px] w-full" />
+          <InvoicePdfPreview invoice={invoice} />
         </div>
       </div>
       <div className="space-y-4">
