@@ -1,0 +1,24 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Rejlers Logo - Modern Engineering Symbol -->
+  <rect width="512" height="512" rx="80" fill="#2B3A55"/>
+  
+  <!-- Abstract Engineering Symbol - Stylized R -->
+  <g transform="translate(100, 100)">
+    <!-- Main R shape -->
+    <path d="M 50 50 L 50 280 L 100 280 L 100 200 L 150 200 C 180 200 200 180 200 150 C 200 120 180 100 150 100 L 100 100 L 100 50 Z M 100 100 L 150 100 C 165 100 175 110 175 125 C 175 140 165 150 150 150 L 100 150 Z" fill="#7FCAB5"/>
+    
+    <!-- Engineering accent line -->
+    <path d="M 100 200 L 220 280" stroke="#73BDC8" stroke-width="25" stroke-linecap="round"/>
+    
+    <!-- Innovation dot -->
+    <circle cx="240" cy="290" r="20" fill="#F6B2BB"/>
+  </g>
+  
+  <!-- Grid pattern overlay for engineering theme -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(127, 202, 181, 0.1)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="512" height="512" fill="url(#grid)"/>
+</svg>

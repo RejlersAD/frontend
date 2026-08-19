@@ -1,0 +1,71 @@
+[33m4565e859[m fix: resolve high priority sonarcloud issues - security and reliability
+[33m6b58d65c[m feat(project-control): add Planning Package sub-feature (6.2)
+[33m6b684035[m feat(qhse): remove High Risk Projects section and disable Environmental/Energy modules
+[33m824558a5[m feat(qhse): update Health & Safety to Occupational Health & Safety using soft-coding
+[33me894235d[m fix(rbac): super administrators bypass HR module feature flag
+[33m8111e691[m feat(rbac): move My Profile to COMMON section and enhance sidebar filtering
+[33m24f9ba22[m feat(rbac): disable HR module for all users with feature flags
+[33m50281a52[m feat(rbac): recognize ICT Administrator role in frontend
+[33mfd3ed452[m fix(sidebar): enforce module-based visibility - remove is_staff bypass
+[33m8783b8bd[m fix(sidebar): show admin section when user has admin module codes
+[33mfafff5d9[m feat(rbac): update admin section to show 6 modules in Role Management
+[33m3eea9d9c[m feat(rbac): show hr_onboarding as separate checkbox in Role and Access Management
+[33mc5ce5d72[m feat: Add comprehensive Profile UI with HR Onboarding sync
+[33maf9aca4d[m feat(data-mining): Add Tableau Prep-style Data Mining platform with Wrench integration
+[33m849589b6[m feat(dashboard): draggable widget layout + AI-themed customize UX
+[33m543fe0a1[m feat(enquiry): add 9.6 enquiry admin page + public page cleanup
+[33m96bfdd35[m feat(hr): add employee_id configuration alerts and rename Self-Service to My Profile
+[33md11cc8e2[m feat(timesheet): add Refresh Data button with cache-busting for Live tab
+[33m744bafca[m feat(sidebar): disable Request Access link from sidebar navigation
+[33mf344de69[m feat(qhse): add granular QHSE sub-module codes for role access control
+[33m7ac942d7[m feat(rbac): granular procurement module codes + UX redesign of /admin/roles
+[33m246d1059[m feat(rbac): dynamic grouped module panel + unified role/access page
+[33ma54c4d59[m feat(rbac): access request UI, hr_self_service sidebar, admin access-requests page
+[33mfaa6534d[m fix(rbac): repair sidebar isAdmin detection — fix stale localStorage + correct HR module codes
+[33m13a99aff[m feat(rbac): role management page /admin/roles + inline role popover in /admin/users; super-admin enforcement on sensitive actions
+[33m3cd1c4ac[m feat(finance): remove salary-slip nav option
+[33m10199c69[m feat(hr): salary management, payroll KPIs, pending notifications, dept tabular view
+[33m29b59bc2[m feat(finance): add 3.2 Invoice Tracker (read-only pipeline view)
+[33m476e2d94[m chore(finance): retire /finance/invoices Invoice Management page
+[33m3dbf391e[m chore(finance): retire /finance/upload navigation link
+[33ma31f0f53[m feat(hr): add consolidated real-time HR Command Center at /hr
+[33m1f5332f4[m feat(dashboard-admin): renumber Admin section to 9 via soft-coded nav labels
+[33m7a19c2a4[m feat(admin): AI Champion of the Month + real-time AdminDashboard
+[33m54049bab[m fix(profile): show profile photo in sidebar avatar — dispatch to Redux on upload, render photo in sidebar footer
+[33m8aae8d9e[m feat(pfd): add engineering context fields to upload form + UI/nav fixes
+[33md04104a5[m fix: resolve infinite re-render loop on /pid/upload (and all pages)
+[33mccb4a902[m feat(wrench): add Wrench SmartProject integration UI
+[33md000d73e[m feat(sales): replace CRM with Internal Platform Usage Analytics dashboard
+[33mb1152ad7[m feat(sales): soft-disable sales module via feature flag
+[33m14ca300e[m Test fix - Unicode chars removed
+[33m38a8331a[m feat: Add Pressure Instrument Page & Update Process Datasheets Naming
+[33md0c31dc9[m feat: Add salary slip management system with PDF generation and email services
+[33m5332329c[m Add P&ID project-based workflow, reference documents, and remove subscription/demo features
+[33m340e2081[m feat(pfd): Add PFD verification UI with client-side export
+[33md53d139d[m feat: Add PFD Verification page with 8 reference documents
+[33mc8d49f9e[m feat: Advanced Sales Module with Intelligent Sub-Features
+[33m2a0a2e75[m feat: Enhanced sales module and UI improvements
+[33mbc409380[m Fix: Nested user data extraction, password reset authentication, and RBAC utilities
+[33mbdc4601b[m fix: correct line breaks in Sidebar debug logging
+[33m7b5dba6e[m debug: add comprehensive logging for profile photo display issue
+[33m0b5a246f[m feat: add profile photo display in sidebar with smart fallback
+[33m4f9dfc9c[m feat(qhse): implement smart delete UI and AI interconnection system
+[33md14e0aed[m feat: Add delete functionality to QHSE projects and rename menu items
+[33m38115a27[m feat: Implement Predictive Analytics Dashboard with ML forecasting
+[33m047ce231[m feat: Add requisition type selector and UI improvements
+[33m483d6c6f[m feat: Add subscription system with admin management and public pricing page
+[33m524a7397[m feat: Add dynamic module categorization system with 7 predefined categories, enhanced Edit User modal with color-coded categories, search functionality, and soft-coded configuration
+[33ma5993145[m Last Commit
+[33m73a73ca0[m feat: Add DesignIQ dashboard and engineering lists UI with 4 sub-features
+[33mf1e1358d[m feat: Add complete QHSE frontend with 8 subsections and UI controls
+[33m307adf9c[m fix: Correct sidebar menu numbering and alignment
+[33m50ec90a8[m Restore finance UI module after merge
+[33m39ab38cc[m feat: Add CRS Multiple Revision dashboard with AI-powered insights
+[33md5da9273[m URGENT FIX: Correct syntax error in Sidebar.jsx - fix corrupted fetch line
+[33m8ff9c354[m CRITICAL FIX: Sidebar now uses API_BASE_URL for Railway backend on Vercel instead of relative path
+[33mfff2ce01[m Fix: Update sidebar module codes to match database (pfd_to_pid, pid_analysis, crs_documents)
+[33m1713d6ca[m feat: CRS History UI with comprehensive action menus and S3 integration
+[33m53dbf331[m feat: Move Admin to sidebar as '4. User Management'
+[33m8775f278[m 23-12-25 : First
+[33ma14664b4[m 22-12-25 - first commit
+[33m0aecb275[m 20-12-25 : First

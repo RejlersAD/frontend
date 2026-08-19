@@ -1,0 +1,63 @@
+# Dependencies
+node_modules
+dist
+.next
+.nuxt
+out
+.cache
+
+# Version Control
+.git
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Testing
+coverage
+.nyc_output
+test-results/
+tests/
+**/__tests__/
+*.test.ts
+*.test.tsx
+*.test.js
+*.test.jsx
+*.spec.ts
+*.spec.tsx
+*.spec.js
+*.spec.jsx
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+build
+.turbo
+.vercel
+.output
+
+# Misc
+*.md
+!README.md
+docs/
+.prettierignore
+.eslintignore

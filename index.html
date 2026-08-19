@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Google tag (gtag.js) — RADAI production property G-D19W29T292.
+         Placed as the very first thing inside <head> per Google's install
+         instructions. The IIFE below:
+           • Soft-codes the measurement ID (window.__RADAI_GA_ID__ wins,
+             else the data-ga-id attribute on <html>, else the default).
+           • Guards against double-injection so SPA navigation / HMR can
+             never load gtag.js twice ("Don't add more than one Google
+             tag to each page").
+           • Skips loading on localhost / 127.0.0.1 so dev traffic does
+             not pollute Analytics. Flip RADAI_GA_LOAD_ON_LOCAL=true on
+             window to override for QA.
+    -->
+    <script>
+      (function () {
+        var DEFAULT_ID = 'G-D19W29T292';
+        var id = (window.__RADAI_GA_ID__)
+              || (document.documentElement.dataset.gaId)
+              || DEFAULT_ID;
+        if (!id) return;
+        if (window.__RADAI_GA_LOADED__) return;
+        var host = (location && location.hostname) || '';
+        var isLocal = host === 'localhost' || host === '127.0.0.1' || host === '';
+        if (isLocal && !window.RADAI_GA_LOAD_ON_LOCAL) return;
+        window.__RADAI_GA_LOADED__ = true;
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(id);
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { window.dataLayer.push(arguments); };
+        window.gtag('js', new Date());
+        window.gtag('config', id);
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="RADAI - AI-Powered Engineering Platform" />
+    <title>RADAI - AI-Powered Engineering Intelligence</title>
+    <style>
+      @keyframes gradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+      @keyframes glow {
+        0%, 100% { box-shadow: 0 0 20px rgba(127, 202, 181, 0.3); }
+        50% { box-shadow: 0 0 40px rgba(127, 202, 181, 0.6); }
+      }
+      @keyframes grid-flow {
+        0% { transform: translateY(0); }
+        100% { transform: translateY(40px); }
+      }
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes slide-up {
+        from { opacity: 0; transform: translateY(40px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-gradient { animation: gradient 3s linear infinite; }
+      .animate-glow { animation: glow 2s ease-in-out infinite; }
+      .animate-fade-in { animation: fade-in 1s ease-out; }
+      .animate-slide-up { animation: slide-up 0.8s ease-out 0.2s both; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.jsx"></script>
+  </body>
+</html>

@@ -1,0 +1,190 @@
+/**
+ * RADAI Project Planning Application — Soft-coded frontend configuration.
+ *
+ * Backend pairing: `backend/apps/planning_intelligence/*` mounted at
+ * `${API_BASE_URL}/planning-intelligence/`.
+ */
+
+export const PLANNING_ENDPOINTS = {
+  projects: '/planning-intelligence/projects/',
+  project: (id) => `/planning-intelligence/projects/${id}/`,
+  analyze: (id) => `/planning-intelligence/projects/${id}/analyze/`,
+  generate: (id) => `/planning-intelligence/projects/${id}/generate/`,
+
+  aiSettings: (id) => `/planning-intelligence/projects/${id}/ai-settings/`,
+  aiSettingsTest: (id) => `/planning-intelligence/projects/${id}/ai-settings/test/`,
+
+  files: '/planning-intelligence/files/',
+  file: (id) => `/planning-intelligence/files/${id}/`,
+
+  generations: '/planning-intelligence/generations/',
+  generation: (id) => `/planning-intelligence/generations/${id}/`,
+  // In-place hand-edit of a generation's wbs/activities/eddr/manhours/
+  // milestones/narrative (Project Scheduler correction — same version).
+  editGeneration: (id) => `/planning-intelligence/generations/${id}/edit/`,
+  // NOTE: query param is `export_format` (not `format`) because DRF's own
+  // content-negotiation intercepts a query param literally named `format`
+  // (URL_FORMAT_OVERRIDE) to select a *renderer* — since no renderer is
+  // registered for 'pptx'/'csv'/'excel', that would raise a 404 before the
+  // view's export() method ever runs. See backend views.py PlanningGenerationViewSet.export.
+  export: (id, format) => `/planning-intelligence/generations/${id}/export/?export_format=${format}`,
+}
+
+// File categories — mirrors backend/apps/planning_intelligence/config.py FILE_CATEGORIES
+export const PLANNING_FILE_CATEGORIES = [
+  { value: 'sow', label: 'Scope of Work (SOW)', icon: '📜' },
+  { value: 'wbs', label: 'WBS Structure', icon: '🗂️' },
+  { value: 'mdr', label: 'Master Deliverable Register (MDR)', icon: '📚' },
+  { value: 'eddr', label: 'Engineering Document Deliverable Register (EDDR)', icon: '📋' },
+  { value: 'schedule_requirements', label: 'Schedule Requirements', icon: '📐' },
+  { value: 'project_control_procedure', label: 'Project Control Procedure', icon: '📏' },
+  { value: 'reference_schedule', label: 'Reference Schedule', icon: '📅' },
+  { value: 'output_schedule_sample', label: 'Output Schedule Sample', icon: '🧾' },
+  { value: 'timeline', label: 'Timeline / Milestone File', icon: '🚩' },
+  { value: 'other', label: 'Other Attachment', icon: '📎' },
+]
+
+// Left-side workflow navigation — soft-coded, add a step by appending here only.
+// `accent` drives the stepper's icon-chip gradient; `requiresGeneration` controls
+// whether the step is greyed out until a schedule has been generated at least once.
+export const PLANNING_WORKFLOW_STEPS = [
+  { id: 'upload',       label: 'Upload Files',          icon: '📤', description: 'Add SOW, WBS, MDR & schedule docs', accent: 'from-sky-500 to-blue-600',      requiresGeneration: false },
+  { id: 'intelligence', label: 'Document Intelligence', icon: '🧠', description: 'Rule-based analysis of your files',  accent: 'from-violet-500 to-purple-600', requiresGeneration: false },
+  { id: 'wbs',          label: 'WBS Builder',           icon: '🗂️', description: 'Work breakdown structure tree',      accent: 'from-fuchsia-500 to-pink-600',  requiresGeneration: true },
+  { id: 'schedule',     label: 'Schedule Generator',    icon: '📅', description: 'Level-4 activities & critical path', accent: 'from-orange-500 to-amber-600',  requiresGeneration: true },
+  { id: 'eddr',         label: 'EDDR',                  icon: '📋', description: 'Deliverable review-cycle register',  accent: 'from-teal-500 to-emerald-600',  requiresGeneration: true },
+  { id: 'manhours',     label: 'Manhours',              icon: '⏱️', description: 'Resource & effort estimate',         accent: 'from-cyan-500 to-sky-600',      requiresGeneration: true },
+  { id: 'validation',   label: 'Validation',            icon: '✅', description: 'Automated QA rule checks',           accent: 'from-emerald-500 to-green-600', requiresGeneration: true },
+  { id: 'narrative',    label: 'Narrative',             icon: '📝', description: 'Auto-composed schedule basis',       accent: 'from-indigo-500 to-blue-600',   requiresGeneration: true },
+  { id: 'presentation', label: 'PowerPoint Presentation', icon: '📊', description: 'Client-ready summary deck',         accent: 'from-rose-500 to-orange-500',   requiresGeneration: true },
+  { id: 'export',       label: 'Export',                icon: '⬇️', description: 'CSV, Excel, Primavera, JSON',        accent: 'from-slate-600 to-slate-800',   requiresGeneration: true },
+]
+
+// Soft-coded layout tokens so the page's "canvas" sizing / hero styling can be
+// tuned in one place without touching JSX.
+export const PLANNING_UI = {
+  heroIcon: '🧭',
+  heroGradient: 'from-violet-600 via-indigo-600 to-blue-600',
+}
+
+// Canvas width modes — user-toggleable between a comfortable reading width
+// ("original") and a near edge-to-edge working width ("full"). Persisted in
+// localStorage so the preference survives reloads/navigation.
+export const CANVAS_MODES = {
+  ORIGINAL: 'original',
+  FULL: 'full',
+}
+
+export const CANVAS_MODE_STORAGE_KEY = 'planningPackages.canvasMode'
+
+export const CANVAS_MODE_OPTIONS = [
+  { value: CANVAS_MODES.ORIGINAL, label: 'Original', icon: '🗗' },
+  { value: CANVAS_MODES.FULL, label: 'Full Screen', icon: '🖥️' },
+]
+
+// Tailwind classes per canvas mode — widened "original" width and a near-full
+// "full" width, each paired with matching outer page padding.
+export const CANVAS_MODE_STYLES = {
+  [CANVAS_MODES.ORIGINAL]: {
+    container: 'max-w-[1800px]',
+    pagePadding: 'px-4 sm:px-6 lg:px-10',
+  },
+  [CANVAS_MODES.FULL]: {
+    container: 'max-w-none',
+    pagePadding: 'px-2 sm:px-3 lg:px-5',
+  },
+}
+
+export const PARSE_STATUS_STYLES = {
+  pending:    { label: 'Pending',    className: 'bg-slate-100 text-slate-600' },
+  processing: { label: 'Processing', className: 'bg-amber-100 text-amber-700' },
+  done:       { label: 'Parsed',     className: 'bg-emerald-100 text-emerald-700' },
+  failed:     { label: 'Failed',     className: 'bg-rose-100 text-rose-700' },
+}
+
+export const VALIDATION_SEVERITY_STYLES = {
+  pass:     { label: 'Pass',     className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  warning:  { label: 'Warning',  className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  critical: { label: 'Critical', className: 'bg-rose-50 text-rose-700 border-rose-200' },
+}
+
+// Export step cards — soft-coded metadata so the Export screen can grow new
+// formats/descriptions without touching JSX. `category` groups cards into
+// sections; `badge` is an optional small pill (e.g. "New"); `accent` drives
+// the card's icon-chip + hover gradient.
+export const EXPORT_FORMATS = [
+  { format: 'xer',           label: 'Primavera Schedule (.xer)', icon: '🗓️', description: 'Native P6 project file — WBS, activities, logic ties & calendar in one import.', category: 'Schedule Data', accent: 'from-orange-500 to-amber-600', badge: 'New' },
+  { format: 'primavera_csv', label: 'Primavera-ready (CSV)',     icon: '🛠️', description: "Column layout mapped for P6's CSV import wizard.",                          category: 'Schedule Data', accent: 'from-amber-500 to-yellow-600' },
+  { format: 'csv',           label: 'Activities (CSV)',          icon: '📄', description: 'Flat activity list — quick to open in any spreadsheet tool.',               category: 'Schedule Data', accent: 'from-slate-500 to-slate-700' },
+  { format: 'excel',         label: 'Activities (Excel)',        icon: '📊', description: 'Formatted workbook, ready to filter, sort & share.',                        category: 'Spreadsheet',  accent: 'from-emerald-500 to-green-600' },
+  { format: 'eddr_csv',      label: 'EDDR (CSV)',                icon: '📋', description: 'Deliverable review-cycle register for document control.',                  category: 'Documents',    accent: 'from-teal-500 to-emerald-600' },
+  { format: 'json',          label: 'Full Generation (JSON)',    icon: '🧬', description: 'Complete raw payload — WBS, schedule, EDDR, manhours & validation.',        category: 'Raw Data',     accent: 'from-indigo-500 to-violet-600' },
+]
+
+// Section order + accent used for the Export step's category headers.
+export const EXPORT_CATEGORY_ORDER = ['Schedule Data', 'Spreadsheet', 'Documents', 'Raw Data']
+
+// Slide outline shown to the user before they download the PowerPoint deck —
+// purely descriptive; the backend (export_utils.generation_to_pptx_bytes)
+// is the single source of truth for actual slide content/order. Deck is
+// built on Rejlers' own corporate template (cover/agenda/content/table/
+// closing layouts), so exports are on-brand in both local and production.
+export const PRESENTATION_SLIDE_OUTLINE = [
+  { icon: '🧭', title: 'Cover — Project Snapshot' },
+  { icon: '📑', title: 'Agenda' },
+  { icon: '🧭', title: 'Project Overview' },
+  { icon: '🗂️', title: 'Work Breakdown Structure' },
+  { icon: '📅', title: 'Schedule Summary' },
+  { icon: '📌', title: 'Key Milestones (if defined)' },
+  { icon: '📋', title: 'Engineering Document Deliverable Register' },
+  { icon: '⏱️', title: 'Manhour Estimate' },
+  { icon: '✅', title: 'Validation & Quality Checks' },
+  { icon: '📝', title: 'Executive Summary' },
+  { icon: '🙏', title: 'Closing — Thank You' },
+]
+
+// Max file size shown in the uploader hint — mirrors backend MAX_FILE_BYTES default.
+export const PLANNING_MAX_FILE_MB = 100
+
+// ─────────────────────────────────────────────────────────────────────────
+// Discipline metadata — mirrors backend/apps/planning_intelligence/config.py
+// (DISCIPLINES, DISCIPLINE_RESPONSIBLE_ROLE, DISCIPLINE_DEFAULT_DELIVERABLES).
+// Only the "engineering" disciplines that Document Intelligence actually
+// scans for (see ENGINEERING_DISCIPLINE_ORDER) are listed here — used to turn
+// the flat "3 deliverables · 1 mentioned" discipline card into a detailed,
+// expandable one (icon, responsible role, full deliverable checklist).
+// Add a discipline by appending a row here — no JSX changes required.
+// ─────────────────────────────────────────────────────────────────────────
+export const PLANNING_DISCIPLINE_META = {
+  process:         { label: 'Process Engineering',         icon: '🧪', accent: 'from-sky-500 to-blue-600',       responsibleRole: 'Lead Process Engineer' },
+  piping:          { label: 'Piping Engineering',           icon: '🛢️', accent: 'from-amber-500 to-orange-600',   responsibleRole: 'Lead Piping Engineer' },
+  mechanical:      { label: 'Mechanical Engineering',       icon: '⚙️', accent: 'from-slate-500 to-slate-700',    responsibleRole: 'Mechanical Engineer' },
+  civil:           { label: 'Civil / Structural Engineering', icon: '🏗️', accent: 'from-stone-500 to-stone-700', responsibleRole: 'Civil Engineer' },
+  electrical:      { label: 'Electrical Engineering',       icon: '⚡', accent: 'from-yellow-500 to-amber-600',   responsibleRole: 'Electrical Engineer' },
+  instrumentation: { label: 'Instrumentation & Control',    icon: '🎛️', accent: 'from-emerald-500 to-teal-600',   responsibleRole: 'Instrumentation Engineer' },
+  telecom:         { label: 'Telecom',                      icon: '📡', accent: 'from-indigo-500 to-violet-600',  responsibleRole: 'Instrumentation Engineer' },
+}
+export const DEFAULT_DISCIPLINE_META = { label: '', icon: '📄', accent: 'from-slate-400 to-slate-600', responsibleRole: 'Engineer' }
+
+// ─────────────────────────────────────────────────────────────────────────
+// BYOK (Bring Your Own Key) — Claude/Anthropic augmentation, per project.
+// Mirrors backend/apps/planning_intelligence/config.py. Model list is
+// soft-coded here as a fallback; the backend's `model_choices` (returned by
+// the ai-settings GET endpoint) is always preferred/authoritative when
+// available, so new models only need to be added on the backend.
+// ─────────────────────────────────────────────────────────────────────────
+export const AI_PROVIDERS = [
+  { value: 'anthropic', label: 'Anthropic Claude' },
+]
+
+export const CLAUDE_MODEL_OPTIONS = [
+  { value: 'claude-opus-4-1-20250805', label: 'Claude Opus 4.1 (most capable — recommended)', recommended: true },
+  { value: 'claude-opus-4-20250514', label: 'Claude Opus 4', recommended: false },
+  { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (balanced cost/quality)', recommended: false },
+  { value: 'claude-3-5-haiku-20241022', label: 'Claude Haiku 3.5 (fastest / cheapest)', recommended: false },
+]
+
+export const DEFAULT_CLAUDE_MODEL = 'claude-opus-4-1-20250805'
+
+// Simple client-side sanity check before submitting (backend re-validates).
+export const CLAUDE_API_KEY_PATTERN = /^sk-ant-[A-Za-z0-9\-_]{20,}$/

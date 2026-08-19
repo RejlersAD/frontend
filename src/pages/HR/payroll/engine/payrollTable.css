@@ -1,0 +1,125 @@
+/**
+ * Payroll Table — Enhanced Responsive Design
+ * Custom styles for intelligent full-screen table layout with many columns
+ */
+
+/* Smooth horizontal scrolling with better UX */
+.payroll-table-container {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.3) rgba(226, 232, 240, 0.3);
+}
+
+/* Webkit scrollbar styling for Chrome/Edge/Safari */
+.payroll-table-container::-webkit-scrollbar {
+  height: 10px;
+}
+
+.payroll-table-container::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.3);
+  border-radius: 10px;
+}
+
+.payroll-table-container::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.4);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+.payroll-table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.7);
+}
+
+/* Fade overlay to indicate more content on right side */
+.payroll-table-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 10px;
+  width: 40px;
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.9), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.payroll-table-container:not(.scrolled-to-end)::after {
+  opacity: 1;
+}
+
+/* Sticky column hover effect */
+.payroll-sticky-col {
+  transition: box-shadow 0.2s ease;
+}
+
+.payroll-sticky-col:hover {
+  box-shadow: 4px 0 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* New column highlight pulse animation */
+@keyframes pulseHighlight {
+  0%, 100% {
+    background-color: rgba(238, 242, 255, 0.3);
+  }
+  50% {
+    background-color: rgba(224, 231, 255, 0.5);
+  }
+}
+
+.new-column-highlight {
+  animation: pulseHighlight 2s ease-in-out 3;
+}
+
+/* Compact mode optimizations */
+.ultra-compact-table {
+  font-feature-settings: 'tnum' 1; /* Tabular numbers */
+  letter-spacing: -0.01em;
+}
+
+/* Better focus states for accessibility */
+.payroll-table-container table th:focus-within,
+.payroll-table-container table td:focus-within {
+  outline: 2px solid rgba(99, 102, 241, 0.5);
+  outline-offset: -2px;
+  z-index: 15;
+}
+
+/* Responsive print styles */
+@media print {
+  .payroll-table-container {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  
+  .payroll-table-container table {
+    page-break-inside: avoid;
+  }
+  
+  .payroll-sticky-col {
+    position: static !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Loading state shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.table-loading-shimmer {
+  background: linear-gradient(
+    to right,
+    rgba(241, 245, 249, 0.8) 0%,
+    rgba(226, 232, 240, 0.9) 20%,
+    rgba(241, 245, 249, 0.8) 40%,
+    rgba(241, 245, 249, 0.8) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+}
