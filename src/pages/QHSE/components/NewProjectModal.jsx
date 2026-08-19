@@ -165,7 +165,14 @@ const NewProjectModal = ({ open, onClose, onProjectCreated, editMode = false, pr
       let result;
       if (editMode && projectData) {
         // Update existing project
-        result = await qhseProjectsAPI.update(projectData.id, formData);
+        const _dateFields = [
+          'projectStartingDate', 'projectClosingDate', 'projectExtension',
+          'projectQualityPlanStatusIssueDate', 'projectAudit1', 'projectAudit2',
+          'projectAudit3', 'projectAudit4', 'clientAudit1', 'clientAudit2'
+        ];
+        const _sanitized = { ...formData };
+        _dateFields.forEach(f => { if (!_sanitized[f]) _sanitized[f] = null; });
+        result = await qhseProjectsAPI.update(projectData.id, _sanitized);
       } else {
         // Create new project
         result = await qhseProjectsAPI.create(formData);
