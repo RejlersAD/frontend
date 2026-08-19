@@ -75,7 +75,8 @@ const SocialMediaLinksSection = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.platform || !formData.url) {
+    const trimmedUrl = formData.url.trim();
+    if (!formData.platform || !trimmedUrl) {
       toast.error('Platform and URL are required');
       return;
     }
@@ -93,7 +94,7 @@ const SocialMediaLinksSection = () => {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, url: trimmedUrl }),
       });
 
       if (!res.ok) {
@@ -388,7 +389,7 @@ const SocialMediaLinksSection = () => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-700 flex items-center gap-2">
             <Globe className="w-4 h-4" />
-            <strong>Tip:</strong> Add at least 3 professional links to earn the "Well Connected" badge!
+            <strong>Tip:</strong> Add at least 3 professional links to earn the &quot;Well Connected&quot; badge!
           </p>
         </div>
       )}

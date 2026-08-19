@@ -260,7 +260,7 @@ const Sidebar = ({
 
   // Debug logging
   React.useEffect(() => {
-    if (process.env.NODE_ENV === "development") {
+    if (import.meta.env.DEV) {
       console.log("=== SIDEBAR DEBUG (MODULE-BASED RBAC) ===");
       console.log("Full user object:", user);
       console.log("isAdmin:", isAdmin);
@@ -435,7 +435,7 @@ const Sidebar = ({
         },
       ],
     },
-    // ΓöÇΓöÇ Section 4: Human Resource ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // Section 4: Human Resource
     // SOFT-CODED: Controlled by FEATURE_FLAGS.enableHRModule in features.config.js
     // SECURITY: Super administrators ALWAYS see HR, bypassing feature flag
     {
@@ -445,7 +445,7 @@ const Sidebar = ({
       type: "section",
       expanded: expandedSections.human_resource,
       enabled:
-        FEATURE_FLAGS.enableHRModule || hasSuperAdminRole || hasSuperuserFlag, // ΓÜá∩╕Å Super admin bypass
+        FEATURE_FLAGS.enableHRModule || hasSuperAdminRole || hasSuperuserFlag, // Super admin bypass
       children: [
         {
           id: "hrDashboard",
