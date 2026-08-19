@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   UserGroupIcon,
   PlusIcon,
@@ -9,7 +8,6 @@ import {
   XCircleIcon,
   ClockIcon,
   ShieldCheckIcon,
-  StarIcon,
   BuildingOfficeIcon,
   PhoneIcon,
   EnvelopeIcon,
@@ -24,7 +22,12 @@ import {
   PencilSquareIcon,
   TrashIcon,
   ExclamationTriangleIcon,
-  PowerIcon
+  PowerIcon,
+  EyeIcon,
+  XMarkIcon,
+  MapPinIcon,
+  IdentificationIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { PageControlButtons } from '../../components/Common/PageControlButtons';
@@ -34,15 +37,43 @@ import AIVendorCreator from './AIVendorCreator';
 
 // Soft-coded layout configuration
 const LAYOUT_CONFIG = {
-  maxWidthDefault: 'max-w-7xl',        // Standard container width
-  maxWidthTable: 'max-w-full',         // Full width for table view
-  tableMinWidth: 'min-w-[1400px]',     // Minimum table width to show all columns
   cardGridCols: {
     sm: 'sm:grid-cols-2',
     lg: 'lg:grid-cols-3',
     xl: 'xl:grid-cols-4'
-  },
-  scrollIndicator: 'shadow-sm ring-1 ring-gray-900/5' // Visual scroll hint
+  }
+};
+
+const COMPLETENESS_FIELDS = [
+  { key: 'vendor_code', label: 'Vendor code', group: 'Identity' },
+  { key: 'name', label: 'Legal name', group: 'Identity' },
+  { key: 'contact_person', label: 'Contact person', group: 'Contact' },
+  { key: 'email', label: 'Email', group: 'Contact' },
+  { key: 'phone', label: 'Phone', group: 'Contact' },
+  { key: 'address', label: 'Address', group: 'Location' },
+  { key: 'country', label: 'Country', group: 'Location' },
+  { key: 'trade_license_number', label: 'Trade license', group: 'Compliance' },
+  { key: 'vat_number', label: 'VAT number', group: 'Compliance' },
+  { key: 'categories', label: 'Categories', group: 'Qualification' },
+  { key: 'certifications', label: 'Certifications', group: 'Qualification' },
+];
+
+const hasVendorValue = (value) => (
+  Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined && String(value).trim() !== ''
+);
+
+const getVendorCompleteness = (vendor = {}) => {
+  const missing = COMPLETENESS_FIELDS.filter(({ key }) => !hasVendorValue(vendor[key]));
+  return {
+    score: Math.round(((COMPLETENESS_FIELDS.length - missing.length) / COMPLETENESS_FIELDS.length) * 100),
+    missing,
+  };
+};
+
+const isVendorAttentionRequired = (vendor) => {
+  const { score } = getVendorCompleteness(vendor);
+  const icvExpired = vendor?.icv_expiry_date && new Date(vendor.icv_expiry_date) < new Date();
+  return score < 75 || vendor?.status === 'pending' || Boolean(icvExpired);
 };
 
 const VendorManagement = () => {
@@ -52,10 +83,13 @@ const VendorManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRating, setFilterRating] = useState('all');
+  const [filterCompleteness, setFilterCompleteness] = useState('all');
+  const [activeKpi, setActiveKpi] = useState('total');
   const [showAICreator, setShowAICreator] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState(null);
-  const [aiRecommendations, setAiRecommendations] = useState(null);
+  const [detailVendor, setDetailVendor] = useState(null);
+  const [enrichmentVendor, setEnrichmentVendor] = useState(undefined);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
   
@@ -69,7 +103,7 @@ const VendorManagement = () => {
     features: { autoRefresh: true, fullscreen: true, sidebar: true }
   });
 
-  const fetchVendors = async () => {
+  const fetchVendors = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -98,8 +132,6 @@ const VendorManagement = () => {
       // Log for debugging
       console.log(`✅ Loaded ${normalizedData.length} vendors from API`);
       
-      // AI-powered vendor analytics
-      generateAIRecommendations(normalizedData);
     } catch (error) {
       console.error('Error fetching vendors:', error);
       setError({ 
@@ -111,65 +143,11 @@ const VendorManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchVendors();
-  }, [pageControls.isRefreshing]);
-
-  /**
-   * AI Feature: Generate vendor recommendations and insights
-   */
-  const generateAIRecommendations = (vendorList) => {
-    if (!Array.isArray(vendorList) || vendorList.length === 0) return;
-
-    // Soft-coded AI analytics
-    const recommendations = [];
-    
-    // Analyze vendor performance
-    const topPerformers = vendorList
-      .filter(v => v.rating >= 4 && v.status === 'active')
-      .slice(0, 3);
-    
-    if (topPerformers.length > 0) {
-      recommendations.push({
-        type: 'top_performers',
-        title: '⭐ Top Performing Vendors',
-        vendors: topPerformers.map(v => v.name),
-        message: `${topPerformers.length} vendors with 4+ star ratings available for new projects`
-      });
-    }
-
-    // Check for vendors needing attention
-    const needsReview = vendorList.filter(v => 
-      v.status === 'pending' || (v.rating && v.rating < 3)
-    );
-    
-    if (needsReview.length > 0) {
-      recommendations.push({
-        type: 'needs_attention',
-        title: '⚠️ Vendors Requiring Attention',
-        count: needsReview.length,
-        message: `${needsReview.length} vendor${needsReview.length > 1 ? 's' : ''} need review or approval`
-      });
-    }
-
-    // Certification compliance check
-    const withoutCerts = vendorList.filter(v => 
-      !v.certifications || v.certifications.length === 0
-    );
-    
-    if (withoutCerts.length > 0) {
-      recommendations.push({
-        type: 'compliance',
-        title: '📋 Certification Updates Needed',
-        count: withoutCerts.length,
-        message: `${withoutCerts.length} vendor${withoutCerts.length > 1 ? 's' : ''} missing certification documentation`
-      });
-    }
-
-    setAiRecommendations(recommendations);
-  };
+  }, [fetchVendors, pageControls.isRefreshing]);
 
   // Soft-coded filter logic with safe array handling
   const filteredVendors = Array.isArray(vendors) ? vendors.filter(vendor => {
@@ -178,12 +156,23 @@ const VendorManagement = () => {
     const vendorCode = vendor?.vendor_code || '';
     const status = vendor?.status || '';
     const rating = vendor?.rating || 0;
+    const country = vendor?.country || '';
+    const email = vendor?.email || '';
+    const categories = Array.isArray(vendor?.categories) ? vendor.categories.join(' ') : '';
+    const completeness = getVendorCompleteness(vendor).score;
     
     const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         vendorCode.toLowerCase().includes(searchTerm.toLowerCase());
+                         vendorCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         country.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         categories.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || status === filterStatus;
     const matchesRating = filterRating === 'all' || rating === parseInt(filterRating);
-    return matchesSearch && matchesStatus && matchesRating;
+    const matchesCompleteness = filterCompleteness === 'all'
+      || (filterCompleteness === 'complete' && completeness >= 85)
+      || (filterCompleteness === 'incomplete' && completeness < 85)
+      || (filterCompleteness === 'attention' && isVendorAttentionRequired(vendor));
+    return matchesSearch && matchesStatus && matchesRating && matchesCompleteness;
   }) : [];
 
   const getStatusConfig = (status) => {
@@ -216,7 +205,7 @@ const VendorManagement = () => {
     );
   };
 
-  const handleVendorCreated = async (vendorData) => {
+  const handleVendorCreated = async () => {
     // After successful creation, refresh vendor list
     await fetchVendors();
     setShowAICreator(false);
@@ -224,7 +213,7 @@ const VendorManagement = () => {
     setSelectedVendor(null);
   };
 
-  const handleVendorUpdated = async (updatedVendor) => {
+  const handleVendorUpdated = async () => {
     // After successful update, refresh vendor list
     await fetchVendors();
     setShowAICreator(false);
@@ -351,148 +340,159 @@ const VendorManagement = () => {
     link.click();
   };
 
+  const applyKpiFilter = (key) => {
+    setActiveKpi(key);
+    setSearchTerm('');
+    setFilterRating('all');
+    setFilterStatus(key === 'active' ? 'active' : 'all');
+    setFilterCompleteness(
+      key === 'attention' ? 'attention' : key === 'complete' ? 'complete' : 'all'
+    );
+  };
+
   const VendorStats = () => {
-    // Soft-coded stats calculation with safe array handling
     const safeVendors = Array.isArray(vendors) ? vendors : [];
+    const completenessScores = safeVendors.map(vendor => getVendorCompleteness(vendor).score);
     const stats = {
       total: safeVendors.length,
-      active: safeVendors.filter(v => v?.status === 'active').length,
-      pending: safeVendors.filter(v => v?.status === 'pending').length,
-      topRated: safeVendors.filter(v => v?.rating >= 4).length
+      active: safeVendors.filter(vendor => vendor?.status === 'active').length,
+      attention: safeVendors.filter(isVendorAttentionRequired).length,
+      complete: completenessScores.filter(score => score >= 85).length,
+      average: completenessScores.length
+        ? Math.round(completenessScores.reduce((sum, score) => sum + score, 0) / completenessScores.length)
+        : 0,
     };
+    const cards = [
+      {
+        key: 'total', label: 'Total Vendors', value: stats.total,
+        message: 'Complete supplier master directory', icon: UserGroupIcon,
+        iconClass: 'bg-slate-900', accentClass: 'border-[#00a896]',
+      },
+      {
+        key: 'active', label: 'Active Vendors', value: stats.active,
+        message: `${stats.active} approved for procurement`, icon: CheckCircleIcon,
+        iconClass: 'bg-[#00a896]', accentClass: 'border-[#00a896]',
+      },
+      {
+        key: 'attention', label: 'Needs Attention', value: stats.attention,
+        message: 'Missing data, pending review, or expired ICV', icon: ExclamationTriangleIcon,
+        iconClass: 'bg-amber-500', accentClass: 'border-amber-400',
+      },
+      {
+        key: 'complete', label: 'Data Complete', value: stats.complete,
+        message: `${stats.average}% average completeness`, icon: ShieldCheckIcon,
+        iconClass: 'bg-[#73bdc8]', accentClass: 'border-[#73bdc8]',
+      },
+    ];
 
     return (
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-indigo-500 rounded-md p-3">
-                <UserGroupIcon className="h-6 w-6 text-white" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          const selected = activeKpi === card.key;
+          return (
+            <button
+              key={card.key}
+              type="button"
+              onClick={() => applyKpiFilter(card.key)}
+              aria-pressed={selected}
+              className={`group rounded-2xl border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-[#00a896]/20 ${
+                selected ? `${card.accentClass} ring-2 ring-[#00a896]/20` : 'border-slate-200'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-600">{card.label}</p>
+                  <p className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{card.value}</p>
+                </div>
+                <span className={`rounded-xl p-3 shadow-sm ${card.iconClass}`}>
+                  <Icon className="h-6 w-6 text-white" />
+                </span>
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Total Vendors</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.total}</dd>
-                </dl>
+              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                <p className="text-xs leading-5 text-slate-500">{card.message}</p>
+                <ChevronRightIcon className="h-4 w-4 flex-none text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-[#00a896]" />
               </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
-                <CheckCircleIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Active Vendors</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.active}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-yellow-500 rounded-md p-3">
-                <ClockIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Pending Approval</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.pending}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-amber-500 rounded-md p-3">
-                <StarIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Top Rated (4+)</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.topRated}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
+            </button>
+          );
+        })}
       </div>
     );
+  };
+
+  const enrichmentTargets = enrichmentVendor === undefined
+    ? []
+    : enrichmentVendor
+      ? [enrichmentVendor]
+      : vendors.filter(vendor => getVendorCompleteness(vendor).score < 85);
+  const enrichmentMissingFields = enrichmentVendor
+    ? getVendorCompleteness(enrichmentVendor).missing
+    : [];
+
+  const enrichmentSourceFor = (field) => {
+    if (field.group === 'Compliance') return 'Trade license / VAT document';
+    if (field.group === 'Qualification') return 'Company profile / certificate';
+    if (field.group === 'Contact' || field.group === 'Location') return 'Verified website / company profile';
+    return 'Vendor master evidence';
   };
 
   return (
     <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
       <div className="py-6" style={pageControls.styles.content}>
-        {/* Header */}
+        {/* RADAI vendor workspace header and primary actions */}
         <div className="w-full px-3 sm:px-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                <UserGroupIcon className="h-8 w-8 mr-3 text-indigo-600" />
-                Vendor Management
-              </h1>
-              <p className="mt-2 text-sm text-gray-600 flex items-center">
-                <SparklesIcon className="h-4 w-4 mr-1 text-purple-500" />
-                AI-powered vendor management with smart qualification and risk assessment
-              </p>
+          <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 shadow-xl">
+            <div className="relative px-6 py-7 lg:px-8">
+              <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-[#00a896]/20 blur-3xl" />
+              <div className="absolute bottom-0 left-1/3 h-24 w-56 rounded-full bg-[#73bdc8]/10 blur-3xl" />
+              <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-2xl bg-[#00a896] p-3 shadow-lg shadow-[#00a896]/20">
+                      <UserGroupIcon className="h-7 w-7 text-white" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#73bdc8]">RADAI Procurement</p>
+                      <h1 className="mt-1 text-3xl font-bold tracking-tight text-white">Vendor Management</h1>
+                    </div>
+                  </div>
+                  <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">
+                    Manage supplier identity, contacts, compliance, qualifications, and data readiness from one controlled workspace.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
+                  <div className="rounded-xl bg-white/95 p-1 shadow-sm">
+                    <PageControlButtons
+                      isFullscreen={pageControls.isFullscreen}
+                      toggleFullscreen={pageControls.toggleFullscreen}
+                      sidebarVisible={pageControls.sidebarVisible}
+                      toggleSidebar={pageControls.toggleSidebar}
+                      autoRefreshEnabled={pageControls.autoRefreshEnabled}
+                      toggleAutoRefresh={pageControls.toggleAutoRefresh}
+                      isRefreshing={pageControls.isRefreshing}
+                      manualRefresh={pageControls.manualRefresh}
+                    />
+                  </div>
+                  <button type="button" onClick={handleExportToExcel} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20">
+                    <DocumentArrowDownIcon className="mr-2 h-5 w-5" /> Export
+                  </button>
+                  <button type="button" onClick={() => setEnrichmentVendor(null)} className="inline-flex h-11 items-center justify-center rounded-xl border border-[#73bdc8]/40 bg-[#73bdc8]/15 px-4 text-sm font-semibold text-[#b9edf0] transition hover:bg-[#73bdc8]/25 focus:outline-none focus:ring-4 focus:ring-[#73bdc8]/20">
+                    <SparklesIcon className="mr-2 h-5 w-5" /> AI Enrich
+                  </button>
+                  <button type="button" onClick={() => { setSelectedVendor(null); setEditMode(false); setShowAICreator(true); }} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#00a896] px-4 text-sm font-semibold text-white shadow-lg shadow-[#00a896]/20 transition hover:bg-[#008f80] focus:outline-none focus:ring-4 focus:ring-[#00a896]/30">
+                    <PlusIcon className="mr-2 h-5 w-5" /> Add Vendor
+                  </button>
+                </div>
+              </div>
             </div>
-            
-            <PageControlButtons 
-              isFullscreen={pageControls.isFullscreen}
-              toggleFullscreen={pageControls.toggleFullscreen}
-              sidebarVisible={pageControls.sidebarVisible}
-              toggleSidebar={pageControls.toggleSidebar}
-              autoRefreshEnabled={pageControls.autoRefreshEnabled}
-              toggleAutoRefresh={pageControls.toggleAutoRefresh}
-              isRefreshing={pageControls.isRefreshing}
-              manualRefresh={pageControls.manualRefresh}
-            />
           </div>
         </div>
 
         {/* Statistics */}
-        <div className="w-full px-3 sm:px-4 mt-8">
+        <div className="w-full px-3 sm:px-4 mt-6">
           <VendorStats />
         </div>
-
-        {/* AI Recommendations */}
-        {aiRecommendations && aiRecommendations.length > 0 && (
-          <div className="w-full px-3 sm:px-4 mt-6">
-            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border-2 border-purple-200">
-              <div className="flex items-center space-x-2 mb-4">
-                <SparklesIcon className="h-6 w-6 text-purple-600" />
-                <h3 className="text-lg font-semibold text-gray-900">AI Insights & Recommendations</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {aiRecommendations.map((rec, idx) => (
-                  <div key={idx} className="bg-white rounded-lg p-4 border border-purple-200 hover:shadow-md transition-shadow">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{rec.title}</h4>
-                    <p className="text-sm text-gray-600">{rec.message}</p>
-                    {rec.vendors && (
-                      <div className="mt-2 space-y-1">
-                        {rec.vendors.map((vendor, vIdx) => (
-                          <div key={vIdx} className="text-xs text-indigo-600 font-medium">
-                            • {vendor}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Error Message */}
         {error && (
@@ -539,12 +539,19 @@ const VendorManagement = () => {
         )}
 
         {/* Filters and Search */}
-        <div className="w-full px-3 sm:px-4 mt-8">
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="w-full px-3 sm:px-4 mt-6">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Vendor Directory</h2>
+                <p className="mt-1 text-xs text-slate-500">Search and filter the supplier master list.</p>
+              </div>
+              <FunnelIcon className="h-5 w-5 text-[#00a896]" />
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
               {/* Search */}
               <div className="md:col-span-2">
-                <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="search" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Search Vendors
                 </label>
                 <div className="relative">
@@ -556,22 +563,22 @@ const VendorManagement = () => {
                     id="search"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    placeholder="Search by name or code..."
+                    className="block h-11 w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 focus:border-[#00a896] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#00a896]/10"
+                    placeholder="Name, code, email, country, or category..."
                   />
                 </div>
               </div>
 
               {/* Status Filter */}
               <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="status" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Status
                 </label>
                 <select
                   id="status"
                   value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  onChange={(e) => { setFilterStatus(e.target.value); setActiveKpi('custom'); }}
+                  className="block h-11 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm focus:border-[#00a896] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#00a896]/10"
                 >
                   <option value="all">All Statuses</option>
                   <option value="active">Active</option>
@@ -583,14 +590,14 @@ const VendorManagement = () => {
 
               {/* Rating Filter */}
               <div>
-                <label htmlFor="rating" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="rating" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Rating
                 </label>
                 <select
                   id="rating"
                   value={filterRating}
-                  onChange={(e) => setFilterRating(e.target.value)}
-                  className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  onChange={(e) => { setFilterRating(e.target.value); setActiveKpi('custom'); }}
+                  className="block h-11 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm focus:border-[#00a896] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#00a896]/10"
                 >
                   <option value="all">All Ratings</option>
                   <option value="5">⭐⭐⭐⭐⭐ Excellent</option>
@@ -600,14 +607,36 @@ const VendorManagement = () => {
                   <option value="1">⭐ Poor</option>
                 </select>
               </div>
+
+              <div>
+                <label htmlFor="completeness" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Data Readiness
+                </label>
+                <select
+                  id="completeness"
+                  value={filterCompleteness}
+                  onChange={(e) => { setFilterCompleteness(e.target.value); setActiveKpi('custom'); }}
+                  className="block h-11 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm focus:border-[#00a896] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#00a896]/10"
+                >
+                  <option value="all">All readiness</option>
+                  <option value="complete">Complete (85%+)</option>
+                  <option value="incomplete">Incomplete</option>
+                  <option value="attention">Needs attention</option>
+                </select>
+              </div>
             </div>
 
-            <div className="mt-4 flex justify-between items-center">
-              <p className="text-sm text-gray-500">
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500">
                 Showing {filteredVendors.length} of {Array.isArray(vendors) ? vendors.length : 0} vendors
               </p>
               
-              <div className="flex space-x-2">
+              <div className="flex items-center gap-2">
+                {(searchTerm || filterStatus !== 'all' || filterRating !== 'all' || filterCompleteness !== 'all') && (
+                  <button type="button" onClick={() => { setSearchTerm(''); setFilterStatus('all'); setFilterRating('all'); setFilterCompleteness('all'); setActiveKpi('total'); }} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">
+                    Clear filters
+                  </button>
+                )}
                 {/* View Toggle */}
                 <div className="inline-flex rounded-md shadow-sm" role="group">
                   <button
@@ -615,7 +644,7 @@ const VendorManagement = () => {
                     onClick={() => setViewMode('table')}
                     className={`px-3 py-2 text-sm font-medium border ${ 
                       viewMode === 'table'
-                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        ? 'bg-[#00a896] text-white border-[#00a896]'
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                     } rounded-l-md focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   >
@@ -626,7 +655,7 @@ const VendorManagement = () => {
                     onClick={() => setViewMode('cards')}
                     className={`px-3 py-2 text-sm font-medium border-t border-b border-r ${
                       viewMode === 'cards'
-                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        ? 'bg-[#00a896] text-white border-[#00a896]'
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                     } rounded-r-md focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   >
@@ -634,25 +663,6 @@ const VendorManagement = () => {
                   </button>
                 </div>
 
-                {/* Export Button */}
-                <button
-                  type="button"
-                  onClick={handleExportToExcel}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  <DocumentArrowDownIcon className="-ml-1 mr-2 h-5 w-5" />
-                  Export
-                </button>
-
-                {/* AI Create Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowAICreator(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  <SparklesIcon className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
-                  Create with AI
-                </button>
               </div>
             </div>
           </div>
@@ -676,137 +686,96 @@ const VendorManagement = () => {
               </p>
             </div>
           ) : viewMode === 'table' ? (
-            /* Table View - Full Width with Smooth Scrolling */
-            <div className="bg-white shadow-xl overflow-hidden rounded-lg border border-gray-200">
-              {/* Scroll hint indicator */}
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-2 border-b border-indigo-100">
-                <p className="text-xs text-indigo-700 font-medium flex items-center">
-                  <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                  </svg>
-                  Scroll horizontally to view all columns • Showing {filteredVendors.length} vendors
-                </p>
+            /* Grouped vendor directory table */
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-5 py-3">
+                <p className="text-xs font-medium text-slate-500">Click a vendor row to open the full profile.</p>
+                <span className="rounded-full bg-[#00a896]/10 px-3 py-1 text-xs font-semibold text-[#008f80]">{filteredVendors.length} vendors</span>
               </div>
-              <div className="overflow-x-auto overflow-y-visible" style={{scrollbarWidth: 'thin', scrollbarColor: '#6366f1 #f3f4f6'}}>
-                <table className={`${LAYOUT_CONFIG.tableMinWidth} w-full divide-y divide-gray-200`}>
-                  <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="min-w-[1080px] w-full divide-y divide-slate-200">
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 bg-gray-50" onClick={() => handleSort('vendor_code')}>
-                        <div className="flex items-center space-x-1">
-                          <span>Code</span>
-                          {sortConfig.key === 'vendor_code' && (
-                            sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-4 w-4" /> : <ArrowDownIcon className="h-4 w-4" />
-                          )}
-                        </div>
+                      <th scope="col" onClick={() => handleSort('name')} className="cursor-pointer px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-100">
+                        <span className="inline-flex items-center gap-1">Vendor &amp; Scope {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-3.5 w-3.5" /> : <ArrowDownIcon className="h-3.5 w-3.5" />)}</span>
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 bg-gray-50" onClick={() => handleSort('name')}>
-                        <div className="flex items-center space-x-1">
-                          <span>Vendor Name</span>
-                          {sortConfig.key === 'name' && (
-                            sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-4 w-4" /> : <ArrowDownIcon className="h-4 w-4" />
-                          )}
-                        </div>
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Category</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Contact Person</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Contact Number</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Email</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">ICV</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">ADNOC</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Tenure</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Status</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Actions</th>
+                      <th scope="col" className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Completeness</th>
+                      <th scope="col" className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Primary Contact</th>
+                      <th scope="col" className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Compliance</th>
+                      <th scope="col" className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Performance</th>
+                      <th scope="col" className="sticky right-0 bg-slate-50 px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Status &amp; Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="divide-y divide-slate-100 bg-white">
                     {filteredVendors
+                      .slice()
                       .sort((a, b) => {
                         const aVal = a[sortConfig.key] || '';
                         const bVal = b[sortConfig.key] || '';
-                        if (sortConfig.direction === 'asc') {
-                          return aVal > bVal ? 1 : -1;
-                        }
+                        if (sortConfig.direction === 'asc') return aVal > bVal ? 1 : -1;
                         return aVal < bVal ? 1 : -1;
                       })
-                      .map((vendor) => (
-                      <tr key={vendor.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{vendor.vendor_code}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{vendor.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {Array.isArray(vendor.categories) && vendor.categories.length > 0 ? vendor.categories[0] : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.contact_person || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.phone || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.email || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {vendor.is_icv_certified ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              Yes
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              No
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {vendor.adnoc_approved ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              Yes
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              No
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {vendor.vendor_tenure_years ? `${vendor.vendor_tenure_years} yrs` : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getStatusBadge(vendor.status)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center space-x-2">
-                            {/* Edit Button */}
-                            <button
-                              onClick={() => handleEditVendor(vendor)}
-                              className="text-indigo-600 hover:text-indigo-900 inline-flex items-center space-x-1 px-2 py-1.5 rounded-md hover:bg-indigo-50 transition-colors"
-                              title="Edit vendor"
-                            >
-                              <PencilSquareIcon className="h-4 w-4" />
-                              <span className="hidden xl:inline">Edit</span>
-                            </button>
-                            
-                            {/* Activate/Deactivate Button */}
-                            <button
-                              onClick={() => handleToggleStatus(vendor)}
-                              className={`${
-                                vendor.status === 'active'
-                                  ? 'text-orange-600 hover:text-orange-900 hover:bg-orange-50'
-                                  : 'text-green-600 hover:text-green-900 hover:bg-green-50'
-                              } inline-flex items-center space-x-1 px-2 py-1.5 rounded-md transition-colors`}
-                              title={vendor.status === 'active' ? 'Deactivate vendor' : 'Activate vendor'}
-                            >
-                              <PowerIcon className="h-4 w-4" />
-                              <span className="hidden xl:inline">
-                                {vendor.status === 'active' ? 'Deactivate' : 'Activate'}
-                              </span>
-                            </button>
-                            
-                            {/* Delete Button */}
-                            <button
-                              onClick={() => handleDeleteVendor(vendor)}
-                              className="text-red-600 hover:text-red-900 inline-flex items-center space-x-1 px-2 py-1.5 rounded-md hover:bg-red-50 transition-colors"
-                              title="Delete vendor"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                              <span className="hidden xl:inline">Delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                      .map((vendor) => {
+                        const completeness = getVendorCompleteness(vendor);
+                        const complianceMissing = [
+                          !vendor.trade_license_number && 'Trade license',
+                          !vendor.vat_number && 'VAT',
+                        ].filter(Boolean);
+                        return (
+                          <tr key={vendor.id} onClick={() => setDetailVendor(vendor)} className="group cursor-pointer transition-colors hover:bg-[#00a896]/[0.035]">
+                            <td className="px-5 py-4 align-top">
+                              <div className="flex items-start gap-3">
+                                <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-slate-900 text-sm font-bold text-white">
+                                  {(vendor.name || 'V').slice(0, 2).toUpperCase()}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="max-w-[260px] truncate text-sm font-bold text-slate-900">{vendor.name}</p>
+                                  <p className="mt-0.5 text-xs font-medium text-[#008f80]">{vendor.vendor_code}</p>
+                                  <div className="mt-2 flex max-w-[280px] flex-wrap gap-1">
+                                    {(Array.isArray(vendor.categories) ? vendor.categories : []).slice(0, 2).map(category => (
+                                      <span key={category} className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{category}</span>
+                                    ))}
+                                    {(!vendor.categories || vendor.categories.length === 0) && <span className="text-xs text-amber-600">Category missing</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 align-top">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className={`text-sm font-bold ${completeness.score >= 85 ? 'text-emerald-600' : completeness.score >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{completeness.score}%</span>
+                                <span className="text-[11px] text-slate-400">{completeness.missing.length} missing</span>
+                              </div>
+                              <div className="mt-2 h-2 w-36 overflow-hidden rounded-full bg-slate-100">
+                                <div className={`h-full rounded-full ${completeness.score >= 85 ? 'bg-[#00a896]' : completeness.score >= 60 ? 'bg-amber-400' : 'bg-rose-500'}`} style={{ width: `${completeness.score}%` }} />
+                              </div>
+                              {completeness.missing.length > 0 && <p className="mt-2 max-w-[170px] truncate text-xs text-slate-500" title={completeness.missing.map(field => field.label).join(', ')}>Missing: {completeness.missing[0].label}{completeness.missing.length > 1 ? ` +${completeness.missing.length - 1}` : ''}</p>}
+                            </td>
+                            <td className="px-5 py-4 align-top text-xs text-slate-600">
+                              <p className="font-semibold text-slate-800">{vendor.contact_person || 'Contact missing'}</p>
+                              <p className="mt-1 max-w-[210px] truncate">{vendor.email || 'Email missing'}</p>
+                              <p className="mt-1">{vendor.phone || 'Phone missing'}</p>
+                            </td>
+                            <td className="px-5 py-4 align-top">
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${vendor.is_icv_certified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>ICV {vendor.is_icv_certified ? 'Verified' : 'No'}</span>
+                                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${vendor.adnoc_approved ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-500'}`}>ADNOC {vendor.adnoc_approved ? 'Approved' : 'No'}</span>
+                              </div>
+                              <p className={`mt-2 text-xs ${complianceMissing.length ? 'text-amber-600' : 'text-emerald-600'}`}>{complianceMissing.length ? `${complianceMissing.join(' & ')} missing` : 'Legal identifiers recorded'}</p>
+                            </td>
+                            <td className="px-5 py-4 align-top">
+                              {getRatingStars(vendor.rating)}
+                              <p className="mt-2 text-xs text-slate-500">{vendor.vendor_tenure_years ? `${vendor.vendor_tenure_years} years tenure` : 'Tenure not recorded'}</p>
+                            </td>
+                            <td className="sticky right-0 bg-white px-5 py-4 align-top group-hover:bg-[#f5fbfa]">
+                              <div className="flex items-center justify-end gap-2">
+                                {getStatusBadge(vendor.status)}
+                                <button type="button" onClick={(event) => { event.stopPropagation(); setEnrichmentVendor(vendor); }} className="rounded-lg p-2 text-[#008f80] hover:bg-[#00a896]/10" title="AI enrich vendor"><SparklesIcon className="h-4 w-4" /></button>
+                                <button type="button" onClick={(event) => { event.stopPropagation(); setDetailVendor(vendor); }} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="View vendor"><EyeIcon className="h-4 w-4" /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -835,6 +804,11 @@ const VendorManagement = () => {
                     <div className="mt-4">
                       {getRatingStars(vendor.rating)}
                     </div>
+
+                    <button type="button" onClick={() => setDetailVendor(vendor)} className="mt-4 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-left hover:border-[#00a896]/40">
+                      <div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-600">Data completeness</span><span className="text-sm font-bold text-[#008f80]">{getVendorCompleteness(vendor).score}%</span></div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-[#00a896]" style={{ width: `${getVendorCompleteness(vendor).score}%` }} /></div>
+                    </button>
 
                     {/* Contact Info */}
                     <div className="mt-4 space-y-2">
@@ -910,6 +884,10 @@ const VendorManagement = () => {
                     {/* Actions */}
                     <div className="mt-6 flex flex-col space-y-2">
                       <div className="flex space-x-2">
+                        <button type="button" onClick={() => setDetailVendor(vendor)} className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50"><EyeIcon className="h-4 w-4 mr-1" /> View</button>
+                        <button type="button" onClick={() => setEnrichmentVendor(vendor)} className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-[#00a896]/30 text-sm font-medium rounded-md text-[#008f80] bg-[#00a896]/5 hover:bg-[#00a896]/10"><SparklesIcon className="h-4 w-4 mr-1" /> AI Enrich</button>
+                      </div>
+                      <div className="flex space-x-2">
                         <button
                           onClick={() => handleEditVendor(vendor)}
                           className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-indigo-300 shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -944,6 +922,120 @@ const VendorManagement = () => {
           )}
         </div>
       </div>
+
+      {/* Vendor profile drawer */}
+      {detailVendor && (
+        <>
+          <button type="button" aria-label="Close vendor details" onClick={() => setDetailVendor(null)} className="fixed inset-0 z-[60] cursor-default bg-slate-950/35 backdrop-blur-[2px]" />
+          <aside className="fixed inset-y-0 right-0 z-[70] flex w-full max-w-xl flex-col bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="vendor-detail-title">
+            <div className="bg-gradient-to-r from-slate-950 to-blue-950 px-6 py-6 text-white">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-12 w-12 flex-none items-center justify-center rounded-2xl bg-[#00a896] text-base font-bold">{(detailVendor.name || 'V').slice(0, 2).toUpperCase()}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-[#73bdc8]">{detailVendor.vendor_code}</p>
+                    <h2 id="vendor-detail-title" className="mt-1 truncate text-xl font-bold">{detailVendor.name}</h2>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setDetailVendor(null)} className="rounded-xl p-2 text-slate-300 hover:bg-white/10 hover:text-white"><XMarkIcon className="h-5 w-5" /></button>
+              </div>
+              <div className="mt-5 flex items-center gap-3">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#7fcab5]" style={{ width: `${getVendorCompleteness(detailVendor).score}%` }} /></div>
+                <span className="text-sm font-bold">{getVendorCompleteness(detailVendor).score}% complete</span>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto bg-slate-50 p-6">
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-900"><BuildingOfficeIcon className="h-5 w-5 text-[#00a896]" /> Overview</div>
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div><p className="text-xs font-medium text-slate-400">Status</p><div className="mt-1">{getStatusBadge(detailVendor.status)}</div></div>
+                  <div><p className="text-xs font-medium text-slate-400">Country</p><p className="mt-1 font-semibold text-slate-800">{detailVendor.country || 'Not recorded'}</p></div>
+                  <div className="col-span-2"><p className="text-xs font-medium text-slate-400">Categories</p><div className="mt-2 flex flex-wrap gap-1.5">{(detailVendor.categories || []).map(category => <span key={category} className="rounded-lg bg-[#00a896]/10 px-2.5 py-1 text-xs font-medium text-[#008f80]">{category}</span>)}{(!detailVendor.categories || detailVendor.categories.length === 0) && <span className="text-slate-500">Not recorded</span>}</div></div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-900"><EnvelopeIcon className="h-5 w-5 text-[#00a896]" /> Contact &amp; Location</div>
+                <div className="mt-4 space-y-3 text-sm text-slate-700">
+                  <p><span className="font-semibold">Contact:</span> {detailVendor.contact_person || 'Not recorded'}</p>
+                  <p><span className="font-semibold">Email:</span> {detailVendor.email || 'Not recorded'}</p>
+                  <p><span className="font-semibold">Phone:</span> {detailVendor.phone || 'Not recorded'}</p>
+                  <p className="flex items-start gap-2"><MapPinIcon className="mt-0.5 h-4 w-4 flex-none text-slate-400" /><span>{detailVendor.address || 'Address not recorded'}</span></p>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-900"><IdentificationIcon className="h-5 w-5 text-[#00a896]" /> Legal &amp; Compliance</div>
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div><p className="text-xs text-slate-400">Trade license</p><p className="mt-1 font-semibold text-slate-800">{detailVendor.trade_license_number || 'Missing'}</p></div>
+                  <div><p className="text-xs text-slate-400">VAT number</p><p className="mt-1 font-semibold text-slate-800">{detailVendor.vat_number || 'Missing'}</p></div>
+                  <div><p className="text-xs text-slate-400">ICV</p><p className="mt-1 font-semibold text-slate-800">{detailVendor.is_icv_certified ? `${detailVendor.icv_percentage || '—'}% certified` : 'Not certified'}</p></div>
+                  <div><p className="text-xs text-slate-400">ADNOC</p><p className="mt-1 font-semibold text-slate-800">{detailVendor.adnoc_approved ? 'Approved' : 'Not approved'}</p></div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-sm font-bold text-slate-900"><ShieldCheckIcon className="h-5 w-5 text-[#00a896]" /> Data Readiness</div><span className="text-sm font-bold text-[#008f80]">{getVendorCompleteness(detailVendor).score}%</span></div>
+                {getVendorCompleteness(detailVendor).missing.length ? (
+                  <div className="mt-4 flex flex-wrap gap-2">{getVendorCompleteness(detailVendor).missing.map(field => <span key={field.key} className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">{field.label} missing</span>)}</div>
+                ) : <p className="mt-3 text-sm text-emerald-600">All tracked master-data fields are complete.</p>}
+              </section>
+            </div>
+
+            <div className="flex flex-wrap gap-3 border-t border-slate-200 bg-white p-5">
+              <button type="button" onClick={() => { setEnrichmentVendor(detailVendor); setDetailVendor(null); }} className="inline-flex flex-1 items-center justify-center rounded-xl border border-[#00a896]/30 bg-[#00a896]/10 px-4 py-2.5 text-sm font-semibold text-[#008f80] hover:bg-[#00a896]/15"><SparklesIcon className="mr-2 h-4 w-4" /> AI Enrich</button>
+              <button type="button" onClick={() => { const vendor = detailVendor; setDetailVendor(null); handleEditVendor(vendor); }} className="inline-flex flex-1 items-center justify-center rounded-xl bg-[#00a896] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#008f80]"><PencilSquareIcon className="mr-2 h-4 w-4" /> Edit Vendor</button>
+            </div>
+          </aside>
+        </>
+      )}
+
+      {/* AI enrichment review placeholder */}
+      {enrichmentVendor !== undefined && (
+        <>
+          <button type="button" aria-label="Close AI enrichment review" onClick={() => setEnrichmentVendor(undefined)} className="fixed inset-0 z-[75] cursor-default bg-slate-950/45 backdrop-blur-[2px]" />
+          <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-2xl flex-col bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="enrichment-title">
+            <div className="border-b border-slate-200 bg-white px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <span className="rounded-2xl bg-gradient-to-br from-[#00a896] to-[#73bdc8] p-3"><SparklesIcon className="h-6 w-6 text-white" /></span>
+                  <div><p className="text-xs font-semibold uppercase tracking-widest text-[#008f80]">Review workspace</p><h2 id="enrichment-title" className="mt-1 text-xl font-bold text-slate-950">AI Enrich {enrichmentVendor ? enrichmentVendor.name : 'Incomplete Vendors'}</h2><p className="mt-1 text-sm text-slate-500">Suggestions require verified evidence and human approval.</p></div>
+                </div>
+                <button type="button" onClick={() => setEnrichmentVendor(undefined)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><XMarkIcon className="h-5 w-5" /></button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+              <div className="mb-5 rounded-2xl border border-[#73bdc8]/40 bg-[#73bdc8]/10 p-4 text-sm text-slate-700"><strong className="text-slate-900">Preview only:</strong> no vendor values will be changed until trusted document and registry sources are connected.</div>
+              {enrichmentVendor ? (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="grid grid-cols-[28px_1fr_1.25fr_80px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500"><span /><span>Missing field</span><span>Proposed source</span><span>Confidence</span></div>
+                  {enrichmentMissingFields.length > 0 ? enrichmentMissingFields.map(field => (
+                    <div key={field.key} className="grid grid-cols-[28px_1fr_1.25fr_80px] items-center gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-0">
+                      <input type="checkbox" disabled className="rounded border-slate-300 text-[#00a896]" />
+                      <div><p className="font-semibold text-slate-800">{field.label}</p><p className="text-xs text-slate-400">{field.group}</p></div>
+                      <p className="text-xs leading-5 text-slate-600">{enrichmentSourceFor(field)}</p>
+                      <span className="text-xs font-semibold text-slate-400">Pending</span>
+                    </div>
+                  )) : <div className="p-8 text-center text-sm text-emerald-600">This vendor is complete across all tracked fields.</div>}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">Enrichment queue</h3><span className="text-xs text-slate-500">{enrichmentTargets.length} vendors below 85%</span></div>
+                  {enrichmentTargets.slice(0, 12).map(vendor => {
+                    const completeness = getVendorCompleteness(vendor);
+                    return <button key={vendor.id} type="button" onClick={() => setEnrichmentVendor(vendor)} className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#00a896]/50 hover:shadow-md"><div><p className="text-sm font-bold text-slate-900">{vendor.name}</p><p className="mt-1 text-xs text-slate-500">{completeness.missing.length} missing fields · {vendor.vendor_code}</p></div><div className="flex items-center gap-3"><span className="text-sm font-bold text-amber-600">{completeness.score}%</span><ChevronRightIcon className="h-4 w-4 text-slate-400" /></div></button>;
+                  })}
+                  {enrichmentTargets.length === 0 && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-8 text-center text-sm text-emerald-700">All vendors meet the 85% completeness threshold.</div>}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white p-5"><p className="text-xs text-slate-500">Source connectors and field application will be enabled in the enrichment phase.</p><button type="button" disabled className="rounded-xl bg-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500">Apply selected changes</button></div>
+          </aside>
+        </>
+      )}
 
       {/* Confirmation Modal */}
       {showConfirmModal && confirmAction && (
