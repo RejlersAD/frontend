@@ -1,7 +1,7 @@
 /**
  * RBAC Service - API calls for Super Admin Dashboard
  */
-import apiService from './api.service';
+import apiService, { apiClientLongTimeout } from './api.service';
 
 const RBAC_BASE_URL = '/rbac';
 
@@ -124,7 +124,8 @@ class RBACService {
 
   // ==================== Bulk Operations ====================
   async bulkUploadUsers(formData) {
-    return apiService.post(`${RBAC_BASE_URL}/users/bulk_upload/`, formData, {
+    return apiClientLongTimeout.post(`${RBAC_BASE_URL}/users/bulk_upload/`, formData, {
+      timeout: 30 * 60 * 1000,
       headers: {
         'Content-Type': 'multipart/form-data'
       }

@@ -33,7 +33,6 @@ import {
   HR_DETAIL_TABS,
   HR_DEFAULT_DETAIL_TAB,
   HR_DRAWER_WIDTH_DEFAULT,
-  HR_DRAWER_WIDTH_BY_TAB,
   HR_PAGE_SIZES,
   HR_DEFAULT_PAGE_SIZE,
   HR_DATA_FETCH_PAGE_SIZE,
@@ -122,10 +121,18 @@ const KpiStrip = ({ employees, loading }) => {
   const useCalm      = HR_UI.calmKpis !== false
 
   return (
-    <div className="space-y-2">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-lg font-bold"><HeroIcons.ChartBarSquareIcon className="h-5 w-5 text-cyan-300" /> Workforce Overview</div>
+          <p className="mt-1 text-xs text-slate-300">Live headcount, movement and contract-risk signals for faster HR decisions.</p>
+        </div>
+        <span className="w-fit rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold">Updated from employee records</span>
+      </div>
+      <div className="space-y-3 p-4">
       <div className={`grid gap-3 ${showAll
-        ? 'grid-cols-2 sm:grid-cols-4 xl:grid-cols-8'
-        : 'grid-cols-2 sm:grid-cols-4'}`}>
+        ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'
+        : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6'}`}>
         {visible.map((kpi) => (
           <div
             key={kpi.id}
@@ -135,7 +142,7 @@ const KpiStrip = ({ employees, loading }) => {
           >
             <div className="flex items-center justify-between">
               <Icon name={kpi.icon} className={useCalm ? 'w-5 h-5 opacity-80' : 'w-6 h-6 opacity-80'} />
-              <span className="text-[10px] uppercase tracking-wider opacity-70 font-semibold truncate">{kpi.label}</span>
+              <span className="max-w-[9rem] text-right text-[10px] font-semibold uppercase leading-tight tracking-wider opacity-70">{kpi.label}</span>
             </div>
             <div className="mt-2 text-3xl font-bold leading-tight tabular-nums">
               {loading
@@ -160,7 +167,8 @@ const KpiStrip = ({ employees, loading }) => {
           </button>
         </div>
       )}
-    </div>
+      </div>
+    </section>
   )
 }
 
@@ -212,7 +220,8 @@ const FiltersBar = ({ employees, filterValues, setFilterValue, searchTerm, setSe
       <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
         {/* Search — only relevant for card/table/dept views, hidden in timesheet mode */}
         {viewMode !== 'timesheet' && (
-          <div className="relative flex-1 flex gap-2">
+          <div className="relative flex-1 space-y-1.5">
+            <div className="flex gap-2">
             <div className="relative flex-1">
               <HeroIcons.MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -247,6 +256,12 @@ const FiltersBar = ({ employees, filterValues, setFilterValue, searchTerm, setSe
                 : <HeroIcons.MagnifyingGlassIcon className="w-4 h-4" />}
               <span className="hidden sm:inline">{HR_COPY.searchButtonLabel}</span>
             </button>
+            </div>
+            <div className="hidden flex-wrap gap-1.5 px-1 text-[10px] font-medium text-slate-500 sm:flex">
+              {['Employee ID', 'Name', 'Email', 'Department', 'Manager', 'Location', 'Role'].map(field => (
+                <span key={field} className="rounded-full bg-slate-100 px-2 py-0.5">{field}</span>
+              ))}
+            </div>
           </div>
         )}
 
@@ -371,10 +386,54 @@ const DisciplineTag = ({ emp }) => {
   return <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${d.tone}`}>{d.label}</span>
 }
 
+const EMPLOYEE_QUICK_ACTIONS = [
+  { id: 'view', label: 'View', icon: 'EyeIcon' },
+  { id: 'edit', label: 'Edit', icon: 'PencilSquareIcon' },
+  { id: 'documents', label: 'Documents', icon: 'DocumentTextIcon' },
+  { id: 'leave', label: 'Leave', icon: 'CalendarDaysIcon' },
+  { id: 'performance', label: 'Performance', icon: 'ChartBarIcon' },
+  { id: 'payroll', label: 'Payroll', icon: 'BanknotesIcon' },
+  { id: 'role_access', label: 'Role Access', icon: 'KeyIcon' },
+  { id: 'deactivate', label: 'Deactivate', icon: 'NoSymbolIcon', danger: true },
+]
+
+const EmployeeQuickActions = ({ emp, onAction, compact = false }) => {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-blue-300 hover:text-blue-700"
+        aria-expanded={open}
+        aria-label={`Quick actions for ${fullName(emp)}`}
+      >
+        <HeroIcons.BoltIcon className="h-4 w-4" />
+        {!compact && <span>Quick actions</span>}
+        <HeroIcons.ChevronDownIcon className="h-3 w-3" />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-40 mt-1 grid w-52 grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-xl">
+          {EMPLOYEE_QUICK_ACTIONS.map(action => (
+            <button
+              key={action.id}
+              type="button"
+              onClick={() => { setOpen(false); onAction(emp, action.id) }}
+              className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold ${action.danger ? 'text-rose-700 hover:bg-rose-50' : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700'}`}
+            >
+              <Icon name={action.icon} className="h-4 w-4" /> {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: Employee Card (Cards view)
 // ─────────────────────────────────────────────────────────────────────────────
-const EmployeeCard = ({ emp, onSelect }) => (
+const EmployeeCard = ({ emp, onSelect, onAction }) => (
   <div className={`group bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-lg p-4 flex flex-col ${anim('transition')}`}>
     <button
       type="button"
@@ -408,14 +467,7 @@ const EmployeeCard = ({ emp, onSelect }) => (
       </div>
     </button>
     <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onSelect(emp, 'timesheet') }}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-blue-50 text-blue-700 font-medium"
-        title="Open consolidated time-sheet report"
-      >
-        <HeroIcons.ClockIcon className="w-3.5 h-3.5" /> Time Sheet
-      </button>
+      <EmployeeQuickActions emp={emp} onAction={onAction} compact />
       <button
         type="button"
         onClick={() => onSelect(emp)}
@@ -430,7 +482,7 @@ const EmployeeCard = ({ emp, onSelect }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: Employees Table (Table view)
 // ─────────────────────────────────────────────────────────────────────────────
-const EmployeesTable = ({ employees, onSelect }) => (
+const EmployeesTable = ({ employees, onSelect, onAction }) => (
   <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-slate-200">
@@ -441,7 +493,7 @@ const EmployeesTable = ({ employees, onSelect }) => (
                 {c.label}
               </th>
             ))}
-            <th className="px-3 py-2"></th>
+            <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 bg-white">
@@ -481,7 +533,7 @@ const EmployeesTable = ({ employees, onSelect }) => (
                 return <td key={c.id} className="px-3 py-2 text-sm text-slate-700">{v}</td>
               })}
               <td className="px-3 py-2 text-right">
-                <HeroIcons.ChevronRightIcon className="w-4 h-4 text-slate-400 inline" />
+                <EmployeeQuickActions emp={emp} onAction={onAction} compact />
               </td>
             </tr>
           ))}
@@ -490,6 +542,60 @@ const EmployeesTable = ({ employees, onSelect }) => (
     </div>
   </div>
 )
+
+const managerIdOf = (emp) => {
+  const manager = emp.manager_detail?.id ?? emp.manager_id ?? (typeof emp.manager === 'object' ? emp.manager?.id : emp.manager)
+  return manager ? String(manager) : null
+}
+
+const HierarchyNode = ({ node, depth, onSelect, onAction, visited }) => {
+  if (visited.has(String(node.emp.id))) return null
+  const nextVisited = new Set(visited)
+  nextVisited.add(String(node.emp.id))
+  return (
+    <div className={depth ? 'ml-5 border-l border-slate-200 pl-4 sm:ml-8' : ''}>
+      <div className="relative mb-2 flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        {depth > 0 && <span className="absolute -left-4 top-1/2 h-px w-4 bg-slate-200" />}
+        <button type="button" onClick={() => onSelect(node.emp)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <Avatar emp={node.emp} size="sm" />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold text-slate-900">{fullName(node.emp)}</span>
+            <span className="block truncate text-xs text-slate-500">{node.emp.job_title || 'Role not assigned'} · {node.emp.department || 'No department'}</span>
+          </span>
+        </button>
+        <span className="hidden rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 sm:inline">{node.children.length} direct</span>
+        <EmployeeQuickActions emp={node.emp} onAction={onAction} compact />
+      </div>
+      {node.children.map(child => <HierarchyNode key={child.emp.id} node={child} depth={depth + 1} onSelect={onSelect} onAction={onAction} visited={nextVisited} />)}
+    </div>
+  )
+}
+
+const WorkforceHierarchy = ({ employees, onSelect, onAction }) => {
+  const roots = useMemo(() => {
+    const nodes = new Map(employees.map(emp => [String(emp.id), { emp, children: [] }]))
+    const top = []
+    nodes.forEach(node => {
+      const managerNode = nodes.get(managerIdOf(node.emp))
+      if (managerNode && managerNode !== node) managerNode.children.push(node)
+      else top.push(node)
+    })
+    const sortNodes = (list) => list.sort((a, b) => fullName(a.emp).localeCompare(fullName(b.emp))).map(node => ({ ...node, children: sortNodes(node.children) }))
+    return sortNodes(top)
+  }, [employees])
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div><h2 className="flex items-center gap-2 font-bold text-slate-900"><HeroIcons.ShareIcon className="h-5 w-5 text-indigo-600" /> Workforce Hierarchy</h2><p className="mt-1 text-xs text-slate-500">Reporting lines based on each employee&apos;s assigned manager.</p></div>
+        <span className="w-fit rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{employees.length} people · {roots.length} top-level</span>
+      </div>
+      <div className="max-h-[70vh] space-y-4 overflow-auto p-4 sm:p-5">
+        {roots.length ? roots.map(root => <HierarchyNode key={root.emp.id} node={root} depth={0} onSelect={onSelect} onAction={onAction} visited={new Set()} />) : <p className="py-10 text-center text-sm text-slate-500">No reporting relationships match the current filters.</p>}
+      </div>
+    </section>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── Derive action subsets once (not per-render) ────────────────────────────
@@ -1862,7 +1968,7 @@ const CompensationPanel = ({ emp, isEditing, formData, formErrors, handleFieldCh
 // ─────────────────────────────────────────────────────────────────────────────
 // Detail Drawer Component — Enhanced with Edit Mode & Salary Management
 // ─────────────────────────────────────────────────────────────────────────────
-const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) => {
+const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing = false, onUpdate }) => {
   const [tab, setTab] = useState(initialTab || HR_DEFAULT_DETAIL_TAB)
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({})
@@ -1882,6 +1988,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
   const [currentUserLoading, setCurrentUserLoading] = useState(false)
 
   useEffect(() => { setTab(initialTab || HR_DEFAULT_DETAIL_TAB) }, [emp?.id, initialTab])
+  useEffect(() => { setIsEditing(Boolean(startEditing)) }, [emp?.id, startEditing])
 
   // Load current user for permission checks
   useEffect(() => {
@@ -2311,7 +2418,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
 
   if (!emp) return null
   const ep = emp.engineer_profile || {}
-  const widthClass = HR_DRAWER_WIDTH_BY_TAB[tab] || HR_DRAWER_WIDTH_DEFAULT
+  const widthClass = HR_DRAWER_WIDTH_DEFAULT
 
   return (
     <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
@@ -2371,19 +2478,25 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-slate-200 bg-slate-50 px-2">
-          <div className="flex overflow-x-auto">
+        <div className="border-b border-slate-200 bg-slate-50">
+          <div
+            className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10"
+            role="tablist"
+            aria-label="Employee profile sections"
+          >
             {HR_DETAIL_TABS.map(t => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition ${
-                  tab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-600 hover:text-slate-900'
+                role="tab"
+                aria-selected={tab === t.id}
+                className={`flex min-h-14 min-w-0 items-center justify-center gap-1.5 border-b-2 px-2 py-2 text-center text-[11px] font-semibold leading-tight transition sm:border-r sm:border-slate-200 sm:last:border-r-0 ${
+                  tab === t.id ? 'border-b-blue-600 bg-blue-50 text-blue-700' : 'border-b-transparent text-slate-600 hover:bg-white hover:text-slate-900'
                 }`}
               >
-                <Icon name={t.icon} className="w-4 h-4" />
-                {t.label}
+                <Icon name={t.icon} className="h-4 w-4 shrink-0" />
+                <span className="min-w-0">{t.label}</span>
               </button>
             ))}
           </div>
@@ -2430,6 +2543,38 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) =>
               {!isEditing && (
                 <Field label="Manager" value={emp.manager_name || emp.manager_detail?.name || '—'} />
               )}
+            </div>
+          )}
+
+          {tab === 'documents' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="flex items-start gap-3"><HeroIcons.FolderOpenIcon className="h-6 w-6 text-blue-700" /><div><h3 className="font-bold text-blue-950">Employee documents</h3><p className="mt-1 text-sm text-blue-800">Keep employment evidence, identity files, certificates and signed HR records together.</p></div></div>
+              </div>
+              {(emp.documents || emp.metadata?.documents || []).length > 0 ? (
+                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                  {(emp.documents || emp.metadata?.documents || []).map((document, index) => <div key={document.id || index} className="flex items-center justify-between gap-3 p-3"><span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-800"><HeroIcons.DocumentTextIcon className="h-5 w-5 shrink-0 text-slate-400" /><span className="truncate">{document.name || document.title || `Document ${index + 1}`}</span></span>{document.url && <a href={document.url} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-700 hover:underline">Open</a>}</div>)}
+                </div>
+              ) : <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">No employee documents have been linked to this profile.</div>}
+            </div>
+          )}
+
+          {tab === 'leave' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4"><h3 className="font-bold text-cyan-950">Leave management</h3><p className="mt-1 text-sm text-cyan-800">Review balances, requests and attendance from the leave workspace.</p></div>
+              <Link to="/hr/leave" className="inline-flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-800"><HeroIcons.CalendarDaysIcon className="h-4 w-4" /> Open Leave Workspace</Link>
+            </div>
+          )}
+
+          {tab === 'performance' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Role" value={emp.job_title || '—'} />
+                <Field label="Manager" value={emp.manager_name || emp.manager_detail?.name || '—'} />
+                <Field label="Discipline" value={matchDiscipline(emp.engineer_profile?.discipline || emp.department)?.label || '—'} />
+                <Field label="Experience" value={emp.engineer_profile?.years_experience ? `${emp.engineer_profile.years_experience} years` : '—'} />
+              </div>
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900"><span className="font-bold">Performance snapshot:</span> competency and reporting information is shown here; formal review cycles can be attached as employee performance records become available.</div>
             </div>
           )}
 
@@ -2596,11 +2741,13 @@ export default function HREmployees() {
   const [pageIndex, setPageIndex] = useState(0)
   const [selectedEmp, setSelectedEmp] = useState(null)
   const [selectedTab, setSelectedTab] = useState(null)  // optional initial tab when opening drawer
+  const [selectedEdit, setSelectedEdit] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
 
-  const openEmp = useCallback((emp, tab = null) => {
+  const openEmp = useCallback((emp, tab = null, startEditing = false) => {
     setSelectedTab(tab)
+    setSelectedEdit(startEditing)
     setSelectedEmp(emp)
   }, [])
 
@@ -2624,6 +2771,33 @@ export default function HREmployees() {
   }, [])
 
   useEffect(() => { fetchEmployees() }, [fetchEmployees])
+
+  const handleEmployeeAction = useCallback(async (emp, action) => {
+    const destinations = {
+      view: ['overview', false],
+      edit: ['overview', true],
+      documents: ['documents', false],
+      leave: ['leave', false],
+      performance: ['performance', false],
+      payroll: ['compensation', false],
+      role_access: ['access', false],
+    }
+    if (destinations[action]) {
+      const [tab, edit] = destinations[action]
+      openEmp(emp, tab, edit)
+      return
+    }
+    if (action !== 'deactivate') return
+    if (!window.confirm(`Deactivate ${fullName(emp)}? They will lose access to the system.`)) return
+    try {
+      await rbacService.deactivateUser(emp.id, 'Manual deactivation from Employee Management')
+      if (selectedEmp?.id === emp.id) setSelectedEmp(null)
+      await fetchEmployees()
+    } catch (actionError) {
+      console.error('[HR] Employee deactivation failed:', actionError)
+      window.alert(actionError?.response?.data?.error || actionError?.response?.data?.detail || 'Employee could not be deactivated.')
+    }
+  }, [fetchEmployees, openEmp, selectedEmp?.id])
 
   // ──────── Lazy-load full detail when drawer opens ────────
   // The list endpoint returns a thin payload (no roles list, modules,
@@ -2668,6 +2842,9 @@ export default function HREmployees() {
         emp.job_title,
         emp.location,
         emp.organization_name,
+        emp.manager_name,
+        emp.manager_detail?.name,
+        ...(emp.roles || []).flatMap(role => [role.name, role.display_name, role.code]),
       ].filter(Boolean).join(' ').toLowerCase()
       return hay.includes(q)
     })
@@ -2677,7 +2854,7 @@ export default function HREmployees() {
   useEffect(() => { setPageIndex(0) }, [searchTerm, filterValues, viewMode, pageSize])
 
   const paginated = useMemo(() => {
-    if (viewMode === 'dept') return filteredEmployees
+    if (viewMode === 'dept' || viewMode === 'hierarchy') return filteredEmployees
     const start = pageIndex * pageSize
     return filteredEmployees.slice(start, start + pageSize)
   }, [filteredEmployees, pageIndex, pageSize, viewMode])
@@ -2882,7 +3059,7 @@ export default function HREmployees() {
         <div className="flex items-center justify-between text-xs text-slate-600">
           <div>
             Showing <span className="font-semibold text-slate-900">{filteredEmployees.length}</span> of {employees.length} employees
-            {searchTerm && <span> matching "<span className="font-medium">{searchTerm}</span>"</span>}
+            {searchTerm && <span> matching &ldquo;<span className="font-medium">{searchTerm}</span>&rdquo;</span>}
           </div>
           {viewMode !== 'dept' && filteredEmployees.length > 0 && (
             <div className="flex items-center gap-2">
@@ -2944,19 +3121,22 @@ export default function HREmployees() {
             {viewMode === 'cards' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {paginated.map(emp => (
-                  <EmployeeCard key={emp.id} emp={emp} onSelect={openEmp} />
+                  <EmployeeCard key={emp.id} emp={emp} onSelect={openEmp} onAction={handleEmployeeAction} />
                 ))}
               </div>
             )}
             {viewMode === 'table' && (
-              <EmployeesTable employees={paginated} onSelect={openEmp} />
+              <EmployeesTable employees={paginated} onSelect={openEmp} onAction={handleEmployeeAction} />
             )}
             {viewMode === 'dept' && (
               <DepartmentsView employees={filteredEmployees} onSelect={openEmp} navigate={navigate} />
             )}
+            {viewMode === 'hierarchy' && (
+              <WorkforceHierarchy employees={filteredEmployees} onSelect={openEmp} onAction={handleEmployeeAction} />
+            )}
 
             {/* Pagination */}
-            {viewMode !== 'dept' && totalPages > 1 && (
+            {!['dept', 'hierarchy'].includes(viewMode) && totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 pt-2">
                 <button
                   type="button"
@@ -3000,7 +3180,8 @@ export default function HREmployees() {
           emp={selectedEmp}
           loading={detailLoading}
           initialTab={selectedTab}
-          onClose={() => { setSelectedEmp(null); setSelectedTab(null) }}
+          startEditing={selectedEdit}
+          onClose={() => { setSelectedEmp(null); setSelectedTab(null); setSelectedEdit(false) }}
           onUpdate={(updated) => {
             // Optimistic update — apply immediately so the drawer/list reflect
             // the save before the network round-trip below completes.
