@@ -625,7 +625,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       console.error('Error fetching available requisitions:', error);
       setAvailableRequisitions([]);
       setRequisitionLoadError(
-        error.response?.data?.detail || 'Existing Purchase Requisitions could not be loaded.'
+        error.response?.data?.detail || 'Existing Purchase Recommendations could not be loaded.'
       );
     } finally {
       setRequisitionsLoading(false);

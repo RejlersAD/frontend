@@ -8,6 +8,7 @@ import {
   BellSlashIcon
 } from '@heroicons/react/24/outline'
 import { formatDistanceToNow } from '../../utils/dateFormatter'
+import { resolveNotificationTarget } from '../../utils/notificationNavigation'
 
 /**
  * NotificationDropdown Component
@@ -124,7 +125,9 @@ const NotificationDropdown = forwardRef(({
           </div>
         ) : (
           <div className="divide-y divide-slate-200 dark:divide-slate-700">
-            {notifications.map((notification) => (
+            {notifications.map((notification) => {
+              const actionTarget = resolveNotificationTarget(notification)
+              return (
               <div
                 key={notification.id}
                 className={`px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${
@@ -214,18 +217,23 @@ const NotificationDropdown = forwardRef(({
                         </div>
                       )
                     )}
-                    {notification.action_url && (
+                    {actionTarget && (
                       <Link
-                        to={notification.action_url}
+                        to={actionTarget.href}
+                        reloadDocument={actionTarget.isExternal}
+                        onClick={() => {
+                          if (!notification.is_read) onMarkAsRead(notification.id)
+                        }}
                         className="mt-2 inline-flex items-center text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
                       >
-                        {notification.action_label || 'View Details'} →
+                        {actionTarget.isRecordPreview ? 'Preview' : notification.action_label || 'View Details'} →
                       </Link>
                     )}
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

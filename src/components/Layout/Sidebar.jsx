@@ -551,11 +551,11 @@ const Sidebar = ({
         },
         {
           id: "requisitions",
-          title: "7.4 Purchase Requisitions",
+          title: "7.4 Purchase Recommendations",
           icon: DocumentTextIcon,
           path: "/procurement/requisitions",
           description: "Purchase recommendation workflow",
-          moduleCode: "procurement_requisitions", // granular: purchase requisitions
+          moduleCode: "procurement_requisitions", // stable permission code for purchase recommendations
         },
         {
           id: "purchaseOrders",
