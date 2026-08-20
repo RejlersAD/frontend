@@ -15,17 +15,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { API_BASE_URL } from '../config/api.config'
 import { API_CONFIG, LAYOUT_CONFIG } from '../config/enterpriseDashboard.config'
 import {
-<<<<<<< HEAD
   APPROVAL_ACTIONS,
   getApprovalFilters,
-=======
-  APPROVAL_TYPES,
-  APPROVAL_ACTIONS,
-  ADDITIONAL_KPIS,
-  APPROVAL_STATISTICS,
-  getApprovalFilters,
-  getReportingHierarchy,
->>>>>>> origin/main
   getEnabledApprovalTypes
 } from '../config/approvalsSystem.config'
 import {
@@ -48,7 +39,6 @@ import {
   XMarkIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
-<<<<<<< HEAD
   BoltIcon,
   ShieldCheckIcon,
   ArrowTrendingUpIcon,
@@ -57,14 +47,6 @@ import {
 
 // Import reusable components
 import ActivityTimeline from '../components/EnterpriseDashboard/ActivityTimeline'
-=======
-} from '@heroicons/react/24/outline'
-
-// Import reusable components
-import KPICard from '../components/EnterpriseDashboard/KPICard'
-import ActivityTimeline from '../components/EnterpriseDashboard/ActivityTimeline'
-import AIInsightsPanel from '../components/EnterpriseDashboard/AIInsightsPanel'
->>>>>>> origin/main
 import { fetchCurrentUser } from '../store/slices/rbacSlice'
 
 // Icon map for dynamic icon rendering
@@ -94,16 +76,8 @@ const ApprovalsPageDynamic = () => {
   // State
   const [loading, setLoading] = useState(true)
   const [approvalCounts, setApprovalCounts] = useState({})
-<<<<<<< HEAD
   const [statistics, setStatistics] = useState({})
   const [notifications, setNotifications] = useState([])
-=======
-  const [approvalData, setApprovalData] = useState({})
-  const [statistics, setStatistics] = useState({})
-  const [notifications, setNotifications] = useState([])
-  const [managerHierarchy, setManagerHierarchy] = useState([])
-  const [directReports, setDirectReports] = useState([])
->>>>>>> origin/main
   const [selectedApprovalType, setSelectedApprovalType] = useState(searchParams.get('tab'))
 
   // Get auth token
@@ -205,21 +179,12 @@ const ApprovalsPageDynamic = () => {
       
       // Calculate statistics
       setStatistics({
-<<<<<<< HEAD
         approved_today: metrics?.approved_today ?? 0,
         rejected_today: metrics?.rejected_today ?? 0,
         avg_response_time: metrics?.avg_response_time || '—',
         sla_compliance: metrics?.sla_compliance ?? null,
         active_projects: projects?.active_count ?? 0,
         total_employees: metrics?.users?.total_users ?? 0
-=======
-        approved_today: metrics?.approved_today || 24,
-        rejected_today: metrics?.rejected_today || 3,
-        avg_response_time: metrics?.avg_response_time || '4.2h',
-        sla_compliance: metrics?.sla_compliance || 94,
-        active_projects: projects?.active_count || 8,
-        total_employees: metrics?.users?.total_users || 145
->>>>>>> origin/main
       })
 
     } catch (error) {
@@ -238,7 +203,6 @@ const ApprovalsPageDynamic = () => {
     return () => clearInterval(interval)
   }, [fetchApprovalData])
 
-<<<<<<< HEAD
   const approvalQueues = useMemo(() => enabledTypes.map(({ key, ...config }) => {
     const countData = approvalCounts[key] || { count: 0, trend: 0, data: {} }
     const count = Number(countData.count || 0)
@@ -262,83 +226,15 @@ const ApprovalsPageDynamic = () => {
   const totalPending = approvalQueues.reduce((sum, queue) => sum + queue.count, 0)
   const overdueTotal = approvalQueues.reduce((sum, queue) => sum + queue.overdue, 0)
   const priorityQueue = approvalQueues[0]
-=======
-  // Build KPI cards from approval types
-  const kpiCards = useMemo(() => {
-    const cards = []
-
-    // Add approval type KPIs
-    enabledTypes.forEach(({ key, ...config }) => {
-      const countData = approvalCounts[key] || { count: 0, trend: 0 }
-      const IconComponent = ICON_MAP[config.icon] || CheckCircleIcon
-
-      cards.push({
-        id: key,
-        title: config.kpi.title,
-        value: countData.count,
-        subtitle: config.kpi.subtitle,
-        trend: countData.trend,
-        trendDirection: countData.trend > 0 ? 'up' : countData.trend < 0 ? 'down' : 'neutral',
-        icon: IconComponent,
-        color: config.color,
-        onClick: () => setSelectedApprovalType(key)
-      })
-    })
-
-    // Add total approvals card
-    const totalPending = Object.values(approvalCounts).reduce((sum, { count }) => sum + count, 0)
-    cards.push({
-      id: 'total',
-      title: 'Total Approvals',
-      value: totalPending,
-      subtitle: 'Across all categories',
-      trend: 2.8,
-      trendDirection: 'up',
-      icon: CheckCircleIcon,
-      color: 'green',
-    })
-
-    // Add active projects
-    cards.push({
-      id: 'projects',
-      title: 'Active Projects',
-      value: statistics.active_projects || 8,
-      subtitle: 'Current projects',
-      trend: 4.2,
-      trendDirection: 'up',
-      icon: FolderIcon,
-      color: 'blue',
-    })
-
-    // Add total employees
-    cards.push({
-      id: 'employees',
-      title: 'Total Employees',
-      value: statistics.total_employees || 145,
-      subtitle: `${statistics.total_employees - 5 || 140} active`,
-      trend: 3.2,
-      trendDirection: 'up',
-      icon: UsersIcon,
-      color: 'teal',
-    })
-
-    return cards
-  }, [enabledTypes, approvalCounts, statistics])
->>>>>>> origin/main
 
   const unreadCount = notifications.filter(n => !n.is_read).length
 
   return (
-<<<<<<< HEAD
     <div className="min-h-screen bg-[#f3f6fb]">
-=======
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-50 to-slate-100">
->>>>>>> origin/main
       <div 
         className={`mx-auto ${LAYOUT_CONFIG.paddingX} ${LAYOUT_CONFIG.paddingY}`}
         style={{ maxWidth: LAYOUT_CONFIG.maxWidth }}
       >
-<<<<<<< HEAD
         <div className="space-y-8">
           {/* Page Header */}
           <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 p-6 text-white shadow-[0_24px_70px_-28px_rgba(37,99,235,0.65)] sm:p-8">
@@ -354,25 +250,10 @@ const ApprovalsPageDynamic = () => {
                   <h1 className="mt-1 break-words text-3xl font-black tracking-tight sm:text-4xl">Approval Command Center</h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-white/85">
                     Prioritize decisions, protect SLA performance, and keep every approval queue moving{isAdmin ? ' across the organization.' : ' for your team.'}
-=======
-        <div className="space-y-6">
-          {/* Page Header */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-pink-500 flex items-center justify-center">
-                  <CheckCircleIcon className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-slate-900">Approval Management</h1>
-                  <p className="text-sm text-slate-500 mt-0.5">
-                    Centralized approval dashboard{isAdmin ? ' (Administrator)' : ' (Manager)'}
->>>>>>> origin/main
                   </p>
                 </div>
               </div>
 
-<<<<<<< HEAD
               <div className="flex flex-wrap items-center gap-3">
                 <div className="mr-1 border-r border-white/15 pr-5">
                   <p className="text-3xl font-black tabular-nums">{loading ? '—' : totalPending}</p>
@@ -384,33 +265,16 @@ const ApprovalsPageDynamic = () => {
                   title="Refresh"
                 >
                   <ArrowPathIcon className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-=======
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={fetchApprovalData}
-                  className="p-2.5 text-slate-600 hover:text-orange-600 bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-200 rounded-xl transition-all"
-                  title="Refresh"
-                >
-                  <ArrowPathIcon className="w-5 h-5" />
->>>>>>> origin/main
                 </button>
 
                 <button
                   onClick={() => navigate('/notifications')}
-<<<<<<< HEAD
                   className="relative rounded-xl border border-white/15 bg-white/10 p-2.5 text-slate-200 transition hover:bg-white/20 hover:text-white"
-=======
-                  className="relative p-2.5 text-slate-600 hover:text-orange-600 bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-200 rounded-xl transition-all"
->>>>>>> origin/main
                   title="Notifications"
                 >
                   <BellIcon className="w-5 h-5" />
                   {unreadCount > 0 && (
-<<<<<<< HEAD
                     <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-indigo-700">
-=======
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 ring-2 ring-white">
->>>>>>> origin/main
                       {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                   )}
@@ -418,11 +282,7 @@ const ApprovalsPageDynamic = () => {
 
                 <button
                   onClick={() => navigate('/dashboard')}
-<<<<<<< HEAD
                   className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 shadow-sm transition hover:bg-cyan-50"
-=======
-                  className="px-4 py-2.5 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
->>>>>>> origin/main
                 >
                   Back to Dashboard
                 </button>
@@ -430,7 +290,6 @@ const ApprovalsPageDynamic = () => {
             </div>
           </div>
 
-<<<<<<< HEAD
           {/* Grouped management KPIs */}
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
             <KPIGroup
@@ -469,37 +328,17 @@ const ApprovalsPageDynamic = () => {
           <div className="grid grid-cols-1 gap-7 xl:grid-cols-12">
             {/* Left Column - Approval Center */}
             <div className="xl:col-span-8">
-=======
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-            {kpiCards.map((kpi) => (
-              <div key={kpi.id} onClick={kpi.onClick} className={kpi.onClick ? 'cursor-pointer' : ''}>
-                <KPICard {...kpi} loading={loading} />
-              </div>
-            ))}
-          </div>
-
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column - Approval Center */}
-            <div className="lg:col-span-7 space-y-6">
->>>>>>> origin/main
               <DynamicApprovalCenter
                 approvalTypes={enabledTypes}
                 user={user}
                 rbacData={rbacData}
                 token={token}
-<<<<<<< HEAD
-=======
-                isAdmin={isAdmin}
->>>>>>> origin/main
                 selectedType={selectedApprovalType}
                 onRefresh={fetchApprovalData}
               />
             </div>
 
             {/* Right Column */}
-<<<<<<< HEAD
             <div className="space-y-7 xl:col-span-4">
               <ApprovalIntelligencePanel
                 queues={approvalQueues}
@@ -511,28 +350,13 @@ const ApprovalsPageDynamic = () => {
                 <ReportingHierarchyWidget />
               )}
 
-=======
-            <div className="lg:col-span-5 space-y-6">
-              {/* Reporting Hierarchy Widget (if not admin) */}
-              {!isAdmin && (
-                <ReportingHierarchyWidget user={user} />
-              )}
-
-              {/* AI Insights */}
-              <AIInsightsPanel />
-
->>>>>>> origin/main
               {/* Activity Timeline */}
               <ActivityTimeline />
             </div>
           </div>
 
           {/* Statistics Section */}
-<<<<<<< HEAD
           <div className="hidden">
-=======
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
->>>>>>> origin/main
             <StatisticCard
               title="Approved Today"
               value={statistics.approved_today || 24}
@@ -564,11 +388,7 @@ const ApprovalsPageDynamic = () => {
           </div>
 
           {/* Info Banner */}
-<<<<<<< HEAD
           <div className="hidden">
-=======
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6">
->>>>>>> origin/main
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0 w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center">
                 <SparklesIcon className="w-6 h-6 text-white" />
@@ -611,7 +431,6 @@ const ApprovalsPageDynamic = () => {
 /**
  * Dynamic Approval Center - renders approvals based on configuration
  */
-<<<<<<< HEAD
 const KPIGroup = ({ eyebrow, title, tone = 'normal', metrics }) => {
   const tones = {
     critical: { bar: 'bg-rose-500', icon: 'bg-rose-50 text-rose-600', ring: 'border-rose-200/80', Icon: ExclamationTriangleIcon },
@@ -727,9 +546,6 @@ const ApprovalIntelligencePanel = ({ queues, statistics, onSelectQueue }) => {
 }
 
 const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedType, onRefresh }) => {
-=======
-const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, selectedType, onRefresh }) => {
->>>>>>> origin/main
   const [approvals, setApprovals] = useState([])
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState(selectedType || approvalTypes[0]?.key)
@@ -933,11 +749,7 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
   }
 
   return (
-<<<<<<< HEAD
     <section className="relative min-h-[640px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_20px_55px_-30px_rgba(15,23,42,0.55)]">
-=======
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 relative">
->>>>>>> origin/main
       {/* Toast notification (replaces window.alert) */}
       {toast && (
         <div
@@ -959,7 +771,6 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
         </div>
       )}
 
-<<<<<<< HEAD
       <div className="flex flex-col gap-4 border-b border-slate-200 bg-gradient-to-r from-white via-white to-indigo-50/70 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -989,23 +800,6 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
               activeTab === key
                 ? 'bg-slate-900 text-white shadow-md shadow-slate-300'
                 : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700'
-=======
-      <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-        <CheckCircleIcon className="w-6 h-6 text-orange-600" />
-        Approval Center
-      </h2>
-
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {approvalTypes.map(({ key, label, color }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
-              activeTab === key
-                ? `bg-${color}-600 text-white shadow-md`
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
->>>>>>> origin/main
             }`}
           >
             {label}
@@ -1014,7 +808,6 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
       </div>
 
       {/* Approvals List */}
-<<<<<<< HEAD
       <div className="max-h-[760px] space-y-3 overflow-y-auto p-6">
         {loading ? (
           <div className="space-y-3 py-2">
@@ -1025,14 +818,6 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
             <CheckCircleIcon className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
             <p className="font-bold">Queue cleared</p>
             <p className="mt-1 text-xs">No pending {activeConfig?.label?.toLowerCase()} found.</p>
-=======
-      <div className="space-y-3">
-        {loading ? (
-          <div className="text-center py-8 text-slate-500">Loading...</div>
-        ) : approvals.length === 0 ? (
-          <div className="text-center py-8 text-slate-500">
-            No pending {activeConfig?.label?.toLowerCase()} found
->>>>>>> origin/main
           </div>
         ) : (
           approvals.map((item, index) => (
@@ -1059,11 +844,7 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, isAdmin, 
         onConfirm={executeAction}
         onSelectAction={handleAction}
       />
-<<<<<<< HEAD
     </section>
-=======
-    </div>
->>>>>>> origin/main
   )
 }
 
@@ -1369,7 +1150,6 @@ const ApprovalActionModal = ({ isOpen, mode, item, actionId, config, token, subm
  * Approval Card - renders a single approval item
  */
 const ApprovalCard = ({ item, config, onAction }) => {
-<<<<<<< HEAD
   const submittedAt = item.submitted_at || item.created_at || item.requested_at || item.date_submitted
   const submittedTime = submittedAt ? new Date(submittedAt).getTime() : NaN
   const hasSubmittedTime = Number.isFinite(submittedTime)
@@ -1400,25 +1180,11 @@ const ApprovalCard = ({ item, config, onAction }) => {
             <div key={field.key} className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{field.label}</p>
               <p className="mt-0.5 truncate text-sm font-semibold text-slate-800" title={String(item[field.key] || 'N/A')}>{item[field.key] || 'N/A'}</p>
-=======
-  return (
-    <div className="p-4 border border-slate-200 rounded-xl hover:border-orange-200 hover:shadow-md transition-all">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 space-y-2">
-          {config.displayFields.map(field => (
-            <div key={field.key} className="flex items-center gap-2 text-sm">
-              <span className="font-semibold text-slate-600">{field.label}:</span>
-              <span className="text-slate-900">{item[field.key] || 'N/A'}</span>
->>>>>>> origin/main
             </div>
           ))}
         </div>
 
-<<<<<<< HEAD
         <div className="flex w-full flex-row flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
-=======
-        <div className="flex gap-2">
->>>>>>> origin/main
           {config.actions.map(actionId => {
             const action = APPROVAL_ACTIONS[actionId]
             if (!action) return null
@@ -1429,11 +1195,7 @@ const ApprovalCard = ({ item, config, onAction }) => {
               <button
                 key={actionId}
                 onClick={() => onAction(actionId, item)}
-<<<<<<< HEAD
                 className={`rounded-xl p-2.5 shadow-sm transition-all ${action.bgColor} ${action.hoverColor} ${action.textColor}`}
-=======
-                className={`p-2 ${action.bgColor} ${action.hoverColor} ${action.textColor} rounded-lg transition-all`}
->>>>>>> origin/main
                 title={action.label}
               >
                 <IconComponent className="w-5 h-5" />
@@ -1442,22 +1204,14 @@ const ApprovalCard = ({ item, config, onAction }) => {
           })}
         </div>
       </div>
-<<<<<<< HEAD
     </article>
-=======
-    </div>
->>>>>>> origin/main
   )
 }
 
 /**
  * Reporting Hierarchy Widget - shows manager chain
  */
-<<<<<<< HEAD
 const ReportingHierarchyWidget = () => {
-=======
-const ReportingHierarchyWidget = ({ user }) => {
->>>>>>> origin/main
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
       <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">

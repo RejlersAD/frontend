@@ -93,18 +93,7 @@ const Projects = () => {
       
       if (editingProject) {
         // Update existing project
-<<<<<<< HEAD
         savedProject = await qhseProjectsAPI.update(editingProject.id, formData);
-=======
-        const _dateFields = [
-          'projectStartingDate', 'projectClosingDate', 'projectExtension',
-          'projectQualityPlanStatusIssueDate', 'projectAudit1', 'projectAudit2',
-          'projectAudit3', 'projectAudit4', 'clientAudit1', 'clientAudit2'
-        ];
-        const _sanitized = { ...formData };
-        _dateFields.forEach(f => { if (!_sanitized[f]) _sanitized[f] = null; });
-        savedProject = await qhseProjectsAPI.update(editingProject.id, _sanitized);
->>>>>>> origin/main
       } else {
         // Create new project
         savedProject = await qhseProjectsAPI.create(formData);

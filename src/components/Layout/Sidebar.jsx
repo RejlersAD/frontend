@@ -137,17 +137,6 @@ const Sidebar = ({
   const hasAdminModule = userModules.some((code) =>
     ADMIN_MODULE_CODES.includes(code),
   );
-<<<<<<< HEAD
-=======
-  // SOFT-CODED: Any role that grants a real HR module code unlocks the
-  // "4. Human Resource" section even when FEATURE_FLAGS.enableHRModule is
-  // globally off — otherwise per-user custom roles (e.g. Onboarding-only
-  // access) are silently hidden despite having the module granted via RBAC.
-  const HR_MODULE_CODES = ["hr_management", "payroll", "hr_onboarding"];
-  const hasAnyHRModule = userModules.some((code) =>
-    HR_MODULE_CODES.includes(code),
-  );
->>>>>>> origin/main
 
   // isAdmin: MODULE-BASED access control (soft-coded)
   // Does NOT use is_staff flag - only is_superuser, super_admin/admin/ict_admin role, or admin modules
@@ -271,11 +260,7 @@ const Sidebar = ({
 
   // Debug logging
   React.useEffect(() => {
-<<<<<<< HEAD
     if (import.meta.env.DEV) {
-=======
-    if (process.env.NODE_ENV === "development") {
->>>>>>> origin/main
       console.log("=== SIDEBAR DEBUG (MODULE-BASED RBAC) ===");
       console.log("Full user object:", user);
       console.log("isAdmin:", isAdmin);
@@ -450,18 +435,9 @@ const Sidebar = ({
         },
       ],
     },
-<<<<<<< HEAD
     // Section 4: Human Resource
     // SOFT-CODED: Controlled by FEATURE_FLAGS.enableHRModule in features.config.js
     // SECURITY: Super administrators ALWAYS see HR, bypassing feature flag
-=======
-    // ── Section 4: Human Resource ──────────────────────────────────────────
-    // SOFT-CODED: Controlled by FEATURE_FLAGS.enableHRModule in features.config.js
-    // SECURITY: Super administrators ALWAYS see HR, bypassing feature flag.
-    // Also unlocked for any role that grants an actual HR module (RBAC-based),
-    // so per-user custom roles (e.g. Onboarding-only) work even when the
-    // global feature flag is off.
->>>>>>> origin/main
     {
       id: "human_resource",
       title: getSectionTitle("human_resource"),
@@ -469,14 +445,7 @@ const Sidebar = ({
       type: "section",
       expanded: expandedSections.human_resource,
       enabled:
-<<<<<<< HEAD
         FEATURE_FLAGS.enableHRModule || hasSuperAdminRole || hasSuperuserFlag, // Super admin bypass
-=======
-        FEATURE_FLAGS.enableHRModule ||
-        hasSuperAdminRole ||
-        hasSuperuserFlag ||
-        hasAnyHRModule,
->>>>>>> origin/main
       children: [
         {
           id: "hrDashboard",
@@ -582,19 +551,11 @@ const Sidebar = ({
         },
         {
           id: "requisitions",
-<<<<<<< HEAD
           title: "7.4 Purchase Recommendations",
           icon: DocumentTextIcon,
           path: "/procurement/requisitions",
           description: "Purchase recommendation workflow",
           moduleCode: "procurement_requisitions", // stable permission code for purchase recommendations
-=======
-          title: "7.4 Purchase Requisitions",
-          icon: DocumentTextIcon,
-          path: "/procurement/requisitions",
-          description: "Purchase recommendation workflow",
-          moduleCode: "procurement_requisitions", // granular: purchase requisitions
->>>>>>> origin/main
         },
         {
           id: "purchaseOrders",
@@ -630,30 +591,18 @@ const Sidebar = ({
           moduleCode: "qhse",
         },
         {
-<<<<<<< HEAD
           id: "detailedView",
           title: "8.2 Project Quality Details",
           icon: TableCellsIcon,
           path: "/qhse/general/detailed",
           description: "Detailed project quality view",
-=======
-          id: "projectQualityDetails",
-          title: "8.2 Project Quality Details",
-          icon: TableCellsIcon,
-          path: "/qhse/general/quality",
-          description: "Detailed project quality analysis and reporting",
->>>>>>> origin/main
           moduleCode: "qhse_detailed",
         },
         {
           id: "qualityManagement",
           title: "8.3 Quality Management",
           icon: ChartBarIcon,
-<<<<<<< HEAD
           path: "/qhse/general/quality",
-=======
-          path: "/qhse/general/quality-management",
->>>>>>> origin/main
           description: "Quality metrics and audits",
           moduleCode: "qhse_quality",
         },

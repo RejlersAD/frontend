@@ -5,11 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-<<<<<<< HEAD
 import { useNavigate, useParams } from 'react-router-dom';
-=======
-import { useNavigate } from 'react-router-dom';
->>>>>>> origin/main
 import {
   ArrowLeftIcon,
   BriefcaseIcon,
@@ -81,7 +77,6 @@ const VALIDATION = {
   description: { min: 10, max: 5000, required: false },
 };
 
-<<<<<<< HEAD
 const INITIAL_FORM_DATA = {
   project_number: '',
   project_name: '',
@@ -109,15 +104,12 @@ const INITIAL_FORM_DATA = {
   notes: '',
 };
 
-=======
->>>>>>> origin/main
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 
 const ProjectCreator = () => {
   const navigate = useNavigate();
-<<<<<<< HEAD
   const { id } = useParams();
   const isEditMode = Boolean(id);
   
@@ -127,54 +119,6 @@ const ProjectCreator = () => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(isEditMode);
   const [loadError, setLoadError] = useState(null);
-=======
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    // Identification
-    project_number: '',
-    project_name: '',
-    client_name: '',
-    client_reference: '',
-    
-    // Classification
-    project_type: 'engineering',
-    status: 'planning',
-    health_status: 'green',
-    
-    // Organization
-    cost_center: '',
-    project_manager: '',
-    project_manager_name: '',
-    lead_engineer: '',
-    
-    // Scope
-    description: '',
-    scope_of_work: '',
-    
-    // Timeline
-    start_date: '',
-    planned_end_date: '',
-    
-    // Location
-    site_location: '',
-    country: 'United Arab Emirates',
-    region: 'Middle East',
-    
-    // Financial
-    contract_value: '',
-    contract_currency: 'AED',
-    payment_terms: '',
-    
-    // Metadata
-    is_billable: true,
-    is_internal: false,
-    notes: '',
-  });
-
-  const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
->>>>>>> origin/main
   const [submitting, setSubmitting] = useState(false);
   const [notification, setNotification] = useState(null);
   
@@ -186,7 +130,6 @@ const ProjectCreator = () => {
   useEffect(() => {
     fetchCostCenters();
     fetchUsers();
-<<<<<<< HEAD
     if (id) fetchProject();
   }, [id]);
 
@@ -210,19 +153,12 @@ const ProjectCreator = () => {
       setLoading(false);
     }
   };
-=======
-  }, []);
->>>>>>> origin/main
   
   const fetchCostCenters = async () => {
     try {
       const response = await apiClient.get('/procurement/cost-centers/?is_active=true');
-<<<<<<< HEAD
       const responseData = response.data?.results || response.data;
       setCostCenters(Array.isArray(responseData) ? responseData : []);
-=======
-      setCostCenters(response.data.results || response.data || []);
->>>>>>> origin/main
     } catch (error) {
       console.error('Failed to fetch cost centers:', error);
     }
@@ -230,15 +166,10 @@ const ProjectCreator = () => {
   
   const fetchUsers = async () => {
     try {
-<<<<<<< HEAD
       const response = await apiClient.get('/procurement/requisitions/get_approvers/', {
         params: { role: 'any_active' },
       });
       setUsers(Array.isArray(response.data?.users) ? response.data.users : []);
-=======
-      const response = await apiClient.get('/rbac/users/?is_active=true&page_size=500');
-      setUsers(response.data.results || response.data || []);
->>>>>>> origin/main
     } catch (error) {
       console.error('Failed to fetch users:', error);
     }
@@ -317,16 +248,12 @@ const ProjectCreator = () => {
       // Clean up data before submission
       const payload = {
         ...formData,
-<<<<<<< HEAD
         project_number: formData.project_number.trim(),
         project_name: formData.project_name.trim(),
-=======
->>>>>>> origin/main
         contract_value: formData.contract_value ? parseFloat(formData.contract_value) : null,
         cost_center: formData.cost_center || null,
         project_manager: formData.project_manager || null,
         lead_engineer: formData.lead_engineer || null,
-<<<<<<< HEAD
         start_date: formData.start_date || null,
         planned_end_date: formData.planned_end_date || null,
       };
@@ -344,21 +271,6 @@ const ProjectCreator = () => {
       
     } catch (error) {
       console.error(`Failed to ${isEditMode ? 'update' : 'create'} project:`, error);
-=======
-      };
-      
-      const response = await apiClient.post('/procurement/projects/', payload);
-      
-      showNotification('success', 'Project created successfully!');
-      
-      // Redirect to project detail page after short delay
-      setTimeout(() => {
-        navigate(`/procurement/projects/${response.data.id}`);
-      }, 1500);
-      
-    } catch (error) {
-      console.error('Failed to create project:', error);
->>>>>>> origin/main
       
       // Extract error messages from response
       if (error.response?.data) {
@@ -370,11 +282,7 @@ const ProjectCreator = () => {
         setErrors(apiErrors);
       }
       
-<<<<<<< HEAD
       showNotification('error', error.response?.data?.detail || `Failed to ${isEditMode ? 'update' : 'create'} project`);
-=======
-      showNotification('error', error.response?.data?.detail || 'Failed to create project');
->>>>>>> origin/main
     } finally {
       setSubmitting(false);
     }
@@ -467,7 +375,6 @@ const ProjectCreator = () => {
     </div>
   );
 
-<<<<<<< HEAD
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -492,8 +399,6 @@ const ProjectCreator = () => {
     );
   }
 
-=======
->>>>>>> origin/main
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -510,7 +415,6 @@ const ProjectCreator = () => {
               </button>
               <div className="h-6 w-px bg-gray-300" />
               <div>
-<<<<<<< HEAD
                 <h1 className="text-2xl font-bold text-gray-900">{isEditMode ? 'Edit Project' : 'Create New Project'}</h1>
                 <p className="text-sm text-gray-600 mt-1">{isEditMode ? 'Update the procurement project information' : 'Set up a new procurement project'}</p>
               </div>
@@ -526,20 +430,6 @@ const ProjectCreator = () => {
                 Generate Project #
               </button>
             )}
-=======
-                <h1 className="text-2xl font-bold text-gray-900">Create New Project</h1>
-                <p className="text-sm text-gray-600 mt-1">Set up a new procurement project</p>
-              </div>
-            </div>
-            
-            <button
-              onClick={generateProjectNumber}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              <SparklesIcon className="h-4 w-4" />
-              Generate Project #
-            </button>
->>>>>>> origin/main
           </div>
         </div>
       </div>
@@ -660,11 +550,7 @@ const ProjectCreator = () => {
               <SelectField
                 label="Project Manager"
                 field="project_manager"
-<<<<<<< HEAD
                 options={users.map(u => ({ value: u.id, label: u.full_name || u.email || u.username }))}
-=======
-                options={users.map(u => ({ value: u.id, label: u.full_name || u.email }))}
->>>>>>> origin/main
                 helpText="Primary project manager (from users list)"
               />
             </div>
@@ -680,11 +566,7 @@ const ProjectCreator = () => {
               <SelectField
                 label="Lead Engineer"
                 field="lead_engineer"
-<<<<<<< HEAD
                 options={users.map(u => ({ value: u.id, label: u.full_name || u.email || u.username }))}
-=======
-                options={users.map(u => ({ value: u.id, label: u.full_name || u.email }))}
->>>>>>> origin/main
               />
             </div>
           </FieldGroup>
@@ -802,20 +684,12 @@ const ProjectCreator = () => {
               {submitting ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-<<<<<<< HEAD
                   {isEditMode ? 'Updating Project...' : 'Creating Project...'}
-=======
-                  Creating Project...
->>>>>>> origin/main
                 </>
               ) : (
                 <>
                   <CheckCircleIcon className="w-5 h-5" />
-<<<<<<< HEAD
                   {isEditMode ? 'Update Project' : 'Create Project'}
-=======
-                  Create Project
->>>>>>> origin/main
                 </>
               )}
             </button>

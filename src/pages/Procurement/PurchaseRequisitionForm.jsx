@@ -27,10 +27,7 @@ import {
   PlusIcon,
   SparklesIcon,
   TrashIcon,
-<<<<<<< HEAD
   XMarkIcon,
-=======
->>>>>>> origin/main
 } from '@heroicons/react/24/outline';
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
@@ -293,12 +290,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   const [showVendorOptions, setShowVendorOptions] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
   const [showProjectOptions, setShowProjectOptions] = useState(false);
-<<<<<<< HEAD
   const [showProjectCreator, setShowProjectCreator] = useState(false);
   const [newProjectReference, setNewProjectReference] = useState({ number: '', name: '' });
   const [projectCreatorError, setProjectCreatorError] = useState('');
-=======
->>>>>>> origin/main
   const [vendorLoadError, setVendorLoadError] = useState('');
   const [prNumberStatus, setPrNumberStatus] = useState({ checking: false, available: null, message: '' });
   const [errors, setErrors] = useState({});
@@ -355,12 +349,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     setShowVendorOptions(false);
     setProjectSearch('');
     setShowProjectOptions(false);
-<<<<<<< HEAD
     setShowProjectCreator(false);
     setNewProjectReference({ number: '', name: '' });
     setProjectCreatorError('');
-=======
->>>>>>> origin/main
     setVendorLoadError('');
     setPrNumberStatus({ checking: false, available: null, message: '' });
     setErrors({});
@@ -630,7 +621,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     setShowProjectOptions(false);
   };
 
-<<<<<<< HEAD
   const openProjectDepartmentCreator = () => {
     setNewProjectReference(previous => ({
       number: previous.number,
@@ -693,21 +683,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     setErrors(previous => ({ ...previous, project_department: null }));
   };
 
-=======
-  const createProjectDepartment = () => {
-    const value = projectSearch.trim();
-    if (!value) return;
-    const alreadySelected = (formData.project_details || []).some(project => (
-      String(project.value || project.label || '').trim().toLowerCase() === value.toLowerCase()
-    ));
-    if (!alreadySelected) {
-      toggleProject({ value, label: value, source: 'custom' });
-    }
-    setProjectSearch('');
-    setShowProjectOptions(false);
-  };
-
->>>>>>> origin/main
   const updateProjectDetail = (index, value) => {
     setFormData(previous => {
       const projectDetails = (previous.project_details || []).map((project, projectIndex) => (
@@ -1008,14 +983,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     }
     if (!(formData.project_details || []).length) {
       newErrors.project_department = 'Select at least one project or Internal / General';
-<<<<<<< HEAD
     } else if ((formData.project_details || []).some(project => (
       project.source === 'custom'
       && (!String(project.project_number || '').trim() || !String(project.project_name || '').trim())
     ))) {
       newErrors.project_department = 'Every custom project / department requires both a number and name';
-=======
->>>>>>> origin/main
     }
     if (!formData.description_reason?.trim()) {
       newErrors.description_reason = 'Purchase description is required';
@@ -1581,21 +1553,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                       && !suggestionStatus.project?.loading
                     ) {
                       event.preventDefault();
-<<<<<<< HEAD
                       openProjectDepartmentCreator();
-=======
-                      createProjectDepartment();
->>>>>>> origin/main
                     }
                   }}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
                     errors.project_department ? 'border-red-500' : 'border-gray-300'
                   }`}
-<<<<<<< HEAD
                   placeholder="Search by project / department name or number"
-=======
-                  placeholder="Search a project or department, or type a new one"
->>>>>>> origin/main
                   autoComplete="off"
                 />
                 {showProjectOptions && (
@@ -1615,11 +1579,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                       );
                     })}
                     {normalizedProjectSearch && !hasExactProjectMatch && !suggestionStatus.project?.loading && (
-<<<<<<< HEAD
                       <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={openProjectDepartmentCreator} className="block w-full px-4 py-2 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
-=======
-                      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={createProjectDepartment} className="block w-full px-4 py-2 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
->>>>>>> origin/main
                         <PlusIcon className="mr-1 inline h-4 w-4" /> No match found — Create New “{projectSearch.trim()}”
                       </button>
                     )}
@@ -1632,7 +1592,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                   <p className="mt-1 text-xs text-red-600">{suggestionStatus.project.error}</p>
                 )}
                 {suggestionStatus.project?.loaded && !suggestionStatus.project?.error && projectSuggestions.length === 0 && (
-<<<<<<< HEAD
                   <p className="mt-1 text-xs text-gray-500">No matching project or department found. Create one here with its name and number.</p>
                 )}
                 <button type="button" onClick={openProjectDepartmentCreator} className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800">
@@ -1661,9 +1620,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                       <button type="button" onClick={createProjectDepartment} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700"><PlusIcon className="h-4 w-4" /> Add to recommendation</button>
                     </div>
                   </div>
-=======
-                  <p className="mt-1 text-xs text-gray-500">No matching project or department found. Use Create New above or press Enter.</p>
->>>>>>> origin/main
                 )}
                 {errors.project_department && (
                   <p className="mt-1 text-sm text-red-600">{errors.project_department}</p>
@@ -1671,7 +1627,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 <div className="mt-3 space-y-2">
                   {(formData.project_details || []).map((project, index) => (
                     <div key={`${project.project_id || project.value}-${index}`} className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 p-2">
-<<<<<<< HEAD
                       {project.source === 'custom' ? (
                         <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(130px,0.35fr)_minmax(180px,0.65fr)]">
                           <input value={project.project_number || ''} onChange={(event) => updateCustomProjectDetail(index, 'project_number', event.target.value)} className="min-w-0 rounded border border-purple-200 bg-white px-3 py-1.5 text-sm text-purple-900" aria-label="Project or department number" placeholder="Number" />
@@ -1680,9 +1635,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                       ) : (
                         <input value={project.source === 'internal' ? 'Internal / General' : (project.label || project.value || '')} onChange={(event) => updateProjectDetail(index, event.target.value)} readOnly={project.source === 'internal'} className="min-w-0 flex-1 rounded border border-purple-200 bg-white px-3 py-1.5 text-sm text-purple-900 read-only:bg-purple-50" aria-label="Edit selected project or department" />
                       )}
-=======
-                      <input value={project.source === 'internal' ? 'Internal / General' : (project.label || project.value || '')} onChange={(event) => updateProjectDetail(index, event.target.value)} readOnly={project.source === 'internal'} className="min-w-0 flex-1 rounded border border-purple-200 bg-white px-3 py-1.5 text-sm text-purple-900 read-only:bg-purple-50" aria-label="Edit selected project or department" />
->>>>>>> origin/main
                       <button type="button" onClick={() => removeProjectDetail(index)} className="text-purple-500 hover:text-red-600" aria-label="Remove project or department">
                         <XCircleIcon className="h-3.5 w-3.5" />
                       </button>

@@ -89,23 +89,6 @@ const AchievementSection = () => {
       return;
     }
 
-<<<<<<< HEAD
-=======
-    // Clean data before sending
-    const cleanData = {
-      title: formData.title,
-      category: formData.category,
-      description: formData.description || '',
-      level: formData.level || '',
-      achieved_date: formData.achieved_date || null,
-      location: formData.location || '',
-      organization: formData.organization || '',
-      certificate_url: formData.certificate_url || '',
-      media_url: formData.media_url || '',
-      is_public: formData.is_public,
-    };
-
->>>>>>> origin/main
     setIsLoading(true);
     try {
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
@@ -119,11 +102,7 @@ const AchievementSection = () => {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-<<<<<<< HEAD
         body: JSON.stringify(formData),
-=======
-        body: JSON.stringify(cleanData),
->>>>>>> origin/main
       });
 
       if (!res.ok) {

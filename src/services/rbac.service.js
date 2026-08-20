@@ -1,11 +1,7 @@
 /**
  * RBAC Service - API calls for Super Admin Dashboard
  */
-<<<<<<< HEAD
 import apiService, { apiClientLongTimeout } from './api.service';
-=======
-import apiService from './api.service';
->>>>>>> origin/main
 
 const RBAC_BASE_URL = '/rbac';
 
@@ -128,12 +124,8 @@ class RBACService {
 
   // ==================== Bulk Operations ====================
   async bulkUploadUsers(formData) {
-<<<<<<< HEAD
     return apiClientLongTimeout.post(`${RBAC_BASE_URL}/users/bulk_upload/`, formData, {
       timeout: 30 * 60 * 1000,
-=======
-    return apiService.post(`${RBAC_BASE_URL}/users/bulk_upload/`, formData, {
->>>>>>> origin/main
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -189,16 +181,6 @@ class RBACService {
     return apiService.delete(`${RBAC_BASE_URL}/roles/${id}/`);
   }
 
-<<<<<<< HEAD
-=======
-  // Duplicate an existing role (copies module + permission grants) under a
-  // new name. Always creates a plain custom role, even when cloning a
-  // system role, so the clone can be freely edited/deleted.
-  async duplicateRole(id, data) {
-    return apiService.post(`${RBAC_BASE_URL}/roles/${id}/duplicate/`, data);
-  }
-
->>>>>>> origin/main
   async assignPermissionToRole(roleId, permissionId) {
     return apiService.post(`${RBAC_BASE_URL}/roles/${roleId}/assign_permission/`, {
       permission_id: permissionId

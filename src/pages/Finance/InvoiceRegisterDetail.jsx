@@ -82,7 +82,6 @@ const FinancialCard = ({ label, value, emphasis }) => (
 );
 FinancialCard.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string.isRequired, emphasis: PropTypes.bool };
 
-<<<<<<< HEAD
 const InvoicePdfPreview = ({ invoice }) => {
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewLoading, setPreviewLoading] = useState(true);
@@ -136,8 +135,6 @@ const InvoicePdfPreview = ({ invoice }) => {
 };
 InvoicePdfPreview.propTypes = { invoice: PropTypes.object.isRequired };
 
-=======
->>>>>>> origin/main
 const IncomingDetail = ({ invoice, onChanged = () => window.location.reload() }) => {
   const allocations = invoice.po_allocations || [];
   const [working, setWorking] = useState(false);
@@ -168,11 +165,7 @@ const IncomingDetail = ({ invoice, onChanged = () => window.location.reload() })
     <div className="grid gap-5 xl:grid-cols-[minmax(420px,0.9fr)_minmax(600px,1.1fr)]">
       <div className="space-y-4">
         <div className="sticky top-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
-<<<<<<< HEAD
           <InvoicePdfPreview invoice={invoice} />
-=======
-          <iframe title={`Invoice ${invoice.invoice_number}`} src={financeService.getInvoicePreviewUrl(invoice.id)} className="h-[720px] w-full" />
->>>>>>> origin/main
         </div>
       </div>
       <div className="space-y-4">

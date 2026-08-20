@@ -393,15 +393,8 @@ apiClient.interceptors.response.use(
         }
       }
 
-<<<<<<< HEAD
       let errorMessage = 'An error occurred';
       
-=======
-      if (error.response?.status === 403) return Promise.reject(error);
-
-      let errorMessage = 'An error occurred';
-
->>>>>>> origin/main
       if (!error.response) {
         // Network/CORS error
         errorMessage = 'Network error. Please check your connection or try again later.';

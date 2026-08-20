@@ -8,10 +8,7 @@ import {
   BellSlashIcon
 } from '@heroicons/react/24/outline'
 import { formatDistanceToNow } from '../../utils/dateFormatter'
-<<<<<<< HEAD
 import { resolveNotificationTarget } from '../../utils/notificationNavigation'
-=======
->>>>>>> origin/main
 
 /**
  * NotificationDropdown Component
@@ -128,13 +125,9 @@ const NotificationDropdown = forwardRef(({
           </div>
         ) : (
           <div className="divide-y divide-slate-200 dark:divide-slate-700">
-<<<<<<< HEAD
             {notifications.map((notification) => {
               const actionTarget = resolveNotificationTarget(notification)
               return (
-=======
-            {notifications.map((notification) => (
->>>>>>> origin/main
               <div
                 key={notification.id}
                 className={`px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${
@@ -224,7 +217,6 @@ const NotificationDropdown = forwardRef(({
                         </div>
                       )
                     )}
-<<<<<<< HEAD
                     {actionTarget && (
                       <Link
                         to={actionTarget.href}
@@ -235,25 +227,13 @@ const NotificationDropdown = forwardRef(({
                         className="mt-2 inline-flex items-center text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
                       >
                         {actionTarget.isRecordPreview ? 'Preview' : notification.action_label || 'View Details'} →
-=======
-                    {notification.action_url && (
-                      <Link
-                        to={notification.action_url}
-                        className="mt-2 inline-flex items-center text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
-                      >
-                        {notification.action_label || 'View Details'} →
->>>>>>> origin/main
                       </Link>
                     )}
                   </div>
                 </div>
               </div>
-<<<<<<< HEAD
               )
             })}
-=======
-            ))}
->>>>>>> origin/main
           </div>
         )}
       </div>

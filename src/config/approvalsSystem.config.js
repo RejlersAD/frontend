@@ -111,11 +111,7 @@ export const APPROVAL_TYPES = {
   PROCUREMENT: {
     id: 'procurement',
     label: 'Procurement Requests',
-<<<<<<< HEAD
     pluralLabel: 'Purchase Recommendations',
-=======
-    pluralLabel: 'Purchase Requisitions',
->>>>>>> origin/main
     icon: 'ShoppingCartIcon',
     color: 'indigo',
     gradientFrom: '#6366f1',

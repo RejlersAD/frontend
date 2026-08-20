@@ -513,13 +513,6 @@ function RoleManagement() {
   const [creating,      setCreating]      = useState(false);
   const [createForm,    setCreateForm]    = useState(EMPTY_FORM);
   const [createError,   setCreateError]   = useState(null);
-<<<<<<< HEAD
-=======
-  const [showDuplicate,   setShowDuplicate]   = useState(false);
-  const [duplicating,     setDuplicating]     = useState(false);
-  const [duplicateForm,   setDuplicateForm]   = useState({ name: '', description: '' });
-  const [duplicateError,  setDuplicateError]  = useState(null);
->>>>>>> origin/main
   const [detailTab,     setDetailTab]     = useState('modules'); // 'modules' | 'users'
 
   const canManageRoleUsers = useMemo(() => {
@@ -746,28 +739,6 @@ function RoleManagement() {
     } catch (err) { notify('error', err?.response?.data?.detail || 'Failed to delete.'); }
   }, [selectedRole, notify]);
 
-<<<<<<< HEAD
-=======
-  const handleDuplicateRole = useCallback(async () => {
-    if (!selectedRole) return;
-    const name = duplicateForm.name.trim();
-    if (!name) { setDuplicateError('Name is required.'); return; }
-    const sourceName = selectedRole.name;
-    setDuplicating(true); setDuplicateError(null);
-    try {
-      const res = await rbacService.duplicateRole(selectedRole.id, {
-        name, description: duplicateForm.description.trim(),
-      });
-      const role = res?.data ?? res;
-      setRoles((prev) => [...prev, role]); setShowDuplicate(false); setDuplicateForm({ name: '', description: '' });
-      setSelectedRole(role); setDetailTab('modules');
-      notify('success', `"${role.name}" created as a copy of "${sourceName}" — features carried over, edit below.`);
-    } catch (err) {
-      setDuplicateError(err?.response?.data?.error || err?.response?.data?.detail || 'Failed to duplicate role.');
-    } finally { setDuplicating(false); }
-  }, [selectedRole, duplicateForm, notify]);
-
->>>>>>> origin/main
   const filteredRoles = useMemo(() => {
     // Exclude auto-generated custom roles and soft-coded hidden roles (HIDDEN_ROLE_CODES).
     const visible = roles.filter(
@@ -972,7 +943,6 @@ function RoleManagement() {
                         Code: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 text-xs">{selectedRole.code}</code>
                       </p>
                     </div>
-<<<<<<< HEAD
                     {isSuperAdmin && !selectedRole.is_system_role && (
                       <button onClick={() => handleDeleteRole(selectedRole)}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors flex-shrink-0">
@@ -981,27 +951,6 @@ function RoleManagement() {
                         </svg>
                         Delete
                       </button>
-=======
-                    {isSuperAdmin && (
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button onClick={() => { setShowDuplicate(true); setDuplicateError(null); setDuplicateForm({ name: `${selectedRole.name} (Copy)`, description: selectedRole.description || '' }); }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
-                          Duplicate
-                        </button>
-                        {!selectedRole.is_system_role && (
-                          <button onClick={() => handleDeleteRole(selectedRole)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Delete
-                          </button>
-                        )}
-                      </div>
->>>>>>> origin/main
                     )}
                   </div>
 
@@ -1661,63 +1610,6 @@ function RoleManagement() {
         </div>
       )}
 
-<<<<<<< HEAD
-=======
-      {/* ── Duplicate Role Modal ── */}
-      {showDuplicate && selectedRole && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center gap-2 mb-5">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Duplicate Role</h2>
-                <p className="text-xs text-gray-400">Copying "{selectedRole.name}" — {(selectedRole.modules || []).length} module(s) carry over</p>
-              </div>
-            </div>
-            {duplicateError && (
-              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2.5 mb-4 border border-red-100">
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {duplicateError}
-              </div>
-            )}
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">New Role Name <span className="text-red-400">*</span></label>
-                <input type="text" value={duplicateForm.name}
-                  onChange={(e) => setDuplicateForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Project Engineer (Copy)"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-gray-50" />
-                <p className="text-xs text-gray-400 mt-1">Code is auto-generated from the name.</p>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Description</label>
-                <textarea rows={2} value={duplicateForm.description}
-                  onChange={(e) => setDuplicateForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="What can this role do?"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-gray-50 resize-none" />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-6 justify-end">
-              <button onClick={() => setShowDuplicate(false)}
-                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleDuplicateRole} disabled={duplicating}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors font-medium">
-                {duplicating ? 'Duplicating…' : 'Duplicate Role'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
->>>>>>> origin/main
       {/* ── Approve/Deny Modal ── */}
       {arModal && (
         <ActionModal request={arModal.request} action={arModal.action}

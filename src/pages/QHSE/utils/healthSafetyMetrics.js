@@ -13,13 +13,7 @@ export const HEALTH_SAFETY_FEATURES = {
   enableSafetyTraining: false, // DISABLED: No training data in uploaded projects
   enableRiskAssessment: true,  // ENABLED: Uses CARs + Observations + Delays
   enableIncidentTracking: true, // ENABLED: Uses CARs (incidents) + Observations (near-miss)
-<<<<<<< HEAD
   enableHighRiskProjects: false // DISABLED: 2026-07-11 - QHSE Expert requested removal
-=======
-  enableHighRiskProjects: false, // DISABLED: 2026-07-11 - QHSE Expert requested removal
-  enableProjectScheduleCheck: false, // DISABLED: 2026-08-19 - Remove "Project On Schedule" from checklist
-  enableRiskAssessmentView: false // DISABLED: 2026-08-19 - Hide Risk Assessment tab/view
->>>>>>> origin/main
 };
 
 // DATA SOURCE MAPPING - Documents what real project fields are used
@@ -146,11 +140,7 @@ export const calculateHealthSafetyMetrics = (projects) => {
       safetyPerformance: 'N/A',
       riskScore: 0
     };
-<<<<<<< HEAD
   }
-=======
-  };
->>>>>>> origin/main
 
   let totalIncidents = 0;
   let totalNearMiss = 0;
@@ -419,7 +409,6 @@ export const generateSafetyChecklist = (projects) => {
       check: (p) => parsePercentage(p.projectKPIsAchievedPercent) >= 80,
       weight: 2
     },
-<<<<<<< HEAD
     {
       name: 'Project On Schedule',
       check: (p) => {
@@ -432,18 +421,6 @@ export const generateSafetyChecklist = (projects) => {
       },
       weight: 1
     }
-=======
-    // Soft-coded: Only include if feature flag is enabled
-    ...(HEALTH_SAFETY_FEATURES.enableProjectScheduleCheck ? [{
-      name: 'Project On Schedule',
-      check: (p) => {
-        const closing = new Date(p.projectClosingDate);
-        const today = new Date();
-        return p.projectCompletionPercent === '100%' || closing > today;
-      },
-      weight: 1
-    }] : [])
->>>>>>> origin/main
   ];
 
   return checklist.map(item => {

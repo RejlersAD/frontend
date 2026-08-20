@@ -47,12 +47,6 @@ const queryClient = new QueryClient({
   },
 })
 
-<<<<<<< HEAD
-=======
-const _v = '2.0.1'
-console.log('v', _v)
-
->>>>>>> origin/main
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <Provider store={store}>

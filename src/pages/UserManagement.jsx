@@ -674,23 +674,11 @@ const UserManagement = ({ pageControls }) => {
   // ========== COMPUTED: ADMIN ACCESS CHECK ==========
   const hasAdminAccess = useMemo(() => {
     const hasRBACRole = currentUser?.roles?.some(
-<<<<<<< HEAD
       role => ['super_admin', 'admin'].includes(role.code)
     );
     // Smart admin check using utility function
     const isDjangoAdmin = isUserAdmin(authUser);
     return hasRBACRole || isDjangoAdmin;
-=======
-      role => ['super_admin', 'admin', 'hr_admin'].includes(role.code)
-    );
-    // Smart admin check using utility function
-    const isDjangoAdmin = isUserAdmin(authUser);
-    // Module-based check for custom roles
-    const hasUserMgmtModule = currentUser?.modules?.some(
-      m => m.code === 'user_mgmt' || m.code === 'hr_management'
-    );
-    return hasRBACRole || isDjangoAdmin || hasUserMgmtModule;
->>>>>>> origin/main
   }, [currentUser, authUser]);
 
   // Super Admin = can assign roles, reset passwords, activate/deactivate users

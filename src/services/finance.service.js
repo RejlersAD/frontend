@@ -139,7 +139,6 @@ const financeService = {
   },
 
   /**
-<<<<<<< HEAD
    * Load an invoice PDF through the authenticated API client so callers can
    * handle missing files without rendering the API error page in an iframe.
    */
@@ -151,8 +150,6 @@ const financeService = {
   },
 
   /**
-=======
->>>>>>> origin/main
    * Approve an invoice
    */
   async approveInvoice(approvalToken, comments = '') {
