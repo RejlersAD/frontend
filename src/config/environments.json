@@ -126,10 +126,10 @@
 
     "production": {
       "name": "Production (Railway)",
-      "description": "Production environment on Railway — frontend on Vercel (www.radai.ae) calls backend directly at aiflowbackend-production.up.railway.app",
+      "description": "Production environment on Railway — frontend on Vercel (www.radai.ae) calls backend directly at backend-production-3883.up.railway.app",
       "backend": {
-        "url": "https://aiflowbackend-production.up.railway.app",
-        "api_url": "https://aiflowbackend-production.up.railway.app/api/v1",
+        "url": "https://backend-production-3883.up.railway.app",
+        "api_url": "https://backend-production-3883.up.railway.app/api/v1",
         "host": "0.0.0.0",
         "port": 8000,
         "debug": false,
@@ -137,7 +137,7 @@
       },
       "frontend": {
         "url": "https://radai.ae",
-        "api_proxy": "https://aiflowbackend-production.up.railway.app/api/v1",
+        "api_proxy": "https://backend-production-3883.up.railway.app/api/v1",
         "port": 3000,
         "host": "0.0.0.0"
       },
