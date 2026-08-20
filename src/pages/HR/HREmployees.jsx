@@ -14,8 +14,9 @@
  * Create / edit / bulk-import flows intentionally deep-link back to
  * `/admin/users` so we keep one authoritative write surface.
  */
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import rbacService from '../../services/rbac.service'
 import payrollEngineService from '../../services/payrollEngine.service'
@@ -103,7 +104,74 @@ const extractUserList = (resp) => {
   if (Array.isArray(resp?.results)) return resp.results
   if (Array.isArray(resp?.data)) return resp.data
   if (Array.isArray(resp?.data?.results)) return resp.data.results
+  if (Array.isArray(resp?.data?.data)) return resp.data.data
+  if (Array.isArray(resp?.data?.data?.results)) return resp.data.data.results
   return []
+}
+
+// Edit lookup data changes infrequently. Share one in-flight request and its
+// result across drawer mounts so reopening employees does not refetch it.
+let employeeEditOptionsCache = null
+let employeeEditOptionsRequest = null
+
+const loadEmployeeEditOptions = () => {
+  if (employeeEditOptionsCache) return Promise.resolve(employeeEditOptionsCache)
+  if (employeeEditOptionsRequest) return employeeEditOptionsRequest
+
+  employeeEditOptionsRequest = Promise.all([
+    rbacService.getRoles().catch(() => []),
+    rbacService.getOrganizations().catch(() => []),
+  ]).then(([rolesResp, organizationsResp]) => {
+    employeeEditOptionsCache = {
+      roles: extractUserList(rolesResp),
+      organizations: extractUserList(organizationsResp),
+    }
+    return employeeEditOptionsCache
+  }).finally(() => { employeeEditOptionsRequest = null })
+
+  return employeeEditOptionsRequest
+}
+
+const accessToken = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_+|_+$/g, '')
+
+const userAccessTokens = (currentUser, key) => {
+  const entries = [
+    ...(Array.isArray(currentUser?.[key]) ? currentUser[key] : []),
+    ...(Array.isArray(currentUser?.user?.[key]) ? currentUser.user[key] : []),
+  ]
+  return new Set(entries.flatMap(entry => {
+    if (typeof entry === 'string') return [accessToken(entry)]
+    return [entry?.code, entry?.name, entry?.display_name, entry?.codename]
+      .filter(Boolean)
+      .map(accessToken)
+  }))
+}
+
+const hasConfiguredAccess = (currentUser, allowedRoles, requiredPermission) => {
+  if (!currentUser) return false
+  const user = currentUser.user || currentUser
+  if (user?.is_superuser === true) return true
+
+  const roleTokens = userAccessTokens(currentUser, 'roles')
+  if (allowedRoles.some(role => roleTokens.has(accessToken(role)))) return true
+
+  const permissionTokens = userAccessTokens(currentUser, 'permissions')
+  return Boolean(requiredPermission) && permissionTokens.has(accessToken(requiredPermission))
+}
+
+const hasUserAccessContext = (candidate) => {
+  const user = candidate?.user || candidate
+  return Boolean(
+    user?.is_superuser === true ||
+    Array.isArray(candidate?.roles) ||
+    Array.isArray(candidate?.permissions) ||
+    Array.isArray(user?.roles) ||
+    Array.isArray(user?.permissions)
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -483,9 +551,9 @@ const EmployeeCard = ({ emp, onSelect, onAction }) => (
 // Sub-component: Employees Table (Table view)
 // ─────────────────────────────────────────────────────────────────────────────
 const EmployeesTable = ({ employees, onSelect, onAction }) => (
-  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-200">
+  <div className="w-full min-w-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="w-full overflow-x-auto">
+      <table className="w-full min-w-full divide-y divide-slate-200">
         <thead className="bg-slate-50">
           <tr>
             {HR_TABLE_COLUMNS.map(c => (
@@ -1968,7 +2036,7 @@ const CompensationPanel = ({ emp, isEditing, formData, formErrors, handleFieldCh
 // ─────────────────────────────────────────────────────────────────────────────
 // Detail Drawer Component — Enhanced with Edit Mode & Salary Management
 // ─────────────────────────────────────────────────────────────────────────────
-const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing = false, onUpdate }) => {
+const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing = false, onUpdate, currentUser, managerOptions = [] }) => {
   const [tab, setTab] = useState(initialTab || HR_DEFAULT_DETAIL_TAB)
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({})
@@ -1981,86 +2049,24 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
   const [roles, setRoles] = useState([])
   const [organizations, setOrganizations] = useState([])
   const [managers, setManagers] = useState([])
-  const [optionsLoading, setOptionsLoading] = useState(false)
-  
-  // Current logged-in user for permission checks
-  const [currentUser, setCurrentUser] = useState(null)
-  const [currentUserLoading, setCurrentUserLoading] = useState(false)
 
   useEffect(() => { setTab(initialTab || HR_DEFAULT_DETAIL_TAB) }, [emp?.id, initialTab])
-  useEffect(() => { setIsEditing(Boolean(startEditing)) }, [emp?.id, startEditing])
 
-  // Load current user for permission checks
+  // Load edit-only lookups lazily. Managers reuse the employee directory
+  // already in memory, avoiding another large users request.
   useEffect(() => {
+    if (!isEditing || !HR_EDIT_CONFIG.enableEditMode) return
     let cancelled = false
-    setCurrentUserLoading(true)
-    rbacService.getCurrentUser()
-      .then((resp) => {
+    loadEmployeeEditOptions()
+      .then((options) => {
         if (cancelled) return
-        const user = resp?.data || resp
-        setCurrentUser(user)
+        setRoles(options.roles)
+        setOrganizations(options.organizations)
       })
-      .catch((err) => {
-        console.error('[HR] Failed to load current user:', err)
-      })
-      .finally(() => { if (!cancelled) setCurrentUserLoading(false) })
     return () => { cancelled = true }
-  }, [])
+  }, [isEditing])
 
-  // Load dynamic options when drawer opens
-  useEffect(() => {
-    if (!emp?.id || !HR_EDIT_CONFIG.enableEditMode) return
-    let cancelled = false
-    setOptionsLoading(true)
-    Promise.all([
-      rbacService.getRoles().catch(() => ({ data: [] })),
-      rbacService.getOrganizations().catch(() => ({ data: [] })),
-      rbacService.getUsers({ page_size: 500 }).catch(() => ({ data: [] })),  // Fetch potential managers
-    ])
-      .then(([rolesResp, orgsResp, managersResp]) => {
-        if (cancelled) return
-        
-        // Extract roles array - handle both direct array and paginated response
-        let rolesArray = []
-        if (Array.isArray(rolesResp)) {
-          rolesArray = rolesResp
-        } else if (Array.isArray(rolesResp?.data)) {
-          rolesArray = rolesResp.data
-        } else if (Array.isArray(rolesResp?.data?.results)) {
-          rolesArray = rolesResp.data.results
-        } else if (rolesResp?.data && typeof rolesResp.data === 'object') {
-          rolesArray = []
-        }
-        
-        // Extract organizations array - handle both direct array and paginated response
-        let orgsArray = []
-        if (Array.isArray(orgsResp)) {
-          orgsArray = orgsResp
-        } else if (Array.isArray(orgsResp?.data)) {
-          orgsArray = orgsResp.data
-        } else if (Array.isArray(orgsResp?.data?.results)) {
-          orgsArray = orgsResp.data.results
-        } else if (orgsResp?.data && typeof orgsResp.data === 'object') {
-          orgsArray = []
-        }
-        
-        // Extract managers array
-        let managersArray = []
-        if (Array.isArray(managersResp)) {
-          managersArray = managersResp
-        } else if (Array.isArray(managersResp?.data)) {
-          managersArray = managersResp.data
-        } else if (Array.isArray(managersResp?.data?.results)) {
-          managersArray = managersResp.data.results
-        }
-        
-        setRoles(rolesArray)
-        setOrganizations(orgsArray)
-        setManagers(managersArray)
-      })
-      .finally(() => { if (!cancelled) setOptionsLoading(false) })
-    return () => { cancelled = true }
-  }, [emp?.id])
+  useEffect(() => { setManagers(managerOptions) }, [managerOptions])
 
   // Initialize form data from employee when entering edit mode
   useEffect(() => {
@@ -2159,31 +2165,25 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
   // Check if user has edit permission
   const canEdit = useMemo(() => {
     if (!HR_EDIT_CONFIG.enableEditMode) return false
-    if (!currentUser || currentUserLoading) return false
-    
-    // Check if current logged-in user has any of the allowed roles
-    const userRoles = (currentUser.roles || []).map(r => r.name || r.display_name)
-    const hasRole = HR_EDIT_CONFIG.allowedRoles.some(role => userRoles.includes(role))
-    
-    // Debug logging (remove in production)
-    console.log('[HR Edit] Permission check:', {
-      currentUser: currentUser.username || currentUser.email,
-      userRoles,
-      allowedRoles: HR_EDIT_CONFIG.allowedRoles,
-      hasRole
-    })
-    
-    return hasRole
-  }, [currentUser, currentUserLoading])
+    return hasConfiguredAccess(
+      currentUser,
+      HR_EDIT_CONFIG.allowedRoles,
+      HR_EDIT_CONFIG.requiredPermission,
+    )
+  }, [currentUser])
+
+  useEffect(() => {
+    setIsEditing(Boolean(startEditing && canEdit))
+  }, [emp?.id, startEditing, canEdit])
 
   // Check if user has salary edit permission (stricter than general edit)
   const canEditSalary = useMemo(() => {
-    if (!currentUser || currentUserLoading) return false
-    
-    // Check if current logged-in user has any of the salary edit roles
-    const userRoles = (currentUser.roles || []).map(r => r.name || r.display_name)
-    return HR_EDIT_CONFIG.salaryEditRoles.some(role => userRoles.includes(role))
-  }, [currentUser, currentUserLoading])
+    return hasConfiguredAccess(
+      currentUser,
+      HR_EDIT_CONFIG.salaryEditRoles,
+      HR_EDIT_CONFIG.salaryRequiredPermission,
+    )
+  }, [currentUser])
 
   // Handle save
   const handleSave = useCallback(async () => {
@@ -2197,6 +2197,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
     setSaveSuccess(false)
 
     try {
+      let savedEmployee = null
       // Prepare update payload
       const ep = emp.engineer_profile || {}
       const payload = {
@@ -2224,7 +2225,8 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
       }
 
       // Update user profile
-      await rbacService.updateUser(emp.id, payload)
+      const updateResponse = await rbacService.updateUser(emp.id, payload)
+      savedEmployee = normalizeEmployee(updateResponse?.data ?? updateResponse)
 
       // Handle role changes (add/remove roles)
       const currentRoleIds = (emp.roles || []).map(r => r.id)
@@ -2285,6 +2287,15 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
         }
       }
 
+      // Fetch once after all writes so the drawer and list share one complete,
+      // authoritative record without separate list and detail refreshes.
+      try {
+        const detailResponse = await rbacService.getUserById(emp.id)
+        savedEmployee = normalizeEmployee(detailResponse?.data ?? detailResponse)
+      } catch (refreshError) {
+        console.warn('[HR] Employee saved; full-profile refresh failed:', refreshError)
+      }
+
       setSaveSuccess(true)
       setIsEditing(false)
 
@@ -2292,7 +2303,17 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
       // an optimistic update to every edited field, not just a hardcoded
       // subset, before the fresh getUserById() fetch resolves.
       if (onUpdate) {
-        onUpdate({ ...formData })
+        onUpdate(savedEmployee || {
+          ...emp,
+          ...payload,
+          user: {
+            ...(emp.user || {}),
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            email: formData.email,
+            is_active: formData.is_active,
+          },
+        })
       }
 
       // Show success briefly then close
@@ -2699,11 +2720,13 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
                     <HeroIcons.PencilSquareIcon className="w-4 h-4" /> Open in Admin
                   </Link>
                 )}
-                {canEdit && (
+                {(canEdit || !currentUser) && (
                   <button
                     type="button"
                     onClick={() => setIsEditing(true)}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 shadow-sm"
+                    disabled={!canEdit}
+                    title={!canEdit ? 'Checking edit access…' : undefined}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-wait text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 shadow-sm"
                   >
                     <HeroIcons.PencilIcon className="w-4 h-4" />
                     {HR_EDIT_COPY.editButton}
@@ -2731,6 +2754,9 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
 // ─────────────────────────────────────────────────────────────────────────────
 export default function HREmployees() {
   const navigate = useNavigate()
+  const authCurrentUser = useSelector(state => state.auth?.user)
+  const rbacCurrentUser = useSelector(state => state.rbac?.currentUser)
+  const [loadedCurrentUser, setLoadedCurrentUser] = useState(null)
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -2744,6 +2770,23 @@ export default function HREmployees() {
   const [selectedEdit, setSelectedEdit] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const detailCacheRef = useRef(new Map())
+  const currentUser = rbacCurrentUser || loadedCurrentUser || (hasUserAccessContext(authCurrentUser) ? authCurrentUser : null)
+
+  // Prefer authenticated Redux state so the edit action is ready before the
+  // drawer opens. Request a richer profile once only when access data is absent.
+  useEffect(() => {
+    const candidate = rbacCurrentUser || authCurrentUser
+    if (hasUserAccessContext(candidate)) return
+
+    let cancelled = false
+    rbacService.getCurrentUser()
+      .then(resp => {
+        if (!cancelled) setLoadedCurrentUser(resp?.data?.data ?? resp?.data ?? resp)
+      })
+      .catch(err => console.error('[HR] Failed to load edit permissions:', err))
+    return () => { cancelled = true }
+  }, [authCurrentUser, rbacCurrentUser])
 
   const openEmp = useCallback((emp, tab = null, startEditing = false) => {
     setSelectedTab(tab)
@@ -2806,12 +2849,19 @@ export default function HREmployees() {
   const [detailLoading, setDetailLoading] = useState(false)
   useEffect(() => {
     if (!selectedEmp?.id) return
+    const cached = detailCacheRef.current.get(String(selectedEmp.id))
+    if (cached) {
+      setSelectedEmp(prev => prev ? { ...prev, ...cached } : prev)
+      setDetailLoading(false)
+      return
+    }
     let cancelled = false
     setDetailLoading(true)
     rbacService.getUserById(selectedEmp.id)
       .then((resp) => {
         if (cancelled) return
         const full = normalizeEmployee(resp?.data ?? resp)
+        detailCacheRef.current.set(String(full.id), full)
         // Merge — keep any list-only fields, overlay the rich fields
         setSelectedEmp(prev => prev && prev.id === full.id ? { ...prev, ...full } : prev)
       })
@@ -2946,8 +2996,8 @@ export default function HREmployees() {
 
   // ──────── Render ────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4 lg:p-6">
-      <div className="max-w-[1600px] mx-auto space-y-4">
+    <div className="min-h-screen w-full min-w-0 bg-gradient-to-br from-slate-50 to-blue-50 p-4 lg:p-6">
+      <div className="w-full min-w-0 max-w-none space-y-4">
         {/* Cross-link nav (Profile / HR Directory / User Management) */}
         <PeopleNav activeId="hr" />
 
@@ -2967,7 +3017,7 @@ export default function HREmployees() {
             </h1>
             <p className="text-sm text-slate-600">{HR_COPY.pageSubtitle}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={fetchEmployees}
@@ -3181,18 +3231,17 @@ export default function HREmployees() {
           loading={detailLoading}
           initialTab={selectedTab}
           startEditing={selectedEdit}
+          currentUser={currentUser}
+          managerOptions={employees}
           onClose={() => { setSelectedEmp(null); setSelectedTab(null); setSelectedEdit(false) }}
           onUpdate={(updated) => {
             // Optimistic update — apply immediately so the drawer/list reflect
             // the save before the network round-trip below completes.
-            if (updated) setSelectedEmp(prev => prev ? { ...prev, ...updated } : prev)
-            fetchEmployees()
-            if (selectedEmp?.id) {
-              rbacService.getUserById(selectedEmp.id + "?t=" + Date.now()).then(resp => {
-                const full = normalizeEmployee(resp?.data ?? resp)
-                setSelectedEmp(prev => prev && prev.id === full.id ? { ...prev, ...full } : prev)
-              })
-            }
+            if (!updated) return
+            const updatedId = updated.id || selectedEmp?.id
+            detailCacheRef.current.set(String(updatedId), updated)
+            setSelectedEmp(prev => prev ? { ...prev, ...updated } : prev)
+            setEmployees(prev => prev.map(row => row.id === updatedId ? { ...row, ...updated } : row))
           }}
         />
       )}
