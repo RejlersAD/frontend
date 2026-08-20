@@ -67,6 +67,7 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          NODE_OPTIONS: --max-old-space-size=8192
           
       - name: Check build output
         run: |
