@@ -150,7 +150,16 @@ export default defineConfig(({ mode }) => {
       // Force a single instance of emotion so all chunks share the
       // same initialised module — prevents "styled_default is not a function"
       // when multiple vendor chunks each try to initialise their own copy.
-      dedupe: ['@emotion/react', '@emotion/styled', 'react', 'react-dom'],
+      dedupe: [
+        '@emotion/react',
+        '@emotion/styled',
+        '@mui/material',
+        '@mui/private-theming',
+        '@mui/styled-engine',
+        '@mui/system',
+        'react',
+        'react-dom',
+      ],
     },
     // Soft-coded: expose backend mode to the React app as a compile-time constant
     // Use in components: if (import.meta.env.VITE_IS_PROD_BACKEND === 'true') { ... }
@@ -227,11 +236,19 @@ export default defineConfig(({ mode }) => {
     // Without pre-bundling @emotion packages, the default export can resolve 
     // to undefined → "styled_default is not a function".
     optimizeDeps: {
+      // Rebuild after every dev-server restart. This deliberately trades a
+      // few seconds of startup time for deterministic collaboration: an old
+      // node_modules/.vite bundle can never survive a branch pull/restart.
+      force: true,
       include: [
         '@emotion/styled',
         '@emotion/react',
         '@mui/styled-engine',
+        '@mui/private-theming',
+        '@mui/system',
+        '@mui/system/createTheme',
         '@mui/material',
+        '@mui/material/styles',
       ],
     },
   }

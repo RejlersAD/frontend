@@ -22,12 +22,37 @@ import {
   ExternalLink
 } from 'lucide-react';
 
+const numberOrZero = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeFinancialSummary = (data = {}) => {
+  const budgets = data.budget_stats || data.budgets || {};
+  const purchaseOrders = data.po_stats || data.purchase_orders || {};
+
+  return {
+    budget_stats: {
+      total_budget: numberOrZero(budgets.total_budget ?? budgets.total_allocated),
+      approved_budgets: numberOrZero(budgets.approved_budgets ?? budgets.approved_budget_lines),
+      total_spent: numberOrZero(budgets.total_spent),
+      remaining_budget: numberOrZero(budgets.remaining_budget ?? budgets.remaining),
+      budget_utilization: numberOrZero(budgets.budget_utilization ?? budgets.utilization_percentage),
+    },
+    po_stats: {
+      total_pos: numberOrZero(purchaseOrders.total_pos ?? purchaseOrders.count),
+    },
+  };
+};
+
+const EMPTY_FINANCIAL_SUMMARY = normalizeFinancialSummary();
+
 const ProjectDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [project, setProject] = useState(null);
-  const [financialSummary, setFinancialSummary] = useState(null);
+  const [financialSummary, setFinancialSummary] = useState(EMPTY_FINANCIAL_SUMMARY);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -51,9 +76,10 @@ const ProjectDetail = () => {
   const fetchFinancialSummary = async () => {
     try {
       const response = await apiClient.get(`/procurement/projects/${id}/financial_summary/`);
-      setFinancialSummary(response.data);
+      setFinancialSummary(normalizeFinancialSummary(response.data));
     } catch (err) {
       console.error('Error fetching financial summary:', err);
+      setFinancialSummary(EMPTY_FINANCIAL_SUMMARY);
     }
   };
 
@@ -61,7 +87,8 @@ const ProjectDetail = () => {
   const fetchPurchaseOrders = async () => {
     try {
       const response = await apiClient.get(`/procurement/projects/${id}/purchase_orders/`);
-      setPurchaseOrders(response.data.results || response.data);
+      const responseData = response.data?.results || response.data;
+      setPurchaseOrders(Array.isArray(responseData) ? responseData : []);
     } catch (err) {
       console.error('Error fetching purchase orders:', err);
     }
@@ -120,7 +147,7 @@ const ProjectDetail = () => {
 
   // Budget Category Card
   const BudgetCategoryCard = ({ budget }) => {
-    const utilization = budget.utilization_percentage || 0;
+    const utilization = numberOrZero(budget.utilization_percentage);
     const isOverBudget = budget.is_over_budget;
     const barColor = isOverBudget ? 'bg-red-500' : utilization > 80 ? 'bg-yellow-500' : 'bg-green-500';
 
@@ -128,7 +155,7 @@ const ProjectDetail = () => {
       <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h4 className="font-medium text-gray-900">{budget.category.replace('_', ' ').toUpperCase()}</h4>
+            <h4 className="font-medium text-gray-900">{(budget.category || 'Uncategorized').replaceAll('_', ' ').toUpperCase()}</h4>
             {budget.sub_category && (
               <p className="text-xs text-gray-500 mt-1">{budget.sub_category}</p>
             )}
@@ -193,7 +220,7 @@ const ProjectDetail = () => {
 
   // Purchase Order Row
   const PurchaseOrderRow = ({ po }) => (
-    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/procurement/purchase-orders/${po.id}`)}>
+    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/procurement/orders/${po.id}`)}>
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
         {po.po_number}
       </td>
@@ -210,7 +237,7 @@ const ProjectDetail = () => {
           po.status === 'draft' ? 'bg-gray-100 text-gray-800' :
           'bg-red-100 text-red-800'
         }`}>
-          {po.status.toUpperCase()}
+          {(po.status || 'unknown').toUpperCase()}
         </span>
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -309,7 +336,7 @@ const ProjectDetail = () => {
                 project.status === 'on_hold' ? 'bg-yellow-100 text-yellow-800' :
                 'bg-gray-100 text-gray-800'
               }`}>
-                {project.status.replace('_', ' ').toUpperCase()}
+                {(project.status || 'unknown').replaceAll('_', ' ').toUpperCase()}
               </span>
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                 project.health_status === 'green' ? 'bg-green-100 text-green-800' :
@@ -348,7 +375,7 @@ const ProjectDetail = () => {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {activeTab === 'overview' && financialSummary && (
+        {activeTab === 'overview' && (
           <div className="space-y-8">
             {/* Financial KPIs */}
             <div>
@@ -373,7 +400,9 @@ const ProjectDetail = () => {
                   subtitle={`${financialSummary.po_stats.total_pos} purchase orders`}
                   icon={TrendingUp}
                   color="#8B5CF6"
-                  trend={((financialSummary.budget_stats.total_spent / financialSummary.budget_stats.total_budget - 1) * 100).toFixed(1)}
+                  trend={financialSummary.budget_stats.total_budget > 0
+                    ? ((financialSummary.budget_stats.total_spent / financialSummary.budget_stats.total_budget - 1) * 100).toFixed(1)
+                    : null}
                 />
                 <StatCard
                   title="Remaining Budget"
@@ -488,7 +517,7 @@ const ProjectDetail = () => {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-gray-900">Purchase Orders</h2>
               <button
-                onClick={() => navigate('/procurement/purchase-orders/new')}
+                onClick={() => navigate('/procurement/orders')}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
               >
                 <Package className="w-4 h-4" />

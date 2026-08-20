@@ -106,6 +106,7 @@ import PurchaseOrderDetail from './pages/Procurement/PurchaseOrderDetail'
 import ReceiptManagement from './pages/Procurement/ReceiptManagement'
 import ProjectDashboard from './pages/Procurement/ProjectDashboard'
 import ProjectDetail from './pages/Procurement/ProjectDetail'
+import ProjectCreator from './pages/Procurement/ProjectCreator'
 // Process Datasheet Components
 import ProcessDatasheetPage from './pages/ProcessDatasheetPage'
 import ComprehensivePumpForm from './pages/ProcessDatasheet/ComprehensivePumpForm'
@@ -848,6 +849,22 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="procurement">
               <ProjectDashboard />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="procurement/projects/new"
+          element={
+            <ModuleProtectedRoute moduleCode="procurement">
+              <ProjectCreator />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="procurement/projects/:id/edit"
+          element={
+            <ModuleProtectedRoute moduleCode="procurement">
+              <ProjectCreator />
             </ModuleProtectedRoute>
           }
         />

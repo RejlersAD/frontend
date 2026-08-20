@@ -464,6 +464,7 @@ const PurchaseOrderDetail = () => {
               <p><span className="font-semibold">Contact:</span> {textOrDash(order.seller_contact_person || order.seller_reference)}</p>
               <p><span className="font-semibold">Email:</span> {textOrDash(order.seller_email)}</p>
               <p><span className="font-semibold">Phone:</span> {textOrDash(order.seller_phone)}</p>
+              <p><span className="font-semibold">Address:</span> {textOrDash(order.seller_address)}</p>
               <p><span className="font-semibold">License / Registration:</span> {textOrDash(order.seller_license_no)}</p>
             </div>
           </section>

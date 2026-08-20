@@ -12,7 +12,6 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import { useSelector } from 'react-redux';
 import apiClient from '../../services/api.service';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
@@ -104,6 +103,27 @@ const getApiErrorMessage = (error, fieldErrors) => {
   return 'The purchase order could not be submitted. Review the required fields and try again.';
 };
 
+const READ_ONLY_PO_FIELDS = new Set([
+  'id',
+  'po_date',
+  'created_at',
+  'updated_at',
+  'status_display',
+  'vendor_name',
+  'pr_number',
+  'project_name',
+  'project_display',
+]);
+
+const buildPurchaseOrderPayload = (formData, status) => Object.fromEntries(
+  Object.entries({ ...formData, status }).filter(([key, value]) => (
+    !READ_ONLY_PO_FIELDS.has(key)
+    && value !== null
+    && value !== undefined
+    && value !== ''
+  ))
+);
+
 const normalizeRequisitionItems = (requisition) => {
   const title = requisition?.product_service || requisition?.title || requisition?.price_description || 'Purchase requisition item';
   const requisitionAmount = Number(
@@ -186,6 +206,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [poNumberLoading, setPONumberLoading] = useState(false);
   const poNumberRequestRef = useRef(0);
   const initiallyReservedPRRef = useRef(null);
+  const autoSaveRequestRef = useRef(false);
+  const persistedOrderIdRef = useRef(editData?.id || null);
   
   // Form state - all 56 fields from PDF template
   const [formData, setFormData] = useState({
@@ -261,8 +283,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     confirmation_date: editData?.confirmation_date || '',
     seller_contact_person: editData?.seller_contact_person || '',
     seller_phone: editData?.seller_phone || '',
-    seller_fax: editData?.seller_fax || '',
     seller_email: editData?.seller_email || '',
+    seller_address: editData?.seller_address || '',
     
     // Contract Sections
     scope_of_services: editData?.scope_of_services || '',
@@ -640,24 +662,20 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   }, [vendors, formData.vendor]);
 
   const handleAutoSave = async () => {
+    const persistedOrderId = editData?.id || draftId || persistedOrderIdRef.current;
+    // Do not race the user's first explicit Create request with a background
+    // POST. Auto-save starts after the PO has a server-side draft ID.
+    if (!persistedOrderId) return;
+    if (autoSaveRequestRef.current) return;
+    autoSaveRequestRef.current = true;
     setAutoSaving(true);
     try {
-      const persistedOrderId = editData?.id || draftId;
-      if (persistedOrderId) {
-        await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, formData);
-      } else {
-        const response = await apiClient.post('/procurement/orders/', {
-          ...formData,
-          status: 'draft'
-        });
-        setDraftId(response.data.id);
-        if (response.data.po_number) {
-          setFormData(prev => ({ ...prev, po_number: response.data.po_number }));
-        }
-      }
+      const payload = buildPurchaseOrderPayload(formData, 'draft');
+      await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, payload);
     } catch (error) {
       console.error('Auto-save failed:', error);
     } finally {
+      autoSaveRequestRef.current = false;
       setAutoSaving(false);
     }
   };
@@ -673,6 +691,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       seller_contact_person: vendor?.contact_person || prev.seller_contact_person,
       seller_email: vendor?.email || prev.seller_email,
       seller_phone: vendor?.phone || prev.seller_phone,
+      seller_address: vendor?.address || prev.seller_address,
       seller_license_no: vendor?.trade_license_number || prev.seller_license_no,
       category: vendor?.categories?.[0] || prev.category,
     }));
@@ -1034,42 +1053,37 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setSubmitLoading(true);
     
     try {
-      const submitData = new FormData();
-      
-      // Append all form fields
-      Object.keys(formData).forEach(key => {
-        const value = formData[key];
-        if (value !== null && value !== undefined && value !== '') {
-          if (typeof value === 'object') {
-            submitData.append(key, JSON.stringify(value));
-          } else {
-            submitData.append(key, value);
-          }
-        }
-      });
-      
-      // Set status
-      submitData.set('status', sendToVendor ? 'sent' : (editData?.status || 'draft'));
-      
-      // Append files
-      files.forEach((file) => {
-        submitData.append('attachments_files', file);
-      });
-      
-      const config = {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          setUploadProgress(percentCompleted);
-        },
-      };
+      const payload = buildPurchaseOrderPayload(
+        formData,
+        sendToVendor ? 'sent' : (editData?.status || 'draft')
+      );
+      let submitData = payload;
+      let config;
+
+      // Use the normal JSON API for ordinary PO creation. Multipart is only
+      // required when the user actually attaches files.
+      if (files.length) {
+        submitData = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          submitData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+        });
+        files.forEach((file) => submitData.append('attachments_files', file));
+        config = {
+          onUploadProgress: (progressEvent) => {
+            if (!progressEvent.total) return;
+            setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+          },
+        };
+      }
       
       let response;
-      const persistedOrderId = editData?.id || draftId;
+      const persistedOrderId = editData?.id || draftId || persistedOrderIdRef.current;
       if (persistedOrderId) {
         response = await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, submitData, config);
       } else {
         response = await apiClient.post('/procurement/orders/', submitData, config);
+        persistedOrderIdRef.current = response.data.id;
+        setDraftId(response.data.id);
       }
       
       if (onSuccess) onSuccess(response.data);
@@ -1454,7 +1468,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Seller Contact Person</label>
+                    <label className="block text-sm font-medium text-gray-700">Contact Person Name</label>
                     <input
                       type="text"
                       name="seller_contact_person"
@@ -1465,7 +1479,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Seller Email</label>
+                    <label className="block text-sm font-medium text-gray-700">Email</label>
                     <input
                       type="email"
                       name="seller_email"
@@ -1476,7 +1490,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Seller Phone</label>
+                    <label className="block text-sm font-medium text-gray-700">Phone Number</label>
                     <input
                       type="text"
                       name="seller_phone"
@@ -1487,14 +1501,14 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Seller Fax</label>
-                    <input
-                      type="text"
-                      name="seller_fax"
-                      value={formData.seller_fax}
+                    <label className="block text-sm font-medium text-gray-700">Address</label>
+                    <textarea
+                      name="seller_address"
+                      value={formData.seller_address}
                       onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="+971 4 765 4321"
+                      rows={2}
+                      className="mt-1 block w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Seller office or registered address"
                     />
                   </div>
                 </div>

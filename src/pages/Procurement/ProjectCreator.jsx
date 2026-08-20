@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeftIcon,
   BriefcaseIcon,
@@ -77,58 +77,48 @@ const VALIDATION = {
   description: { min: 10, max: 5000, required: false },
 };
 
+const INITIAL_FORM_DATA = {
+  project_number: '',
+  project_name: '',
+  client_name: '',
+  client_reference: '',
+  project_type: 'engineering',
+  status: 'planning',
+  health_status: 'green',
+  cost_center: '',
+  project_manager: '',
+  project_manager_name: '',
+  lead_engineer: '',
+  description: '',
+  scope_of_work: '',
+  start_date: '',
+  planned_end_date: '',
+  site_location: '',
+  country: 'United Arab Emirates',
+  region: 'Middle East',
+  contract_value: '',
+  contract_currency: 'AED',
+  payment_terms: '',
+  is_billable: true,
+  is_internal: false,
+  notes: '',
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 
 const ProjectCreator = () => {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const isEditMode = Boolean(id);
   
   // Form state
-  const [formData, setFormData] = useState({
-    // Identification
-    project_number: '',
-    project_name: '',
-    client_name: '',
-    client_reference: '',
-    
-    // Classification
-    project_type: 'engineering',
-    status: 'planning',
-    health_status: 'green',
-    
-    // Organization
-    cost_center: '',
-    project_manager: '',
-    project_manager_name: '',
-    lead_engineer: '',
-    
-    // Scope
-    description: '',
-    scope_of_work: '',
-    
-    // Timeline
-    start_date: '',
-    planned_end_date: '',
-    
-    // Location
-    site_location: '',
-    country: 'United Arab Emirates',
-    region: 'Middle East',
-    
-    // Financial
-    contract_value: '',
-    contract_currency: 'AED',
-    payment_terms: '',
-    
-    // Metadata
-    is_billable: true,
-    is_internal: false,
-    notes: '',
-  });
+  const [formData, setFormData] = useState({ ...INITIAL_FORM_DATA });
 
   const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(isEditMode);
+  const [loadError, setLoadError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [notification, setNotification] = useState(null);
   
@@ -140,12 +130,35 @@ const ProjectCreator = () => {
   useEffect(() => {
     fetchCostCenters();
     fetchUsers();
-  }, []);
+    if (id) fetchProject();
+  }, [id]);
+
+  const fetchProject = async () => {
+    try {
+      setLoading(true);
+      setLoadError(null);
+      const response = await apiClient.get(`/procurement/projects/${id}/`);
+      const project = response.data || {};
+      const populatedForm = Object.fromEntries(
+        Object.entries(INITIAL_FORM_DATA).map(([field, defaultValue]) => [
+          field,
+          project[field] ?? defaultValue,
+        ])
+      );
+      setFormData(populatedForm);
+    } catch (error) {
+      console.error('Failed to load project:', error);
+      setLoadError(error.response?.status === 404 ? 'Project not found or no longer active.' : 'Failed to load project for editing.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const fetchCostCenters = async () => {
     try {
       const response = await apiClient.get('/procurement/cost-centers/?is_active=true');
-      setCostCenters(response.data.results || response.data || []);
+      const responseData = response.data?.results || response.data;
+      setCostCenters(Array.isArray(responseData) ? responseData : []);
     } catch (error) {
       console.error('Failed to fetch cost centers:', error);
     }
@@ -153,8 +166,10 @@ const ProjectCreator = () => {
   
   const fetchUsers = async () => {
     try {
-      const response = await apiClient.get('/rbac/users/?is_active=true&page_size=500');
-      setUsers(response.data.results || response.data || []);
+      const response = await apiClient.get('/procurement/requisitions/get_approvers/', {
+        params: { role: 'any_active' },
+      });
+      setUsers(Array.isArray(response.data?.users) ? response.data.users : []);
     } catch (error) {
       console.error('Failed to fetch users:', error);
     }
@@ -233,23 +248,29 @@ const ProjectCreator = () => {
       // Clean up data before submission
       const payload = {
         ...formData,
+        project_number: formData.project_number.trim(),
+        project_name: formData.project_name.trim(),
         contract_value: formData.contract_value ? parseFloat(formData.contract_value) : null,
         cost_center: formData.cost_center || null,
         project_manager: formData.project_manager || null,
         lead_engineer: formData.lead_engineer || null,
+        start_date: formData.start_date || null,
+        planned_end_date: formData.planned_end_date || null,
       };
       
-      const response = await apiClient.post('/procurement/projects/', payload);
+      const response = isEditMode
+        ? await apiClient.patch(`/procurement/projects/${id}/`, payload)
+        : await apiClient.post('/procurement/projects/', payload);
       
-      showNotification('success', 'Project created successfully!');
+      showNotification('success', isEditMode ? 'Project updated successfully!' : 'Project created successfully!');
       
       // Redirect to project detail page after short delay
       setTimeout(() => {
-        navigate(`/procurement/projects/${response.data.id}`);
-      }, 1500);
+        navigate(`/procurement/projects/${response.data.id || id}`);
+      }, 800);
       
     } catch (error) {
-      console.error('Failed to create project:', error);
+      console.error(`Failed to ${isEditMode ? 'update' : 'create'} project:`, error);
       
       // Extract error messages from response
       if (error.response?.data) {
@@ -261,7 +282,7 @@ const ProjectCreator = () => {
         setErrors(apiErrors);
       }
       
-      showNotification('error', error.response?.data?.detail || 'Failed to create project');
+      showNotification('error', error.response?.data?.detail || `Failed to ${isEditMode ? 'update' : 'create'} project`);
     } finally {
       setSubmitting(false);
     }
@@ -354,6 +375,30 @@ const ProjectCreator = () => {
     </div>
   );
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" />
+          <p className="mt-3 text-sm font-medium text-gray-600">Loading project...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="max-w-md rounded-lg border border-red-200 bg-white p-8 text-center shadow-md">
+          <ExclamationCircleIcon className="mx-auto h-12 w-12 text-red-500" />
+          <h1 className="mt-4 text-xl font-bold text-gray-900">Unable to Edit Project</h1>
+          <p className="mt-2 text-sm text-gray-600">{loadError}</p>
+          <button type="button" onClick={() => navigate('/procurement/projects')} className="mt-6 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Back to Projects</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -370,18 +415,21 @@ const ProjectCreator = () => {
               </button>
               <div className="h-6 w-px bg-gray-300" />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Create New Project</h1>
-                <p className="text-sm text-gray-600 mt-1">Set up a new procurement project</p>
+                <h1 className="text-2xl font-bold text-gray-900">{isEditMode ? 'Edit Project' : 'Create New Project'}</h1>
+                <p className="text-sm text-gray-600 mt-1">{isEditMode ? 'Update the procurement project information' : 'Set up a new procurement project'}</p>
               </div>
             </div>
             
-            <button
-              onClick={generateProjectNumber}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              <SparklesIcon className="h-4 w-4" />
-              Generate Project #
-            </button>
+            {!isEditMode && (
+              <button
+                type="button"
+                onClick={generateProjectNumber}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <SparklesIcon className="h-4 w-4" />
+                Generate Project #
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -502,7 +550,7 @@ const ProjectCreator = () => {
               <SelectField
                 label="Project Manager"
                 field="project_manager"
-                options={users.map(u => ({ value: u.id, label: u.full_name || u.email }))}
+                options={users.map(u => ({ value: u.id, label: u.full_name || u.email || u.username }))}
                 helpText="Primary project manager (from users list)"
               />
             </div>
@@ -518,7 +566,7 @@ const ProjectCreator = () => {
               <SelectField
                 label="Lead Engineer"
                 field="lead_engineer"
-                options={users.map(u => ({ value: u.id, label: u.full_name || u.email }))}
+                options={users.map(u => ({ value: u.id, label: u.full_name || u.email || u.username }))}
               />
             </div>
           </FieldGroup>
@@ -636,12 +684,12 @@ const ProjectCreator = () => {
               {submitting ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  Creating Project...
+                  {isEditMode ? 'Updating Project...' : 'Creating Project...'}
                 </>
               ) : (
                 <>
                   <CheckCircleIcon className="w-5 h-5" />
-                  Create Project
+                  {isEditMode ? 'Update Project' : 'Create Project'}
                 </>
               )}
             </button>

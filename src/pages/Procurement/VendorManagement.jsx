@@ -462,7 +462,7 @@ const VendorManagement = () => {
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
-                  <div className="rounded-xl bg-white/95 p-1 shadow-sm">
+                  {/* <div className="rounded-xl bg-white/95 p-1 shadow-sm">
                     <PageControlButtons
                       isFullscreen={pageControls.isFullscreen}
                       toggleFullscreen={pageControls.toggleFullscreen}
@@ -473,7 +473,7 @@ const VendorManagement = () => {
                       isRefreshing={pageControls.isRefreshing}
                       manualRefresh={pageControls.manualRefresh}
                     />
-                  </div>
+                  </div> */}
                   <button type="button" onClick={handleExportToExcel} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20">
                     <DocumentArrowDownIcon className="mr-2 h-5 w-5" /> Export
                   </button>
