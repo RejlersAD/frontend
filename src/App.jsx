@@ -106,7 +106,10 @@ import PurchaseOrderDetail from './pages/Procurement/PurchaseOrderDetail'
 import ReceiptManagement from './pages/Procurement/ReceiptManagement'
 import ProjectDashboard from './pages/Procurement/ProjectDashboard'
 import ProjectDetail from './pages/Procurement/ProjectDetail'
+<<<<<<< HEAD
 import ProjectCreator from './pages/Procurement/ProjectCreator'
+=======
+>>>>>>> origin/main
 // Process Datasheet Components
 import ProcessDatasheetPage from './pages/ProcessDatasheetPage'
 import ComprehensivePumpForm from './pages/ProcessDatasheet/ComprehensivePumpForm'
@@ -286,7 +289,11 @@ function App() {
 
   // Module Protected Route wrapper
   // SOFT-CODED: stable reference via useCallback prevents remount loop
+<<<<<<< HEAD
   const ModuleProtectedRoute = useCallback(({ children, moduleCode }) => {
+=======
+  const ModuleProtectedRoute = useCallback(({ children, moduleCode, moduleCodes }) => {
+>>>>>>> origin/main
     if (!isAuthenticated) {
       return <Navigate to="/login" replace />
     }
@@ -318,7 +325,12 @@ function App() {
     }
     
     // Check if user has access to the required module
+<<<<<<< HEAD
     if (userModules.includes(moduleCode)) {
+=======
+    const codesToCheck = moduleCodes || (moduleCode ? [moduleCode] : [])
+    if (codesToCheck.some(code => userModules.includes(code))) {
+>>>>>>> origin/main
       return children
     }
     
@@ -853,6 +865,7 @@ function App() {
           }
         />
         <Route
+<<<<<<< HEAD
           path="procurement/projects/new"
           element={
             <ModuleProtectedRoute moduleCode="procurement">
@@ -869,6 +882,8 @@ function App() {
           }
         />
         <Route
+=======
+>>>>>>> origin/main
           path="procurement/projects/:id"
           element={
             <ModuleProtectedRoute moduleCode="procurement">
@@ -1341,7 +1356,11 @@ function App() {
         <Route
           path="qhse"
           element={
+<<<<<<< HEAD
             <ModuleProtectedRoute moduleCode="qhse">
+=======
+            <ModuleProtectedRoute moduleCodes={["qhse", "qhse_detailed", "qhse_quality", "qhse_health_safety", "qhse_environmental", "qhse_energy"]}>
+>>>>>>> origin/main
               <QHSEHub />
             </ModuleProtectedRoute>
           }
@@ -1349,7 +1368,11 @@ function App() {
         <Route
           path="qhse/general/*"
           element={
+<<<<<<< HEAD
             <ModuleProtectedRoute moduleCode="qhse">
+=======
+            <ModuleProtectedRoute moduleCodes={["qhse", "qhse_detailed", "qhse_quality", "qhse_health_safety", "qhse_environmental", "qhse_energy"]}>
+>>>>>>> origin/main
               <GeneralQHSE />
             </ModuleProtectedRoute>
           }
@@ -1358,7 +1381,11 @@ function App() {
         {/* <Route
           path="qhse/interconnected-demo/:projectId?"
           element={
+<<<<<<< HEAD
             <ModuleProtectedRoute moduleCode="qhse">
+=======
+            <ModuleProtectedRoute moduleCodes={["qhse", "qhse_detailed", "qhse_quality", "qhse_health_safety", "qhse_environmental", "qhse_energy"]}>
+>>>>>>> origin/main
               <QHSEInterconnectedDemo />
             </ModuleProtectedRoute>
           }

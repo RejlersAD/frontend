@@ -42,7 +42,10 @@ import PurchaseRequisitionPdfImport from './PurchaseRequisitionPdfImport';
 import PurchaseOrderExcelImport from './PurchaseOrderExcelImport';
 import PurchaseOrderPdfImport from './PurchaseOrderPdfImport';
 import PurchaseOrderForm from './PurchaseOrderForm';
+<<<<<<< HEAD
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
+=======
+>>>>>>> origin/main
 
 const PR_REGISTER_COLUMNS = [
   ['SN', 8],
@@ -176,8 +179,11 @@ const OrderManagement = () => {
   const [filterVendor, setFilterVendor] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterType, setFilterType] = useState('all');
+<<<<<<< HEAD
   const [activeOrderCard, setActiveOrderCard] = useState('total');
   const [activeRequisitionCard, setActiveRequisitionCard] = useState('total');
+=======
+>>>>>>> origin/main
   const [orderPage, setOrderPage] = useState(1);
   const [orderPageSize, setOrderPageSize] = useState(25);
   const [requisitionSort, setRequisitionSort] = useState({ key: 'created_at', direction: 'desc' });
@@ -198,6 +204,11 @@ const OrderManagement = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [vendors, setVendors] = useState([]);
   const [projects, setProjects] = useState([]);  // Smart project lookup for PO creation
+<<<<<<< HEAD
+=======
+  const [aiInsights, setAiInsights] = useState(null);
+  
+>>>>>>> origin/main
   // Soft-coded edit state - track which record is being edited
   const [editingOrder, setEditingOrder] = useState(null);
   const [editingRequisition, setEditingRequisition] = useState(null);
@@ -240,8 +251,11 @@ const OrderManagement = () => {
     setFilterVendor('all');
     setFilterPriority('all');
     setFilterType('all');
+<<<<<<< HEAD
     setActiveOrderCard('total');
     setActiveRequisitionCard('total');
+=======
+>>>>>>> origin/main
     setViewMode('list');
     setRequisitionPage(1);
     navigate(
@@ -278,6 +292,11 @@ const OrderManagement = () => {
       
       setOrders(normalizedData);
       
+<<<<<<< HEAD
+=======
+      // AI-powered order analytics
+      generateAIInsights(normalizedData);
+>>>>>>> origin/main
     } catch (error) {
       console.error('Error fetching orders:', error);
       setError({ 
@@ -407,6 +426,82 @@ const OrderManagement = () => {
     return () => { cancelled = true; };
   }, [activeTab, navigate, requisitionRouteId]);
 
+<<<<<<< HEAD
+=======
+  /**
+   * AI Feature: Generate order insights and recommendations
+   */
+  const generateAIInsights = (orderList) => {
+    if (!Array.isArray(orderList) || orderList.length === 0) return;
+
+    // Soft-coded AI analytics
+    const insights = [];
+    
+    // Analyze pending orders
+    const pendingOrders = orderList.filter(o => o.status === 'draft' || o.status === 'pending');
+    if (pendingOrders.length > 0) {
+      insights.push({
+        type: 'action_required',
+        title: '🔔 Orders Awaiting Action',
+        count: pendingOrders.length,
+        message: `${pendingOrders.length} order${pendingOrders.length > 1 ? 's' : ''} pending approval or submission`,
+        priority: 'high'
+      });
+    }
+
+    // Check delivery delays
+    const today = new Date();
+    const overdueOrders = orderList.filter(o => {
+      if (!o.delivery_date || o.status === 'completed') return false;
+      const deliveryDate = new Date(o.delivery_date);
+      return deliveryDate < today;
+    });
+    
+    if (overdueOrders.length > 0) {
+      insights.push({
+        type: 'delivery_alert',
+        title: '🚚 Delivery Delays',
+        count: overdueOrders.length,
+        message: `${overdueOrders.length} order${overdueOrders.length > 1 ? 's' : ''} past expected delivery date`,
+        priority: 'urgent'
+      });
+    }
+
+    // Calculate total order value
+    const totalValue = orderList.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+    if (totalValue > 0) {
+      insights.push({
+        type: 'financial',
+        title: '💰 Total Order Value',
+        value: `$${totalValue.toLocaleString()}`,
+        message: `Total value of ${orderList.length} purchase orders`,
+        priority: 'info'
+      });
+    }
+
+    // Vendor concentration analysis
+    const vendorCounts = orderList.reduce((acc, o) => {
+      const vendor = o.vendor_name || 'Unknown';
+      acc[vendor] = (acc[vendor] || 0) + 1;
+      return acc;
+    }, {});
+    
+    const topVendor = Object.entries(vendorCounts).sort((a, b) => b[1] - a[1])[0];
+    if (topVendor) {
+      insights.push({
+        type: 'vendor_analysis',
+        title: '🏆 Top Vendor',
+        vendor: topVendor[0],
+        count: topVendor[1],
+        message: `${topVendor[1]} orders with ${topVendor[0]}`,
+        priority: 'info'
+      });
+    }
+
+    setAiInsights(insights);
+  };
+
+>>>>>>> origin/main
   // Soft-coded filter logic with safe array handling
   const filteredOrders = Array.isArray(orders) ? orders.filter(order => {
     // Soft-coded field access with fallbacks
@@ -510,7 +605,11 @@ const OrderManagement = () => {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     worksheet['!cols'] = PR_REGISTER_COLUMNS.map(([, width]) => ({ width }));
     const workbook = XLSX.utils.book_new();
+<<<<<<< HEAD
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Recommendations');
+=======
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Requisitions');
+>>>>>>> origin/main
     XLSX.writeFile(workbook, `RADAI_Purchase_Requisitions_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
@@ -767,11 +866,15 @@ const OrderManagement = () => {
 
       const headerValue = response.headers?.['content-disposition'] || '';
       const match = headerValue.match(/filename="?([^";]+)"?/i);
+<<<<<<< HEAD
       const fallbackName = buildProcurementPdfFilename(
         requisition.pr_number || `PR-${requisition.id}`,
         'pr',
         requisition.issued_date || requisition.created_at,
       );
+=======
+      const fallbackName = `${requisition.pr_number || `PR-${requisition.id}`}_Approved.pdf`;
+>>>>>>> origin/main
       const filename = (match && match[1]) ? match[1] : fallbackName;
 
       const blob = new Blob([response.data], { type: 'application/pdf' });
@@ -800,6 +903,7 @@ const OrderManagement = () => {
     frameWindow.print();
   };
 
+<<<<<<< HEAD
   const downloadRequisitionPreview = () => {
     if (!prPrintPreview?.url) return;
     const link = document.createElement('a');
@@ -810,6 +914,8 @@ const OrderManagement = () => {
     link.remove();
   };
 
+=======
+>>>>>>> origin/main
   const getStatusBadge = (status) => {
     // Soft-coded status configuration based on active tab
     const statusType = activeTab === 'purchaseOrders' ? 'purchaseOrder' : 'requisition';
@@ -865,6 +971,7 @@ const OrderManagement = () => {
     // Soft-coded stats calculation with safe array handling - conditional based on tab
     if (activeTab === 'purchaseOrders') {
       const safeOrders = Array.isArray(orders) ? orders : [];
+<<<<<<< HEAD
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const vendorCounts = safeOrders.reduce((counts, order) => {
@@ -902,6 +1009,20 @@ const OrderManagement = () => {
       return (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6 mb-6">
         <button type="button" onClick={() => applyCardFilter('total', 'all')} aria-pressed={activeOrderCard === 'total'} className={`w-full text-left bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${selectedCardClass('total')}`}>
+=======
+      const stats = {
+        total: safeOrders.length,
+        draft: safeOrders.filter(o => o?.status === 'draft').length,
+        sent: safeOrders.filter(o => o?.status === 'sent').length,
+        acknowledged: safeOrders.filter(o => o?.status === 'acknowledged').length,
+        completed: safeOrders.filter(o => o?.status === 'completed').length,
+        totalValue: safeOrders.reduce((sum, o) => sum + (parseFloat(o?.total_amount) || 0), 0)
+      };
+
+      return (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6 mb-6">
+        <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 transition-all duration-300">
+>>>>>>> origin/main
           <div className="p-6 relative">
             <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
             <div className="relative">
@@ -913,6 +1034,7 @@ const OrderManagement = () => {
               </div>
               <div className="text-4xl font-bold text-white mb-1">{stats.total}</div>
               <div className="text-sm text-white/80 font-medium">Purchase Orders</div>
+<<<<<<< HEAD
               <div className="mt-3 border-t border-white/20 pt-3">
                 <div className="text-xs font-semibold text-white">Top Vendor</div>
                 <div className="mt-1 truncate text-xs text-white/75" title={stats.topVendorName}>
@@ -924,6 +1046,13 @@ const OrderManagement = () => {
         </button>
 
         <button type="button" onClick={() => applyCardFilter('draft', 'draft')} aria-pressed={activeOrderCard === 'draft'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-indigo-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${activeOrderCard === 'draft' ? 'border-indigo-300' : 'border-gray-100'} ${selectedCardClass('draft')}`}>
+=======
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-indigo-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
           <div className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="flex-shrink-0 bg-gradient-to-br from-gray-400 to-gray-500 rounded-xl p-3 shadow-md">
@@ -940,6 +1069,7 @@ const OrderManagement = () => {
                 style={{ width: `${stats.total > 0 ? (stats.draft / stats.total) * 100 : 0}%` }}
               />
             </div>
+<<<<<<< HEAD
             <div className="mt-3 border-t border-gray-100 pt-3">
               <div className="text-xs font-semibold text-amber-700">Orders Awaiting Action</div>
               <div className="mt-1 text-xs leading-4 text-gray-500">
@@ -950,6 +1080,12 @@ const OrderManagement = () => {
         </button>
 
         <button type="button" onClick={() => applyCardFilter('sent', 'sent')} aria-pressed={activeOrderCard === 'sent'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-blue-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${activeOrderCard === 'sent' ? 'border-blue-300' : 'border-gray-100'} ${selectedCardClass('sent')}`}>
+=======
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-blue-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
           <div className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="flex-shrink-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl p-3 shadow-md">
@@ -967,9 +1103,15 @@ const OrderManagement = () => {
               />
             </div>
           </div>
+<<<<<<< HEAD
         </button>
 
         <button type="button" onClick={() => applyCardFilter('acknowledged', 'acknowledged')} aria-pressed={activeOrderCard === 'acknowledged'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-yellow-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${activeOrderCard === 'acknowledged' ? 'border-yellow-300' : 'border-gray-100'} ${selectedCardClass('acknowledged')}`}>
+=======
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-yellow-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
           <div className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="flex-shrink-0 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl p-3 shadow-md">
@@ -986,6 +1128,7 @@ const OrderManagement = () => {
                 style={{ width: `${stats.total > 0 ? (stats.acknowledged / stats.total) * 100 : 0}%` }}
               />
             </div>
+<<<<<<< HEAD
             <div className="mt-3 border-t border-gray-100 pt-3">
               <div className={`text-xs font-semibold ${stats.overdue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                 {stats.overdue > 0 ? 'Delivery Delays' : 'Delivery Status'}
@@ -1000,6 +1143,12 @@ const OrderManagement = () => {
         </button>
 
         <button type="button" onClick={() => applyCardFilter('completed', 'completed')} aria-pressed={activeOrderCard === 'completed'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-green-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${activeOrderCard === 'completed' ? 'border-green-300' : 'border-gray-100'} ${selectedCardClass('completed')}`}>
+=======
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-green-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
           <div className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="flex-shrink-0 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl p-3 shadow-md">
@@ -1017,9 +1166,15 @@ const OrderManagement = () => {
               />
             </div>
           </div>
+<<<<<<< HEAD
         </button>
 
         <button type="button" onClick={() => applyCardFilter('value', 'all')} aria-pressed={activeOrderCard === 'value'} className={`w-full text-left bg-gradient-to-br from-teal-400 via-cyan-500 to-blue-500 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${selectedCardClass('value')}`}>
+=======
+        </div>
+
+        <div className="bg-gradient-to-br from-teal-400 via-cyan-500 to-blue-500 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 transition-all duration-300">
+>>>>>>> origin/main
           <div className="p-6 relative">
             <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
             <div className="relative">
@@ -1033,12 +1188,18 @@ const OrderManagement = () => {
                 ${(stats.totalValue / 1000).toFixed(0)}K
               </div>
               <div className="text-sm text-white/80 font-medium">Total Order Value</div>
+<<<<<<< HEAD
               <div className="mt-3 border-t border-white/20 pt-3 text-xs text-white/75">
                 Total value across {stats.total} purchase order{stats.total === 1 ? '' : 's'}
               </div>
             </div>
           </div>
         </button>
+=======
+            </div>
+          </div>
+        </div>
+>>>>>>> origin/main
       </div>
       );
     } else {
@@ -1053,6 +1214,7 @@ const OrderManagement = () => {
         rejected: safeReqs.filter(r => r?.status === 'rejected').length,
         converted: safeReqs.filter(r => r?.status === 'converted').length
       };
+<<<<<<< HEAD
       const applyCardFilter = (cardKey, statusValue) => {
         setActiveRequisitionCard(cardKey);
         setFilterStatus(statusValue);
@@ -1068,6 +1230,12 @@ const OrderManagement = () => {
       return (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-7 mb-6">
           <button type="button" onClick={() => applyCardFilter('total', 'all')} aria-pressed={activeRequisitionCard === 'total'} className={`w-full text-left bg-gradient-to-br from-purple-500 via-purple-600 to-indigo-600 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${selectedCardClass('total')}`}>
+=======
+
+      return (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-7 mb-6">
+          <div className="bg-gradient-to-br from-purple-500 via-purple-600 to-indigo-600 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 transition-all duration-300">
+>>>>>>> origin/main
             <div className="p-6 relative">
               <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
               <div className="relative">
@@ -1081,9 +1249,15 @@ const OrderManagement = () => {
                 <div className="text-sm text-white/80 font-medium">Requisitions</div>
               </div>
             </div>
+<<<<<<< HEAD
           </button>
 
           <button type="button" onClick={() => applyCardFilter('draft', 'draft')} aria-pressed={activeRequisitionCard === 'draft'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-purple-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'draft' ? 'border-purple-300' : 'border-gray-100'} ${selectedCardClass('draft')}`}>
+=======
+          </div>
+
+          <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-purple-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
             <div className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex-shrink-0 bg-gradient-to-br from-gray-400 to-gray-500 rounded-xl p-3 shadow-md">
@@ -1101,9 +1275,15 @@ const OrderManagement = () => {
                 />
               </div>
             </div>
+<<<<<<< HEAD
           </button>
 
           <button type="button" onClick={() => applyCardFilter('under_review', 'under_review')} aria-pressed={activeRequisitionCard === 'under_review'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-blue-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'under_review' ? 'border-blue-300' : 'border-gray-100'} ${selectedCardClass('under_review')}`}>
+=======
+          </div>
+
+          <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-blue-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
             <div className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex-shrink-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl p-3 shadow-md">
@@ -1121,9 +1301,15 @@ const OrderManagement = () => {
                 />
               </div>
             </div>
+<<<<<<< HEAD
           </button>
 
           <button type="button" onClick={() => applyCardFilter('approved', 'approved')} aria-pressed={activeRequisitionCard === 'approved'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-green-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'approved' ? 'border-green-300' : 'border-gray-100'} ${selectedCardClass('approved')}`}>
+=======
+          </div>
+
+          <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-green-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
             <div className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex-shrink-0 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl p-3 shadow-md">
@@ -1141,9 +1327,15 @@ const OrderManagement = () => {
                 />
               </div>
             </div>
+<<<<<<< HEAD
           </button>
 
           <button type="button" onClick={() => applyCardFilter('overdue', 'overdue')} aria-pressed={activeRequisitionCard === 'overdue'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-yellow-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'overdue' ? 'border-yellow-300' : 'border-gray-100'} ${selectedCardClass('overdue')}`}>
+=======
+          </div>
+
+          <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-yellow-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
             <div className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex-shrink-0 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-xl p-3 shadow-md">
@@ -1161,9 +1353,15 @@ const OrderManagement = () => {
                 />
               </div>
             </div>
+<<<<<<< HEAD
           </button>
 
           <button type="button" onClick={() => applyCardFilter('rejected', 'rejected')} aria-pressed={activeRequisitionCard === 'rejected'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-red-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'rejected' ? 'border-red-300' : 'border-gray-100'} ${selectedCardClass('rejected')}`}>
+=======
+          </div>
+
+          <div className="bg-white overflow-hidden shadow-lg rounded-2xl border-2 border-gray-100 hover:border-red-200 hover:shadow-xl transition-all duration-300">
+>>>>>>> origin/main
             <div className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex-shrink-0 bg-gradient-to-br from-red-400 to-red-600 rounded-xl p-3 shadow-md">
@@ -1181,9 +1379,15 @@ const OrderManagement = () => {
                 />
               </div>
             </div>
+<<<<<<< HEAD
           </button>
 
           <button type="button" onClick={() => applyCardFilter('converted', 'converted')} aria-pressed={activeRequisitionCard === 'converted'} className={`w-full text-left bg-gradient-to-br from-purple-400 via-purple-500 to-indigo-500 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${selectedCardClass('converted')}`}>
+=======
+          </div>
+
+          <div className="bg-gradient-to-br from-purple-400 via-purple-500 to-indigo-500 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 transition-all duration-300">
+>>>>>>> origin/main
             <div className="p-6 relative">
               <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
               <div className="relative">
@@ -1197,7 +1401,11 @@ const OrderManagement = () => {
                 <div className="text-sm text-white/80 font-medium">Converted to PO</div>
               </div>
             </div>
+<<<<<<< HEAD
           </button>
+=======
+          </div>
+>>>>>>> origin/main
         </div>
       );
     }
@@ -1216,7 +1424,11 @@ const OrderManagement = () => {
                 ) : (
                   <DocumentTextIcon className="h-8 w-8 mr-3 text-purple-600" />
                 )}
+<<<<<<< HEAD
                 {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Recommendations'}
+=======
+                {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Requisitions'}
+>>>>>>> origin/main
               </h1>
               <p className="mt-2 text-sm text-gray-600 flex items-center">
                 <SparklesIcon className="h-4 w-4 mr-1 text-purple-500" />
@@ -1298,6 +1510,36 @@ const OrderManagement = () => {
           <OrderStats />
         </div>
 
+<<<<<<< HEAD
+=======
+        {/* AI Insights */}
+        {aiInsights && aiInsights.length > 0 && (
+          <div className="w-full px-3 sm:px-4 lg:px-6 mt-6">
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border-2 border-purple-200">
+              <div className="flex items-center space-x-2 mb-4">
+                <SparklesIcon className="h-6 w-6 text-purple-600" />
+                <h3 className="text-lg font-semibold text-gray-900">AI Insights & Alerts</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {aiInsights.map((insight, idx) => (
+                  <div key={idx} className={`bg-white rounded-lg p-4 border-2 hover:shadow-md transition-shadow ${
+                    insight.priority === 'urgent' ? 'border-red-300' : 
+                    insight.priority === 'high' ? 'border-yellow-300' : 
+                    'border-purple-200'
+                  }`}>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{insight.title}</h4>
+                    <p className="text-sm text-gray-600">{insight.message}</p>
+                    {insight.vendor && (
+                      <p className="text-xs text-indigo-600 font-medium mt-2">→ {insight.vendor}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+>>>>>>> origin/main
         {/* Error Message */}
         {error && (
           <div className="w-full px-3 sm:px-4 lg:px-6 mt-6">
@@ -1347,7 +1589,11 @@ const OrderManagement = () => {
               {/* Search */}
               <div className="md:col-span-2">
                 <label htmlFor="search" className="block text-xs font-semibold text-gray-700 mb-1.5">
+<<<<<<< HEAD
                   {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Purchase Recommendations'}
+=======
+                  {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Purchase Requisitions'}
+>>>>>>> origin/main
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -1376,6 +1622,7 @@ const OrderManagement = () => {
                 <select
                   id="status"
                   value={filterStatus}
+<<<<<<< HEAD
                   onChange={(e) => {
                     const nextStatus = e.target.value;
                     setFilterStatus(nextStatus);
@@ -1385,6 +1632,9 @@ const OrderManagement = () => {
                       setActiveRequisitionCard(nextStatus === 'all' ? 'total' : nextStatus);
                     }
                   }}
+=======
+                  onChange={(e) => setFilterStatus(e.target.value)}
+>>>>>>> origin/main
                   className="block h-10 w-full px-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
                 >
                   <option value="all">All Statuses</option>
@@ -2012,7 +2262,11 @@ const OrderManagement = () => {
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
+<<<<<<< HEAD
                   <h3 className="text-xl font-bold tracking-tight text-slate-900">Purchase Recommendations</h3>
+=======
+                  <h3 className="text-xl font-bold tracking-tight text-slate-900">Purchase Requisitions</h3>
+>>>>>>> origin/main
                   <p className="mt-1 text-xs text-slate-500">Review requests, approval status, suppliers, and values.</p>
                 </div>
                 <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -2281,9 +2535,12 @@ const OrderManagement = () => {
               <button type="button" onClick={printRequisitionPreview} className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500">
                 <PrinterIcon className="h-4 w-4" /> Print
               </button>
+<<<<<<< HEAD
               <button type="button" onClick={downloadRequisitionPreview} className="inline-flex items-center gap-2 rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600">
                 <ArrowDownTrayIcon className="h-4 w-4" /> Download PDF
               </button>
+=======
+>>>>>>> origin/main
               <button type="button" onClick={closePRPrintPreview} className="rounded-md border border-white/20 p-2 text-slate-200 hover:bg-white/10" aria-label="Close print preview">
                 <XMarkIcon className="h-5 w-5" />
               </button>

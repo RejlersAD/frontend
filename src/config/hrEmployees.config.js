@@ -87,6 +87,7 @@ const yearsSince = (iso) => {
   return Math.max(0, (Date.now() - t) / (365.25 * 86400000))
 }
 
+<<<<<<< HEAD
 const lifecycleValue = (employee, ...keys) => {
   for (const key of keys) {
     const value = employee?.[key] ?? employee?.metadata?.[key] ?? employee?.employment?.[key]
@@ -113,6 +114,12 @@ export const HR_KPIS = [
   {
     id: 'headcount',
     label: 'Total Employees',
+=======
+export const HR_KPIS = [
+  {
+    id: 'headcount',
+    label: 'Total Headcount',
+>>>>>>> origin/main
     accent: 'from-blue-500 to-indigo-600',
     calmTone: 'bg-blue-50 text-blue-700 border-blue-100',
     icon: 'UsersIcon',
@@ -121,7 +128,11 @@ export const HR_KPIS = [
   },
   {
     id: 'active',
+<<<<<<< HEAD
     label: 'Active Employees',
+=======
+    label: 'Active',
+>>>>>>> origin/main
     accent: 'from-emerald-500 to-teal-600',
     calmTone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
     icon: 'CheckBadgeIcon',
@@ -129,6 +140,7 @@ export const HR_KPIS = [
     sub: 'Currently working',
   },
   {
+<<<<<<< HEAD
     id: 'new_joiners_month',
     label: 'New Joiners This Month',
     accent: 'from-violet-500 to-purple-600',
@@ -168,6 +180,8 @@ export const HR_KPIS = [
     sub: 'Due within 60 days',
   },
   {
+=======
+>>>>>>> origin/main
     id: 'pending_onboarding',
     label: 'Pending Onboarding',
     accent: 'from-amber-500 to-orange-600',
@@ -286,7 +300,10 @@ export const HR_VIEW_MODES = [
   // 'cards' view intentionally removed — toggle this entry back to re-enable it.
   { id: 'table',     label: 'Table',          icon: 'TableCellsIcon' },
   { id: 'dept',      label: 'Departments',    icon: 'BuildingOffice2Icon' },
+<<<<<<< HEAD
   { id: 'hierarchy', label: 'Hierarchy',      icon: 'ShareIcon' },
+=======
+>>>>>>> origin/main
   { id: 'timesheet', label: 'Time Sheet',     icon: 'ClockIcon' },
 ]
 export const HR_DEFAULT_VIEW_MODE = 'table'
@@ -300,7 +317,11 @@ export const HR_UI = {
   // Which KPIs render in the always-visible "essential" strip. The rest
   // are hidden behind a "Show all metrics" toggle so the page is not
   // overwhelming on first load.
+<<<<<<< HEAD
   essentialKpiIds:        ['headcount', 'active', 'new_joiners_month', 'notice_period', 'resigned_month', 'contract_expiring'],
+=======
+  essentialKpiIds:        ['headcount', 'active', 'pending_onboarding', 'new_joiners_30d'],
+>>>>>>> origin/main
   // Filter dropdowns start collapsed. The search bar + view-mode toggle
   // remain visible at all times.
   filtersCollapsedByDefault: true,
@@ -350,9 +371,12 @@ export const HR_TABLE_COLUMNS = [
 export const HR_DETAIL_TABS = [
   { id: 'overview',      label: 'Overview',            icon: 'UserCircleIcon' },
   { id: 'employment',    label: 'Employment',          icon: 'BriefcaseIcon' },
+<<<<<<< HEAD
   { id: 'documents',     label: 'Documents',           icon: 'DocumentTextIcon' },
   { id: 'leave',         label: 'Leave',               icon: 'CalendarDaysIcon' },
   { id: 'performance',   label: 'Performance',         icon: 'ChartBarIcon' },
+=======
+>>>>>>> origin/main
   { id: 'compensation',  label: 'Compensation',        icon: 'BanknotesIcon' },
   { id: 'timesheet',     label: 'Time Sheet',          icon: 'ClockIcon' },
   { id: 'competency',    label: 'Competency',          icon: 'AcademicCapIcon' },
@@ -365,8 +389,17 @@ export const HR_DEFAULT_DETAIL_TAB = 'overview'
 // (time sheet, competency matrices …) get a wider canvas; record-style
 // tabs stay narrow. Add a tab id here to override its width. Fallback is
 // `HR_DRAWER_WIDTH_DEFAULT`. Tailwind max-w-* class names only.
+<<<<<<< HEAD
 export const HR_DRAWER_WIDTH_DEFAULT = 'max-w-6xl'
 export const HR_DRAWER_WIDTH_BY_TAB = {
+=======
+export const HR_DRAWER_WIDTH_DEFAULT = 'max-w-xl'
+export const HR_DRAWER_WIDTH_BY_TAB = {
+  timesheet:    'max-w-6xl',
+  competency:   'max-w-3xl',
+  compensation: 'max-w-2xl',
+  access:       'max-w-3xl',
+>>>>>>> origin/main
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -962,7 +995,11 @@ export const HR_COPY = {
   emptyTitle:       'No employees match the current filters',
   emptySubtitle:    'Try clearing filters or use the search box above.',
   errorTitle:       'Could not load employee data',
+<<<<<<< HEAD
   searchPlaceholder: 'Search employee ID, name, email, department, manager, location or role…',
+=======
+  searchPlaceholder: 'Search name, email, employee ID, biometric code (e.g. 22972), department…',
+>>>>>>> origin/main
   searchButtonLabel:  'Search',
   searchClearLabel:   'Clear search',
   // Soft-coded reverse-lookup: queries matching this regex are treated as

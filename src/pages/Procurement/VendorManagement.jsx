@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 import React, { useState, useEffect, useCallback } from 'react';
+=======
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+>>>>>>> origin/main
 import {
   UserGroupIcon,
   PlusIcon,
@@ -8,6 +13,10 @@ import {
   XCircleIcon,
   ClockIcon,
   ShieldCheckIcon,
+<<<<<<< HEAD
+=======
+  StarIcon,
+>>>>>>> origin/main
   BuildingOfficeIcon,
   PhoneIcon,
   EnvelopeIcon,
@@ -22,12 +31,16 @@ import {
   PencilSquareIcon,
   TrashIcon,
   ExclamationTriangleIcon,
+<<<<<<< HEAD
   PowerIcon,
   EyeIcon,
   XMarkIcon,
   MapPinIcon,
   IdentificationIcon,
   ChevronRightIcon
+=======
+  PowerIcon
+>>>>>>> origin/main
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { PageControlButtons } from '../../components/Common/PageControlButtons';
@@ -37,10 +50,17 @@ import AIVendorCreator from './AIVendorCreator';
 
 // Soft-coded layout configuration
 const LAYOUT_CONFIG = {
+<<<<<<< HEAD
+=======
+  maxWidthDefault: 'max-w-7xl',        // Standard container width
+  maxWidthTable: 'max-w-full',         // Full width for table view
+  tableMinWidth: 'min-w-[1400px]',     // Minimum table width to show all columns
+>>>>>>> origin/main
   cardGridCols: {
     sm: 'sm:grid-cols-2',
     lg: 'lg:grid-cols-3',
     xl: 'xl:grid-cols-4'
+<<<<<<< HEAD
   }
 };
 
@@ -74,6 +94,10 @@ const isVendorAttentionRequired = (vendor) => {
   const { score } = getVendorCompleteness(vendor);
   const icvExpired = vendor?.icv_expiry_date && new Date(vendor.icv_expiry_date) < new Date();
   return score < 75 || vendor?.status === 'pending' || Boolean(icvExpired);
+=======
+  },
+  scrollIndicator: 'shadow-sm ring-1 ring-gray-900/5' // Visual scroll hint
+>>>>>>> origin/main
 };
 
 const VendorManagement = () => {
@@ -83,6 +107,7 @@ const VendorManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRating, setFilterRating] = useState('all');
+<<<<<<< HEAD
   const [filterCompleteness, setFilterCompleteness] = useState('all');
   const [activeKpi, setActiveKpi] = useState('total');
   const [showAICreator, setShowAICreator] = useState(false);
@@ -90,6 +115,12 @@ const VendorManagement = () => {
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [detailVendor, setDetailVendor] = useState(null);
   const [enrichmentVendor, setEnrichmentVendor] = useState(undefined);
+=======
+  const [showAICreator, setShowAICreator] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [aiRecommendations, setAiRecommendations] = useState(null);
+>>>>>>> origin/main
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
   
@@ -103,7 +134,11 @@ const VendorManagement = () => {
     features: { autoRefresh: true, fullscreen: true, sidebar: true }
   });
 
+<<<<<<< HEAD
   const fetchVendors = useCallback(async () => {
+=======
+  const fetchVendors = async () => {
+>>>>>>> origin/main
     try {
       setLoading(true);
       setError(null);
@@ -132,6 +167,11 @@ const VendorManagement = () => {
       // Log for debugging
       console.log(`✅ Loaded ${normalizedData.length} vendors from API`);
       
+<<<<<<< HEAD
+=======
+      // AI-powered vendor analytics
+      generateAIRecommendations(normalizedData);
+>>>>>>> origin/main
     } catch (error) {
       console.error('Error fetching vendors:', error);
       setError({ 
@@ -143,11 +183,73 @@ const VendorManagement = () => {
     } finally {
       setLoading(false);
     }
+<<<<<<< HEAD
   }, []);
 
   useEffect(() => {
     fetchVendors();
   }, [fetchVendors, pageControls.isRefreshing]);
+=======
+  };
+
+  useEffect(() => {
+    fetchVendors();
+  }, [pageControls.isRefreshing]);
+
+  /**
+   * AI Feature: Generate vendor recommendations and insights
+   */
+  const generateAIRecommendations = (vendorList) => {
+    if (!Array.isArray(vendorList) || vendorList.length === 0) return;
+
+    // Soft-coded AI analytics
+    const recommendations = [];
+    
+    // Analyze vendor performance
+    const topPerformers = vendorList
+      .filter(v => v.rating >= 4 && v.status === 'active')
+      .slice(0, 3);
+    
+    if (topPerformers.length > 0) {
+      recommendations.push({
+        type: 'top_performers',
+        title: '⭐ Top Performing Vendors',
+        vendors: topPerformers.map(v => v.name),
+        message: `${topPerformers.length} vendors with 4+ star ratings available for new projects`
+      });
+    }
+
+    // Check for vendors needing attention
+    const needsReview = vendorList.filter(v => 
+      v.status === 'pending' || (v.rating && v.rating < 3)
+    );
+    
+    if (needsReview.length > 0) {
+      recommendations.push({
+        type: 'needs_attention',
+        title: '⚠️ Vendors Requiring Attention',
+        count: needsReview.length,
+        message: `${needsReview.length} vendor${needsReview.length > 1 ? 's' : ''} need review or approval`
+      });
+    }
+
+    // Certification compliance check
+    const withoutCerts = vendorList.filter(v => 
+      !v.certifications || v.certifications.length === 0
+    );
+    
+    if (withoutCerts.length > 0) {
+      recommendations.push({
+        type: 'compliance',
+        title: '📋 Certification Updates Needed',
+        count: withoutCerts.length,
+        message: `${withoutCerts.length} vendor${withoutCerts.length > 1 ? 's' : ''} missing certification documentation`
+      });
+    }
+
+    setAiRecommendations(recommendations);
+  };
+>>>>>>> origin/main
 
   // Soft-coded filter logic with safe array handling
   const filteredVendors = Array.isArray(vendors) ? vendors.filter(vendor => {
@@ -156,6 +258,7 @@ const VendorManagement = () => {
     const vendorCode = vendor?.vendor_code || '';
     const status = vendor?.status || '';
     const rating = vendor?.rating || 0;
+<<<<<<< HEAD
     const country = vendor?.country || '';
     const email = vendor?.email || '';
     const categories = Array.isArray(vendor?.categories) ? vendor.categories.join(' ') : '';
@@ -173,6 +276,14 @@ const VendorManagement = () => {
       || (filterCompleteness === 'incomplete' && completeness < 85)
       || (filterCompleteness === 'attention' && isVendorAttentionRequired(vendor));
     return matchesSearch && matchesStatus && matchesRating && matchesCompleteness;
+=======
+    
+    const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         vendorCode.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'all' || status === filterStatus;
+    const matchesRating = filterRating === 'all' || rating === parseInt(filterRating);
+    return matchesSearch && matchesStatus && matchesRating;
+>>>>>>> origin/main
   }) : [];
 
   const getStatusConfig = (status) => {
@@ -205,7 +316,11 @@ const VendorManagement = () => {
     );
   };
 
+<<<<<<< HEAD
   const handleVendorCreated = async () => {
+=======
+  const handleVendorCreated = async (vendorData) => {
+>>>>>>> origin/main
     // After successful creation, refresh vendor list
     await fetchVendors();
     setShowAICreator(false);
@@ -213,7 +328,11 @@ const VendorManagement = () => {
     setSelectedVendor(null);
   };
 
+<<<<<<< HEAD
   const handleVendorUpdated = async () => {
+=======
+  const handleVendorUpdated = async (updatedVendor) => {
+>>>>>>> origin/main
     // After successful update, refresh vendor list
     await fetchVendors();
     setShowAICreator(false);
@@ -340,6 +459,7 @@ const VendorManagement = () => {
     link.click();
   };
 
+<<<<<<< HEAD
   const applyKpiFilter = (key) => {
     setActiveKpi(key);
     setSearchTerm('');
@@ -484,16 +604,159 @@ const VendorManagement = () => {
                     <PlusIcon className="mr-2 h-5 w-5" /> Add Vendor
                   </button>
                 </div>
+=======
+  const VendorStats = () => {
+    // Soft-coded stats calculation with safe array handling
+    const safeVendors = Array.isArray(vendors) ? vendors : [];
+    const stats = {
+      total: safeVendors.length,
+      active: safeVendors.filter(v => v?.status === 'active').length,
+      pending: safeVendors.filter(v => v?.status === 'pending').length,
+      topRated: safeVendors.filter(v => v?.rating >= 4).length
+    };
+
+    return (
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0 bg-indigo-500 rounded-md p-3">
+                <UserGroupIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Total Vendors</dt>
+                  <dd className="text-2xl font-semibold text-gray-900">{stats.total}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
+                <CheckCircleIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Active Vendors</dt>
+                  <dd className="text-2xl font-semibold text-gray-900">{stats.active}</dd>
+                </dl>
+>>>>>>> origin/main
               </div>
             </div>
           </div>
         </div>
 
+<<<<<<< HEAD
         {/* Statistics */}
         <div className="w-full px-3 sm:px-4 mt-6">
           <VendorStats />
         </div>
 
+=======
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0 bg-yellow-500 rounded-md p-3">
+                <ClockIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Pending Approval</dt>
+                  <dd className="text-2xl font-semibold text-gray-900">{stats.pending}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0 bg-amber-500 rounded-md p-3">
+                <StarIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Top Rated (4+)</dt>
+                  <dd className="text-2xl font-semibold text-gray-900">{stats.topRated}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
+      <div className="py-6" style={pageControls.styles.content}>
+        {/* Header */}
+        <div className="w-full px-3 sm:px-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                <UserGroupIcon className="h-8 w-8 mr-3 text-indigo-600" />
+                Vendor Management
+              </h1>
+              <p className="mt-2 text-sm text-gray-600 flex items-center">
+                <SparklesIcon className="h-4 w-4 mr-1 text-purple-500" />
+                AI-powered vendor management with smart qualification and risk assessment
+              </p>
+            </div>
+            
+            <PageControlButtons 
+              isFullscreen={pageControls.isFullscreen}
+              toggleFullscreen={pageControls.toggleFullscreen}
+              sidebarVisible={pageControls.sidebarVisible}
+              toggleSidebar={pageControls.toggleSidebar}
+              autoRefreshEnabled={pageControls.autoRefreshEnabled}
+              toggleAutoRefresh={pageControls.toggleAutoRefresh}
+              isRefreshing={pageControls.isRefreshing}
+              manualRefresh={pageControls.manualRefresh}
+            />
+          </div>
+        </div>
+
+        {/* Statistics */}
+        <div className="w-full px-3 sm:px-4 mt-8">
+          <VendorStats />
+        </div>
+
+        {/* AI Recommendations */}
+        {aiRecommendations && aiRecommendations.length > 0 && (
+          <div className="w-full px-3 sm:px-4 mt-6">
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border-2 border-purple-200">
+              <div className="flex items-center space-x-2 mb-4">
+                <SparklesIcon className="h-6 w-6 text-purple-600" />
+                <h3 className="text-lg font-semibold text-gray-900">AI Insights & Recommendations</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {aiRecommendations.map((rec, idx) => (
+                  <div key={idx} className="bg-white rounded-lg p-4 border border-purple-200 hover:shadow-md transition-shadow">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{rec.title}</h4>
+                    <p className="text-sm text-gray-600">{rec.message}</p>
+                    {rec.vendors && (
+                      <div className="mt-2 space-y-1">
+                        {rec.vendors.map((vendor, vIdx) => (
+                          <div key={vIdx} className="text-xs text-indigo-600 font-medium">
+                            • {vendor}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+>>>>>>> origin/main
         {/* Error Message */}
         {error && (
           <div className="w-full px-3 sm:px-4 mt-6">
@@ -539,6 +802,7 @@ const VendorManagement = () => {
         )}
 
         {/* Filters and Search */}
+<<<<<<< HEAD
         <div className="w-full px-3 sm:px-4 mt-6">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-4">
@@ -552,6 +816,14 @@ const VendorManagement = () => {
               {/* Search */}
               <div className="md:col-span-2">
                 <label htmlFor="search" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+=======
+        <div className="w-full px-3 sm:px-4 mt-8">
+          <div className="bg-white shadow rounded-lg p-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              {/* Search */}
+              <div className="md:col-span-2">
+                <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
+>>>>>>> origin/main
                   Search Vendors
                 </label>
                 <div className="relative">
@@ -563,22 +835,36 @@ const VendorManagement = () => {
                     id="search"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
+<<<<<<< HEAD
                     className="block h-11 w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 focus:border-[#00a896] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#00a896]/10"
                     placeholder="Name, code, email, country, or category..."
+=======
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Search by name or code..."
+>>>>>>> origin/main
                   />
                 </div>
               </div>
 
               {/* Status Filter */}
               <div>
+<<<<<<< HEAD
                 <label htmlFor="status" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+=======
+                <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
+>>>>>>> origin/main
                   Status
                 </label>
                 <select
                   id="status"
                   value={filterStatus}
+<<<<<<< HEAD
                   onChange={(e) => { setFilterStatus(e.target.value); setActiveKpi('custom'); }}
                   className="block h-11 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm focus:border-[#00a896] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#00a896]/10"
+=======
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+>>>>>>> origin/main
                 >
                   <option value="all">All Statuses</option>
                   <option value="active">Active</option>
@@ -590,14 +876,23 @@ const VendorManagement = () => {
 
               {/* Rating Filter */}
               <div>
+<<<<<<< HEAD
                 <label htmlFor="rating" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+=======
+                <label htmlFor="rating" className="block text-sm font-medium text-gray-700 mb-2">
+>>>>>>> origin/main
                   Rating
                 </label>
                 <select
                   id="rating"
                   value={filterRating}
+<<<<<<< HEAD
                   onChange={(e) => { setFilterRating(e.target.value); setActiveKpi('custom'); }}
                   className="block h-11 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm focus:border-[#00a896] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#00a896]/10"
+=======
+                  onChange={(e) => setFilterRating(e.target.value)}
+                  className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+>>>>>>> origin/main
                 >
                   <option value="all">All Ratings</option>
                   <option value="5">⭐⭐⭐⭐⭐ Excellent</option>
@@ -607,6 +902,7 @@ const VendorManagement = () => {
                   <option value="1">⭐ Poor</option>
                 </select>
               </div>
+<<<<<<< HEAD
 
               <div>
                 <label htmlFor="completeness" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -637,6 +933,16 @@ const VendorManagement = () => {
                     Clear filters
                   </button>
                 )}
+=======
+            </div>
+
+            <div className="mt-4 flex justify-between items-center">
+              <p className="text-sm text-gray-500">
+                Showing {filteredVendors.length} of {Array.isArray(vendors) ? vendors.length : 0} vendors
+              </p>
+              
+              <div className="flex space-x-2">
+>>>>>>> origin/main
                 {/* View Toggle */}
                 <div className="inline-flex rounded-md shadow-sm" role="group">
                   <button
@@ -644,7 +950,11 @@ const VendorManagement = () => {
                     onClick={() => setViewMode('table')}
                     className={`px-3 py-2 text-sm font-medium border ${ 
                       viewMode === 'table'
+<<<<<<< HEAD
                         ? 'bg-[#00a896] text-white border-[#00a896]'
+=======
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+>>>>>>> origin/main
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                     } rounded-l-md focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   >
@@ -655,7 +965,11 @@ const VendorManagement = () => {
                     onClick={() => setViewMode('cards')}
                     className={`px-3 py-2 text-sm font-medium border-t border-b border-r ${
                       viewMode === 'cards'
+<<<<<<< HEAD
                         ? 'bg-[#00a896] text-white border-[#00a896]'
+=======
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+>>>>>>> origin/main
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                     } rounded-r-md focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   >
@@ -663,6 +977,28 @@ const VendorManagement = () => {
                   </button>
                 </div>
 
+<<<<<<< HEAD
+=======
+                {/* Export Button */}
+                <button
+                  type="button"
+                  onClick={handleExportToExcel}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  <DocumentArrowDownIcon className="-ml-1 mr-2 h-5 w-5" />
+                  Export
+                </button>
+
+                {/* AI Create Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowAICreator(true)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  <SparklesIcon className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
+                  Create with AI
+                </button>
+>>>>>>> origin/main
               </div>
             </div>
           </div>
@@ -686,6 +1022,7 @@ const VendorManagement = () => {
               </p>
             </div>
           ) : viewMode === 'table' ? (
+<<<<<<< HEAD
             /* Grouped vendor directory table */
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-5 py-3">
@@ -776,6 +1113,139 @@ const VendorManagement = () => {
                           </tr>
                         );
                       })}
+=======
+            /* Table View - Full Width with Smooth Scrolling */
+            <div className="bg-white shadow-xl overflow-hidden rounded-lg border border-gray-200">
+              {/* Scroll hint indicator */}
+              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-2 border-b border-indigo-100">
+                <p className="text-xs text-indigo-700 font-medium flex items-center">
+                  <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                  </svg>
+                  Scroll horizontally to view all columns • Showing {filteredVendors.length} vendors
+                </p>
+              </div>
+              <div className="overflow-x-auto overflow-y-visible" style={{scrollbarWidth: 'thin', scrollbarColor: '#6366f1 #f3f4f6'}}>
+                <table className={`${LAYOUT_CONFIG.tableMinWidth} w-full divide-y divide-gray-200`}>
+                  <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 bg-gray-50" onClick={() => handleSort('vendor_code')}>
+                        <div className="flex items-center space-x-1">
+                          <span>Code</span>
+                          {sortConfig.key === 'vendor_code' && (
+                            sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-4 w-4" /> : <ArrowDownIcon className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 bg-gray-50" onClick={() => handleSort('name')}>
+                        <div className="flex items-center space-x-1">
+                          <span>Vendor Name</span>
+                          {sortConfig.key === 'name' && (
+                            sortConfig.direction === 'asc' ? <ArrowUpIcon className="h-4 w-4" /> : <ArrowDownIcon className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Category</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Contact Person</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Contact Number</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Email</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">ICV</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">ADNOC</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Tenure</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Status</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredVendors
+                      .sort((a, b) => {
+                        const aVal = a[sortConfig.key] || '';
+                        const bVal = b[sortConfig.key] || '';
+                        if (sortConfig.direction === 'asc') {
+                          return aVal > bVal ? 1 : -1;
+                        }
+                        return aVal < bVal ? 1 : -1;
+                      })
+                      .map((vendor) => (
+                      <tr key={vendor.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{vendor.vendor_code}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{vendor.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {Array.isArray(vendor.categories) && vendor.categories.length > 0 ? vendor.categories[0] : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.contact_person || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.phone || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{vendor.email || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {vendor.is_icv_certified ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Yes
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                              No
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {vendor.adnoc_approved ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              Yes
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                              No
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {vendor.vendor_tenure_years ? `${vendor.vendor_tenure_years} yrs` : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {getStatusBadge(vendor.status)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center space-x-2">
+                            {/* Edit Button */}
+                            <button
+                              onClick={() => handleEditVendor(vendor)}
+                              className="text-indigo-600 hover:text-indigo-900 inline-flex items-center space-x-1 px-2 py-1.5 rounded-md hover:bg-indigo-50 transition-colors"
+                              title="Edit vendor"
+                            >
+                              <PencilSquareIcon className="h-4 w-4" />
+                              <span className="hidden xl:inline">Edit</span>
+                            </button>
+                            
+                            {/* Activate/Deactivate Button */}
+                            <button
+                              onClick={() => handleToggleStatus(vendor)}
+                              className={`${
+                                vendor.status === 'active'
+                                  ? 'text-orange-600 hover:text-orange-900 hover:bg-orange-50'
+                                  : 'text-green-600 hover:text-green-900 hover:bg-green-50'
+                              } inline-flex items-center space-x-1 px-2 py-1.5 rounded-md transition-colors`}
+                              title={vendor.status === 'active' ? 'Deactivate vendor' : 'Activate vendor'}
+                            >
+                              <PowerIcon className="h-4 w-4" />
+                              <span className="hidden xl:inline">
+                                {vendor.status === 'active' ? 'Deactivate' : 'Activate'}
+                              </span>
+                            </button>
+                            
+                            {/* Delete Button */}
+                            <button
+                              onClick={() => handleDeleteVendor(vendor)}
+                              className="text-red-600 hover:text-red-900 inline-flex items-center space-x-1 px-2 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                              title="Delete vendor"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                              <span className="hidden xl:inline">Delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+>>>>>>> origin/main
                   </tbody>
                 </table>
               </div>
@@ -805,11 +1275,14 @@ const VendorManagement = () => {
                       {getRatingStars(vendor.rating)}
                     </div>
 
+<<<<<<< HEAD
                     <button type="button" onClick={() => setDetailVendor(vendor)} className="mt-4 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-left hover:border-[#00a896]/40">
                       <div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-600">Data completeness</span><span className="text-sm font-bold text-[#008f80]">{getVendorCompleteness(vendor).score}%</span></div>
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-[#00a896]" style={{ width: `${getVendorCompleteness(vendor).score}%` }} /></div>
                     </button>
 
+=======
+>>>>>>> origin/main
                     {/* Contact Info */}
                     <div className="mt-4 space-y-2">
                       {vendor.email && (
@@ -884,10 +1357,13 @@ const VendorManagement = () => {
                     {/* Actions */}
                     <div className="mt-6 flex flex-col space-y-2">
                       <div className="flex space-x-2">
+<<<<<<< HEAD
                         <button type="button" onClick={() => setDetailVendor(vendor)} className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50"><EyeIcon className="h-4 w-4 mr-1" /> View</button>
                         <button type="button" onClick={() => setEnrichmentVendor(vendor)} className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-[#00a896]/30 text-sm font-medium rounded-md text-[#008f80] bg-[#00a896]/5 hover:bg-[#00a896]/10"><SparklesIcon className="h-4 w-4 mr-1" /> AI Enrich</button>
                       </div>
                       <div className="flex space-x-2">
+=======
+>>>>>>> origin/main
                         <button
                           onClick={() => handleEditVendor(vendor)}
                           className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-indigo-300 shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -923,6 +1399,7 @@ const VendorManagement = () => {
         </div>
       </div>
 
+<<<<<<< HEAD
       {/* Vendor profile drawer */}
       {detailVendor && (
         <>
@@ -1037,6 +1514,8 @@ const VendorManagement = () => {
         </>
       )}
 
+=======
+>>>>>>> origin/main
       {/* Confirmation Modal */}
       {showConfirmModal && confirmAction && (
         <div className="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">

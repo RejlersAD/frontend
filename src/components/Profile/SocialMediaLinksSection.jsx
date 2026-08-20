@@ -5,7 +5,11 @@ import {
   Linkedin, Github, Twitter, BookOpen, GraduationCap,
   PenTool, Youtube, Award,
 } from 'lucide-react';
+<<<<<<< HEAD
 import { API_BASE_URL } from '../../config/api.config';
+=======
+import { profileApiRequest } from '../../utils/profileSectionApi';
+>>>>>>> origin/main
 
 // Icon mapping for social platforms
 const PLATFORM_ICONS = {
@@ -45,6 +49,7 @@ const SocialMediaLinksSection = () => {
   }, []);
 
   const fetchLinks = async () => {
+<<<<<<< HEAD
     try {
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
       const res = await fetch(`${API_BASE_URL}/rbac/social-links/?mine=true`, {
@@ -71,17 +76,35 @@ const SocialMediaLinksSection = () => {
     } catch (err) {
       console.error(err);
     }
+=======
+    const { ok, data, message } = await profileApiRequest('/rbac/social-links/?mine=true');
+    if (!ok) {
+      console.error('[SocialLinks] fetch list failed:', message);
+      return;
+    }
+    setLinks(Array.isArray(data) ? data : data?.results || []);
+  };
+
+  const fetchPlatforms = async () => {
+    const { ok, data } = await profileApiRequest('/rbac/social-links/platforms/');
+    if (ok) setPlatforms(data || []);
+>>>>>>> origin/main
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+<<<<<<< HEAD
     const trimmedUrl = formData.url.trim();
     if (!formData.platform || !trimmedUrl) {
+=======
+    if (!formData.platform || !formData.url.trim()) {
+>>>>>>> origin/main
       toast.error('Platform and URL are required');
       return;
     }
 
     setIsLoading(true);
+<<<<<<< HEAD
     try {
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
       const url = editingId
@@ -113,6 +136,24 @@ const SocialMediaLinksSection = () => {
     } finally {
       setIsLoading(false);
     }
+=======
+    const path = editingId ? `/rbac/social-links/${editingId}/` : '/rbac/social-links/';
+    const { ok, message } = await profileApiRequest(path, {
+      method: editingId ? 'PATCH' : 'POST',
+      body: formData,
+    });
+    setIsLoading(false);
+
+    if (!ok) {
+      console.error('[SocialLinks] save failed:', message);
+      toast.error(message);
+      return;
+    }
+
+    toast.success(editingId ? 'Link updated!' : 'Link added!');
+    await fetchLinks();
+    resetForm();
+>>>>>>> origin/main
   };
 
   const handleEdit = (link) => {
@@ -128,6 +169,7 @@ const SocialMediaLinksSection = () => {
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this link?')) return;
+<<<<<<< HEAD
     
     setIsLoading(true);
     try {
@@ -145,6 +187,19 @@ const SocialMediaLinksSection = () => {
     } finally {
       setIsLoading(false);
     }
+=======
+
+    setIsLoading(true);
+    const { ok, message } = await profileApiRequest(`/rbac/social-links/${id}/`, { method: 'DELETE' });
+    setIsLoading(false);
+
+    if (!ok) {
+      toast.error(message);
+      return;
+    }
+    toast.success('Link deleted');
+    await fetchLinks();
+>>>>>>> origin/main
   };
 
   const resetForm = () => {
@@ -389,7 +444,11 @@ const SocialMediaLinksSection = () => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-700 flex items-center gap-2">
             <Globe className="w-4 h-4" />
+<<<<<<< HEAD
             <strong>Tip:</strong> Add at least 3 professional links to earn the &quot;Well Connected&quot; badge!
+=======
+            <strong>Tip:</strong> Add at least 3 professional links to earn the "Well Connected" badge!
+>>>>>>> origin/main
           </p>
         </div>
       )}

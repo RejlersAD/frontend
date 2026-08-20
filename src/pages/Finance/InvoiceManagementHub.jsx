@@ -57,11 +57,19 @@ const ExecutiveKpiCard = ({ icon: Icon, label, value, description, accent, loadi
     <div className={`absolute -right-7 -top-7 h-24 w-24 rounded-full opacity-20 blur-2xl ${accent}`} />
     <div className="relative">
       <div className="flex items-center justify-between gap-3">
+<<<<<<< HEAD
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/80">{label}</p>
         <div className="rounded-lg border border-white/10 bg-white/10 p-2"><Icon className="h-4 w-4 text-white" /></div>
       </div>
       {loading ? <div className="mt-4 h-8 w-28 animate-pulse rounded bg-white/15" /> : <p className="mt-3 whitespace-nowrap text-2xl font-black tracking-tight text-white">{value}</p>}
       <p className="mt-1 min-h-8 text-[11px] leading-4 text-white/70">{description}</p>
+=======
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">{label}</p>
+        <div className="rounded-lg border border-white/10 bg-white/10 p-2"><Icon className="h-4 w-4 text-white" /></div>
+      </div>
+      {loading ? <div className="mt-4 h-8 w-28 animate-pulse rounded bg-white/15" /> : <p className="mt-3 whitespace-nowrap text-2xl font-black tracking-tight text-white">{value}</p>}
+      <p className="mt-1 min-h-8 text-[11px] leading-4 text-slate-400">{description}</p>
+>>>>>>> origin/main
     </div>
   </div>
 );
@@ -110,6 +118,7 @@ const InvoiceManagementHub = () => {
 
   return (
     <div className="min-h-screen bg-slate-100">
+<<<<<<< HEAD
       <section className="relative overflow-hidden border-b border-blue-500/30 bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 px-4 py-8 text-white shadow-lg shadow-blue-950/10 lg:px-8">
         <div className="pointer-events-none absolute inset-0"><div className="absolute -left-24 -top-32 h-80 w-80 rounded-full bg-white/20 blur-3xl" /><div className="absolute -right-24 top-10 h-72 w-72 rounded-full bg-cyan-100/25 blur-3xl" /></div>
         <div className="mx-auto max-w-[1600px]">
@@ -120,6 +129,18 @@ const InvoiceManagementHub = () => {
               <p className="mt-2 max-w-3xl text-sm text-white/85 sm:text-base">Enterprise Financial Operations &amp; Working Capital Overview</p>
             </div>
             <div className="flex flex-col items-start gap-2 lg:items-end"><span className="inline-flex items-center gap-2 text-xs text-white/75"><span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,.9)]" /> Live financial data</span><button type="button" onClick={loadSummary} disabled={loading} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/15 px-4 text-sm font-semibold shadow-sm transition hover:bg-white/25 disabled:opacity-50"><ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh command center</button></div>
+=======
+      <section className="relative overflow-hidden border-b border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-4 py-8 text-white lg:px-8">
+        <div className="pointer-events-none absolute inset-0 opacity-30"><div className="absolute -left-24 -top-32 h-80 w-80 rounded-full bg-indigo-600 blur-3xl" /><div className="absolute -right-24 top-10 h-72 w-72 rounded-full bg-cyan-600 blur-3xl" /></div>
+        <div className="mx-auto max-w-[1600px]">
+          <div className="relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-300">3.1 Finance Dashboard</p>
+              <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Finance Command Center</h1>
+              <p className="mt-2 max-w-3xl text-sm text-slate-300 sm:text-base">Enterprise Financial Operations &amp; Working Capital Overview</p>
+            </div>
+            <div className="flex flex-col items-start gap-2 lg:items-end"><span className="inline-flex items-center gap-2 text-xs text-slate-400"><span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.8)]" /> Live financial data</span><button type="button" onClick={loadSummary} disabled={loading} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"><ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh command center</button></div>
+>>>>>>> origin/main
           </div>
           <div className="relative mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             {executiveCards.map((card) => <ExecutiveKpiCard key={card.label} {...card} loading={loading && !summary} />)}

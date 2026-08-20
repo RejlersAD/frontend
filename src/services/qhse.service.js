@@ -18,6 +18,27 @@ const getAuthHeaders = () => {
 };
 
 /**
+<<<<<<< HEAD
+=======
+ * Date fields that the backend rejects as "" (empty string) — must be null instead.
+ * Sanitizes in place and also returns the object for convenience.
+ */
+const QHSE_PROJECT_DATE_FIELDS = [
+  'projectStartingDate', 'projectClosingDate', 'projectExtension',
+  'projectQualityPlanStatusIssueDate', 'projectAudit1', 'projectAudit2',
+  'projectAudit3', 'projectAudit4', 'clientAudit1', 'clientAudit2'
+];
+const sanitizeProjectDates = (data) => {
+  QHSE_PROJECT_DATE_FIELDS.forEach((field) => {
+    if (data[field] === '' || data[field] === undefined) {
+      data[field] = null;
+    }
+  });
+  return data;
+};
+
+/**
+>>>>>>> origin/main
  * Handle API responses
  * Supports DRF field-level validation error dicts: { fieldName: ["msg", ...], ... }
  * as well as the standard { detail: "..." } format.
@@ -47,10 +68,33 @@ export const qhseProjectsAPI = {
    * @returns {Promise<Array>} List of projects
    */
   async getAll(filters = {}) {
+<<<<<<< HEAD
     const queryParams = new URLSearchParams(filters).toString();
     const url = `${API_BASE_URL}/qhse/projects/${queryParams ? `?${queryParams}` : ''}`;
     const response = await fetch(url, { headers: getAuthHeaders() });
     return handleResponse(response);
+=======
+    // Add page_size parameter to get all results (no pagination limit)
+    const params = { ...filters, page_size: 1000 };
+    const queryParams = new URLSearchParams(params).toString();
+    const url = `${API_BASE_URL}/qhse/projects/${queryParams ? `?${queryParams}` : ''}`;
+    const response = await fetch(url, { headers: getAuthHeaders() });
+    const data = await handleResponse(response);
+    
+    // Handle paginated response from DRF
+    if (data && typeof data === 'object' && data.results) {
+      return data.results; // Extract results array from paginated response
+    }
+    
+    // Handle non-paginated response (array)
+    if (Array.isArray(data)) {
+      return data;
+    }
+    
+    // Fallback: return empty array if format is unexpected
+    console.warn('Unexpected API response format:', data);
+    return [];
+>>>>>>> origin/main
   },
 
   /**
@@ -74,7 +118,11 @@ export const qhseProjectsAPI = {
     const response = await fetch(`${API_BASE_URL}/qhse/projects/`, {
       method: 'POST',
       headers: getAuthHeaders(),
+<<<<<<< HEAD
       body: JSON.stringify(projectData)
+=======
+      body: JSON.stringify(sanitizeProjectDates({ ...projectData }))
+>>>>>>> origin/main
     });
     return handleResponse(response);
   },
@@ -89,7 +137,11 @@ export const qhseProjectsAPI = {
     const response = await fetch(`${API_BASE_URL}/qhse/projects/${id}/`, {
       method: 'PUT',
       headers: getAuthHeaders(),
+<<<<<<< HEAD
       body: JSON.stringify(projectData)
+=======
+      body: JSON.stringify(sanitizeProjectDates({ ...projectData }))
+>>>>>>> origin/main
     });
     return handleResponse(response);
   },
@@ -104,7 +156,11 @@ export const qhseProjectsAPI = {
     const response = await fetch(`${API_BASE_URL}/qhse/projects/${id}/`, {
       method: 'PATCH',
       headers: getAuthHeaders(),
+<<<<<<< HEAD
       body: JSON.stringify(projectData)
+=======
+      body: JSON.stringify(sanitizeProjectDates({ ...projectData }))
+>>>>>>> origin/main
     });
     return handleResponse(response);
   },

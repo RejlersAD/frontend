@@ -12,6 +12,10 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+<<<<<<< HEAD
+=======
+import axios from 'axios';
+>>>>>>> origin/main
 import { useSelector } from 'react-redux';
 import apiClient from '../../services/api.service';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
@@ -103,6 +107,7 @@ const getApiErrorMessage = (error, fieldErrors) => {
   return 'The purchase order could not be submitted. Review the required fields and try again.';
 };
 
+<<<<<<< HEAD
 const READ_ONLY_PO_FIELDS = new Set([
   'id',
   'po_date',
@@ -124,6 +129,8 @@ const buildPurchaseOrderPayload = (formData, status) => Object.fromEntries(
   ))
 );
 
+=======
+>>>>>>> origin/main
 const normalizeRequisitionItems = (requisition) => {
   const title = requisition?.product_service || requisition?.title || requisition?.price_description || 'Purchase requisition item';
   const requisitionAmount = Number(
@@ -206,8 +213,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [poNumberLoading, setPONumberLoading] = useState(false);
   const poNumberRequestRef = useRef(0);
   const initiallyReservedPRRef = useRef(null);
+<<<<<<< HEAD
   const autoSaveRequestRef = useRef(false);
   const persistedOrderIdRef = useRef(editData?.id || null);
+=======
+>>>>>>> origin/main
   
   // Form state - all 56 fields from PDF template
   const [formData, setFormData] = useState({
@@ -283,8 +293,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     confirmation_date: editData?.confirmation_date || '',
     seller_contact_person: editData?.seller_contact_person || '',
     seller_phone: editData?.seller_phone || '',
+<<<<<<< HEAD
     seller_email: editData?.seller_email || '',
     seller_address: editData?.seller_address || '',
+=======
+    seller_fax: editData?.seller_fax || '',
+    seller_email: editData?.seller_email || '',
+>>>>>>> origin/main
     
     // Contract Sections
     scope_of_services: editData?.scope_of_services || '',
@@ -647,7 +662,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       console.error('Error fetching available requisitions:', error);
       setAvailableRequisitions([]);
       setRequisitionLoadError(
+<<<<<<< HEAD
         error.response?.data?.detail || 'Existing Purchase Recommendations could not be loaded.'
+=======
+        error.response?.data?.detail || 'Existing Purchase Requisitions could not be loaded.'
+>>>>>>> origin/main
       );
     } finally {
       setRequisitionsLoading(false);
@@ -662,6 +681,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   }, [vendors, formData.vendor]);
 
   const handleAutoSave = async () => {
+<<<<<<< HEAD
     const persistedOrderId = editData?.id || draftId || persistedOrderIdRef.current;
     // Do not race the user's first explicit Create request with a background
     // POST. Auto-save starts after the PO has a server-side draft ID.
@@ -676,6 +696,26 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       console.error('Auto-save failed:', error);
     } finally {
       autoSaveRequestRef.current = false;
+=======
+    setAutoSaving(true);
+    try {
+      const persistedOrderId = editData?.id || draftId;
+      if (persistedOrderId) {
+        await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, formData);
+      } else {
+        const response = await apiClient.post('/procurement/orders/', {
+          ...formData,
+          status: 'draft'
+        });
+        setDraftId(response.data.id);
+        if (response.data.po_number) {
+          setFormData(prev => ({ ...prev, po_number: response.data.po_number }));
+        }
+      }
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+    } finally {
+>>>>>>> origin/main
       setAutoSaving(false);
     }
   };
@@ -691,7 +731,10 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       seller_contact_person: vendor?.contact_person || prev.seller_contact_person,
       seller_email: vendor?.email || prev.seller_email,
       seller_phone: vendor?.phone || prev.seller_phone,
+<<<<<<< HEAD
       seller_address: vendor?.address || prev.seller_address,
+=======
+>>>>>>> origin/main
       seller_license_no: vendor?.trade_license_number || prev.seller_license_no,
       category: vendor?.categories?.[0] || prev.category,
     }));
@@ -1053,6 +1096,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setSubmitLoading(true);
     
     try {
+<<<<<<< HEAD
       const payload = buildPurchaseOrderPayload(
         formData,
         sendToVendor ? 'sent' : (editData?.status || 'draft')
@@ -1078,12 +1122,49 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       
       let response;
       const persistedOrderId = editData?.id || draftId || persistedOrderIdRef.current;
+=======
+      const submitData = new FormData();
+      
+      // Append all form fields
+      Object.keys(formData).forEach(key => {
+        const value = formData[key];
+        if (value !== null && value !== undefined && value !== '') {
+          if (typeof value === 'object') {
+            submitData.append(key, JSON.stringify(value));
+          } else {
+            submitData.append(key, value);
+          }
+        }
+      });
+      
+      // Set status
+      submitData.set('status', sendToVendor ? 'sent' : (editData?.status || 'draft'));
+      
+      // Append files
+      files.forEach((file) => {
+        submitData.append('attachments_files', file);
+      });
+      
+      const config = {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(percentCompleted);
+        },
+      };
+      
+      let response;
+      const persistedOrderId = editData?.id || draftId;
+>>>>>>> origin/main
       if (persistedOrderId) {
         response = await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, submitData, config);
       } else {
         response = await apiClient.post('/procurement/orders/', submitData, config);
+<<<<<<< HEAD
         persistedOrderIdRef.current = response.data.id;
         setDraftId(response.data.id);
+=======
+>>>>>>> origin/main
       }
       
       if (onSuccess) onSuccess(response.data);
@@ -1468,7 +1549,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
+<<<<<<< HEAD
                     <label className="block text-sm font-medium text-gray-700">Contact Person Name</label>
+=======
+                    <label className="block text-sm font-medium text-gray-700">Seller Contact Person</label>
+>>>>>>> origin/main
                     <input
                       type="text"
                       name="seller_contact_person"
@@ -1479,7 +1564,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
+<<<<<<< HEAD
                     <label className="block text-sm font-medium text-gray-700">Email</label>
+=======
+                    <label className="block text-sm font-medium text-gray-700">Seller Email</label>
+>>>>>>> origin/main
                     <input
                       type="email"
                       name="seller_email"
@@ -1490,7 +1579,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
+<<<<<<< HEAD
                     <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+=======
+                    <label className="block text-sm font-medium text-gray-700">Seller Phone</label>
+>>>>>>> origin/main
                     <input
                       type="text"
                       name="seller_phone"
@@ -1501,6 +1594,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
+<<<<<<< HEAD
                     <label className="block text-sm font-medium text-gray-700">Address</label>
                     <textarea
                       name="seller_address"
@@ -1509,6 +1603,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                       rows={2}
                       className="mt-1 block w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="Seller office or registered address"
+=======
+                    <label className="block text-sm font-medium text-gray-700">Seller Fax</label>
+                    <input
+                      type="text"
+                      name="seller_fax"
+                      value={formData.seller_fax}
+                      onChange={handleChange}
+                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="+971 4 765 4321"
+>>>>>>> origin/main
                     />
                   </div>
                 </div>

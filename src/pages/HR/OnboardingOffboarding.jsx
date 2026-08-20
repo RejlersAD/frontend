@@ -4585,6 +4585,12 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
         notice_period_days: formData.notice_period_days || 30,
         target_completion_date: formData.target_completion_date || formData.last_working_day,
         notes: formData.notes || '',
+<<<<<<< HEAD
+=======
+        hr_coordinator: formData.hr_coordinator || null,
+        hr_approver: formData.hr_approver || null,
+        project_assignments: formData.project_assignments || [],
+>>>>>>> origin/main
         status: 'initiated',
         progress_percentage: 0,
         // ✨ NEW: Three-step approval workflow with project-based assignments

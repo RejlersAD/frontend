@@ -20,7 +20,10 @@ import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 import PurchaseOrderForm from './PurchaseOrderForm';
+<<<<<<< HEAD
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
+=======
+>>>>>>> origin/main
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -61,6 +64,7 @@ const PurchaseOrderDetail = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
 
+<<<<<<< HEAD
   const handlePrintPurchaseOrder = () => {
     const filename = buildProcurementPdfFilename(
       order?.po_number || `PO-${id}`,
@@ -79,6 +83,8 @@ const PurchaseOrderDetail = () => {
     window.setTimeout(restoreTitle, 1000);
   };
 
+=======
+>>>>>>> origin/main
   /**
    * Soft-coded data fetching with error handling
    */
@@ -464,7 +470,10 @@ const PurchaseOrderDetail = () => {
               <p><span className="font-semibold">Contact:</span> {textOrDash(order.seller_contact_person || order.seller_reference)}</p>
               <p><span className="font-semibold">Email:</span> {textOrDash(order.seller_email)}</p>
               <p><span className="font-semibold">Phone:</span> {textOrDash(order.seller_phone)}</p>
+<<<<<<< HEAD
               <p><span className="font-semibold">Address:</span> {textOrDash(order.seller_address)}</p>
+=======
+>>>>>>> origin/main
               <p><span className="font-semibold">License / Registration:</span> {textOrDash(order.seller_license_no)}</p>
             </div>
           </section>
@@ -610,7 +619,11 @@ const PurchaseOrderDetail = () => {
             <div className="flex space-x-3">
               <button
                 type="button"
+<<<<<<< HEAD
                 onClick={handlePrintPurchaseOrder}
+=======
+                onClick={() => window.print()}
+>>>>>>> origin/main
                 className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
               >
                 <PrinterIcon className="h-4 w-4 mr-2" />

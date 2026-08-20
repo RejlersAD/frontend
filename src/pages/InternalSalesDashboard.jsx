@@ -29,7 +29,10 @@ import {
 } from '@heroicons/react/24/outline';
 import internalSalesService from '../services/internalSales.service';
 import salesService          from '../services/sales.service';
+<<<<<<< HEAD
 import { LAYOUT_CONFIG } from '../config/enterpriseDashboard.config';
+=======
+>>>>>>> origin/main
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ① SOFT-CODED CONFIG — change ALL behaviour / colours / tabs here ONLY
@@ -1848,10 +1851,14 @@ export default function InternalSalesDashboard() {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="w-full min-h-full bg-gradient-to-br from-slate-50 via-indigo-50/20 to-purple-50/20">
+<<<<<<< HEAD
       <div
         className={`mx-auto space-y-6 ${LAYOUT_CONFIG.paddingX} ${LAYOUT_CONFIG.paddingY}`}
         style={{ maxWidth: LAYOUT_CONFIG.maxWidth }}
       >
+=======
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+>>>>>>> origin/main
 
         {/* ── Hero banner (gradient, icon-based) ── */}
         <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 rounded-2xl shadow-lg overflow-hidden">

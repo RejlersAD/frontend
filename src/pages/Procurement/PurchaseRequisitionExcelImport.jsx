@@ -86,7 +86,11 @@ const PurchaseRequisitionExcelImport = ({ isOpen, onClose, onImported }) => {
         <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
           <div className="flex items-start justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
             <div>
+<<<<<<< HEAD
               <h2 className="text-lg font-bold text-white">Import Purchase Recommendations</h2>
+=======
+              <h2 className="text-lg font-bold text-white">Import Purchase Requisitions</h2>
+>>>>>>> origin/main
               <p className="mt-1 text-xs text-indigo-100">
                 Preview Excel rows before creating draft PR records in RADAI.
               </p>
@@ -194,7 +198,11 @@ const PurchaseRequisitionExcelImport = ({ isOpen, onClose, onImported }) => {
                 {importComplete && preview.created_count === 0 && (
                   <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
                     <ExclamationTriangleIcon className="h-5 w-5 flex-none" />
+<<<<<<< HEAD
                     <span>No Purchase Recommendations were created. Review the reported row errors before retrying.</span>
+=======
+                    <span>No Purchase Requisitions were created. Review the reported row errors before retrying.</span>
+>>>>>>> origin/main
                   </div>
                 )}
 

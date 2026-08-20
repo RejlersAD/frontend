@@ -11,18 +11,31 @@
 
 export const PROCUREMENT_CONFIG = {
   // Order Management Tabs - Soft-coded tab configuration
+<<<<<<< HEAD
   // Note: Order matters - Purchase Recommendations first, then Purchase Orders
   orderTabs: {
     purchaseRequisitions: {
       id: 'purchase_requisitions',
       label: 'Purchase Recommendations',
+=======
+  // Note: Order matters - Purchase Requisitions first, then Purchase Orders
+  orderTabs: {
+    purchaseRequisitions: {
+      id: 'purchase_requisitions',
+      label: 'Purchase Requisitions',
+>>>>>>> origin/main
       description: 'Purchase recommendations awaiting approval',
       icon: 'DocumentTextIcon',
       color: 'purple',
       apiEndpoint: '/procurement/requisitions/',
       createLabel: 'Create Purchase Recommendation',
+<<<<<<< HEAD
       emptyMessage: 'No purchase recommendations found',
       emptyDescription: 'Create a recommendation to request materials or services.',
+=======
+      emptyMessage: 'No purchase requisitions found',
+      emptyDescription: 'Create a requisition to request materials or services.',
+>>>>>>> origin/main
       searchPlaceholder: 'Search by PR number or title...',
       filterFields: ['status', 'priority', 'type']
     },

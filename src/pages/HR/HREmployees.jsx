@@ -14,9 +14,14 @@
  * Create / edit / bulk-import flows intentionally deep-link back to
  * `/admin/users` so we keep one authoritative write surface.
  */
+<<<<<<< HEAD
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
+=======
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+>>>>>>> origin/main
 import * as HeroIcons from '@heroicons/react/24/outline'
 import rbacService from '../../services/rbac.service'
 import payrollEngineService from '../../services/payrollEngine.service'
@@ -34,6 +39,10 @@ import {
   HR_DETAIL_TABS,
   HR_DEFAULT_DETAIL_TAB,
   HR_DRAWER_WIDTH_DEFAULT,
+<<<<<<< HEAD
+=======
+  HR_DRAWER_WIDTH_BY_TAB,
+>>>>>>> origin/main
   HR_PAGE_SIZES,
   HR_DEFAULT_PAGE_SIZE,
   HR_DATA_FETCH_PAGE_SIZE,
@@ -104,6 +113,7 @@ const extractUserList = (resp) => {
   if (Array.isArray(resp?.results)) return resp.results
   if (Array.isArray(resp?.data)) return resp.data
   if (Array.isArray(resp?.data?.results)) return resp.data.results
+<<<<<<< HEAD
   if (Array.isArray(resp?.data?.data)) return resp.data.data
   if (Array.isArray(resp?.data?.data?.results)) return resp.data.data.results
   return []
@@ -174,6 +184,11 @@ const hasUserAccessContext = (candidate) => {
   )
 }
 
+=======
+  return []
+}
+
+>>>>>>> origin/main
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: KPI Strip
 // ─────────────────────────────────────────────────────────────────────────────
@@ -189,6 +204,7 @@ const KpiStrip = ({ employees, loading }) => {
   const useCalm      = HR_UI.calmKpis !== false
 
   return (
+<<<<<<< HEAD
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-2 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -201,6 +217,12 @@ const KpiStrip = ({ employees, loading }) => {
       <div className={`grid gap-3 ${showAll
         ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'
         : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6'}`}>
+=======
+    <div className="space-y-2">
+      <div className={`grid gap-3 ${showAll
+        ? 'grid-cols-2 sm:grid-cols-4 xl:grid-cols-8'
+        : 'grid-cols-2 sm:grid-cols-4'}`}>
+>>>>>>> origin/main
         {visible.map((kpi) => (
           <div
             key={kpi.id}
@@ -210,7 +232,11 @@ const KpiStrip = ({ employees, loading }) => {
           >
             <div className="flex items-center justify-between">
               <Icon name={kpi.icon} className={useCalm ? 'w-5 h-5 opacity-80' : 'w-6 h-6 opacity-80'} />
+<<<<<<< HEAD
               <span className="max-w-[9rem] text-right text-[10px] font-semibold uppercase leading-tight tracking-wider opacity-70">{kpi.label}</span>
+=======
+              <span className="text-[10px] uppercase tracking-wider opacity-70 font-semibold truncate">{kpi.label}</span>
+>>>>>>> origin/main
             </div>
             <div className="mt-2 text-3xl font-bold leading-tight tabular-nums">
               {loading
@@ -235,8 +261,12 @@ const KpiStrip = ({ employees, loading }) => {
           </button>
         </div>
       )}
+<<<<<<< HEAD
       </div>
     </section>
+=======
+    </div>
+>>>>>>> origin/main
   )
 }
 
@@ -288,8 +318,12 @@ const FiltersBar = ({ employees, filterValues, setFilterValue, searchTerm, setSe
       <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
         {/* Search — only relevant for card/table/dept views, hidden in timesheet mode */}
         {viewMode !== 'timesheet' && (
+<<<<<<< HEAD
           <div className="relative flex-1 space-y-1.5">
             <div className="flex gap-2">
+=======
+          <div className="relative flex-1 flex gap-2">
+>>>>>>> origin/main
             <div className="relative flex-1">
               <HeroIcons.MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -324,12 +358,15 @@ const FiltersBar = ({ employees, filterValues, setFilterValue, searchTerm, setSe
                 : <HeroIcons.MagnifyingGlassIcon className="w-4 h-4" />}
               <span className="hidden sm:inline">{HR_COPY.searchButtonLabel}</span>
             </button>
+<<<<<<< HEAD
             </div>
             <div className="hidden flex-wrap gap-1.5 px-1 text-[10px] font-medium text-slate-500 sm:flex">
               {['Employee ID', 'Name', 'Email', 'Department', 'Manager', 'Location', 'Role'].map(field => (
                 <span key={field} className="rounded-full bg-slate-100 px-2 py-0.5">{field}</span>
               ))}
             </div>
+=======
+>>>>>>> origin/main
           </div>
         )}
 
@@ -454,6 +491,7 @@ const DisciplineTag = ({ emp }) => {
   return <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${d.tone}`}>{d.label}</span>
 }
 
+<<<<<<< HEAD
 const EMPLOYEE_QUICK_ACTIONS = [
   { id: 'view', label: 'View', icon: 'EyeIcon' },
   { id: 'edit', label: 'Edit', icon: 'PencilSquareIcon' },
@@ -502,6 +540,12 @@ const EmployeeQuickActions = ({ emp, onAction, compact = false }) => {
 // Sub-component: Employee Card (Cards view)
 // ─────────────────────────────────────────────────────────────────────────────
 const EmployeeCard = ({ emp, onSelect, onAction }) => (
+=======
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-component: Employee Card (Cards view)
+// ─────────────────────────────────────────────────────────────────────────────
+const EmployeeCard = ({ emp, onSelect }) => (
+>>>>>>> origin/main
   <div className={`group bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-lg p-4 flex flex-col ${anim('transition')}`}>
     <button
       type="button"
@@ -535,7 +579,18 @@ const EmployeeCard = ({ emp, onSelect, onAction }) => (
       </div>
     </button>
     <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+<<<<<<< HEAD
       <EmployeeQuickActions emp={emp} onAction={onAction} compact />
+=======
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onSelect(emp, 'timesheet') }}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-blue-50 text-blue-700 font-medium"
+        title="Open consolidated time-sheet report"
+      >
+        <HeroIcons.ClockIcon className="w-3.5 h-3.5" /> Time Sheet
+      </button>
+>>>>>>> origin/main
       <button
         type="button"
         onClick={() => onSelect(emp)}
@@ -550,10 +605,17 @@ const EmployeeCard = ({ emp, onSelect, onAction }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: Employees Table (Table view)
 // ─────────────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
 const EmployeesTable = ({ employees, onSelect, onAction }) => (
   <div className="w-full min-w-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
     <div className="w-full overflow-x-auto">
       <table className="w-full min-w-full divide-y divide-slate-200">
+=======
+const EmployeesTable = ({ employees, onSelect }) => (
+  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-slate-200">
+>>>>>>> origin/main
         <thead className="bg-slate-50">
           <tr>
             {HR_TABLE_COLUMNS.map(c => (
@@ -561,7 +623,11 @@ const EmployeesTable = ({ employees, onSelect, onAction }) => (
                 {c.label}
               </th>
             ))}
+<<<<<<< HEAD
             <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Actions</th>
+=======
+            <th className="px-3 py-2"></th>
+>>>>>>> origin/main
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 bg-white">
@@ -601,7 +667,11 @@ const EmployeesTable = ({ employees, onSelect, onAction }) => (
                 return <td key={c.id} className="px-3 py-2 text-sm text-slate-700">{v}</td>
               })}
               <td className="px-3 py-2 text-right">
+<<<<<<< HEAD
                 <EmployeeQuickActions emp={emp} onAction={onAction} compact />
+=======
+                <HeroIcons.ChevronRightIcon className="w-4 h-4 text-slate-400 inline" />
+>>>>>>> origin/main
               </td>
             </tr>
           ))}
@@ -611,6 +681,7 @@ const EmployeesTable = ({ employees, onSelect, onAction }) => (
   </div>
 )
 
+<<<<<<< HEAD
 const managerIdOf = (emp) => {
   const manager = emp.manager_detail?.id ?? emp.manager_id ?? (typeof emp.manager === 'object' ? emp.manager?.id : emp.manager)
   return manager ? String(manager) : null
@@ -665,6 +736,8 @@ const WorkforceHierarchy = ({ employees, onSelect, onAction }) => {
   )
 }
 
+=======
+>>>>>>> origin/main
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── Derive action subsets once (not per-render) ────────────────────────────
 const _TOOLBAR_ACTIONS    = HR_DEPT_ACTIONS.filter((a) => a.scope === 'toolbar')
@@ -2036,7 +2109,11 @@ const CompensationPanel = ({ emp, isEditing, formData, formErrors, handleFieldCh
 // ─────────────────────────────────────────────────────────────────────────────
 // Detail Drawer Component — Enhanced with Edit Mode & Salary Management
 // ─────────────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
 const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing = false, onUpdate, currentUser, managerOptions = [] }) => {
+=======
+const DetailDrawer = ({ emp, loading, onClose, initialTab = null, onUpdate }) => {
+>>>>>>> origin/main
   const [tab, setTab] = useState(initialTab || HR_DEFAULT_DETAIL_TAB)
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({})
@@ -2049,6 +2126,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
   const [roles, setRoles] = useState([])
   const [organizations, setOrganizations] = useState([])
   const [managers, setManagers] = useState([])
+<<<<<<< HEAD
 
   useEffect(() => { setTab(initialTab || HR_DEFAULT_DETAIL_TAB) }, [emp?.id, initialTab])
 
@@ -2067,6 +2145,87 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
   }, [isEditing])
 
   useEffect(() => { setManagers(managerOptions) }, [managerOptions])
+=======
+  const [optionsLoading, setOptionsLoading] = useState(false)
+  
+  // Current logged-in user for permission checks
+  const [currentUser, setCurrentUser] = useState(null)
+  const [currentUserLoading, setCurrentUserLoading] = useState(false)
+
+  useEffect(() => { setTab(initialTab || HR_DEFAULT_DETAIL_TAB) }, [emp?.id, initialTab])
+
+  // Load current user for permission checks
+  useEffect(() => {
+    let cancelled = false
+    setCurrentUserLoading(true)
+    rbacService.getCurrentUser()
+      .then((resp) => {
+        if (cancelled) return
+        const user = resp?.data || resp
+        setCurrentUser(user)
+      })
+      .catch((err) => {
+        console.error('[HR] Failed to load current user:', err)
+      })
+      .finally(() => { if (!cancelled) setCurrentUserLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Load dynamic options when drawer opens
+  useEffect(() => {
+    if (!emp?.id || !HR_EDIT_CONFIG.enableEditMode) return
+    let cancelled = false
+    setOptionsLoading(true)
+    Promise.all([
+      rbacService.getRoles().catch(() => ({ data: [] })),
+      rbacService.getOrganizations().catch(() => ({ data: [] })),
+      rbacService.getUsers({ page_size: 500 }).catch(() => ({ data: [] })),  // Fetch potential managers
+    ])
+      .then(([rolesResp, orgsResp, managersResp]) => {
+        if (cancelled) return
+        
+        // Extract roles array - handle both direct array and paginated response
+        let rolesArray = []
+        if (Array.isArray(rolesResp)) {
+          rolesArray = rolesResp
+        } else if (Array.isArray(rolesResp?.data)) {
+          rolesArray = rolesResp.data
+        } else if (Array.isArray(rolesResp?.data?.results)) {
+          rolesArray = rolesResp.data.results
+        } else if (rolesResp?.data && typeof rolesResp.data === 'object') {
+          rolesArray = []
+        }
+        
+        // Extract organizations array - handle both direct array and paginated response
+        let orgsArray = []
+        if (Array.isArray(orgsResp)) {
+          orgsArray = orgsResp
+        } else if (Array.isArray(orgsResp?.data)) {
+          orgsArray = orgsResp.data
+        } else if (Array.isArray(orgsResp?.data?.results)) {
+          orgsArray = orgsResp.data.results
+        } else if (orgsResp?.data && typeof orgsResp.data === 'object') {
+          orgsArray = []
+        }
+        
+        // Extract managers array
+        let managersArray = []
+        if (Array.isArray(managersResp)) {
+          managersArray = managersResp
+        } else if (Array.isArray(managersResp?.data)) {
+          managersArray = managersResp.data
+        } else if (Array.isArray(managersResp?.data?.results)) {
+          managersArray = managersResp.data.results
+        }
+        
+        setRoles(rolesArray)
+        setOrganizations(orgsArray)
+        setManagers(managersArray)
+      })
+      .finally(() => { if (!cancelled) setOptionsLoading(false) })
+    return () => { cancelled = true }
+  }, [emp?.id])
+>>>>>>> origin/main
 
   // Initialize form data from employee when entering edit mode
   useEffect(() => {
@@ -2165,6 +2324,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
   // Check if user has edit permission
   const canEdit = useMemo(() => {
     if (!HR_EDIT_CONFIG.enableEditMode) return false
+<<<<<<< HEAD
     return hasConfiguredAccess(
       currentUser,
       HR_EDIT_CONFIG.allowedRoles,
@@ -2184,6 +2344,33 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
       HR_EDIT_CONFIG.salaryRequiredPermission,
     )
   }, [currentUser])
+=======
+    if (!currentUser || currentUserLoading) return false
+    
+    // Check if current logged-in user has any of the allowed roles
+    const userRoles = (currentUser.roles || []).map(r => r.name || r.display_name)
+    const hasRole = HR_EDIT_CONFIG.allowedRoles.some(role => userRoles.includes(role))
+    
+    // Debug logging (remove in production)
+    console.log('[HR Edit] Permission check:', {
+      currentUser: currentUser.username || currentUser.email,
+      userRoles,
+      allowedRoles: HR_EDIT_CONFIG.allowedRoles,
+      hasRole
+    })
+    
+    return hasRole
+  }, [currentUser, currentUserLoading])
+
+  // Check if user has salary edit permission (stricter than general edit)
+  const canEditSalary = useMemo(() => {
+    if (!currentUser || currentUserLoading) return false
+    
+    // Check if current logged-in user has any of the salary edit roles
+    const userRoles = (currentUser.roles || []).map(r => r.name || r.display_name)
+    return HR_EDIT_CONFIG.salaryEditRoles.some(role => userRoles.includes(role))
+  }, [currentUser, currentUserLoading])
+>>>>>>> origin/main
 
   // Handle save
   const handleSave = useCallback(async () => {
@@ -2197,7 +2384,10 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
     setSaveSuccess(false)
 
     try {
+<<<<<<< HEAD
       let savedEmployee = null
+=======
+>>>>>>> origin/main
       // Prepare update payload
       const ep = emp.engineer_profile || {}
       const payload = {
@@ -2225,8 +2415,12 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
       }
 
       // Update user profile
+<<<<<<< HEAD
       const updateResponse = await rbacService.updateUser(emp.id, payload)
       savedEmployee = normalizeEmployee(updateResponse?.data ?? updateResponse)
+=======
+      await rbacService.updateUser(emp.id, payload)
+>>>>>>> origin/main
 
       // Handle role changes (add/remove roles)
       const currentRoleIds = (emp.roles || []).map(r => r.id)
@@ -2287,6 +2481,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
         }
       }
 
+<<<<<<< HEAD
       // Fetch once after all writes so the drawer and list share one complete,
       // authoritative record without separate list and detail refreshes.
       try {
@@ -2296,6 +2491,8 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
         console.warn('[HR] Employee saved; full-profile refresh failed:', refreshError)
       }
 
+=======
+>>>>>>> origin/main
       setSaveSuccess(true)
       setIsEditing(false)
 
@@ -2303,6 +2500,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
       // an optimistic update to every edited field, not just a hardcoded
       // subset, before the fresh getUserById() fetch resolves.
       if (onUpdate) {
+<<<<<<< HEAD
         onUpdate(savedEmployee || {
           ...emp,
           ...payload,
@@ -2314,6 +2512,9 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
             is_active: formData.is_active,
           },
         })
+=======
+        onUpdate({ ...formData })
+>>>>>>> origin/main
       }
 
       // Show success briefly then close
@@ -2439,7 +2640,11 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
 
   if (!emp) return null
   const ep = emp.engineer_profile || {}
+<<<<<<< HEAD
   const widthClass = HR_DRAWER_WIDTH_DEFAULT
+=======
+  const widthClass = HR_DRAWER_WIDTH_BY_TAB[tab] || HR_DRAWER_WIDTH_DEFAULT
+>>>>>>> origin/main
 
   return (
     <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
@@ -2499,17 +2704,23 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
         </div>
 
         {/* Tabs */}
+<<<<<<< HEAD
         <div className="border-b border-slate-200 bg-slate-50">
           <div
             className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10"
             role="tablist"
             aria-label="Employee profile sections"
           >
+=======
+        <div className="border-b border-slate-200 bg-slate-50 px-2">
+          <div className="flex overflow-x-auto">
+>>>>>>> origin/main
             {HR_DETAIL_TABS.map(t => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setTab(t.id)}
+<<<<<<< HEAD
                 role="tab"
                 aria-selected={tab === t.id}
                 className={`flex min-h-14 min-w-0 items-center justify-center gap-1.5 border-b-2 px-2 py-2 text-center text-[11px] font-semibold leading-tight transition sm:border-r sm:border-slate-200 sm:last:border-r-0 ${
@@ -2518,6 +2729,14 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
               >
                 <Icon name={t.icon} className="h-4 w-4 shrink-0" />
                 <span className="min-w-0">{t.label}</span>
+=======
+                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition ${
+                  tab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Icon name={t.icon} className="w-4 h-4" />
+                {t.label}
+>>>>>>> origin/main
               </button>
             ))}
           </div>
@@ -2567,6 +2786,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
             </div>
           )}
 
+<<<<<<< HEAD
           {tab === 'documents' && (
             <div className="space-y-4">
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
@@ -2599,6 +2819,8 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
             </div>
           )}
 
+=======
+>>>>>>> origin/main
           {tab === 'compensation' && (
             <CompensationPanel 
               emp={emp}
@@ -2720,6 +2942,7 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
                     <HeroIcons.PencilSquareIcon className="w-4 h-4" /> Open in Admin
                   </Link>
                 )}
+<<<<<<< HEAD
                 {(canEdit || !currentUser) && (
                   <button
                     type="button"
@@ -2727,6 +2950,13 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
                     disabled={!canEdit}
                     title={!canEdit ? 'Checking edit access…' : undefined}
                     className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-wait text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 shadow-sm"
+=======
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 shadow-sm"
+>>>>>>> origin/main
                   >
                     <HeroIcons.PencilIcon className="w-4 h-4" />
                     {HR_EDIT_COPY.editButton}
@@ -2754,9 +2984,12 @@ const DetailDrawer = ({ emp, loading, onClose, initialTab = null, startEditing =
 // ─────────────────────────────────────────────────────────────────────────────
 export default function HREmployees() {
   const navigate = useNavigate()
+<<<<<<< HEAD
   const authCurrentUser = useSelector(state => state.auth?.user)
   const rbacCurrentUser = useSelector(state => state.rbac?.currentUser)
   const [loadedCurrentUser, setLoadedCurrentUser] = useState(null)
+=======
+>>>>>>> origin/main
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -2767,6 +3000,7 @@ export default function HREmployees() {
   const [pageIndex, setPageIndex] = useState(0)
   const [selectedEmp, setSelectedEmp] = useState(null)
   const [selectedTab, setSelectedTab] = useState(null)  // optional initial tab when opening drawer
+<<<<<<< HEAD
   const [selectedEdit, setSelectedEdit] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -2791,6 +3025,13 @@ export default function HREmployees() {
   const openEmp = useCallback((emp, tab = null, startEditing = false) => {
     setSelectedTab(tab)
     setSelectedEdit(startEditing)
+=======
+  const [exporting, setExporting] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+
+  const openEmp = useCallback((emp, tab = null) => {
+    setSelectedTab(tab)
+>>>>>>> origin/main
     setSelectedEmp(emp)
   }, [])
 
@@ -2815,6 +3056,7 @@ export default function HREmployees() {
 
   useEffect(() => { fetchEmployees() }, [fetchEmployees])
 
+<<<<<<< HEAD
   const handleEmployeeAction = useCallback(async (emp, action) => {
     const destinations = {
       view: ['overview', false],
@@ -2842,6 +3084,8 @@ export default function HREmployees() {
     }
   }, [fetchEmployees, openEmp, selectedEmp?.id])
 
+=======
+>>>>>>> origin/main
   // ──────── Lazy-load full detail when drawer opens ────────
   // The list endpoint returns a thin payload (no roles list, modules,
   // engineer_profile, MFA, security fields). Fetch the full record on demand
@@ -2849,19 +3093,25 @@ export default function HREmployees() {
   const [detailLoading, setDetailLoading] = useState(false)
   useEffect(() => {
     if (!selectedEmp?.id) return
+<<<<<<< HEAD
     const cached = detailCacheRef.current.get(String(selectedEmp.id))
     if (cached) {
       setSelectedEmp(prev => prev ? { ...prev, ...cached } : prev)
       setDetailLoading(false)
       return
     }
+=======
+>>>>>>> origin/main
     let cancelled = false
     setDetailLoading(true)
     rbacService.getUserById(selectedEmp.id)
       .then((resp) => {
         if (cancelled) return
         const full = normalizeEmployee(resp?.data ?? resp)
+<<<<<<< HEAD
         detailCacheRef.current.set(String(full.id), full)
+=======
+>>>>>>> origin/main
         // Merge — keep any list-only fields, overlay the rich fields
         setSelectedEmp(prev => prev && prev.id === full.id ? { ...prev, ...full } : prev)
       })
@@ -2892,9 +3142,12 @@ export default function HREmployees() {
         emp.job_title,
         emp.location,
         emp.organization_name,
+<<<<<<< HEAD
         emp.manager_name,
         emp.manager_detail?.name,
         ...(emp.roles || []).flatMap(role => [role.name, role.display_name, role.code]),
+=======
+>>>>>>> origin/main
       ].filter(Boolean).join(' ').toLowerCase()
       return hay.includes(q)
     })
@@ -2904,7 +3157,11 @@ export default function HREmployees() {
   useEffect(() => { setPageIndex(0) }, [searchTerm, filterValues, viewMode, pageSize])
 
   const paginated = useMemo(() => {
+<<<<<<< HEAD
     if (viewMode === 'dept' || viewMode === 'hierarchy') return filteredEmployees
+=======
+    if (viewMode === 'dept') return filteredEmployees
+>>>>>>> origin/main
     const start = pageIndex * pageSize
     return filteredEmployees.slice(start, start + pageSize)
   }, [filteredEmployees, pageIndex, pageSize, viewMode])
@@ -2996,8 +3253,13 @@ export default function HREmployees() {
 
   // ──────── Render ────────
   return (
+<<<<<<< HEAD
     <div className="min-h-screen w-full min-w-0 bg-gradient-to-br from-slate-50 to-blue-50 p-4 lg:p-6">
       <div className="w-full min-w-0 max-w-none space-y-4">
+=======
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4 lg:p-6">
+      <div className="max-w-[1600px] mx-auto space-y-4">
+>>>>>>> origin/main
         {/* Cross-link nav (Profile / HR Directory / User Management) */}
         <PeopleNav activeId="hr" />
 
@@ -3017,7 +3279,11 @@ export default function HREmployees() {
             </h1>
             <p className="text-sm text-slate-600">{HR_COPY.pageSubtitle}</p>
           </div>
+<<<<<<< HEAD
           <div className="flex flex-wrap items-center gap-2">
+=======
+          <div className="flex items-center gap-2">
+>>>>>>> origin/main
             <button
               type="button"
               onClick={fetchEmployees}
@@ -3109,7 +3375,11 @@ export default function HREmployees() {
         <div className="flex items-center justify-between text-xs text-slate-600">
           <div>
             Showing <span className="font-semibold text-slate-900">{filteredEmployees.length}</span> of {employees.length} employees
+<<<<<<< HEAD
             {searchTerm && <span> matching &ldquo;<span className="font-medium">{searchTerm}</span>&rdquo;</span>}
+=======
+            {searchTerm && <span> matching "<span className="font-medium">{searchTerm}</span>"</span>}
+>>>>>>> origin/main
           </div>
           {viewMode !== 'dept' && filteredEmployees.length > 0 && (
             <div className="flex items-center gap-2">
@@ -3171,22 +3441,36 @@ export default function HREmployees() {
             {viewMode === 'cards' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {paginated.map(emp => (
+<<<<<<< HEAD
                   <EmployeeCard key={emp.id} emp={emp} onSelect={openEmp} onAction={handleEmployeeAction} />
+=======
+                  <EmployeeCard key={emp.id} emp={emp} onSelect={openEmp} />
+>>>>>>> origin/main
                 ))}
               </div>
             )}
             {viewMode === 'table' && (
+<<<<<<< HEAD
               <EmployeesTable employees={paginated} onSelect={openEmp} onAction={handleEmployeeAction} />
+=======
+              <EmployeesTable employees={paginated} onSelect={openEmp} />
+>>>>>>> origin/main
             )}
             {viewMode === 'dept' && (
               <DepartmentsView employees={filteredEmployees} onSelect={openEmp} navigate={navigate} />
             )}
+<<<<<<< HEAD
             {viewMode === 'hierarchy' && (
               <WorkforceHierarchy employees={filteredEmployees} onSelect={openEmp} onAction={handleEmployeeAction} />
             )}
 
             {/* Pagination */}
             {!['dept', 'hierarchy'].includes(viewMode) && totalPages > 1 && (
+=======
+
+            {/* Pagination */}
+            {viewMode !== 'dept' && totalPages > 1 && (
+>>>>>>> origin/main
               <div className="flex items-center justify-center gap-2 pt-2">
                 <button
                   type="button"
@@ -3230,6 +3514,7 @@ export default function HREmployees() {
           emp={selectedEmp}
           loading={detailLoading}
           initialTab={selectedTab}
+<<<<<<< HEAD
           startEditing={selectedEdit}
           currentUser={currentUser}
           managerOptions={employees}
@@ -3242,6 +3527,20 @@ export default function HREmployees() {
             detailCacheRef.current.set(String(updatedId), updated)
             setSelectedEmp(prev => prev ? { ...prev, ...updated } : prev)
             setEmployees(prev => prev.map(row => row.id === updatedId ? { ...row, ...updated } : row))
+=======
+          onClose={() => { setSelectedEmp(null); setSelectedTab(null) }}
+          onUpdate={(updated) => {
+            // Optimistic update — apply immediately so the drawer/list reflect
+            // the save before the network round-trip below completes.
+            if (updated) setSelectedEmp(prev => prev ? { ...prev, ...updated } : prev)
+            fetchEmployees()
+            if (selectedEmp?.id) {
+              rbacService.getUserById(selectedEmp.id + "?t=" + Date.now()).then(resp => {
+                const full = normalizeEmployee(resp?.data ?? resp)
+                setSelectedEmp(prev => prev && prev.id === full.id ? { ...prev, ...full } : prev)
+              })
+            }
+>>>>>>> origin/main
           }}
         />
       )}
