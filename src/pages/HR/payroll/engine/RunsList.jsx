@@ -50,12 +50,19 @@ export default function RunsList({ onSelectRun }) {
   const importFileRef = React.useRef(null)
   const [deletingId, setDeletingId] = useState(null)
   const [revertingId, setRevertingId] = useState(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const totalPages = Math.max(1, Math.ceil(runs.length / pageSize))
+  const pageRuns = useMemo(() => runs.slice((page - 1) * pageSize, page * pageSize), [runs, page, pageSize])
+
+  useEffect(() => { setPage((current) => Math.min(current, totalPages)) }, [totalPages])
+  useEffect(() => { setPage(1) }, [pageSize])
 
   const load = async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await payrollEngineService.listRuns()
+      const data = await payrollEngineService.listRuns({ page_size: 500 })
       setRuns(Array.isArray(data) ? data : (data?.results ?? []))
     } catch (e) {
       setError(e?.response?.data?.error || e.message)
@@ -258,7 +265,7 @@ export default function RunsList({ onSelectRun }) {
             No payroll runs yet. Generate one above.
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="min-w-[1180px] w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
               <tr>
                 {RUN_COLUMNS.map((c) => (
@@ -274,7 +281,7 @@ export default function RunsList({ onSelectRun }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {runs.map((r) => (
+              {pageRuns.map((r) => (
                 <tr
                   key={r.id}
                   className="hover:bg-slate-50 cursor-pointer"
@@ -363,8 +370,9 @@ export default function RunsList({ onSelectRun }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
+        {!loading && runs.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3"><div className="flex items-center gap-3"><p className="text-xs text-slate-500">Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, runs.length)} of {runs.length} runs</p><label className="flex items-center gap-2 text-xs text-slate-500">Rows<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"><option value={5}>5</option><option value={10}>10</option><option value={20}>20</option></select></label></div><div className="flex items-center gap-1"><button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous payroll runs page"><HeroIcons.ChevronLeftIcon className="h-4 w-4" /></button><span className="min-w-24 text-center text-xs font-semibold text-slate-700">Page {page} of {totalPages}</span><button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page === totalPages} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next payroll runs page"><HeroIcons.ChevronRightIcon className="h-4 w-4" /></button></div></div>}
       </div>
     </div>
   )

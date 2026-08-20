@@ -287,7 +287,9 @@ export default function LeaveDashboard() {
     try {
       await payrollService.cancelLeaveRequest(id)
       setRequests(prev => prev.filter(r => r.id !== id))
-    } catch {}
+    } catch {
+      // The list remains unchanged when cancellation fails.
+    }
     finally { setReviewBusy(null) }
   }
 
@@ -781,7 +783,9 @@ export default function LeaveDashboard() {
   }, [view, encYear, encMonth]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderEncashment = () => {
-    const alreadyRun = encStatus && encStatus !== 'not_run' && encStatus?.status === 'success'
+    // Partial runs have already changed employee leave ledgers, so they are
+    // completed periods too and cannot be posted a second time.
+    const alreadyRun = encStatus && encStatus !== 'not_run' && ['success', 'partial'].includes(encStatus?.status)
     const periodLabel = `${MONTH_NAMES[encMonth - 1]} ${encYear}`
 
     return (
@@ -1291,7 +1295,7 @@ export default function LeaveDashboard() {
         })}
         <div className="ml-auto flex items-center gap-2 text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-          {records.length} employees · {YEAR} · {activeBranchLabel}
+          {records.length} employees · {YEAR} · {activeBranchLabel}
         </div>
       </div>
 

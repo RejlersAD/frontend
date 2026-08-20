@@ -15,12 +15,13 @@
  * `/admin/users` so we keep one authoritative write surface.
  */
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import * as HeroIcons from "@heroicons/react/24/outline";
 import rbacService from "../../services/rbac.service";
+import analyticsService from "../../services/analyticsService";
+import payrollService from "../../services/payroll.service";
 import payrollEngineService from "../../services/payrollEngine.service";
-import PeopleNav from "../../components/PeopleNav/PeopleNav";
 import TimeSheetAnalytics from "./TimeSheetAnalytics";
 import {
   fetchUserHistory,
@@ -42,7 +43,6 @@ import {
   HR_DATA_FETCH_PAGE_SIZE,
   HR_EXPORT_FORMATS,
   HR_COPY,
-  HR_ADMIN_USER_LINK,
   HR_ADMIN_USERS_LIST_LINK,
   HR_DISCIPLINES,
   HR_TIMESHEET_RANGES,
@@ -536,6 +536,7 @@ const Avatar = ({ emp, size = "md" }) => {
     sm: "w-8 h-8 text-xs",
     md: "w-12 h-12 text-sm",
     lg: "w-20 h-20 text-2xl",
+    xl: "w-24 h-24 text-3xl",
   };
   const cls = sizes[size] || sizes.md;
   if (emp.profile_photo) {
@@ -1818,7 +1819,7 @@ const EmployeeTimesheetPanel = ({ emp }) => {
   // `employee_id` doesn't equal their Matrix code still get their report.
   const lookup = useMemo(
     () => ({
-      user_id: emp?.id || emp?.user?.id || "",
+      user_id: emp?.user?.id || "",
       employee_code: emp?.employee_id || emp?.employee_code || "",
       email: getEmail(emp),
     }),
@@ -2360,6 +2361,81 @@ const EmployeeTimesheetPanel = ({ emp }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Employee leave panel — payroll leave ledger + workflow requests
+// ─────────────────────────────────────────────────────────────────────────────
+const EmployeeLeavePanel = ({ emp }) => {
+  const currentYear = new Date().getFullYear();
+  const [record, setRecord] = useState(null);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!emp?.employee_id) {
+      setLoading(false);
+      setRecord(null);
+      setRequests([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    Promise.allSettled([
+      payrollService.getLeaveRecords({ employee_code: emp.employee_id, year: currentYear }),
+      payrollService.getLeaveRequests({ employee_code: emp.employee_id, year: currentYear }),
+    ]).then(async ([recordsResult, requestsResult]) => {
+      if (cancelled) return;
+      if (recordsResult.status === "fulfilled") {
+        const payload = recordsResult.value;
+        const rows = Array.isArray(payload) ? payload : payload?.results || [];
+        if (rows[0]?.id) {
+          try {
+            const detail = await payrollService.getLeaveRecord(rows[0].id);
+            if (!cancelled) setRecord(detail);
+          } catch {
+            if (!cancelled) setRecord(rows[0]);
+          }
+        } else setRecord(null);
+      } else setRecord(null);
+
+      if (requestsResult.status === "fulfilled") {
+        const payload = requestsResult.value;
+        setRequests(Array.isArray(payload) ? payload : payload?.results || []);
+      } else setRequests([]);
+
+      if (recordsResult.status === "rejected" && requestsResult.status === "rejected") {
+        setError("Leave balances and requests could not be loaded.");
+      }
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentYear, emp?.employee_id]);
+
+  if (!emp?.employee_id) {
+    return <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800"><div className="flex items-start gap-3"><HeroIcons.ExclamationTriangleIcon className="h-5 w-5 shrink-0" /><div><p className="font-bold">Employee ID required</p><p className="mt-1 text-xs">The Leave API links balances and requests through the payroll/biometric employee ID.</p></div></div></div>;
+  }
+  if (loading) return <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><Spinner className="h-4 w-4" /> Loading leave records…</div>;
+
+  const monthly = Array.isArray(record?.monthly_breakdown) ? record.monthly_breakdown : [];
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-bold text-slate-950">Leave overview · {currentYear}</h3><p className="mt-1 text-xs text-slate-500">Live data from Payroll Leave Records and Leave Request workflow APIs</p></div><Link to="/hr/leave" className="inline-flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-800"><HeroIcons.CalendarDaysIcon className="h-4 w-4" /> Open Leave Workspace</Link></div>
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h4 className="mb-4 text-sm font-bold text-slate-950">Annual leave balance</h4>
+        {record ? <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{[["Entitlement", record.annual_entitlement],["Earned", record.total_earned],["Taken", record.total_taken],["Encashed", record.total_encashed],["Balance", record.leave_balance]].map(([label,value]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p><p className={`mt-1 text-xl font-bold ${label === "Balance" ? "text-emerald-700" : "text-slate-900"}`}>{Number(value || 0).toFixed(2)} <span className="text-xs font-medium text-slate-400">days</span></p></div>)}</div> : <p className="text-sm text-slate-400">No annual leave ledger was found for employee {emp.employee_id} in {currentYear}.</p>}
+        {monthly.length > 0 && <div className="mt-5 overflow-hidden rounded-lg border border-slate-200"><div className="grid grid-cols-5 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500"><span>Month</span><span>Earned</span><span>Taken</span><span>Encashed</span><span>Balance</span></div>{monthly.map((month) => <div key={month.id || month.month} className="grid grid-cols-5 border-t border-slate-100 px-3 py-2 text-xs text-slate-700"><span className="font-semibold">{month.month_label || month.month}</span><span>{month.earned}</span><span>{month.taken}</span><span>{month.encashed}</span><span className="font-bold">{month.balance}</span></div>)}</div>}
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between"><h4 className="text-sm font-bold text-slate-950">Leave requests</h4><span className="rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-700">{requests.length}</span></div>{requests.length > 0 ? <div className="space-y-2">{requests.slice(0, 12).map((request) => <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"><div><p className="text-sm font-semibold text-slate-900">{request.leave_type_detail?.name || "Leave request"}</p><p className="mt-0.5 text-xs text-slate-500">{formatDate(request.start_date)} – {formatDate(request.end_date)} · {request.days_requested} days</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">{request.status_display || request.status}</span></div>)}</div> : <p className="text-sm text-slate-400">No leave requests recorded for {currentYear}.</p>}</section>
+    </div>
+  );
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Compensation Panel Component — Salary & Payroll Management
 // ─────────────────────────────────────────────────────────────────────────────
 const CompensationPanel = ({
@@ -2374,12 +2450,14 @@ const CompensationPanel = ({
   const [payrollProfile, setPayrollProfile] = useState(null);
   const [loadingPayroll, setLoadingPayroll] = useState(false);
   const [creatingPayroll, setCreatingPayroll] = useState(false);
+  const [payrollError, setPayrollError] = useState("");
 
   // Load payroll profile when panel opens
   useEffect(() => {
     if (!emp?.employee_id) return;
     let cancelled = false;
     setLoadingPayroll(true);
+    setPayrollError("");
 
     // Try to find payroll employee by employee_no
     payrollEngineService
@@ -2401,6 +2479,7 @@ const CompensationPanel = ({
       })
       .catch((err) => {
         console.error("[HR] Failed to load payroll profile:", err);
+        if (!cancelled) setPayrollError("Payroll information could not be loaded.");
       })
       .finally(() => {
         if (!cancelled) setLoadingPayroll(false);
@@ -2441,7 +2520,7 @@ const CompensationPanel = ({
     try {
       const payload = {
         employee_no: emp.employee_id,
-        user: emp.id,
+        user: emp.user?.id || null,
         full_name: fullName(emp),
         department: emp.department || "",
         designation: emp.job_title || "",
@@ -2470,6 +2549,10 @@ const CompensationPanel = ({
         </span>
       </div>
     );
+  }
+
+  if (payrollError) {
+    return <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700"><div className="flex items-start gap-3"><HeroIcons.ExclamationTriangleIcon className="h-5 w-5 shrink-0" /><div><p className="font-bold">Payroll API unavailable</p><p className="mt-1 text-xs">{payrollError}</p></div></div></div>;
   }
 
   if (!payrollProfile && !isEditing) {
@@ -2648,6 +2731,7 @@ const CompensationPanel = ({
 const DetailDrawer = ({
   emp,
   loading,
+  loadError,
   onClose,
   initialTab = null,
   startEditing = false,
@@ -2662,6 +2746,13 @@ const DetailDrawer = ({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [profileDocuments, setProfileDocuments] = useState([]);
+  const [profileDocumentsLoading, setProfileDocumentsLoading] = useState(false);
+  const [profileDocumentsError, setProfileDocumentsError] = useState("");
+  const [openingDocumentId, setOpeningDocumentId] = useState(null);
+  const [championPerformance, setChampionPerformance] = useState(null);
+  const [championPerformanceLoading, setChampionPerformanceLoading] = useState(false);
+  const [championPerformanceError, setChampionPerformanceError] = useState("");
 
   // Fetch dynamic options (roles, organizations, managers)
   const [roles, setRoles] = useState([]);
@@ -2671,6 +2762,95 @@ const DetailDrawer = ({
   useEffect(() => {
     setTab(initialTab || HR_DEFAULT_DETAIL_TAB);
   }, [emp?.id, initialTab]);
+
+  useEffect(() => {
+    if (tab !== "documents" || !emp?.user?.id) return;
+    let cancelled = false;
+    setProfileDocumentsLoading(true);
+    setProfileDocumentsError("");
+    rbacService
+      .getProfileDocuments({
+        user_id: emp.user.id,
+        is_active: true,
+        ordering: "-created_at",
+      })
+      .then((response) => {
+        if (cancelled) return;
+        const payload = response?.data ?? response;
+        const documents = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.results)
+            ? payload.results
+            : [];
+        setProfileDocuments(documents);
+      })
+      .catch((documentError) => {
+        if (cancelled) return;
+        console.error("[HR] Failed to load profile documents:", documentError);
+        setProfileDocuments([]);
+        setProfileDocumentsError("Employee documents could not be loaded.");
+      })
+      .finally(() => {
+        if (!cancelled) setProfileDocumentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [emp?.id, emp?.user?.id, tab]);
+
+  const openProfileDocument = useCallback(async (document) => {
+    const previewWindow = window.open("", "_blank");
+    if (previewWindow) {
+      previewWindow.opener = null;
+      previewWindow.document.title = "Opening document…";
+      previewWindow.document.body.textContent = "Opening document…";
+    }
+    setOpeningDocumentId(document.id);
+    setProfileDocumentsError("");
+    try {
+      const response = await rbacService.getProfileDocumentContent(document.id);
+      const objectUrl = URL.createObjectURL(response.data);
+      if (previewWindow) previewWindow.location.href = objectUrl;
+      else {
+        const link = window.document.createElement("a");
+        link.href = objectUrl;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    } catch (documentError) {
+      previewWindow?.close();
+      console.error("[HR] Failed to open profile document:", documentError);
+      setProfileDocumentsError("The selected document could not be opened.");
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "performance" || !emp?.user?.id) return;
+    let cancelled = false;
+    setChampionPerformanceLoading(true);
+    setChampionPerformanceError("");
+    analyticsService
+      .getUserChampionScore(emp.user.id, 30)
+      .then((response) => {
+        if (!cancelled) setChampionPerformance(response);
+      })
+      .catch((performanceError) => {
+        if (cancelled) return;
+        console.error("[HR] Failed to load AI Champion performance:", performanceError);
+        setChampionPerformance(null);
+        setChampionPerformanceError("AI Champion activity is not available for this employee.");
+      })
+      .finally(() => {
+        if (!cancelled) setChampionPerformanceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [emp?.user?.id, tab]);
 
   // Load edit-only lookups lazily. Managers reuse the employee directory
   // already in memory, avoiding another large users request.
@@ -3119,14 +3299,13 @@ const DetailDrawer = ({
 
     // Employment fields
     if (field.id === "organization") {
-      // For select fields in read-only mode, EditableField will look up the label from options
-      // But we need to return the ID for the lookup to work
-      return emp.organization?.id || emp.organization_id || "";
+      return emp.organization_name || emp.organization?.name || "";
     }
     if (field.id === "department") return emp.department || "";
     if (field.id === "job_title") return emp.job_title || "";
     if (field.id === "status") return emp.status || "active";
-    if (field.id === "manager") return emp.manager?.id || emp.manager || "";
+    if (field.id === "manager")
+      return emp.manager_name || emp.manager_detail?.name || "Not assigned";
     if (field.id === "roles")
       return (emp.roles || []).map((r) => r.display_name || r.name || r.id);
 
@@ -3143,66 +3322,118 @@ const DetailDrawer = ({
   if (!emp) return null;
   const ep = emp.engineer_profile || {};
   const widthClass = HR_DRAWER_WIDTH_DEFAULT;
+  const engineeringDisciplines = Array.isArray(ep.engineering_disciplines)
+    ? ep.engineering_disciplines
+    : ep.discipline
+      ? [ep.discipline]
+      : [];
+  const technicalSkills = Array.isArray(ep.technical_skills)
+    ? ep.technical_skills
+    : Array.isArray(ep.skills)
+      ? ep.skills
+      : typeof ep.skills === "string"
+        ? ep.skills.split(",").map((name) => ({ name: name.trim(), proficiency: 0 })).filter((skill) => skill.name)
+        : [];
+  const certifications = Array.isArray(ep.certifications)
+    ? ep.certifications
+    : typeof ep.certifications === "string"
+      ? ep.certifications.split(",").map((name) => ({ name: name.trim() })).filter((certificate) => certificate.name)
+      : [];
+  const languages = Array.isArray(ep.languages) ? ep.languages : [];
+  const currentProjects = Array.isArray(ep.current_projects) ? ep.current_projects : [];
+  const managerEmployee = managerOptions.find(
+    (candidate) => String(candidate.id) === String(managerIdOf(emp)),
+  );
+  const workPeers = managerOptions
+    .filter(
+      (candidate) =>
+        candidate.id !== emp.id &&
+        candidate.department &&
+        candidate.department === emp.department,
+    )
+    .slice(0, 6);
 
   return (
-    <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex lg:p-3" role="dialog" aria-modal="true" aria-label={`${fullName(emp)} employee profile`}>
       <button
         type="button"
         aria-label="Close"
         onClick={onClose}
-        className="flex-1 bg-slate-900/40 backdrop-blur-sm"
+        className="flex-1 bg-slate-950/45 backdrop-blur-[2px]"
       />
       <aside
-        className={`w-full ${widthClass} bg-white shadow-2xl flex flex-col ${anim("transition-[max-width] duration-300 ease-out")}`}
+        className={`flex w-full ${widthClass} flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl lg:rounded-2xl ${anim("transition-[max-width] duration-300 ease-out")}`}
       >
         {/* Header */}
-        <div className="p-5 bg-gradient-to-br from-blue-600 to-indigo-700 text-white">
-          <div className="flex items-start gap-4">
-            <Avatar emp={emp} size="lg" />
-            <div className="flex-1 min-w-0">
-              <div className="text-xl font-bold truncate">{fullName(emp)}</div>
-              <div className="text-sm opacity-90 truncate">
+        <div className="relative border-b border-slate-200 bg-white px-5 pb-5 pt-6 sm:px-7">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close employee profile"
+            className="absolute right-4 top-4 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <HeroIcons.XMarkIcon className="h-5 w-5" />
+          </button>
+          <div className="flex items-start gap-5 pr-10">
+            <div className="relative shrink-0">
+              <Avatar emp={emp} size="xl" />
+              <span className={`absolute bottom-1 right-0 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-white ${emp.status === "active" ? "bg-emerald-500" : "bg-slate-400"}`} title={emp.status === "active" ? "Active" : "Unavailable"}>
+                <HeroIcons.CheckIcon className="h-4 w-4 text-white" />
+              </span>
+            </div>
+            <div className="min-w-0 flex-1 pt-1">
+              <h2 className="truncate text-2xl font-bold tracking-tight text-slate-950">{fullName(emp)}</h2>
+              <p className="mt-1 truncate text-sm text-slate-600">
                 {emp.job_title || "No designation"}
-              </div>
-              <div className="text-xs opacity-75 truncate">{getEmail(emp)}</div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <StatusBadge status={emp.status} />
-                <DisciplineTag emp={emp} />
-                {emp.organization_name && (
-                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-white/20 text-white">
-                    {emp.organization_name}
-                  </span>
+                {(emp.department || emp.location) && <span className="mx-1.5 text-slate-300">•</span>}
+                {emp.department || emp.location}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {getEmail(emp) && (
+                  <a href={`mailto:${getEmail(emp)}`} title="Send email" aria-label={`Email ${fullName(emp)}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50">
+                    <HeroIcons.ChatBubbleLeftEllipsisIcon className="h-[18px] w-[18px]" />
+                  </a>
                 )}
+                <button type="button" onClick={() => setTab("employment")} title="View organization" aria-label="View organization" className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50">
+                  <HeroIcons.UserGroupIcon className="h-[18px] w-[18px]" />
+                </button>
+                {emp.phone && (
+                  <a href={`tel:${emp.phone}`} title="Call employee" aria-label={`Call ${fullName(emp)}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50">
+                    <HeroIcons.PhoneIcon className="h-[18px] w-[18px]" />
+                  </a>
+                )}
+                {canEdit && (
+                  <button type="button" onClick={() => setIsEditing(true)} title="Edit profile" aria-label="Edit profile" className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50">
+                    <HeroIcons.PencilIcon className="h-[18px] w-[18px]" />
+                  </button>
+                )}
+                <div className="ml-1 flex flex-wrap gap-1.5">
+                  <StatusBadge status={emp.status} />
+                  <DisciplineTag emp={emp} />
+                </div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 hover:bg-white/20 rounded"
-            >
-              <HeroIcons.XMarkIcon className="w-5 h-5" />
-            </button>
           </div>
           {loading && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] opacity-80">
+            <div className="ml-[7.25rem] mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
               <Spinner className="w-3 h-3" />
               Loading full profile…
             </div>
           )}
           {isEditing && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] bg-amber-500/20 border border-amber-300/30 rounded px-2 py-1">
+            <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               <HeroIcons.PencilIcon className="w-3 h-3" />
               <span>Edit Mode — Make your changes below</span>
             </div>
           )}
           {saveSuccess && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] bg-emerald-500/20 border border-emerald-300/30 rounded px-2 py-1">
+            <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
               <HeroIcons.CheckCircleIcon className="w-3 h-3" />
               <span>{HR_EDIT_COPY.successMessage}</span>
             </div>
           )}
           {saveError && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] bg-red-500/20 border border-red-300/30 rounded px-2 py-1">
+            <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
               <HeroIcons.XCircleIcon className="w-3 h-3" />
               <span>{saveError}</span>
             </div>
@@ -3210,7 +3441,7 @@ const DetailDrawer = ({
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-slate-200 bg-slate-50">
+        <div className="border-b border-slate-200 bg-white px-4 sm:px-6">
           <div
             className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10"
             role="tablist"
@@ -3223,10 +3454,10 @@ const DetailDrawer = ({
                 onClick={() => setTab(t.id)}
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`flex min-h-14 min-w-0 items-center justify-center gap-1.5 border-b-2 px-2 py-2 text-center text-[11px] font-semibold leading-tight transition sm:border-r sm:border-slate-200 sm:last:border-r-0 ${
+                className={`flex min-h-12 min-w-0 items-center justify-center gap-1.5 border-b-2 px-2 py-2 text-center text-[11px] font-semibold transition ${
                   tab === t.id
-                    ? "border-b-blue-600 bg-blue-50 text-blue-700"
-                    : "border-b-transparent text-slate-600 hover:bg-white hover:text-slate-900"
+                    ? "border-b-blue-600 text-blue-700"
+                    : "border-b-transparent text-slate-500 hover:text-slate-900"
                 }`}
               >
                 <Icon name={t.icon} className="h-4 w-4 shrink-0" />
@@ -3237,67 +3468,128 @@ const DetailDrawer = ({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-4 sm:p-6">
           {tab === "overview" && (
-            <div className="grid grid-cols-2 gap-4">
-              {(HR_EDITABLE_FIELDS.overview || []).map((field) => (
-                <div
-                  key={field.id}
-                  className={field.type === "textarea" ? "col-span-2" : ""}
-                >
-                  <EditableField
-                    field={field}
-                    value={
-                      isEditing ? formData[field.id] : getFieldValue(field, emp)
-                    }
-                    isEditing={isEditing}
-                    onChange={handleFieldChange}
-                    error={formErrors[field.id]}
-                  />
-                </div>
-              ))}
+            <div className="mx-auto w-full max-w-5xl space-y-5">
               {!isEditing && (
-                <>
-                  <Field
-                    label="Years of Service"
-                    value={formatYearsOfService(emp.created_at)}
-                  />
-                  <Field label="Joined" value={formatDate(emp.created_at)} />
-                </>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full ${emp.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                      <HeroIcons.CheckIcon className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {emp.status === "active" ? "Active employee" : "Currently unavailable"}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {emp.location || "Work location not recorded"} · {emp.department || "Department not recorded"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-5 flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <HeroIcons.IdentificationIcon className="h-5 w-5 text-blue-700" />
+                  <h3 className="text-sm font-bold text-slate-950">Contact information</h3>
+                </div>
+                <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {(HR_EDITABLE_FIELDS.overview || [])
+                    .filter((field) => isEditing || !["first_name", "last_name"].includes(field.id))
+                    .map((field) => (
+                      <div key={field.id} className={field.type === "textarea" ? "sm:col-span-2 lg:col-span-3" : ""}>
+                        <EditableField
+                          field={field}
+                          value={isEditing ? formData[field.id] : getFieldValue(field, emp)}
+                          isEditing={isEditing}
+                          onChange={handleFieldChange}
+                          error={formErrors[field.id]}
+                        />
+                      </div>
+                    ))}
+                  {!isEditing && (
+                    <>
+                      <Field label="Years of Service" value={formatYearsOfService(emp.join_date || emp.created_at)} />
+                      <Field label="Joined" value={formatDate(emp.join_date || emp.created_at)} />
+                      <Field label="Company" value={emp.organization_name || "—"} />
+                    </>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+          {loadError && (
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              <HeroIcons.ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
+              <span>{loadError}</span>
             </div>
           )}
 
           {tab === "employment" && (
-            <div className="grid grid-cols-2 gap-4">
-              {(HR_EDITABLE_FIELDS.employment || []).map((field) => (
-                <div
-                  key={field.id}
-                  className={field.id === "roles" ? "col-span-2" : ""}
-                >
-                  <EditableField
-                    field={field}
-                    value={
-                      isEditing ? formData[field.id] : getFieldValue(field, emp)
-                    }
-                    isEditing={isEditing}
-                    onChange={handleFieldChange}
-                    options={getFieldOptions(field)}
-                    error={formErrors[field.id]}
-                  />
-                </div>
-              ))}
+            <div className="mx-auto w-full max-w-5xl space-y-5">
               {!isEditing && (
-                <Field
-                  label="Manager"
-                  value={emp.manager_name || emp.manager_detail?.name || "—"}
-                />
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-950">Organization</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">Reporting line and close colleagues</p>
+                    </div>
+                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{emp.department || "Team"}</span>
+                  </div>
+                  <div className="mt-5 grid gap-5 lg:grid-cols-[220px_1fr]">
+                    <div className="border-b border-slate-200 pb-5 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-5">
+                      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Manager</p>
+                      <div className="flex items-center gap-3">
+                        {managerEmployee ? <Avatar emp={managerEmployee} size="md" /> : (
+                          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700"><HeroIcons.UserIcon className="h-5 w-5" /></span>
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{managerEmployee ? fullName(managerEmployee) : emp.manager_name || emp.manager_detail?.name || "Not assigned"}</p>
+                          <p className="truncate text-xs text-slate-500">{managerEmployee?.job_title || emp.manager_detail?.job_title || "Reporting manager"}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">You work with</p>
+                      {workPeers.length > 0 ? (
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {workPeers.map((peer) => (
+                            <div key={peer.id} className="flex min-w-0 items-center gap-2.5 rounded-lg border border-slate-200 p-2.5">
+                              <Avatar emp={peer} size="sm" />
+                              <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-900">{fullName(peer)}</p><p className="truncate text-[11px] text-slate-500">{peer.job_title || "Employee"}</p></div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-sm text-slate-400">No close colleagues found in this department.</p>}
+                    </div>
+                  </div>
+                </section>
               )}
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-5 flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <HeroIcons.BuildingOffice2Icon className="h-5 w-5 text-blue-700" />
+                  <h3 className="text-sm font-bold text-slate-950">Employment details</h3>
+                </div>
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                  {(HR_EDITABLE_FIELDS.employment || []).map((field) => (
+                    <div key={field.id} className={field.id === "roles" ? "sm:col-span-2" : ""}>
+                      <EditableField
+                        field={field}
+                        value={isEditing ? formData[field.id] : getFieldValue(field, emp)}
+                        isEditing={isEditing}
+                        onChange={handleFieldChange}
+                        options={getFieldOptions(field)}
+                        error={formErrors[field.id]}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
           )}
 
           {tab === "documents" && (
-            <div className="space-y-4">
+            <div className="mx-auto w-full max-w-5xl space-y-4">
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <div className="flex items-start gap-3">
                   <HeroIcons.FolderOpenIcon className="h-6 w-6 text-blue-700" />
@@ -3306,100 +3598,95 @@ const DetailDrawer = ({
                       Employee documents
                     </h3>
                     <p className="mt-1 text-sm text-blue-800">
-                      Keep employment evidence, identity files, certificates and
-                      signed HR records together.
+                      Documents uploaded from this employee&apos;s Engineering Profile.
                     </p>
                   </div>
                 </div>
               </div>
-              {(emp.documents || emp.metadata?.documents || []).length > 0 ? (
-                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                  {(emp.documents || emp.metadata?.documents || []).map(
-                    (document, index) => (
-                      <div
-                        key={document.id || index}
-                        className="flex items-center justify-between gap-3 p-3"
-                      >
-                        <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-800">
-                          <HeroIcons.DocumentTextIcon className="h-5 w-5 shrink-0 text-slate-400" />
-                          <span className="truncate">
-                            {document.name ||
-                              document.title ||
-                              `Document ${index + 1}`}
-                          </span>
-                        </span>
-                        {document.url && (
-                          <a
-                            href={document.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs font-bold text-blue-700 hover:underline"
-                          >
-                            Open
-                          </a>
-                        )}
-                      </div>
-                    ),
-                  )}
+              {profileDocumentsError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {profileDocumentsError}
                 </div>
-              ) : (
+              )}
+              {profileDocumentsLoading ? (
+                <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
+                  <Spinner className="h-4 w-4" /> Loading Engineering Profile documents…
+                </div>
+              ) : profileDocuments.length > 0 ? (
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <div className="grid grid-cols-[1fr_auto] border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:grid-cols-[minmax(0,1.4fr)_minmax(110px,.6fr)_minmax(110px,.6fr)_auto]">
+                    <span>Document</span><span className="hidden sm:block">Status</span><span className="hidden sm:block">Expiry</span><span>Action</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {profileDocuments.map((document) => (
+                      <div key={document.id} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(110px,.6fr)_minmax(110px,.6fr)_auto]">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-lg">{document.document_type_icon || "📄"}</span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">{document.document_type_label || document.document_file_name || "Profile document"}</p>
+                            <p className="truncate text-xs text-slate-500">{document.document_file_name || document.document_number || "Engineering Profile"}</p>
+                          </div>
+                        </div>
+                        <span className="hidden w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold capitalize text-slate-600 sm:block">{document.verification_status || "pending"}</span>
+                        <span className="hidden text-xs text-slate-600 sm:block">{document.expiry_date ? formatDate(document.expiry_date) : "No expiry"}</span>
+                        <button type="button" onClick={() => openProfileDocument(document)} disabled={openingDocumentId === document.id} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60">
+                          {openingDocumentId === document.id ? <Spinner className="h-3.5 w-3.5" /> : <HeroIcons.ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />} Open
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : !profileDocumentsError && (
                 <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-                  No employee documents have been linked to this profile.
+                  No documents have been uploaded to this employee&apos;s Engineering Profile.
                 </div>
               )}
             </div>
           )}
 
           {tab === "leave" && (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
-                <h3 className="font-bold text-cyan-950">Leave management</h3>
-                <p className="mt-1 text-sm text-cyan-800">
-                  Review balances, requests and attendance from the leave
-                  workspace.
-                </p>
-              </div>
-              <Link
-                to="/hr/leave"
-                className="inline-flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-800"
-              >
-                <HeroIcons.CalendarDaysIcon className="h-4 w-4" /> Open Leave
-                Workspace
-              </Link>
-            </div>
+            <EmployeeLeavePanel emp={emp} />
           )}
 
           {tab === "performance" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Role" value={emp.job_title || "—"} />
-                <Field
-                  label="Manager"
-                  value={emp.manager_name || emp.manager_detail?.name || "—"}
-                />
-                <Field
-                  label="Discipline"
-                  value={
-                    matchDiscipline(
-                      emp.engineer_profile?.discipline || emp.department,
-                    )?.label || "—"
-                  }
-                />
-                <Field
-                  label="Experience"
-                  value={
-                    emp.engineer_profile?.years_experience
-                      ? `${emp.engineer_profile.years_experience} years`
-                      : "—"
-                  }
-                />
-              </div>
-              <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900">
-                <span className="font-bold">Performance snapshot:</span>{" "}
-                competency and reporting information is shown here; formal
-                review cycles can be attached as employee performance records
-                become available.
-              </div>
+            <div className="mx-auto w-full max-w-5xl space-y-5">
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><HeroIcons.TrophyIcon className="h-5 w-5" /></span>
+                    <div><h3 className="text-sm font-bold text-slate-950">AI Champion performance</h3><p className="mt-0.5 text-xs text-slate-500">RADAI engagement and responsible AI usage over the last 30 days</p></div>
+                  </div>
+                  <Link to="/admin/ai-champion" className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-50">Open AI Champion <HeroIcons.ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /></Link>
+                </div>
+                {championPerformanceLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500"><Spinner className="h-4 w-4" /> Loading AI performance…</div>
+                ) : championPerformance?.score ? (
+                  <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+                    {[
+                      ["Champion score", Number(championPerformance.score.champion_score || 0).toFixed(1), "text-violet-700"],
+                      ["Rank", championPerformance.rank ? `#${championPerformance.rank} of ${championPerformance.cohort_size}` : "Unranked", "text-blue-700"],
+                      ["Actions", championPerformance.score.stats?.total_actions ?? 0, "text-slate-900"],
+                      ["AI requests", championPerformance.score.stats?.total_ai_requests ?? 0, "text-emerald-700"],
+                      ["Features used", championPerformance.score.stats?.distinct_features_used ?? 0, "text-cyan-700"],
+                    ].map(([label, value, tone]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p><p className={`mt-1 text-xl font-bold ${tone}`}>{value}</p></div>)}
+                  </div>
+                ) : <p className="py-7 text-center text-sm text-slate-500">{championPerformanceError || "No AI Champion activity recorded in the last 30 days."}</p>}
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700"><HeroIcons.BriefcaseIcon className="h-5 w-5" /></span><div><h3 className="text-sm font-bold text-slate-950">Current project assignments</h3><p className="mt-0.5 text-xs text-slate-500">Live assignments maintained in the Engineering Profile</p></div></div>
+                  <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{currentProjects.length}</span>
+                </div>
+                {currentProjects.length > 0 ? (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    {currentProjects.map((project, index) => {
+                      const allocation = Math.max(0, Math.min(100, Number(project.allocation) || 0));
+                      return <article key={project.id || project.project_id || index} className="rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="truncate text-sm font-bold text-slate-900">{project.name || `Project ${index + 1}`}</h4><p className="mt-0.5 truncate text-xs text-slate-500">{project.client || project.project_id || "Project assignment"}</p></div><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold capitalize text-emerald-700">{project.status || "active"}</span></div><div className="mt-3 grid grid-cols-2 gap-3 text-xs"><Field label="Role" value={project.role || "—"} /><Field label="Project Manager" value={project.project_manager_name || "—"} /></div><div className="mt-4"><div className="mb-1.5 flex justify-between text-xs text-slate-500"><span>Allocation</span><span className="font-bold text-slate-700">{allocation}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${allocation > 80 ? "bg-amber-500" : "bg-blue-600"}`} style={{ width: `${allocation}%` }} /></div></div></article>;
+                    })}
+                  </div>
+                ) : <div className="py-9 text-center"><HeroIcons.FolderOpenIcon className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-600">No current project assignments</p><p className="mt-1 text-xs text-slate-400">Assignments can be maintained from the employee&apos;s Engineering Profile.</p></div>}
+              </section>
             </div>
           )}
 
@@ -3418,32 +3705,16 @@ const DetailDrawer = ({
           {tab === "timesheet" && <EmployeeTimesheetPanel emp={emp} />}
 
           {tab === "competency" && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-4">
-                {(HR_EDITABLE_FIELDS.competency || []).map((field) => (
-                  <div
-                    key={field.id}
-                    className={field.type === "textarea" ? "col-span-2" : ""}
-                  >
-                    <EditableField
-                      field={field}
-                      value={
-                        isEditing
-                          ? formData[field.id]
-                          : getFieldValue(field, emp)
-                      }
-                      isEditing={isEditing}
-                      onChange={handleFieldChange}
-                      options={getFieldOptions(field)}
-                      error={formErrors[field.id]}
-                    />
-                  </div>
-                ))}
-              </div>
-              {!isEditing && Object.keys(ep).length === 0 && (
-                <div className="text-sm text-slate-500 italic mt-4">
-                  No engineering competency profile recorded.
-                </div>
+            <div className="mx-auto w-full max-w-5xl space-y-5">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><div className="flex items-start gap-3"><HeroIcons.AcademicCapIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" /><div><p className="font-bold">Engineering competency profile</p><p className="mt-1 text-xs leading-5 text-blue-800">Used for skills-based staffing, project matching, development planning, and identifying certification or capability gaps. Data comes from the employee&apos;s Engineering Profile.</p></div></div></div>
+              {Object.keys(ep).length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center"><HeroIcons.AcademicCapIcon className="mx-auto h-9 w-9 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-700">No engineering competency profile recorded</p></div>
+              ) : (
+                <>
+                  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="mb-4 text-sm font-bold text-slate-950">Capability summary</h3><div className="grid grid-cols-2 gap-4 lg:grid-cols-4"><Field label="Expertise level" value={(ep.expertise_level || "Not set").replaceAll("_", " ")} /><Field label="Experience" value={`${ep.years_experience ?? ep.experience_years ?? 0} years`} /><Field label="Availability" value={(ep.availability_status || "Not set").replaceAll("_", " ")} /><Field label="Available capacity" value={`${ep.availability_percentage ?? 0}%`} /></div>{engineeringDisciplines.length > 0 && <div className="mt-5 border-t border-slate-100 pt-4"><p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Engineering disciplines</p><div className="flex flex-wrap gap-2">{engineeringDisciplines.map((discipline) => <span key={typeof discipline === "string" ? discipline : discipline.code || discipline.name} className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{typeof discipline === "string" ? discipline : discipline.name || discipline.label || discipline.code}</span>)}</div></div>}</section>
+                  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="mb-4 text-sm font-bold text-slate-950">Technical skills</h3>{technicalSkills.length > 0 ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{technicalSkills.map((skill, index) => { const skillName = typeof skill === "string" ? skill : skill.name; const proficiency = typeof skill === "object" ? Number(skill.proficiency) || 0 : 0; return <div key={`${skillName}-${index}`} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold text-slate-800">{skillName || "Skill"}</span>{proficiency > 0 && <span className="text-[10px] font-bold text-blue-700">{proficiency}/5</span>}</div>{proficiency > 0 && <div className="mt-2 flex gap-1">{[1,2,3,4,5].map((level) => <span key={level} className={`h-1.5 flex-1 rounded-full ${level <= proficiency ? "bg-blue-600" : "bg-slate-200"}`} />)}</div>}</div>; })}</div> : <p className="text-sm text-slate-400">No technical skills recorded.</p>}</section>
+                  <div className="grid gap-5 lg:grid-cols-2"><section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="mb-4 text-sm font-bold text-slate-950">Certifications</h3>{certifications.length > 0 ? <div className="space-y-3">{certifications.map((certificate, index) => { const name = typeof certificate === "string" ? certificate : certificate.name; return <div key={`${name}-${index}`} className="flex items-start gap-3 rounded-lg bg-slate-50 p-3"><HeroIcons.CheckBadgeIcon className="h-5 w-5 shrink-0 text-emerald-600" /><div><p className="text-sm font-semibold text-slate-800">{name || "Certification"}</p>{typeof certificate === "object" && (certificate.issuer || certificate.year) && <p className="mt-0.5 text-xs text-slate-500">{[certificate.issuer, certificate.year].filter(Boolean).join(" · ")}</p>}</div></div>; })}</div> : <p className="text-sm text-slate-400">No certifications recorded.</p>}</section><section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="mb-4 text-sm font-bold text-slate-950">Languages</h3>{languages.length > 0 ? <div className="flex flex-wrap gap-2">{languages.map((language, index) => <span key={`${typeof language === "string" ? language : language.name}-${index}`} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">{typeof language === "string" ? language : language.name || language.label}</span>)}</div> : <p className="text-sm text-slate-400">No languages recorded.</p>}</section></div>
+                </>
               )}
             </div>
           )}
@@ -3525,7 +3796,7 @@ const DetailDrawer = ({
         </div>
 
         {/* Footer actions */}
-        <div className="p-4 border-t border-slate-200 bg-slate-50">
+        <div className="border-t border-slate-200 bg-white px-5 py-3.5 sm:px-6">
           {isEditing ? (
             <div className="flex items-center justify-between gap-3">
               <button
@@ -3557,30 +3828,7 @@ const DetailDrawer = ({
               </button>
             </div>
           ) : (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {HR_EDIT_CONFIG.showAdminLink && (
-                  <Link
-                    to={HR_ADMIN_USER_LINK(emp.id)}
-                    className="text-sm font-medium text-blue-700 hover:text-blue-900 inline-flex items-center gap-1"
-                  >
-                    <HeroIcons.PencilSquareIcon className="w-4 h-4" /> Open in
-                    Admin
-                  </Link>
-                )}
-                {(canEdit || !currentUser) && (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(true)}
-                    disabled={!canEdit}
-                    title={!canEdit ? "Checking edit access…" : undefined}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-wait text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 shadow-sm"
-                  >
-                    <HeroIcons.PencilIcon className="w-4 h-4" />
-                    {HR_EDIT_COPY.editButton}
-                  </button>
-                )}
-              </div>
+            <div className="flex justify-end">
               {getEmail(emp) && (
                 <a
                   href={`mailto:${getEmail(emp)}`}
@@ -3602,6 +3850,7 @@ const DetailDrawer = ({
 // ─────────────────────────────────────────────────────────────────────────────
 export default function HREmployees() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const authCurrentUser = useSelector((state) => state.auth?.user);
   const rbacCurrentUser = useSelector((state) => state.rbac?.currentUser);
   const [loadedCurrentUser, setLoadedCurrentUser] = useState(null);
@@ -3619,6 +3868,7 @@ export default function HREmployees() {
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const detailCacheRef = useRef(new Map());
+  const deepLinkHandledRef = useRef("");
   const currentUser =
     rbacCurrentUser ||
     loadedCurrentUser ||
@@ -3676,6 +3926,25 @@ export default function HREmployees() {
     fetchEmployees();
   }, [fetchEmployees]);
 
+  // Payroll and other HR modules can deep-link to an exact employee drawer.
+  // The shared employee number is the stable identity across these modules.
+  useEffect(() => {
+    const employeeKey = (searchParams.get("employee") || "").trim();
+    if (!employeeKey || loading || employees.length === 0) return;
+    const requestedTab = searchParams.get("tab") || "overview";
+    const signature = `${employeeKey}:${requestedTab}`;
+    if (deepLinkHandledRef.current === signature) return;
+    const employee = employees.find(
+      (item) =>
+        String(item.employee_id || "").trim() === employeeKey ||
+        String(item.id || "") === employeeKey ||
+        String(item.user?.id || "") === employeeKey,
+    );
+    if (!employee) return;
+    deepLinkHandledRef.current = signature;
+    openEmp(employee, requestedTab);
+  }, [employees, loading, openEmp, searchParams]);
+
   const handleEmployeeAction = useCallback(
     async (emp, action) => {
       const destinations = {
@@ -3723,16 +3992,19 @@ export default function HREmployees() {
   // engineer_profile, MFA, security fields). Fetch the full record on demand
   // so the drawer renders the rich detail tabs without bloating the list.
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
   useEffect(() => {
     if (!selectedEmp?.id) return;
     const cached = detailCacheRef.current.get(String(selectedEmp.id));
     if (cached) {
       setSelectedEmp((prev) => (prev ? { ...prev, ...cached } : prev));
       setDetailLoading(false);
+      setDetailError("");
       return;
     }
     let cancelled = false;
     setDetailLoading(true);
+    setDetailError("");
     rbacService
       .getUserById(selectedEmp.id)
       .then((resp) => {
@@ -3744,9 +4016,10 @@ export default function HREmployees() {
           prev && prev.id === full.id ? { ...prev, ...full } : prev,
         );
       })
-      .catch((err) =>
-        console.error("[HR] Failed to load employee detail:", err),
-      )
+      .catch((err) => {
+        console.error("[HR] Failed to load employee detail:", err);
+        if (!cancelled) setDetailError("Full employee details could not be loaded. Some tabs may be unavailable.");
+      })
       .finally(() => {
         if (!cancelled) setDetailLoading(false);
       });
@@ -3918,9 +4191,6 @@ export default function HREmployees() {
   return (
     <div className="min-h-screen w-full min-w-0 bg-gradient-to-br from-slate-50 to-blue-50 p-4 lg:p-6">
       <div className="w-full min-w-0 max-w-none space-y-4">
-        {/* Cross-link nav (Profile / HR Directory / User Management) */}
-        <PeopleNav activeId="hr" />
-
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
@@ -3978,6 +4248,18 @@ export default function HREmployees() {
                 </div>
               )}
             </div>
+            <Link
+              to="/profile"
+              className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 inline-flex items-center gap-1.5"
+            >
+              <HeroIcons.UserCircleIcon className="w-4 h-4" /> My Profile
+            </Link>
+            <Link
+              to="/hr/leave"
+              className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 inline-flex items-center gap-1.5"
+            >
+              <HeroIcons.SparklesIcon className="w-4 h-4" /> My Workspace
+            </Link>
             <Link
               to={HR_ADMIN_USERS_LIST_LINK}
               className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 shadow-sm"
@@ -4212,6 +4494,7 @@ export default function HREmployees() {
         <DetailDrawer
           emp={selectedEmp}
           loading={detailLoading}
+          loadError={detailError}
           initialTab={selectedTab}
           startEditing={selectedEdit}
           currentUser={currentUser}

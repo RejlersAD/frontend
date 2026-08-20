@@ -32,11 +32,12 @@ const TAB_COMPONENTS = {
   attendance: AttendanceDashboard,
   leave:      LeaveDashboard,
   engine:     PayrollEngine,
+  salary:     PayrollEngine,
   tracker:    ApprovalTracker,
 }
 
 export default function Payroll() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab,    setActiveTab]    = useState(PAYROLL_DEFAULT_TAB)
   const [activeRunId,  setActiveRunId]  = useState(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -45,12 +46,35 @@ export default function Payroll() {
   // When user clicks a workflow notification, auto-switch to engine tab and select the run
   useEffect(() => {
     const runIdFromUrl = searchParams.get('run')
+    const tabFromUrl = searchParams.get('tab')
     if (runIdFromUrl) {
       setActiveRunId(runIdFromUrl)
-      setActiveTab('engine')  // Auto-switch to engine tab
-      console.log(`[Payroll] Notification deep-link detected: run=${runIdFromUrl}, switching to engine tab`)
+      setActiveTab('salary')
+      console.log(`[Payroll] Notification deep-link detected: run=${runIdFromUrl}, switching to Salary Management`)
+    } else {
+      // `engine` was the former top-level route. Keep bookmarks and
+      // notifications working while presenting one canonical workspace.
+      const canonicalTab = tabFromUrl === 'engine' ? 'salary' : tabFromUrl
+      if (canonicalTab && PAYROLL_TABS.some((tab) => tab.id === canonicalTab)) {
+        setActiveTab(canonicalTab)
+        if (tabFromUrl === 'engine') {
+          const next = new URLSearchParams(searchParams)
+          next.set('tab', 'salary')
+          setSearchParams(next, { replace: true })
+        }
+      }
     }
-  }, [searchParams])
+  }, [searchParams, setSearchParams])
+
+  const selectTab = useCallback((tabId) => {
+    const canonicalTab = tabId === 'engine' ? 'salary' : tabId
+    setActiveTab(canonicalTab)
+    if (canonicalTab !== 'salary') setActiveRunId(null)
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', canonicalTab)
+    if (canonicalTab !== 'salary') next.delete('run')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // Sync state with native fullscreenchange so the button icon stays accurate
   useEffect(() => {
@@ -89,21 +113,22 @@ export default function Payroll() {
   const ActiveModule = TAB_COMPONENTS[activeTab]
 
   return (
-    <div className="bg-slate-50">
+    <div className="min-h-screen bg-slate-50">
       {/* Page Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="border-b border-slate-200 bg-white">
+        <div className="px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-950 via-blue-950 to-blue-800 px-5 py-5 text-white shadow-lg shadow-blue-950/10 sm:px-6">
             <div>
-              <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <HeroIcons.BanknotesIcon className="w-6 h-6 text-blue-600" />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Human Resources · Payroll</p>
+              <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-white">
+                <HeroIcons.BanknotesIcon className="h-6 w-6 text-cyan-300" />
                 {PAYROLL_COPY.pageTitle}
               </h1>
-              <p className="text-sm text-slate-500 mt-0.5">{PAYROLL_COPY.pageSubtitle}</p>
+              <p className="mt-1 text-sm text-blue-100">One employee record across attendance, leave, salary, payroll runs and approvals.</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-                <HeroIcons.ShieldCheckIcon className="w-4 h-4 text-emerald-500" />
+              <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs text-blue-100">
+                <HeroIcons.ShieldCheckIcon className="h-4 w-4 text-emerald-300" />
                 PostgreSQL · AWS S3 · Rule-based AI
               </div>
               {PAYROLL_FULLSCREEN_ENABLED && (
@@ -111,7 +136,7 @@ export default function Payroll() {
                   type="button"
                   onClick={toggleFullscreen}
                   title={PAYROLL_COPY.fullscreenTitle}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors"
+                  className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-white/20"
                 >
                   {isFullscreen
                     ? <HeroIcons.ArrowsPointingInIcon  className="w-4 h-4" />
@@ -124,7 +149,7 @@ export default function Payroll() {
           </div>
 
           {/* Tab Navigation */}
-          <div className="mt-4 flex gap-1 overflow-x-auto pb-0.5 scrollbar-hide">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {visibleTabs.map((tab) => {
               const Icon = HeroIcons[tab.icon] || HeroIcons.ChartBarIcon
               const isActive = activeTab === tab.id
@@ -132,16 +157,16 @@ export default function Payroll() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => selectTab(tab.id)}
                   title={tab.description}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-t-lg border-b-2 whitespace-nowrap transition-colors ${
+                  className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition-all ${
                     isActive
-                      ? 'border-blue-600 text-blue-700 bg-blue-50/60'
-                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      ? 'border-blue-300 bg-blue-50 text-blue-800 shadow-sm ring-1 ring-blue-100'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}><Icon className="h-4 w-4" /></span>
+                  <span className="truncate">{tab.label}</span>
                 </button>
               )
             })}
@@ -150,15 +175,16 @@ export default function Payroll() {
       </div>
 
       {/* Module Content */}
-      <div className="px-4 sm:px-6 lg:px-8 py-6">
+      <div className="px-4 py-6 sm:px-6 lg:px-8">
         {ActiveModule ? (
           <ActiveModule
             activeRunId={activeRunId}
+            initialTab={activeTab === 'salary' && !activeRunId ? 'employees' : undefined}
             onSelectRun={(run) => {
               const id = typeof run === 'string' ? run : run?.id
               setActiveRunId(id)
             }}
-            onSwitchTab={(tabId) => setActiveTab(tabId)}
+            onSwitchTab={selectTab}
           />
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 p-14 text-center text-slate-400">

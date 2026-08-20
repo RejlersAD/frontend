@@ -349,7 +349,7 @@ export const HR_TABLE_COLUMNS = [
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_DETAIL_TABS = [
   { id: 'overview',      label: 'Overview',            icon: 'UserCircleIcon' },
-  { id: 'employment',    label: 'Employment',          icon: 'BriefcaseIcon' },
+  { id: 'employment',    label: 'Organization',        icon: 'BriefcaseIcon' },
   { id: 'documents',     label: 'Documents',           icon: 'DocumentTextIcon' },
   { id: 'leave',         label: 'Leave',               icon: 'CalendarDaysIcon' },
   { id: 'performance',   label: 'Performance',         icon: 'ChartBarIcon' },
