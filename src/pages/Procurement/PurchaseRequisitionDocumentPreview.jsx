@@ -2,6 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { ArrowTopRightOnSquareIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
 import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentBranding.config';
+import { convertToAed } from '../../config/procurement.config';
 
 const valueOrDash = (value) => (value === null || value === undefined || value === '' ? '—' : value);
 
@@ -10,6 +11,17 @@ const dateForDocument = (value) => {
   const clean = String(value).slice(0, 10);
   const [year, month, day] = clean.split('-');
   return year && month && day ? `${day}.${month}.${year}` : value;
+};
+
+const timestampForDocument = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return valueOrDash(value);
+  return `${parsed.toLocaleString('en-GB', {
+    timeZone: 'Asia/Dubai',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  })} GST`;
 };
 
 const money = (amount, currency) => {
@@ -21,12 +33,14 @@ const money = (amount, currency) => {
 };
 
 const workflowRoleLabel = (stage, index) => {
+  if (stage?.approval_label) return stage.approval_label;
   const role = `${stage?.role || ''} ${stage?.stage || ''}`.toLowerCase();
-  if (role.includes('procurement')) return 'L0';
-  if (role.includes('engineering')) return 'MoE';
-  if (role.includes('manager of projects') || role.includes('projects manager')) return 'MoP';
-  if (role.includes('vice president') || role.includes('vp delivery') || role.includes('vp operations')) return 'VP';
-  if (role.includes('level 1')) return `L1-${index + 1}`;
+  if (role.includes('procurement')) return 'L0- PRO';
+  if (role.includes('general manager')) return 'CEO';
+  if (role.includes('engineering')) return 'L2 MoE';
+  if (role.includes('manager of projects') || role.includes('projects manager')) return 'L3 MoP';
+  if (role.includes('vice president') || role.includes('vp delivery') || role.includes('vp operations')) return 'L4 VOP/VP';
+  if (role.includes('level 1')) return `L1-${stage?._levelOneIndex || index + 1}`;
   return stage?.role || `L${stage?.level || index + 1}`;
 };
 
@@ -43,22 +57,38 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
   const selectedVendor = (requisition.selected_vendors || [])[0] || {};
   const icv = metadata.icv || selectedVendor.icv_percentage || selectedVendor.icv_value;
   const budget = metadata.budget_in_aed || requisition.estimated_budget;
+  const calculatedNetTotalAed = convertToAed(requisition.net_total_excl_vat, requisition.currency);
+  const netTotalAed = metadata.net_total_aed !== null && metadata.net_total_aed !== undefined && metadata.net_total_aed !== ''
+    ? Number(metadata.net_total_aed)
+    : calculatedNetTotalAed;
   const configuredWorkflow = Array.isArray(requisition.approval_workflow_config)
     ? requisition.approval_workflow_config
-    : [];
+    : (Array.isArray(requisition.approval_hierarchy) ? requisition.approval_hierarchy : []);
+  const savedApprovalLabels = metadata.approval_table_labels || {};
   const persistedApprovalRows = [
-    ['PM', requisition.pm_name_display, requisition.pm_signature, requisition.pm_approval_status],
-    ['MoE', requisition.eng_manager_name_display, requisition.eng_manager_signature, requisition.eng_manager_approval_status],
-    ['MoP', requisition.manager_projects_name_display, requisition.manager_projects_signature, requisition.manager_projects_approval_status],
-    ['Vp, Op', requisition.vp_op_name_display, requisition.vp_op_signature, requisition.vp_op_approval_status],
+    ['PM', requisition.pm_name_display, requisition.pm_signature, requisition.pm_approval_status, requisition.pm_approved_at],
+    ['MoE', requisition.eng_manager_name_display, requisition.eng_manager_signature, requisition.eng_manager_approval_status, requisition.eng_manager_approved_at],
+    ['MoP', requisition.manager_projects_name_display, requisition.manager_projects_signature, requisition.manager_projects_approval_status, requisition.manager_projects_approved_at],
+    ['Vp, Op', requisition.vp_op_name_display, requisition.vp_op_signature, requisition.vp_op_approval_status, requisition.vp_op_approved_at],
   ];
+  let levelOneDisplayIndex = 0;
   const approvalRows = configuredWorkflow.length
-    ? configuredWorkflow.map((stage, index) => ([
-        workflowRoleLabel(stage, index),
+    ? configuredWorkflow.map((stage, index) => {
+      const roleText = `${stage?.role || ''} ${stage?.stage || ''}`.toLowerCase();
+      const isLevelOne = Number(stage?.level) === 1 || roleText.includes('level 1');
+      if (isLevelOne) levelOneDisplayIndex += 1;
+      return ([
+        workflowRoleLabel({
+          ...stage,
+          _levelOneIndex: isLevelOne ? levelOneDisplayIndex : undefined,
+          approval_label: stage.approval_label || savedApprovalLabels[stage.user_id || stage.approver_id],
+        }, index),
         [stage.user_name || stage.approver_name || stage.approver, stage.user_email].filter(Boolean).join(' — '),
         stage.signature,
         stage.status,
-      ]))
+        stage.approved_at || stage.decided_at,
+      ]);
+    })
     : persistedApprovalRows;
   const approvalDate = requisition.approved_at
     || requisition.vp_op_approved_at
@@ -139,7 +169,11 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
           <div className="grid grid-cols-[2fr_0.8fr_1.3fr] border-t border-gray-700 font-bold">
             <div className="px-2 py-2">Net Total, excl VAT</div>
             <div className="border-x border-gray-700 px-2 py-2 text-right">{money(requisition.net_total_excl_vat, requisition.currency)}</div>
-            <div className="px-2 py-2">{metadata.net_total_aed && requisition.currency !== 'AED' ? `→ AED ${Number(metadata.net_total_aed).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}</div>
+            <div className="px-2 py-2">
+              {Number.isFinite(netTotalAed)
+                ? `AED ${netTotalAed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : '—'}
+            </div>
           </div>
         </section>
 
@@ -153,28 +187,30 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
 
         <section>
           <h4 className="border-b border-gray-700 py-1 text-center font-bold">APPROVALS</h4>
-          <div className="grid grid-cols-[0.55fr_1.55fr_1.4fr_1.3fr] border-b border-gray-700 text-center font-bold">
+          <div className="grid grid-cols-[0.5fr_1.35fr_1fr_0.85fr_1.3fr] border-b border-gray-700 text-center font-bold">
             <div className="px-2 py-1" />
             <div className="border-x border-gray-700 px-2 py-1">Name</div>
             <div className="border-r border-gray-700 px-2 py-1">Signature</div>
-            <div className="px-2 py-1">Comments (If any)</div>
+            <div className="border-r border-gray-700 px-2 py-1">Status</div>
+            <div className="px-2 py-1">Approval Timestamp</div>
           </div>
-          {approvalRows.map(([role, name, signature, status]) => {
+          {approvalRows.map(([role, name, signature, status, approvedAt], index) => {
             const approved = String(status || '').toLowerCase() === 'approved';
             return (
-              <div key={role} className="grid min-h-[38px] grid-cols-[0.55fr_1.55fr_1.4fr_1.3fr] border-b border-gray-700 last:border-b-0">
+              <div key={`${role}-${index}`} className="grid min-h-[38px] grid-cols-[0.5fr_1.35fr_1fr_0.85fr_1.3fr] border-b border-gray-700 last:border-b-0">
                 <div className="px-2 py-2 font-semibold">{role}</div>
                 <div className="border-x border-gray-700 px-2 py-2">{valueOrDash(name)}</div>
                 <div className="flex items-center justify-center border-r border-gray-700 px-2 py-2">
                   {signature || approved ? <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckBadgeIcon className="h-4 w-4" /> Signed</span> : <span className="text-gray-400">Pending</span>}
                 </div>
-                <div className="px-2 py-2">{approved ? 'Approved' : valueOrDash(status)}</div>
+                <div className="border-r border-gray-700 px-2 py-2">{approved ? 'Approved' : valueOrDash(status)}</div>
+                <div className="px-2 py-2 text-[10px]">{approved ? timestampForDocument(approvedAt) : '—'}</div>
               </div>
             );
           })}
           <div className="grid grid-cols-[0.55fr_1fr] border-t border-gray-700">
-            <div className="px-2 py-2 font-semibold">Date</div>
-            <div className="border-l border-gray-700 px-2 py-2">{dateForDocument(approvalDate)}</div>
+            <div className="px-2 py-2 font-semibold">Final Approval Timestamp</div>
+            <div className="border-l border-gray-700 px-2 py-2">{timestampForDocument(approvalDate)}</div>
           </div>
         </section>
       </article>

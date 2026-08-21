@@ -113,6 +113,7 @@ const RowSearchBar = ({ value, onChange, totalCount, matchCount }) => (
 const LIVE_FILTER_FNS = {
   in:      (r) => r.is_in === true,
   out:     (r) => r.is_in === false,
+  no_punch: (r) => r.is_in !== true && r.is_in !== false,
   late:    (r) => r.is_late === true,
   total:   null,
   matched: (r) => Boolean(r.radai_user_id),
@@ -121,6 +122,7 @@ const LIVE_FILTER_FNS = {
 const LIVE_FILTER_LABELS = {
   in:      'Currently IN',
   out:     'Currently OUT',
+  no_punch: 'No Biometric Punch',
   late:    'Late Today',
   total:   'All Seen Today',
   matched: 'Matched to RAD AI',
@@ -133,13 +135,14 @@ const LiveKpis = ({ summary, asOf, activeFilter, onFilterChange }) => {
   const tiles = [
     { id: 'in',      label: 'Currently IN',      value: summary?.currently_in    ?? 0, accent: 'from-emerald-500 to-teal-600',   icon: 'ArrowRightOnRectangleIcon' },
     { id: 'out',     label: 'Currently OUT',     value: summary?.currently_out   ?? 0, accent: 'from-slate-500 to-slate-700',    icon: 'ArrowLeftOnRectangleIcon' },
+    { id: 'no_punch', label: 'No Punch',          value: summary?.no_punch         ?? 0, accent: 'from-slate-400 to-slate-600',    icon: 'QuestionMarkCircleIcon' },
     { id: 'late',    label: 'Late Today',        value: summary?.late_today      ?? 0, accent: 'from-amber-500 to-orange-600',   icon: 'ClockIcon' },
     { id: 'total',   label: 'Seen Today',        value: summary?.total_seen_today ?? 0, accent: 'from-blue-500 to-indigo-600',    icon: 'UsersIcon' },
     { id: 'matched', label: 'Matched to RAD AI', value: summary?.matched_to_radai ?? 0, accent: 'from-purple-500 to-fuchsia-600', icon: 'LinkIcon' },
   ]
   return (
     <div className="space-y-1">
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         {tiles.map(t => {
           const isActive = activeFilter === t.id
           return (
