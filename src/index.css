@@ -154,6 +154,54 @@ body {
   animation: slide-down 0.3s ease-out;
 }
 
+/* Global search — slow AI signal flowing around the control perimeter. */
+@keyframes ai-search-border-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 300% 50%;
+  }
+}
+
+@keyframes ai-search-glow-breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(127, 202, 181, 0), 0 0 12px rgba(59, 130, 246, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(127, 202, 181, 0.18), 0 0 20px rgba(99, 102, 241, 0.14);
+  }
+}
+
+.ai-search-frame {
+  position: relative;
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.08),
+    #00a896,
+    #60a5fa,
+    #8b5cf6,
+    #7fcab5,
+    rgba(255, 255, 255, 0.08)
+  );
+  background-size: 300% 100%;
+  animation:
+    ai-search-border-flow 7s linear infinite,
+    ai-search-glow-breathe 3.5s ease-in-out infinite;
+}
+
+.ai-search-frame:focus-within {
+  animation-duration: 3.2s, 1.8s;
+  box-shadow: 0 0 10px rgba(127, 202, 181, 0.25), 0 0 24px rgba(96, 165, 250, 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-search-frame {
+    animation: none;
+    background-position: 50% 50%;
+  }
+}
+
 /* Custom Scrollbar Styles */
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;

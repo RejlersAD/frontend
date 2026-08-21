@@ -281,22 +281,19 @@ const NotificationBell = () => {
         ref={bellRef}
         onClick={handleBellClick}
         type="button"
-        className="relative p-2 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 transition-all transform hover:scale-110 cursor-pointer"
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-blue-100 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7fcab5] cursor-pointer"
         aria-label="Notifications"
         style={{ pointerEvents: 'auto' }}
       >
         {unreadCount > 0 ? (
-          <BellAlertIcon className="w-6 h-6 text-amber-300 animate-pulse" />
+          <BellAlertIcon className="h-5 w-5 text-[#7fcab5]" />
         ) : (
-          <BellIcon className="w-6 h-6 text-white" />
+          <BellIcon className="h-5 w-5" />
         )}
         
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
-            <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-[10px] font-bold text-white shadow-lg">
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
+          <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-4 text-white shadow-sm ring-2 ring-[#10255a]">
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
