@@ -205,6 +205,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [requisitionLoadError, setRequisitionLoadError] = useState('');
   const [poNumberLoading, setPONumberLoading] = useState(false);
   const poNumberRequestRef = useRef(0);
+  const requisitionSearchRequestRef = useRef(0);
+  const requisitionSearchTimerRef = useRef(null);
   const initiallyReservedPRRef = useRef(null);
   const autoSaveRequestRef = useRef(false);
   const persistedOrderIdRef = useRef(editData?.id || null);
@@ -637,20 +639,25 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     }
   };
 
-  const fetchAvailableRequisitions = async () => {
-    setRequisitionsLoading(true);
+  const fetchAvailableRequisitions = async (search = '') => {
+    const requestId = ++requisitionSearchRequestRef.current;
+    if (!search.trim()) setRequisitionsLoading(true);
     setRequisitionLoadError('');
     try {
-      const response = await apiClient.get('/procurement/orders/available-requisitions/');
+      const response = await apiClient.get('/procurement/orders/available-requisitions/', {
+        params: { search: search.trim() || undefined },
+      });
+      if (requestId !== requisitionSearchRequestRef.current) return;
       setAvailableRequisitions(normalizeApiArray(response.data));
     } catch (error) {
+      if (requestId !== requisitionSearchRequestRef.current) return;
       console.error('Error fetching available requisitions:', error);
       setAvailableRequisitions([]);
       setRequisitionLoadError(
         error.response?.data?.detail || 'Existing Purchase Recommendations could not be loaded.'
       );
     } finally {
-      setRequisitionsLoading(false);
+      if (requestId === requisitionSearchRequestRef.current) setRequisitionsLoading(false);
     }
   };
 
@@ -817,6 +824,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setPrSearch(value);
     setShowPRChoices(true);
 
+    if (requisitionSearchTimerRef.current) {
+      window.clearTimeout(requisitionSearchTimerRef.current);
+    }
+    requisitionSearchTimerRef.current = window.setTimeout(() => {
+      fetchAvailableRequisitions(value);
+    }, 250);
+
     const exactMatch = availableRequisitions.find(
       (requisition) => String(requisition.pr_number || '').toLowerCase() === value.trim().toLowerCase()
     );
@@ -831,6 +845,12 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setPONumberLoading(false);
     setFormData((prev) => ({ ...prev, pr_reference: null, po_number: '' }));
   };
+
+  useEffect(() => () => {
+    if (requisitionSearchTimerRef.current) {
+      window.clearTimeout(requisitionSearchTimerRef.current);
+    }
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -1119,7 +1139,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       requisition.supplier_name,
       requisition.project_department,
     ].some((value) => String(value || '').toLowerCase().includes(normalizedPRSearch));
-  }).slice(0, 12);
+  });
   const normalizedProjectSearch = projectSearch.trim().toLowerCase();
   const filteredProjects = projects.filter((project) => {
     if (!normalizedProjectSearch) return true;
@@ -1263,7 +1283,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                             <span className="block text-sm font-bold text-blue-700">{requisition.pr_number}</span>
                             <span className="mt-0.5 block truncate text-xs text-gray-700">{requisition.product_service || requisition.title || 'No purchase description'}</span>
                             <span className="mt-1 block text-[11px] text-gray-500">
-                              {[requisition.status_display || requisition.status, requisition.vendor_name || requisition.supplier_name, requisition.project_department].filter(Boolean).join(' • ')}
+                              {[
+                                requisition.created_at
+                                  ? `Created ${new Date(requisition.created_at).toLocaleDateString(undefined, {
+                                      day: '2-digit', month: 'short', year: 'numeric',
+                                    })}`
+                                  : null,
+                                requisition.status_display || requisition.status,
+                                requisition.vendor_name || requisition.supplier_name,
+                                requisition.project_department,
+                              ].filter(Boolean).join(' • ')}
                             </span>
                           </button>
                         )) : (
@@ -1275,7 +1304,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     {requisitionLoadError && (
                       <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                         <span>{requisitionLoadError}</span>
-                        <button type="button" onClick={fetchAvailableRequisitions} className="font-bold underline">Retry</button>
+                        <button type="button" onClick={() => fetchAvailableRequisitions(prSearch)} className="font-bold underline">Retry</button>
                       </div>
                     )}
                     {errors.pr_reference && <p className="mt-1 text-xs font-medium text-red-600">{errors.pr_reference}</p>}
