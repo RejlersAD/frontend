@@ -313,7 +313,7 @@ export const HR_DASHBOARD_PENDING_TYPES = [
     id:       'slips',
     label:    'Salary Slip Approvals',
     icon:     'DocumentTextIcon',
-    route:    '/hr/payroll?tab=engine',
+    route:    '/hr/payroll?tab=salary',
     priority: 4,
     bg:    'bg-indigo-50',
     border:'border-indigo-200',

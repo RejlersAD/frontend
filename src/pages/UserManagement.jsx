@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import * as HeroIcons from '@heroicons/react/24/outline';
 import { fetchUsers, fetchCurrentUser, fetchRoles } from '../store/slices/rbacSlice';
 import rbacService from '../services/rbac.service';
 import { STORAGE_KEYS } from '../config/app.config';
@@ -29,7 +30,6 @@ import MultiRoleModal from '../components/MultiRoleModal';
 import SimpleCreateUserForm from '../components/UserCreation/SimpleCreateUserForm';
 import EditUserModal from '../components/UserManagement/EditUserModal';
 import PendingActivationAlert from '../components/UserManagement/PendingActivationAlert';
-import PeopleNav from '../components/PeopleNav/PeopleNav';
 
 // ── Soft-coded copy for the Reset Password confirmation modal ──────────────
 // All visible strings and the default password come from one place — easy to change.
@@ -1688,7 +1688,7 @@ const UserManagement = ({ pageControls }) => {
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600 mb-6">You don't have permission to access User Management</p>
+          <p className="text-gray-600 mb-6">You do not have permission to access User Management</p>
           <button
             onClick={() => navigate('/dashboard')}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1702,11 +1702,8 @@ const UserManagement = ({ pageControls }) => {
   
   // ========== RENDER: MAIN COMPONENT ==========
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6">
-      {/* Cross-link nav (Profile / HR Directory / User Management) */}
-      <div className="mb-6">
-        <PeopleNav activeId="admin" />
-      </div>
+    <div className="min-h-screen w-full min-w-0 bg-gradient-to-br from-slate-50 to-blue-50 p-4 lg:p-6">
+      <div className="w-full min-w-0 max-w-none space-y-4">
 
       {/* Smart “Pending Activation” alert — surfaces accounts where
           is_active=False so admins can one-click activate. The login gate
@@ -1760,20 +1757,48 @@ const UserManagement = ({ pageControls }) => {
       )}
       
       {/* Header */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-        <div className="flex items-center justify-between mb-6">
+      <section className="space-y-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
-            <p className="text-gray-600 mt-1">Manage users, roles, and permissions</p>
+            <nav className="mb-1 flex items-center gap-1.5 text-xs text-slate-500" aria-label="Breadcrumb">
+              <Link to="/dashboard" className="hover:text-slate-700">Dashboard</Link>
+              <span>/</span>
+              <span>Administration</span>
+              <span>/</span>
+              <span className="font-medium text-slate-700">Users</span>
+            </nav>
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950 lg:text-3xl">
+              <HeroIcons.UsersIcon className="h-7 w-7 text-blue-600" />
+              User Management
+            </h1>
+            <p className="mt-0.5 text-sm text-slate-600">Control user identities, roles, access and account lifecycle.</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/profile"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <HeroIcons.UserCircleIcon className="h-4 w-4" /> My Profile
+            </Link>
+            <Link
+              to="/hr/leave"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <HeroIcons.SparklesIcon className="h-4 w-4" /> My Workspace
+            </Link>
+            <Link
+              to="/hr/employees"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <HeroIcons.UserGroupIcon className="h-4 w-4" /> Employees
+            </Link>
             <PageControlButtons {...pageControls} />
             <button
               onClick={() => {
                 console.log('Bulk Upload button clicked');
                 setShowBulkUploadModal(true);
               }}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -1786,13 +1811,11 @@ const UserManagement = ({ pageControls }) => {
               <button
                 onClick={() => setShowExportDropdown(prev => !prev)}
                 disabled={isExporting}
-                className={`group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white overflow-hidden shadow-md transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed
+                className={`group relative flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60
                   ${isExporting
-                    ? 'bg-emerald-500'
-                    : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-400/30 hover:shadow-emerald-400/50 hover:-translate-y-0.5'}`}
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
               >
-                {/* animated shine */}
-                <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-500 bg-gradient-to-r from-transparent via-white/15 to-transparent skew-x-12 pointer-events-none" />
                 {isExporting ? (
                   <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -1813,15 +1836,15 @@ const UserManagement = ({ pageControls }) => {
               </button>
 
               {showExportDropdown && (
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-[fadeDown_0.15s_ease-out]">
-                  <div className="px-4 py-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
-                    <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Choose Format</p>
+                <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Choose format</p>
                   </div>
                   {EXPORT_CONFIG.formats.map(({ label, value, ext }) => (
                     <button
                       key={value}
                       onClick={() => handleExportUsers(value)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-emerald-50 transition-colors group"
+                      className="group flex w-full items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
                     >
                       <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-transform duration-150 group-hover:scale-110
                         ${ext === 'csv' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
@@ -1840,7 +1863,7 @@ const UserManagement = ({ pageControls }) => {
             <button
               onClick={handleBulkDeactivateClick}
               disabled={!isSuperAdmin}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               title={isSuperAdmin ? 'Bulk deactivate users by roles' : 'Super Admin only'}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1851,7 +1874,7 @@ const UserManagement = ({ pageControls }) => {
 
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1862,7 +1885,7 @@ const UserManagement = ({ pageControls }) => {
         </div>
 
         {/* Search and Advanced Filters */}
-        <div className="space-y-4">
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex gap-4">
             <div className="flex-1 relative">
               <input
@@ -1873,7 +1896,7 @@ const UserManagement = ({ pageControls }) => {
                   console.log('?? Search term changed:', e.target.value);
                   setSearchTerm(e.target.value);
                 }}
-                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="w-full rounded-lg border border-slate-300 py-2 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
               <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1902,7 +1925,7 @@ const UserManagement = ({ pageControls }) => {
                 console.log('?? Status filter changed:', e.target.value);
                 setStatusFilter(e.target.value);
               }}
-              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
+              className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="all">All Status</option>
               <option value="active">Active</option>
@@ -1915,7 +1938,7 @@ const UserManagement = ({ pageControls }) => {
                 console.log('?? Organization filter changed:', e.target.value);
                 setOrganizationFilter(e.target.value);
               }}
-              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
+              className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="all">All Organizations</option>
               {organizations.map(org => (
@@ -1926,7 +1949,7 @@ const UserManagement = ({ pageControls }) => {
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
+              className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               title="Filter users by role — role list managed at /admin/roles"
             >
               <option value="all">All Roles</option>
@@ -1938,7 +1961,7 @@ const UserManagement = ({ pageControls }) => {
             </select>
             
             <button
-              onClick={() => {
+              onClick={(event) => {
                 console.log('?? Resetting all filters');
                 setSearchTerm('');
                 setStatusFilter('all');
@@ -1950,7 +1973,7 @@ const UserManagement = ({ pageControls }) => {
                 btn.classList.add('scale-95');
                 setTimeout(() => btn.classList.remove('scale-95'), 100);
               }}
-              className="px-4 py-2 border-2 border-blue-300 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 hover:border-blue-400 active:scale-95 transition-all flex items-center gap-2 font-medium shadow-sm"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -1958,22 +1981,22 @@ const UserManagement = ({ pageControls }) => {
               Reset Filters
             </button>
             
-            <div className="ml-auto flex items-center gap-2 bg-gradient-to-r from-blue-50 to-purple-50 px-4 py-2 rounded-lg border-2 border-blue-200">
-              <span className="text-sm font-semibold text-gray-700">
-                Showing <span className="text-blue-600">{showingFrom}</span>-<span className="text-blue-600">{showingTo}</span> of <span className="text-purple-600 font-bold">{usersCount}</span> results
+            <div className="ml-auto flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2">
+              <span className="text-sm font-medium text-slate-600">
+                Showing <span className="font-semibold text-slate-900">{showingFrom}-{showingTo}</span> of <span className="font-semibold text-slate-900">{usersCount}</span> results
               </span>
             </div>
           </div>
         </div>
-      </div>
+      </section>
       
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow-lg p-6">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm">Total Users</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{allOrgsUserCount ?? usersCount}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Total Users</p>
+              <p className="mt-1 text-2xl font-bold text-blue-950">{allOrgsUserCount ?? usersCount}</p>
             </div>
             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1989,15 +2012,15 @@ const UserManagement = ({ pageControls }) => {
             setStatusFilter('active');
             setCurrentPage(1);
           }}
-          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-green-300 border transition-all ${
-            statusFilter === 'active' && !showHiddenUsers ? 'border-green-500 ring-2 ring-green-200' : 'border-transparent'
+          className={`rounded-xl border bg-emerald-50 p-4 text-left shadow-sm transition hover:border-emerald-400 ${
+            statusFilter === 'active' && !showHiddenUsers ? 'border-emerald-500 ring-2 ring-emerald-100' : 'border-emerald-200'
           }`}
           title="Click to view active users"
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm">Active Users</p>
-              <p className="text-3xl font-bold text-green-600 mt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Active Users</p>
+              <p className="mt-1 text-2xl font-bold text-emerald-800">
                 {activeUsersCount}
               </p>
               {statusFilter === 'active' && !showHiddenUsers && (
@@ -2018,15 +2041,15 @@ const UserManagement = ({ pageControls }) => {
             setStatusFilter('inactive');
             setCurrentPage(1);
           }}
-          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-red-300 border transition-all ${
-            statusFilter === 'inactive' && !showHiddenUsers ? 'border-red-500 ring-2 ring-red-200' : 'border-transparent'
+          className={`rounded-xl border bg-rose-50 p-4 text-left shadow-sm transition hover:border-rose-400 ${
+            statusFilter === 'inactive' && !showHiddenUsers ? 'border-rose-500 ring-2 ring-rose-100' : 'border-rose-200'
           }`}
           title="Click to view inactive users"
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm">Inactive Users</p>
-              <p className="text-3xl font-bold text-red-600 mt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Inactive Users</p>
+              <p className="mt-1 text-2xl font-bold text-rose-800">
                 {inactiveUsersCount}
               </p>
               {statusFilter === 'inactive' && !showHiddenUsers && (
@@ -2047,15 +2070,15 @@ const UserManagement = ({ pageControls }) => {
             setStatusFilter('all');
             setCurrentPage(1);
           }}
-          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-orange-300 border transition-all ${
-            showHiddenUsers ? 'border-orange-500 ring-2 ring-orange-200' : 'border-transparent'
+          className={`rounded-xl border bg-amber-50 p-4 text-left shadow-sm transition hover:border-amber-400 ${
+            showHiddenUsers ? 'border-amber-500 ring-2 ring-amber-100' : 'border-amber-200'
           }`}
           title="Click to view hidden users (test accounts, system users, etc.)"
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm">Hidden Users</p>
-              <p className="text-3xl font-bold text-orange-600 mt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Hidden Users</p>
+              <p className="mt-1 text-2xl font-bold text-amber-800">
                 {hiddenUsersCount}
               </p>
               {showHiddenUsers && (
@@ -2073,13 +2096,13 @@ const UserManagement = ({ pageControls }) => {
         <button
           type="button"
           onClick={() => navigate('/admin/roles')}
-          className="bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-purple-300 border border-transparent transition-all"
+          className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-left shadow-sm transition hover:border-violet-400"
           title="Open Roles & Access Management to define or edit roles"
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm">Roles Available</p>
-              <p className="text-3xl font-bold text-purple-600 mt-1">{roles.length}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Roles Available</p>
+              <p className="mt-1 text-2xl font-bold text-violet-800">{roles.length}</p>
               <p className="text-xs text-gray-500 mt-1">Manage at /admin/roles →</p>
             </div>
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -2089,24 +2112,24 @@ const UserManagement = ({ pageControls }) => {
             </div>
           </div>
         </button>
-      </div>
+      </section>
       
       {/* Users Table */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email Address</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">User</th>
+                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Email Address</th>
+                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Organization</th>
+                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Department</th>
+                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Role</th>
+                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
+                <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="divide-y divide-slate-100 bg-white">
               {paginatedUsers.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="px-6 py-12 text-center">
@@ -2121,10 +2144,10 @@ const UserManagement = ({ pageControls }) => {
                 </tr>
               ) : (
                 paginatedUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={user.id} className="transition-colors hover:bg-blue-50/40">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 shadow-sm">
                           <span className="text-white font-bold text-sm">
                             {getUserInitial(user)}
                           </span>
@@ -2269,12 +2292,13 @@ const UserManagement = ({ pageControls }) => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
                         user.status === 'active'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-rose-200 bg-rose-50 text-rose-700'
                       }`}>
-                        {user.status}
+                        <span className={`h-1.5 w-1.5 rounded-full ${user.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        {user.status === 'active' ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -2357,12 +2381,12 @@ const UserManagement = ({ pageControls }) => {
         
         {/* Pagination Controls */}
         {filteredUsers.length > 0 && (
-          <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                  Showing <span className="font-bold text-blue-600">{showingFrom}</span> to <span className="font-bold text-blue-600">{showingTo}</span> of{' '}
-                  <span className="font-bold text-purple-600">{usersCount}</span> results
+          <div className="border-t border-slate-200 bg-slate-50 px-5 py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm text-slate-600">
+                  Showing <span className="font-semibold text-slate-900">{showingFrom}-{showingTo}</span> of{' '}
+                  <span className="font-semibold text-slate-900">{usersCount}</span>
                 </span>
                 <div className="relative">
                   <select
@@ -2382,7 +2406,7 @@ const UserManagement = ({ pageControls }) => {
                       console.log('?? [Select onChange] Handler called!');
                       console.log('?? [Select onChange] ==================');
                     }}
-                    className="px-4 py-2 pr-10 border-2 border-blue-400 bg-gradient-to-r from-blue-50 to-white rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-600 hover:border-blue-500 cursor-pointer transition-all shadow-md appearance-none"
+                    className="cursor-pointer appearance-none rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   >
                     {CONFIG.ITEMS_PER_PAGE_OPTIONS.map(option => (
                       <option key={option} value={option} className="font-medium">
@@ -2405,7 +2429,7 @@ const UserManagement = ({ pageControls }) => {
                     handlePageChange(1);
                   }}
                   disabled={currentPage === 1}
-                  className="px-3 py-2 border-2 border-gray-400 bg-white rounded-lg hover:bg-blue-50 hover:border-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
                   title="First page"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2419,7 +2443,7 @@ const UserManagement = ({ pageControls }) => {
                     handlePageChange(currentPage - 1);
                   }}
                   disabled={currentPage === 1}
-                  className="px-3 py-2 border-2 border-gray-400 bg-white rounded-lg hover:bg-blue-50 hover:border-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
                   title="Previous page"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2447,10 +2471,10 @@ const UserManagement = ({ pageControls }) => {
                           console.log('?? Page number button clicked:', pageNum);
                           handlePageChange(pageNum);
                         }}
-                        className={`px-4 py-2 border-2 rounded-lg font-bold transition-all active:scale-95 ${
+                        className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                           currentPage === pageNum
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-lg'
-                            : 'border-gray-400 bg-white hover:bg-blue-50 hover:border-blue-500'
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
                         }`}
                       >
                         {pageNum}
@@ -2465,7 +2489,7 @@ const UserManagement = ({ pageControls }) => {
                     handlePageChange(currentPage + 1);
                   }}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-2 border-2 border-gray-400 bg-white rounded-lg hover:bg-blue-50 hover:border-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
                   title="Next page"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2479,7 +2503,7 @@ const UserManagement = ({ pageControls }) => {
                     handlePageChange(totalPages);
                   }}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-2 border-2 border-gray-400 bg-white rounded-lg hover:bg-blue-50 hover:border-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
                   title="Last page"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2490,7 +2514,7 @@ const UserManagement = ({ pageControls }) => {
             </div>
           </div>
         )}
-      </div>
+      </section>
       
       {/* Create User Modal - Simple & User Friendly */}
       {showCreateModal && (
@@ -3361,6 +3385,7 @@ const UserManagement = ({ pageControls }) => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

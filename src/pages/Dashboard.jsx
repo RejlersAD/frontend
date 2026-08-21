@@ -339,16 +339,12 @@ const PRIORITY_COLORS = {
 }
 
 // ── Soft-coded layout dimensions — tune here, no JSX changes needed ────────────
-// maxWidth:       overall page cap — '1600px' fills wide monitors without overflow
-// sidebarWidth:   right panel fixed width
-// heroColSpan:    hero card col-span inside the top 5-col grid (1–4; donut takes 5-heroColSpan)
+// maxWidth:       overall page cap; 'none' lets the dashboard fill the app shell
 // outerPaddingX:  horizontal gutters (Tailwind classes)
 // outerPaddingY:  vertical top/bottom padding (Tailwind class)
 const LAYOUT = {
-  maxWidth:      '1600px',
-  sidebarWidth:  '300px',
-  heroColSpan:   3,           // hero card takes 3 of 5 cols; donut gets 2
-  outerPaddingX: 'px-4 sm:px-8 lg:px-12 xl:px-16',
+  maxWidth:      'none',
+  outerPaddingX: 'px-4 sm:px-6 lg:px-8',
   outerPaddingY: 'py-8',
   sectionGap:    'gap-7',
   innerGap:      'space-y-6',
@@ -871,12 +867,12 @@ const Dashboard = () => {
     : null
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f8f7f4 0%, #f2f1ee 60%, #ede9e3 100%)' }}>
-      <div className={`mx-auto ${LAYOUT.outerPaddingX} ${LAYOUT.outerPaddingY} ${LAYOUT.innerGap}`} style={{ maxWidth: LAYOUT.maxWidth }}>
+    <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-hidden" style={{ background: 'linear-gradient(135deg, #f8f7f4 0%, #f2f1ee 60%, #ede9e3 100%)' }}>
+      <div className={`mx-auto w-full min-w-0 box-border ${LAYOUT.outerPaddingX} ${LAYOUT.outerPaddingY} ${LAYOUT.innerGap}`} style={{ maxWidth: LAYOUT.maxWidth }}>
 
         {/* ── Header ───────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-start gap-3">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between min-w-0">
+          <div className="flex items-start gap-3 min-w-0">
             {/* AI brain icon */}
             <div className="relative mt-0.5">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -902,7 +898,7 @@ const Dashboard = () => {
           </div>
 
           {/* Right header controls */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
             {/* AI status badge */}
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white border border-green-200 rounded-xl shadow-sm">
               <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -920,17 +916,17 @@ const Dashboard = () => {
         </div>
 
         {/* ── Main layout: left + right sidebar ────────────────────────────── */}
-        <div className={`flex ${LAYOUT.sectionGap} items-start`}>
+        <div className={`flex flex-col 2xl:flex-row ${LAYOUT.sectionGap} items-stretch 2xl:items-start min-w-0`}>
 
           {/* ── Left content ─────────────────────────────────────────────── */}
           <div className={`flex-1 min-w-0 ${LAYOUT.innerGap}`}>
 
             {/* Top row: Hero card + Donut card */}
-            <div className={`grid grid-cols-5 gap-5 ${ANIM.enabled ? 'radai-fadein' : ''}`}
+            <div className={`grid grid-cols-1 lg:grid-cols-5 gap-5 ${ANIM.enabled ? 'radai-fadein' : ''}`}
               style={ANIM.enabled ? { animationDelay: `${ANIM.staggerMs}ms` } : {}}>
 
               {/* Hero gradient card */}
-              <div className={`col-span-${LAYOUT.heroColSpan} relative overflow-hidden rounded-2xl p-6 text-white shadow-lg shadow-orange-200/40`}
+              <div className="col-span-1 lg:col-span-3 relative overflow-hidden rounded-2xl p-6 text-white shadow-lg shadow-orange-200/40"
                 style={{ background: 'linear-gradient(135deg, #ea580c 0%, #f97316 30%, #e11d48 75%, #db2777 100%)' }}>
 
                 {/* Blurred glow blobs */}
@@ -999,7 +995,7 @@ const Dashboard = () => {
               </div>
 
               {/* Donut card */}
-              <div className={`col-span-${5 - LAYOUT.heroColSpan} bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col`}>
+              <div className="col-span-1 lg:col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col min-w-0">
                 <div className="flex items-start justify-between mb-1">
                   <div>
                     <span className="text-sm font-bold text-gray-800">Document Pipeline</span>
@@ -1034,7 +1030,7 @@ const Dashboard = () => {
             </div>
 
             {/* ── AI Insight chips ──────────────────────────────────────── */}
-            <div className={`grid grid-cols-3 gap-3 ${ANIM.enabled ? 'radai-fadein' : ''}`}
+            <div className={`grid grid-cols-1 md:grid-cols-3 gap-3 ${ANIM.enabled ? 'radai-fadein' : ''}`}
               style={ANIM.enabled ? { animationDelay: `${ANIM.staggerMs * 2}ms` } : {}}>
               {(personalData?.insights?.length > 0
                 ? personalData.insights.slice(0, 3).map((ins, i) => ({
@@ -1483,8 +1479,8 @@ const Dashboard = () => {
           </div>
 
           {/* ── Right sidebar ─────────────────────────────────────────────── */}
-          <div className={`flex-shrink-0 space-y-4 ${ANIM.enabled ? 'radai-slidein' : ''}`}
-            style={{ width: LAYOUT.sidebarWidth, ...(ANIM.enabled ? { animationDelay: `${ANIM.staggerMs * 2}ms` } : {}) }}>
+          <div className={`w-full min-w-0 2xl:w-[300px] 2xl:flex-shrink-0 space-y-4 ${ANIM.enabled ? 'radai-slidein' : ''}`}
+            style={ANIM.enabled ? { animationDelay: `${ANIM.staggerMs * 2}ms` } : {}}>
 
             {/* AI Model Status card */}
             <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 overflow-hidden">

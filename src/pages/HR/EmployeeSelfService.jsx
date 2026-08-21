@@ -28,11 +28,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, AreaChart, Area,
 } from 'recharts'
-import PeopleNav from '../../components/PeopleNav/PeopleNav'
 import rbacService   from '../../services/rbac.service'
 import payrollService from '../../services/payroll.service'
 import payrollEngineService from '../../services/payrollEngine.service'
 import timesheetSvc   from '../../services/timesheet.service'
+import siteVisitService from '../../services/siteVisit.service'
+import notificationService from '../../services/notification.service'
 import { fmtCurrency } from '../../config/hrPayroll.config'
 import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR, DAILY_TRACKER_PRIORITIES, DAILY_TRACKER_STATUSES, DAILY_TRACKER_PROJECT_CATEGORIES, DAILY_TRACKER_COPY, DAILY_TRACKER_APPROVAL_STATUSES, DAILY_TRACKER_WIZARD_STEPS, DAILY_TRACKER_SUBMIT_TO_OPTIONS, ESS_ATT_MONTHS_BACK, ESS_ATT_STANDARD_DAY_HRS, ESS_ATT_MAX_DAILY_HRS, ESS_ATT_STANDARD_WORKING_DAYS, ESS_ATT_RATE_GOOD, ESS_ATT_RATE_WARN, ESS_ATT_PARTIAL_DAY_HRS, ESS_ATT_OVERTIME_HRS, ESS_ATT_FEATURES, ESS_ATT_DAY_STATUS, ESS_ATT_DOW, ESS_ATT_COPY, ESS_TIMESHEET_TABS, ESS_TIMESHEET_DEFAULT_TAB, ESS_TIMESHEET_POLL_MS, ESS_TIMESHEET_COPY, ESS_TIMESHEET_STATUS } from '../../config/hrLeave.config'
 
@@ -1047,7 +1048,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               {form.leave_type === 'annual' && (
                 <div>Balance after approval: <strong>{(balance - calcDays).toFixed(1)} days</strong></div>
               )}
-              {conflict && <div>âš  Overlapping leave request detected</div>}
+              {conflict && <div>Warning: overlapping leave request detected</div>}
               {insufficient && <div>Insufficient annual leave balance</div>}
             </div>
           </div>
@@ -1827,7 +1828,7 @@ const TimesheetInsights = ({ monthlyTs, userHistory, loading }) => {
 
 const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
   const latest = slips?.[0] || null
-  const basic  = parseFloat(salaryInfo?.basic_salary)           || 0
+  const basic  = parseFloat(salaryInfo?.basic_salary ?? salaryInfo?.basic) || 0
   const gross  = parseFloat(latest?.gross_salary)               || 0
   const net    = parseFloat(latest?.net_salary)                 || 0
   const ot     = parseFloat(latest?.overtime_pay)               || 0
@@ -1922,8 +1923,25 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
 // Section: Team Availability Calendar
 // -----------------------------------------------------------------------------
 
-const TeamCalendar = ({ calendarData, loading }) => {
+const TeamCalendar = () => {
   const [viewMonth, setViewMonth] = useState({ year: nowYear(), month: nowMonth() })
+  const [calendarData, setCalendarData] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const loadCalendar = useCallback(() => {
+    setLoading(true)
+    setError('')
+    payrollService.getLeaveCalendar(viewMonth.year, viewMonth.month)
+      .then(data => setCalendarData(data?.calendar || {}))
+      .catch(() => {
+        setCalendarData({})
+        setError('Team availability could not be loaded. Please try again.')
+      })
+      .finally(() => setLoading(false))
+  }, [viewMonth])
+
+  useEffect(() => { loadCalendar() }, [loadCalendar])
 
   const prevMonth = () => setViewMonth(({ year, month }) =>
     month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 })
@@ -1944,11 +1962,11 @@ const TeamCalendar = ({ calendarData, loading }) => {
   // Map leave events: { 'YYYY-MM-DD': [name, ...] }
   const leaveMap = useMemo(() => {
     const m = {}
-    ;(calendarData || []).forEach(ev => {
-      const key = ev.date || ev.leave_date
-      if (!key) return
-      if (!m[key]) m[key] = []
-      m[key].push(ev.employee_name || ev.name || 'Employee')
+    Object.entries(calendarData || {}).forEach(([employeeCode, dates]) => {
+      Object.entries(dates || {}).forEach(([date, event]) => {
+        if (!m[date]) m[date] = []
+        m[date].push(event?.employee_name || employeeCode || 'Employee')
+      })
     })
     return m
   }, [calendarData])
@@ -1980,6 +1998,12 @@ const TeamCalendar = ({ calendarData, loading }) => {
     >
       {loading ? (
         <SkeletonBox className="h-64 w-full" />
+      ) : error ? (
+        <div className="py-12 text-center">
+          <Icon name="ExclamationTriangleIcon" className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+          <p className="text-sm text-slate-600">{error}</p>
+          <button onClick={loadCalendar} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">Retry</button>
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-7 mb-2">
@@ -2039,66 +2063,8 @@ const TeamCalendar = ({ calendarData, loading }) => {
 // Section: Notifications
 // -----------------------------------------------------------------------------
 
-const NotificationsCenter = ({ requests, loading }) => {
-  const [readIds, setReadIds] = useState(new Set())
-
-  const notifications = useMemo(() => {
-    const items = []
-
-    ;(requests || []).forEach(r => {
-      if (r.status === 'approved') {
-        items.push({
-          id: `leave_approved_${r.id}`,
-          type: 'leave',
-          priority: 'medium',
-          title: 'Leave Request Approved',
-          message: `Your ${r.leave_type_display || 'leave'} request (${fmtDate(r.start_date)} \u2013 ${fmtDate(r.end_date)}) has been approved.`,
-          icon: 'CheckCircleIcon',
-          time: r.approved_at || r.updated_at,
-        })
-      }
-      if (r.status === 'rejected') {
-        items.push({
-          id: `leave_rejected_${r.id}`,
-          type: 'leave',
-          priority: 'high',
-          title: 'Leave Request Rejected',
-          message: `Your ${r.leave_type_display || 'leave'} request was rejected.${r.rejection_note ? ` Reason: ${r.rejection_note}` : ''}`,
-          icon: 'XCircleIcon',
-          time: r.updated_at,
-        })
-      }
-      if (r.status?.toUpperCase() === 'PENDING') {
-        items.push({
-          id: `leave_pending_${r.id}`,
-          type: 'leave',
-          priority: 'low',
-          title: 'Leave Request Pending',
-          message: `Your leave request for ${fmtDate(r.start_date)} is awaiting manager approval.`,
-          icon: 'ClockIcon',
-          time: r.created_at,
-        })
-      }
-      if (r.status?.toUpperCase() === 'RM_APPROVED') {
-        items.push({
-          id: `leave_rm_approved_${r.id}`,
-          type: 'leave',
-          priority: 'medium',
-          title: 'Manager Approved — Awaiting HR',
-          message: `Your leave request for ${fmtDate(r.start_date)} was approved by your manager and is now awaiting HR final approval.`,
-          icon: 'CheckBadgeIcon',
-          time: r.rm_reviewed_at || r.updated_at,
-        })
-      }
-    })
-
-    return items.sort((a, b) => {
-      const pri = { high: 0, medium: 1, low: 2 }
-      return (pri[a.priority] || 2) - (pri[b.priority] || 2)
-    })
-  }, [requests])
-
-  const unread = notifications.filter(n => !readIds.has(n.id)).length
+const NotificationsCenter = ({ notifications, loading, onMarkRead, onMarkAllRead }) => {
+  const unread = (notifications || []).filter(n => !n.is_read).length
 
   return (
     <SectionCard
@@ -2108,7 +2074,7 @@ const NotificationsCenter = ({ requests, loading }) => {
       action={
         unread > 0 ? (
           <button
-            onClick={() => setReadIds(new Set(notifications.map(n => n.id)))}
+            onClick={onMarkAllRead}
             className="text-xs text-blue-600 hover:text-blue-700 font-medium"
           >
             Mark all read
@@ -2122,18 +2088,18 @@ const NotificationsCenter = ({ requests, loading }) => {
         <EmptyNotice icon="BellSlashIcon" message="No notifications at this time" />
       ) : (
         <div className="space-y-2">
-          {notifications.map(n => {
-            const isRead = readIds.has(n.id)
-            const pm = NOTIFICATION_PRIORITY[n.priority] || NOTIFICATION_PRIORITY.low
+          {(notifications || []).map(n => {
+            const isRead = Boolean(n.is_read)
+            const pm = NOTIFICATION_PRIORITY[n.priority?.toLowerCase()] || NOTIFICATION_PRIORITY.low
             return (
               <div
                 key={n.id}
                 className={`rounded-xl border p-3 cursor-pointer transition-colors ${isRead ? 'bg-slate-50 border-slate-100' : 'bg-white border-slate-200 shadow-sm'}`}
-                onClick={() => setReadIds(prev => new Set([...prev, n.id]))}
+                onClick={() => !isRead && onMarkRead(n.id)}
               >
                 <div className="flex items-start gap-3">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${pm.badge}`}>
-                    <Icon name={n.icon} className="w-4 h-4" />
+                    <Icon name={n.category_icon || 'BellIcon'} className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
@@ -2141,7 +2107,10 @@ const NotificationsCenter = ({ requests, loading }) => {
                       {!isRead && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${pm.dot}`} />}
                     </div>
                     <p className="text-xs text-slate-500 line-clamp-2">{n.message}</p>
-                    {n.time && <div className="text-[10px] text-slate-400 mt-1">{fmtDate(n.time)}</div>}
+                    <div className="flex items-center gap-3 mt-1">
+                      {(n.time_ago || n.created_at) && <div className="text-[10px] text-slate-400">{n.time_ago || fmtDate(n.created_at)}</div>}
+                      {n.action_url && <a href={n.action_url} onClick={e => e.stopPropagation()} className="text-[10px] font-medium text-blue-600 hover:text-blue-700">{n.action_label || 'Open'}</a>}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2150,6 +2119,108 @@ const NotificationsCenter = ({ requests, loading }) => {
         </div>
       )}
     </SectionCard>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// Section: My Site Visits
+// -----------------------------------------------------------------------------
+
+const SiteVisitsPanel = () => {
+  const [requests, setRequests] = useState([])
+  const [checkIns, setCheckIns] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const loadSiteVisits = useCallback(() => {
+    setLoading(true)
+    setError('')
+    Promise.all([
+      siteVisitService.getMyRequests().catch(() => null),
+      siteVisitService.getMyCheckIns().catch(() => null),
+    ]).then(([requestRes, checkInRes]) => {
+      if (requestRes === null && checkInRes === null) {
+        setError('Your site visit data could not be loaded.')
+      }
+      setRequests(Array.isArray(requestRes) ? requestRes : requestRes?.results || [])
+      setCheckIns(Array.isArray(checkInRes) ? checkInRes : checkInRes?.results || [])
+    }).finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { loadSiteVisits() }, [loadSiteVisits])
+
+  const statusClass = status => ({
+    APPROVED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    PENDING: 'bg-amber-50 text-amber-700 border-amber-200',
+    REJECTED: 'bg-rose-50 text-rose-700 border-rose-200',
+    CANCELLED: 'bg-slate-50 text-slate-600 border-slate-200',
+  }[String(status || '').toUpperCase()] || 'bg-blue-50 text-blue-700 border-blue-200')
+
+  const pending = requests.filter(r => String(r.status).toUpperCase() === 'PENDING').length
+  const approved = requests.filter(r => String(r.status).toUpperCase() === 'APPROVED').length
+  const active = checkIns.filter(v => !v.check_out_time).length
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon="ClockIcon" label="Pending Requests" value={loading ? ELLIPSIS_DISPLAY : pending} sub="Awaiting approval" tone="amber" />
+        <KpiCard icon="CheckBadgeIcon" label="Approved Visits" value={loading ? ELLIPSIS_DISPLAY : approved} sub="My requests" tone="green" />
+        <KpiCard icon="MapPinIcon" label="Active Check-ins" value={loading ? ELLIPSIS_DISPLAY : active} sub="Not checked out" tone="blue" />
+        <KpiCard icon="ClipboardDocumentCheckIcon" label="Visit Records" value={loading ? ELLIPSIS_DISPLAY : checkIns.length} sub="My history" tone="purple" />
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-3">
+          <span className="text-sm text-amber-800">{error}</span>
+          <button onClick={loadSiteVisits} className="text-sm font-semibold text-blue-600">Retry</button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <SectionCard title="My Visit Requests" subtitle="Latest approval activity" icon="ClipboardDocumentListIcon">
+          {loading ? <SkeletonBox className="h-44 w-full" /> : requests.length === 0 ? (
+            <EmptyNotice icon="MapPinIcon" message="No site visit requests found" />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {requests.slice(0, 6).map(r => (
+                <div key={r.id} className="py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-800 truncate">{r.site_name || r.site_client || 'Client site'}</div>
+                    <div className="text-xs text-slate-500">{fmtDate(r.start_date)} {EMPTY_DISPLAY} {fmtDate(r.end_date)}</div>
+                    {r.purpose && <div className="text-xs text-slate-400 truncate mt-0.5">{r.purpose}</div>}
+                  </div>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${statusClass(r.status)}`}>{r.status || 'Pending'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="My Check-in History" subtitle="GPS attendance records" icon="MapPinIcon">
+          {loading ? <SkeletonBox className="h-44 w-full" /> : checkIns.length === 0 ? (
+            <EmptyNotice icon="MapPinIcon" message="No site check-ins found" />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {checkIns.slice(0, 6).map(v => (
+                <div key={v.id} className="py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-800 truncate">{v.site_name || v.site_client || 'Client site'}</div>
+                    <div className="text-xs text-slate-500">{fmtDate(v.check_in_time)} {BULLET_DISPLAY} {v.duration_hours ? `${v.duration_hours} h` : 'In progress'}</div>
+                  </div>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${v.check_out_time ? statusClass('APPROVED') : statusClass('ACTIVE')}`}>{v.status_label || (v.check_out_time ? 'Completed' : 'Active')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      </div>
+
+      <div className="flex justify-end">
+        <a href="/hr/site-visits" className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-sm font-semibold shadow-sm">
+          <Icon name="MapPinIcon" className="w-4 h-4" /> Request visit or check in
+        </a>
+      </div>
+    </div>
   )
 }
 
@@ -2449,7 +2520,7 @@ function ActivityWizard({ initial, onSave, onClose, submitting, alreadyLoggedHou
           {isToday && !initial && (
             <div className="mt-3">
               <div className="flex justify-between text-[10px] text-white/60 mb-1">
-                <span>Today's logged hours</span>
+                <span>Today&apos;s logged hours</span>
                 <span>{alreadyLoggedHours.toFixed(1)}h{selectedH > 0 ? ` + ${selectedH}h this entry` : ''} / 8h</span>
               </div>
               <div className="h-1.5 bg-white/20 rounded-full overflow-hidden relative">
@@ -3283,7 +3354,6 @@ export default function EmployeeSelfService() {
   const { currentUser }    = useSelector((s) => s.rbac) || {}
   const authProfile = currentUser || authUser
 
-  const now = new Date()
   const [activeTab, setActiveTab] = useState('overview')
 
   // -- Data state --------------------------------------------------------------
@@ -3294,16 +3364,16 @@ export default function EmployeeSelfService() {
   const [leaveRecord,  setLeaveRecord]  = useState(null)
   const [leaveTypes,   setLeaveTypes]   = useState([])
   const [leaveRequests,setLeaveRequests]= useState([])
-  const [calendarData, setCalendarData] = useState([])
   const [salaryInfo,   setSalaryInfo]   = useState(null)
   const [slips,        setSlips]        = useState([])
+  const [notifications,setNotifications]= useState([])
 
   // -- Loading / error state ---------------------------------------------------
   const [loadingProfile,  setLoadingProfile]  = useState(true)
   const [loadingTs,       setLoadingTs]       = useState(true)
   const [loadingLeave,    setLoadingLeave]    = useState(true)
   const [loadingPayroll,  setLoadingPayroll]  = useState(true)
-  const [loadingCalendar, setLoadingCalendar] = useState(true)
+  const [loadingNotifications, setLoadingNotifications] = useState(true)
 
   // -- Leave form state --------------------------------------------------------
   const [submitting,    setSubmitting]    = useState(false)
@@ -3412,11 +3482,14 @@ export default function EmployeeSelfService() {
       empCode
         ? payrollEngineService.listPayslips({ employee_no: empCode, page_size: 12 }).catch(() => ({ results: [] }))
         : Promise.resolve({ results: [] }),
+      empCode
+        ? payrollEngineService.listEmployees({ search: empCode, is_active: true, page_size: 10 }).catch(() => ({ results: [] }))
+        : Promise.resolve({ results: [] }),
       // EmployeeSalaryInfo: filter by user UUID (added in backend fix)
       userId
         ? payrollService.getEmployeeSalaryInfo({ employee: userId }).catch(() => null)
         : Promise.resolve(null),
-    ]).then(([slipRes, info]) => {
+    ]).then(([slipRes, employeeRes, info]) => {
       const rawSlips = Array.isArray(slipRes) ? slipRes : slipRes?.results || []
       // Normalise payroll_engine field names to what PayrollSnapshot already
       // reads (gross_salary/net_salary/month/year), and sort most-recent-run
@@ -3435,19 +3508,45 @@ export default function EmployeeSelfService() {
           }
         })
       setSlips(slipList)
+      const employees = Array.isArray(employeeRes) ? employeeRes : employeeRes?.results || []
+      const payrollEmployee = employees.find(e => String(e.employee_no) === String(empCode)) || null
       const infoList = Array.isArray(info) ? info : info?.results || [info]
-      setSalaryInfo(infoList.find(Boolean) || null)
+      const legacyInfo = infoList.find(Boolean) || null
+      setSalaryInfo(payrollEmployee || legacyInfo ? {
+        ...(legacyInfo || {}),
+        ...(payrollEmployee || {}),
+        basic_salary: payrollEmployee?.basic ?? legacyInfo?.basic_salary,
+      } : null)
     }).finally(() => setLoadingPayroll(false))
   }, [profile])
 
-  // -- Load team calendar ------------------------------------------------------
+  // -- Load current user's notifications --------------------------------------
   useEffect(() => {
-    setLoadingCalendar(true)
-    payrollService.getLeaveCalendar(now.getFullYear(), now.getMonth() + 1)
-      .then(data => setCalendarData(Array.isArray(data) ? data : data?.results || []))
-      .catch(() => setCalendarData([]))
-      .finally(() => setLoadingCalendar(false))
+    setLoadingNotifications(true)
+    notificationService.getNotifications({ page_size: 100 })
+      .then(data => setNotifications(Array.isArray(data) ? data : data?.results || []))
+      .catch(() => setNotifications([]))
+      .finally(() => setLoadingNotifications(false))
   }, [])
+
+  const handleMarkNotificationRead = useCallback(async (id) => {
+    setNotifications(items => items.map(n => n.id === id ? { ...n, is_read: true } : n))
+    try {
+      await notificationService.markAsRead(id)
+    } catch {
+      setNotifications(items => items.map(n => n.id === id ? { ...n, is_read: false } : n))
+    }
+  }, [])
+
+  const handleMarkAllNotificationsRead = useCallback(async () => {
+    const previous = notifications
+    setNotifications(items => items.map(n => ({ ...n, is_read: true })))
+    try {
+      await notificationService.markAllAsRead()
+    } catch {
+      setNotifications(previous)
+    }
+  }, [notifications])
 
   // -- Derived: AI insights ----------------------------------------------------
   const insights = useMemo(() => generateInsights({
@@ -3516,7 +3615,7 @@ export default function EmployeeSelfService() {
 
   // -- Tab notification badges -------------------------------------------------
   const pendingLeave   = leaveRequests.filter(r => r.status?.toUpperCase() === 'PENDING').length
-  const unreadNotifs   = leaveRequests.filter(r => ['APPROVED','REJECTED','RM_REJECTED'].includes(r.status?.toUpperCase())).length
+  const unreadNotifs   = notifications.filter(n => !n.is_read).length
 
   // Days Taken — live sum from approved requests. Matches LeaveBalanceSection's
   // calculation on the Leave tab exactly (same leaveRequests state, same
@@ -3688,7 +3787,7 @@ export default function EmployeeSelfService() {
         return <PayrollSnapshot salaryInfo={salaryInfo} slips={slips} loading={loadingPayroll} />
 
       case 'team':
-        return <TeamCalendar calendarData={calendarData} loading={loadingCalendar} />
+        return <TeamCalendar />
 
       case 'daily_tracker':
         return <DailyTrackerTab currentUser={currentUser || authProfile} />
@@ -3705,24 +3804,17 @@ export default function EmployeeSelfService() {
         )
 
       case 'notifications':
-        return <NotificationsCenter requests={leaveRequests} loading={loadingLeave} />
+        return (
+          <NotificationsCenter
+            notifications={notifications}
+            loading={loadingNotifications}
+            onMarkRead={handleMarkNotificationRead}
+            onMarkAllRead={handleMarkAllNotificationsRead}
+          />
+        )
 
       case 'site_visits':
-        return (
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>GPS-Based Site Visit Tracking</strong> - Request site visits, check-in/out with GPS, and track off-site attendance.
-              </p>
-              <a href="/hr/site-visits" className="mt-2 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
-                Open Site Visit Tracker →
-              </a>
-            </div>
-            <p className="text-sm text-slate-500">
-              Note: Site visit feature is available at <a href="/hr/site-visits" className="text-blue-600 underline">/hr/site-visits</a>
-            </p>
-          </div>
-        )
+        return <SiteVisitsPanel />
 
       default:
         return null
@@ -3731,11 +3823,6 @@ export default function EmployeeSelfService() {
 
   return (
     <div className="bg-slate-50">
-      {/* People nav cross-link */}
-      <div className="px-4 sm:px-6 lg:px-8 pt-4">
-        <PeopleNav activeId="ess" />
-      </div>
-
       <div className="px-4 sm:px-6 lg:px-8 py-5 space-y-5">
         {/* -- Profile Header -- */}
         <EmployeeProfileHeader

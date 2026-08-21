@@ -5,7 +5,8 @@
 
 import apiClient from './api.service';
 
-const BASE_URL = '/api/v1/site-visits';
+// apiClient already prefixes requests with /api/v1.
+const BASE_URL = '/site-visits';
 
 const siteVisitService = {
   // ═══════════════════════════════════════════════════════════════════════════
@@ -47,7 +48,7 @@ const siteVisitService = {
    * @param {string} status - Filter by status (PENDING, APPROVED, REJECTED, CANCELLED)
    */
   getMyRequests: async (status = null) => {
-    const params = status ? { status } : {};
+    const params = { my_requests: true, ...(status ? { status } : {}) };
     const response = await apiClient.get(`${BASE_URL}/requests/`, { params });
     return response.data;
   },
@@ -154,7 +155,9 @@ const siteVisitService = {
    * @param {Object} filters - { start_date, end_date, site_id }
    */
   getMyCheckIns: async (filters = {}) => {
-    const response = await apiClient.get(`${BASE_URL}/check-ins/`, { params: filters });
+    const response = await apiClient.get(`${BASE_URL}/check-ins/`, {
+      params: { my_checkins: true, ...filters },
+    });
     return response.data;
   },
 

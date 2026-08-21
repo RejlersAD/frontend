@@ -87,10 +87,32 @@ const yearsSince = (iso) => {
   return Math.max(0, (Date.now() - t) / (365.25 * 86400000))
 }
 
+const lifecycleValue = (employee, ...keys) => {
+  for (const key of keys) {
+    const value = employee?.[key] ?? employee?.metadata?.[key] ?? employee?.employment?.[key]
+    if (value !== undefined && value !== null && value !== '') return value
+  }
+  return null
+}
+
+const isThisMonth = (value) => {
+  if (!value) return false
+  const date = new Date(value)
+  const now = new Date()
+  return !Number.isNaN(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
+}
+
+const isWithinNextDays = (value, days) => {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  const delta = time - Date.now()
+  return !Number.isNaN(time) && delta >= 0 && delta <= days * 86400000
+}
+
 export const HR_KPIS = [
   {
     id: 'headcount',
-    label: 'Total Headcount',
+    label: 'Total Employees',
     accent: 'from-blue-500 to-indigo-600',
     calmTone: 'bg-blue-50 text-blue-700 border-blue-100',
     icon: 'UsersIcon',
@@ -99,12 +121,51 @@ export const HR_KPIS = [
   },
   {
     id: 'active',
-    label: 'Active',
+    label: 'Active Employees',
     accent: 'from-emerald-500 to-teal-600',
     calmTone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
     icon: 'CheckBadgeIcon',
     compute: (list) => list.filter(e => e.status === 'active').length,
     sub: 'Currently working',
+  },
+  {
+    id: 'new_joiners_month',
+    label: 'New Joiners This Month',
+    accent: 'from-violet-500 to-purple-600',
+    calmTone: 'bg-violet-50 text-violet-700 border-violet-100',
+    icon: 'UserPlusIcon',
+    compute: (list) => list.filter(e => isThisMonth(lifecycleValue(e, 'join_date', 'joining_date', 'start_date', 'date_joined', 'created_at'))).length,
+    sub: 'Joined this month',
+  },
+  {
+    id: 'notice_period',
+    label: 'Employees on Notice Period',
+    accent: 'from-amber-500 to-orange-600',
+    calmTone: 'bg-amber-50 text-amber-800 border-amber-200',
+    icon: 'ExclamationTriangleIcon',
+    compute: (list) => list.filter(e => {
+      const state = String(lifecycleValue(e, 'employment_status', 'lifecycle_status', 'status') || '').toLowerCase()
+      return ['notice', 'on_notice', 'notice_period'].includes(state) || Boolean(lifecycleValue(e, 'notice_date', 'notice_period_start'))
+    }).length,
+    sub: 'Employees serving notice',
+  },
+  {
+    id: 'resigned_month',
+    label: 'Resigned This Month',
+    accent: 'from-rose-500 to-red-600',
+    calmTone: 'bg-rose-50 text-rose-700 border-rose-200',
+    icon: 'ArrowRightOnRectangleIcon',
+    compute: (list) => list.filter(e => isThisMonth(lifecycleValue(e, 'resignation_date', 'termination_date', 'last_working_date'))).length,
+    sub: 'Resigned this month',
+  },
+  {
+    id: 'contract_expiring',
+    label: 'Contract Expiring Soon',
+    accent: 'from-orange-500 to-red-600',
+    calmTone: 'bg-orange-50 text-orange-800 border-orange-200',
+    icon: 'CalendarDaysIcon',
+    compute: (list) => list.filter(e => isWithinNextDays(lifecycleValue(e, 'contract_end_date', 'employment_end_date', 'end_date'), 60)).length,
+    sub: 'Due within 60 days',
   },
   {
     id: 'pending_onboarding',
@@ -225,6 +286,7 @@ export const HR_VIEW_MODES = [
   // 'cards' view intentionally removed — toggle this entry back to re-enable it.
   { id: 'table',     label: 'Table',          icon: 'TableCellsIcon' },
   { id: 'dept',      label: 'Departments',    icon: 'BuildingOffice2Icon' },
+  { id: 'hierarchy', label: 'Hierarchy',      icon: 'ShareIcon' },
   { id: 'timesheet', label: 'Time Sheet',     icon: 'ClockIcon' },
 ]
 export const HR_DEFAULT_VIEW_MODE = 'table'
@@ -238,7 +300,7 @@ export const HR_UI = {
   // Which KPIs render in the always-visible "essential" strip. The rest
   // are hidden behind a "Show all metrics" toggle so the page is not
   // overwhelming on first load.
-  essentialKpiIds:        ['headcount', 'active', 'pending_onboarding', 'new_joiners_30d'],
+  essentialKpiIds:        ['headcount', 'active', 'new_joiners_month', 'notice_period', 'resigned_month', 'contract_expiring'],
   // Filter dropdowns start collapsed. The search bar + view-mode toggle
   // remain visible at all times.
   filtersCollapsedByDefault: true,
@@ -287,7 +349,10 @@ export const HR_TABLE_COLUMNS = [
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_DETAIL_TABS = [
   { id: 'overview',      label: 'Overview',            icon: 'UserCircleIcon' },
-  { id: 'employment',    label: 'Employment',          icon: 'BriefcaseIcon' },
+  { id: 'employment',    label: 'Organization',        icon: 'BriefcaseIcon' },
+  { id: 'documents',     label: 'Documents',           icon: 'DocumentTextIcon' },
+  { id: 'leave',         label: 'Leave',               icon: 'CalendarDaysIcon' },
+  { id: 'performance',   label: 'Performance',         icon: 'ChartBarIcon' },
   { id: 'compensation',  label: 'Compensation',        icon: 'BanknotesIcon' },
   { id: 'timesheet',     label: 'Time Sheet',          icon: 'ClockIcon' },
   { id: 'competency',    label: 'Competency',          icon: 'AcademicCapIcon' },
@@ -300,12 +365,8 @@ export const HR_DEFAULT_DETAIL_TAB = 'overview'
 // (time sheet, competency matrices …) get a wider canvas; record-style
 // tabs stay narrow. Add a tab id here to override its width. Fallback is
 // `HR_DRAWER_WIDTH_DEFAULT`. Tailwind max-w-* class names only.
-export const HR_DRAWER_WIDTH_DEFAULT = 'max-w-xl'
+export const HR_DRAWER_WIDTH_DEFAULT = 'max-w-6xl'
 export const HR_DRAWER_WIDTH_BY_TAB = {
-  timesheet:    'max-w-6xl',
-  competency:   'max-w-3xl',
-  compensation: 'max-w-2xl',
-  access:       'max-w-3xl',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -901,7 +962,7 @@ export const HR_COPY = {
   emptyTitle:       'No employees match the current filters',
   emptySubtitle:    'Try clearing filters or use the search box above.',
   errorTitle:       'Could not load employee data',
-  searchPlaceholder: 'Search name, email, employee ID, biometric code (e.g. 22972), department…',
+  searchPlaceholder: 'Search employee ID, name, email, department, manager, location or role…',
   searchButtonLabel:  'Search',
   searchClearLabel:   'Clear search',
   // Soft-coded reverse-lookup: queries matching this regex are treated as

@@ -15,8 +15,7 @@ export const PAYROLL_TABS = [
   { id: 'dashboard',  label: 'Dashboard',         icon: 'ChartBarIcon',               description: 'Executive KPI overview' },
   { id: 'attendance', label: 'Attendance',         icon: 'ClipboardDocumentCheckIcon', description: 'HR Attendance — Daily · Monthly · Yearly' },
   { id: 'leave',      label: 'Leave',              icon: 'CalendarDaysIcon',           description: 'Leave balances imported from HR Excel' },
-  { id: 'engine',     label: 'Payroll Engine',     icon: 'CpuChipIcon',                description: 'Salary slips & approvals' },
-  { id: 'salary',     label: 'Salary Management', icon: 'BanknotesIcon',              description: 'Employee salary structures & history' },
+  { id: 'salary',     label: 'Salary Management',  icon: 'BanknotesIcon',              description: 'Employee salaries, monthly payroll runs, payslips & approvals' },
 ]
 export const PAYROLL_DEFAULT_TAB = 'dashboard'
 

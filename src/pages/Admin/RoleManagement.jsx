@@ -13,6 +13,8 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
+import * as HeroIcons from '@heroicons/react/24/outline';
 import rbacService from '../../services/rbac.service';
 import { getEngineeringDisciplines } from '../../config/engineeringStructure.config.js';
 import { getRoleName, getRoleDescription, formatRoleForDropdown } from '../../utils/roleDisplay.utils';
@@ -226,32 +228,39 @@ function RoleBadge({ role, selected, onClick }) {
   
   return (
     <button
+      type="button"
       onClick={() => onClick(role)}
-      className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
+      aria-current={selected ? 'page' : undefined}
+      className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
         selected
-          ? 'bg-blue-50 border-l-[3px] border-blue-500'
-          : 'border-l-[3px] border-transparent hover:bg-gray-50 hover:border-gray-200'
+          ? 'bg-blue-50 text-blue-900'
+          : 'text-slate-700 hover:bg-slate-100'
       }`}
     >
-      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${c.dot}`} />
+      {selected && <span className="absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-blue-600" />}
+      <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md ${selected ? 'bg-blue-100' : 'bg-white ring-1 ring-slate-200 group-hover:ring-slate-300'}`}>
+        {role.is_system_role ? (
+          <HeroIcons.ShieldCheckIcon className={`h-4 w-4 ${selected ? 'text-blue-700' : 'text-slate-500'}`} />
+        ) : (
+          <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} />
+        )}
+      </span>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className={`text-sm font-medium truncate ${selected ? 'text-blue-900' : 'text-gray-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <p className={`truncate text-sm ${selected ? 'font-semibold text-blue-900' : 'font-medium text-slate-800'}`}>
             {roleDisplayName}
           </p>
-          {hasNoModules && !role.is_system_role && (
-            <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium" title="No modules assigned - users cannot access features">
-              0 modules
-            </span>
-          )}
+          {role.is_system_role && <span className="rounded bg-slate-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">System</span>}
         </div>
-        <p className="text-xs text-gray-400 truncate">{getLevelLabel(role.level)} · {role.user_count ?? 0} users</p>
+        <p className={`mt-0.5 truncate text-xs ${selected ? 'text-blue-700' : 'text-slate-500'}`}>
+          {role.user_count ?? 0} users · {role.modules?.length ?? 0} modules
+        </p>
       </div>
       {isSensitive && (
-        <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="Sensitive role" />
+        <span className="h-2 w-2 flex-shrink-0 rounded-full bg-amber-400" title="Sensitive role" />
       )}
       {hasNoModules && !role.is_system_role && (
-        <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" title="Warning: No modules assigned">
+        <svg className="h-4 w-4 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20" aria-label="No modules assigned">
           <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
         </svg>
       )}
@@ -261,12 +270,9 @@ function RoleBadge({ role, selected, onClick }) {
 
 function ModuleToggle({ module, enabled, onChange, disabled, isSensitive }) {
   return (
-    <label className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-      enabled ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
-    } ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-blue-300'}`}>
-      <input type="checkbox" checked={enabled} disabled={disabled}
-        onChange={(e) => onChange(module, e.target.checked)}
-        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed" />
+    <label className={`flex items-center gap-3 rounded-xl border p-3 transition-all ${
+      enabled ? 'border-blue-200 bg-blue-50/70' : 'border-slate-200 bg-white'
+    } ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-blue-300 hover:shadow-sm'}`}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium text-gray-800">{module.name}</span>
@@ -278,6 +284,12 @@ function ModuleToggle({ module, enabled, onChange, disabled, isSensitive }) {
         </div>
         <p className="text-xs text-gray-500 truncate">{module.description || module.code}</p>
       </div>
+      <input type="checkbox" checked={enabled} disabled={disabled}
+        onChange={(e) => onChange(module, e.target.checked)}
+        className="peer sr-only" />
+      <span className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-blue-300 peer-focus:ring-offset-2 ${enabled ? 'bg-blue-600' : 'bg-slate-300'}`} aria-hidden="true">
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+      </span>
     </label>
   );
 }
@@ -354,11 +366,11 @@ function GroupedModulePanel({ modules, assignedModuleIds, onToggle, disabled, sa
     const open   = expanded[g.id] !== false;
     const nOn    = items.filter((m) => assignedModuleIds.has(m.id)).length;
     return (
-      <div key={g.id} className="border border-gray-200 rounded-xl overflow-hidden mb-2">
+      <div key={g.id} className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {/* Header */}
         <div
           onClick={() => toggleGroup(g.id)}
-          className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none ${c.bg} ${open ? 'border-b border-gray-100' : ''}`}
+          className={`flex cursor-pointer select-none items-center gap-2 px-4 py-3 ${c.bg} ${open ? 'border-b border-slate-100' : ''}`}
         >
           {!disabled && (
             <IndeterminateCheckbox
@@ -385,7 +397,7 @@ function GroupedModulePanel({ modules, assignedModuleIds, onToggle, disabled, sa
         </div>
         {/* Module rows */}
         {open && (
-          <div className="p-2 space-y-1.5 bg-white">
+          <div className="space-y-2 bg-slate-50/50 p-3">
             {items.map((mod) => (
               <ModuleToggle key={mod.id} module={mod} enabled={assignedModuleIds.has(mod.id)}
                 onChange={onToggle} disabled={disabled || saving}
@@ -495,6 +507,7 @@ function RoleManagement() {
   const [loadingUsers,  setLoadingUsers]  = useState(false);
   const [selectedRole,  setSelectedRole]  = useState(null);
   const [roleSearch,    setRoleSearch]    = useState('');
+  const [roleScope,     setRoleScope]     = useState('all');
   const [savingModule,  setSavingModule]  = useState(false);
   const [assignSearch,  setAssignSearch]  = useState('');
   const [assignResults, setAssignResults] = useState([]);
@@ -744,9 +757,23 @@ function RoleManagement() {
     const visible = roles.filter(
       (r) => !r.code.startsWith(CUSTOM_ROLE_PREFIX) && !HIDDEN_ROLE_CODES.includes(r.code)
     );
-    const t = roleSearch.toLowerCase();
-    return t ? visible.filter((r) => r.name.toLowerCase().includes(t) || r.code.toLowerCase().includes(t)) : visible;
-  }, [roles, roleSearch]);
+    const scoped = visible.filter((role) => (
+      roleScope === 'all' || (roleScope === 'system' ? role.is_system_role : !role.is_system_role)
+    ));
+    const t = roleSearch.trim().toLowerCase();
+    return t ? scoped.filter((r) => r.name.toLowerCase().includes(t) || r.code.toLowerCase().includes(t)) : scoped;
+  }, [roles, roleSearch, roleScope]);
+
+  const visibleRoleCounts = useMemo(() => {
+    const visible = roles.filter(
+      (role) => !role.code.startsWith(CUSTOM_ROLE_PREFIX) && !HIDDEN_ROLE_CODES.includes(role.code)
+    );
+    return {
+      all: visible.length,
+      system: visible.filter((role) => role.is_system_role).length,
+      custom: visible.filter((role) => !role.is_system_role).length,
+    };
+  }, [roles]);
 
   const assignedModuleIds = useMemo(() => new Set((selectedRole?.modules || []).map((m) => m.id)), [selectedRole]);
 
@@ -804,7 +831,8 @@ function RoleManagement() {
   // ═══════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4 lg:p-6">
+      <div className="flex h-[calc(100vh-2rem)] min-h-[640px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-3rem)]">
 
       {/* ── Floating toast notification ── */}
       {notification.show && (
@@ -821,43 +849,59 @@ function RoleManagement() {
       )}
 
       {/* ── Page header ── */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between gap-4">
+      <header className="flex-shrink-0 bg-slate-950 px-5 pb-0 pt-5 text-white lg:px-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              Role & Access Management
+            <nav className="mb-1 flex items-center gap-1.5 text-xs text-slate-400" aria-label="Breadcrumb">
+              <Link to="/dashboard" className="hover:text-white">Dashboard</Link>
+              <span>/</span>
+              <span>Administration</span>
+              <span>/</span>
+              <span className="text-slate-200">Access Control</span>
+            </nav>
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/20 ring-1 ring-blue-400/30">
+                <HeroIcons.ShieldCheckIcon className="h-5 w-5 text-blue-300" />
+              </span>
+              Role &amp; Access Management
             </h1>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="mt-1 text-sm text-slate-300">
               {isSuperAdmin
                 ? 'Create roles, control module access, and review access requests.'
                 : 'Assign roles to users and review module access requests.'}
             </p>
           </div>
-          {mainTab === MAIN_TAB_ROLES && isSuperAdmin && (
-            <button
-              onClick={() => { setShowCreate(true); setCreateError(null); setCreateForm(EMPTY_FORM); }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
+          <div className="flex flex-wrap items-center gap-2 pb-1">
+            <Link to="/admin/users" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-white/10">
+              <HeroIcons.UsersIcon className="h-4 w-4" /> Users
+            </Link>
+            <Link to="/hr/employees" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-white/10">
+              <HeroIcons.UserGroupIcon className="h-4 w-4" /> Employees
+            </Link>
+            <Link to="/profile" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-white/10">
+              <HeroIcons.UserCircleIcon className="h-4 w-4" /> My Profile
+            </Link>
+            {mainTab === MAIN_TAB_ROLES && isSuperAdmin && (
+              <button
+                onClick={() => { setShowCreate(true); setCreateError(null); setCreateForm(EMPTY_FORM); }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              <HeroIcons.PlusIcon className="h-4 w-4" />
               New Role
             </button>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Pill-style main tabs */}
-        <div className="flex gap-1 mt-4 bg-gray-100 p-0.5 rounded-lg w-fit">
+        <div className="mt-5 flex w-fit gap-1 rounded-t-xl bg-white/5 p-1 pb-0">
           {[
             { key: MAIN_TAB_ROLES, label: 'Roles & Permissions', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
             { key: MAIN_TAB_AR,    label: 'Access Requests',     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
           ].map(({ key, label, icon }) => (
             <button key={key} onClick={() => setMainTab(key)}
-              className={`relative flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                mainTab === key ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              className={`relative flex items-center gap-1.5 rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                mainTab === key ? 'bg-white text-blue-700' : 'text-slate-300 hover:bg-white/5 hover:text-white'
               }`}>
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />
@@ -871,43 +915,67 @@ function RoleManagement() {
             </button>
           ))}
         </div>
-      </div>
+      </header>
 
       {/* ══════════════════════════════════════════════════════════
           TAB: Roles & Permissions
       ══════════════════════════════════════════════════════════ */}
       {mainTab === MAIN_TAB_ROLES && (
-        <div className="flex flex-1 min-h-0">
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
 
           {/* ── Left panel: role list ── */}
-          <div className="w-64 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
-            <div className="p-3 border-b border-gray-100">
+          <aside className="flex max-h-72 w-full flex-shrink-0 flex-col border-b border-slate-200 bg-white lg:max-h-none lg:w-80 lg:border-b-0 lg:border-r">
+            <div className="border-b border-slate-200 bg-white p-4">
+              <div className="mb-3 flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Roles</p>
+                  <p className="mt-0.5 text-xs text-slate-500">Choose a role to manage access</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{visibleRoleCounts.all}</span>
+              </div>
               <div className="relative">
-                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input type="text" placeholder="Search roles…" value={roleSearch}
                   onChange={(e) => setRoleSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-gray-50" />
+                  aria-label="Search roles"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
-              <p className="text-xs text-gray-400 mt-1.5 px-0.5">{filteredRoles.length} role{filteredRoles.length !== 1 ? 's' : ''}</p>
+              <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1" aria-label="Filter roles">
+                {[
+                  ['all', 'All'],
+                  ['system', 'System'],
+                  ['custom', 'Custom'],
+                ].map(([value, label]) => (
+                  <button key={value} type="button" onClick={() => setRoleScope(value)}
+                    aria-pressed={roleScope === value}
+                    className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${roleScope === value ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
+                    {label} <span className="ml-0.5 text-[10px] text-slate-400">{visibleRoleCounts[value]}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto py-1 px-1">
+            <div className="flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="Available roles">
               {loadingRoles ? (
                 <div className="py-10 text-center">
                   <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                   <p className="text-xs text-gray-400">Loading…</p>
                 </div>
               ) : filteredRoles.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-8">No roles found.</p>
+                <div className="px-4 py-10 text-center">
+                  <HeroIcons.MagnifyingGlassIcon className="mx-auto h-5 w-5 text-slate-300" />
+                  <p className="mt-2 text-xs font-medium text-slate-600">No roles found</p>
+                  <p className="mt-1 text-xs text-slate-400">Try another search or filter.</p>
+                </div>
               ) : filteredRoles.map((role) => (
                 <RoleBadge key={role.id} role={role} selected={selectedRole?.id === role.id} onClick={handleSelectRole} />
               ))}
             </div>
-          </div>
+          </aside>
 
           {/* ── Right panel: role detail ── */}
-          <div className="flex-1 min-h-0 overflow-hidden flex flex-col bg-gray-50">
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50">
             {!selectedRole ? (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-300 gap-4">
                 <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -922,7 +990,7 @@ function RoleManagement() {
             ) : (
               <>
                 {/* Role header bar */}
-                <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
+                <div className="flex-shrink-0 border-b border-slate-200 bg-white px-5 py-4 lg:px-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -982,7 +1050,7 @@ function RoleManagement() {
 
                   {/* ── Module Access tab ── */}
                   {detailTab === 'modules' && (
-                    <div className="p-6 max-w-3xl">
+                    <div className="mx-auto max-w-4xl p-4 lg:p-6">
                       {/* SOFT-CODED: Warning when role has no modules */}
                       {selectedRole && (!selectedRole.modules || selectedRole.modules.length === 0) && (
                         <div className="mb-4 flex items-start gap-3 px-4 py-3 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-800">
@@ -992,7 +1060,7 @@ function RoleManagement() {
                           <div>
                             <p className="font-semibold mb-1">⚠️ This role has no modules assigned</p>
                             <p className="text-xs text-amber-700">
-                              Users assigned to "<strong>{selectedRole.name}</strong>" cannot access any features until you assign modules below. 
+                              Users assigned to &ldquo;<strong>{selectedRole.name}</strong>&rdquo; cannot access any features until you assign modules below.
                               Toggle ON the modules this role should have access to.
                             </p>
                           </div>
@@ -1033,7 +1101,7 @@ function RoleManagement() {
 
                   {/* ── Users tab ── */}
                   {detailTab === 'users' && (
-                    <div className="p-6 max-w-2xl space-y-5">
+                    <div className="mx-auto max-w-4xl space-y-5 p-4 lg:p-6">
 
                       {/* ── Super-admin-only guard notice ── */}
                       {isAdmin && !isSuperAdmin && selectedRole?.code === SUPER_ADMIN_ROLE_CODE && (
@@ -1132,7 +1200,7 @@ function RoleManagement() {
                       {/* ── Add User inline panel ── */}
                       {showAddPanel && canManageRoleUsers && (
                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
-                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Search &amp; Add User to "{selectedRole?.name}"</p>
+                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Search &amp; Add User to &ldquo;{selectedRole?.name}&rdquo;</p>
                           <div className="relative">
                             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1425,7 +1493,7 @@ function RoleManagement() {
                 </div>
               </>
             )}
-          </div>
+          </main>
         </div>
       )}
 
@@ -1433,7 +1501,18 @@ function RoleManagement() {
           TAB: Access Requests
       ══════════════════════════════════════════════════════════ */}
       {mainTab === MAIN_TAB_AR && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 lg:p-6">
+          <div className="mx-auto max-w-5xl">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Approval queue</p>
+              <h2 className="text-xl font-bold text-slate-900">Access requests</h2>
+              <p className="text-sm text-slate-500">Review requested capabilities and keep access aligned with job responsibilities.</p>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <span className="font-bold">{pendingTotal}</span> pending review{pendingTotal === 1 ? '' : 's'}
+            </div>
+          </div>
           {arSuccess && (
             <div className="mb-4 flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
               <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1452,10 +1531,10 @@ function RoleManagement() {
           )}
 
           {/* Status filter pills */}
-          <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
             {AR_STATUS_FILTERS.map(({ key, label }) => (
               <button key={key} onClick={() => setArStatusTab(key)}
-                className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
+                className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                   arStatusTab === key
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600'
@@ -1482,12 +1561,12 @@ function RoleManagement() {
               <p className="text-sm text-gray-400">No {arStatusTab || ''} access requests.</p>
             </div>
           ) : (
-            <div className="space-y-3 max-w-3xl">
+            <div className="grid gap-3 xl:grid-cols-2">
               {arRequests.map((req) => (
-                <div key={req.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                <article key={req.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 shadow-sm">
                         <span className="text-white text-sm font-bold">
                           {(req.user_name || req.user_email || '?').charAt(0).toUpperCase()}
                         </span>
@@ -1503,7 +1582,7 @@ function RoleManagement() {
                           <span className="font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{req.module_name}</span>
                         </p>
                         {req.reason && (
-                          <p className="text-xs text-gray-500 mt-1.5 italic bg-gray-50 px-2 py-1.5 rounded-lg">"{req.reason}"</p>
+                          <p className="text-xs text-gray-500 mt-1.5 italic bg-gray-50 px-2 py-1.5 rounded-lg">&ldquo;{req.reason}&rdquo;</p>
                         )}
                         {req.admin_note && (
                           <p className="text-xs text-blue-600 mt-1.5 bg-blue-50 px-2 py-1.5 rounded-lg">Admin note: {req.admin_note}</p>
@@ -1534,10 +1613,11 @@ function RoleManagement() {
                       </div>
                     )}
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -1615,6 +1695,7 @@ function RoleManagement() {
         <ActionModal request={arModal.request} action={arModal.action}
           onClose={() => setArModal(null)} onConfirm={handleArAction} />
       )}
+      </div>
     </div>
   );
 
