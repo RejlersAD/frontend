@@ -155,16 +155,19 @@ export const PLANNING_MAX_FILE_MB = 100
 // expandable one (icon, responsible role, full deliverable checklist).
 // Add a discipline by appending a row here — no JSX changes required.
 // ─────────────────────────────────────────────────────────────────────────
+// chartColor: hex form of each accent gradient's start color — Recharts fills
+// need a real CSS color, not a Tailwind class, so charts stay visually tied
+// to the same per-discipline color used in badges/cards throughout this page.
 export const PLANNING_DISCIPLINE_META = {
-  process:         { label: 'Process Engineering',         icon: '🧪', accent: 'from-sky-500 to-blue-600',       responsibleRole: 'Lead Process Engineer' },
-  piping:          { label: 'Piping Engineering',           icon: '🛢️', accent: 'from-amber-500 to-orange-600',   responsibleRole: 'Lead Piping Engineer' },
-  mechanical:      { label: 'Mechanical Engineering',       icon: '⚙️', accent: 'from-slate-500 to-slate-700',    responsibleRole: 'Mechanical Engineer' },
-  civil:           { label: 'Civil / Structural Engineering', icon: '🏗️', accent: 'from-stone-500 to-stone-700', responsibleRole: 'Civil Engineer' },
-  electrical:      { label: 'Electrical Engineering',       icon: '⚡', accent: 'from-yellow-500 to-amber-600',   responsibleRole: 'Electrical Engineer' },
-  instrumentation: { label: 'Instrumentation & Control',    icon: '🎛️', accent: 'from-emerald-500 to-teal-600',   responsibleRole: 'Instrumentation Engineer' },
-  telecom:         { label: 'Telecom',                      icon: '📡', accent: 'from-indigo-500 to-violet-600',  responsibleRole: 'Instrumentation Engineer' },
+  process:         { label: 'Process Engineering',         icon: '🧪', accent: 'from-sky-500 to-blue-600',       chartColor: '#0ea5e9', responsibleRole: 'Lead Process Engineer' },
+  piping:          { label: 'Piping Engineering',           icon: '🛢️', accent: 'from-amber-500 to-orange-600',   chartColor: '#f59e0b', responsibleRole: 'Lead Piping Engineer' },
+  mechanical:      { label: 'Mechanical Engineering',       icon: '⚙️', accent: 'from-slate-500 to-slate-700',    chartColor: '#64748b', responsibleRole: 'Mechanical Engineer' },
+  civil:           { label: 'Civil / Structural Engineering', icon: '🏗️', accent: 'from-stone-500 to-stone-700', chartColor: '#78716c', responsibleRole: 'Civil Engineer' },
+  electrical:      { label: 'Electrical Engineering',       icon: '⚡', accent: 'from-yellow-500 to-amber-600',   chartColor: '#eab308', responsibleRole: 'Electrical Engineer' },
+  instrumentation: { label: 'Instrumentation & Control',    icon: '🎛️', accent: 'from-emerald-500 to-teal-600',   chartColor: '#10b981', responsibleRole: 'Instrumentation Engineer' },
+  telecom:         { label: 'Telecom',                      icon: '📡', accent: 'from-indigo-500 to-violet-600',  chartColor: '#6366f1', responsibleRole: 'Instrumentation Engineer' },
 }
-export const DEFAULT_DISCIPLINE_META = { label: '', icon: '📄', accent: 'from-slate-400 to-slate-600', responsibleRole: 'Engineer' }
+export const DEFAULT_DISCIPLINE_META = { label: '', icon: '📄', accent: 'from-slate-400 to-slate-600', chartColor: '#94a3b8', responsibleRole: 'Engineer' }
 
 // ─────────────────────────────────────────────────────────────────────────
 // BYOK (Bring Your Own Key) — Claude/Anthropic augmentation, per project.

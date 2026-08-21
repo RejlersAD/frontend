@@ -1231,7 +1231,7 @@ const PlanningPackagePage = () => {
                 <span>🎯</span> AI Scope Assessment
                 {data.ai_scope.sow_only_authoritative_applied && (
                   <span className="ml-2 text-sm font-semibold bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5 normal-case tracking-normal">
-                    ✨ SOW is source of truth
+                    ✨ Document is source of truth
                   </span>
                 )}
               </div>
@@ -2560,9 +2560,9 @@ const PlanningPackagePage = () => {
     
     if (visualizationSection === 'intelligence' && intelligencePreview) {
       // Discipline distribution
-      const disciplineData = Object.entries(intelligencePreview.detected_disciplines || {})
+      const disciplineData = Object.entries(intelligencePreview.disciplines || {})
         .map(([key, disc]) => ({
-          name: disc.display_name || key,
+          name: PLANNING_DISCIPLINE_META[key]?.label || key,
           count: (disc.deliverables || []).length,
           icon: PLANNING_DISCIPLINE_META[key]?.icon || '📋',
           color: PLANNING_DISCIPLINE_META[key]?.color || '#94a3b8'
@@ -2588,25 +2588,25 @@ const PlanningPackagePage = () => {
           name: act.name,
           start: new Date(act.start_date).getTime(),
           finish: new Date(act.finish_date).getTime(),
-          duration: act.duration_days || 0,
+          duration: act.original_duration_days || 0,
           isCritical: act.is_critical,
-          float: act.total_float || 0
+          float: act.total_float_days || 0
         });
       });
-      
+
       // Discipline distribution for schedule
       const disciplineStats = Object.entries(timelineData).map(([disc, acts]) => {
         const meta = PLANNING_DISCIPLINE_META[disc] || DEFAULT_DISCIPLINE_META;
         const criticalCount = acts.filter(a => a.isCritical).length;
         return {
-          name: meta.displayName || disc,
+          name: meta.label || disc,
           total: acts.length,
           critical: criticalCount,
           icon: meta.icon,
-          color: meta.color
+          color: meta.chartColor
         };
       });
-      
+
       // Activity duration distribution
       const durationBuckets = [
         { range: '1-5 days', min: 1, max: 5, count: 0 },
@@ -2615,23 +2615,23 @@ const PlanningPackagePage = () => {
         { range: '21-30 days', min: 21, max: 30, count: 0 },
         { range: '30+ days', min: 31, max: 999, count: 0 }
       ];
-      
+
       activities.forEach(act => {
-        const dur = act.duration_days || 0;
+        const dur = act.original_duration_days || 0;
         const bucket = durationBuckets.find(b => dur >= b.min && dur <= b.max);
         if (bucket) bucket.count++;
       });
-      
+
       // Timeline scatter data (for Gantt-style view)
       const timelineScatter = activities.map(act => {
         const meta = PLANNING_DISCIPLINE_META[act.discipline] || DEFAULT_DISCIPLINE_META;
         return {
           name: act.name.substring(0, 30) + (act.name.length > 30 ? '...' : ''),
           start: new Date(act.start_date).getTime(),
-          duration: act.duration_days || 0,
-          discipline: meta.displayName,
+          duration: act.original_duration_days || 0,
+          discipline: meta.label,
           isCritical: act.is_critical,
-          color: act.is_critical ? '#dc2626' : meta.color
+          color: act.is_critical ? '#dc2626' : meta.chartColor
         };
       }).slice(0, 50); // Limit to 50 activities for performance
       
@@ -2683,9 +2683,9 @@ const PlanningPackagePage = () => {
         if (!disciplineBreakdown[disc]) {
           const meta = PLANNING_DISCIPLINE_META[disc] || DEFAULT_DISCIPLINE_META;
           disciplineBreakdown[disc] = {
-            name: meta.displayName || disc,
+            name: meta.label || disc,
             icon: meta.icon,
-            color: meta.color,
+            color: meta.chartColor,
             total: 0,
             notStarted: 0,
             inProgress: 0,
@@ -2714,12 +2714,12 @@ const PlanningPackagePage = () => {
           
           return {
             name: doc.deliverable_name.substring(0, 35) + (doc.deliverable_name.length > 35 ? '...' : ''),
-            discipline: meta.displayName,
+            discipline: meta.label,
             start: startDate,
             end: endDate,
             duration: Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)),
             status: status,
-            color: meta.color,
+            color: meta.chartColor,
             icon: meta.icon
           };
         })
@@ -2887,21 +2887,48 @@ const PlanningPackagePage = () => {
               </div>
             )}
 
-            {visualizationSection === 'schedule' && visualizationTab === 'timeline' && chartData.timelineScatter && (
+            {visualizationSection === 'schedule' && visualizationTab === 'timeline' && chartData.timelineScatter && chartData.timelineScatter.length > 0 && (
               <div className="space-y-6">
                 <div className="bg-gradient-to-br from-slate-50 to-white rounded-xl p-4 border border-slate-200">
-                  <h3 className="font-semibold text-slate-700 mb-4">Project Timeline (First 50 Activities)</h3>
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                    <h3 className="font-semibold text-slate-700">Project Timeline (First 50 Activities)</h3>
+                    {/* Manual legend — Scatter cells are colored per-point (by discipline, or red
+                        if critical), so a standard Recharts <Legend/> can't reflect that; this key
+                        keeps color from being the only signal (accessibility: color-not-only). */}
+                    <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500">
+                      {[...new Map(chartData.timelineScatter.map(a => [a.discipline, a])).values()]
+                        .filter(a => !a.isCritical)
+                        .map(a => (
+                          <span key={a.discipline} className="inline-flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: a.color }} />
+                            {a.discipline}
+                          </span>
+                        ))}
+                      <span className="inline-flex items-center gap-1.5 font-medium text-rose-600">
+                        <span className="w-2.5 h-2.5 rounded-full inline-block bg-rose-600" />
+                        🔴 Critical path
+                      </span>
+                    </div>
+                  </div>
                   <ResponsiveContainer width="100%" height={400}>
-                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                      <CartesianGrid />
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 30, left: 30 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis
                         type="number"
                         dataKey="start"
                         name="Start Date"
                         domain={[chartData.projectStart, chartData.projectFinish]}
                         tickFormatter={(tick) => new Date(tick).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        tick={{ fontSize: 12, fill: '#64748b' }}
+                        label={{ value: 'Start Date', position: 'insideBottom', offset: -10, style: { fontSize: 12, fill: '#64748b' } }}
                       />
-                      <YAxis type="number" dataKey="duration" name="Duration (days)" />
+                      <YAxis
+                        type="number"
+                        dataKey="duration"
+                        name="Duration (days)"
+                        tick={{ fontSize: 12, fill: '#64748b' }}
+                        label={{ value: 'Duration (days)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#64748b', textAnchor: 'middle' } }}
+                      />
                       <ZAxis type="number" dataKey="duration" range={[50, 400]} />
                       <Tooltip
                         cursor={{ strokeDasharray: '3 3' }}
@@ -2937,7 +2964,15 @@ const PlanningPackagePage = () => {
               </div>
             )}
 
-            {visualizationSection === 'schedule' && visualizationTab === 'disciplines' && chartData.disciplineStats && (
+            {visualizationSection === 'schedule' && visualizationTab === 'timeline' && (!chartData.timelineScatter || chartData.timelineScatter.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <span className="text-4xl mb-3">📅</span>
+                <p className="text-sm font-semibold text-slate-600">No schedule activities yet</p>
+                <p className="text-sm text-slate-400 mt-1">Generate a schedule from the Document Intelligence step to see the timeline here.</p>
+              </div>
+            )}
+
+            {visualizationSection === 'schedule' && visualizationTab === 'disciplines' && chartData.disciplineStats && chartData.disciplineStats.length > 0 && (
               <div className="space-y-6">
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2963,9 +2998,10 @@ const PlanningPackagePage = () => {
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={chartData.disciplineStats}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                        <YAxis />
+                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} tick={{ fontSize: 12, fill: '#64748b' }} />
+                        <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
                         <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
                         <Bar dataKey="total" fill="#8b5cf6" name="Total Activities" radius={[8, 8, 0, 0]} />
                         <Bar dataKey="critical" fill="#dc2626" name="Critical" radius={[8, 8, 0, 0]} />
                       </BarChart>
@@ -2997,7 +3033,15 @@ const PlanningPackagePage = () => {
               </div>
             )}
 
-            {visualizationSection === 'schedule' && visualizationTab === 'statistics' && chartData.durationBuckets && (
+            {visualizationSection === 'schedule' && visualizationTab === 'disciplines' && (!chartData.disciplineStats || chartData.disciplineStats.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <span className="text-4xl mb-3">🎨</span>
+                <p className="text-sm font-semibold text-slate-600">No discipline data yet</p>
+                <p className="text-sm text-slate-400 mt-1">Generate a schedule from the Document Intelligence step to see this breakdown.</p>
+              </div>
+            )}
+
+            {visualizationSection === 'schedule' && visualizationTab === 'statistics' && chartData.durationBuckets && chartData.durationBuckets.length > 0 && (
               <div className="space-y-6">
                 {/* Duration Distribution */}
                 <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
@@ -3038,6 +3082,14 @@ const PlanningPackagePage = () => {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {visualizationSection === 'schedule' && visualizationTab === 'statistics' && (!chartData.durationBuckets || chartData.durationBuckets.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <span className="text-4xl mb-3">📈</span>
+                <p className="text-sm font-semibold text-slate-600">No statistics yet</p>
+                <p className="text-sm text-slate-400 mt-1">Generate a schedule from the Document Intelligence step to see activity statistics.</p>
               </div>
             )}
 
