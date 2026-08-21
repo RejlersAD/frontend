@@ -78,10 +78,16 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     const status = (entry?.status || 'pending').toString().trim().toLowerCase();
     return status === 'pending' || status === 'in_review';
   });
+  const workflowLevel = (entry, fallbackIndex = 0) => {
+    const explicitLevel = Number(entry?.level);
+    return Number.isFinite(explicitLevel) ? Math.max(0, explicitLevel) : fallbackIndex + 1;
+  };
   const activeLevel = pendingStages.length
-    ? Math.min(...pendingStages.map((entry, index) => Number(entry?.level) || (approvalHierarchy.indexOf(entry) + 1 || index + 1)))
+    ? Math.min(...pendingStages.map((entry, index) => workflowLevel(entry, approvalHierarchy.indexOf(entry) >= 0 ? approvalHierarchy.indexOf(entry) : index)))
     : null;
-  const activeLevelStages = pendingStages.filter((entry) => (Number(entry?.level) || approvalHierarchy.indexOf(entry) + 1) === activeLevel);
+  const activeLevelStages = pendingStages.filter((entry, index) => (
+    workflowLevel(entry, approvalHierarchy.indexOf(entry) >= 0 ? approvalHierarchy.indexOf(entry) : index) === activeLevel
+  ));
 
   const currentUserData = currentUser?.user || currentUser || {};
   const currentUserId = currentUserData?.id || currentUser?.user_id || currentUser?.id;
@@ -92,7 +98,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const currentStageLabel = currentStage?.stage || currentStage?.role || 'the current approver';
   const currentStageRole = `${currentStage?.role || ''} ${currentStage?.stage || ''}`.toLowerCase();
   
-  const currentStageKey = currentStageRole.includes('engineering manager') || currentStageRole.includes('manager of engineering') || currentStageRole.includes('moe') || currentStageRole.includes('engineering review')
+  const currentStageKey = currentStageRole.includes('procurement department')
+    ? 'procurement'
+    : currentStageRole.includes('engineering manager') || currentStageRole.includes('manager of engineering') || currentStageRole.includes('moe') || currentStageRole.includes('engineering review')
     ? 'eng_manager'
     : currentStageRole.includes('manager of projects') || currentStageRole.includes('projects manager')
       ? 'manager_projects'
@@ -100,7 +108,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         ? 'vp'
         : currentStageRole.includes('level 1 approver') || currentStageRole.includes('project manager') || currentStageRole.includes('department manager') || currentStageRole.includes('technical review')
           ? 'pm'
-          : null;
+          : currentStageRole.includes('general manager')
+            ? 'general_manager'
+            : null;
 
   // Authorization Evaluation
   const issuedByValue = requisition.issued_by?.id || requisition.issued_by_id || requisition.issued_by;
@@ -145,6 +155,12 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   );
 
   const APPROVER_CONFIG = {
+    procurement: {
+      label: 'Procurement Department',
+      approveEndpoint: 'process_dynamic_approval',
+      rejectEndpoint: 'process_dynamic_rejection',
+      canApprove: isApprovalInProgress && currentStageKey === 'procurement' && canActOnCurrentStage
+    },
     pm: {
       label: activeLevel === 1 ? 'Level 1 Approver' : 'Project Manager',
       approveEndpoint: 'pm_approve',
@@ -168,6 +184,12 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       approveEndpoint: 'vp_approve',
       rejectEndpoint: 'vp_reject',
       canApprove: isApprovalInProgress && currentStageKey === 'vp' && canActOnCurrentStage
+    },
+    general_manager: {
+      label: 'General Manager',
+      approveEndpoint: 'process_dynamic_approval',
+      rejectEndpoint: 'process_dynamic_rejection',
+      canApprove: isApprovalInProgress && currentStageKey === 'general_manager' && canActOnCurrentStage
     }
   };
 
