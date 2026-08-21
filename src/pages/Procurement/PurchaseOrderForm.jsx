@@ -1119,7 +1119,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       requisition.supplier_name,
       requisition.project_department,
     ].some((value) => String(value || '').toLowerCase().includes(normalizedPRSearch));
-  }).slice(0, 12);
+  }).slice(0, normalizedPRSearch ? 50 : undefined);
   const normalizedProjectSearch = projectSearch.trim().toLowerCase();
   const filteredProjects = projects.filter((project) => {
     if (!normalizedProjectSearch) return true;

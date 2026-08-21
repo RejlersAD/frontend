@@ -836,14 +836,17 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
       // current month's run — recompute the card's count the same way so
       // both agree.
       if (s) {
+        // Pending Approvals = draft payslips for the current run + leave
+        // requests awaiting RM/HR action (backend-computed, always current).
+        const leavePending = s.leave_pending_approvals ?? 0
         const run = await fetchCurrentMonthRun().catch(() => null)
         if (run) {
           const pendingResp = await payrollEngineService
             .listPayslips({ run: run.id, status: 'draft', page_size: 1 })
             .catch(() => null)
-          s.pending_approvals = pendingResp?.count ?? s.pending_approvals
+          s.pending_approvals = (pendingResp?.count ?? s.pending_approvals ?? 0) + leavePending
         } else {
-          s.pending_approvals = 0
+          s.pending_approvals = leavePending
         }
       }
       setSummary(s)

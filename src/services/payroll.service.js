@@ -69,6 +69,10 @@ const payrollService = {
   getLeaveRecord: (id) =>
     unwrap(apiClient.get(`${BASE}/leave-records/${id}/`)),
 
+  // HR/Admin only — backend restricts every other field to read-only.
+  updateLeaveRecordCarryforward: (id, carryforward) =>
+    unwrap(apiClient.patch(`${BASE}/leave-records/${id}/`, { carryforward })),
+
   // ── Leave Types (master list) ──────────────────────────────────────────────
   getLeaveTypes: () =>
     unwrap(apiClient.get(`${BASE}/leave-types/`)),
