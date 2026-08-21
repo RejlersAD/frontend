@@ -80,7 +80,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
     setError(null)
     setTouched(false)
     setEmpSearch(adjustment?.employee_name || '')
-    setEmpSelected(false)
+    setEmpSelected(Boolean(adjustment?.employee))
   }, [open, adjustment])
 
   // Load /catalog/ once for select options
@@ -209,7 +209,13 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
             type="text"
             placeholder="Search by name or emp #…"
             value={empSearch}
-            onChange={(e) => { setEmpSearch(e.target.value); setEmpSelected(false) }}
+            onChange={(e) => {
+              setEmpSearch(e.target.value)
+              setEmpSelected(false)
+              // Search text is not a selection. Clear the previous employee so
+              // validation and the submitted payload cannot use a stale ID.
+              if (form[field.key]) handleChange(field.key, '')
+            }}
             className={baseCls}
           />
           {!empSelected && (
@@ -227,7 +233,10 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
             className={baseCls}
             size={Math.min(6, Math.max(3, filteredEmployees.length))}
           >
-            {selected && !filteredEmployees.some((e) => e.id === selected.id) && (
+            <option value="" disabled>
+              Select an employee from the results
+            </option>
+            {selected && !filteredEmployees.some((e) => String(e.id) === String(selected.id)) && (
               <option value={selected.id}>
                 {selected.employee_no} · {selected.full_name}
               </option>
