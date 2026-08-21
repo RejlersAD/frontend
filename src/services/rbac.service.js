@@ -45,6 +45,16 @@ class RBACService {
     return apiService.get(`${RBAC_BASE_URL}/users/me/`);
   }
 
+  async getProfileDocuments(params = {}) {
+    return apiService.get(`${RBAC_BASE_URL}/profile-documents/`, { params });
+  }
+
+  async getProfileDocumentContent(id) {
+    return apiService.get(`${RBAC_BASE_URL}/profile-documents/${id}/content/`, {
+      responseType: 'blob'
+    });
+  }
+
   async createUser(data) {
     return apiService.post(`${RBAC_BASE_URL}/users/`, data);
   }

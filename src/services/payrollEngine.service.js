@@ -28,6 +28,12 @@ const payrollEngineService = {
   updateEmployee: (id, payload) =>
     unwrap(apiClient.patch(`${BASE}/employees/${id}/`, payload)),
 
+  linkRadaiAccount: (id, userId, { transfer = false } = {}) =>
+    unwrap(apiClient.post(`${BASE}/employees/${id}/link-radai-account/`, {
+      user_id: userId,
+      transfer,
+    })),
+
   deleteEmployee: (id) =>
     unwrap(apiClient.delete(`${BASE}/employees/${id}/`)),
 

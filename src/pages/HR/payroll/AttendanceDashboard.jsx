@@ -21,7 +21,8 @@ import {
   ATTENDANCE_DAILY_COLS, ATTENDANCE_MONTHLY_COLS,
   DEPT_COLORS, MONTH_SHORT, MONTH_FULL,
   ATT_GOOD_RATE_PCT, ATT_WARN_RATE_PCT, ATT_TOP_ABSENT_LIMIT,
-  ATT_STANDARD_DAILY_HOURS, ATT_COMPANY_NAME, fmtDiff,
+  ATT_STANDARD_DAILY_HOURS, ATT_STANDARD_MONTHLY_WORKING_DAYS,
+  ATTENDANCE_POLICY, ATT_COMPANY_NAME, fmtDiff,
   classifyDay, workingDaysInMonth, rateColor, empName, empDept,
   fmtTime, ATT_COPY, filterEmployeeRow,
   // ── New: edit + holiday
@@ -85,6 +86,62 @@ const EmptyState = ({ icon: IconName = 'InboxIcon', msg, loading, loadingMsg }) 
     <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400 text-sm">
       <Icon className="w-10 h-10 mx-auto mb-2 opacity-40" />
       {msg || ATT_COPY.noData}
+    </div>
+  )
+}
+
+const ATTENDANCE_PAGE_SIZES = [10, 25, 50, 100]
+const DEFAULT_ATTENDANCE_PAGE_SIZE = 25
+
+const matchesEmployeeSearch = (employee, query) => {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [
+    empName(employee),
+    empDept(employee),
+    employee?.employee_code,
+    employee?.employee_id,
+    employee?.radai_email,
+    employee?.email,
+  ].some(value => String(value || '').toLowerCase().includes(q))
+}
+
+const pageRows = (rows, page, pageSize) => {
+  const safePage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)))
+  return rows.slice((safePage - 1) * pageSize, safePage * pageSize)
+}
+
+const TablePagination = ({ total, page, pageSize, onPageChange, onPageSizeChange }) => {
+  if (!total) return null
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(page, pages)
+  const first = (safePage - 1) * pageSize + 1
+  const last = Math.min(total, safePage * pageSize)
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 text-xs text-slate-500">
+      <span>Showing <strong className="text-slate-700">{first}-{last}</strong> of <strong className="text-slate-700">{total}</strong> employees</span>
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-1.5">
+          Rows
+          <select value={pageSize} onChange={event => onPageSizeChange(Number(event.target.value))}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700">
+            {ATTENDANCE_PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </label>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => onPageChange(safePage - 1)} disabled={safePage <= 1}
+            className="rounded-md border border-slate-300 bg-white p-1.5 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Previous page">
+            <HeroIcons.ChevronLeftIcon className="h-3.5 w-3.5" />
+          </button>
+          <span className="min-w-20 text-center text-slate-600">Page {safePage} of {pages}</span>
+          <button type="button" onClick={() => onPageChange(safePage + 1)} disabled={safePage >= pages}
+            className="rounded-md border border-slate-300 bg-white p-1.5 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Next page">
+            <HeroIcons.ChevronRightIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -282,6 +339,8 @@ function SummaryTab() {
   const [year,          setYear]          = useState(initNow.getFullYear())
   const [month,         setMonth]         = useState(initNow.getMonth() + 1)
   const [search,        setSearch]        = useState('')
+  const [summaryPage,   setSummaryPage]   = useState(1)
+  const [summaryPageSize, setSummaryPageSize] = useState(DEFAULT_ATTENDANCE_PAGE_SIZE)
   const [resp,          setResp]          = useState(null)
   const [busy,          setBusy]          = useState(false)
   const [err,           setErr]           = useState('')
@@ -292,6 +351,8 @@ function SummaryTab() {
   // Sync upload state (HR Manager only)
   const [syncUploading, setSyncUploading] = useState(false)
   const [syncMsg,       setSyncMsg]       = useState('')
+  const [attendanceUploading, setAttendanceUploading] = useState(false)
+  const [attendanceUploadMsg, setAttendanceUploadMsg] = useState('')
   const [summaryBranch,        setSummaryBranch]        = useState(null)   // null = All | 'RAD' | 'RIN'
   // Set of employee_codes for the selected branch; null = no filter (show All)
   const [branchCodes,           setBranchCodes]           = useState(null)
@@ -409,7 +470,8 @@ function SummaryTab() {
   }, [holidays])
 
   const rows        = resp?.rows || []
-  const workingDays = resp?.working_days_in_month || workingDaysInMonth(year, month)
+  const calendarWorkingDays = resp?.working_days_in_month || workingDaysInMonth(year, month)
+  const workingDays = resp?.standard_working_days || ATT_STANDARD_MONTHLY_WORKING_DAYS
   const daysInMonth = new Date(year, month, 0).getDate()         // last day of month
   const days        = useMemo(
     () => Array.from({ length: daysInMonth }, (_, i) => i + 1),
@@ -529,6 +591,27 @@ function SummaryTab() {
     }
   }
 
+  const handleAttendanceUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAttendanceUploading(true)
+    setAttendanceUploadMsg('')
+    try {
+      const result = await ts.uploadDailyAttendance(file, year, month)
+      setResp(await ts.fetchMonthly(year, month))
+      const imported = (result.created || 0) + (result.updated || 0)
+      setAttendanceUploadMsg(
+        `Imported ${imported} daily entries · ${result.created || 0} new · ${result.updated || 0} updated${result.skipped ? ` · ${result.skipped} skipped` : ''}`
+      )
+    } catch (uploadError) {
+      const data = uploadError?.response?.data
+      setAttendanceUploadMsg(data?.detail || data?.errors?.[0]?.error || uploadError?.message || 'Attendance upload failed')
+    } finally {
+      setAttendanceUploading(false)
+      e.target.value = ''
+    }
+  }
+
   // Human-readable period string shown in the report header, e.g. "June 2026"
   // Soft-coded: label text comes from MONTH_FULL in hrAttendance.config.js
   const periodLabel = `${MONTH_FULL[month - 1]} ${year}`
@@ -548,9 +631,7 @@ function SummaryTab() {
       .filter(filterEmployeeRow)
       // Branch filter
       .filter(r => !branchCodes || branchCodes.has(r.employee_code || ''))
-      .filter(r => !q ||
-        empName(r).toLowerCase().includes(q) ||
-        (r.department || '').toLowerCase().includes(q))
+      .filter(r => matchesEmployeeSearch(r, q))
       .map(r => {
         const dayMap = {}
         ;(r.days_detail || []).forEach(d => {
@@ -652,6 +733,15 @@ function SummaryTab() {
     }
   }, [pivotRows])
 
+  const pagedPivotRows = useMemo(
+    () => pageRows(pivotRows, summaryPage, summaryPageSize),
+    [pivotRows, summaryPage, summaryPageSize]
+  )
+
+  useEffect(() => {
+    setSummaryPage(1)
+  }, [search, year, month, summaryBranch, summaryPageSize])
+
   return (
     <div className="space-y-4">
       {/* Report header */}
@@ -723,6 +813,20 @@ function SummaryTab() {
             </div>
             {/* Quick exports — replaced with smart report panel */}
             <DownloadReportPanel year={year} month={month} tsService={ts} />
+            {canEdit && (
+              <label className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
+                attendanceUploading
+                  ? 'border-blue-300 bg-blue-100 text-blue-600 opacity-70'
+                  : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+              }`} title="Upload .xlsx or .csv with Employee ID, Date and Hours columns">
+                {attendanceUploading
+                  ? <><Spinner /> Importing...</>
+                  : <><HeroIcons.ArrowUpTrayIcon className="h-4 w-4" /> Upload Daily Hours</>
+                }
+                <input type="file" accept=".xlsx,.csv" className="hidden"
+                  onChange={handleAttendanceUpload} disabled={attendanceUploading} />
+              </label>
+            )}
             {/* Public Holidays button — visible to everyone; edit controls appear only for HR */}
             {/* HR Manager: sync leave data from Excel upload */}
             {canEdit && (
@@ -766,10 +870,22 @@ function SummaryTab() {
             </button>
           </div>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs text-blue-800">
+          <HeroIcons.InformationCircleIcon className="h-4 w-4 shrink-0" />
+          <span><strong>Manual attendance:</strong> upload Excel/CSV columns <strong>Employee ID, Date, Hours</strong>, or a monthly sheet with Employee ID and day columns 1–31. Maximum 9 hours per weekday.</span>
+        </div>
+        {attendanceUploadMsg && (
+          <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
+            attendanceUploadMsg.startsWith('Imported')
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              : 'border-rose-200 bg-rose-50 text-rose-700'
+          }`}>{attendanceUploadMsg}</div>
+        )}
         {/* Stats strip */}
         <div className="mt-3 flex flex-wrap gap-5 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
           <span><span className="font-semibold text-slate-700">{busy ? '…' : pivotRows.length}</span> employees</span>
-          <span><span className="font-semibold text-slate-700">{workingDays}</span> working days in period</span>
+          <span><span className="font-semibold text-slate-700">{workingDays}</span> contractual workdays</span>
+          <span><span className="font-semibold text-slate-700">{calendarWorkingDays}</span> scheduled weekdays in period</span>
           <span>Standard <span className="font-semibold text-slate-700">{ATT_STANDARD_DAILY_HOURS} h/day</span></span>
           {/* Legend for new cell types */}
           {canEdit && (
@@ -916,6 +1032,13 @@ function SummaryTab() {
       {/* ══ Cross-tab pivot table ══ */}
       {pivotRows.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">Employee daily hours</h3>
+              <p className="text-xs text-slate-500">Each row is an employee; numbered columns show uploaded hours for each day.</p>
+            </div>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">Manual upload source</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="text-xs border-collapse" style={{ minWidth: 'max-content' }}>
 
@@ -1005,7 +1128,7 @@ function SummaryTab() {
 
               {/* Data rows */}
               <tbody>
-                {pivotRows.map((r, i) => (
+                {pagedPivotRows.map((r, i) => (
                   <tr key={i}
                     className={`border-b border-slate-100 hover:bg-blue-50/40 transition-colors ${
                       i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
@@ -1232,10 +1355,12 @@ function SummaryTab() {
             </table>
           </div>
           {/* Footer note */}
-          <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-[11px] text-slate-400">
+          <div className="px-4 py-2 border-t border-slate-100 bg-white flex items-center justify-between text-[11px] text-slate-400">
             <span>Normal Hours = {workingDays} working days × {ATT_STANDARD_DAILY_HOURS} h  ·  {ATT_COPY.absenceNote}</span>
             <span>{pivotRows.length} of {rows.length} employees shown</span>
           </div>
+          <TablePagination total={pivotRows.length} page={summaryPage} pageSize={summaryPageSize}
+            onPageChange={setSummaryPage} onPageSizeChange={setSummaryPageSize} />
         </div>
       )}
 
@@ -1483,12 +1608,16 @@ export default function AttendanceDashboard() {
   const [selYear,      setSelYear]      = useState(NOW.getFullYear())
   const [deptFilter,   setDeptFilter]   = useState(ALL_DEPT)
   const [statusFilter, setStatusFilter] = useState(ALL_STATUS)
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const [tablePage,       setTablePage]       = useState(1)
+  const [tablePageSize,   setTablePageSize]   = useState(DEFAULT_ATTENDANCE_PAGE_SIZE)
 
   // ── Data state ──────────────────────────────────────────────────────────────
   const [liveData,    setLiveData]    = useState([])
   const [dailyData,   setDailyData]   = useState([])
   const [monthlyData, setMonthlyData] = useState([])
   const [yearlyData,  setYearlyData]  = useState([])  // Array[12] of monthly arrays
+  const [yearlyLeaveBalances, setYearlyLeaveBalances] = useState({})
   const [trendData,   setTrendData]   = useState([])  // 6-month overview chart
 
   const [loadingDaily,   setLoadingDaily]   = useState(false)
@@ -1534,12 +1663,12 @@ export default function AttendanceDashboard() {
     )).then(results => {
       setTrendData(results.map((employees, i) => {
         const arr = (employees?.rows || (Array.isArray(employees) ? employees : [])).filter(filterEmployeeRow)
-        const wd  = workingDaysInMonth(months[i].year, months[i].month)
+        const wd  = ATT_STANDARD_MONTHLY_WORKING_DAYS
         const tp  = arr.reduce((s, e) => s + (e.days_present || 0), 0)
         const max = arr.length * wd
         return {
           month: MONTH_SHORT[months[i].month - 1],
-          rate:  max > 0 ? Math.round((tp / max) * 100) : 0,
+          rate:  max > 0 ? Math.min(100, Math.round((tp / max) * 100)) : 0,
           count: arr.length,
         }
       }))
@@ -1560,11 +1689,19 @@ export default function AttendanceDashboard() {
     }).finally(() => setLoadingYearly(false))
   }, [selYear, view])
 
+  useEffect(() => {
+    if (view !== 'yearly') return
+    payrollService.getAnnualLeaveBalanceSummary(selYear, 12)
+      .then(d => setYearlyLeaveBalances(d?.balances || {}))
+      .catch(() => setYearlyLeaveBalances({}))
+  }, [selYear, view])
+
   // ── Working days in currently selected month ─────────────────────────────────
-  const workingDays = useMemo(
+  const calendarWorkingDays = useMemo(
     () => workingDaysInMonth(selYear, selMonth),
     [selYear, selMonth]
   )
+  const workingDays = ATT_STANDARD_MONTHLY_WORKING_DAYS
 
   // ── Departments list (from whichever data is available) ──────────────────────
   const departments = useMemo(() => {
@@ -1581,17 +1718,24 @@ export default function AttendanceDashboard() {
       ...r,
       _absent: Math.max(0, workingDays - (r.days_present || 0)),
       _rate:   workingDays > 0
-        ? Math.round(((r.days_present || 0) / workingDays) * 100)
+        ? Math.min(100, Math.round(((r.days_present || 0) / workingDays) * 100))
         : 0,
+      _payrollReady: (r.days_present || 0) >= calendarWorkingDays,
     }))
-  }, [monthlyData, workingDays, deptFilter])
+  }, [monthlyData, workingDays, calendarWorkingDays, deptFilter])
+
+  const filteredMonthly = useMemo(
+    () => enrichedMonthly.filter(row => matchesEmployeeSearch(row, employeeSearch)),
+    [enrichedMonthly, employeeSearch]
+  )
 
   // ── Filtered daily rows ───────────────────────────────────────────────────────
   const filteredDaily = useMemo(() => {
     let d = deptFilter === ALL_DEPT ? dailyData : dailyData.filter(r => empDept(r) === deptFilter)
     if (statusFilter !== ALL_STATUS) d = d.filter(r => classifyDay(r) === statusFilter)
+    d = d.filter(row => matchesEmployeeSearch(row, employeeSearch))
     return d
-  }, [dailyData, deptFilter, statusFilter])
+  }, [dailyData, deptFilter, statusFilter, employeeSearch])
 
   // ── Daily status counts for summary bar ─────────────────────────────────────
   const dailyStatusCounts = useMemo(() => {
@@ -1652,37 +1796,70 @@ export default function AttendanceDashboard() {
     if (yearlyData.length === 0) return { yearlyEmployees: [], yearlyTrend: [] }
     const map = {}
     yearlyData.forEach((employees, mi) => {
-      ;(employees || []).forEach(emp => {
+      (employees || []).forEach(emp => {
         const key = emp.employee_code || empName(emp)
         if (!map[key]) {
           map[key] = {
             code: key, name: empName(emp), dept: empDept(emp),
-            months: Array(12).fill(null), totalPresent: 0,
+            months: Array(12).fill(null), totalPresent: 0, totalOvertime: 0,
           }
         }
-        const wd = workingDaysInMonth(selYear, mi + 1)
+        const wd = ATT_STANDARD_MONTHLY_WORKING_DAYS
         map[key].months[mi] = {
           present: emp.days_present || 0,
           wd,
-          rate: wd > 0 ? Math.round(((emp.days_present || 0) / wd) * 100) : 0,
+          rate: wd > 0 ? Math.min(100, Math.round(((emp.days_present || 0) / wd) * 100)) : 0,
+          overtime: Number(emp.overtime_hours || 0),
+          status: (emp.days_present || 0) >= 20 ? 'Ready' : (emp.days_present || 0) > 0 ? 'Review' : 'No attendance',
         }
         map[key].totalPresent += emp.days_present || 0
+        map[key].totalOvertime += Number(emp.overtime_hours || 0)
       })
     })
-    const totalWd = MONTH_SHORT.reduce((s, _, i) => s + workingDaysInMonth(selYear, i + 1), 0)
-    const employees = Object.values(map).map(e => ({
-      ...e,
-      yearRate: totalWd > 0 ? Math.round((e.totalPresent / totalWd) * 100) : 0,
-    })).sort((a, b) => a.name.localeCompare(b.name))
+    const totalWd = ATT_STANDARD_MONTHLY_WORKING_DAYS * MONTH_SHORT.length
+    const employees = Object.values(map).map(e => {
+      const yearRate = totalWd > 0 ? Math.min(100, Math.round((e.totalPresent / totalWd) * 100)) : 0
+      return {
+        ...e,
+        yearRate,
+        yearStatus: e.totalPresent > 0 ? (yearRate >= ATT_GOOD_RATE_PCT ? 'Ready' : 'Review') : 'No attendance',
+        leaveBalance: yearlyLeaveBalances[e.code]?.balance,
+      }
+    }).sort((a, b) => a.name.localeCompare(b.name))
 
     const trend = yearlyData.map((arr, i) => {
-      const wd  = workingDaysInMonth(selYear, i + 1)
+      const wd  = ATT_STANDARD_MONTHLY_WORKING_DAYS
       const tp  = (arr || []).reduce((s, e) => s + (e.days_present || 0), 0)
       const max = (arr || []).length * wd
-      return { month: MONTH_SHORT[i], rate: max > 0 ? Math.round((tp / max) * 100) : 0, employees: (arr || []).length }
+      return { month: MONTH_SHORT[i], rate: max > 0 ? Math.min(100, Math.round((tp / max) * 100)) : 0, employees: (arr || []).length }
     })
     return { yearlyEmployees: employees, yearlyTrend: trend }
-  }, [yearlyData, selYear])
+  }, [yearlyData, yearlyLeaveBalances])
+
+  const filteredYearlyEmployees = useMemo(
+    () => yearlyEmployees.filter(employee =>
+      (deptFilter === ALL_DEPT || employee.dept === deptFilter) &&
+      matchesEmployeeSearch(employee, employeeSearch)
+    ),
+    [yearlyEmployees, deptFilter, employeeSearch]
+  )
+
+  const pagedDaily = useMemo(
+    () => pageRows(filteredDaily, tablePage, tablePageSize),
+    [filteredDaily, tablePage, tablePageSize]
+  )
+  const pagedMonthly = useMemo(
+    () => pageRows(filteredMonthly, tablePage, tablePageSize),
+    [filteredMonthly, tablePage, tablePageSize]
+  )
+  const pagedYearly = useMemo(
+    () => pageRows(filteredYearlyEmployees, tablePage, tablePageSize),
+    [filteredYearlyEmployees, tablePage, tablePageSize]
+  )
+
+  useEffect(() => {
+    setTablePage(1)
+  }, [view, employeeSearch, deptFilter, statusFilter, selectedDate, selMonth, selYear, tablePageSize])
 
   // ────────────────────────────────────────────────────────────────────────────
   // VIEW: OVERVIEW
@@ -1783,6 +1960,15 @@ export default function AttendanceDashboard() {
             {departments.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
+        <div className="min-w-56">
+          <label className="block text-xs text-slate-500 mb-1">Search employee</label>
+          <div className="relative">
+            <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
+              placeholder="Name, employee ID or department"
+              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
         {/* Status filter pills */}
         <div className="flex flex-wrap gap-1.5 ml-auto">
           {[ALL_STATUS, 'present', 'late', 'half_day', 'absent'].map(s => {
@@ -1838,7 +2024,7 @@ export default function AttendanceDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredDaily.map((r, i) => {
+                {pagedDaily.map((r, i) => {
                   const status  = classifyDay(r)
                   const rowTone = ATTENDANCE_STATUS[status]?.row || ''
                   return (
@@ -1876,6 +2062,8 @@ export default function AttendanceDashboard() {
               </tbody>
             </table>
           </div>
+          <TablePagination total={filteredDaily.length} page={tablePage} pageSize={tablePageSize}
+            onPageChange={setTablePage} onPageSizeChange={setTablePageSize} />
         </div>
       )}
       <p className="text-xs text-slate-400">{ATT_COPY.absenceNote}</p>
@@ -1925,8 +2113,17 @@ export default function AttendanceDashboard() {
               {departments.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
+          <div className="min-w-56">
+            <label className="block text-xs text-slate-500 mb-1">Search employee</label>
+            <div className="relative">
+              <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
+                placeholder="Name, employee ID or department"
+                className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
           <div className="ml-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-600">
-            <span className="font-semibold">{workingDays}</span> working days in {MONTH_FULL[selMonth - 1]} {selYear}
+            <span className="font-semibold">{workingDays}</span>-day target · {calendarWorkingDays} scheduled weekdays
           </div>
         </div>
 
@@ -1991,12 +2188,12 @@ export default function AttendanceDashboard() {
         {/* Monthly employee table */}
         {loadingMonthly ? (
           <EmptyState loading icon="CalendarIcon" loadingMsg={ATT_COPY.loading} />
-        ) : enrichedMonthly.length === 0 ? (
+        ) : filteredMonthly.length === 0 ? (
           <EmptyState icon="CalendarIcon" msg={ATT_COPY.monthlyEmpty} />
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500">{enrichedMonthly.length} employees · {MONTH_FULL[selMonth - 1]} {selYear}</span>
+              <span className="text-xs text-slate-500">{filteredMonthly.length} employees · {MONTH_FULL[selMonth - 1]} {selYear}</span>
               <span className="text-xs text-slate-400">{workingDays} working days</span>
             </div>
             <div className="overflow-x-auto">
@@ -2011,7 +2208,7 @@ export default function AttendanceDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {enrichedMonthly.map((r, i) => (
+                  {pagedMonthly.map((r, i) => (
                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                       {ATTENDANCE_MONTHLY_COLS.map(c => {
                         const v = c.accessor(r)
@@ -2036,6 +2233,15 @@ export default function AttendanceDashboard() {
                             </td>
                           )
                         }
+                        if (c.cellType === 'payroll_ready') {
+                          return (
+                            <td key={c.id} className="px-3 py-2.5">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${
+                                v ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                              }`}>{v ? 'Ready to pay' : 'Review'}</span>
+                            </td>
+                          )
+                        }
                         return <td key={c.id} className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{v}</td>
                       })}
                     </tr>
@@ -2043,6 +2249,8 @@ export default function AttendanceDashboard() {
                 </tbody>
               </table>
             </div>
+            <TablePagination total={filteredMonthly.length} page={tablePage} pageSize={tablePageSize}
+              onPageChange={setTablePage} onPageSizeChange={setTablePageSize} />
           </div>
         )}
         <p className="text-xs text-slate-400">{ATT_COPY.absenceNote} · {ATT_COPY.leaveNote}</p>
@@ -2072,6 +2280,15 @@ export default function AttendanceDashboard() {
             <option value={ALL_DEPT}>All Departments</option>
             {departments.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
+        </div>
+        <div className="min-w-56">
+          <label className="block text-xs text-slate-500 mb-1">Search employee</label>
+          <div className="relative">
+            <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
+              placeholder="Name, employee ID or department"
+              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
+          </div>
         </div>
         {loadingYearly && (
           <div className="flex items-center gap-2 text-xs text-blue-600 ml-auto">
@@ -2109,10 +2326,10 @@ export default function AttendanceDashboard() {
       {/* Per-employee yearly grid */}
       {loadingYearly && yearlyEmployees.length === 0 ? (
         <EmptyState loading icon="CalendarIcon" loadingMsg={ATT_COPY.yearlyLoading} />
-      ) : yearlyEmployees.length > 0 ? (
+      ) : filteredYearlyEmployees.length > 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-            <span className="text-xs text-slate-500">{yearlyEmployees.filter(e => deptFilter === ALL_DEPT || e.dept === deptFilter).length} employees · {selYear}</span>
+            <span className="text-xs text-slate-500">{filteredYearlyEmployees.length} employees · {selYear}</span>
             <span className="text-xs text-slate-400">Rate = Present / Working days · Green ≥{ATT_GOOD_RATE_PCT}% · Amber ≥{ATT_WARN_RATE_PCT}%</span>
           </div>
           <div className="overflow-x-auto">
@@ -2124,25 +2341,40 @@ export default function AttendanceDashboard() {
                   {MONTH_SHORT.map(m => (
                     <th key={m} className="text-center px-2 py-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider">{m}</th>
                   ))}
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-700 uppercase tracking-wider bg-slate-100">Status</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-700 uppercase tracking-wider bg-slate-100">Leave Balance</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-700 uppercase tracking-wider bg-slate-100">Overtime</th>
                   <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-700 uppercase tracking-wider bg-slate-100">Year</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {yearlyEmployees
-                  .filter(e => deptFilter === ALL_DEPT || e.dept === deptFilter)
-                  .map((emp, i) => (
+                {pagedYearly.map((emp, i) => (
                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                       <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap sticky left-0 bg-white z-10 border-r border-slate-100">{emp.name}</td>
                       <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{emp.dept}</td>
                       {emp.months.map((m, mi) => (
                         <td key={mi} className="px-2 py-2 text-center">
                           {m ? (
-                            <span className={`font-semibold text-xs ${rateColor(m.rate)}`}>{m.rate}%</span>
+                            <span className="inline-flex flex-col items-center" title={`${m.present} present days · ${m.overtime.toFixed(1)} overtime hours`}>
+                              <span className={`font-semibold text-xs ${rateColor(m.rate)}`}>{m.rate}%</span>
+                              <span className={`text-[8px] ${m.status === 'Ready' ? 'text-emerald-600' : 'text-amber-600'}`}>{m.status}</span>
+                            </span>
                           ) : (
                             <span className="text-slate-300">—</span>
                           )}
                         </td>
                       ))}
+                      <td className="px-3 py-2 text-center bg-slate-50">
+                        <span className={`inline-flex rounded-full px-2 py-1 text-[9px] font-semibold ${
+                          emp.yearStatus === 'Ready' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                        }`}>{emp.yearStatus}</span>
+                      </td>
+                      <td className="px-3 py-2 text-center bg-slate-50 font-semibold text-blue-700">
+                        {emp.leaveBalance === undefined ? '—' : `${Number(emp.leaveBalance).toFixed(1)} d`}
+                      </td>
+                      <td className="px-3 py-2 text-center bg-slate-50 font-semibold text-violet-700">
+                        {emp.totalOvertime.toFixed(1)} h
+                      </td>
                       <td className="px-3 py-2 text-center bg-slate-50">
                         <span className={`font-bold text-sm ${rateColor(emp.yearRate)}`}>{emp.yearRate}%</span>
                       </td>
@@ -2151,6 +2383,8 @@ export default function AttendanceDashboard() {
               </tbody>
             </table>
           </div>
+          <TablePagination total={filteredYearlyEmployees.length} page={tablePage} pageSize={tablePageSize}
+            onPageChange={setTablePage} onPageSizeChange={setTablePageSize} />
         </div>
       ) : !loadingYearly && (
         <EmptyState icon="CalendarIcon" msg={ATT_COPY.noData} />
@@ -2181,6 +2415,43 @@ export default function AttendanceDashboard() {
           )
         })}
       </div>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Employee attendance policy">
+        <div className="flex flex-col gap-1 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Employee attendance policy</h2>
+            <p className="text-xs text-slate-500">Applies to every active employee · Monday to Friday</p>
+          </div>
+          <span className="mt-1 inline-flex w-fit items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 sm:mt-0">
+            {ATT_STANDARD_MONTHLY_WORKING_DAYS * ATT_STANDARD_DAILY_HOURS} expected hours / month
+          </span>
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
+          {ATTENDANCE_POLICY.map(item => {
+            const Icon = HeroIcons[item.icon] || HeroIcons.ClockIcon
+            const tones = {
+              blue: 'bg-blue-50 text-blue-700',
+              cyan: 'bg-cyan-50 text-cyan-700',
+              indigo: 'bg-indigo-50 text-indigo-700',
+              emerald: 'bg-emerald-50 text-emerald-700',
+            }
+            return (
+              <div key={item.id} className="flex min-w-0 items-center gap-3 px-4 py-3.5">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[item.tone]}`}>
+                  <Icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-lg font-bold text-slate-900">{item.value}</span>
+                    <span className="text-[11px] font-medium text-slate-500">{item.unit}</span>
+                  </div>
+                  <p className="truncate text-xs text-slate-500">{item.label}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
 
       {/* Render active view */}
       {view === 'overview' && renderOverview()}

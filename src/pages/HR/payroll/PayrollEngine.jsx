@@ -41,8 +41,8 @@ const readStoredCanvas = () => {
   return DEFAULT_CANVAS_MODE
 }
 
-export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab }) {
-  const [tab, setTab] = useState(DEFAULT_ENGINE_TAB)
+export default function PayrollEngine({ activeRunId, initialTab, onSelectRun, onSwitchTab }) {
+  const [tab, setTab] = useState(initialTab || DEFAULT_ENGINE_TAB)
   const [selectedRunId, setSelectedRunId] = useState(activeRunId || null)
   const [canvasModeKey, setCanvasModeKey] = useState(readStoredCanvas)
 
@@ -53,6 +53,13 @@ export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab })
       setTab('runs')
     }
   }, [activeRunId])
+
+  useEffect(() => {
+    if (initialTab && ENGINE_TABS.some((item) => item.key === initialTab)) {
+      setTab(initialTab)
+      setSelectedRunId(null)
+    }
+  }, [initialTab])
 
   // Persist canvas mode across reloads
   useEffect(() => {
@@ -81,7 +88,7 @@ export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab })
   const CanvasIcon = HeroIcons[canvasMode.icon] || HeroIcons.ArrowsPointingOutIcon
 
   return (
-    <div className={`${canvasMode.containerClass} mx-auto ${canvasMode.paddingClass} space-y-4 transition-[max-width] duration-200`}>
+    <div className="w-full min-w-0 space-y-4">
       {/* Sub-tab nav with canvas-mode cycler */}
       <div className="bg-white border border-slate-200 rounded-xl px-3 pt-2 flex items-end justify-between gap-2">
         <div className="flex gap-1 overflow-x-auto scrollbar-hide">

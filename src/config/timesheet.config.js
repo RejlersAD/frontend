@@ -21,6 +21,7 @@ export const TIMESHEET_ENDPOINTS = {
   live:              '/timesheet/live/',
   daily:             '/timesheet/daily/',
   monthly:           '/timesheet/monthly/',
+  manualUpload:      '/timesheet/manual-upload/',
   user:              '/timesheet/user/',
   lookupByCode:      '/timesheet/lookup-by-code/',
   exportDaily:       '/timesheet/export/daily/',

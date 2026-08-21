@@ -11,7 +11,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. THRESHOLDS — override via Vite env vars
 // ─────────────────────────────────────────────────────────────────────────────
-export const ATT_FULL_DAY_HOURS      = Number(import.meta.env?.VITE_ATT_FULL_DAY_HOURS   || 8)
+export const ATT_WORKING_DAYS_PER_WEEK = Number(import.meta.env?.VITE_ATT_WORKING_DAYS_PER_WEEK || 5)
+export const ATT_STANDARD_WEEKLY_HOURS = Number(import.meta.env?.VITE_ATT_STANDARD_WEEKLY_HOURS || 45)
+export const ATT_STANDARD_MONTHLY_WORKING_DAYS = Number(import.meta.env?.VITE_ATT_STANDARD_MONTHLY_WORKING_DAYS || 22)
+export const ATT_ANNUAL_LEAVE_ENTITLEMENT = Number(import.meta.env?.VITE_ATT_ANNUAL_LEAVE_ENTITLEMENT || 22)
+export const ATT_FULL_DAY_HOURS      = Number(import.meta.env?.VITE_ATT_FULL_DAY_HOURS || 9)
 export const ATT_LATE_THRESHOLD_MIN  = Number(import.meta.env?.VITE_ATT_LATE_MIN         || 15)
 export const ATT_EXPECTED_LOGIN_H    = Number(import.meta.env?.VITE_ATT_EXPECTED_LOGIN_H || 9)
 export const ATT_GOOD_RATE_PCT       = Number(import.meta.env?.VITE_ATT_GOOD_RATE        || 90)  // ≥ green
@@ -21,6 +25,13 @@ export const ATT_TOP_ABSENT_LIMIT    = Number(import.meta.env?.VITE_ATT_TOP_ABSE
 export const ATT_STANDARD_DAILY_HOURS = Number(import.meta.env?.VITE_ATT_STANDARD_DAILY_HOURS || 9)
 // Company name displayed in the Summary report header
 export const ATT_COMPANY_NAME        = import.meta.env?.VITE_ATT_COMPANY_NAME || 'Rejlers International Engineering Solutions AB'
+
+export const ATTENDANCE_POLICY = [
+  { id: 'month', label: 'Monthly workdays', value: ATT_STANDARD_MONTHLY_WORKING_DAYS, unit: 'days', icon: 'CalendarDaysIcon', tone: 'blue' },
+  { id: 'day', label: 'Standard workday', value: ATT_STANDARD_DAILY_HOURS, unit: 'hours', icon: 'ClockIcon', tone: 'cyan' },
+  { id: 'week', label: 'Standard workweek', value: ATT_STANDARD_WEEKLY_HOURS, unit: 'hours', icon: 'BriefcaseIcon', tone: 'indigo' },
+  { id: 'leave', label: 'Annual leave', value: ATT_ANNUAL_LEAVE_ENTITLEMENT, unit: 'days / year', icon: 'SunIcon', tone: 'emerald' },
+]
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EMPLOYEE FILTER — eliminate non-employee biometric records
@@ -42,7 +53,7 @@ export const ATT_NON_EMPLOYEE_PATTERNS = [
   /^security\b/i,
   /^test\b/i,           // test records
   /^admin\b/i,          // admin device names
-  /^[A-Z][A-Z0-9 &\/\-_]{3,}$/, // 4+ char ALL-CAPS names (company/facility names)
+  /^[A-Z][A-Z0-9 &/_-]{3,}$/, // 4+ char ALL-CAPS names (company/facility names)
   /^\d{4,}/,            // pure numeric / badge number rows
 ]
 
@@ -58,6 +69,9 @@ export const ATT_NON_EMPLOYEE_PATTERNS = [
  */
 export const filterEmployeeRow = (row) => {
   if (!row) return false
+  // Manual Excel/CSV imports may include legitimate employees whose RADAI
+  // accounts have not been linked yet. They must remain visible in HR reports.
+  if (row.attendance_source === 'manual_upload') return true
   // Rule 1: RAD AI matched → definitely a real employee
   if (row.radai_user_id) return true
   // Rule 2: strict mode on → require match
@@ -213,6 +227,7 @@ export const ATTENDANCE_DAILY_COLS = [
   // hours column uses cellType 'hours_worked' so AttendanceDashboard can render
   // the open-shift badge when `r.open_shift === true`.
   { id: 'hours',   label: 'Hours',      accessor: r => r.hours_worked ?? 0, cellType: 'hours_worked' },
+  { id: 'overtime', label: 'Overtime',  accessor: r => r.overtime_hours ?? 0, cellType: 'hours_worked' },
   { id: 'status',  label: 'Status',     accessor: r => classifyDay(r), cellType: 'att_status' },
 ]
 
@@ -228,8 +243,10 @@ export const ATTENDANCE_MONTHLY_COLS = [
   { id: 'half',    label: 'Half Days',  accessor: r => r.half_days || 0 },
   { id: 'late',    label: 'Late In',    accessor: r => r.late_arrivals || 0,   cellType: 'late_count' },
   { id: 'hours',   label: 'Total Hrs',  accessor: r => `${(r.total_hours || 0).toFixed(1)}h` },
+  { id: 'overtime', label: 'Overtime',  accessor: r => `${(r.overtime_hours || 0).toFixed(1)}h` },
   { id: 'avg',     label: 'Avg/Day',    accessor: r => `${(r.avg_hours_per_day || 0).toFixed(1)}h` },
   { id: 'rate',    label: 'Rate %',     accessor: r => r._rate ?? 0,           cellType: 'att_rate' },
+  { id: 'payroll', label: 'Payroll',    accessor: r => r._payrollReady,        cellType: 'payroll_ready' },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────

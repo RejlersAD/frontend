@@ -280,12 +280,12 @@ const ApprovalsPageDynamic = () => {
                   )}
                 </button>
 
-                <button
+                {/* <button
                   onClick={() => navigate('/dashboard')}
                   className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 shadow-sm transition hover:bg-cyan-50"
                 >
                   Back to Dashboard
-                </button>
+                </button> */}
               </div>
             </div>
           </div>
