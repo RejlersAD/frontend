@@ -181,13 +181,12 @@ export const AI_PROVIDERS = [
 ]
 
 export const CLAUDE_MODEL_OPTIONS = [
-  { value: 'claude-opus-4-1-20250805', label: 'Claude Opus 4.1 (most capable — recommended)', recommended: true },
-  { value: 'claude-opus-4-20250514', label: 'Claude Opus 4', recommended: false },
-  { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (balanced cost/quality)', recommended: false },
-  { value: 'claude-3-5-haiku-20241022', label: 'Claude Haiku 3.5 (fastest / cheapest)', recommended: false },
+  { value: 'claude-opus-5', label: 'Claude Opus 5 (most capable — recommended)', recommended: true },
+  { value: 'claude-sonnet-5', label: 'Claude Sonnet 5 (balanced cost/quality)', recommended: false },
+  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (fastest / cheapest)', recommended: false },
 ]
 
-export const DEFAULT_CLAUDE_MODEL = 'claude-opus-4-1-20250805'
+export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5'
 
 // Simple client-side sanity check before submitting (backend re-validates).
 export const CLAUDE_API_KEY_PATTERN = /^sk-ant-[A-Za-z0-9\-_]{20,}$/
