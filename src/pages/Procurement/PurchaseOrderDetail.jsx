@@ -30,6 +30,17 @@ const formatDate = (value) => {
     : date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+const formatTimestamp = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return `${parsed.toLocaleString('en-GB', {
+    timeZone: 'Asia/Dubai',
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  })} GST`;
+};
+
 const formatMoney = (value, currency = 'USD') => {
   const amount = Number(value || 0);
   try {
@@ -284,11 +295,6 @@ const PurchaseOrderDetail = () => {
     address: order.vendor_address || order.seller_address,
     country: order.vendor_country || order.country,
   };
-  const printablePrReference = {
-    id: order.pr_reference,
-    pr_number: order.pr_number,
-  };
-
   return (
     <>
       {createPortal(
@@ -345,7 +351,6 @@ const PurchaseOrderDetail = () => {
           <PurchaseOrderLivePreview
             formData={order}
             vendor={printableVendor}
-            prReference={printablePrReference}
             files={printableAttachments}
             documentOnly
           />
@@ -554,7 +559,7 @@ const PurchaseOrderDetail = () => {
             <p className="font-bold">Approved By</p>
             <p>{textOrDash(order.approved_by_name || order.approved_by_user_name)}</p>
             <p>{textOrDash(order.approved_by_title)}</p>
-            <p>Date: {formatDate(order.approved_date)}</p>
+            <p>Timestamp: {formatTimestamp(order.approved_at || order.approval_log?.find((entry) => String(entry.status).toLowerCase() === 'approved')?.approved_at || order.approval_log?.find((entry) => String(entry.status).toLowerCase() === 'approved')?.date || order.approved_date)}</p>
             {approvalSignatureSource && (
               <img src={approvalSignatureSource} alt="Approval signature" className="mt-1 max-h-9 max-w-[150px] object-contain object-left" />
             )}

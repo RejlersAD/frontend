@@ -137,7 +137,7 @@ const cardColumn = { id: 'card1', label: 'Card 1', accessor: (r) => safe(cardFro
 export const PUNCH_TYPE_LABELS = {
   in:      'IN',
   out:     'OUT',
-  unknown: '—',
+  unknown: 'NO PUNCH',
 }
 const punchTypeLabel = (r) => {
   if (r.is_in === true)  return PUNCH_TYPE_LABELS.in

@@ -12,7 +12,6 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useSelector } from 'react-redux';
 import apiClient from '../../services/api.service';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 import {
@@ -41,23 +40,42 @@ const TERMS_TEMPLATES = {
   custom: '',
 };
 
-const PROJECT_FINAL_APPROVER = 'Jarmo Suominen (CEO, Rejlers Abu Dhabi)';
+const PROJECT_FINAL_APPROVER = 'Jarmo Suominen';
+const FINAL_APPROVER_TITLE = 'General Manager, VP';
+const DEFAULT_INVOICE_CONTACT = 'Aneef Thadikkarantavida';
+const DEFAULT_INVOICE_EMAIL = 'Aneef.Thadikkarantavida@rejlers.ae';
+const DEFAULT_BUYER_REFERENCE = 'Richa Hannah Thomas';
+const DEFAULT_ITEMS_TABLE_HEADERS = {
+  line_code: 'Line Code',
+  description: 'Item Description',
+  specification: 'Specification / API/ASME Standard Tag',
+  comment: 'Comment',
+  quantity: 'Qty',
+  uom: 'UOM',
+  unit_price: 'Unit Price',
+  discount: 'Discount',
+  total_price: 'Total Price',
+};
 
-const defaultApprovalLog = (requisitionType) => [
-  { stage: 'Technical Approval', user_id: '', approver: '', approver_email: '', status: 'Pending', date: '', comments: '' },
-  { stage: 'Financial Approval', user_id: '', approver: '', approver_email: '', status: 'Pending', date: '', comments: '' },
-  {
-    stage: 'Final Management Sign-off',
-    user_id: '',
-    approver: requisitionType === 'project' ? PROJECT_FINAL_APPROVER : '',
-    approver_email: '',
-    status: 'Pending',
-    date: '',
-    comments: '',
-  },
-];
+const employeeDesignation = (employee) => (
+  employee?.designation
+  || employee?.job_title
+  || employee?.title
+  || employee?.position
+  || FINAL_APPROVER_TITLE
+);
 
-const mergeApprovalLog = (approvalLog, requisitionType) => defaultApprovalLog(requisitionType).map((defaultEntry) => ({
+const defaultApprovalLog = () => [{
+  stage: 'Final Management Sign-off',
+  user_id: '',
+  approver: PROJECT_FINAL_APPROVER,
+  approver_email: '',
+  status: 'Pending',
+  date: '',
+  comments: '',
+}];
+
+const mergeApprovalLog = (approvalLog) => defaultApprovalLog().map((defaultEntry) => ({
   ...defaultEntry,
   ...(Array.isArray(approvalLog)
     ? approvalLog.find((entry) => entry.stage === defaultEntry.stage)
@@ -169,19 +187,9 @@ const normalizeRequisitionItems = (requisition) => {
 };
 
 const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prReference = null }) => {
-  const authUser = useSelector((state) => state.auth?.user);
-  const sessionUser = authUser?.user || authUser || {};
-  const sessionUserName = String(
-    sessionUser.full_name
-      || sessionUser.name
-      || [sessionUser.first_name, sessionUser.last_name].filter(Boolean).join(' ')
-      || sessionUser.username
-      || '',
-  ).trim();
-  const sessionUserEmail = String(sessionUser.email || '').trim();
   const savedInvoiceEmails = Array.isArray(editData?.invoicing_emails)
     ? editData.invoicing_emails
-    : ['aneef.thadikkarantavida@rejlers.ae', 'uae.procurement@rejlers.ae'];
+    : [DEFAULT_INVOICE_EMAIL];
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -229,12 +237,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     seller_license_no: editData?.seller_license_no || '',
     
     // Buyer/Invoicing Information
-    invoicing_attn: sessionUserName ? `Attn. ${sessionUserName}` : editData?.invoicing_attn || 'Attn. Mr. Aneef Thadikkarantavida',
-    invoicing_emails: sessionUserEmail ? [sessionUserEmail, ...savedInvoiceEmails.slice(1)] : savedInvoiceEmails,
+    invoicing_attn: editData?.invoicing_attn || DEFAULT_INVOICE_CONTACT,
+    invoicing_emails: savedInvoiceEmails,
     company_fax: editData?.company_fax || '+971 2 639 7448',
     
     // Buyer Reference
-    buyer_reference_pm: editData?.buyer_reference_pm || '',
+    buyer_reference_pm: editData?.buyer_reference_pm || DEFAULT_BUYER_REFERENCE,
+    buyer_reference_email: editData?.buyer_reference_email || '',
     buyer_reference_pe: editData?.buyer_reference_pe || '',
     
     // Purchase Details
@@ -274,11 +283,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     
     // Pricing Items
     items: prReference ? normalizeRequisitionItems(prReference) : (editData?.items || []),
+    items_table_headers: {
+      ...DEFAULT_ITEMS_TABLE_HEADERS,
+      ...(editData?.items_table_headers || {}),
+    },
     
     // Approval Section
-    approved_by_name: editData?.approved_by_name || '',
-    approved_by_title: editData?.approved_by_title || '',
+    approved_by_name: editData?.approved_by_name || PROJECT_FINAL_APPROVER,
+    approved_by_title: editData?.approved_by_title || FINAL_APPROVER_TITLE,
     approved_date: editData?.approved_date || '',
+    approved_at: editData?.approved_at || '',
     approval_signature: editData?.approval_signature || '',
     
     // Vendor Confirmation
@@ -310,9 +324,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     liquidated_damages: editData?.liquidated_damages || '',
     technical_approver: editData?.technical_approver || '',
     financial_approver: editData?.financial_approver || '',
-    management_approver: editData?.management_approver
-      || (prReference?.requisition_type === 'project' ? PROJECT_FINAL_APPROVER : ''),
-    approval_log: mergeApprovalLog(editData?.approval_log, prReference?.requisition_type),
+    management_approver: editData?.management_approver || PROJECT_FINAL_APPROVER,
+    approval_log: mergeApprovalLog(editData?.approval_log),
     final_approver_notes: editData?.final_approver_notes || '',
     notes: editData?.notes || '',
     // Short summary that is sent to vendor with the PO
@@ -327,54 +340,44 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [draftId, setDraftId] = useState(editData?.id || null);
   const [currentSection, setCurrentSection] = useState(1);
   const [approvalEmployees, setApprovalEmployees] = useState([]);
-  const [financeApprovers, setFinanceApprovers] = useState([]);
   const [approversLoading, setApproversLoading] = useState(false);
   const [approverLoadError, setApproverLoadError] = useState('');
-  const [procurementHeads, setProcurementHeads] = useState([]);
-  const [ictHeadAdmins, setIctHeadAdmins] = useState([]);
-  const [buyerReferencesLoading, setBuyerReferencesLoading] = useState(false);
-  const [buyerReferenceLoadError, setBuyerReferenceLoadError] = useState('');
-  const isProjectPO = (selectedRequisition?.requisition_type || prReference?.requisition_type) === 'project';
-
-  // The PO invoicing contact is always the authenticated user. Preserve any
-  // additional shared procurement addresses after the primary user email.
-  useEffect(() => {
-    if (!sessionUserName && !sessionUserEmail) return;
-    setFormData((previous) => {
-      const previousEmails = Array.isArray(previous.invoicing_emails)
-        ? previous.invoicing_emails
-        : String(previous.invoicing_emails || '').split(',').map((email) => email.trim()).filter(Boolean);
-      return {
-        ...previous,
-        invoicing_attn: sessionUserName ? `Attn. ${sessionUserName}` : previous.invoicing_attn,
-        invoicing_emails: sessionUserEmail
-          ? [sessionUserEmail, ...previousEmails.slice(1)]
-          : previousEmails,
-      };
-    });
-  }, [sessionUserName, sessionUserEmail]);
 
   useEffect(() => {
-    if (!isProjectPO || approvalEmployees.length === 0) return;
+    if (approvalEmployees.length === 0) return;
     const jarmo = approvalEmployees.find((employee) =>
       String(employee.full_name || '').trim().toLowerCase() === 'jarmo suominen'
     );
-    if (!jarmo) return;
-    setFormData((previous) => ({
-      ...previous,
-      management_approver: jarmo.full_name || jarmo.email,
-      approval_log: previous.approval_log.map((entry) => entry.stage === 'Final Management Sign-off'
-        ? {
-            ...entry,
-            user_id: jarmo.id,
-            approver: jarmo.full_name || jarmo.email,
-            approver_email: jarmo.email,
-            status: 'Pending',
-            date: '',
-          }
-        : entry),
-    }));
-  }, [isProjectPO, approvalEmployees]);
+    setFormData((previous) => {
+      const buyer = approvalEmployees.find((employee) =>
+        String(employee.full_name || '').trim().toLowerCase()
+          === String(previous.buyer_reference_pm || DEFAULT_BUYER_REFERENCE).trim().toLowerCase()
+      ) || approvalEmployees.find((employee) =>
+        String(employee.full_name || '').trim().toLowerCase() === DEFAULT_BUYER_REFERENCE.toLowerCase()
+      );
+      return {
+        ...previous,
+        buyer_reference_pm: buyer?.full_name || previous.buyer_reference_pm,
+        buyer_reference_email: buyer?.email || previous.buyer_reference_email,
+        ...(jarmo ? {
+          management_approver: jarmo.full_name || jarmo.email,
+          approved_by_name: jarmo.full_name || jarmo.email,
+          approved_by_title: employeeDesignation(jarmo),
+          approval_log: previous.approval_log.map((entry) => entry.stage === 'Final Management Sign-off'
+            ? {
+                ...entry,
+                user_id: jarmo.id,
+                approver: jarmo.full_name || jarmo.email,
+                approver_email: jarmo.email,
+                designation: employeeDesignation(jarmo),
+                status: 'Pending',
+                date: '',
+              }
+            : entry),
+        } : {}),
+      };
+    });
+  }, [approvalEmployees]);
 
   // Fetch the master data required to create a PO whenever the form is opened.
   useEffect(() => {
@@ -382,7 +385,6 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       fetchVendors();
       fetchProjects();
       fetchPOApprovers();
-      fetchBuyerReferences();
       if (!editData) fetchAvailableRequisitions();
     }
   }, [isOpen, editData]);
@@ -468,79 +470,18 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setApproversLoading(true);
     setApproverLoadError('');
     try {
-      const [employeeResponse, financeResponse] = await Promise.all([
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'finance' } }),
-      ]);
+      const employeeResponse = await apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' } });
       const usersFrom = (response) => {
         const payload = response?.data?.data || response?.data || {};
         return Array.isArray(payload.users) ? payload.users : [];
       };
       setApprovalEmployees(usersFrom(employeeResponse));
-      setFinanceApprovers(usersFrom(financeResponse));
     } catch (error) {
       console.error('Error fetching PO approvers:', error);
       setApprovalEmployees([]);
-      setFinanceApprovers([]);
       setApproverLoadError('Active employee approvers could not be loaded. Please retry.');
     } finally {
       setApproversLoading(false);
-    }
-  };
-
-  const buyerReferenceValue = (employee, departmentLabel) => {
-    const name = String(employee?.full_name || employee?.username || '').trim();
-    const email = String(employee?.email || '').trim();
-    const labelledName = name && departmentLabel ? `${name} (${departmentLabel})` : name;
-    return [labelledName, email].filter(Boolean).join(' — ');
-  };
-
-  const unassignedBuyerReference = (departmentLabel, superAdmin) => {
-    const temporaryContact = buyerReferenceValue(superAdmin, departmentLabel);
-    return temporaryContact
-      ? `Not assigned Yet: (Currently SuperAdmin User: ${temporaryContact})`
-      : 'Not assigned Yet: (Currently SuperAdmin User)';
-  };
-
-  const fetchBuyerReferences = async () => {
-    setBuyerReferencesLoading(true);
-    setBuyerReferenceLoadError('');
-    try {
-      const [procurementResponse, ictResponse, superAdminResponse] = await Promise.all([
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'procurement_head' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'ict_head_admin' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'super_admin' } }),
-      ]);
-      const usersFrom = (response) => {
-        const payload = response?.data?.data || response?.data || {};
-        return Array.isArray(payload.users) ? payload.users : [];
-      };
-      const procurementUsers = usersFrom(procurementResponse);
-      const ictUsers = usersFrom(ictResponse);
-      const superAdminUsers = usersFrom(superAdminResponse);
-      const currentSuperAdmin = superAdminUsers.find((employee) => employee.is_current_user)
-        || superAdminUsers[0];
-      setProcurementHeads(procurementUsers);
-      setIctHeadAdmins(ictUsers);
-
-      if (!editData) {
-        setFormData((previous) => ({
-          ...previous,
-          buyer_reference_pm: procurementUsers.length
-            ? buyerReferenceValue(procurementUsers[0], 'Procurement')
-            : unassignedBuyerReference('Procurement', currentSuperAdmin),
-          buyer_reference_pe: ictUsers.length
-            ? buyerReferenceValue(ictUsers[0], 'ICT')
-            : unassignedBuyerReference('ICT', currentSuperAdmin),
-        }));
-      }
-    } catch (error) {
-      console.error('Error fetching buyer references:', error);
-      setProcurementHeads([]);
-      setIctHeadAdmins([]);
-      setBuyerReferenceLoadError('Assigned Procurement and ICT heads could not be loaded.');
-    } finally {
-      setBuyerReferencesLoading(false);
     }
   };
 
@@ -739,7 +680,6 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       || '';
     const title = requisition.product_service || requisition.title || '';
     const normalizedItems = normalizeRequisitionItems(requisition);
-    const isProjectRecommendation = requisition.requisition_type === 'project';
     const requisitionProject = Array.isArray(requisition.project_details)
       ? requisition.project_details[0]
       : null;
@@ -778,18 +718,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       items: normalizedItems,
       scope_of_services: requisition.description_reason || prev.scope_of_services,
       final_approver_notes: requisition.purchase_recommendation || prev.final_approver_notes,
-      management_approver: isProjectRecommendation
-        ? PROJECT_FINAL_APPROVER
-        : (prev.management_approver === PROJECT_FINAL_APPROVER ? '' : prev.management_approver),
+      management_approver: PROJECT_FINAL_APPROVER,
+      approved_by_name: PROJECT_FINAL_APPROVER,
+      approved_by_title: FINAL_APPROVER_TITLE,
       approval_log: (Array.isArray(prev.approval_log) && prev.approval_log.length
         ? prev.approval_log
-        : defaultApprovalLog(requisition.requisition_type)
+        : defaultApprovalLog()
       ).map((entry) => entry.stage === 'Final Management Sign-off'
         ? {
             ...entry,
-            approver: isProjectRecommendation
-              ? PROJECT_FINAL_APPROVER
-              : (entry.approver === PROJECT_FINAL_APPROVER ? '' : entry.approver),
+            approver: PROJECT_FINAL_APPROVER,
           }
         : entry),
     }));
@@ -878,14 +816,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   };
 
   const handleApprovalSelection = (index, userId) => {
-    const entry = formData.approval_log[index];
-    const options = entry.stage === 'Financial Approval' ? financeApprovers : approvalEmployees;
-    const employee = options.find((candidate) => String(candidate.id) === String(userId));
-    const fieldByStage = {
-      'Technical Approval': 'technical_approver',
-      'Financial Approval': 'financial_approver',
-      'Final Management Sign-off': 'management_approver',
-    };
+    const employee = approvalEmployees.find((candidate) => String(candidate.id) === String(userId));
     setFormData((previous) => {
       const approvalLog = [...previous.approval_log];
       approvalLog[index] = {
@@ -899,7 +830,9 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       return {
         ...previous,
         approval_log: approvalLog,
-        [fieldByStage[entry.stage]]: employee?.full_name || employee?.email || '',
+        management_approver: employee?.full_name || employee?.email || '',
+        approved_by_name: employee?.full_name || employee?.email || '',
+        approved_by_title: employeeDesignation(employee),
       };
     });
     if (errors.approval_log) setErrors((previous) => ({ ...previous, approval_log: null }));
@@ -971,6 +904,26 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     });
   };
 
+  const handleBuyerReferenceSelection = (employeeId) => {
+    const employee = approvalEmployees.find((candidate) => String(candidate.id) === String(employeeId));
+    setFormData((previous) => ({
+      ...previous,
+      buyer_reference_pm: employee?.full_name || employee?.email || '',
+      buyer_reference_email: employee?.email || '',
+    }));
+  };
+
+  const updateItemsTableHeader = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      items_table_headers: {
+        ...DEFAULT_ITEMS_TABLE_HEADERS,
+        ...prev.items_table_headers,
+        [field]: value,
+      },
+    }));
+  };
+
   const removeItem = (index) => {
     setFormData(prev => ({
       ...prev,
@@ -1014,9 +967,9 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     });
   }, [formData.items, formData.vat_percentage]);
 
-  const requiredApprovalStages = ['Technical Approval', 'Financial Approval', ...(isProjectPO ? ['Final Management Sign-off'] : [])];
+  const requiredApprovalStages = ['Final Management Sign-off'];
   const assignedApprovalStages = new Set(
-    formData.approval_log.filter((entry) => entry.user_id).map((entry) => entry.stage)
+    formData.approval_log.filter((entry) => entry.user_id || entry.approver).map((entry) => entry.stage)
   );
   const missingApprovalStages = requiredApprovalStages.filter((stage) => !assignedApprovalStages.has(stage));
 
@@ -1149,13 +1102,19 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     ));
   }).slice(0, 15);
 
+  const selectedBuyerEmployee = approvalEmployees.find((employee) =>
+    String(employee.full_name || employee.email || '').trim().toLowerCase()
+      === String(formData.buyer_reference_pm || '').trim().toLowerCase()
+  );
+
   const sections = [
     { id: 1, name: 'Header & Seller', icon: BuildingOfficeIcon },
     { id: 2, name: 'Buyer & Payment', icon: CurrencyDollarIcon },
     { id: 3, name: 'Project Details', icon: DocumentCheckIcon },
-    { id: 4, name: 'Items & Pricing', icon: CurrencyDollarIcon },
-    { id: 5, name: 'Contract Terms', icon: DocumentTextIcon },
-    { id: 6, name: 'Contacts & Approval', icon: UserGroupIcon },
+    { id: 4, name: 'POD/Scope', icon: DocumentTextIcon },
+    { id: 5, name: 'Items & Pricing', icon: CurrencyDollarIcon },
+    { id: 6, name: 'Contract Terms', icon: DocumentTextIcon },
+    { id: 7, name: 'Contacts & Approval', icon: UserGroupIcon },
   ];
 
   return (
@@ -1471,18 +1430,6 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Detailed Description</label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleChange}
-                    rows={4}
-                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="Detailed scope of work..."
-                  />
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-gray-700">Vendor Summary (included when sending to vendor) *</label>
                   <textarea
                     name="summary"
@@ -1568,7 +1515,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                       className="mt-1 block w-full cursor-not-allowed rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900"
                     />
                     <p className="mt-1 text-xs text-gray-500">
-                      Signed-in user{sessionUserEmail ? ` · ${sessionUserEmail}` : ''}
+                      Default PO invoicing contact · {DEFAULT_INVOICE_EMAIL}
                     </p>
                   </div>
                   
@@ -1584,54 +1531,19 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Head of Procurement</label>
-                    <select
-                      name="buyer_reference_pm"
-                      value={formData.buyer_reference_pm}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      disabled={buyerReferencesLoading}
-                    >
-                      <option value="">
-                        {buyerReferencesLoading ? 'Loading assigned employee...' : 'No Head of Procurement assigned'}
-                      </option>
-                      {formData.buyer_reference_pm
-                        && !procurementHeads.some((employee) => buyerReferenceValue(employee, 'Procurement') === formData.buyer_reference_pm)
-                        && <option value={formData.buyer_reference_pm}>{formData.buyer_reference_pm}</option>}
-                      {procurementHeads.map((employee) => {
-                        const value = buyerReferenceValue(employee, 'Procurement');
-                        return <option key={employee.id} value={value}>{value}</option>;
-                      })}
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">ICT Head Admin</label>
-                    <select
-                      name="buyer_reference_pe"
-                      value={formData.buyer_reference_pe}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      disabled={buyerReferencesLoading}
-                    >
-                      <option value="">
-                        {buyerReferencesLoading ? 'Loading assigned employee...' : 'No ICT Head Admin assigned'}
-                      </option>
-                      {formData.buyer_reference_pe
-                        && !ictHeadAdmins.some((employee) => buyerReferenceValue(employee, 'ICT') === formData.buyer_reference_pe)
-                        && <option value={formData.buyer_reference_pe}>{formData.buyer_reference_pe}</option>}
-                      {ictHeadAdmins.map((employee) => {
-                        const value = buyerReferenceValue(employee, 'ICT');
-                        return <option key={employee.id} value={value}>{value}</option>;
-                      })}
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Buyer Reference</label>
+                  <select
+                    value={selectedBuyerEmployee?.id || ''}
+                    onChange={(event) => handleBuyerReferenceSelection(event.target.value)}
+                    disabled={approversLoading}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                  >
+                    <option value="">{approversLoading ? 'Loading RADAI employees...' : '-- Select existing employee --'}</option>
+                    {approvalEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name || employee.email}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">{formData.buyer_reference_email || `Default: ${DEFAULT_BUYER_REFERENCE}. Email is fetched from RADAI.`}</p>
                 </div>
-                {buyerReferenceLoadError && (
-                  <p className="text-xs text-amber-700">{buyerReferenceLoadError}</p>
-                )}
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
@@ -2033,13 +1945,47 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
             </div>
           )}
 
-          {/* Section 4: Items & Pricing */}
+          {/* Section 4: PO Description and Scope */}
           {currentSection === 4 && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
+                <p className="text-sm text-gray-500">Edit the PO narrative and detailed scope. Changes appear immediately in the live preview.</p>
+              </div>
+              <div className="space-y-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">PO Description</label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    rows={8}
+                    className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="Enter the editable purchase order description or paste formatted Word text here."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Scope</label>
+                  <textarea
+                    name="scope_of_services"
+                    value={formData.scope_of_services}
+                    onChange={handleChange}
+                    rows={10}
+                    className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="Enter the complete PO scope. Long content automatically creates additional preview pages."
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Section 5: Items & Pricing */}
+          {currentSection === 5 && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Items & Pricing</h3>
-                  <p className="text-sm text-gray-500">Add line items, apply discounts, and review subtotal, tax, and grand total.</p>
+                  <p className="text-sm text-gray-500">Edit any column heading directly. Clear a heading to hide that column from the live and printed PO preview.</p>
                 </div>
                 <button
                   type="button"
@@ -2054,15 +2000,18 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Line Code</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Item Description</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Specification / API/ASME Standard Tag</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Comment</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Qty</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">UOM</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Unit Price</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Discount</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Total Price</th>
+                      {Object.entries(DEFAULT_ITEMS_TABLE_HEADERS).map(([field, defaultLabel]) => (
+                        <th key={field} className="px-2 py-2 text-left">
+                          <input
+                            type="text"
+                            value={formData.items_table_headers?.[field] ?? defaultLabel}
+                            onChange={(event) => updateItemsTableHeader(field, event.target.value)}
+                            aria-label={`Edit ${defaultLabel} column heading`}
+                            title="Editable table heading"
+                            className="min-w-24 w-full rounded border border-blue-200 bg-white px-2 py-1.5 text-xs font-semibold uppercase text-gray-600 focus:border-blue-500 focus:ring-blue-500"
+                          />
+                        </th>
+                      ))}
                       <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500">Actions</th>
                     </tr>
                   </thead>
@@ -2198,8 +2147,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
             </div>
           )}
 
-          {/* Section 5: Contract Terms */}
-          {currentSection === 5 && (
+          {/* Section 6: Contract Terms */}
+          {currentSection === 6 && (
             <div className="space-y-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
@@ -2305,8 +2254,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
             </div>
           )}
 
-          {/* Section 6: Contacts & Approval */}
-          {currentSection === 6 && (
+          {/* Section 7: Contacts & Approval */}
+          {currentSection === 7 && (
             <div className="space-y-6">
               <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div>
@@ -2326,8 +2275,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
               <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Approvers</h3>
-                    <p className="text-sm text-gray-500">Assign active employees. Status and decision dates are recorded later by each approver from their Approval tab.</p>
+                    <h3 className="text-lg font-semibold text-gray-900">Final Signatory</h3>
+                    <p className="text-sm text-gray-500">The final signatory and designation are fetched from the RADAI employee directory.</p>
                   </div>
                 </div>
 
@@ -2335,7 +2284,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Stage</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Signatory</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700">Approver</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700">Routing Comments</th>
                       </tr>
@@ -2343,24 +2292,22 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {formData.approval_log.map((entry, index) => (
                         <tr key={entry.stage}>
-                          <td className="whitespace-nowrap px-4 py-3 text-gray-900">{entry.stage}</td>
+                          <td className="whitespace-nowrap px-4 py-3 font-semibold text-gray-900">{entry.approver || PROJECT_FINAL_APPROVER}</td>
                           <td className="px-4 py-3">
                             <select
                               value={entry.user_id || ''}
                               onChange={(e) => handleApprovalSelection(index, e.target.value)}
-                              disabled={approversLoading || (isProjectPO && entry.stage === 'Final Management Sign-off')}
+                              disabled
                               className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                             >
                               <option value="">{approversLoading ? 'Loading active employees...' : '-- Select active employee --'}</option>
-                              {(entry.stage === 'Financial Approval' ? financeApprovers : approvalEmployees).map((employee) => (
+                              {approvalEmployees.map((employee) => (
                                 <option key={employee.id} value={employee.id}>
                                   {employee.full_name || employee.email}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.department ? ` (${employee.department})` : ''}
                                 </option>
                               ))}
                             </select>
-                            {entry.stage === 'Financial Approval' && (
-                              <p className="mt-1 text-xs text-gray-500">Only active employees with Finance department or Finance-system access are listed.</p>
-                            )}
+                            <p className="mt-1 text-xs text-gray-500">{formData.approved_by_title || FINAL_APPROVER_TITLE}</p>
                           </td>
                           <td className="px-4 py-3">
                             <input
@@ -2427,7 +2374,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
           </div>
           <aside className="min-h-[760px] overflow-hidden border-t border-slate-300 xl:min-h-0 xl:border-l xl:border-t-0" aria-label="Live purchase order preview">
-            <PurchaseOrderLivePreview formData={formData} vendor={selectedVendor} prReference={effectiveRequisition} files={files} />
+            <PurchaseOrderLivePreview formData={formData} vendor={selectedVendor} files={files} />
           </aside>
         </form>
 
@@ -2442,8 +2389,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
               ← Previous
             </button>
             <button
-              onClick={() => setCurrentSection(Math.min(6, currentSection + 1))}
-              disabled={currentSection === 6 || !hasRequiredRequisition}
+              onClick={() => setCurrentSection(Math.min(7, currentSection + 1))}
+              disabled={currentSection === 7 || !hasRequiredRequisition}
               className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
             >
               Next →

@@ -17,6 +17,7 @@ import { useSelector } from 'react-redux';
 import apiClient from '../../services/api.service';
 import { uploadSignedRequisitionPdf, validateSignedRequisitionPdf } from './PurchaseRequisitionPdfImport';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
+import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -76,16 +77,27 @@ const employeeSearchText = (employee) => [
   employee.department,
 ].filter(Boolean).join(' ').toLowerCase();
 
-const ActiveEmployeePicker = ({ label, value, employees, onChange, required = false, disabled = false, helperText = '' }) => {
+const ActiveEmployeePicker = ({
+  label,
+  value,
+  employees,
+  onChange,
+  required = false,
+  disabled = false,
+  helperText = '',
+  tableSuffix = '',
+  onTableSuffixChange = null,
+  hideLabel = false,
+}) => {
   const [search, setSearch] = useState('');
   const selected = employees.find(employee => String(employee.id) === String(value));
   const matches = employees.filter(employee => employeeSearchText(employee).includes(search.trim().toLowerCase())).slice(0, 20);
 
   return (
     <div>
-      <label className="mb-2 block text-sm font-medium text-gray-700">
+      {!hideLabel && <label className="mb-2 block text-sm font-medium text-gray-700">
         {label} {required && <span className="text-red-500">*</span>}
-      </label>
+      </label>}
       {selected ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
           <div className="min-w-0">
@@ -116,6 +128,18 @@ const ActiveEmployeePicker = ({ label, value, employees, onChange, required = fa
         </div>
       )}
       {helperText && <p className="mt-1 text-xs text-gray-500">{helperText}</p>}
+      {onTableSuffixChange && (
+        <div className="mt-3">
+          <label className="mb-1 block text-xs font-semibold text-gray-600">Approval table suffix</label>
+          <input
+            value={tableSuffix}
+            onChange={(event) => onTableSuffixChange(event.target.value.slice(0, 20))}
+            maxLength={20}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-purple-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+            placeholder="e.g., L0- PRO"
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -127,6 +151,9 @@ ActiveEmployeePicker.propTypes = {
   required: PropTypes.bool,
   disabled: PropTypes.bool,
   helperText: PropTypes.string,
+  tableSuffix: PropTypes.string,
+  onTableSuffixChange: PropTypes.func,
+  hideLabel: PropTypes.bool,
 };
 
 const buildInitialFormData = (editData) => ({
@@ -169,6 +196,7 @@ const selectedApproversFromWorkflow = (workflow = []) => {
     engineering_manager: null,
     manager_projects: null,
     vp_operations: null,
+    general_manager: null,
   };
 
   workflow.forEach((stage) => {
@@ -185,6 +213,7 @@ const selectedApproversFromWorkflow = (workflow = []) => {
     else if (role.includes('engineering manager')) selection.engineering_manager = userId;
     else if (role.includes('manager of projects') || role.includes('projects manager')) selection.manager_projects = userId;
     else if (role.includes('vice president') || role.includes('vp operations') || role.includes('procurement manager')) selection.vp_operations = userId;
+    else if (level === 5 || role.includes('general manager')) selection.general_manager = userId;
     else if (role.includes('project manager') || role.includes('department manager') || role.includes('technical review')) {
       selection.project_manager = userId;
       if (userId && !selection.level_one.includes(userId)) selection.level_one.push(userId);
@@ -192,6 +221,31 @@ const selectedApproversFromWorkflow = (workflow = []) => {
   });
 
   return selection;
+};
+
+const stageLabelsFromWorkflow = (workflow = [], savedLabels = {}) => {
+  const labels = {
+    procurement: 'L0- PRO',
+    engineering_manager: 'L2 MoE',
+    manager_projects: 'L3 MoP',
+    vp_operations: 'L4 VOP/VP',
+    general_manager: 'CEO',
+  };
+
+  workflow.forEach((stage) => {
+    const userId = stage?.user_id || stage?.approver_id;
+    const approvalLabel = stage?.approval_label || savedLabels?.[userId];
+    if (!approvalLabel) return;
+    const role = `${stage.role || ''} ${stage.stage || ''}`.toLowerCase();
+    const level = Number(stage.level);
+    if (level === 0 || role.includes('procurement department')) labels.procurement = approvalLabel;
+    else if (level === 5 || role.includes('general manager')) labels.general_manager = approvalLabel;
+    else if (role.includes('engineering manager') || role.includes('manager of engineering')) labels.engineering_manager = approvalLabel;
+    else if (role.includes('manager of projects') || role.includes('projects manager')) labels.manager_projects = approvalLabel;
+    else if (role.includes('vice president') || role.includes('vp delivery') || role.includes('vp operations')) labels.vp_operations = approvalLabel;
+  });
+
+  return labels;
 };
 
 const buildApprovalWorkflow = ({
@@ -203,6 +257,9 @@ const buildApprovalWorkflow = ({
   managerProjects,
   vpOperations,
   activeEmployees,
+  levelOneLabels,
+  poApplicable,
+  stageLabels,
 }) => {
   const workflow = [];
   let step = 1;
@@ -211,7 +268,7 @@ const buildApprovalWorkflow = ({
     const user = activeEmployees.find(candidate => candidate.id === selectedApprovers.procurement);
     workflow.push({
       step: step++, level: 0, stage: 'Level 0 - Procurement Department Approval',
-      role: 'Procurement Department', user_id: selectedApprovers.procurement,
+      role: 'Procurement Department', approval_label: stageLabels?.procurement || 'L0- PRO', user_id: selectedApprovers.procurement,
       user_name: user?.full_name || user?.username || user?.email || '',
       username: user?.username || '', user_email: user?.email || '', status: 'pending', approved_at: null,
     });
@@ -221,7 +278,8 @@ const buildApprovalWorkflow = ({
     const user = projectManagers.find(candidate => candidate.id === userId);
     workflow.push({
       step: step++, level: 1, stage: `Level 1 - Approver ${index + 1} of ${levelOneApproverCount}`,
-      role: 'Level 1 Approver', approval_group: 'level_1', group_mode: 'all', user_id: userId,
+      role: 'Level 1 Approver', approval_label: levelOneLabels?.[userId] || `L1-${index + 1}`,
+      approval_group: 'level_1', group_mode: 'all', user_id: userId,
       user_name: user?.full_name || user?.email || '', status: 'pending', approved_at: null,
     });
   });
@@ -230,7 +288,7 @@ const buildApprovalWorkflow = ({
     const user = engineeringManagers.find(candidate => candidate.id === selectedApprovers.engineering_manager);
     workflow.push({
       step: step++, level: 2, stage: 'Level 2 - Manager of Engineering (Optional)',
-      role: 'Manager of Engineering (MoE)', user_id: selectedApprovers.engineering_manager,
+      role: 'Manager of Engineering (MoE)', approval_label: stageLabels?.engineering_manager || 'L2 MoE', user_id: selectedApprovers.engineering_manager,
       user_name: user?.full_name || user?.email || '', status: 'pending', approved_at: null,
     });
   }
@@ -239,6 +297,7 @@ const buildApprovalWorkflow = ({
     const user = managerProjects.find(candidate => candidate.id === selectedApprovers.manager_projects);
     workflow.push({
       step: step++, level: 3, stage: 'Level 3 - Manager of Projects', role: 'Manager of Projects (MoP)',
+      approval_label: stageLabels?.manager_projects || 'L3 MoP',
       user_id: selectedApprovers.manager_projects, user_name: user?.full_name || user?.email || '',
       status: 'pending', approved_at: null,
     });
@@ -250,8 +309,19 @@ const buildApprovalWorkflow = ({
       step: step++, level: requisitionType === 'general' ? 2 : 4,
       stage: requisitionType === 'general' ? 'Level 2 - Vice President' : 'Level 4 - VP Delivery',
       role: requisitionType === 'general' ? 'Vice President' : 'VP Delivery',
+      approval_label: stageLabels?.vp_operations || 'L4 VOP/VP',
       user_id: selectedApprovers.vp_operations, user_name: user?.full_name || user?.email || '',
       status: 'pending', approved_at: null,
+    });
+  }
+
+  if (!poApplicable && selectedApprovers.general_manager) {
+    const user = activeEmployees.find(candidate => candidate.id === selectedApprovers.general_manager);
+    workflow.push({
+      step: step++, level: 5, stage: 'Level 5 - General Manager Approval',
+      role: 'General Manager', approval_label: stageLabels?.general_manager || 'CEO', user_id: selectedApprovers.general_manager,
+      user_name: user?.full_name || user?.username || user?.email || '',
+      username: user?.username || '', user_email: user?.email || '', status: 'pending', approved_at: null,
     });
   }
 
@@ -259,6 +329,7 @@ const buildApprovalWorkflow = ({
 };
 
 const DEFAULT_LEVEL_ZERO_PROCUREMENT_NAME = 'richa hannah thomas';
+const DEFAULT_LEVEL_FIVE_GENERAL_MANAGER_NAME = 'jarmo suominen';
 
 const normalizeEmployeeName = (employee) => String(
   employee?.full_name
@@ -316,7 +387,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   const [approverLoadError, setApproverLoadError] = useState('');
   const [levelOneApproverCount, setLevelOneApproverCount] = useState(1);
   const [levelOneSearch, setLevelOneSearch] = useState('');
-  const [approvalDefaults, setApprovalDefaults] = useState({ procurement: null, vp_operations: null });
+  const [approvalDefaults, setApprovalDefaults] = useState({ procurement: null, vp_operations: null, general_manager: null });
+  const [levelOneLabels, setLevelOneLabels] = useState({});
+  const [stageLabels, setStageLabels] = useState(() => stageLabelsFromWorkflow(
+    editData?.approval_workflow_config || [],
+    editData?.price_remarks_data?.approval_table_labels || {},
+  ));
   const [selectedApprovers, setSelectedApprovers] = useState({
     procurement: null,
     level_one: [],
@@ -324,6 +400,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     engineering_manager: null,
     manager_projects: null,
     vp_operations: null,
+    general_manager: null,
   });
 
   useEffect(() => {
@@ -338,7 +415,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     const { approval_workflow_config: _workflow, ...initialAutoSavePayload } = initialData;
     lastAutoSaveFingerprintRef.current = JSON.stringify(initialAutoSavePayload);
     const initialApprovers = selectedApproversFromWorkflow(editData?.approval_workflow_config || []);
+    const savedApprovalLabels = editData?.price_remarks_data?.approval_table_labels || {};
     setSelectedApprovers(initialApprovers);
+    setLevelOneLabels(Object.fromEntries(
+      (editData?.approval_workflow_config || [])
+        .filter(stage => Number(stage?.level) === 1 && (stage?.user_id || stage?.approver_id))
+        .map((stage, index) => [
+          stage.user_id || stage.approver_id,
+          stage.approval_label || savedApprovalLabels[stage.user_id || stage.approver_id] || `L1-${index + 1}`,
+        ]),
+    ));
+    setStageLabels(stageLabelsFromWorkflow(editData?.approval_workflow_config || [], savedApprovalLabels));
     setLevelOneApproverCount(Math.max(1, initialApprovers.level_one.length));
     setLevelOneSearch('');
     setFiles([]);
@@ -448,17 +535,25 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       ));
       const procurementDefault = richaProcurementManager || procurementCandidates[0] || currentSuperAdmin || null;
       const vpDefault = matchedVpCandidates[0] || null;
+      const generalManagerDefault = activeEmployees.find(user => (
+        normalizeEmployeeName(user) === DEFAULT_LEVEL_FIVE_GENERAL_MANAGER_NAME
+      )) || null;
 
       setProjectManagers(activeEmployees);
       setEngineeringManagers(activeEmployees);
       setManagerProjects(activeEmployees);
       setVpOperations(activeEmployees);
-      setApprovalDefaults({ procurement: procurementDefault?.id || null, vp_operations: vpDefault?.id || null });
+      setApprovalDefaults({
+        procurement: procurementDefault?.id || null,
+        vp_operations: vpDefault?.id || null,
+        general_manager: generalManagerDefault?.id || null,
+      });
       setSelectedApprovers(previous => ({
         ...previous,
         procurement: previous.procurement || procurementDefault?.id || null,
         vp_operations: previous.vp_operations
           || (formDataRef.current.requisition_type === 'project' ? vpDefault?.id || null : null),
+        general_manager: previous.general_manager || generalManagerDefault?.id || null,
       }));
     } catch (error) {
       console.error('Error fetching approvers:', error);
@@ -486,6 +581,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       const next = [...selected, userId];
       return { ...prev, level_one: next, project_manager: next[0] || null };
     });
+    setLevelOneLabels(previous => ({
+      ...previous,
+      [userId]: previous[userId] || `L1-${(selectedApprovers.level_one || []).length + 1}`,
+    }));
     setLevelOneSearch('');
     if (errors.approval_workflow_config) setErrors(prev => ({ ...prev, approval_workflow_config: null }));
   };
@@ -495,6 +594,19 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       const next = (prev.level_one || []).filter(id => id !== userId);
       return { ...prev, level_one: next, project_manager: next[0] || null };
     });
+    setLevelOneLabels(previous => {
+      const next = { ...previous };
+      delete next[userId];
+      return next;
+    });
+  };
+
+  const changeLevelOneLabel = (userId, value) => {
+    setLevelOneLabels(previous => ({ ...previous, [userId]: value.slice(0, 20) }));
+  };
+
+  const changeStageLabel = (stage, value) => {
+    setStageLabels(previous => ({ ...previous, [stage]: value.slice(0, 20) }));
   };
 
   const changeLevelOneCount = (rawValue) => {
@@ -714,6 +826,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       engineering_manager: type === 'project' ? previous.engineering_manager : null,
       manager_projects: type === 'project' ? previous.manager_projects : null,
       vp_operations: type === 'project' ? (previous.vp_operations || approvalDefaults.vp_operations) : null,
+      general_manager: previous.general_manager || approvalDefaults.general_manager,
     }));
   };
 
@@ -828,6 +941,28 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       net_total_excl_vat: prev.total_price || ''
     }));
   }, [formData.total_price]);
+
+  useEffect(() => {
+    const convertedTotal = convertToAed(formData.net_total_excl_vat, formData.currency);
+    const exchangeRate = AED_EXCHANGE_RATES[formData.currency];
+    setFormData(prev => {
+      const priceRemarksData = prev.price_remarks_data || {};
+      const nextTotal = convertedTotal === null ? '' : convertedTotal.toFixed(2);
+      if (
+        String(priceRemarksData.net_total_aed ?? '') === nextTotal
+        && Number(priceRemarksData.aed_exchange_rate) === Number(exchangeRate)
+      ) return prev;
+      return {
+        ...prev,
+        price_remarks_data: {
+          ...priceRemarksData,
+          net_total_aed: nextTotal,
+          aed_exchange_rate: exchangeRate || null,
+          aed_rate_currency: formData.currency,
+        },
+      };
+    });
+  }, [formData.currency, formData.net_total_excl_vat]);
 
   useEffect(() => {
     setFormData(prev => {
@@ -1074,18 +1209,21 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         managerProjects,
         vpOperations,
         activeEmployees: projectManagers,
+        levelOneLabels,
+        poApplicable: formData.po_applicable,
+        stageLabels,
       });
 
       const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount;
       const requiredApproversMissing = formData.requisition_type === 'general'
-        ? (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations)
-        : (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.manager_projects || !selectedApprovers.vp_operations);
+        ? (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations || (!formData.po_applicable && !selectedApprovers.general_manager))
+        : (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.manager_projects || !selectedApprovers.vp_operations || (!formData.po_applicable && !selectedApprovers.general_manager));
       if (submitForApproval && requiredApproversMissing) {
         setErrors(prev => ({
           ...prev,
           approval_workflow_config: formData.requisition_type === 'general'
-            ? `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), and the Level 2 Vice President.`
-            : `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), Level 3 (MoP), and Level 4 (VP Delivery). Level 2 (MoE) is optional.`
+            ? `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), the Level 2 Vice President${formData.po_applicable ? '.' : ', and default Level 5 General Manager.'}`
+            : `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), Level 3 (MoP), Level 4 (VP Delivery)${formData.po_applicable ? '. Level 2 (MoE) is optional.' : ', and default Level 5 General Manager. Level 2 (MoE) is optional.'}`
         }));
         alert('Complete the required approval levels before submitting.');
         return;
@@ -1093,7 +1231,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       
       const formDataWithWorkflow = {
         ...formData,
-        approval_workflow_config: approvalWorkflow
+        approval_workflow_config: approvalWorkflow,
+        price_remarks_data: {
+          ...(formData.price_remarks_data || {}),
+          approval_table_labels: Object.fromEntries(
+            approvalWorkflow
+              .filter(stage => stage.user_id && stage.approval_label)
+              .map(stage => [String(stage.user_id), stage.approval_label]),
+          ),
+        },
       };
       
       Object.keys(formDataWithWorkflow).forEach(key => {
@@ -1187,6 +1333,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     managerProjects,
     vpOperations,
     activeEmployees: projectManagers,
+    levelOneLabels,
+    poApplicable: formData.po_applicable,
+    stageLabels,
   });
   const livePreviewRequisition = {
     ...formData,
@@ -2221,95 +2370,35 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
                 {formData.requisition_type === 'project'
-                  ? 'Project workflow: Procurement Level 0 → Level 1 → optional Level 2 → Level 3 → default Level 4.'
-                  : 'Internal workflow: Procurement Level 0 → Level 1 Department Manager → selectable Level 2 Vice President.'}
+                  ? `Project workflow: Procurement Level 0 → Level 1 → optional Level 2 → Level 3 → default Level 4${formData.po_applicable ? '.' : ' → default Level 5 General Manager.'}`
+                  : `Internal workflow: Procurement Level 0 → Level 1 Department Manager → selectable Level 2 Vice President${formData.po_applicable ? '.' : ' → default Level 5 General Manager.'}`}
               </p>
 
-              <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-4">
-                <ActiveEmployeePicker
-                  label="Level 0 - Procurement Department Approval"
-                  value={selectedApprovers.procurement || ''}
-                  employees={projectManagers}
-                  onChange={(value) => handleApproverChange('procurement', value)}
-                  required
-                  disabled
-                  helperText="Default: Richa Hannah Thomas, Procurement Manager. Her username and email are recorded in the workflow."
-                />
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2 rounded-lg border border-purple-200 bg-purple-50/40 p-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Level 1 - Multiple Approvers (all must approve) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[180px_1fr]">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Number of approvers</label>
-                      <input type="number" min="1" max="20" value={levelOneApproverCount} onChange={(e) => changeLevelOneCount(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
-                    </div>
-                    <div className="relative">
-                      <label className="mb-1 block text-xs font-semibold text-gray-600">Search any active employee</label>
-                      <input value={levelOneSearch} onChange={(e) => setLevelOneSearch(e.target.value)} disabled={loadingApprovers || (selectedApprovers.level_one || []).length >= levelOneApproverCount} placeholder="Type employee name, email, ID, title, or department" className="w-full rounded-lg border border-gray-300 px-3 py-2" />
-                      {levelOneSearch.trim() && (selectedApprovers.level_one || []).length < levelOneApproverCount && (
-                        <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                          {projectManagers.filter(user => {
-                            const haystack = `${user.full_name || ''} ${user.email || ''} ${user.employee_id || ''} ${user.job_title || ''} ${user.department || ''}`.toLowerCase();
-                            return haystack.includes(levelOneSearch.trim().toLowerCase()) && !(selectedApprovers.level_one || []).includes(user.id);
-                          }).slice(0, 20).map(user => (
-                            <button key={user.id} type="button" onClick={() => addLevelOneApprover(user.id)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-purple-50 last:border-0">
-                              <span className="font-semibold text-gray-900">{user.full_name || user.email}</span>
-                              <span className="ml-2 text-xs text-gray-500">{user.job_title || user.department || user.employee_id}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(selectedApprovers.level_one || []).map(userId => {
-                      const user = projectManagers.find(candidate => candidate.id === userId);
-                      return <span key={userId} className="inline-flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1.5 text-sm text-purple-800">{user?.full_name || userId}<button type="button" onClick={() => removeLevelOneApprover(userId)} className="font-bold hover:text-red-600" aria-label="Remove approver">&times;</button></span>;
-                    })}
-                    <span className={`px-2 py-1.5 text-xs font-semibold ${(selectedApprovers.level_one || []).length === levelOneApproverCount ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      {(selectedApprovers.level_one || []).length} of {levelOneApproverCount} selected
-                    </span>
-                  </div>
+              <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
+                <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_100px] md:items-end">
+                  <div><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Level 1 required</label><input type="number" min="1" max="20" value={levelOneApproverCount} onChange={(event) => changeLevelOneCount(event.target.value)} className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" /></div>
+                  <div className="relative"><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Add Level 1 approver</label><input value={levelOneSearch} onChange={(event) => setLevelOneSearch(event.target.value)} disabled={loadingApprovers || (selectedApprovers.level_one || []).length >= levelOneApproverCount} placeholder="Search employee by name, email, ID, title, or department" className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" />{levelOneSearch.trim() && (selectedApprovers.level_one || []).length < levelOneApproverCount && <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">{projectManagers.filter(user => employeeSearchText(user).includes(levelOneSearch.trim().toLowerCase()) && !(selectedApprovers.level_one || []).includes(user.id)).slice(0, 20).map(user => <button key={user.id} type="button" onClick={() => addLevelOneApprover(user.id)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-purple-50 last:border-0"><span className="block font-semibold text-gray-900">{user.full_name || user.email}</span><span className="block text-xs text-gray-500">{user.email} · {user.job_title || user.department || user.employee_id}</span></button>)}</div>}</div>
+                  <div className={`rounded-full px-3 py-2 text-center text-xs font-bold ${(selectedApprovers.level_one || []).length === levelOneApproverCount ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{(selectedApprovers.level_one || []).length} of {levelOneApproverCount}</div>
                 </div>
-                
-                {formData.requisition_type === 'project' && (
-                  <ActiveEmployeePicker
-                    label="Level 2 - Manager of Engineering (MoE) (Optional)"
-                    value={selectedApprovers.engineering_manager || ''}
-                    employees={engineeringManagers}
-                    onChange={(value) => handleApproverChange('engineering_manager', value)}
-                    disabled={loadingApprovers}
-                    helperText="Search and select any active employee."
-                  />
-                )}
-                
-                {formData.requisition_type === 'project' && (
-                  <ActiveEmployeePicker
-                    label="Level 3 - Manager of Projects (MoP)"
-                    value={selectedApprovers.manager_projects || ''}
-                    employees={managerProjects}
-                    onChange={(value) => handleApproverChange('manager_projects', value)}
-                    required
-                    disabled={loadingApprovers}
-                    helperText="Search, select, or edit using any active employee."
-                  />
-                )}
-                
-                <ActiveEmployeePicker
-                  label={`Level ${formData.requisition_type === 'general' ? '2' : '4'} - ${formData.requisition_type === 'general' ? 'Vice President / Delivery Approver' : 'VP Delivery'}`}
-                  value={selectedApprovers.vp_operations || ''}
-                  employees={vpOperations}
-                  onChange={(value) => handleApproverChange('vp_operations', value)}
-                  required
-                  disabled={loadingApprovers || formData.requisition_type === 'project'}
-                  helperText={formData.requisition_type === 'project'
-                    ? 'Default VP Delivery employee for project recommendations.'
-                    : 'Search and select any active employee for an Internal / General recommendation.'}
-                />
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-gray-300 bg-white shadow-sm">
+                <table className="min-w-[900px] w-full table-fixed border-collapse text-sm">
+                  <thead className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-white"><tr><th className="w-[150px] px-4 py-3">Level label</th><th className="w-[230px] px-4 py-3">Approval role</th><th className="px-4 py-3">Selected approver</th><th className="w-[110px] px-4 py-3 text-center">Status / Action</th></tr></thead>
+                  <tbody className="divide-y divide-gray-200">
+                    <tr className="bg-blue-50/50"><td className="p-3 align-top"><input value={stageLabels.procurement} onChange={(event) => changeStageLabel('procurement', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Procurement Department</p><p className="mt-1 text-xs text-gray-500">Level 0 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Procurement Department Approval" value={selectedApprovers.procurement || ''} employees={projectManagers} onChange={(value) => handleApproverChange('procurement', value)} required disabled /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Default</span></td></tr>
+
+                    {(selectedApprovers.level_one || []).length ? (selectedApprovers.level_one || []).map((userId, index) => { const user = projectManagers.find(candidate => candidate.id === userId); return <tr key={userId}><td className="p-3"><input value={levelOneLabels[userId] ?? `L1-${index + 1}`} onChange={(event) => changeLevelOneLabel(userId, event.target.value)} maxLength={20} aria-label={`Approval table level for ${user?.full_name || userId}`} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3"><p className="font-semibold text-gray-900">Level 1 Approver {index + 1}</p><p className="mt-1 text-xs text-gray-500">All Level 1 approvers must approve</p></td><td className="p-3"><p className="font-semibold text-gray-900">{user?.full_name || userId}</p><p className="text-xs text-gray-500">{user?.email || user?.job_title || 'Active employee'}</p></td><td className="p-3 text-center"><button type="button" onClick={() => removeLevelOneApprover(userId)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button></td></tr>; }) : <tr><td className="p-3 text-center font-semibold text-purple-700">L1</td><td className="p-3"><p className="font-semibold">Level 1 Approvers</p><p className="text-xs text-gray-500">Required</p></td><td className="p-3 text-gray-500">Use the search box above to add approvers.</td><td className="p-3 text-center text-xs font-semibold text-amber-700">0 selected</td></tr>}
+
+                    {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input value={stageLabels.engineering_manager} onChange={(event) => changeStageLabel('engineering_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Engineering (MoE)</p><p className="mt-1 text-xs text-gray-500">Level 2 · Optional</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Engineering (MoE)" value={selectedApprovers.engineering_manager || ''} employees={engineeringManagers} onChange={(value) => handleApproverChange('engineering_manager', value)} disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">Optional</span></td></tr>}
+
+                    {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input value={stageLabels.manager_projects} onChange={(event) => changeStageLabel('manager_projects', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Projects (MoP)</p><p className="mt-1 text-xs text-gray-500">Level 3 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Projects (MoP)" value={selectedApprovers.manager_projects || ''} employees={managerProjects} onChange={(value) => handleApproverChange('manager_projects', value)} required disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">Required</span></td></tr>}
+
+                    <tr><td className="p-3 align-top"><input value={stageLabels.vp_operations} onChange={(event) => changeStageLabel('vp_operations', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">{formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'}</p><p className="mt-1 text-xs text-gray-500">{formData.requisition_type === 'general' ? 'Level 2 · Required' : 'Level 4 · Required'}</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Vice President / Delivery Approver" value={selectedApprovers.vp_operations || ''} employees={vpOperations} onChange={(value) => handleApproverChange('vp_operations', value)} required disabled={loadingApprovers || formData.requisition_type === 'project'} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{formData.requisition_type === 'project' ? 'Default' : 'Required'}</span></td></tr>
+
+                    {!formData.po_applicable && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">General Manager</p><p className="mt-1 text-xs text-gray-500">Level 5 · Required when PO is No</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="General Manager Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} required disabled />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">Jarmo Suominen could not be found as an active employee.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
+                  </tbody>
+                </table>
               </div>
 
               {approverLoadError && (

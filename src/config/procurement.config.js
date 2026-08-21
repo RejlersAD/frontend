@@ -399,3 +399,23 @@ export const getOrderTabs = () => {
 export const getOrderTabByKey = (key) => {
   return PROCUREMENT_CONFIG.orderTabs[key] || null
 }
+
+// Business-configured currency multipliers used by Procurement documents.
+// One unit of the source currency multiplied by this value gives AED.
+// Keep these aligned with the Finance team's approved operational rates.
+export const AED_EXCHANGE_RATES = Object.freeze({
+  AED: 1,
+  USD: 3.6725,
+  EUR: 4.0,
+  GBP: 4.68,
+  SAR: 0.9793,
+  INR: 0.044,
+})
+
+export const convertToAed = (amount, currency) => {
+  if (amount === null || amount === undefined || amount === '') return null
+  const numericAmount = Number(amount)
+  const rate = AED_EXCHANGE_RATES[String(currency || '').toUpperCase()]
+  if (!Number.isFinite(numericAmount) || numericAmount < 0 || !Number.isFinite(rate)) return null
+  return Math.round((numericAmount * rate + Number.EPSILON) * 100) / 100
+}
