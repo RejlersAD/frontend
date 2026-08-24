@@ -47,6 +47,8 @@ const CRSMultipleRevision = FEATURE_FLAGS.crsMultiRevisionVersion === 'classic' 
 import ProjectControl from './pages/ProjectControl'
 import ProjectsPage from './pages/Projects/ProjectsPage'
 import PlanningPackagePage from './pages/PlanningPackagePage'
+import PlannerWorkspacePage from './pages/PlannerWorkspacePage'
+import ProposalWorkspacePage from './pages/ProposalWorkspacePage'
 import GeneralQHSE from './pages/QHSE/GeneralQHSE'
 import QHSEHub from './pages/QHSE/QHSEHub'
 // SOFT-CODED: QHSEInterconnectedDemo removed (not needed)
@@ -1333,6 +1335,22 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="project_control">
               <PlanningPackagePage />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="planning-workspace/:projectId"
+          element={
+            <ModuleProtectedRoute moduleCode="project_control">
+              <PlannerWorkspacePage />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="proposal-workspace/:projectId"
+          element={
+            <ModuleProtectedRoute moduleCode="project_control">
+              <ProposalWorkspacePage />
             </ModuleProtectedRoute>
           }
         />
