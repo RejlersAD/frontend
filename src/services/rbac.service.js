@@ -3,7 +3,7 @@
  */
 import apiService, { apiClientLongTimeout } from './api.service';
 
-const RBAC_BASE_URL = '/rbac';
+const RBAC_BASE_URL = '/api/v1/rbac';
 
 class RBACService {
   // ==================== Organizations ====================
