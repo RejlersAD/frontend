@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { PROJECT_CONTROL_SUBFEATURES } from '../config/projectControl.config';
-import apiClient from '../services/api.service';
+import apiClient, { apiClientLongTimeout } from '../services/api.service';
 import {
   PLANNING_ENDPOINTS,
   PLANNING_FILE_CATEGORIES,
@@ -315,7 +315,10 @@ const PlanningPackagePage = () => {
     setAnalyzing(true);
     setBanner(null);
     try {
-      const res = await apiClient.post(PLANNING_ENDPOINTS.analyze(selectedProjectId));
+      // Up to 2 sequential Claude calls (BYOK) can approach ~100s worst case —
+      // use the long-timeout client so the frontend doesn't give up on a
+      // request the backend is still legitimately processing.
+      const res = await apiClientLongTimeout.post(PLANNING_ENDPOINTS.analyze(selectedProjectId));
       setIntelligencePreview(res.data.intelligence);
       setCurrentStep('intelligence');
     } catch (err) {
@@ -353,7 +356,10 @@ const PlanningPackagePage = () => {
         ),
         hse_studies: intelligencePreview.hse_studies,
       } : undefined;
-      const res = await apiClient.post(
+      // Runs intelligence + WBS + schedule + EDDR + manhours + validation +
+      // narrative in one request — up to 3 sequential Claude calls (BYOK) can
+      // approach 135s worst case, over the default apiClient's 120s timeout.
+      const res = await apiClientLongTimeout.post(
         PLANNING_ENDPOINTS.generate(selectedProjectId),
         overrides ? { intelligence_overrides: overrides } : {},
       );
