@@ -1,10 +1,21 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
-import { ChevronDown, ChevronRight, GitBranch, Layers, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Columns, GitBranch, Layers, Trash2 } from 'lucide-react'
 
 const DAY_MS = 86400000
 const SUMMARY_HEIGHT = 44
 const ACTIVITY_HEIGHT = 40
+
+const COLUMN_LABELS = ['ID', 'Deliverable / workflow activity', 'Stage', 'Dur.', 'CPM Start', 'CPM Finish', 'Float', 'Pred.', 'Responsible', '']
+const DEFAULT_COLUMN_WIDTHS = [52, 270, 125, 62, 82, 82, 52, 45, 120, 30]
+const MIN_COLUMN_WIDTHS = [52, 160, 90, 58, 82, 82, 50, 45, 100, 30]
+const MAX_COLUMN_WIDTHS = [160, 520, 220, 110, 130, 130, 100, 90, 260, 46]
+
+const clampWidth = (value, index) => Math.min(MAX_COLUMN_WIDTHS[index], Math.max(MIN_COLUMN_WIDTHS[index], value))
+const contentWidth = (values, index) => {
+  const longest = values.reduce((length, value) => Math.max(length, String(value ?? '').length), COLUMN_LABELS[index].length)
+  return clampWidth(Math.ceil(longest * 7.2 + 28), index)
+}
 
 const dayValue = value => value ? new Date(`${value}T00:00:00Z`).getTime() : null
 const dayDiff = (start, end) => Math.round((end - start) / DAY_MS)
@@ -43,6 +54,8 @@ export default function PlannerActivitiesGantt({
   const [expanded, setExpanded] = useState(new Set())
   const [zoom, setZoom] = useState('month')
   const [showLogic, setShowLogic] = useState(true)
+  const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS)
+  const columnResize = useRef(null)
   const markerPrefix = useId().replaceAll(':', '')
 
   const groups = useMemo(() => {
@@ -90,6 +103,46 @@ export default function PlannerActivitiesGantt({
     milestoneRows.forEach(activity => result.push({ kind: 'activity', activity, standalone: true }))
     return result
   }, [expanded, groups, milestoneRows])
+
+  const detailsWidth = useMemo(() => columnWidths.reduce((sum, width) => sum + width, 0), [columnWidths])
+
+  const fitColumns = () => {
+    const values = COLUMN_LABELS.map(label => [label])
+    rows.forEach(row => {
+      const item = row.kind === 'summary' ? row : row.activity
+      values[0].push(row.kind === 'summary' ? 'WBS' : item.external_id)
+      values[1].push(row.kind === 'summary' ? row.deliverable : item.name)
+      values[2].push(row.kind === 'summary' ? `${row.task_count} tasks` : (item.metadata?.workflow_stage_code || (item.is_milestone ? 'MILESTONE' : '')))
+      values[3].push(row.kind === 'summary' ? '' : item.duration_days)
+      values[4].push(item.planned_start)
+      values[5].push(item.planned_finish)
+      values[6].push(row.kind === 'summary' ? '' : item.total_float_days)
+      values[7].push(row.kind === 'summary' ? '' : predecessorCounts[item.id] || 0)
+      values[8].push(row.kind === 'summary' ? row.discipline : item.responsible_role)
+    })
+    setColumnWidths(values.map((column, index) => contentWidth(column, index)))
+  }
+
+  useEffect(() => {
+    const handlePointerMove = event => {
+      const active = columnResize.current
+      if (!active) return
+      const nextWidth = clampWidth(active.startWidth + event.clientX - active.startX, active.index)
+      setColumnWidths(current => current.map((width, index) => index === active.index ? nextWidth : width))
+    }
+    const handlePointerUp = () => { columnResize.current = null }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [])
+
+  const startColumnResize = (event, index) => {
+    event.preventDefault()
+    columnResize.current = { index, startX: event.clientX, startWidth: columnWidths[index] }
+  }
 
   const range = useMemo(() => {
     const dates = rows.flatMap(row => {
@@ -209,15 +262,16 @@ export default function PlannerActivitiesGantt({
             <span><i className="mr-1 inline-block h-2.5 w-4 rounded-sm bg-red-500"/>Critical</span>
           </div>
           <button type="button" onClick={() => setShowLogic(value => !value)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold ${showLogic ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600'}`}><GitBranch className="h-3.5 w-3.5"/>{showLogic ? 'Logic on' : 'Logic off'}</button>
+          <button type="button" onClick={fitColumns} title="Resize columns to fit the visible data" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-violet-300 hover:text-violet-700"><Columns className="h-3.5 w-3.5"/>Fit columns</button>
           <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">{['day', 'week', 'month'].map(value => <button key={value} type="button" onClick={() => setZoom(value)} className={`rounded-md px-2 py-1 text-[11px] font-bold capitalize ${zoom === value ? 'bg-violet-600 text-white' : 'text-slate-500'}`}>{value}</button>)}</div>
           <button type="button" onClick={() => setExpanded(new Set(groups.map(group => group.key)))} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600">Expand all</button>
           <button type="button" onClick={() => setExpanded(new Set())} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600">Collapse all</button>
         </div>
       </div>
       <div className="max-h-[70vh] overflow-auto">
-        <div className="sticky top-0 z-50 flex shadow-sm" style={{ width: 920 + timelineWidth, minWidth: 920 + timelineWidth, height: 36 }}>
-          <div className="planner-grid-header grid shrink-0 border-b border-r border-slate-400 bg-slate-100 text-xs font-semibold text-slate-600" style={{ width: 920, minWidth: 920, height: 36, gridTemplateColumns: '52px 270px 125px 62px 82px 82px 52px 45px 120px 30px' }}>
-            {['ID', 'Deliverable / workflow activity', 'Stage', 'Dur.', 'CPM Start', 'CPM Finish', 'Float', 'Pred.', 'Responsible', ''].map(label => <div key={label} className="flex items-center px-2">{label}</div>)}
+        <div className="sticky top-0 z-50 flex shadow-sm" style={{ width: detailsWidth + timelineWidth, minWidth: detailsWidth + timelineWidth, height: 36 }}>
+          <div className="planner-grid-header grid shrink-0 border-b border-r border-slate-400 bg-slate-100 text-xs font-semibold text-slate-600" style={{ width: detailsWidth, minWidth: detailsWidth, height: 36, gridTemplateColumns: columnWidths.map(width => `${width}px`).join(' ') }}>
+            {COLUMN_LABELS.map((label, index) => <div key={`${label}-${index}`} className="relative flex min-w-0 items-center overflow-hidden px-2"><span className="truncate">{label}</span>{index < COLUMN_LABELS.length - 1 && <button type="button" aria-label={`Resize ${label || 'action'} column`} title="Drag to resize column" onPointerDown={event => startColumnResize(event, index)} className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none border-r border-transparent hover:border-violet-500"/>}</div>)}
           </div>
           <div className="shrink-0 overflow-hidden border-b border-slate-400 bg-white" style={{ width: timelineWidth, minWidth: timelineWidth, height: 36 }}>
             {range ? <div style={{ position: 'relative', height: 36 }}>{scaleTicks.map(tick => <div key={tick.offset} className="flex items-center justify-center overflow-hidden whitespace-nowrap border-r border-slate-300 px-1 text-[10px] font-extrabold text-slate-800" style={{ position: 'absolute', top: 0, height: 36, left: tick.x, width: tick.width }}>{tick.label}</div>)}</div> : <div className="flex h-full items-center px-3 text-xs text-slate-500">Calculate the schedule to display the Gantt chart</div>}
@@ -225,8 +279,8 @@ export default function PlannerActivitiesGantt({
         </div>
 
         <div className="flex w-max flex-row items-start">
-        <table className="planner-grid-table w-[920px] min-w-[920px] shrink-0 table-fixed border-r border-slate-300 text-xs">
-          <colgroup><col className="w-[52px]"/><col className="w-[270px]"/><col className="w-[125px]"/><col className="w-[62px]"/><col className="w-[82px]"/><col className="w-[82px]"/><col className="w-[52px]"/><col className="w-[45px]"/><col className="w-[120px]"/><col className="w-[30px]"/></colgroup>
+        <table className="planner-grid-table shrink-0 table-fixed border-r border-slate-300 text-xs" style={{ width: detailsWidth, minWidth: detailsWidth }}>
+          <colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }}/>)}</colgroup>
           <tbody>{rows.map(row => {
             if (row.kind === 'summary') {
               const open = expanded.has(row.key)
