@@ -224,7 +224,10 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: true,
+      // Production source maps more than doubled peak build memory for this
+      // large application and exhausted Node's default 4 GB heap. Enable them
+      // explicitly only in CI environments that upload maps to secure storage.
+      sourcemap: env.VITE_BUILD_SOURCEMAP === 'true',
       // Soft-coded: Increase chunk size warning limit to 2 MB
       // Production bundles are large due to comprehensive feature set
       // Relying on Vite's automatic chunking to avoid circular dependencies

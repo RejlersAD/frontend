@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { PROJECT_CONTROL_SUBFEATURES } from '../config/projectControl.config';
 import apiClient from '../services/api.service';
+import planningIntelligenceService from '../services/planningIntelligence.service';
+import usePlanningJob from '../hooks/usePlanningJob';
+import GenerationWizard from '../components/planning/GenerationWizard';
 import {
   PLANNING_ENDPOINTS,
   PLANNING_FILE_CATEGORIES,
@@ -28,6 +31,42 @@ import {
   Tooltip, Legend, ResponsiveContainer, LineChart, Line, ScatterChart,
   Scatter, ZAxis, ComposedChart, Area
 } from 'recharts';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const parseDateOnly = value => {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+};
+
+const addCalendarMonths = (date, months) => {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + months;
+  const day = date.getUTCDate();
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(day, lastDay)));
+};
+
+const calculateDateRangeDuration = (startValue, endValue) => {
+  const start = parseDateOnly(startValue);
+  const end = parseDateOnly(endValue);
+  if (!start || !end || end <= start) return null;
+
+  let wholeMonths = (end.getUTCFullYear() - start.getUTCFullYear()) * 12
+    + end.getUTCMonth() - start.getUTCMonth();
+  let anchor = addCalendarMonths(start, wholeMonths);
+  if (anchor > end) {
+    wholeMonths -= 1;
+    anchor = addCalendarMonths(start, wholeMonths);
+  }
+  const nextAnchor = addCalendarMonths(start, wholeMonths + 1);
+  const fractionalMonth = (end - anchor) / (nextAnchor - anchor);
+  return {
+    days: Math.round((end - start) / DAY_MS),
+    months: Number((wholeMonths + fractionalMonth).toFixed(4)),
+  };
+};
 
 /**
  * Small reusable "type a value + press Add" row used by the Document
@@ -71,9 +110,8 @@ const AddDeliverableRow = ({ onAdd }) => {
  * Level-4 activity schedule, EDDR register, manhour estimate, validation
  * report and schedule narrative — backed by apps.planning_intelligence.
  *
- * Document intelligence and narrative text are produced by a deterministic,
- * rule-based engine (no external AI API key is configured in this
- * environment) — always reviewed by the user before export.
+ * Deterministic extraction is augmented by the project's mandatory Claude
+ * BYOK configuration. All generated outputs remain subject to planner review.
  */
 const PlanningPackagePage = () => {
   const navigate = useNavigate();
@@ -84,7 +122,7 @@ const PlanningPackagePage = () => {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [newProject, setNewProject] = useState({
-    name: '', client: '', location: '', phase: 'FEED', effective_date: '', duration_months: 10,
+    name: '', client: '', location: '', phase: 'FEED', effective_date: '', planned_end_date: '',
   });
 
   // Multi-project dashboard — 'dashboard' shows the all-projects grid,
@@ -110,6 +148,7 @@ const PlanningPackagePage = () => {
 
   const [generation, setGeneration] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [showGenerationWizard, setShowGenerationWizard] = useState(false);
   const [downloadingPresentation, setDownloadingPresentation] = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
   const [exportedFormat, setExportedFormat] = useState(null);
@@ -128,6 +167,16 @@ const PlanningPackagePage = () => {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [banner, setBanner] = useState(null); // { type: 'error'|'success', message }
+  const { activeJob, runJob: runPlanningJob } = usePlanningJob();
+
+  useEffect(() => {
+    if (activeJob && (activeJob.status === 'queued' || activeJob.status === 'running')) {
+      setBanner({
+        type: 'info',
+        message: `${activeJob.message || 'Planning job in progress'} (${activeJob.progress || 0}%)`,
+      });
+    }
+  }, [activeJob]);
 
   // BYOK — per-project Claude/Anthropic settings (see ai-settings endpoint).
   const [aiSettings, setAiSettings] = useState(null);
@@ -219,6 +268,15 @@ const PlanningPackagePage = () => {
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
   useEffect(() => {
+    const requestedProjectId = Number(location.state?.openGenerationWizardFor);
+    if (!requestedProjectId || !projects.some(item => item.id === requestedProjectId)) return;
+    setSelectedProjectId(requestedProjectId);
+    setViewMode('workspace');
+    setShowGenerationWizard(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, projects]);
+
+  useEffect(() => {
     if (selectedProjectId) {
       loadFiles(selectedProjectId);
       loadLatestGeneration(selectedProjectId);
@@ -245,14 +303,19 @@ const PlanningPackagePage = () => {
       setBanner({ type: 'error', message: 'Project name is required.' });
       return;
     }
+    const rangeDuration = calculateDateRangeDuration(newProject.effective_date, newProject.planned_end_date);
+    if (!rangeDuration) {
+      setBanner({ type: 'error', message: 'Select a project end date after the project start date.' });
+      return;
+    }
     try {
-      const payload = { ...newProject, effective_date: newProject.effective_date || null };
+      const payload = { ...newProject, duration_months: rangeDuration.months };
       const res = await apiClient.post(PLANNING_ENDPOINTS.projects, payload);
       setProjects(prev => [res.data, ...prev]);
       setSelectedProjectId(res.data.id);
       setViewMode('workspace');
       setShowNewProjectForm(false);
-      setNewProject({ name: '', client: '', location: '', phase: 'FEED', effective_date: '', duration_months: 10 });
+      setNewProject({ name: '', client: '', location: '', phase: 'FEED', effective_date: '', planned_end_date: '' });
       setBanner({ type: 'success', message: `Planning project "${res.data.name}" created.` });
     } catch (err) {
       setBanner({ type: 'error', message: 'Failed to create planning project.' });
@@ -292,7 +355,7 @@ const PlanningPackagePage = () => {
         form.append('file', file);
         await apiClient.post(PLANNING_ENDPOINTS.files, form);
       }
-      setBanner({ type: 'success', message: 'File(s) uploaded — parsing in the background.' });
+      setBanner({ type: 'success', message: 'Upload complete. Document parsing is queued; watch each file status for completion.' });
       await loadFiles(selectedProjectId);
     } catch (err) {
       setBanner({ type: 'error', message: 'Upload failed for one or more files.' });
@@ -315,20 +378,40 @@ const PlanningPackagePage = () => {
     setAnalyzing(true);
     setBanner(null);
     try {
-      const res = await apiClient.post(PLANNING_ENDPOINTS.analyze(selectedProjectId));
-      setIntelligencePreview(res.data.intelligence);
+      const job = await runPlanningJob(() => planningIntelligenceService.startAnalysis(selectedProjectId));
+      setIntelligencePreview(job.result_data?.intelligence || null);
       setCurrentStep('intelligence');
+      setBanner({ type: 'success', message: 'Document intelligence completed.' });
     } catch (err) {
       setBanner({
         type: 'error',
-        message: err.response?.data?.error || 'Document intelligence requires at least one parsed file.',
+        message: err.response?.data?.error || err.job?.error_message || err.message || 'Document intelligence requires at least one parsed file.',
       });
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const handleGenerate = async () => {
+  const buildIntelligenceOverrides = () => {
+    const source = intelligencePreview || generation?.intelligence;
+    return source ? {
+      detected_project_name: source.detected_project_name,
+      detected_effective_date_text: source.detected_effective_date_text,
+      detected_duration_months: source.detected_duration_months,
+      disciplines: Object.fromEntries(
+        Object.entries(source.disciplines || {}).map(([code, info]) => {
+          const excludedSet = new Set(info.excluded_deliverables || []);
+          return [code, {
+            deliverables: (info.deliverables || []).filter(item => !excludedSet.has(item)),
+            in_scope: info.in_scope !== false,
+          }];
+        })
+      ),
+      hse_studies: source.hse_studies,
+    } : undefined;
+  };
+
+  const handleGenerate = async (generationOptions = {}) => {
     if (!selectedProjectId) return;
     setGenerating(true);
     setBanner(null);
@@ -336,35 +419,26 @@ const PlanningPackagePage = () => {
       // Carry any Document Intelligence edits the Project Scheduler made
       // (project name/date/duration, discipline deliverable checklists,
       // HSE studies) through to WBS/Schedule/EDDR/Manhour generation.
-      const overrides = intelligencePreview ? {
-        detected_project_name: intelligencePreview.detected_project_name,
-        detected_effective_date_text: intelligencePreview.detected_effective_date_text,
-        detected_duration_months: intelligencePreview.detected_duration_months,
-        disciplines: Object.fromEntries(
-          Object.entries(intelligencePreview.disciplines || {}).map(([code, info]) => {
-            // Filter out excluded deliverables before sending to backend
-            const excludedSet = new Set(info.excluded_deliverables || []);
-            const includedDeliverables = (info.deliverables || []).filter(d => !excludedSet.has(d));
-            return [code, { 
-              deliverables: includedDeliverables, 
-              in_scope: info.in_scope !== false 
-            }];
-          })
-        ),
-        hse_studies: intelligencePreview.hse_studies,
-      } : undefined;
-      const res = await apiClient.post(
-        PLANNING_ENDPOINTS.generate(selectedProjectId),
-        overrides ? { intelligence_overrides: overrides } : {},
-      );
-      setGeneration(res.data);
-      setBanner({ type: 'success', message: `Schedule generated (version ${res.data.version}).` });
+      const overrides = buildIntelligenceOverrides();
+      const job = await runPlanningJob(() => planningIntelligenceService.startGeneration(
+        selectedProjectId,
+        {
+          ...(overrides ? { intelligence_overrides: overrides } : {}),
+          generation_options: generationOptions,
+        },
+      ));
+      const generationId = job.result_generation || job.result_data?.generation_id;
+      const generatedSchedule = await planningIntelligenceService.getGeneration(generationId);
+      setGeneration(generatedSchedule);
+      setBanner({ type: 'success', message: `Schedule generated (version ${generatedSchedule.version}).` });
       setCurrentStep('schedule');
+      return { generation: generatedSchedule, job };
     } catch (err) {
       setBanner({
         type: 'error',
-        message: err.response?.data?.error || 'Schedule generation failed. Check the backend logs.',
+        message: err.response?.data?.error || err.job?.error_message || err.message || 'Schedule generation failed. Check the backend logs.',
       });
+      return null;
     } finally {
       setGenerating(false);
     }
@@ -673,7 +747,9 @@ const PlanningPackagePage = () => {
     if (!banner) return null;
     const styles = banner.type === 'error'
       ? 'bg-rose-50 text-rose-700 border-rose-200'
-      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      : banner.type === 'info'
+        ? 'bg-sky-50 text-sky-700 border-sky-200'
+        : 'bg-emerald-50 text-emerald-700 border-emerald-200';
     return (
       <div className={`mb-4 px-4 py-2 rounded-lg border text-sm flex items-center justify-between ${styles}`}>
         <span>{banner.message}</span>
@@ -858,6 +934,15 @@ const PlanningPackagePage = () => {
                 >
                   Open →
                 </button>
+                {project.latest_generation_version && (
+                  <button
+                    onClick={() => navigate(`/planning-workspace/${project.id}`)}
+                    title="Open the new CPM planner, controls, governance, integrations, and enterprise workspace"
+                    className="flex-1 px-3 py-2 text-sm font-semibold rounded-xl border-2 border-violet-200 bg-violet-50 text-violet-700 hover:border-violet-400 hover:bg-violet-100 transition-colors"
+                  >
+                    Planner Workspace
+                  </button>
+                )}
                 <button
                   onClick={() => handleDeleteProject(project)}
                   title="Delete project"
@@ -873,7 +958,9 @@ const PlanningPackagePage = () => {
     </div>
   );
 
-  const renderNewProjectForm = () => (
+  const renderNewProjectForm = () => {
+    const rangeDuration = calculateDateRangeDuration(newProject.effective_date, newProject.planned_end_date);
+    return (
     <form onSubmit={handleCreateProject} className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 mb-6">
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xl">✨</span>
@@ -902,22 +989,32 @@ const PlanningPackagePage = () => {
             value={newProject.phase} onChange={e => setNewProject({ ...newProject, phase: e.target.value })} />
         </label>
         <label className="text-sm">
-          <span className="block text-sm font-semibold text-slate-600 mb-1">Effective Date</span>
-          <input type="date" className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
+          <span className="block text-sm font-semibold text-slate-600 mb-1">Project Start Date *</span>
+          <input required type="date" max={newProject.planned_end_date || undefined} className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
             value={newProject.effective_date} onChange={e => setNewProject({ ...newProject, effective_date: e.target.value })} />
         </label>
         <label className="text-sm">
-          <span className="block text-sm font-semibold text-slate-600 mb-1">Duration (months)</span>
-          <input type="number" min="1" className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
-            value={newProject.duration_months} onChange={e => setNewProject({ ...newProject, duration_months: e.target.value })} />
+          <span className="block text-sm font-semibold text-slate-600 mb-1">Project End Date *</span>
+          <input required type="date" min={newProject.effective_date || undefined} className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
+            value={newProject.planned_end_date} onChange={e => setNewProject({ ...newProject, planned_end_date: e.target.value })} />
         </label>
+        <div className={`sm:col-span-2 lg:col-span-3 rounded-xl border px-4 py-3 ${rangeDuration ? 'border-violet-200 bg-violet-50' : 'border-slate-200 bg-slate-50'}`}>
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Calculated project duration</div>
+          <div className="mt-1 text-sm text-slate-700">
+            {rangeDuration
+              ? <><span className="font-bold text-violet-700">{rangeDuration.months.toFixed(1)} {rangeDuration.months.toFixed(1) === '1.0' ? 'month' : 'months'}</span><span className="mx-2 text-slate-300">·</span>{rangeDuration.days} calendar days</>
+              : 'Select a start date and a later end date.'}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Calculated as complete calendar months plus the exact fraction of the remaining calendar month.</p>
+        </div>
       </div>
       <div className="flex gap-2 justify-end mt-5">
         <button type="button" onClick={() => setShowNewProjectForm(false)} className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
         <button type="submit" className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all">Create Project</button>
       </div>
     </form>
-  );
+    );
+  };
 
   const renderAiSettingsModal = () => {
     if (!showAiSettingsModal || !selectedProject) return null;
@@ -1023,7 +1120,13 @@ const PlanningPackagePage = () => {
         return (
           <button
             key={step.id}
-            onClick={() => setCurrentStep(step.id)}
+            onClick={() => {
+              if (step.id === 'proposal' && selectedProjectId && !locked) {
+                navigate(`/proposal-workspace/${selectedProjectId}`);
+                return;
+              }
+              setCurrentStep(step.id);
+            }}
             className={[
               'group flex items-start lg:items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap lg:whitespace-normal text-left transition-all shrink-0 lg:w-full',
               isActive
@@ -1089,6 +1192,11 @@ const PlanningPackagePage = () => {
                   <div className="min-w-0">
                     <div className="font-medium text-slate-700 truncate">{f.original_filename}</div>
                     <div className="text-sm text-slate-500">{cat?.label || f.category}</div>
+                    {f.parse_status === 'failed' && f.parse_error && (
+                      <div className="mt-1 max-w-2xl text-xs text-rose-600 break-words" title={f.parse_error}>
+                        Parser error: {f.parse_error}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -1196,6 +1304,35 @@ const PlanningPackagePage = () => {
               )}
             </div>
           </div>
+
+          {data.evidence_summary && (
+            <div className={`rounded-xl border p-4 ${data.evidence_summary.conflict_count ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/60 border-emerald-200'}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-700">Source Evidence</h3>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-sm text-slate-600">
+                  {data.evidence_summary.fact_count || 0} facts
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-sm text-emerald-700">
+                  {data.evidence_summary.confirmed_count || 0} confirmed
+                </span>
+                <span className={`px-2 py-0.5 rounded-full bg-white border text-sm ${data.evidence_summary.conflict_count ? 'border-amber-300 text-amber-700' : 'border-slate-200 text-slate-500'}`}>
+                  {data.evidence_summary.conflict_count || 0} open conflicts
+                </span>
+                {data.document_intelligence_run_id && (
+                  <span className="ml-auto text-sm font-mono text-slate-400">Run #{data.document_intelligence_run_id}</span>
+                )}
+              </div>
+              {(data.open_conflicts || []).length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {(data.open_conflicts || []).map(conflict => (
+                    <div key={conflict.id} className="rounded-lg bg-white border border-amber-200 px-3 py-2 text-sm text-amber-800">
+                      <span className="font-semibold">Needs review:</span> {conflict.description}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {data.ai_review && (
             <div className="rounded-xl p-4 bg-gradient-to-br from-violet-50 via-indigo-50 to-white border border-violet-100">
@@ -1974,11 +2111,11 @@ const PlanningPackagePage = () => {
 
           {!isEditing && (
             <button
-              onClick={handleGenerate}
+              onClick={() => setShowGenerationWizard(true)}
               disabled={generating}
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-semibold shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40 disabled:shadow-none"
             >
-              {generating ? 'Generating Schedule…' : 'Generate Full Schedule →'}
+              {generating ? 'Generating Schedule…' : 'Open Generation Wizard →'}
             </button>
           )}
         </>
@@ -1992,7 +2129,7 @@ const PlanningPackagePage = () => {
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-10 text-center">
       <div className="text-4xl mb-3 opacity-60">🗓️</div>
       <p className="text-sm text-slate-400">
-        No {label} yet — run <span className="font-semibold text-slate-600">Generate Full Schedule</span> from the Document Intelligence step.
+        No {label} yet — open the <span className="font-semibold text-slate-600">Generation Wizard</span> from Document Intelligence.
       </p>
     </div>
   );
@@ -2078,6 +2215,12 @@ const PlanningPackagePage = () => {
             <h2 className="font-semibold text-slate-800">Activities <span className="text-slate-400 font-normal">(v{generation.version} · {generation.activities.length} total)</span></h2>
           </div>
           <div className="flex items-center gap-2">
+            {!isEditing && (
+              <button onClick={() => setShowGenerationWizard(true)}
+                className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">
+                ✦ New generation
+              </button>
+            )}
             <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 text-sm font-semibold">🔴 {criticalCount} on critical path</span>
             <button
               onClick={() => {
@@ -3443,6 +3586,14 @@ const PlanningPackagePage = () => {
       case 'narrative': return renderNarrativeStep();
       case 'presentation': return renderPresentationStep();
       case 'export': return renderExportStep();
+      case 'proposal': return (
+        <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-white to-blue-50 px-8 py-16 text-center shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-700 text-3xl text-white">📑</div>
+          <h2 className="mt-5 text-2xl font-bold text-slate-900">Enterprise Technical Proposal Studio</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-slate-600">Open the dedicated bid workspace for the complete proposal outline, compliance matrix, resources, method statement, schedule exhibits, corporate evidence, live A4 preview and controlled exports.</p>
+          <button type="button" onClick={() => navigate(`/proposal-workspace/${selectedProjectId}`)} className="mt-7 rounded-xl bg-blue-700 px-6 py-3 font-bold text-white shadow hover:bg-blue-800">Open Enterprise Proposal Studio →</button>
+        </div>
+      );
       default: return null;
     }
   };
@@ -3525,6 +3676,13 @@ const PlanningPackagePage = () => {
             </div>
             {viewMode === 'workspace' && selectedProject && (
               <div className="flex gap-2 flex-wrap sm:justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/planning-workspace/${selectedProject.id}`)}
+                  className="rounded-xl bg-white text-violet-700 px-4 py-2 text-sm font-bold shadow-sm hover:bg-violet-50 transition-colors"
+                >
+                  Open New Planner Workspace
+                </button>
                 <div className="rounded-xl bg-white/15 backdrop-blur px-3.5 py-2 text-center min-w-[84px]">
                   <div className="text-xl font-bold text-white">{files.length}</div>
                   <div className="text-xs font-semibold uppercase tracking-wide text-violet-50">Files</div>
@@ -3544,6 +3702,16 @@ const PlanningPackagePage = () => {
 
         {renderBanner()}
         {renderAiSettingsModal()}
+        <GenerationWizard
+          open={showGenerationWizard}
+          project={selectedProject}
+          files={files}
+          intelligence={intelligencePreview || generation?.intelligence}
+          intelligenceOverrides={buildIntelligenceOverrides()}
+          onClose={() => setShowGenerationWizard(false)}
+          onGenerate={handleGenerate}
+          onOpenPlanner={() => navigate(`/planning-workspace/${selectedProjectId}`)}
+        />
 
         {loadingProjects ? (
           <div className="bg-white rounded-2xl shadow-lg p-14 text-center text-slate-400">
