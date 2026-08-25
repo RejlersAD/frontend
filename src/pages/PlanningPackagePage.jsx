@@ -121,6 +121,7 @@ const PlanningPackagePage = () => {
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
   const [newProject, setNewProject] = useState({
     name: '', client: '', location: '', phase: 'FEED', effective_date: '', planned_end_date: '',
   });
@@ -299,6 +300,7 @@ const PlanningPackagePage = () => {
   // ── Actions ──────────────────────────────────────────────────────────────
   const handleCreateProject = async (e) => {
     e.preventDefault();
+    if (creatingProject) return;
     if (!newProject.name.trim()) {
       setBanner({ type: 'error', message: 'Project name is required.' });
       return;
@@ -308,6 +310,7 @@ const PlanningPackagePage = () => {
       setBanner({ type: 'error', message: 'Select a project end date after the project start date.' });
       return;
     }
+    setCreatingProject(true);
     try {
       const payload = { ...newProject, duration_months: rangeDuration.months };
       const res = await apiClient.post(PLANNING_ENDPOINTS.projects, payload);
@@ -319,6 +322,8 @@ const PlanningPackagePage = () => {
       setBanner({ type: 'success', message: `Planning project "${res.data.name}" created.` });
     } catch (err) {
       setBanner({ type: 'error', message: 'Failed to create planning project.' });
+    } finally {
+      setCreatingProject(false);
     }
   };
 
@@ -705,6 +710,7 @@ const PlanningPackagePage = () => {
       setProjects(prev => prev.map(p => (p.id === selectedProjectId
         ? { ...p, ai_enabled: res.data.enabled, ai_model: res.data.model, ai_key_configured: res.data.key_configured }
         : p)));
+      setShowAiSettingsModal(false);
     } catch (err) {
       setBanner({ type: 'error', message: err.response?.data?.error || 'Failed to save AI settings.' });
     } finally {
@@ -961,13 +967,17 @@ const PlanningPackagePage = () => {
   const renderNewProjectForm = () => {
     const rangeDuration = calculateDateRangeDuration(newProject.effective_date, newProject.planned_end_date);
     return (
-    <form onSubmit={handleCreateProject} className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 mb-6">
+    <form
+      onSubmit={handleCreateProject}
+      className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 mb-6"
+      aria-busy={creatingProject}
+    >
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xl">✨</span>
 
         <h2 className="font-semibold text-slate-800">New Planning Project</h2>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <fieldset disabled={creatingProject} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <label className="text-sm">
           <span className="block text-sm font-semibold text-slate-600 mb-1">Project Name *</span>
           <input required className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
@@ -1007,10 +1017,38 @@ const PlanningPackagePage = () => {
           </div>
           <p className="mt-1 text-xs text-slate-500">Calculated as complete calendar months plus the exact fraction of the remaining calendar month.</p>
         </div>
-      </div>
+      </fieldset>
+      {creatingProject && (
+        <div className="mt-5" role="status" aria-live="polite">
+          <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-violet-700">
+            <span>Creating planning project…</span>
+            <span>Please wait</span>
+          </div>
+          <div
+            className="h-2 w-full overflow-hidden rounded-full bg-violet-100"
+            role="progressbar"
+            aria-label="Creating planning project"
+          >
+            <div className="h-full w-full animate-pulse rounded-full bg-gradient-to-r from-violet-500 via-indigo-500 to-violet-500" />
+          </div>
+        </div>
+      )}
       <div className="flex gap-2 justify-end mt-5">
-        <button type="button" onClick={() => setShowNewProjectForm(false)} className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
-        <button type="submit" className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all">Create Project</button>
+        <button
+          type="button"
+          onClick={() => setShowNewProjectForm(false)}
+          disabled={creatingProject}
+          className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={creatingProject}
+          className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40"
+        >
+          {creatingProject ? 'Creating…' : 'Create Project'}
+        </button>
       </div>
     </form>
     );
@@ -1019,8 +1057,15 @@ const PlanningPackagePage = () => {
   const renderAiSettingsModal = () => {
     if (!showAiSettingsModal || !selectedProject) return null;
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={() => setShowAiSettingsModal(false)}>
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 w-full max-w-lg p-5 sm:p-6" onClick={e => e.stopPropagation()}>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
+        onClick={() => { if (!savingAiSettings) setShowAiSettingsModal(false); }}
+      >
+        <div
+          className="bg-white rounded-2xl shadow-xl border border-slate-200/80 w-full max-w-lg p-5 sm:p-6"
+          onClick={e => e.stopPropagation()}
+          aria-busy={savingAiSettings}
+        >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xl">🤖</span>
             <h2 className="font-semibold text-slate-800">AI Settings (BYOK) — {selectedProject.name}</h2>
@@ -1037,6 +1082,7 @@ const PlanningPackagePage = () => {
                 type="checkbox"
                 className="w-4 h-4 accent-violet-600"
                 checked={aiSettingsForm.enabled}
+                disabled={savingAiSettings}
                 onChange={e => setAiSettingsForm(prev => ({ ...prev, enabled: e.target.checked }))}
               />
               Enable Claude BYOK for this project
@@ -1047,6 +1093,7 @@ const PlanningPackagePage = () => {
               <select
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.model}
+                disabled={savingAiSettings}
                 onChange={e => setAiSettingsForm(prev => ({ ...prev, model: e.target.value }))}
               >
                 {(aiSettings?.model_choices || CLAUDE_MODEL_OPTIONS).map(m => (
@@ -1065,6 +1112,7 @@ const PlanningPackagePage = () => {
                 autoComplete="off"
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.apiKey}
+                disabled={savingAiSettings}
                 onChange={e => setAiSettingsForm(prev => ({ ...prev, apiKey: e.target.value }))}
               />
             </label>
@@ -1075,6 +1123,22 @@ const PlanningPackagePage = () => {
               </div>
             )}
           </div>
+
+          {savingAiSettings && (
+            <div className="mt-5" role="status" aria-live="polite">
+              <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-violet-700">
+                <span>Saving AI settings…</span>
+                <span>Please wait</span>
+              </div>
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-violet-100"
+                role="progressbar"
+                aria-label="Saving AI settings"
+              >
+                <div className="h-full w-full animate-pulse rounded-full bg-gradient-to-r from-violet-500 via-indigo-500 to-violet-500" />
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2 justify-between mt-6">
             <div className="flex gap-2">
@@ -1089,18 +1153,25 @@ const PlanningPackagePage = () => {
               <button
                 type="button"
                 onClick={handleTestAiConnection}
-                disabled={testingConnection || !aiSettings?.key_configured}
+                disabled={savingAiSettings || testingConnection || !aiSettings?.key_configured}
                 className="px-3.5 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
               >
                 {testingConnection ? 'Testing…' : 'Test Connection'}
               </button>
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setShowAiSettingsModal(false)} className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50">Close</button>
+              <button
+                type="button"
+                onClick={() => setShowAiSettingsModal(false)}
+                disabled={savingAiSettings}
+                className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Close
+              </button>
               <button
                 type="button"
                 onClick={handleSaveAiSettings}
-                disabled={savingAiSettings}
+                disabled={savingAiSettings || testingConnection}
                 className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40"
               >
                 {savingAiSettings ? 'Saving…' : 'Save Settings'}
@@ -1337,7 +1408,7 @@ const PlanningPackagePage = () => {
           {data.ai_review && (
             <div className="rounded-xl p-4 bg-gradient-to-br from-violet-50 via-indigo-50 to-white border border-violet-100">
               <div className="flex items-center gap-2 text-violet-700 text-sm font-semibold uppercase tracking-wide mb-1.5">
-                <span>✨</span> Claude AI Review
+                <span>✨</span> RADAI Review
               </div>
               {data.ai_review.review_summary && (
                 <p className="text-sm text-slate-700 mb-2">{data.ai_review.review_summary}</p>
