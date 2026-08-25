@@ -339,11 +339,11 @@ export const PROCUREMENT_CONFIG = {
 
   // Vendor Rating System
   vendorRatings: {
-    5: { label: 'Excellent', color: 'green', icon: 'Γ¡ÉΓ¡ÉΓ¡ÉΓ¡ÉΓ¡É' },
-    4: { label: 'Good', color: 'blue', icon: 'Γ¡ÉΓ¡ÉΓ¡ÉΓ¡É' },
-    3: { label: 'Average', color: 'yellow', icon: 'Γ¡ÉΓ¡ÉΓ¡É' },
-    2: { label: 'Below Average', color: 'orange', icon: 'Γ¡ÉΓ¡É' },
-    1: { label: 'Poor', color: 'red', icon: 'Γ¡É' }
+    5: { label: 'Excellent', color: 'green', icon: '⭐⭐⭐⭐⭐' },
+    4: { label: 'Good', color: 'blue', icon: '⭐⭐⭐⭐' },
+    3: { label: 'Average', color: 'yellow', icon: '⭐⭐⭐' },
+    2: { label: 'Below Average', color: 'orange', icon: '⭐⭐' },
+    1: { label: 'Poor', color: 'red', icon: '⭐' }
   }
 }
 

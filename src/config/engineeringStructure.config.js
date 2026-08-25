@@ -18,7 +18,8 @@ import {
   DocumentChartBarIcon,
   CircleStackIcon,
   DocumentMagnifyingGlassIcon,
-  DocumentCheckIcon
+  DocumentCheckIcon,
+  CubeIcon
 } from '@heroicons/react/24/outline'
 
 // SOFT-CODED: P&ID Feature Naming Configuration
@@ -348,6 +349,16 @@ export const ENGINEERING_DISCIPLINES = {
         description: 'Extract metadata from Non-TEFF documents (PDF, Excel, Word, AutoCAD)',
         moduleCode: 'non_teff_metadata',
         badge: 'AI'
+      },
+      {
+        id: 'smartPlant3D',
+        name: 'Smart Plant 3D',
+        fullName: 'SmartPlant 3D Integration',
+        icon: CubeIcon,
+        path: '/engineering/digitization/smart-plant-3d',
+        description: 'Extract and synchronize data from SmartPlant 3D models and databases',
+        moduleCode: 'smart_plant_3d',
+        badge: 'New'
       }
     ]
   }

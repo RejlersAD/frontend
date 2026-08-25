@@ -156,6 +156,7 @@ import SpecProjectsPage from './pages/Engineering/Digitization/SpecProjectsPage'
 import DigitizationDatasheetPage from './pages/Engineering/Digitization/DigitizationDatasheetPage'
 import NonTeffMetadataPage from './pages/Engineering/Digitization/NonTeffMetadataPage'
 import NonTeffProjectsPage from './pages/Engineering/Digitization/NonTeffProjectsPage'
+import SmartPlant3DPage from './pages/Engineering/Digitization/SmartPlant3DPage'
 // Piping Components
 import CriticalStressLineList from './pages/Engineering/Piping/CriticalStressLineList'
 import PipingDataSheet from './pages/Engineering/Piping/PipingDataSheet'
@@ -1315,6 +1316,14 @@ function App() {
           element={
             <ProtectedRoute>
               <NonTeffProjectsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="engineering/digitization/smart-plant-3d"
+          element={
+            <ProtectedRoute>
+              <SmartPlant3DPage />
             </ProtectedRoute>
           }
         />
