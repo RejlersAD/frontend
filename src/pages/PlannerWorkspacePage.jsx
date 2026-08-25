@@ -2,12 +2,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowLeft, Baseline, CalendarDays, Check, ChevronLeft, Database, Download,
+  AlertTriangle, ArrowLeft, Baseline, CalendarDays, Check, ChevronLeft, ClipboardList, Database, Download,
   ChevronRight, PlusCircle, GitBranch, LayoutList, Loader2, MessageSquare, Network,
   RefreshCw, Save, Search, ShieldCheck, Trash2, TrendingUp, Users, X,
 } from 'lucide-react'
 
 import ProjectControlsPanel from '../components/planning/ProjectControlsPanel'
+import DailyFieldUpdatePanel from '../components/planning/DailyFieldUpdatePanel'
 import GovernancePanel from '../components/planning/GovernancePanel'
 import IntegrationsExportsPanel from '../components/planning/IntegrationsExportsPanel'
 import EnterpriseReadinessPanel from '../components/planning/EnterpriseReadinessPanel'
@@ -18,6 +19,7 @@ import planningIntelligenceService from '../services/planningIntelligence.servic
 
 const TABS = [
   { id: 'activities', label: 'Activities & Gantt', icon: LayoutList },
+  { id: 'field', label: 'Daily Field Update', icon: ClipboardList },
   { id: 'wbs', label: 'WBS', icon: Network },
   { id: 'logic', label: 'Logic', icon: GitBranch },
   { id: 'resources', label: 'Resources', icon: Users },
@@ -527,6 +529,18 @@ const PlannerWorkspacePage = () => {
               <div className="p-3 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500"><span>{filteredActivities.length} activities</span><div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => setPage(value => value - 1)}><ChevronLeft className="w-4 h-4" /></button><span>Page {page} of {pageCount}</span><button disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}><ChevronRight className="w-4 h-4" /></button></div></div>
               </>}
             </div>
+          )}
+
+          {tab === 'field' && (
+            <DailyFieldUpdatePanel
+              versionId={versionId}
+              activities={draftActivities}
+              canReport={Boolean(workspace?.can_control)}
+              canApprove={Boolean(workspace?.can_approve_field_updates)}
+              selectedActivityId={null}
+              onNotice={showControlsNotice}
+              onControlsChanged={() => loadWorkspace(versionId, true)}
+            />
           )}
 
           {tab === 'wbs' && <div className="p-4 space-y-1 max-w-5xl">{workspace?.wbs?.map(node => <div key={node.id} className="flex items-center gap-3 rounded-lg border border-slate-100 hover:bg-slate-50 px-3 py-2" style={{ marginLeft: `${Math.min(node.level, 5) * 22}px` }}><span className="font-mono text-xs text-violet-700 w-24 shrink-0">{node.code}</span><input disabled={immutable} defaultValue={node.name} onBlur={event => saveWbsName(node, event.target.value)} className="flex-1 bg-transparent text-sm font-medium text-slate-700" /><span className="text-xs text-slate-400">{node.discipline}</span></div>)}</div>}

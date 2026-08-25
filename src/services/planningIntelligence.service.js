@@ -70,6 +70,34 @@ export const planningIntelligenceService = {
   captureScheduleControls: async (versionId, dataDate) => (
     await apiClient.post(PLANNING_ENDPOINTS.captureScheduleControls(versionId), { data_date: dataDate })
   ).data,
+  listDailyFieldUpdates: async (versionId, params = {}) => unwrapList(await apiClient.get(
+    PLANNING_ENDPOINTS.dailyFieldUpdates, { params: { version: versionId, ...params } },
+  )),
+  createDailyFieldUpdate: async payload => {
+    const form = new FormData()
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== '') form.append(key, value)
+    })
+    return (await apiClient.post(PLANNING_ENDPOINTS.dailyFieldUpdates, form)).data
+  },
+  updateDailyFieldUpdate: async (id, payload) => {
+    const form = new FormData()
+    Object.entries(payload).forEach(([key, value]) => {
+      if (key === 'evidence' && !value) return
+      if (value !== null && value !== undefined) form.append(key, value)
+    })
+    return (await apiClient.patch(PLANNING_ENDPOINTS.dailyFieldUpdate(id), form)).data
+  },
+  submitDailyFieldUpdate: async id => (
+    await apiClient.post(PLANNING_ENDPOINTS.submitDailyFieldUpdate(id))
+  ).data,
+  approveDailyFieldUpdate: async (id, comment = '') => (
+    await apiClient.post(PLANNING_ENDPOINTS.approveDailyFieldUpdate(id), { comment })
+  ).data,
+  rejectDailyFieldUpdate: async (id, comment) => (
+    await apiClient.post(PLANNING_ENDPOINTS.rejectDailyFieldUpdate(id), { comment })
+  ).data,
+  deleteDailyFieldUpdate: async id => apiClient.delete(PLANNING_ENDPOINTS.dailyFieldUpdate(id)),
   getScheduleGovernance: async (versionId) => (await apiClient.get(PLANNING_ENDPOINTS.scheduleGovernance(versionId))).data,
   createGovernanceItem: async (versionId, payload) => (
     await apiClient.post(PLANNING_ENDPOINTS.governanceItems(versionId), payload)
