@@ -15,7 +15,9 @@ import EnterpriseReadinessPanel from '../components/planning/EnterpriseReadiness
 import PlannerActivitiesGantt from '../components/planning/PlannerActivitiesGantt'
 import PlannerLogicAssurance from '../components/planning/PlannerLogicAssurance'
 import SchedulingDefaultsApprovalPanel from '../components/planning/SchedulingDefaultsApprovalPanel'
+import TrustworthySchedulingPanel from '../components/planning/TrustworthySchedulingPanel'
 import planningIntelligenceService from '../services/planningIntelligence.service'
+import usePlanningJob from '../hooks/usePlanningJob'
 
 const TABS = [
   { id: 'activities', label: 'Activities & Gantt', icon: LayoutList },
@@ -24,6 +26,7 @@ const TABS = [
   { id: 'logic', label: 'Logic', icon: GitBranch },
   { id: 'resources', label: 'Resources', icon: Users },
   { id: 'controls', label: 'Project Controls', icon: TrendingUp },
+  { id: 'assurance', label: 'Schedule Assurance', icon: ShieldCheck },
   { id: 'governance', label: 'Governance', icon: MessageSquare },
   { id: 'integrations', label: 'Integrations & Exports', icon: Download },
   { id: 'enterprise', label: 'Enterprise', icon: Database },
@@ -76,10 +79,31 @@ const PlannerWorkspacePage = () => {
   const [showNewActivity, setShowNewActivity] = useState(false)
   const [newActivity, setNewActivity] = useState({ external_id: '', name: '', duration_days: 1, activity_type: 'task' })
   const [logicDraft, setLogicDraft] = useState({ predecessor: '', successor: '', relationship_type: 'FS', lag_days: 0 })
-  const [newResource, setNewResource] = useState({ code: '', name: '', role: '' })
+  const [newResource, setNewResource] = useState({ code: '', name: '', role: '', capacity_units_per_day: 8 })
   const [facts, setFacts] = useState([])
   const [conflicts, setConflicts] = useState([])
   const [upgradingLegacy, setUpgradingLegacy] = useState(false)
+  const [calculationProgress, setCalculationProgress] = useState(0)
+  const [calculationPhase, setCalculationPhase] = useState('')
+  const { activeJob: scheduleJob, runJob: runScheduleJob } = usePlanningJob({
+    storageKey: `radai-schedule-job-${projectId}`,
+  })
+
+  useEffect(() => {
+    if (!scheduleJob || !['calculate', 'assurance'].includes(scheduleJob.job_type)) return
+    if (['queued', 'running'].includes(scheduleJob.status)) {
+      setCalculationProgress(scheduleJob.progress || 1)
+      setCalculationPhase(scheduleJob.message || 'Background scheduling job in progress')
+    }
+  }, [scheduleJob])
+
+  useEffect(() => {
+    if (!['save-calculate', 'rebuild-calculate'].includes(busy)) return undefined
+    const timer = window.setInterval(() => {
+      setCalculationProgress(value => Math.min(82, value + (value < 35 ? 4 : 1)))
+    }, 800)
+    return () => window.clearInterval(timer)
+  }, [busy])
 
   const loadWorkspace = useCallback(async (id, quiet = false) => {
     if (!id) return
@@ -190,13 +214,20 @@ const PlannerWorkspacePage = () => {
 
   const stats = useMemo(() => {
     const activities = workspace?.activities || []
+    const contractualFinish = workspace?.project?.planned_end_date || project?.planned_end_date
+    const forecastFinish = workspace?.version?.calculated_finish
+    const finishVariance = contractualFinish && forecastFinish
+      ? dateDays(dateValue(contractualFinish), dateValue(forecastFinish))
+      : null
     return {
       activities: activities.length,
       critical: activities.filter(item => item.is_critical).length,
       milestones: activities.filter(item => item.is_milestone).length,
       finish: workspace?.version?.calculated_finish || 'Not calculated',
+      contractualFinish: contractualFinish || 'Not set',
+      finishVariance,
     }
-  }, [workspace])
+  }, [workspace, project])
 
   const updateDraft = (id, field, value) => {
     setDraftActivities(rows => rows.map(row => row.id === id ? { ...row, [field]: value } : row))
@@ -240,24 +271,77 @@ const PlannerWorkspacePage = () => {
       Object.fromEntries(EDITABLE_ACTIVITY_FIELDS.map(field => [field, row[field]]).filter(([, value]) => value !== undefined))
     ))
     setBusy('save-calculate')
+    setCalculationProgress(5)
+    setCalculationPhase(changed.length ? 'Saving activity changes' : 'Preparing CPM network')
     try {
       if (changed.length) {
         await planningIntelligenceService.bulkUpdateActivities(
           versionId, workspace.version.updated_at, changed,
         )
       }
-      await planningIntelligenceService.calculateScheduleVersion(versionId)
+      setCalculationProgress(30)
+      setCalculationPhase('Calculating dates, float, and critical path')
+      await runScheduleJob(() => planningIntelligenceService.calculateScheduleVersion(versionId))
+      setCalculationProgress(86)
+      setCalculationPhase('Loading calculated activity dates')
       await loadWorkspace(versionId, true)
+      setCalculationProgress(95)
+      setCalculationPhase('Refreshing schedule version')
       const rows = await planningIntelligenceService.listScheduleVersions(scheduleId)
       setVersions(rows)
+      setCalculationProgress(100)
+      setCalculationPhase('Calculation complete')
       setNotice({
         type: 'success',
         message: `${changed.length ? `${changed.length} activity changes saved and ` : ''}CPM dates, float, and critical path recalculated.`,
       })
     } catch (error) {
+      setCalculationProgress(0)
+      setCalculationPhase('')
       setNotice({ type: 'error', message: unwrapError(error, 'Changes could not be saved and calculated.') })
     } finally {
       setBusy('')
+      window.setTimeout(() => {
+        setCalculationProgress(0)
+        setCalculationPhase('')
+      }, 1400)
+    }
+  }
+
+  const rebuildLogicAndCalculate = async () => {
+    if (!window.confirm(
+      'Replace this draft revision’s predecessor network with the current generated logic, then recalculate CPM? Activity names and durations will be preserved.',
+    )) return
+    setBusy('rebuild-calculate')
+    setCalculationProgress(5)
+    setCalculationPhase('Rebuilding predecessor network')
+    try {
+      const result = await planningIntelligenceService.rebuildScheduleLogic(versionId)
+      setCalculationProgress(35)
+      setCalculationPhase('Calculating dates, float, and critical path')
+      await runScheduleJob(() => planningIntelligenceService.calculateScheduleVersion(versionId))
+      setCalculationProgress(86)
+      setCalculationPhase('Loading rebuilt schedule dates')
+      await loadWorkspace(versionId, true)
+      setCalculationProgress(95)
+      setCalculationPhase('Refreshing schedule version')
+      setVersions(await planningIntelligenceService.listScheduleVersions(scheduleId))
+      setCalculationProgress(100)
+      setCalculationPhase('Logic rebuild complete')
+      setNotice({
+        type: 'success',
+        message: `${result.relationship_count} generated relationships applied and CPM recalculated. The contract warning will remain if the configured durations still exceed the contractual finish.`,
+      })
+    } catch (error) {
+      setCalculationProgress(0)
+      setCalculationPhase('')
+      setNotice({ type: 'error', message: unwrapError(error, 'Generated logic could not be rebuilt.') })
+    } finally {
+      setBusy('')
+      window.setTimeout(() => {
+        setCalculationProgress(0)
+        setCalculationPhase('')
+      }, 1400)
     }
   }
 
@@ -316,7 +400,7 @@ const PlannerWorkspacePage = () => {
     await runAction('resource', () => planningIntelligenceService.createResource({
       ...newResource, project: Number(projectId), resource_type: 'labor', unit: 'hour', unit_cost: 0,
     }), 'Resource added.')
-    setNewResource({ code: '', name: '', role: '' })
+    setNewResource({ code: '', name: '', role: '', capacity_units_per_day: 8 })
   }
 
   const saveWbsName = async (node, name) => {
@@ -395,6 +479,7 @@ const PlannerWorkspacePage = () => {
   const immutable = !workspace?.can_edit
   const approvalBlocked = (workspace?.dependency_assumptions || []).some(item => item.requires_confirmation)
     || (workspace?.generation_validation || []).some(item => item.severity === 'critical')
+    || workspace?.schedule_assurance?.status !== 'approved'
   return (
     <div className="min-h-screen bg-slate-100/70">
       <header className="bg-slate-950 text-white border-b border-slate-800 sticky top-0 z-30">
@@ -424,10 +509,11 @@ const PlannerWorkspacePage = () => {
           </div>
         )}
 
-        <section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
+        <section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-2.5">
           {[
             ['Activities', stats.activities], ['Critical', stats.critical], ['Milestones', stats.milestones],
-            ['Finish', stats.finish], ['WBS Nodes', workspace?.wbs?.length || 0],
+            ['Forecast Finish', stats.finish], ['Contract Finish', stats.contractualFinish],
+            ['WBS Nodes', workspace?.wbs?.length || 0],
             ['Logic Ties', workspace?.relationships?.length || 0], ['Resources', workspace?.resources?.length || 0],
             ['Open Evidence', workspace?.intelligence?.conflict_count || 0],
           ].map(([label, value]) => (
@@ -437,6 +523,12 @@ const PlannerWorkspacePage = () => {
             </div>
           ))}
         </section>
+
+        {stats.finishVariance > 0 && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <span className="font-bold">Contract finish overrun:</span> the current CPM network forecasts {stats.finish} against the {stats.contractualFinish} contractual finish ({stats.finishVariance} calendar days late). Recalculate CPM validates the stored network; it does not automatically shorten activities or force the finish date. Negative float now uses the contractual finish, so revise logic, durations, or scope before approval.
+          </div>
+        )}
 
         {workspace?.scheduling_configuration && (
           <section className="grid gap-3 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 p-4 lg:grid-cols-[1.4fr_1fr_1fr_auto] lg:items-center">
@@ -461,13 +553,33 @@ const PlannerWorkspacePage = () => {
               {dirtyIds.size > 0 && <span className="text-xs text-amber-600">{dirtyIds.size} unsaved</span>}
               <button onClick={saveActivities} disabled={!dirtyIds.size || busy === 'save' || immutable} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold disabled:opacity-40"><Save className="w-4 h-4" /> Save</button>
               <button onClick={saveAndCalculate} disabled={Boolean(busy) || immutable} className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-40">{busy === 'save-calculate' ? 'Calculating…' : dirtyIds.size ? 'Save & Calculate' : 'Recalculate CPM'}</button>
-              <button title={approvalBlocked ? 'Resolve engineering assumptions and critical validation findings before approval.' : 'Approve this calculated version'} onClick={() => runAction('approve', () => planningIntelligenceService.approveScheduleVersion(versionId), 'Schedule version approved.')} disabled={Boolean(busy) || workspace?.version?.status !== 'calculated' || approvalBlocked} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40">Approve</button>
+              <button type="button" onClick={rebuildLogicAndCalculate} disabled={Boolean(busy) || immutable || dirtyIds.size > 0} title={dirtyIds.size ? 'Save activity changes first.' : 'Replace all predecessors with the latest generated network, then calculate CPM. Use only when you want to discard manual logic edits.'} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-40"><GitBranch className="h-4 w-4" />{busy === 'rebuild-calculate' ? 'Resetting…' : 'Rest & Calculate'}</button>
+              <button title={approvalBlocked ? 'Complete and approve Phase 3 assurance before schedule approval.' : 'Approve this calculated version'} onClick={() => runAction('approve', () => planningIntelligenceService.approveScheduleVersion(versionId), 'Schedule version approved.')} disabled={Boolean(busy) || workspace?.version?.status !== 'calculated' || approvalBlocked} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40">Approve</button>
               <button onClick={() => {
                 const name = window.prompt('Baseline name', `Baseline ${workspace?.version?.version}`)
                 if (name) runAction('baseline', () => planningIntelligenceService.baselineScheduleVersion(versionId, name), 'Baseline created and locked.')
-              }} disabled={Boolean(busy) || !['calculated', 'approved'].includes(workspace?.version?.status)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold disabled:opacity-40"><Baseline className="w-4 h-4" /> Baseline</button>
+              }} disabled={Boolean(busy) || workspace?.version?.status !== 'approved' || workspace?.schedule_assurance?.status !== 'approved'} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold disabled:opacity-40"><Baseline className="w-4 h-4" /> Baseline</button>
             </div>
           </div>
+
+          {calculationProgress > 0 && (
+            <div className="border-b border-blue-200 bg-blue-50 px-4 py-3" role="status" aria-live="polite">
+              <div className="mb-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-blue-800">
+                <span className="inline-flex items-center gap-2"><Loader2 className={`h-4 w-4 ${calculationProgress < 100 ? 'animate-spin' : ''}`} />{calculationPhase}</span>
+                <span>{calculationProgress}%</span>
+              </div>
+              <div
+                className="h-2 overflow-hidden rounded-full bg-blue-100"
+                role="progressbar"
+                aria-label="CPM calculation progress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={calculationProgress}
+              >
+                <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-violet-600 transition-all duration-500" style={{ width: `${calculationProgress}%` }} />
+              </div>
+            </div>
+          )}
 
           {tab === 'activities' && (
             <div>
@@ -498,6 +610,11 @@ const PlannerWorkspacePage = () => {
                   dirtyIds={dirtyIds}
                   onUpdate={updateDraft}
                   onDelete={deleteActivity}
+                  projectName={workspace?.project?.name}
+                  scheduleName={workspace?.schedule?.name}
+                  versionLabel={`Version ${workspace?.version?.version || '—'} · ${workspace?.version?.status || 'draft'}`}
+                  dataDate={workspace?.schedule?.data_date || workspace?.schedule?.planned_start}
+                  calculatedFinish={workspace?.version?.calculated_finish}
                 />
               ) : <>
               <div className="grid grid-cols-1 xl:grid-cols-[minmax(760px,1.3fr)_minmax(520px,1fr)] overflow-auto max-h-[64vh]">
@@ -549,13 +666,15 @@ const PlannerWorkspacePage = () => {
 
           {tab === 'logic' && <div className="p-4 space-y-4"><form onSubmit={createLogic} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_100px_100px_auto] gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3"><select required value={logicDraft.predecessor} onChange={event => setLogicDraft(value => ({ ...value, predecessor: event.target.value }))} className="border rounded-lg px-2 py-2 text-sm"><option value="">Predecessor</option>{workspace?.activities?.map(row => <option key={row.id} value={row.id}>{row.external_id} - {row.name}</option>)}</select><select required value={logicDraft.successor} onChange={event => setLogicDraft(value => ({ ...value, successor: event.target.value }))} className="border rounded-lg px-2 py-2 text-sm"><option value="">Successor</option>{workspace?.activities?.map(row => <option key={row.id} value={row.id}>{row.external_id} - {row.name}</option>)}</select><select value={logicDraft.relationship_type} onChange={event => setLogicDraft(value => ({ ...value, relationship_type: event.target.value }))} className="border rounded-lg px-2 py-2 text-sm">{['FS', 'SS', 'FF', 'SF'].map(value => <option key={value}>{value}</option>)}</select><input type="number" value={logicDraft.lag_days} onChange={event => setLogicDraft(value => ({ ...value, lag_days: event.target.value }))} className="border rounded-lg px-2 py-2 text-sm" /><button disabled={immutable} className="bg-violet-600 text-white rounded-lg px-3 text-sm font-semibold disabled:opacity-40">Add Tie</button></form><div className="divide-y divide-slate-100 border rounded-xl">{workspace?.relationships?.map(link => { const pred = workspace.activities.find(row => row.id === link.predecessor); const succ = workspace.activities.find(row => row.id === link.successor); return <div key={link.id} className="flex items-center gap-3 px-4 py-3 text-sm"><span className="font-mono text-slate-700">{pred?.external_id}</span><span className="rounded bg-blue-50 text-blue-700 px-2 py-0.5 font-semibold">{link.relationship_type}{Number(link.lag_days) ? ` ${Number(link.lag_days) > 0 ? '+' : ''}${link.lag_days}d` : ''}</span><span className="font-mono text-slate-700">{succ?.external_id}</span><span className="text-slate-400 truncate">{pred?.name} to {succ?.name}</span><button disabled={immutable} onClick={() => runAction('delete-logic', () => planningIntelligenceService.deleteRelationship(link.id), 'Relationship removed.')} className="ml-auto text-slate-300 hover:text-rose-600"><Trash2 className="w-4 h-4" /></button></div> })}</div></div>}
 
-          {tab === 'resources' && <div className="p-4 space-y-4"><form onSubmit={createResource} className="grid grid-cols-1 md:grid-cols-[160px_1fr_1fr_auto] gap-2 bg-slate-50 border rounded-xl p-3"><input required value={newResource.code} onChange={event => setNewResource(value => ({ ...value, code: event.target.value }))} placeholder="Resource code" className="border rounded-lg px-3 py-2 text-sm" /><input required value={newResource.name} onChange={event => setNewResource(value => ({ ...value, name: event.target.value }))} placeholder="Resource name" className="border rounded-lg px-3 py-2 text-sm" /><input value={newResource.role} onChange={event => setNewResource(value => ({ ...value, role: event.target.value }))} placeholder="Role" className="border rounded-lg px-3 py-2 text-sm" /><button disabled={immutable} className="bg-violet-600 text-white px-4 rounded-lg text-sm font-semibold disabled:opacity-40">Add Resource</button></form><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">{workspace?.resources?.map(resource => { const assignments = workspace.assignments.filter(item => item.resource === resource.id); const hours = assignments.reduce((sum, item) => sum + Number(item.budgeted_hours || 0), 0); return <div key={resource.id} className="border rounded-xl p-4"><div className="flex items-center gap-2"><div className="w-9 h-9 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center font-bold">{resource.code.slice(0, 2)}</div><div><div className="font-semibold text-slate-800">{resource.name}</div><div className="text-xs text-slate-400">{resource.role || resource.resource_type}</div></div></div><div className="grid grid-cols-2 gap-2 mt-3 text-sm"><div className="bg-slate-50 rounded-lg p-2"><div className="text-xs text-slate-400">Assignments</div><b>{assignments.length}</b></div><div className="bg-slate-50 rounded-lg p-2"><div className="text-xs text-slate-400">Budget hours</div><b>{hours.toFixed(1)}</b></div></div></div> })}</div></div>}
+          {tab === 'resources' && <div className="p-4 space-y-4"><form onSubmit={createResource} className="grid grid-cols-1 md:grid-cols-[140px_1fr_1fr_140px_auto] gap-2 bg-slate-50 border rounded-xl p-3"><input required value={newResource.code} onChange={event => setNewResource(value => ({ ...value, code: event.target.value }))} placeholder="Resource code" className="border rounded-lg px-3 py-2 text-sm" /><input required value={newResource.name} onChange={event => setNewResource(value => ({ ...value, name: event.target.value }))} placeholder="Resource name" className="border rounded-lg px-3 py-2 text-sm" /><input value={newResource.role} onChange={event => setNewResource(value => ({ ...value, role: event.target.value }))} placeholder="Role" className="border rounded-lg px-3 py-2 text-sm" /><input type="number" min="0.01" step="0.25" required value={newResource.capacity_units_per_day} onChange={event => setNewResource(value => ({ ...value, capacity_units_per_day: event.target.value }))} placeholder="Capacity/day" title="Maximum available units per working day" className="border rounded-lg px-3 py-2 text-sm" /><button disabled={immutable} className="bg-violet-600 text-white px-4 rounded-lg text-sm font-semibold disabled:opacity-40">Add Resource</button></form><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">{workspace?.resources?.map(resource => { const assignments = workspace.assignments.filter(item => item.resource === resource.id); const hours = assignments.reduce((sum, item) => sum + Number(item.budgeted_hours || 0), 0); return <div key={resource.id} className="border rounded-xl p-4"><div className="flex items-center gap-2"><div className="w-9 h-9 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center font-bold">{resource.code.slice(0, 2)}</div><div><div className="font-semibold text-slate-800">{resource.name}</div><div className="text-xs text-slate-400">{resource.role || resource.resource_type}</div></div></div><div className="grid grid-cols-3 gap-2 mt-3 text-sm"><div className="bg-slate-50 rounded-lg p-2"><div className="text-xs text-slate-400">Assignments</div><b>{assignments.length}</b></div><div className="bg-slate-50 rounded-lg p-2"><div className="text-xs text-slate-400">Budget hours</div><b>{hours.toFixed(1)}</b></div><div className="bg-slate-50 rounded-lg p-2"><div className="text-xs text-slate-400">Capacity/day</div><b>{Number(resource.capacity_units_per_day || 0).toFixed(1)}</b></div></div></div> })}</div></div>}
 
           {tab === 'controls' && <ProjectControlsPanel versionId={versionId} canEdit={workspace?.can_control} canBudget={workspace?.can_edit} resources={workspace?.resources} assignments={workspace?.assignments} onWorkspaceRefresh={() => loadWorkspace(versionId, true)} onNotice={showControlsNotice} />}
 
+          {tab === 'assurance' && <TrustworthySchedulingPanel assurance={workspace?.schedule_assurance} versionStatus={workspace?.version?.status} busy={['assurance', 'approve-assurance'].includes(busy) || ['queued', 'running'].includes(scheduleJob?.status)} canControl={workspace?.can_control} onRun={() => runAction('assurance', () => runScheduleJob(() => planningIntelligenceService.runScheduleAssurance(versionId)), 'Phase 3 schedule assurance completed.')} onApprove={() => runAction('approve-assurance', () => planningIntelligenceService.approveScheduleAssurance(versionId), 'Phase 3 schedule assurance approved.')} />}
+
           {tab === 'governance' && <GovernancePanel projectId={projectId} versionId={versionId} versionStatus={workspace?.version?.status} activities={workspace?.activities} onWorkspaceRefresh={() => loadWorkspace(versionId, true)} onNotice={showControlsNotice} />}
 
-          {tab === 'integrations' && <IntegrationsExportsPanel projectId={projectId} versionId={versionId} canManage={workspace?.can_control} onNotice={showControlsNotice} />}
+          {tab === 'integrations' && <IntegrationsExportsPanel projectId={projectId} projectName={workspace?.project?.name || project?.name} scheduleCode={workspace?.schedule?.code} versionId={versionId} versionNumber={workspace?.version?.version} canManage={workspace?.can_control} onNotice={showControlsNotice} />}
 
           {tab === 'enterprise' && <EnterpriseReadinessPanel projectId={projectId} projectName={workspace?.project?.name || project?.name} canManage={workspace?.can_control} onNotice={showControlsNotice} />}
 
