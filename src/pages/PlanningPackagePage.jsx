@@ -5,6 +5,7 @@ import apiClient from '../services/api.service';
 import planningIntelligenceService from '../services/planningIntelligence.service';
 import usePlanningJob from '../hooks/usePlanningJob';
 import GenerationWizard from '../components/planning/GenerationWizard';
+import WorkablePlanBuilder from '../components/planning/WorkablePlanBuilder';
 import {
   PLANNING_ENDPOINTS,
   PLANNING_FILE_CATEGORIES,
@@ -148,7 +149,7 @@ const PlanningPackagePage = () => {
   const [lastClickedIndex, setLastClickedIndex] = useState({});
 
   const [generation, setGeneration] = useState(null);
-  const [generating, setGenerating] = useState(false);
+  const [, setGenerating] = useState(false);
   const [showGenerationWizard, setShowGenerationWizard] = useState(false);
   const [downloadingPresentation, setDownloadingPresentation] = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
@@ -757,9 +758,11 @@ const PlanningPackagePage = () => {
         ? 'bg-sky-50 text-sky-700 border-sky-200'
         : 'bg-emerald-50 text-emerald-700 border-emerald-200';
     return (
-      <div className={`mb-4 px-4 py-2 rounded-lg border text-sm flex items-center justify-between ${styles}`}>
-        <span>{banner.message}</span>
+      <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${styles}`}>
+        <div className="flex items-center justify-between gap-3"><span>{banner.message}</span>
         <button onClick={() => setBanner(null)} className="ml-4 opacity-60 hover:opacity-100">✕</button>
+        </div>
+        {banner.type === 'info' && activeJob && <div className="mt-2 h-2 overflow-hidden rounded-full bg-sky-100" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={activeJob.progress || 0}><div className="h-full rounded-full bg-sky-600 transition-all duration-500" style={{ width: `${activeJob.progress || 0}%` }} /></div>}
       </div>
     );
   };
@@ -1404,6 +1407,12 @@ const PlanningPackagePage = () => {
               )}
             </div>
           )}
+
+          <WorkablePlanBuilder
+            projectId={selectedProjectId}
+            intelligenceRunId={data.document_intelligence_run_id}
+            onOpenPlanner={() => navigate(`/planning-workspace/${selectedProjectId}`)}
+          />
 
           {data.ai_review && (
             <div className="rounded-xl p-4 bg-gradient-to-br from-violet-50 via-indigo-50 to-white border border-violet-100">
@@ -2180,15 +2189,6 @@ const PlanningPackagePage = () => {
             <p key={i} className="text-sm text-amber-700 italic bg-amber-50 rounded-lg px-3 py-2">⚠ {n}</p>
           ))}
 
-          {!isEditing && (
-            <button
-              onClick={() => setShowGenerationWizard(true)}
-              disabled={generating}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-semibold shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40 disabled:shadow-none"
-            >
-              {generating ? 'Generating Schedule…' : 'Open Generation Wizard →'}
-            </button>
-          )}
         </>
       )}
     </div>

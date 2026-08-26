@@ -1,10 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
-import { ChevronDown, ChevronRight, Columns, GitBranch, Layers, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Columns, GitBranch, Layers, Printer, Trash2 } from 'lucide-react'
 
 const DAY_MS = 86400000
 const SUMMARY_HEIGHT = 44
 const ACTIVITY_HEIGHT = 40
+const PRINT_ROWS_PER_PAGE = 40
+const PRINT_DETAILS_WIDTH = 650
+const PRINT_TIMELINE_WIDTH = 780
+const PRINT_ROW_HEIGHT = 23
 
 const COLUMN_LABELS = ['ID', 'Deliverable / workflow activity', 'Stage', 'Dur.', 'CPM Start', 'CPM Finish', 'Float', 'Pred.', 'Responsible', '']
 const DEFAULT_COLUMN_WIDTHS = [52, 270, 125, 62, 82, 82, 52, 45, 120, 30]
@@ -20,6 +24,7 @@ const contentWidth = (values, index) => {
 const dayValue = value => value ? new Date(`${value}T00:00:00Z`).getTime() : null
 const dayDiff = (start, end) => Math.round((end - start) / DAY_MS)
 const shortDate = value => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' }).format(new Date(value))
+const dayLabel = value => Number.isInteger(Number(value)) ? `${Number(value)}d` : `${Number(value).toFixed(1)}d`
 
 const STAGE_COLORS = {
   IFR: '#2563eb', COMPANY_REVIEW: '#f59e0b', IFA: '#4f46e5',
@@ -49,7 +54,8 @@ const barColor = item => {
 
 export default function PlannerActivitiesGantt({
   activities, summaries, relationships, search, discipline, criticalOnly,
-  immutable, dirtyIds, onUpdate, onDelete,
+  immutable, dirtyIds, onUpdate, onDelete, projectName, scheduleName,
+  versionLabel, dataDate, calculatedFinish,
 }) {
   const [expanded, setExpanded] = useState(new Set())
   const [zoom, setZoom] = useState('month')
@@ -74,14 +80,31 @@ export default function PlannerActivitiesGantt({
         Number(left.metadata?.workflow_stage_sequence || left.sort_order)
         - Number(right.metadata?.workflow_stage_sequence || right.sort_order)
       ))
-      return { ...summary, key, children }
+      const childIds = new Set(children.map(item => item.id))
+      const floatValues = children
+        .filter(item => item.total_float_days !== null && item.total_float_days !== undefined)
+        .map(item => Number(item.total_float_days))
+        .filter(Number.isFinite)
+      const externalPredecessors = new Set(
+        relationships
+          .filter(link => childIds.has(link.successor) && !childIds.has(link.predecessor))
+          .map(link => link.predecessor),
+      )
+      return {
+        ...summary,
+        key,
+        children,
+        duration_days: children.reduce((total, item) => total + Number(item.duration_days || 0), 0),
+        total_float_days: floatValues.length ? Math.min(...floatValues) : null,
+        predecessor_count: externalPredecessors.size,
+      }
     }).filter(group => (
       (!needle || group.deliverable.toLowerCase().includes(needle)
         || group.children.some(item => item.external_id.toLowerCase().includes(needle) || item.name.toLowerCase().includes(needle)))
       && (discipline === 'all' || group.discipline === discipline)
       && (!criticalOnly || group.critical_task_count > 0)
     ))
-  }, [activities, summaries, search, discipline, criticalOnly])
+  }, [activities, summaries, relationships, search, discipline, criticalOnly])
 
   useEffect(() => {
     setExpanded(current => current.size ? current : new Set(groups.slice(0, 2).map(group => group.key)))
@@ -113,11 +136,11 @@ export default function PlannerActivitiesGantt({
       values[0].push(row.kind === 'summary' ? 'WBS' : item.external_id)
       values[1].push(row.kind === 'summary' ? row.deliverable : item.name)
       values[2].push(row.kind === 'summary' ? `${row.task_count} tasks` : (item.metadata?.workflow_stage_code || (item.is_milestone ? 'MILESTONE' : '')))
-      values[3].push(row.kind === 'summary' ? '' : item.duration_days)
+      values[3].push(row.kind === 'summary' ? dayLabel(row.duration_days) : item.duration_days)
       values[4].push(item.planned_start)
       values[5].push(item.planned_finish)
-      values[6].push(row.kind === 'summary' ? '' : item.total_float_days)
-      values[7].push(row.kind === 'summary' ? '' : predecessorCounts[item.id] || 0)
+      values[6].push(row.kind === 'summary' ? row.total_float_days : item.total_float_days)
+      values[7].push(row.kind === 'summary' ? row.predecessor_count : predecessorCounts[item.id] || 0)
       values[8].push(row.kind === 'summary' ? row.discipline : item.responsible_role)
     })
     setColumnWidths(values.map((column, index) => contentWidth(column, index)))
@@ -248,9 +271,76 @@ export default function PlannerActivitiesGantt({
     return next
   })
 
+  const printGantt = () => {
+    const previousTitle = document.title
+    const safeName = `${projectName || 'Project'}_${versionLabel || 'Current'}_Gantt_Chart`
+      .replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '')
+    document.title = safeName
+    const restore = () => {
+      document.title = previousTitle
+    }
+    window.addEventListener('afterprint', restore, { once: true })
+    window.setTimeout(() => {
+      window.print()
+      // Some embedded browsers do not emit afterprint when the dialog is cancelled.
+      window.setTimeout(() => { if (document.title === safeName) restore() }, 1500)
+    }, 150)
+  }
+
+  const printedAt = new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium', timeStyle: 'short',
+  }).format(new Date())
+  const printRows = useMemo(() => [
+    ...groups.flatMap(group => [
+      { kind: 'summary', ...group },
+      ...group.children.map(activity => ({ kind: 'activity', activity })),
+    ]),
+    ...milestoneRows.map(activity => ({ kind: 'activity', activity, standalone: true })),
+  ], [groups, milestoneRows])
+  const printPages = useMemo(() => {
+    const pages = []
+    for (let index = 0; index < printRows.length; index += PRINT_ROWS_PER_PAGE) {
+      pages.push(printRows.slice(index, index + PRINT_ROWS_PER_PAGE))
+    }
+    return pages.length ? pages : [[]]
+  }, [printRows])
+  const printDateX = (value, finishEdge = false) => {
+    const date = dayValue(value)
+    if (!range || date === null) return 0
+    return ((dayDiff(range.start, date) + (finishEdge ? 1 : 0)) / range.span) * PRINT_TIMELINE_WIDTH
+  }
+  const printTicks = useMemo(() => {
+    if (!range) return []
+    const interval = zoom === 'day' ? 7 : zoom === 'week' ? 14 : 30
+    const ticks = []
+    for (let offset = 0; offset < range.span; offset += interval) {
+      const width = Math.min(interval, range.span - offset)
+      ticks.push({
+        offset, label: shortDate(range.start + offset * DAY_MS),
+        left: offset / range.span * PRINT_TIMELINE_WIDTH,
+        width: width / range.span * PRINT_TIMELINE_WIDTH,
+      })
+    }
+    return ticks
+  }, [range, zoom])
+
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-3 py-2">
+    <div className="planner-gantt-print-root">
+      <style>{`
+        .planner-gantt-print-document { display: none; }
+        @media print {
+          @page { size: A3 landscape; margin: 8mm; }
+          body * { visibility: hidden !important; }
+          .planner-gantt-print-root, .planner-gantt-print-root * { visibility: visible !important; }
+          .planner-gantt-print-root { position: absolute !important; inset: 0 auto auto 0 !important; background: white !important; }
+          .planner-gantt-screen, .planner-gantt-no-print { display: none !important; }
+          .planner-gantt-print-document { display: block !important; width: ${PRINT_DETAILS_WIDTH + PRINT_TIMELINE_WIDTH}px; }
+          .planner-gantt-print-page { break-after: page; page-break-after: always; }
+          .planner-gantt-print-page:last-child { break-after: auto; page-break-after: auto; }
+          .planner-gantt-print-root * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      `}</style>
+      <div className="planner-gantt-no-print flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-3 py-2">
         <div className="flex items-center gap-2 text-xs text-slate-600"><Layers className="h-4 w-4 text-violet-600"/><b>{groups.length}</b> deliverables · <b>{activities.length}</b> detailed activities</div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="hidden items-center gap-3 text-[10px] font-semibold text-slate-500 2xl:flex">
@@ -263,12 +353,13 @@ export default function PlannerActivitiesGantt({
           </div>
           <button type="button" onClick={() => setShowLogic(value => !value)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold ${showLogic ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600'}`}><GitBranch className="h-3.5 w-3.5"/>{showLogic ? 'Logic on' : 'Logic off'}</button>
           <button type="button" onClick={fitColumns} title="Resize columns to fit the visible data" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-violet-300 hover:text-violet-700"><Columns className="h-3.5 w-3.5"/>Fit columns</button>
+          <button type="button" onClick={printGantt} title="Print the filtered Gantt chart or save it as PDF" className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100"><Printer className="h-3.5 w-3.5"/>Print Gantt</button>
           <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">{['day', 'week', 'month'].map(value => <button key={value} type="button" onClick={() => setZoom(value)} className={`rounded-md px-2 py-1 text-[11px] font-bold capitalize ${zoom === value ? 'bg-violet-600 text-white' : 'text-slate-500'}`}>{value}</button>)}</div>
           <button type="button" onClick={() => setExpanded(new Set(groups.map(group => group.key)))} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600">Expand all</button>
           <button type="button" onClick={() => setExpanded(new Set())} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600">Collapse all</button>
         </div>
       </div>
-      <div className="max-h-[70vh] overflow-auto">
+      <div className="planner-gantt-screen max-h-[70vh] overflow-auto">
         <div className="sticky top-0 z-50 flex shadow-sm" style={{ width: detailsWidth + timelineWidth, minWidth: detailsWidth + timelineWidth, height: 36 }}>
           <div className="planner-grid-header grid shrink-0 border-b border-r border-slate-400 bg-slate-100 text-xs font-semibold text-slate-600" style={{ width: detailsWidth, minWidth: detailsWidth, height: 36, gridTemplateColumns: columnWidths.map(width => `${width}px`).join(' ') }}>
             {COLUMN_LABELS.map((label, index) => <div key={`${label}-${index}`} className="relative flex min-w-0 items-center overflow-hidden px-2"><span className="truncate">{label}</span>{index < COLUMN_LABELS.length - 1 && <button type="button" aria-label={`Resize ${label || 'action'} column`} title="Drag to resize column" onPointerDown={event => startColumnResize(event, index)} className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none border-r border-transparent hover:border-violet-500"/>}</div>)}
@@ -285,7 +376,7 @@ export default function PlannerActivitiesGantt({
             if (row.kind === 'summary') {
               const open = expanded.has(row.key)
               const color = DISCIPLINE_COLORS[row.discipline?.toLowerCase()] || '#6d28d9'
-              return <tr key={row.key} className="h-11 border-t border-violet-100 bg-violet-50/70"><td className="border-l-4 px-2 font-mono font-bold text-violet-700" style={{ borderLeftColor: color }}>WBS</td><td className="overflow-hidden px-2"><button type="button" onClick={() => toggle(row.key)} className="flex w-full min-w-0 items-center gap-2 overflow-hidden text-left font-bold text-slate-900">{open ? <ChevronDown className="h-4 w-4 shrink-0"/> : <ChevronRight className="h-4 w-4 shrink-0"/>}<span className="truncate">{row.deliverable}</span></button></td><td className="px-2"><span className="rounded-full bg-white px-2 py-1 font-bold text-violet-700">{row.task_count} tasks</span></td><td className="px-2">—</td><td className="px-2 whitespace-nowrap font-semibold">{row.planned_start || '—'}</td><td className="px-2 whitespace-nowrap font-semibold">{row.planned_finish || '—'}</td><td className="px-2">—</td><td className="px-2">—</td><td className="px-2 capitalize text-slate-500">{row.discipline}</td><td/></tr>
+              return <tr key={row.key} className="h-11 border-t border-violet-100 bg-violet-50/70"><td className="border-l-4 px-2 font-mono font-bold text-violet-700" style={{ borderLeftColor: color }}>WBS</td><td className="overflow-hidden px-2"><button type="button" onClick={() => toggle(row.key)} className="flex w-full min-w-0 items-center gap-2 overflow-hidden text-left font-bold text-slate-900">{open ? <ChevronDown className="h-4 w-4 shrink-0"/> : <ChevronRight className="h-4 w-4 shrink-0"/>}<span className="truncate">{row.deliverable}</span></button></td><td className="px-2"><span className="rounded-full bg-white px-2 py-1 font-bold text-violet-700">{row.task_count} tasks</span></td><td className="px-2 font-semibold text-slate-700">{dayLabel(row.duration_days)}</td><td className="px-2 whitespace-nowrap font-semibold">{row.planned_start || '—'}</td><td className="px-2 whitespace-nowrap font-semibold">{row.planned_finish || '—'}</td><td className={`px-2 font-semibold ${Number(row.total_float_days) <= 0 ? 'text-rose-600' : 'text-slate-500'}`}>{row.total_float_days ?? '—'}</td><td className="px-2 text-center font-bold text-slate-600">{row.predecessor_count}</td><td className="px-2 capitalize text-slate-500">{row.discipline}</td><td/></tr>
             }
             const activity = row.activity
             const stage = activity.metadata?.workflow_stage_code
@@ -333,6 +424,64 @@ export default function PlannerActivitiesGantt({
         </div>
         </div>
       </div>
+
+      <div className="planner-gantt-print-document">
+        {printPages.map((pageRows, pageIndex) => {
+          const activityPositions = new Map()
+          pageRows.forEach((row, rowIndex) => {
+            if (row.kind === 'activity') activityPositions.set(row.activity.id, rowIndex)
+          })
+          const pageLogic = showLogic ? relationships.map(link => {
+            const fromRow = activityPositions.get(link.predecessor)
+            const toRow = activityPositions.get(link.successor)
+            if (fromRow === undefined || toRow === undefined) return null
+            const predecessor = activities.find(item => item.id === link.predecessor)
+            const successor = activities.find(item => item.id === link.successor)
+            if (!predecessor || !successor) return null
+            return {
+              id: link.id, fromX: printDateX(predecessor.planned_finish, true),
+              toX: printDateX(successor.planned_start),
+              fromY: fromRow * PRINT_ROW_HEIGHT + PRINT_ROW_HEIGHT / 2,
+              toY: toRow * PRINT_ROW_HEIGHT + PRINT_ROW_HEIGHT / 2,
+              critical: predecessor.is_critical && successor.is_critical,
+            }
+          }).filter(Boolean) : []
+          return <section key={pageIndex} className="planner-gantt-print-page bg-white">
+            <header className="flex items-start justify-between gap-8 border-b-2 border-slate-900 pb-2">
+              <div><h1 className="text-lg font-bold text-slate-950">{projectName || 'Project Schedule'} — Gantt Chart</h1><p className="mt-0.5 text-xs text-slate-600">{scheduleName || 'Master Schedule'} · {versionLabel || 'Current version'}</p></div>
+              <div className="grid grid-cols-2 gap-x-5 text-[10px] text-slate-600"><span>Data date</span><b className="text-slate-900">{dataDate || '—'}</b><span>Calculated finish</span><b className="text-slate-900">{calculatedFinish || '—'}</b><span>Printed</span><b className="text-slate-900">{printedAt}</b></div>
+            </header>
+            <div className="mt-2 flex border border-slate-500 text-[9px]" style={{ width: PRINT_DETAILS_WIDTH + PRINT_TIMELINE_WIDTH }}>
+              <div style={{ width: PRINT_DETAILS_WIDTH }}>
+                <div className="grid h-7 items-center border-b border-slate-500 bg-slate-200 font-bold" style={{ gridTemplateColumns: '75px 260px 50px 82px 82px 55px 46px' }}><span className="px-1">ID</span><span className="px-1">Deliverable / Activity</span><span>Dur.</span><span>CPM Start</span><span>CPM Finish</span><span>Float</span><span>Pred.</span></div>
+                {pageRows.map(row => {
+                  const item = row.kind === 'summary' ? row : row.activity
+                  const name = row.kind === 'summary' ? row.deliverable : item.name
+                  const id = row.kind === 'summary' ? 'WBS' : item.external_id
+                  const duration = row.kind === 'summary' ? row.duration_days : item.duration_days
+                  const predecessorCount = row.kind === 'summary' ? row.predecessor_count : predecessorCounts[item.id] || 0
+                  return <div key={row.kind === 'summary' ? row.key : item.id} className={`grid items-center border-b border-slate-300 ${row.kind === 'summary' ? 'bg-violet-50 font-bold' : item.is_critical ? 'bg-rose-50' : 'bg-white'}`} style={{ height: PRINT_ROW_HEIGHT, gridTemplateColumns: '75px 260px 50px 82px 82px 55px 46px' }}><span className="truncate px-1 font-mono">{id}</span><span className="truncate px-1">{name}</span><span>{dayLabel(duration || 0)}</span><span>{item.planned_start || '—'}</span><span>{item.planned_finish || '—'}</span><span className={Number(item.total_float_days) <= 0 ? 'font-bold text-rose-700' : ''}>{item.total_float_days ?? '—'}</span><span>{predecessorCount}</span></div>
+                })}
+              </div>
+              <div className="relative border-l border-slate-500" style={{ width: PRINT_TIMELINE_WIDTH }}>
+                <div className="relative h-7 border-b border-slate-500 bg-slate-100">{printTicks.map(tick => <span key={tick.offset} className="absolute flex h-7 items-center justify-center border-r border-slate-400 font-bold" style={{ left: tick.left, width: tick.width }}>{tick.label}</span>)}</div>
+                <div className="relative" style={{ height: pageRows.length * PRINT_ROW_HEIGHT, backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent 96px, rgba(100,116,139,.24) 96px, rgba(100,116,139,.24) 97px)` }}>
+                  {pageRows.map((row, rowIndex) => {
+                    const item = row.kind === 'summary' ? row : row.activity
+                    const left = printDateX(item.planned_start)
+                    const right = printDateX(item.planned_finish, true)
+                    const milestone = row.kind === 'activity' && item.is_milestone
+                    const color = row.kind === 'summary' ? '#111827' : barColor(item)
+                    return <div key={row.kind === 'summary' ? row.key : item.id} className={`absolute left-0 border-b border-slate-300 ${row.kind === 'summary' ? 'bg-violet-50/50' : item.is_critical ? 'bg-rose-50/40' : ''}`} style={{ top: rowIndex * PRINT_ROW_HEIGHT, height: PRINT_ROW_HEIGHT, width: PRINT_TIMELINE_WIDTH }}>{milestone ? <span className="absolute h-2.5 w-2.5 rotate-45 border border-amber-800 bg-amber-400" style={{ left: left - 5, top: 6 }}/> : <span className="absolute rounded-sm" style={{ left, top: row.kind === 'summary' ? 10 : 7, width: Math.max(3, right - left), height: row.kind === 'summary' ? 3 : 9, backgroundColor: color }}/>}</div>
+                  })}
+                  {pageLogic.length > 0 && <svg className="absolute inset-0" width={PRINT_TIMELINE_WIDTH} height={pageRows.length * PRINT_ROW_HEIGHT}>{pageLogic.map(line => { const routeX = Math.max(line.fromX + 5, Math.min(PRINT_TIMELINE_WIDTH - 3, (line.fromX + line.toX) / 2)); return <path key={line.id} d={`M ${line.fromX} ${line.fromY} H ${routeX} V ${line.toY} H ${line.toX}`} fill="none" stroke={line.critical ? '#dc2626' : '#334155'} strokeWidth="0.8"/> })}</svg>}
+                </div>
+              </div>
+            </div>
+            <footer className="mt-1 flex justify-between text-[9px] text-slate-500"><span>Filtered Gantt · {pageRows.length} rows on this page · Maximum {PRINT_ROWS_PER_PAGE}</span><span>Page {pageIndex + 1} of {printPages.length}</span></footer>
+          </section>
+        })}
+      </div>
     </div>
   )
 }
@@ -348,4 +497,9 @@ PlannerActivitiesGantt.propTypes = {
   dirtyIds: PropTypes.instanceOf(Set).isRequired,
   onUpdate: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
+  projectName: PropTypes.string,
+  scheduleName: PropTypes.string,
+  versionLabel: PropTypes.string,
+  dataDate: PropTypes.string,
+  calculatedFinish: PropTypes.string,
 }
