@@ -26,6 +26,7 @@ import {
   DocumentTextIcon,
   TableCellsIcon,
   CubeTransparentIcon,
+  BookOpenIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import { getApiBaseUrl } from '../../../config/environment.config';
@@ -34,6 +35,14 @@ import { getApiBaseUrl } from '../../../config/environment.config';
 // Feature Cards Configuration
 // ---------------------------------------------------------------------------
 const FEATURE_CARDS = [
+  {
+    id: 'valve-standards-reference',
+    title: 'Valve Standards Reference',
+    description: 'Browse and validate ASME B16.34 pressure-temperature ratings, wall thickness & material specs',
+    icon: BookOpenIcon,
+    path: ROUTES.VALVE_STANDARDS,
+    badge: 'New',
+  },
   {
     id: 'model-import',
     title: '3D Model Import',
@@ -128,12 +137,20 @@ const SmartPlant3DPage = () => {
           {FEATURE_CARDS.map((card) => (
             <div
               key={card.id}
-              className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-6 border border-slate-200 relative overflow-hidden group"
+              onClick={() => card.path && navigate(card.path)}
+              className={`bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-6 border border-slate-200 relative overflow-hidden group ${card.path ? 'cursor-pointer' : ''}`}
             >
               {card.comingSoon && (
                 <div className="absolute top-4 right-4">
                   <span className="px-3 py-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs font-semibold rounded-full shadow-sm">
                     Coming Soon
+                  </span>
+                </div>
+              )}
+              {card.badge && !card.comingSoon && (
+                <div className="absolute top-4 right-4">
+                  <span className="px-3 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-semibold rounded-full shadow-sm">
+                    {card.badge}
                   </span>
                 </div>
               )}
