@@ -23,7 +23,7 @@ export const BRANDING = {
 
 // Page Content
 export const PAGE_CONTENT = {
-  title: 'Welcome Back',
+  title: 'User Login',
   subtitle: 'Sign in to access your P&ID verification dashboard',
   
   features: [
@@ -64,7 +64,7 @@ export const FORM_CONFIG = {
   
   buttons: {
     submit: {
-      text: 'Sign In',
+      text: 'Login',
       loadingText: 'Signing in...',
     },
     forgotPassword: {
