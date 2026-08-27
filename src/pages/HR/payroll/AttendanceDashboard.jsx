@@ -818,7 +818,7 @@ function SummaryTab() {
                 attendanceUploading
                   ? 'border-blue-300 bg-blue-100 text-blue-600 opacity-70'
                   : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-              }`} title="Upload .xlsx or .csv with Employee ID, Date and Hours columns">
+              }`} title="Upload a native COSEC attendance report, or an Excel/CSV attendance sheet">
                 {attendanceUploading
                   ? <><Spinner /> Importing...</>
                   : <><HeroIcons.ArrowUpTrayIcon className="h-4 w-4" /> Upload Daily Hours</>
@@ -872,7 +872,7 @@ function SummaryTab() {
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs text-blue-800">
           <HeroIcons.InformationCircleIcon className="h-4 w-4 shrink-0" />
-          <span><strong>Manual attendance:</strong> upload Excel/CSV columns <strong>Employee ID, Date, Hours</strong>, or a monthly sheet with Employee ID and day columns 1–31. Maximum 9 hours per weekday.</span>
+          <span><strong>Attendance upload:</strong> accepts the native COSEC <strong>Organization-Wise Attendance</strong> .xlsx report, Excel/CSV columns <strong>Employee ID, Date, Hours</strong>, or a monthly sheet with day columns 1–31. COSEC Work Hrs and weekend work are preserved.</span>
         </div>
         {attendanceUploadMsg && (
           <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
