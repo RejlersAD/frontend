@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import { Pencil } from 'lucide-react'
 
 import planningIntelligenceService from '../../services/planningIntelligence.service'
+import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentBranding.config'
 
 const STATUS_LABELS = {
   draft: 'Draft',
   internal_review: 'Internal review',
+  approval_review: 'Awaiting approval',
+  rejected: 'Rejected',
   approved: 'Approved',
   issued: 'Issued',
   superseded: 'Superseded',
@@ -13,22 +17,25 @@ const STATUS_LABELS = {
 const STATUS_STYLES = {
   draft: 'bg-slate-100 text-slate-700',
   internal_review: 'bg-amber-100 text-amber-800',
+  approval_review: 'bg-blue-100 text-blue-800',
+  rejected: 'bg-rose-100 text-rose-700',
   approved: 'bg-emerald-100 text-emerald-800',
   issued: 'bg-indigo-100 text-indigo-800',
   superseded: 'bg-rose-100 text-rose-700',
 }
 
-const NEXT_ACTIONS = {
-  draft: [{ status: 'internal_review', label: 'Send for review' }],
-  internal_review: [
-    { status: 'draft', label: 'Return to draft' },
-    { status: 'approved', label: 'Approve' },
-  ],
-  approved: [
-    { status: 'draft', label: 'Reopen draft' },
-    { status: 'issued', label: 'Issue proposal' },
-  ],
-  issued: [{ status: 'superseded', label: 'Supersede' }],
+const WORKFLOW_DIALOGS = {
+  submit_review: { title: 'Submit for technical review', action: 'Submit for review', person: 'reviewer', due: true, comments: 'Review instructions (optional)' },
+  reassign_reviewer: { title: 'Change technical reviewer', action: 'Reassign reviewer', person: 'reviewer', due: true, comments: 'Reason or instructions (optional)' },
+  review_return: { title: 'Return proposal to author', action: 'Return proposal', comments: 'Required review comments', commentsRequired: true },
+  review_complete: { title: 'Complete technical review', action: 'Forward for approval', person: 'approver', due: true, comments: 'Technical review comments (optional)' },
+  reassign_approver: { title: 'Change proposal approver', action: 'Reassign approver', person: 'approver', due: true, comments: 'Reason or instructions (optional)' },
+  approval_return: { title: 'Return for further review', action: 'Return proposal', comments: 'Required approval comments', commentsRequired: true },
+  approval_reject: { title: 'Reject proposal', action: 'Reject proposal', comments: 'Required rejection reason', commentsRequired: true },
+  approval_approve: { title: 'Approve proposal', action: 'Approve proposal', comments: 'Approval comments (optional)' },
+  issue: { title: 'Issue controlled proposal', action: 'Generate and issue', notice: 'This locks the revision and stores controlled PDF and Word files in RADAI.' },
+  reopen: { title: 'Reopen rejected proposal', action: 'Reopen as draft', comments: 'Revision note (optional)' },
+  supersede: { title: 'Supersede issued proposal', action: 'Supersede proposal', notice: 'The issued revision remains in the register but is marked as superseded.' },
 }
 
 const displayValue = value => {
@@ -168,6 +175,13 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const [workflowDialog, setWorkflowDialog] = useState('')
+  const [workflowUsers, setWorkflowUsers] = useState({ reviewers: [], approvers: [] })
+  const [workflowForm, setWorkflowForm] = useState({ reviewer: '', approver: '', due_date: '', comments: '' })
+  const [workflowSearch, setWorkflowSearch] = useState('')
 
   const notify = useCallback((type, message) => onNotice?.(type, message), [onNotice])
   const load = useCallback(async (preferredId = null) => {
@@ -188,10 +202,28 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
   }, [notify, projectId, selectedId])
 
   useEffect(() => { load() }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+  }, [previewUrl])
 
-  const editable = draft && ['draft', 'internal_review'].includes(draft.status)
+  const editable = Boolean(draft?.workflow_permissions?.can_edit ?? (draft?.status === 'draft'))
   const section = draft?.sections?.[activeSection]
   const schedule = draft?.snapshot?.schedule || {}
+  const permissions = draft?.workflow_permissions || {
+    can_edit: draft?.status === 'draft',
+    can_submit_review: draft?.status === 'draft',
+    can_review: false,
+    can_reassign_reviewer: false,
+    can_reassign_approver: false,
+    can_approve: false,
+    can_issue: false,
+    can_reopen: false,
+    can_supersede: false,
+  }
+  const workflowDialogConfig = WORKFLOW_DIALOGS[workflowDialog]
+  const workflowReady = Boolean(workflowDialogConfig)
+    && (!workflowDialogConfig.person || Boolean(workflowForm[workflowDialogConfig.person]))
+    && (!workflowDialogConfig.commentsRequired || Boolean(workflowForm.comments.trim()))
 
   const updateField = (field, value) => setDraft(current => ({ ...current, [field]: value }))
   const updateNestedField = (field, key, value) => setDraft(current => ({
@@ -220,24 +252,26 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
     }
   }
 
+  const proposalPayload = () => ({
+    title: draft.title,
+    client_name: draft.client_name,
+    opportunity_reference: draft.opportunity_reference,
+    client_reference: draft.client_reference,
+    tender_title: draft.tender_title,
+    submission_date: draft.submission_date || null,
+    validity_days: Number(draft.validity_days) || 120,
+    bid_focal_point: draft.bid_focal_point || {},
+    submission_address: draft.submission_address || {},
+    signatory: draft.signatory || {},
+    validity_date: draft.validity_date || null,
+    sections: draft.sections,
+    branding: draft.branding,
+  })
+
   const save = async () => {
     setBusy('save')
     try {
-      const saved = await planningIntelligenceService.updateTechnicalProposal(draft.id, {
-        title: draft.title,
-        client_name: draft.client_name,
-        opportunity_reference: draft.opportunity_reference,
-        client_reference: draft.client_reference,
-        tender_title: draft.tender_title,
-        submission_date: draft.submission_date || null,
-        validity_days: Number(draft.validity_days) || 120,
-        bid_focal_point: draft.bid_focal_point || {},
-        submission_address: draft.submission_address || {},
-        signatory: draft.signatory || {},
-        validity_date: draft.validity_date || null,
-        sections: draft.sections,
-        branding: draft.branding,
-      })
+      const saved = await planningIntelligenceService.updateTechnicalProposal(draft.id, proposalPayload())
       setDraft(saved)
       setProposals(rows => rows.map(row => row.id === saved.id ? saved : row))
       notify('success', 'Proposal changes saved to the controlled revision.')
@@ -248,15 +282,79 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
     }
   }
 
-  const transition = async status => {
-    setBusy(status)
+  const openWorkflow = async action => {
+    setWorkflowForm({ reviewer: '', approver: '', due_date: '', comments: '' })
+    setWorkflowSearch('')
+    if (['submit_review', 'reassign_reviewer', 'review_complete', 'reassign_approver'].includes(action)) {
+      setBusy('workflow-users')
+      try {
+        const users = await planningIntelligenceService.getProposalWorkflowUsers(draft.id)
+        setWorkflowUsers(users)
+      } catch (error) {
+        notify('error', errorMessage(error, 'Could not load project reviewers and approvers.'))
+        setBusy('')
+        return
+      }
+      setBusy('')
+    }
+    setWorkflowDialog(action)
+  }
+
+  const applyWorkflowUpdate = (updated, message) => {
+    setDraft(updated)
+    setProposals(rows => rows.map(row => row.id === updated.id ? updated : row))
+    setWorkflowDialog('')
+    notify('success', message)
+  }
+
+  const runWorkflow = async () => {
+    setBusy('workflow')
     try {
-      const updated = await planningIntelligenceService.transitionTechnicalProposal(draft.id, status)
-      setDraft(updated)
-      setProposals(rows => rows.map(row => row.id === updated.id ? updated : row))
-      notify('success', `Proposal moved to ${STATUS_LABELS[status]}.`)
+      let updated
+      if (workflowDialog === 'submit_review') {
+        await planningIntelligenceService.updateTechnicalProposal(draft.id, proposalPayload())
+        updated = await planningIntelligenceService.submitProposalReview(draft.id, workflowForm)
+        applyWorkflowUpdate(updated, 'Proposal submitted to the selected reviewer.')
+      } else if (workflowDialog === 'reassign_reviewer') {
+        updated = await planningIntelligenceService.reassignProposalReviewer(draft.id, workflowForm)
+        applyWorkflowUpdate(updated, 'Technical reviewer reassigned and the previous task cancelled.')
+      } else if (workflowDialog === 'review_return') {
+        updated = await planningIntelligenceService.decideProposalReview(draft.id, { decision: 'return', comments: workflowForm.comments })
+        applyWorkflowUpdate(updated, 'Proposal returned to the author with review comments.')
+      } else if (workflowDialog === 'review_complete') {
+        updated = await planningIntelligenceService.decideProposalReview(draft.id, { decision: 'complete', approver: workflowForm.approver, due_date: workflowForm.due_date || null, comments: workflowForm.comments })
+        applyWorkflowUpdate(updated, 'Technical review completed and proposal forwarded for approval.')
+      } else if (workflowDialog === 'reassign_approver') {
+        updated = await planningIntelligenceService.reassignProposalApprover(draft.id, workflowForm)
+        applyWorkflowUpdate(updated, 'Approver reassigned and the previous approval task cancelled.')
+      } else if (workflowDialog.startsWith('approval_')) {
+        const decision = workflowDialog.replace('approval_', '')
+        updated = await planningIntelligenceService.decideProposalApproval(draft.id, { decision, comments: workflowForm.comments })
+        applyWorkflowUpdate(updated, `Approval decision recorded: ${decision}.`)
+      } else if (workflowDialog === 'issue') {
+        updated = await planningIntelligenceService.issueTechnicalProposal(draft.id)
+        applyWorkflowUpdate(updated, 'Proposal issued. Controlled PDF and Word files are stored in the Proposal Register.')
+      } else if (workflowDialog === 'reopen') {
+        updated = await planningIntelligenceService.reopenTechnicalProposal(draft.id, workflowForm.comments)
+        applyWorkflowUpdate(updated, 'Rejected proposal reopened as a draft.')
+      } else if (workflowDialog === 'supersede') {
+        updated = await planningIntelligenceService.transitionTechnicalProposal(draft.id, 'superseded')
+        applyWorkflowUpdate(updated, 'Issued proposal marked as superseded.')
+      }
     } catch (error) {
-      notify('error', errorMessage(error, 'Proposal workflow transition failed.'))
+      notify('error', errorMessage(error, 'Proposal workflow action failed.'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const downloadIssuedFile = async file => {
+    setBusy(`issued-${file.id}`)
+    try {
+      const response = await planningIntelligenceService.downloadIssuedProposalFile(draft.id, file.id)
+      downloadResponse(response, file.filename)
+    } catch (error) {
+      notify('error', errorMessage(error, 'Could not download the controlled issued file.'))
     } finally {
       setBusy('')
     }
@@ -287,6 +385,27 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
     } finally {
       setBusy('')
     }
+  }
+
+  const openPreview = async () => {
+    setPreviewOpen(true)
+    setPreviewLoading(true)
+    setPreviewError('')
+    try {
+      const response = await planningIntelligenceService.previewTechnicalProposal(draft.id)
+      const nextUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      setPreviewUrl(nextUrl)
+    } catch (error) {
+      setPreviewError(errorMessage(error, 'Could not generate the complete A4 preview.'))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const printPreview = () => {
+    const frame = document.getElementById('technical-proposal-pdf-preview')
+    frame?.contentWindow?.focus()
+    frame?.contentWindow?.print()
   }
 
   const selectProposal = id => {
@@ -329,7 +448,7 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2">
           <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-violet-500">Publish and export</span>
-          <button onClick={() => setPreviewOpen(true)} className="rounded-lg bg-violet-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-700">A4 preview</button>
+          <button onClick={openPreview} disabled={previewLoading} className="rounded-lg bg-violet-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50">{previewLoading ? 'Preparing preview…' : 'A4 preview'}</button>
           <button onClick={() => exportProposal('pdf')} disabled={Boolean(busy)} className="rounded-lg border border-violet-200 bg-white px-3.5 py-2 text-xs font-semibold text-violet-700 disabled:opacity-40">PDF</button>
           <button onClick={() => exportProposal('docx')} disabled={Boolean(busy)} className="rounded-lg border border-violet-200 bg-white px-3.5 py-2 text-xs font-semibold text-violet-700 disabled:opacity-40">Word</button>
         </div>
@@ -342,7 +461,7 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
         </div>
       </div>
 
-      <div className="proposal-no-print grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_400px] 2xl:grid-cols-[270px_minmax(0,1fr)_440px]">
+      <div className="proposal-no-print grid min-w-0 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_320px] 2xl:grid-cols-[270px_minmax(0,1fr)_400px] min-[1850px]:grid-cols-[280px_minmax(0,1fr)_440px]">
         <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="px-2 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">Document outline</div>
           <div className="max-h-[680px] space-y-1 overflow-auto">
@@ -358,6 +477,7 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
         </aside>
 
         <main className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          {section?.key === 'cover' && <>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="text-xs font-semibold text-slate-600">Proposal title<input disabled={!editable} value={draft.title} onChange={event => updateField('title', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
             <label className="text-xs font-semibold text-slate-600">Client<input disabled={!editable} value={draft.client_name || ''} onChange={event => updateField('client_name', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
@@ -382,6 +502,7 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
           </details>
 
           <div className="my-5 border-t border-slate-200" />
+          </>}
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-widest text-violet-500">{section?.group} · {section?.number} · {section?.section_type}</div><input disabled={!editable} value={section?.title || ''} onChange={event => updateSection({ title: event.target.value })} className="mt-1 w-full border-0 p-0 text-lg font-bold text-slate-900 outline-none disabled:bg-white" /></div>
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" disabled={!editable} checked={Boolean(section?.included)} onChange={event => updateSection({ included: event.target.checked })} /> Include</label>
@@ -390,31 +511,51 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
           {section?.data?.length > 0 && <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-700">This section includes {section.data.length} frozen source rows. Use “Refresh source” to update schedule tables while preserving your narrative.</div>}
 
           <div className="mt-5 flex flex-wrap gap-2">
-            <button onClick={save} disabled={!editable || Boolean(busy)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'save' ? 'Saving…' : 'Save proposal'}</button>
-            <button onClick={refreshSnapshot} disabled={!editable || Boolean(busy)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">Refresh source</button>
-            {(NEXT_ACTIONS[draft.status] || []).map(action => <button key={action.status} onClick={() => transition(action.status)} disabled={Boolean(busy)} className="rounded-lg border border-violet-300 px-4 py-2 text-sm font-semibold text-violet-700 disabled:opacity-40">{action.label}</button>)}
+            {editable && <button onClick={save} disabled={Boolean(busy)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'save' ? 'Saving…' : 'Save draft'}</button>}
+            {editable && <button onClick={refreshSnapshot} disabled={Boolean(busy)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">Refresh source</button>}
+            {permissions.can_submit_review && <button onClick={() => openWorkflow('submit_review')} disabled={Boolean(busy)} className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Submit for review</button>}
+            {permissions.can_reassign_reviewer && <button onClick={() => openWorkflow('reassign_reviewer')} disabled={Boolean(busy)} className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 disabled:opacity-40">Change reviewer</button>}
+            {permissions.can_review && <><button onClick={() => openWorkflow('review_return')} disabled={Boolean(busy)} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-40">Return with comments</button><button onClick={() => openWorkflow('review_complete')} disabled={Boolean(busy)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Complete review</button></>}
+            {permissions.can_reassign_approver && <button onClick={() => openWorkflow('reassign_approver')} disabled={Boolean(busy)} className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 disabled:opacity-40">Change approver</button>}
+            {permissions.can_approve && <><button onClick={() => openWorkflow('approval_return')} disabled={Boolean(busy)} className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-700 disabled:opacity-40">Return</button><button onClick={() => openWorkflow('approval_reject')} disabled={Boolean(busy)} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-40">Reject</button><button onClick={() => openWorkflow('approval_approve')} disabled={Boolean(busy)} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Approve</button></>}
+            {permissions.can_issue && <button onClick={() => openWorkflow('issue')} disabled={Boolean(busy)} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Issue proposal</button>}
+            {permissions.can_reopen && <button onClick={() => openWorkflow('reopen')} disabled={Boolean(busy)} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Reopen draft</button>}
+            {permissions.can_supersede && <button onClick={() => openWorkflow('supersede')} disabled={Boolean(busy)} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-40">Supersede</button>}
           </div>
         </main>
 
         <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
           <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between"><div className="text-xs font-bold uppercase tracking-wider text-slate-400">Live A4 page</div><span className="text-[10px] text-emerald-600">● Live</span></div>
-            <button onClick={() => setPreviewOpen(true)} className="mt-3 flex aspect-[210/297] w-full flex-col overflow-hidden border border-slate-300 bg-white p-[6%] text-left font-[Arial] shadow-inner transition hover:border-violet-400 hover:shadow-md">
+            <button onClick={openPreview} className="mt-3 flex aspect-[210/297] w-full flex-col overflow-hidden border border-slate-400 bg-white p-[6%] text-left font-[Arial] shadow-inner transition hover:border-violet-400 hover:shadow-md">
               <div className="flex justify-between border-b border-slate-300 pb-2 text-[6px] leading-tight text-slate-700">
                 <div><b>Technical Proposal</b> &nbsp; {draft.proposal_number}<br />Confidential &nbsp; Rev {draft.revision}</div>
-                <div className="text-[8px] font-bold tracking-widest text-[#273b5a]">◢REJLERS</div>
+                <div className="text-right"><img src={PROCUREMENT_DOCUMENT_BRANDING.logo.path} alt={PROCUREMENT_DOCUMENT_BRANDING.logo.alt} className="ml-auto h-4 w-auto" /><div className="mt-0.5 text-[3.5px] font-bold text-[#3275b6]">HOME OF THE LEARNING MINDS</div></div>
               </div>
               <div className="mt-[13%] border-b border-blue-600 pb-2">
                 <div className="text-[5px] font-bold uppercase tracking-widest text-slate-500">{section?.group}</div>
                 <div className="mt-1 text-[11px] font-bold leading-tight text-blue-700">{section?.number} {section?.title}</div>
               </div>
               <div className="mt-3 max-h-[61%] overflow-hidden whitespace-pre-line text-[7px] leading-[1.55] text-slate-800">{section?.content}</div>
-              <div className="mt-auto border-t border-slate-300 pt-1 text-[3.7px] leading-tight text-slate-500">Rejlers International Engineering Solutions AB<br />P.O. Box 39317, Abu Dhabi, UAE · www.rejlers.ae</div>
+              <div className="mt-auto"><div className="flex justify-around bg-[#0870aa] py-1 text-[3.2px] font-bold text-white"><span>REJLERS</span><span>HOME OF THE LEARNING MINDS</span><span>RADAI</span></div><div className="pt-1 text-[3.7px] leading-tight text-[#4e83ad]">Rejlers International Engineering Solutions<br />P.O. Box 39317, Abu Dhabi, UAE · www.rejlers.ae</div></div>
             </button>
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="text-[10px] leading-4 text-slate-500">Updates immediately while you edit.</p>
-              <button onClick={() => setPreviewOpen(true)} className="shrink-0 text-xs font-bold text-violet-700 hover:text-violet-900">Open full preview →</button>
+              <button onClick={openPreview} className="shrink-0 text-xs font-bold text-violet-700 hover:text-violet-900">Open full preview →</button>
             </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between"><div className="text-xs font-bold uppercase tracking-wider text-slate-400">Proposal Register</div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${STATUS_STYLES[draft.status]}`}>{STATUS_LABELS[draft.status]}</span></div>
+            <dl className="mt-3 space-y-2 text-xs">
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Controlled revision</dt><dd className="text-right font-semibold">{draft.proposal_number} · Rev {draft.revision}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Author</dt><dd className="text-right font-semibold">{draft.created_by_name || '—'}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Reviewer</dt><dd className="text-right font-semibold">{draft.reviewer_name || 'Not assigned'}{draft.review_due_date ? ` · due ${draft.review_due_date}` : ''}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Checked by</dt><dd className="text-right font-semibold">{draft.checked_by_name || 'Pending'}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="flex items-center gap-1.5 text-slate-500">Approver{permissions.can_reassign_approver && <button type="button" onClick={() => openWorkflow('reassign_approver')} disabled={Boolean(busy)} title="Change approver" aria-label="Change approver" className="rounded p-1 text-blue-600 transition hover:bg-blue-50 hover:text-blue-800 disabled:opacity-40"><Pencil className="h-3.5 w-3.5" /></button>}</dt><dd className="text-right font-semibold">{draft.approver_name || 'Not assigned'}{draft.approval_due_date ? ` · due ${draft.approval_due_date}` : ''}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Approved by</dt><dd className="text-right font-semibold">{draft.approved_by_name || 'Pending'}</dd></div>
+            </dl>
+            {(draft.review_comments || draft.approval_comments) && <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-xs"><div className="font-bold text-slate-600">Latest workflow comments</div>{draft.review_comments && <p className="rounded-lg bg-blue-50 p-2 text-blue-800">Review: {draft.review_comments}</p>}{draft.approval_comments && <p className="rounded-lg bg-amber-50 p-2 text-amber-800">Approval: {draft.approval_comments}</p>}</div>}
+            {draft.issued_files?.length > 0 && <div className="mt-3 border-t border-slate-200 pt-3"><div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700">Controlled issued files</div><div className="space-y-2">{draft.issued_files.map(file => <button key={file.id} onClick={() => downloadIssuedFile(file)} disabled={Boolean(busy)} className="flex w-full items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left text-xs font-semibold text-emerald-800 disabled:opacity-40"><span>{file.export_format.toUpperCase()} · {file.filename}</span><span>Download</span></button>)}</div></div>}
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Controlled source</div>
@@ -430,13 +571,45 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
         </aside>
       </div>
 
-      {previewOpen && (
-        <div className="fixed inset-0 z-[100] overflow-auto bg-slate-950/70 p-4">
-          <div className="proposal-no-print sticky top-0 z-10 mx-auto mb-4 flex max-w-[210mm] items-center justify-between rounded-xl bg-white p-3 shadow-xl">
-            <div><div className="font-bold text-slate-900">Complete A4 print preview</div><div className="text-xs text-slate-500">{draft.sections.filter(item => item.included).length} included sections</div></div>
-            <div className="flex gap-2"><button onClick={() => window.print()} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white">Print</button><button onClick={() => setPreviewOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">Close</button></div>
+      {workflowDialogConfig && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4"><div><div className="text-xs font-bold uppercase tracking-widest text-violet-600">Controlled workflow</div><h3 className="mt-1 text-xl font-bold text-slate-900">{workflowDialogConfig.title}</h3><p className="mt-1 text-sm text-slate-500">{draft.proposal_number} · Revision {draft.revision}</p></div><button onClick={() => setWorkflowDialog('')} disabled={busy === 'workflow'} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">Close</button></div>
+            {workflowDialogConfig.notice && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{workflowDialogConfig.notice}</div>}
+            {workflowDialogConfig.person && <div className="mt-5">
+              <label className="block text-sm font-semibold text-slate-700">Search {workflowDialogConfig.person}
+                <input type="search" value={workflowSearch} onChange={event => setWorkflowSearch(event.target.value)} placeholder="Type a name, email, or department…" autoFocus className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5" />
+              </label>
+              <label className="mt-3 block text-sm font-semibold text-slate-700">Select {workflowDialogConfig.person}
+                <select value={workflowForm[workflowDialogConfig.person]} onChange={event => setWorkflowForm(current => ({ ...current, [workflowDialogConfig.person]: event.target.value }))} size="6" className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5">
+                  <option value="">Choose a user from any department…</option>
+                  {(workflowUsers[`${workflowDialogConfig.person}s`] || []).filter(user => {
+                    const query = workflowSearch.trim().toLowerCase()
+                    return !query || `${user.name} ${user.email} ${user.department || ''}`.toLowerCase().includes(query)
+                  }).map(user => <option key={user.id} value={user.id}>{user.name} · {user.department || 'Department not specified'} · {user.email}</option>)}
+                </select>
+              </label>
+            </div>}
+            {workflowDialogConfig.due && <label className="mt-4 block text-sm font-semibold text-slate-700">Due date<input type="date" value={workflowForm.due_date} onChange={event => setWorkflowForm(current => ({ ...current, due_date: event.target.value }))} className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5" /></label>}
+            {workflowDialogConfig.comments && <label className="mt-4 block text-sm font-semibold text-slate-700">{workflowDialogConfig.comments}<textarea rows={4} value={workflowForm.comments} onChange={event => setWorkflowForm(current => ({ ...current, comments: event.target.value }))} className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-sm" /></label>}
+            {busy === 'workflow' && <div className="mt-5"><div className="mb-2 flex justify-between text-xs font-semibold text-violet-700"><span>{workflowDialog === 'issue' ? 'Generating and storing controlled PDF and Word files…' : 'Recording workflow decision…'}</span><span>Processing</span></div><div className="h-2 overflow-hidden rounded-full bg-violet-100"><div className="h-full w-2/3 animate-pulse rounded-full bg-violet-600" /></div></div>}
+            <div className="mt-6 flex justify-end gap-2"><button onClick={() => setWorkflowDialog('')} disabled={busy === 'workflow'} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">Cancel</button><button onClick={runWorkflow} disabled={!workflowReady || busy === 'workflow'} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy === 'workflow' ? 'Processing…' : workflowDialogConfig.action}</button></div>
           </div>
-          <ProposalPreview proposal={draft} />
+        </div>
+      )}
+
+      {previewOpen && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-slate-950/80 p-4">
+          <div className="proposal-no-print mx-auto mb-3 flex w-full max-w-6xl items-center justify-between rounded-xl bg-white p-3 shadow-xl">
+            <div><div className="font-bold text-slate-900">Complete A4 print preview</div><div className="text-xs text-slate-500">Exact paginated PDF layout · {draft.sections.filter(item => item.included).length} included sections</div></div>
+            <div className="flex gap-2"><button onClick={printPreview} disabled={!previewUrl} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Print</button><button onClick={() => setPreviewOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">Close</button></div>
+          </div>
+          <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center overflow-hidden rounded-xl bg-slate-200 shadow-2xl">
+            {previewLoading && <div className="text-center text-sm font-semibold text-slate-600"><div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />Paginating proposal, resolving contents pages, and applying RADAI branding…</div>}
+            {!previewLoading && previewUrl && <iframe id="technical-proposal-pdf-preview" title="Technical proposal A4 preview" src={previewUrl} className="h-full w-full border-0" />}
+            {!previewLoading && previewError && <div className="max-w-lg p-8 text-center"><div className="font-semibold text-rose-700">{previewError}</div><button onClick={openPreview} className="mt-4 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white">Retry preview</button></div>}
+            {!previewLoading && !previewUrl && !previewError && <ProposalPreview proposal={draft} />}
+          </div>
         </div>
       )}
     </div>

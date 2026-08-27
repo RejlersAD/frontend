@@ -21,6 +21,8 @@ import {
   TIMESHEET_TABS,
   TIMESHEET_DEFAULT_TAB,
   TIMESHEET_POLL_MS,
+  TIMESHEET_TABLE_PAGE_SIZES,
+  TIMESHEET_TABLE_DEFAULT_PAGE_SIZE,
   TIMESHEET_STATUS_TONES,
   TIMESHEET_LIVE_COLUMNS,
   TIMESHEET_DAILY_COLUMNS,
@@ -187,7 +189,23 @@ const LiveKpis = ({ summary, asOf, activeFilter, onFilterChange }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: Generic data table
 // ─────────────────────────────────────────────────────────────────────────────
-const DataTable = ({ rows, columns, emptyMessage }) => {
+const DataTable = ({ rows, columns, emptyMessage, resetKey }) => {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(TIMESHEET_TABLE_DEFAULT_PAGE_SIZE)
+  const rowCount = rows?.length || 0
+  const totalPages = Math.max(1, Math.ceil(rowCount / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const firstRow = (safePage - 1) * pageSize
+  const visibleRows = rows?.slice(firstRow, firstRow + pageSize) || []
+
+  useEffect(() => {
+    setPage(1)
+  }, [resetKey, pageSize])
+
+  useEffect(() => {
+    setPage(current => Math.min(current, totalPages))
+  }, [totalPages])
+
   if (!rows || rows.length === 0) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
@@ -210,8 +228,8 @@ const DataTable = ({ rows, columns, emptyMessage }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((r, i) => (
-              <tr key={r.employee_code || r.radai_user_id || i} className="hover:bg-slate-50">
+            {visibleRows.map((r, i) => (
+              <tr key={r.employee_code || r.radai_user_id || firstRow + i} className="hover:bg-slate-50">
                 {columns.map(c => {
                   const v = c.accessor(r)
                   // Soft-coded cell renderer dispatch — `cellType` on the
@@ -256,6 +274,46 @@ const DataTable = ({ rows, columns, emptyMessage }) => {
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-slate-600">
+          Showing <span className="font-semibold text-slate-800">{firstRow + 1}</span>
+          {' – '}
+          <span className="font-semibold text-slate-800">{Math.min(firstRow + pageSize, rowCount)}</span>
+          {' of '}
+          <span className="font-semibold text-slate-800">{rowCount}</span> rows
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            Rows per page
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            >
+              {TIMESHEET_TABLE_PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setPage(current => Math.max(1, current - 1))}
+            disabled={safePage === 1}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <HeroIcons.ChevronLeftIcon className="h-3.5 w-3.5" /> Previous
+          </button>
+          <span className="min-w-[5.5rem] text-center text-xs text-slate-600">
+            Page <span className="font-semibold text-slate-800">{safePage}</span> of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage(current => Math.min(totalPages, current + 1))}
+            disabled={safePage === totalPages}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next <HeroIcons.ChevronRightIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -519,6 +577,7 @@ const LiveTab = ({ refreshTick, onManualRefresh }) => {
       <DataTable
         rows={filteredRows}
         columns={TIMESHEET_LIVE_COLUMNS}
+        resetKey={`${activeFilter || 'all'}:${q}`}
         emptyMessage={
           q              ? `No rows match "${rowSearch}".` :
           activeFilter   ? `No employees match "${LIVE_FILTER_LABELS[activeFilter]}".` :
@@ -577,7 +636,12 @@ const DailyTab = () => {
       {loading ? (
         <div className="text-center text-slate-500 py-6">Loading…</div>
       ) : data?.configured === false ? null : (
-        <DataTable rows={filteredRows} columns={TIMESHEET_DAILY_COLUMNS} emptyMessage={q ? `No rows match "${rowSearch}".` : `No attendance for ${date}.`} />
+        <DataTable
+          rows={filteredRows}
+          columns={TIMESHEET_DAILY_COLUMNS}
+          resetKey={`${date}:${q}`}
+          emptyMessage={q ? `No rows match "${rowSearch}".` : `No attendance for ${date}.`}
+        />
       )}
     </div>
   )
@@ -635,7 +699,12 @@ const MonthlyTab = () => {
       {loading ? (
         <div className="text-center text-slate-500 py-6">Loading…</div>
       ) : data?.configured === false ? null : (
-        <DataTable rows={filteredRows} columns={TIMESHEET_MONTHLY_COLUMNS} emptyMessage={q ? `No rows match "${rowSearch}".` : 'No attendance in this month.'} />
+        <DataTable
+          rows={filteredRows}
+          columns={TIMESHEET_MONTHLY_COLUMNS}
+          resetKey={`${year}:${month}:${q}`}
+          emptyMessage={q ? `No rows match "${rowSearch}".` : 'No attendance in this month.'}
+        />
       )}
     </div>
   )

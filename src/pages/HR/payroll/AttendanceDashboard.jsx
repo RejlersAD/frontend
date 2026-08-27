@@ -22,7 +22,7 @@ import {
   DEPT_COLORS, MONTH_SHORT, MONTH_FULL,
   ATT_GOOD_RATE_PCT, ATT_WARN_RATE_PCT, ATT_TOP_ABSENT_LIMIT,
   ATT_STANDARD_DAILY_HOURS, ATT_STANDARD_MONTHLY_WORKING_DAYS,
-  ATTENDANCE_POLICY, ATT_COMPANY_NAME, fmtDiff,
+  ATT_COMPANY_NAME, fmtDiff,
   classifyDay, workingDaysInMonth, rateColor, empName, empDept,
   fmtTime, ATT_COPY, filterEmployeeRow,
   // ── New: edit + holiday
@@ -39,7 +39,7 @@ import {
   SUMMARY_ANNUAL_LEAVE_LABEL, SUMMARY_UNPAID_LEAVE_LABEL,
   SUMMARY_AL_SHOW_BALANCE,
 } from '../../../config/hrAttendance.config'
-import { getLeaveType, ABSENT_SYMBOL, BRANCHES, getBranch } from '../../../config/hrLeave.config'
+import { getLeaveType, ABSENT_SYMBOL, BRANCHES } from '../../../config/hrLeave.config'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared micro-components  (defined outside main component — stable references)
@@ -612,10 +612,6 @@ function SummaryTab() {
     }
   }
 
-  // Human-readable period string shown in the report header, e.g. "June 2026"
-  // Soft-coded: label text comes from MONTH_FULL in hrAttendance.config.js
-  const periodLabel = `${MONTH_FULL[month - 1]} ${year}`
-
   // Soft-coded: compute day-of-week for any date in the selected month.
   // 0 = Sunday, 6 = Saturday (standard JS)
   const dayOfWeek   = (d) => new Date(year, month - 1, d).getDay()
@@ -746,16 +742,18 @@ function SummaryTab() {
     <div className="space-y-4">
       {/* Report header */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <HeroIcons.TableCellsIcon className="w-5 h-5 text-blue-500" />
-              Time Sheet Summary — {summaryBranch ? getBranch(summaryBranch)?.fullName : 'All Branches (RAD + RIN)'}
-            </h2>
-            <p className="text-sm text-slate-500 mt-0.5">{periodLabel}</p>
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Search */}
+          <div className="min-w-[16rem] flex-1 max-w-sm">
+            <label className="block text-xs text-slate-500 mb-1">Search</label>
+            <div className="relative">
+              <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Name or department…" autoComplete="off"
+                className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+            </div>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
-            {/* Branch selector */}
+          {/* Branch selector */}
           <div>
             <label className="block text-xs text-slate-500 mb-1">Branch</label>
             <div className="flex gap-1">
@@ -801,16 +799,6 @@ function SummaryTab() {
                 {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            {/* Search */}
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Search</label>
-              <div className="relative">
-                <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Name or department…" autoComplete="off"
-                  className="pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 w-44" />
-              </div>
-            </div>
             {/* Quick exports — replaced with smart report panel */}
             <DownloadReportPanel year={year} month={month} tsService={ts} />
             {canEdit && (
@@ -818,7 +806,7 @@ function SummaryTab() {
                 attendanceUploading
                   ? 'border-blue-300 bg-blue-100 text-blue-600 opacity-70'
                   : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-              }`} title="Upload .xlsx or .csv with Employee ID, Date and Hours columns">
+              }`} title="Upload a native COSEC attendance report, or an Excel/CSV attendance sheet">
                 {attendanceUploading
                   ? <><Spinner /> Importing...</>
                   : <><HeroIcons.ArrowUpTrayIcon className="h-4 w-4" /> Upload Daily Hours</>
@@ -868,11 +856,6 @@ function SummaryTab() {
                 </span>
               )}
             </button>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs text-blue-800">
-          <HeroIcons.InformationCircleIcon className="h-4 w-4 shrink-0" />
-          <span><strong>Manual attendance:</strong> upload Excel/CSV columns <strong>Employee ID, Date, Hours</strong>, or a monthly sheet with Employee ID and day columns 1–31. Maximum 9 hours per weekday.</span>
         </div>
         {attendanceUploadMsg && (
           <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
@@ -2415,43 +2398,6 @@ export default function AttendanceDashboard() {
           )
         })}
       </div>
-
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Employee attendance policy">
-        <div className="flex flex-col gap-1 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">Employee attendance policy</h2>
-            <p className="text-xs text-slate-500">Applies to every active employee · Monday to Friday</p>
-          </div>
-          <span className="mt-1 inline-flex w-fit items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 sm:mt-0">
-            {ATT_STANDARD_MONTHLY_WORKING_DAYS * ATT_STANDARD_DAILY_HOURS} expected hours / month
-          </span>
-        </div>
-        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
-          {ATTENDANCE_POLICY.map(item => {
-            const Icon = HeroIcons[item.icon] || HeroIcons.ClockIcon
-            const tones = {
-              blue: 'bg-blue-50 text-blue-700',
-              cyan: 'bg-cyan-50 text-cyan-700',
-              indigo: 'bg-indigo-50 text-indigo-700',
-              emerald: 'bg-emerald-50 text-emerald-700',
-            }
-            return (
-              <div key={item.id} className="flex min-w-0 items-center gap-3 px-4 py-3.5">
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[item.tone]}`}>
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-lg font-bold text-slate-900">{item.value}</span>
-                    <span className="text-[11px] font-medium text-slate-500">{item.unit}</span>
-                  </div>
-                  <p className="truncate text-xs text-slate-500">{item.label}</p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
 
       {/* Render active view */}
       {view === 'overview' && renderOverview()}

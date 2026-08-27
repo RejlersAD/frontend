@@ -44,6 +44,10 @@ export const TIMESHEET_POLL_MS = Number(
   import.meta.env?.VITE_TIMESHEET_POLL_MS || 30000
 )
 
+// Shared client-side pagination for the Live, Daily and Monthly tables.
+export const TIMESHEET_TABLE_PAGE_SIZES = [10, 25, 50, 100]
+export const TIMESHEET_TABLE_DEFAULT_PAGE_SIZE = 25
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. TABS shown across the top of the Time Sheet view
 // ─────────────────────────────────────────────────────────────────────────────

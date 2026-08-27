@@ -6,6 +6,7 @@ import planningIntelligenceService from '../services/planningIntelligence.servic
 import usePlanningJob from '../hooks/usePlanningJob';
 import GenerationWizard from '../components/planning/GenerationWizard';
 import WorkablePlanBuilder from '../components/planning/WorkablePlanBuilder';
+import { Calculator, FileText, Sparkles } from 'lucide-react';
 import {
   PLANNING_ENDPOINTS,
   PLANNING_FILE_CATEGORIES,
@@ -34,6 +35,32 @@ import {
 } from 'recharts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+const renderScheduleNarrative = narrative => {
+  const lines = String(narrative || '').split(/\r?\n/);
+  return lines.map((line, index) => {
+    const heading = line.match(/^\s*(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (heading) {
+      const level = heading[1].length;
+      const title = heading[2].replace(/^\*\*(.+)\*\*$/, '$1').trim();
+      const HeadingTag = level === 1 ? 'h3' : 'h4';
+      return (
+        <HeadingTag
+          key={`heading-${index}`}
+          className={`${level === 1 ? 'text-base' : 'text-sm'} font-bold text-slate-900 ${index > 0 ? 'mt-5' : ''} mb-1.5`}
+        >
+          {title}
+        </HeadingTag>
+      );
+    }
+    if (!line.trim()) return <div key={`space-${index}`} className="h-3" aria-hidden="true" />;
+    return (
+      <p key={`line-${index}`} className="text-sm leading-relaxed text-slate-700">
+        {line}
+      </p>
+    );
+  });
+};
 
 const parseDateOnly = value => {
   if (!value) return null;
@@ -672,8 +699,10 @@ const PlanningPackagePage = () => {
       window.URL.revokeObjectURL(url);
       setExportedFormat(format);
       setTimeout(() => setExportedFormat(f => (f === format ? null : f)), 2200);
+      return true;
     } catch (err) {
       setBanner({ type: 'error', message: 'Export failed.' });
+      return false;
     } finally {
       setExportingFormat(f => (f === format ? null : f));
     }
@@ -684,10 +713,10 @@ const PlanningPackagePage = () => {
     setDownloadingPresentation(true);
     setBanner(null);
     try {
-      await handleExport('pptx');
-      setBanner({ type: 'success', message: 'PowerPoint presentation downloaded.' });
-    } catch (err) {
-      setBanner({ type: 'error', message: 'Failed to generate the PowerPoint presentation.' });
+      const downloaded = await handleExport('pptx');
+      setBanner(downloaded
+        ? { type: 'success', message: 'PowerPoint presentation downloaded.' }
+        : { type: 'error', message: 'Failed to generate the PowerPoint presentation.' });
     } finally {
       setDownloadingPresentation(false);
     }
@@ -2612,14 +2641,16 @@ const PlanningPackagePage = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6">
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-xl">📝</span>
+          <FileText className="h-5 w-5 text-violet-600" aria-hidden="true" />
           <h2 className="font-semibold text-slate-800">Schedule Narrative</h2>
-          <span className={`ml-auto px-2.5 py-1 rounded-full text-sm font-semibold ${aiAugmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
-            {aiAugmented ? '✨ Executive Summary refined by Claude' : '🧮 Deterministic narrative'}
+          <span className={`ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-semibold ${aiAugmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
+            {aiAugmented
+              ? <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Executive Summary refined by Claude</>
+              : <><Calculator className="h-3.5 w-3.5" aria-hidden="true" /> Deterministic narrative</>}
           </span>
         </div>
         <div className="rounded-xl bg-slate-50/70 border border-slate-100 p-5">
-          <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans leading-relaxed">{generation.narrative}</pre>
+          <div>{renderScheduleNarrative(generation.narrative)}</div>
         </div>
       </div>
     );

@@ -1379,15 +1379,12 @@ function OverviewTab({ onTabChange, onOffboardingFilter }) {
 // ── Onboarding List Tab ────────────────────────────────────────────────────
 function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
   const [employees, setEmployees] = useState([])
-  const [fieldGroups, setFieldGroups] = useState([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ search: '', status: '', branch: '' })
   const [stats, setStats] = useState({ total: 0, urgent: 0, overdue: 0, completed: 0 })
-  const [expandedRow, setExpandedRow] = useState(null)
   const [detailEmployee, setDetailEmployee] = useState(null)
-  const [editingField, setEditingField] = useState(null)
-  const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
+  const [deletingRecordId, setDeletingRecordId] = useState(null)
   const [alert, setAlert] = useState(null)
   const [viewMode, setViewMode] = useState('compact') // 'cards' or 'compact'
   const [editingRow, setEditingRow] = useState(null) // userId of row being edited
@@ -1441,7 +1438,6 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
           ? Math.ceil((new Date(`${value}T00:00:00`) - today) / 86400000)
           : null
         setEmployees(data)
-        setFieldGroups(employeeRes.data.field_groups || [])
         setStats({
           total: data.length,
           urgent: data.filter(item => {
@@ -1485,41 +1481,6 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
       setDetailEmployee(employee)
     }
   }, [employees, focusedUserId])
-
-  const handleEdit = (userId, field, currentValue, source) => {
-    setEditingField({ userId, field, source })
-    setEditValue(currentValue || '')
-  }
-
-  const handleSave = () => {
-    if (!editingField) return
-    
-    setSaving(true)
-    const { userId, field, source } = editingField
-
-    apiClient
-      .patch(`${API_ENDPOINTS.employees}/${userId}/update_profile_field/`, {
-        field,
-        value: editValue,
-        source,
-      })
-      .then(() => {
-        setAlert({ type: 'success', message: 'Field updated successfully' })
-        loadEmployees() // Reload to show updated data
-        setEditingField(null)
-        setTimeout(() => setAlert(null), 3000)
-      })
-      .catch((err) => {
-        setAlert({ type: 'error', message: err.response?.data?.error || 'Failed to update field' })
-        setTimeout(() => setAlert(null), 5000)
-      })
-      .finally(() => setSaving(false))
-  }
-
-  const handleCancel = () => {
-    setEditingField(null)
-    setEditValue('')
-  }
 
   // ── Quick Edit Functions (for list view) ────────────────────────────────────
   const handleQuickEdit = (employee) => {
@@ -1584,77 +1545,33 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
     }))
   }
 
-  const renderFieldValue = (employee, field) => {
-    const value = employee[field.key]
-    const isEmpty = !value || value === ''
-    const isEditing = editingField?.userId === employee.user_id && editingField?.field === field.key
-
-    if (isEditing) {
-      return (
-        <div className="flex items-center gap-2">
-          <input
-            type={field.type === 'email' ? 'email' : field.type === 'tel' ? 'tel' : 'text'}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            className="flex-1 px-2 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            autoFocus
-          />
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-            title="Save"
-          >
-            <HeroIcons.CheckIcon className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleCancel}
-            disabled={saving}
-            className="p-1 text-slate-500 hover:bg-slate-100 rounded transition-colors"
-            title="Cancel"
-          >
-            <HeroIcons.XMarkIcon className="w-4 h-4" />
-          </button>
-        </div>
-      )
+  const handleDeleteOnboarding = async (employee) => {
+    const recordId = employee.onboarding_record_id
+    if (!recordId) {
+      setAlert({ type: 'error', message: 'Onboarding record could not be identified' })
+      return
     }
 
-    if (isEmpty) {
-      return (
-        <div className="flex items-center gap-2 group">
-          <span className="text-slate-400 italic text-xs">Empty</span>
-          <button
-            onClick={() => handleEdit(employee.user_id, field.key, value, field.source)}
-            className="opacity-0 group-hover:opacity-100 p-1 text-blue-600 hover:bg-blue-50 rounded transition-all"
-            title="Edit"
-          >
-            <HeroIcons.PencilIcon className="w-3 h-3" />
-          </button>
-        </div>
-      )
-    }
+    const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || employee.email
+    if (!window.confirm(`Delete onboarding for ${employeeName}? This will remove it from the active onboarding list.`)) return
 
-    // Display value based on type
-    if (field.type === 'boolean') {
-      return (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${value ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-          {value ? 'Yes' : 'No'}
-        </span>
-      )
+    setDeletingRecordId(recordId)
+    try {
+      // Preserve a cancelled audit record so sync-missing does not recreate
+      // this workflow the next time the onboarding page is opened.
+      await apiClient.patch(`${API_BASE}/onboarding/${recordId}/`, { status: 'cancelled' })
+      setAlert({ type: 'success', message: `${employeeName} removed from the onboarding list` })
+      loadEmployees()
+      window.setTimeout(() => setAlert(null), 4000)
+    } catch (err) {
+      setAlert({
+        type: 'error',
+        message: err.response?.data?.detail || err.response?.data?.error || 'Failed to remove onboarding record',
+      })
+      window.setTimeout(() => setAlert(null), 5000)
+    } finally {
+      setDeletingRecordId(null)
     }
-
-    return (
-      <div className="flex items-center gap-2 group">
-        <span className="text-xs text-slate-700">{value}</span>
-        <button
-          onClick={() => handleEdit(employee.user_id, field.key, value, field.source)}
-          className="opacity-0 group-hover:opacity-100 p-1 text-blue-600 hover:bg-blue-50 rounded transition-all"
-          title="Edit"
-        >
-          <HeroIcons.PencilIcon className="w-3 h-3" />
-        </button>
-      </div>
-    )
   }
 
   return (
@@ -2001,54 +1918,23 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
                         <HeroIcons.UserPlusIcon className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => setExpandedRow(expandedRow === employee.user_id ? null : employee.user_id)}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title={expandedRow === employee.user_id ? "Hide Details" : "Show Details"}
+                        type="button"
+                        onClick={() => handleDeleteOnboarding(employee)}
+                        disabled={deletingRecordId === employee.onboarding_record_id}
+                        className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Delete Onboarding"
+                        aria-label={`Delete onboarding for ${employee.first_name || ''} ${employee.last_name || ''}`}
                       >
-                        {expandedRow === employee.user_id ? (
-                          <HeroIcons.ChevronUpIcon className="w-5 h-5" />
+                        {deletingRecordId === employee.onboarding_record_id ? (
+                          <HeroIcons.ArrowPathIcon className="w-5 h-5 animate-spin" />
                         ) : (
-                          <HeroIcons.ChevronDownIcon className="w-5 h-5" />
+                          <HeroIcons.TrashIcon className="w-5 h-5" />
                         )}
                       </button>
                     </>
                   )}
                 </div>
               </div>
-
-              {/* Expanded Details */}
-              {expandedRow === employee.user_id && (
-                <div className="border-t border-slate-200 bg-gradient-to-br from-slate-50 to-blue-50/20 p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {fieldGroups.map((group) => (
-                      <div key={group.group} className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm">
-                        <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5 pb-2 border-b border-slate-100">
-                          <HeroIcons.TagIcon className="w-3.5 h-3.5 text-blue-500" />
-                          {group.group}
-                        </h4>
-                        <div className="space-y-1.5 mt-2">
-                          {group.fields.map((field) => (
-                            <div key={field.key} className="flex justify-between items-start gap-2 py-0.5">
-                              <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide flex-shrink-0">
-                                {field.label}:
-                              </span>
-                              <div className="text-right flex-1">
-                                {renderFieldValue(employee, field)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3">
-                    <OnboardingWorkflowStatus employeeId={employee.user_id} />
-                  </div>
-                  <div className="mt-3">
-                    <DocumentManagementSection employeeId={employee.user_id} employeeEmail={employee.email} />
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>

@@ -69,6 +69,17 @@ export const PLANNING_ENDPOINTS = {
   proposalTransition: (id) => `/planning-intelligence/technical-proposals/${id}/transition/`,
   proposalRefresh: (id) => `/planning-intelligence/technical-proposals/${id}/refresh/`,
   proposalExport: (id, format) => `/planning-intelligence/technical-proposals/${id}/export/?export_format=${format}`,
+  proposalPreview: id => `/planning-intelligence/technical-proposals/${id}/export/?export_format=pdf&preview=1`,
+  proposalWorkflowUsers: id => `/planning-intelligence/technical-proposals/${id}/workflow-users/`,
+  proposalSubmitReview: id => `/planning-intelligence/technical-proposals/${id}/submit-review/`,
+  proposalReassignReviewer: id => `/planning-intelligence/technical-proposals/${id}/reassign-reviewer/`,
+  proposalReassignApprover: id => `/planning-intelligence/technical-proposals/${id}/reassign-approver/`,
+  proposalReviewDecision: id => `/planning-intelligence/technical-proposals/${id}/review-decision/`,
+  proposalApprovalDecision: id => `/planning-intelligence/technical-proposals/${id}/approval-decision/`,
+  proposalIssue: id => `/planning-intelligence/technical-proposals/${id}/issue/`,
+  proposalReopen: id => `/planning-intelligence/technical-proposals/${id}/reopen/`,
+  proposalIssuedFile: (id, fileId) => `/planning-intelligence/technical-proposals/${id}/issued-files/${fileId}/`,
+  proposalWorkflowInbox: '/planning-intelligence/technical-proposals/workflow-inbox/',
   proposalExportRecords: '/planning-intelligence/proposal-export-records/',
   enterprisePortfolio: '/planning-intelligence/enterprise/portfolio/',
   enterpriseReadiness: '/planning-intelligence/enterprise/readiness/',
@@ -225,8 +236,8 @@ export const EXPORT_CATEGORY_ORDER = ['Schedule Data', 'Spreadsheet', 'Documents
 // Slide outline shown to the user before they download the PowerPoint deck —
 // purely descriptive; the backend (export_utils.generation_to_pptx_bytes)
 // is the single source of truth for actual slide content/order. Deck is
-// built on Rejlers' own corporate template (cover/agenda/content/table/
-// closing layouts), so exports are on-brand in both local and production.
+// uses the Rejlers corporate template when that optional backend asset is
+// available, otherwise it generates a complete branded widescreen deck.
 export const PRESENTATION_SLIDE_OUTLINE = [
   { icon: '🧭', title: 'Cover — Project Snapshot' },
   { icon: '📑', title: 'Agenda' },
