@@ -543,6 +543,8 @@ const FiltersBar = ({
 // Sub-component: Avatar
 // ─────────────────────────────────────────────────────────────────────────────
 const Avatar = ({ emp, size = "md" }) => {
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const photoUrl = String(emp.profile_photo || "").trim();
   const sizes = {
     sm: "w-8 h-8 text-xs",
     md: "w-12 h-12 text-sm",
@@ -550,21 +552,26 @@ const Avatar = ({ emp, size = "md" }) => {
     xl: "w-24 h-24 text-3xl",
   };
   const cls = sizes[size] || sizes.md;
-  if (emp.profile_photo) {
+
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [photoUrl]);
+
+  if (photoUrl && !photoFailed) {
     return (
       <img
-        src={emp.profile_photo}
+        src={photoUrl}
         alt={fullName(emp)}
-        className={`${cls} rounded-full object-cover ring-2 ring-white shadow`}
-        onError={(e) => {
-          e.currentTarget.style.display = "none";
-        }}
+        className={`${cls} shrink-0 rounded-full object-cover ring-2 ring-white shadow`}
+        onError={() => setPhotoFailed(true)}
       />
     );
   }
   return (
     <div
-      className={`${cls} rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center ring-2 ring-white shadow`}
+      role="img"
+      aria-label={`${fullName(emp)} initials`}
+      className={`${cls} shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center ring-2 ring-white shadow`}
     >
       {initials(emp)}
     </div>
