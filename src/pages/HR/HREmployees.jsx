@@ -507,7 +507,7 @@ const FiltersBar = ({
           id="hr-filters-panel"
           className={`grid grid-cols-2 gap-2 pt-3 md:grid-cols-3 lg:grid-cols-6 ${
             embedded
-              ? "rounded-lg border border-white/15 bg-white/10 px-3 pb-3"
+              ? "rounded-lg border border-slate-500/60 bg-slate-800/90 px-3 pb-3 shadow-inner"
               : "border-t border-slate-100"
           }`}
         >
@@ -530,10 +530,14 @@ const FiltersBar = ({
                 <select
                   value={filterValues[f.id] || "all"}
                   onChange={(e) => setFilterValue(f.id, e.target.value)}
-                  className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 shadow-sm [color-scheme:light] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 >
                   {opts.map((o) => (
-                    <option key={o.value} value={o.value}>
+                    <option
+                      key={o.value}
+                      value={o.value}
+                      className="bg-white text-slate-800"
+                    >
                       {o.label}
                     </option>
                   ))}
