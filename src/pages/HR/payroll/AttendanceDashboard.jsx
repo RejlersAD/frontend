@@ -22,7 +22,7 @@ import {
   DEPT_COLORS, MONTH_SHORT, MONTH_FULL,
   ATT_GOOD_RATE_PCT, ATT_WARN_RATE_PCT, ATT_TOP_ABSENT_LIMIT,
   ATT_STANDARD_DAILY_HOURS, ATT_STANDARD_MONTHLY_WORKING_DAYS,
-  ATTENDANCE_POLICY, ATT_COMPANY_NAME, fmtDiff,
+  ATT_COMPANY_NAME, fmtDiff,
   classifyDay, workingDaysInMonth, rateColor, empName, empDept,
   fmtTime, ATT_COPY, filterEmployeeRow,
   // ── New: edit + holiday
@@ -2415,43 +2415,6 @@ export default function AttendanceDashboard() {
           )
         })}
       </div>
-
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Employee attendance policy">
-        <div className="flex flex-col gap-1 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">Employee attendance policy</h2>
-            <p className="text-xs text-slate-500">Applies to every active employee · Monday to Friday</p>
-          </div>
-          <span className="mt-1 inline-flex w-fit items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 sm:mt-0">
-            {ATT_STANDARD_MONTHLY_WORKING_DAYS * ATT_STANDARD_DAILY_HOURS} expected hours / month
-          </span>
-        </div>
-        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
-          {ATTENDANCE_POLICY.map(item => {
-            const Icon = HeroIcons[item.icon] || HeroIcons.ClockIcon
-            const tones = {
-              blue: 'bg-blue-50 text-blue-700',
-              cyan: 'bg-cyan-50 text-cyan-700',
-              indigo: 'bg-indigo-50 text-indigo-700',
-              emerald: 'bg-emerald-50 text-emerald-700',
-            }
-            return (
-              <div key={item.id} className="flex min-w-0 items-center gap-3 px-4 py-3.5">
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[item.tone]}`}>
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-lg font-bold text-slate-900">{item.value}</span>
-                    <span className="text-[11px] font-medium text-slate-500">{item.unit}</span>
-                  </div>
-                  <p className="truncate text-xs text-slate-500">{item.label}</p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
 
       {/* Render active view */}
       {view === 'overview' && renderOverview()}
