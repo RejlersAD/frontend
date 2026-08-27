@@ -35,8 +35,8 @@ const ProposalWorkspacePage = () => {
   )
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-blue-50 px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1900px]">
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-100 via-white to-blue-50 px-2 py-4 sm:px-3 lg:px-4">
+      <div className="w-full min-w-0">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/planning-packages')} className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50" title="Back to planning packages"><ArrowLeft className="h-5 w-5" /></button>

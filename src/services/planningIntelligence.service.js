@@ -203,6 +203,39 @@ export const planningIntelligenceService = {
   downloadTechnicalProposal: async (id, format) => (
     await apiClient.get(PLANNING_ENDPOINTS.proposalExport(id, format), { responseType: 'blob' })
   ),
+  previewTechnicalProposal: async id => (
+    await apiClient.get(PLANNING_ENDPOINTS.proposalPreview(id), { responseType: 'blob' })
+  ),
+  getProposalWorkflowUsers: async id => (
+    await apiClient.get(PLANNING_ENDPOINTS.proposalWorkflowUsers(id))
+  ).data,
+  submitProposalReview: async (id, payload) => (
+    await apiClient.post(PLANNING_ENDPOINTS.proposalSubmitReview(id), payload)
+  ).data,
+  reassignProposalReviewer: async (id, payload) => (
+    await apiClient.post(PLANNING_ENDPOINTS.proposalReassignReviewer(id), payload)
+  ).data,
+  reassignProposalApprover: async (id, payload) => (
+    await apiClient.post(PLANNING_ENDPOINTS.proposalReassignApprover(id), payload)
+  ).data,
+  decideProposalReview: async (id, payload) => (
+    await apiClient.post(PLANNING_ENDPOINTS.proposalReviewDecision(id), payload)
+  ).data,
+  decideProposalApproval: async (id, payload) => (
+    await apiClient.post(PLANNING_ENDPOINTS.proposalApprovalDecision(id), payload)
+  ).data,
+  issueTechnicalProposal: async id => (
+    await apiClient.post(PLANNING_ENDPOINTS.proposalIssue(id))
+  ).data,
+  reopenTechnicalProposal: async (id, comments = '') => (
+    await apiClient.post(PLANNING_ENDPOINTS.proposalReopen(id), { comments })
+  ).data,
+  downloadIssuedProposalFile: async (id, fileId) => (
+    await apiClient.get(PLANNING_ENDPOINTS.proposalIssuedFile(id, fileId), { responseType: 'blob' })
+  ),
+  getProposalWorkflowInbox: async () => (
+    await apiClient.get(PLANNING_ENDPOINTS.proposalWorkflowInbox)
+  ).data,
   listProposalExportRecords: async proposalId => unwrapList(await apiClient.get(
     PLANNING_ENDPOINTS.proposalExportRecords, { params: { proposal: proposalId } },
   )),
