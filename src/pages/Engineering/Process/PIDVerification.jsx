@@ -2382,7 +2382,12 @@ const PIDVerification = () => {
     //   POLL_MAX_CONSECUTIVE_ERR : abort after N consecutive failed polls (network/auth)
     //   POLL_REQUEST_TIMEOUT_MS  : per-request timeout for /status/ calls (ms)
     const POLL_INTERVAL_MS         = 3000;
-    const POLL_MAX_DURATION_MS     = 15 * 60 * 1000;  // 15 minutes — far less than 1 hour
+    // Matches PIDVerificationV2.jsx's already-tuned value (was 15 min here,
+    // causing this page specifically to give up on deep_claude / multi-page
+    // analyses that legitimately need the full backend budget — V2 raised
+    // this for exactly that reason but V1 was never updated to match, see
+    // PIDVerificationV2.jsx's startPolling for the original reasoning).
+    const POLL_MAX_DURATION_MS     = 40 * 60 * 1000;
     const POLL_MAX_CONSECUTIVE_ERR = 5;
     const POLL_REQUEST_TIMEOUT_MS  = 15000;
 
