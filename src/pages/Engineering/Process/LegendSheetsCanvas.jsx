@@ -578,47 +578,67 @@ export default function LegendSheetsCanvas() {
         })}
       </div>
 
-      {/* Section tabs */}
-      <div style={{
-        display: 'flex', gap: 6, padding: '10px 20px',
-        background: '#fff', borderBottom: `1px solid ${THEME_BORDER}`,
-      }}>
-        {LEGEND_SECTIONS.map(s => {
-          const on = s.id === activeSection
-          const count = sectionCounts[s.id] ?? legends.filter(l => l.section === s.id).length
-          return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setActiveSection(s.id)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 999,
-                border: on ? 'none' : `1px solid ${THEME_BORDER}`,
-                background: on ? THEME_GRADIENT : '#fff',
-                color: on ? '#fff' : THEME_TEXT,
-                fontWeight: 700, fontSize: 12, cursor: 'pointer',
-              }}
-            >
-              {s.label}
-              {on && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  minWidth: 20, height: 18, padding: '0 6px', borderRadius: 999,
-                  background: 'rgba(255,255,255,0.25)', fontSize: 10,
-                }}>{count}</span>
-              )}
-              {!on && count > 0 && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  minWidth: 18, height: 18, padding: '0 6px', borderRadius: 999,
-                  background: THEME_BG_SOFT, color: THEME_MUTED,
-                  fontSize: 10, border: `1px solid ${THEME_BORDER}`,
-                }}>{count}</span>
-              )}
-            </button>
-          )
-        })}
+      {/* Section tabs — horizontally-scrollable pill rail. Fixed single-line
+          height (no wrap) keeps every pill the same shape regardless of
+          label length; edge fades + a thin custom scrollbar (see
+          .legend-canvas-tabrail below) hint that it scrolls instead of
+          relying on the browser's default scrollbar sitting on top. */}
+      <div style={{ position: 'relative', background: '#fff', borderBottom: `1px solid ${THEME_BORDER}` }}>
+        <div className="legend-canvas-tabrail" style={{
+          display: 'flex', gap: 8, padding: '12px 20px',
+          overflowX: 'auto', scrollSnapType: 'x proximity',
+        }}>
+          {LEGEND_SECTIONS.map(s => {
+            const on = s.id === activeSection
+            const count = sectionCounts[s.id] ?? legends.filter(l => l.section === s.id).length
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setActiveSection(s.id)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '9px 16px', borderRadius: 999, flex: '0 0 auto',
+                  scrollSnapAlign: 'start', whiteSpace: 'nowrap',
+                  border: on ? 'none' : `1px solid ${THEME_BORDER}`,
+                  background: on ? THEME_GRADIENT : '#fff',
+                  color: on ? '#fff' : THEME_TEXT,
+                  fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                  boxShadow: on ? '0 4px 12px rgba(124,58,237,0.28)' : 'none',
+                  transition: 'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease',
+                }}
+                onMouseEnter={e => { if (!on) e.currentTarget.style.borderColor = THEME_PRIMARY }}
+                onMouseLeave={e => { if (!on) e.currentTarget.style.borderColor = THEME_BORDER }}
+              >
+                {s.label}
+                {on && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    minWidth: 20, height: 18, padding: '0 6px', borderRadius: 999,
+                    background: 'rgba(255,255,255,0.25)', fontSize: 10,
+                  }}>{count}</span>
+                )}
+                {!on && count > 0 && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    minWidth: 18, height: 18, padding: '0 6px', borderRadius: 999,
+                    background: THEME_BG_SOFT, color: THEME_MUTED,
+                    fontSize: 10, border: `1px solid ${THEME_BORDER}`,
+                  }}>{count}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+        {/* Edge fades hint there's more to scroll, without a visible arrow/scrollbar */}
+        <div style={{
+          position: 'absolute', top: 0, bottom: 0, left: 0, width: 24, pointerEvents: 'none',
+          background: 'linear-gradient(90deg, #fff, rgba(255,255,255,0))',
+        }} />
+        <div style={{
+          position: 'absolute', top: 0, bottom: 0, right: 0, width: 24, pointerEvents: 'none',
+          background: 'linear-gradient(270deg, #fff, rgba(255,255,255,0))',
+        }} />
       </div>
 
       {/* Main body — two columns */}
@@ -885,7 +905,14 @@ export default function LegendSheetsCanvas() {
         </div>
       </div>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .legend-canvas-tabrail { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+        .legend-canvas-tabrail::-webkit-scrollbar { height: 6px; }
+        .legend-canvas-tabrail::-webkit-scrollbar-track { background: transparent; }
+        .legend-canvas-tabrail::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+        .legend-canvas-tabrail::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+      `}</style>
     </div>
   )
 }
