@@ -200,7 +200,7 @@ const hasUserAccessContext = (candidate) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: KPI Strip
 // ─────────────────────────────────────────────────────────────────────────────
-const KpiStrip = ({ employees, loading }) => {
+const KpiStrip = ({ employees, loading, controls, showMetrics = true }) => {
   // Show only the "essential" KPIs by default to keep the page calm. Users
   // can reveal the rest with a single click. The split is driven by
   // HR_UI.essentialKpiIds — edit the config to change what's prominent.
@@ -213,8 +213,8 @@ const KpiStrip = ({ employees, loading }) => {
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-2 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-5 py-4 text-white xl:flex-row xl:items-center">
+        <div className="shrink-0 xl:w-72">
           <div className="flex items-center gap-2 text-lg font-bold">
             <HeroIcons.ChartBarSquareIcon className="h-5 w-5 text-cyan-300" />{" "}
             Workforce Overview
@@ -224,11 +224,9 @@ const KpiStrip = ({ employees, loading }) => {
             decisions.
           </p>
         </div>
-        <span className="w-fit rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold">
-          Updated from employee records
-        </span>
+        {controls && <div className="min-w-0 flex-1">{controls}</div>}
       </div>
-      <div className="space-y-3 p-4">
+      <div className={`space-y-3 p-4 ${showMetrics ? "" : "hidden"}`}>
         <div
           className={`grid gap-3 ${
             showAll
@@ -312,6 +310,7 @@ const FiltersBar = ({
   onReset,
   onSubmitSearch,
   searching,
+  embedded = false,
 }) => {
   // Collapse the filter dropdowns by default — soft-coded in HR_UI. Active
   // filters bubble up as a count badge so nothing is hidden silently.
@@ -362,7 +361,13 @@ const FiltersBar = ({
   }, [employees]);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-3">
+    <div
+      className={
+        embedded
+          ? "w-full space-y-3"
+          : "bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-3"
+      }
+    >
       {/* Top row: search + view mode toggle + reset */}
       <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
         {/* Search — only relevant for card/table/dept views, hidden in timesheet mode */}
@@ -413,28 +418,30 @@ const FiltersBar = ({
                 </span>
               </button>
             </div>
-            <div className="hidden flex-wrap gap-1.5 px-1 text-[10px] font-medium text-slate-500 sm:flex">
-              {[
-                "Employee ID",
-                "Name",
-                "Email",
-                "Department",
-                "Manager",
-                "Location",
-                "Role",
-              ].map((field) => (
-                <span
-                  key={field}
-                  className="rounded-full bg-slate-100 px-2 py-0.5"
-                >
-                  {field}
-                </span>
-              ))}
-            </div>
+            {!embedded && (
+              <div className="hidden flex-wrap gap-1.5 px-1 text-[10px] font-medium text-slate-500 sm:flex">
+                {[
+                  "Employee ID",
+                  "Name",
+                  "Email",
+                  "Department",
+                  "Manager",
+                  "Location",
+                  "Role",
+                ].map((field) => (
+                  <span
+                    key={field}
+                    className="rounded-full bg-slate-100 px-2 py-0.5"
+                  >
+                    {field}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {viewMode !== "timesheet" && (
             <button
               type="button"
@@ -459,7 +466,7 @@ const FiltersBar = ({
               />
             </button>
           )}
-          <div className="inline-flex bg-slate-100 rounded-lg p-1">
+          <div className="inline-flex max-w-full overflow-x-auto bg-slate-100 rounded-lg p-1">
             {HR_VIEW_MODES.map((vm) => (
               <button
                 key={vm.id}
@@ -482,7 +489,11 @@ const FiltersBar = ({
               <button
                 type="button"
                 onClick={onReset}
-                className={`px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md ${anim("transition")}`}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md ${
+                  embedded
+                    ? "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                } ${anim("transition")}`}
               >
                 Reset
               </button>
@@ -494,7 +505,11 @@ const FiltersBar = ({
       {filtersOpen && viewMode !== "timesheet" && (
         <div
           id="hr-filters-panel"
-          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 pt-1 border-t border-slate-100"
+          className={`grid grid-cols-2 gap-2 pt-3 md:grid-cols-3 lg:grid-cols-6 ${
+            embedded
+              ? "rounded-lg border border-white/15 bg-white/10 px-3 pb-3"
+              : "border-t border-slate-100"
+          }`}
         >
           {HR_FILTERS.map((f) => {
             const opts =
@@ -505,7 +520,11 @@ const FiltersBar = ({
                   ];
             return (
               <div key={f.id}>
-                <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                <label
+                  className={`block text-[10px] font-semibold uppercase tracking-wider mb-1 ${
+                    embedded ? "text-slate-200" : "text-slate-500"
+                  }`}
+                >
                   {f.label}
                 </label>
                 <select
@@ -4270,23 +4289,26 @@ export default function HREmployees() {
           </div>
         </div>
 
-        {/* KPI strip */}
-        {viewMode !== "timesheet" && (
-          <KpiStrip employees={employees} loading={loading} />
-        )}
-
-        {/* Filters */}
-        <FiltersBar
+        {/* Workforce overview, directory search, filters and view navigation */}
+        <KpiStrip
           employees={employees}
-          filterValues={filterValues}
-          setFilterValue={setFilterValue}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          onReset={resetFilters}
-          onSubmitSearch={handleSubmitSearch}
-          searching={searching}
+          loading={loading}
+          showMetrics={viewMode !== "timesheet"}
+          controls={(
+            <FiltersBar
+              employees={employees}
+              filterValues={filterValues}
+              setFilterValue={setFilterValue}
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              onReset={resetFilters}
+              onSubmitSearch={handleSubmitSearch}
+              searching={searching}
+              embedded
+            />
+          )}
         />
 
         {searchNotice && (
