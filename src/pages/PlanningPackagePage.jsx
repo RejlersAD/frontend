@@ -699,8 +699,10 @@ const PlanningPackagePage = () => {
       window.URL.revokeObjectURL(url);
       setExportedFormat(format);
       setTimeout(() => setExportedFormat(f => (f === format ? null : f)), 2200);
+      return true;
     } catch (err) {
       setBanner({ type: 'error', message: 'Export failed.' });
+      return false;
     } finally {
       setExportingFormat(f => (f === format ? null : f));
     }
@@ -711,10 +713,10 @@ const PlanningPackagePage = () => {
     setDownloadingPresentation(true);
     setBanner(null);
     try {
-      await handleExport('pptx');
-      setBanner({ type: 'success', message: 'PowerPoint presentation downloaded.' });
-    } catch (err) {
-      setBanner({ type: 'error', message: 'Failed to generate the PowerPoint presentation.' });
+      const downloaded = await handleExport('pptx');
+      setBanner(downloaded
+        ? { type: 'success', message: 'PowerPoint presentation downloaded.' }
+        : { type: 'error', message: 'Failed to generate the PowerPoint presentation.' });
     } finally {
       setDownloadingPresentation(false);
     }

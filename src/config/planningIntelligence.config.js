@@ -236,8 +236,8 @@ export const EXPORT_CATEGORY_ORDER = ['Schedule Data', 'Spreadsheet', 'Documents
 // Slide outline shown to the user before they download the PowerPoint deck —
 // purely descriptive; the backend (export_utils.generation_to_pptx_bytes)
 // is the single source of truth for actual slide content/order. Deck is
-// built on Rejlers' own corporate template (cover/agenda/content/table/
-// closing layouts), so exports are on-brand in both local and production.
+// uses the Rejlers corporate template when that optional backend asset is
+// available, otherwise it generates a complete branded widescreen deck.
 export const PRESENTATION_SLIDE_OUTLINE = [
   { icon: '🧭', title: 'Cover — Project Snapshot' },
   { icon: '📑', title: 'Agenda' },
