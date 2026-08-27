@@ -47,6 +47,8 @@ const CRSMultipleRevision = FEATURE_FLAGS.crsMultiRevisionVersion === 'classic' 
 import ProjectControl from './pages/ProjectControl'
 import ProjectsPage from './pages/Projects/ProjectsPage'
 import PlanningPackagePage from './pages/PlanningPackagePage'
+import PlannerWorkspacePage from './pages/PlannerWorkspacePage'
+import ProposalWorkspacePage from './pages/ProposalWorkspacePage'
 import GeneralQHSE from './pages/QHSE/GeneralQHSE'
 import QHSEHub from './pages/QHSE/QHSEHub'
 // SOFT-CODED: QHSEInterconnectedDemo removed (not needed)
@@ -154,6 +156,8 @@ import SpecProjectsPage from './pages/Engineering/Digitization/SpecProjectsPage'
 import DigitizationDatasheetPage from './pages/Engineering/Digitization/DigitizationDatasheetPage'
 import NonTeffMetadataPage from './pages/Engineering/Digitization/NonTeffMetadataPage'
 import NonTeffProjectsPage from './pages/Engineering/Digitization/NonTeffProjectsPage'
+import SmartPlant3DPage from './pages/Engineering/Digitization/SmartPlant3DPage'
+import ValveStandardsPage from './pages/Engineering/Digitization/ValveStandardsPage'
 // Piping Components
 import CriticalStressLineList from './pages/Engineering/Piping/CriticalStressLineList'
 import PipingDataSheet from './pages/Engineering/Piping/PipingDataSheet'
@@ -1316,6 +1320,22 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="engineering/digitization/smart-plant-3d"
+          element={
+            <ProtectedRoute>
+              <SmartPlant3DPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="engineering/digitization/valve-standards"
+          element={
+            <ProtectedRoute>
+              <ValveStandardsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Project Management — phased: Cost Dashboard → Estimates → Documents → (Phase 2+) AI/EVM/Risk */}
         <Route
@@ -1333,6 +1353,22 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="project_control">
               <PlanningPackagePage />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="planning-workspace/:projectId"
+          element={
+            <ModuleProtectedRoute moduleCode="project_control">
+              <PlannerWorkspacePage />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="proposal-workspace/:projectId"
+          element={
+            <ModuleProtectedRoute moduleCode="project_control">
+              <ProposalWorkspacePage />
             </ModuleProtectedRoute>
           }
         />

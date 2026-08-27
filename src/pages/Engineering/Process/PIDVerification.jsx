@@ -4,7 +4,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
 import CrossRecommendationPanel from '../../../components/recommendations/CrossRecommendationPanel';
 import LegendSheetsModal from './components/LegendSheetsModal';
-import { listLegends, MODE_OCR, MODE_VISION, VISION_PROVIDERS, LEGEND_SECTIONS } from '../../../services/pidCheckerV2API';
+import { listLegends, testApiKey, MODE_OCR, MODE_VISION, VISION_PROVIDERS, CLAUDE_VISION_MODELS, LEGEND_SECTIONS } from '../../../services/pidCheckerV2API';
 import {
   Upload as UploadIcon, FileText, CheckCircle, AlertTriangle,
   Loader, X, Download, Activity, Shield, GitBranch, Cpu, Clock,
@@ -209,16 +209,13 @@ const NAV_BUTTONS_CONFIG = [
     hoverShadowColor: 'rgba(236,72,153,0.6)',
     description: 'Extract line tags from P&ID drawings'
   },
-  {
-    enabled: false,  // Disabled by default - set to true to show both buttons
-    label: 'Try V2 Beta',
-    icon: 'Sparkles',
-    route: '/engineering/process/pid-verification', // Old V2 route (now redirects)
-    gradient: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-    shadowColor: 'rgba(99,102,241,0.4)',
-    hoverShadowColor: 'rgba(99,102,241,0.6)',
-    description: 'Try the new P&ID Verification V2'
-  }
+  // SOFT-CODED: A second, disabled "Try V2 Beta" entry used to sit here,
+  // pointing at /engineering/process/pid-verification (PIDVerificationV2.jsx
+  // — a *different* "V2", the verification-flow rewrite, not this Line List
+  // Extractor). It was never enabled and its own comment already called it
+  // stale/redirecting. Removed 2026-08-27 to leave a single, unambiguous
+  // recommendation button — re-add a properly labeled entry here if that
+  // verification-flow V2 is ever ready to be surfaced again.
 ];
 
 // BUTTON STYLING
@@ -1163,10 +1160,25 @@ const PIDVerification = () => {
   const [polling,      setPolling]      = useState(false);
   const [documentId,   setDocumentId]   = useState(null);
   const [docStatus,    setDocStatus]    = useState(null);
+  // docCacheInfo — S3 (or local) results-cache status for the active document,
+  // used to label the Re-check button and flash "loaded from cache" messages.
+  // { cache_available, cache_timestamp, cache_matches_current_file } | null
+  const [docCacheInfo, setDocCacheInfo] = useState(null);
   const [results,      setResults]      = useState(null);
   const [error,        setError]        = useState('');
   const [activeDrawing,setActiveDrawing]= useState(null);
   const pollRef    = useRef(null);
+
+  // ── Symbol recognition (BYOK Vision) — separate, best-effort feature ──────
+  const [identifyingSymbols,   setIdentifyingSymbols]   = useState(false);
+  const [symbolsResult,        setSymbolsResult]        = useState(null);
+  const [symbolsError,         setSymbolsError]         = useState('');
+  // thoroughScan: false = one overview call/page (fast, cheap). true = overview
+  // + 4 overlapping tiles/page (more accurate, ~5x the calls) — mirrors the
+  // tiling strategy vision_extractor.py already uses for line-tag extraction.
+  const [thoroughScan,         setThoroughScan]         = useState(false);
+  const SYMBOL_CALLS_PER_PAGE_QUICK = 1;
+  const SYMBOL_CALLS_PER_PAGE_THOROUGH = 5;
   // ── Elapsed-time timer for the processing loader ──────────────────────────
   const [elapsedSec,   setElapsedSec]   = useState(0);
   const timerRef   = useRef(null);
@@ -1449,15 +1461,29 @@ const PIDVerification = () => {
   const [legendModalOpen, setLegendModalOpen] = useState(false);
   const [activeLegend, setActiveLegend] = useState(null);
   const [effectiveLegend, setEffectiveLegend] = useState(null);
+  // Stable identity — an inline arrow here would change on every render of this
+  // page and, since LegendSheetsModal depends on it, retrigger its load effect
+  // and keep it stuck showing "Loading…".
+  const onLegendActiveChange = useCallback((legend) => {
+    setActiveLegend(legend);
+    if (legend) setEffectiveLegend(legend);
+  }, []);
   
   // ── Extraction Mode — OCR (Offline) vs AI Vision (BYOK) ───────────────────
   // SOFT-CODED: Extraction mode constants from pid-checker-v2 API
   const SS_KEY_PROVIDER = 'radai_pidv1_byok_provider';
   const SS_KEY_APIKEY   = 'radai_pidv1_byok_apikey';
   const SS_KEY_REMEMBER = 'radai_pidv1_byok_remember';
+  const SS_KEY_CLAUDE_MODEL = 'radai_pidv1_byok_claude_model';
   const [extractionMode, setExtractionMode] = useState(MODE_OCR);
   const [visionProvider, setVisionProvider] = useState(
     () => sessionStorage.getItem(SS_KEY_PROVIDER) || VISION_PROVIDERS[0].id
+  );
+  // Claude model variant — only meaningful when visionProvider === 'claude';
+  // sent as an extra `model` field so Identify Symbols can use a specific
+  // model instead of whatever the server has configured as its default.
+  const [visionClaudeModel, setVisionClaudeModel] = useState(
+    () => sessionStorage.getItem(SS_KEY_CLAUDE_MODEL) || CLAUDE_VISION_MODELS[0].id
   );
   const [visionApiKey, setVisionApiKey] = useState(
     () => sessionStorage.getItem(SS_KEY_APIKEY) || ''
@@ -1466,6 +1492,21 @@ const PIDVerification = () => {
   const [rememberKey, setRememberKey] = useState(
     () => sessionStorage.getItem(SS_KEY_REMEMBER) === '1'
   );
+  // "Test Connection" — quick BYOK key ping, independent of the main analysis.
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState(null); // { valid, message } | null
+  const handleTestConnection = async () => {
+    if (!visionApiKey.trim()) { setConnectionTestResult({ valid: false, message: 'Enter an API key first.' }); return; }
+    setTestingConnection(true); setConnectionTestResult(null);
+    try {
+      const res = await testApiKey(visionProvider, visionApiKey.trim());
+      setConnectionTestResult(res);
+    } catch (err) {
+      setConnectionTestResult({ valid: false, message: err?.response?.data?.message || 'Connection test failed. Please try again.' });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
   
   // ── Findings filters (soft-coded, additive) ───────────────────────────────
   const [filterSeverity, setFilterSeverity] = useState('all');
@@ -1503,6 +1544,7 @@ const PIDVerification = () => {
   useEffect(() => {
     if (extractionMode === MODE_VISION) {
       sessionStorage.setItem(SS_KEY_PROVIDER, visionProvider);
+      sessionStorage.setItem(SS_KEY_CLAUDE_MODEL, visionClaudeModel);
       if (rememberKey && visionApiKey) {
         sessionStorage.setItem(SS_KEY_APIKEY, visionApiKey);
         sessionStorage.setItem(SS_KEY_REMEMBER, '1');
@@ -1511,7 +1553,7 @@ const PIDVerification = () => {
         sessionStorage.removeItem(SS_KEY_REMEMBER);
       }
     }
-  }, [extractionMode, visionProvider, visionApiKey, rememberKey]);
+  }, [extractionMode, visionProvider, visionClaudeModel, visionApiKey, rememberKey]);
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2282,7 +2324,8 @@ const PIDVerification = () => {
       const { document_id, status: s } = res.data;
       setDocumentId(document_id);
       setDocStatus(s);
-      
+      setDocCacheInfo(null);  // fresh upload — no cache can exist for a brand-new document yet
+
       // FIX: Always refresh history after successful upload to ensure UI reflects latest state
       // This fixes the issue where cached/immediate completions don't update the history
       if (selectedProject) {
@@ -2298,6 +2341,36 @@ const PIDVerification = () => {
       setError(err?.response?.data?.error || 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  // ── Symbol recognition (BYOK Vision) — separate, best-effort feature ──────
+  // Sends the already-uploaded P&ID (by documentId) + the project's Legend
+  // Sheet to Vision so the model can compare them and guess which legend
+  // symbols appear on the drawing. Does not touch line/equipment/instrument
+  // extraction.
+  const handleIdentifySymbols = async () => {
+    if (!documentId) { setSymbolsError('Upload and analyze a P&ID first.'); return; }
+    if (!visionApiKey.trim()) { setSymbolsError('Provide your API key below to identify symbols.'); return; }
+
+    setSymbolsError(''); setIdentifyingSymbols(true); setSymbolsResult(null);
+    const fd = new FormData();
+    fd.append('pid_document_id', documentId);
+    fd.append('provider', visionProvider);
+    if (visionProvider === 'claude') fd.append('model', visionClaudeModel);
+    fd.append('api_key', visionApiKey.trim());
+    fd.append('thorough', thoroughScan ? 'true' : 'false');
+
+    try {
+      const res = await axios.post(`${API_BASE_URL}/pid-checker-v2/identify-symbols/`, fd, {
+        headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' },
+        timeout: thoroughScan ? 300000 : 120000,
+      });
+      setSymbolsResult(res.data);
+    } catch (err) {
+      setSymbolsError(err?.response?.data?.error || 'Symbol identification failed. Please try again.');
+    } finally {
+      setIdentifyingSymbols(false);
     }
   };
 
@@ -2342,6 +2415,11 @@ const PIDVerification = () => {
         setDocStatus(s);
         if (s === 'completed') {
           stopAll();
+          setDocCacheInfo({
+            cache_available: res.data.cache_available,
+            cache_timestamp: res.data.cache_timestamp,
+            cache_matches_current_file: res.data.cache_matches_current_file,
+          });
           await fetchResults(docId);
           if (selectedProject) fetchHistory(selectedProject.project_id);
         } else if (s === 'failed') {
@@ -2382,6 +2460,7 @@ const PIDVerification = () => {
     setElapsedSec(0);
     setOverrides({}); setOverridesSaved(false);
     setComparison(null);
+    setDocCacheInfo(null);
   };
 
   // recheckDocument — re-run the full P&ID quality check on an already-uploaded
@@ -2393,18 +2472,40 @@ const PIDVerification = () => {
     if (recheckingDocId) return;          // prevent double-click
     setRecheckingDocId(docId);
     try {
-      // 1. Tell the backend to reset and re-queue
-      await axios.post(
+      // 1. Tell the backend to reset and re-queue — or, if the file is
+      //    unchanged since the last analysis, it returns the cached result
+      //    immediately (cache_status: "cache") without touching doc.status.
+      const res = await axios.post(
         `${API_PREFIX}/reprocess/${docId}/`,
         {},
         { headers: authHeader(), timeout: 20000 },
       );
-      flash('success', `Re-check queued for "${fileName}" — results will update automatically.`);
+
+      if (res.data.cache_status === 'cache') {
+        // File unchanged — serve the already-completed results straight away,
+        // no polling needed (the backend never left the "completed" state).
+        const ts = res.data.analysis_timestamp
+          ? new Date(res.data.analysis_timestamp).toLocaleString()
+          : 'earlier';
+        flash('success', `Results loaded from cache (${ts}) — "${fileName}" is unchanged.`);
+        setDocCacheInfo({ cache_available: true, cache_timestamp: res.data.analysis_timestamp, cache_matches_current_file: true });
+        setDocumentId(docId);
+        setDocStatus(res.data.status);
+        setActiveDrawing(null);
+        setOverrides({});
+        setOverridesSaved(false);
+        setComparison(null);
+        await fetchResults(docId);
+        return;
+      }
+
+      flash('success', `File changed since last analysis — fresh analysis started for "${fileName}".`);
 
       // 2. Load this document as the active one so the user sees live progress
       setResults(null);
       setDocumentId(docId);
       setDocStatus('uploaded');
+      setDocCacheInfo(null);
       setActiveDrawing(null);
       setOverrides({});
       setOverridesSaved(false);
@@ -5537,13 +5638,14 @@ const PIDVerification = () => {
                   </div>
                   
                   <input 
-                    id="pidv-file-input" 
-                    type="file" 
-                    accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.dwg" 
-                    className="hidden" 
-                    onChange={handleFileChange} 
+                    id="pidv-file-input"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.dwg"
+                    className="hidden"
+                    onChange={handleFileChange}
                   />
                 </div>
+
               </div>
             </div>
 
@@ -5623,7 +5725,12 @@ const PIDVerification = () => {
                       </button>
                     </div>
 
-                    {/* BYOK Configuration */}
+                    {/* BYOK Configuration — only shown for AI Vision mode; OCR is fully
+                        offline and needs no key. The Symbol Recognition (Identify Symbols)
+                        panel reuses this same visionApiKey state and has its OWN compact
+                        key field (see the "SYMBOL RECOGNITION PANEL" section below), so it
+                        stays reachable even when OCR was chosen here for the main analysis
+                        — do not remove that second field without keeping this one in mind. */}
                     {extractionMode === MODE_VISION && (
                       <div className="p-4 rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50/50 to-pink-50/50 space-y-3"
                         style={{ animation:'fadeUp 0.3s ease-out both' }}>
@@ -5636,7 +5743,7 @@ const PIDVerification = () => {
                           <label className="block text-xs font-semibold text-slate-700 mb-2">AI Provider</label>
                           <select
                             value={visionProvider}
-                            onChange={(e) => setVisionProvider(e.target.value)}
+                            onChange={(e) => { setVisionProvider(e.target.value); setConnectionTestResult(null); }}
                             className="w-full px-3 py-2.5 text-sm border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
                             {VISION_PROVIDERS.map(p => (
                               <option key={p.id} value={p.id}>{p.label}</option>
@@ -5644,13 +5751,27 @@ const PIDVerification = () => {
                           </select>
                         </div>
 
+                        {visionProvider === 'claude' && (
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-2">Claude Model</label>
+                            <select
+                              value={visionClaudeModel}
+                              onChange={(e) => { setVisionClaudeModel(e.target.value); setConnectionTestResult(null); }}
+                              className="w-full px-3 py-2.5 text-sm border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+                              {CLAUDE_VISION_MODELS.map(m => (
+                                <option key={m.id} value={m.id}>{m.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 mb-2">API Key</label>
                           <div className="relative">
                             <input
                               type={showApiKey ? 'text' : 'password'}
                               value={visionApiKey}
-                              onChange={(e) => setVisionApiKey(e.target.value)}
+                              onChange={(e) => { setVisionApiKey(e.target.value); setConnectionTestResult(null); }}
                               placeholder="sk-proj-..."
                               className="w-full px-3 py-2.5 pr-10 text-sm border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                             />
@@ -5661,7 +5782,23 @@ const PIDVerification = () => {
                               {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
                           </div>
-                          
+
+                          {/* Test Connection — quick BYOK ping, independent of the main analysis */}
+                          <button
+                            type="button"
+                            onClick={handleTestConnection}
+                            disabled={testingConnection || !visionApiKey.trim()}
+                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-300 bg-white text-xs font-semibold text-purple-700 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                            {testingConnection
+                              ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Testing…</>
+                              : <><Zap className="w-3.5 h-3.5" /> Test Connection</>}
+                          </button>
+                          {connectionTestResult && (
+                            <p className={`mt-1.5 text-xs font-medium ${connectionTestResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {connectionTestResult.valid ? '✅ ' : '❌ '}{connectionTestResult.message}
+                            </p>
+                          )}
+
                           {/* Remember Key Checkbox */}
                           <label className="flex items-center gap-2 mt-2 cursor-pointer group">
                             <input
@@ -6142,6 +6279,15 @@ const PIDVerification = () => {
               accent: '#10b981',
               glow: 'rgba(16,185,129,0.25)',
             },
+            {
+              id: 'symbols',
+              label: 'Symbols',
+              icon: ({ cls }) => <ScanLine className={cls} />,
+              badge: symbolsResult?.total_count || null,
+              badgeCls: 'bg-fuchsia-500 text-white',
+              accent: '#a21caf',
+              glow: 'rgba(162,28,175,0.25)',
+            },
           ];
 
           // ── Apply user-defined drag order; default = definition order ─────
@@ -6394,6 +6540,12 @@ const PIDVerification = () => {
                     <div className="min-w-0">
                       <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Active File</p>
                       <p className="text-sm font-bold text-slate-800 truncate max-w-[220px]" title={results.file_name}>{results.file_name}</p>
+                      {docCacheInfo?.cache_matches_current_file && (
+                        <p className="text-[10px] text-violet-500 font-medium mt-0.5">
+                          Results loaded from cache
+                          {docCacheInfo.cache_timestamp && ` (${new Date(docCacheInfo.cache_timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })})`}
+                        </p>
+                      )}
                     </div>
                   </div>
                   {/* Separator */}
@@ -6414,11 +6566,16 @@ const PIDVerification = () => {
                   ))}
                   {/* Spacer + action buttons */}
                   <div className="ml-auto flex items-center gap-2 flex-wrap">
-                    {/* Re-check: re-run the quality check on the same file — no re-upload needed */}
+                    {/* Re-check: re-run the quality check on the same file — no re-upload needed.
+                        Label reflects docCacheInfo (from the last /status/ poll or reprocess
+                        response) — "use cache" when the file is unchanged since last analysis,
+                        "run fresh" when it changed, plain "Re-check" when cache status is unknown. */}
                     <button
                       onClick={() => recheckDocument(documentId, results.file_name)}
                       disabled={!!recheckingDocId || polling}
-                      title="Re-run quality check without re-uploading the file"
+                      title={docCacheInfo?.cache_matches_current_file
+                        ? 'File unchanged — will load the cached result instantly'
+                        : 'Re-run quality check without re-uploading the file'}
                       className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px disabled:opacity-50"
                       style={{
                         background: '#f5f3ff',
@@ -6429,6 +6586,10 @@ const PIDVerification = () => {
                     >
                       {recheckingDocId === documentId
                         ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Queuing…</>
+                        : docCacheInfo?.cache_matches_current_file
+                        ? <><RefreshCw className="w-3.5 h-3.5" /> Re-check (use cache)</>
+                        : docCacheInfo?.cache_available
+                        ? <><RefreshCw className="w-3.5 h-3.5" /> Re-check (run fresh)</>
                         : <><RefreshCw className="w-3.5 h-3.5" /> Re-check</>
                       }
                     </button>
@@ -15931,6 +16092,156 @@ const PIDVerification = () => {
             {/* ─── end INDEX / TAGS / EQUIPMENT / DRAWING LAYOUT / VALVE TRACKING panel ─── */}
 
             {/* ═══════════════════════════════════════════════════════════ */}
+            {/* SYMBOL RECOGNITION PANEL (BYOK Vision) — separate, best-effort feature */}
+            {/* ═══════════════════════════════════════════════════════════ */}
+            {activePanel === 'symbols' && (
+              <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white" style={{ animation:'panelSlide 0.25s ease-out both' }}>
+                <div className="px-6 py-4 border-b border-slate-200/50 bg-gradient-to-r from-fuchsia-500/10 to-purple-500/10">
+                  <h3 className="text-base font-bold text-slate-800">Symbol Recognition</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">AI comparison of this drawing against uploaded symbol images (BYOK Vision)</p>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  {/* Warning banner — always shown alongside any result */}
+                  <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 font-medium">AI best guess — engineer verification required. Results are not auto-saved and are not treated as ground truth.</p>
+                  </div>
+
+                  {symbolsError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 font-medium">{symbolsError}</div>
+                  )}
+
+                  {/* Compact BYOK key field — this feature needs a key regardless of
+                      which mode (OCR/Vision) was picked for the main P&ID analysis
+                      above, so it carries its own field here instead of depending on
+                      the Processing Engine card's API Configuration box (which only
+                      shows in AI Vision mode). Shares the same visionApiKey/visionProvider
+                      state, so filling it in here or there is the same value everywhere. */}
+                  <div className="p-3 rounded-xl border border-purple-200 bg-purple-50/50 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Key className="w-3.5 h-3.5 text-purple-600" />
+                      <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">API Key (required for this feature)</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={visionProvider}
+                        onChange={(e) => setVisionProvider(e.target.value)}
+                        className="px-2.5 py-2 text-xs border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+                        {VISION_PROVIDERS.map(p => (
+                          <option key={p.id} value={p.id}>{p.label}</option>
+                        ))}
+                      </select>
+                      {visionProvider === 'claude' && (
+                        <select
+                          value={visionClaudeModel}
+                          onChange={(e) => setVisionClaudeModel(e.target.value)}
+                          className="px-2.5 py-2 text-xs border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+                          {CLAUDE_VISION_MODELS.map(m => (
+                            <option key={m.id} value={m.id}>{m.label}</option>
+                          ))}
+                        </select>
+                      )}
+                      <div className="relative flex-1 min-w-[180px]">
+                        <input
+                          type={showApiKey ? 'text' : 'password'}
+                          value={visionApiKey}
+                          onChange={(e) => setVisionApiKey(e.target.value)}
+                          placeholder="sk-proj-..."
+                          className="w-full px-3 py-2 pr-9 text-xs border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(v => !v)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                          {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-purple-600 flex items-center gap-1">
+                      <Shield className="w-3 h-3" /> Stored securely in session (auto-cleared on browser close)
+                    </p>
+                  </div>
+
+                  {/* Scan mode toggle — quick (1 call/page) vs thorough (tiled, ~5 calls/page) */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setThoroughScan(false)}
+                        disabled={identifyingSymbols}
+                        className={`px-3 py-1.5 text-xs font-semibold ${!thoroughScan ? 'bg-fuchsia-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        Quick Scan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setThoroughScan(true)}
+                        disabled={identifyingSymbols}
+                        className={`px-3 py-1.5 text-xs font-semibold border-l border-slate-300 ${thoroughScan ? 'bg-fuchsia-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        Thorough Scan
+                      </button>
+                    </div>
+                    <span className="text-[11px] text-slate-500">
+                      {thoroughScan
+                        ? `~${SYMBOL_CALLS_PER_PAGE_THOROUGH} API calls per page (4x more — tiled for higher accuracy)`
+                        : `~${SYMBOL_CALLS_PER_PAGE_QUICK} API call per page (fast and cheap)`}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={handleIdentifySymbols}
+                    disabled={identifyingSymbols}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white text-sm font-bold shadow hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {identifyingSymbols
+                      ? <><Loader className="w-4 h-4 animate-spin" /> Identifying symbols…</>
+                      : <><ScanLine className="w-4 h-4" /> Identify Symbols {thoroughScan ? '(Thorough)' : '(Quick)'}</>}
+                  </button>
+
+                  {/* Results table */}
+                  {symbolsResult && (
+                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">{symbolsResult.total_count} symbol{symbolsResult.total_count === 1 ? '' : 's'} identified</span>
+                        <span className="text-[11px] text-slate-400">{symbolsResult.provider} · {symbolsResult.model}</span>
+                      </div>
+                      {symbolsResult.identified_symbols.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-xs text-slate-400">No symbols were confidently identified on this drawing.</div>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                              <th className="px-4 py-2 font-semibold">Symbol Type</th>
+                              <th className="px-4 py-2 font-semibold">Location</th>
+                              <th className="px-4 py-2 font-semibold">Confidence</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {symbolsResult.identified_symbols.map((s, i) => (
+                              <tr key={i} className="border-t border-slate-100">
+                                <td className="px-4 py-2 text-slate-800 font-medium">{s.symbol_type}</td>
+                                <td className="px-4 py-2 text-slate-600">{s.location}</td>
+                                <td className="px-4 py-2">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                    s.confidence === 'high'   ? 'bg-emerald-100 text-emerald-700' :
+                                    s.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+                                                                 'bg-slate-100 text-slate-600'
+                                  }`}>{s.confidence}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════ */}
             {/* PERFORMANCE & ACCURACY PANEL                               */}
             {/* ═══════════════════════════════════════════════════════════ */}
             {activePanel === 'performance' && (() => {
@@ -17292,10 +17603,8 @@ const PIDVerification = () => {
         open={legendModalOpen}
         onClose={() => { setLegendModalOpen(false); refreshActiveLegend(); }}
         section={LEGEND_SECTION}
-        onActiveChange={(legend) => {
-          setActiveLegend(legend);
-          if (legend) setEffectiveLegend(legend);
-        }}
+        onActiveChange={onLegendActiveChange}
+        projectId={selectedProject?.project_id}
       />
 
     </DarkBg>

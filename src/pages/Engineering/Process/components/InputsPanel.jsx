@@ -3,7 +3,7 @@ import {
   Upload, FileText, Sparkles, Key, Eye, EyeOff, Loader2, BookOpen, FileSpreadsheet, Zap, Boxes, Gauge,
 } from 'lucide-react'
 
-import { MODE_OCR, MODE_VISION, VISION_PROVIDERS } from '../../../../services/pidCheckerV2API'
+import { MODE_OCR, MODE_VISION, VISION_PROVIDERS, CLAUDE_VISION_MODELS } from '../../../../services/pidCheckerV2API'
 import LineListDropzone from './LineListDropzone'
 import EquipmentListDropzone from './EquipmentListDropzone'
 import InstrumentIndexDropzone from './InstrumentIndexDropzone'
@@ -37,8 +37,10 @@ export default function InputsPanel({
   mode, setMode, forceOcr, setForceOcr,
   // BYOK
   visionProvider, setVisionProvider,
+  visionClaudeModel, setVisionClaudeModel,
   apiKey, setApiKey, showKey, setShowKey,
   rememberKey, setRememberKey,
+  onTestConnection, testingConnection, connectionTestResult,
   // Analyse action
   onSubmit, loading, uploadPct,
   // Read-only status
@@ -218,6 +220,22 @@ export default function InputsPanel({
               ))}
             </select>
 
+            {visionProvider === 'claude' && (
+              <select
+                value={visionClaudeModel}
+                onChange={(e) => setVisionClaudeModel(e.target.value)}
+                disabled={loading}
+                style={{
+                  padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                  border: `1px solid ${THEME_BORDER}`, background: '#fff', color: THEME_TEXT,
+                }}
+              >
+                {CLAUDE_VISION_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            )}
+
             <div style={{ position: 'relative' }}>
               <Key size={12} style={{
                 position: 'absolute', top: '50%', left: 10, transform: 'translateY(-50%)',
@@ -249,6 +267,35 @@ export default function InputsPanel({
                 {showKey ? <EyeOff size={12} /> : <Eye size={12} />}
               </button>
             </div>
+
+            {onTestConnection && (
+              <div>
+                <button
+                  type="button"
+                  onClick={onTestConnection}
+                  disabled={testingConnection || !apiKey.trim() || loading}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                    border: `1px solid ${THEME_PRIMARY}`, background: '#fff', color: THEME_PRIMARY,
+                    cursor: (testingConnection || !apiKey.trim() || loading) ? 'not-allowed' : 'pointer',
+                    opacity: (testingConnection || !apiKey.trim() || loading) ? 0.5 : 1,
+                  }}
+                >
+                  {testingConnection
+                    ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Testing…</>
+                    : <><Zap size={12} /> Test Connection</>}
+                </button>
+                {connectionTestResult && (
+                  <div style={{
+                    marginTop: 6, fontSize: 11, fontWeight: 600,
+                    color: connectionTestResult.valid ? '#16a34a' : '#dc2626',
+                  }}>
+                    {connectionTestResult.valid ? '✅ ' : '❌ '}{connectionTestResult.message}
+                  </div>
+                )}
+              </div>
+            )}
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: THEME_MUTED }}>
               <input

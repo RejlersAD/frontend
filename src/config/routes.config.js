@@ -64,6 +64,8 @@ export const ROUTES = {
   CRITICAL_LINE_LIST: '/engineering/piping/critical-line-list',
   VALVE_MTO: '/engineering/piping/valve-mto',
   NON_TEFF_METADATA: '/engineering/digitization/non-teff-metadata',
+  SMART_PLANT_3D: '/engineering/digitization/smart-plant-3d',
+  VALVE_STANDARDS: '/engineering/digitization/valve-standards',
 };
 
 /**

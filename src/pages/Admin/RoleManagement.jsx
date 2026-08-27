@@ -103,7 +103,7 @@ const NON_ENGINEERING_GROUPS = [
     label: 'Common & Integration',
     color: 'purple',
     description: 'Cross-discipline tools and document management',
-    moduleCodes: ['crs_documents', 'pfd_to_pid', 'designiq', 'data_mining', 'hr_self_service'],  // SOFT-CODED: hr_self_service moved from HR to COMMON section
+    moduleCodes: ['crs_documents', 'pfd_to_pid', 'designiq', 'data_mining', 'hr_self_service', 'enquiry_management'],  // SOFT-CODED: hr_self_service moved from HR to COMMON section; enquiry_management moved from Admin to COMMON section
   },
   {
     id: 'qhse',
@@ -166,7 +166,7 @@ const NON_ENGINEERING_GROUPS = [
       'role_access_mgmt',      // 9.3 Role & Access Management
       'wrench_integration',    // 9.4 Wrench Integration
       'ai_champion',           // 9.5 AI Champion
-      'enquiry_management',    // 9.6 Enquiry
+      // SOFT-CODED: enquiry_management moved to Common & Integration group (2.6 Enquiry)
     ],
   },
 ];

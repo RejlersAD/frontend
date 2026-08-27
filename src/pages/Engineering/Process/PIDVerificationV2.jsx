@@ -4,6 +4,11 @@ import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
 import { ROUTES } from '../../../config/routes.config';
 import CrossRecommendationPanel from '../../../components/recommendations/CrossRecommendationPanel';
+// Legend Sheets modal — shared with V1 and pid_checker_v2's own page (see
+// apps.pid_verification_v2.services.legend_bridge on the backend, which
+// connects V2's analysis pipeline to these same legend sheets + symbol images).
+import LegendSheetsModal from './components/LegendSheetsModal';
+import { LEGEND_SECTIONS } from '../../../services/pidCheckerV2API';
 import {
   Upload as UploadIcon, FileText, CheckCircle, AlertTriangle,
   Loader, X, Download, Activity, Shield, GitBranch, Cpu, Clock,
@@ -1321,6 +1326,9 @@ const PIDVerificationV2 = () => {
   const [results,      setResults]      = useState(null);
   const [error,        setError]        = useState('');
   const [activeDrawing,setActiveDrawing]= useState(null);
+  // ── Legend Sheets modal (pid_checker_v2 bridge) ───────────────────────────
+  const LEGEND_SECTION = LEGEND_SECTIONS[0]?.id || 'line_list';
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
   const pollRef    = useRef(null);
   // ── Elapsed-time timer for the processing loader ──────────────────────────
   const [elapsedSec,   setElapsedSec]   = useState(0);
@@ -7065,6 +7073,14 @@ const PIDVerificationV2 = () => {
                       <BarChart2 className="w-3.5 h-3.5" />
                       Full Report
                     </button>
+                    <button
+                      onClick={() => setLegendModalOpen(true)}
+                      title="Manage legend sheets used for text + symbol matching (pid_checker_v2)"
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px"
+                      style={{ background: '#fdf4ff', border: '1.5px solid #e9d5ff', color: '#a21caf' }}>
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Legend Sheets
+                    </button>
                     <button onClick={downloadExcel} disabled={downloadingXlsx}
                       className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-60"
                       style={{ background:'linear-gradient(135deg,#059669,#10b981)', boxShadow:'0 3px 10px rgba(16,185,129,0.25)' }}>
@@ -7092,6 +7108,40 @@ const PIDVerificationV2 = () => {
                   </div>
                 </div>
               </div>
+
+              {/* ── Legend & Symbol matches (pid_checker_v2 bridge) ──────
+                  Text tags matched against Legend Sheet lookup tables, and
+                  (when a Claude BYOK key was used) visually-identified
+                  symbols — cross-referenced where both agree. Populated by
+                  the backend's LegendSymbolBridgeStage into
+                  PIDVComparisonFinding, exposed via comparison_findings. */}
+              {results.comparison_findings?.length > 0 && (
+                <div className="rounded-2xl p-4" style={{ ...T.panel, animation:'fadeUp 0.45s ease-out 0.1s both' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <BookOpen className="w-4 h-4" style={{ color: '#a21caf' }} />
+                    <h3 className="text-sm font-bold text-slate-800">Legend & Symbol Matches</h3>
+                    <span className="text-xs text-slate-400">({results.comparison_findings.length})</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                    {results.comparison_findings.map(f => {
+                      const isLinked = f.title.startsWith('Confirmed:');
+                      const isSymbol = f.title.startsWith('Symbol identified:');
+                      return (
+                        <div key={f.finding_id} className="flex items-start gap-2 text-xs rounded-lg px-3 py-2"
+                          style={{
+                            background: isLinked ? 'rgba(34,197,94,0.06)' : isSymbol ? 'rgba(99,102,241,0.06)' : 'rgba(100,116,139,0.06)',
+                            border: `1px solid ${isLinked ? 'rgba(34,197,94,0.2)' : isSymbol ? 'rgba(99,102,241,0.2)' : 'rgba(100,116,139,0.15)'}`,
+                          }}>
+                          <span className="font-bold flex-shrink-0" style={{ color: isLinked ? '#16a34a' : isSymbol ? '#4f46e5' : '#64748b' }}>
+                            {isLinked ? 'HIGH' : isSymbol ? 'SYMBOL' : 'TEXT'}
+                          </span>
+                          <span className="text-slate-700">{f.title}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* ── Drawing tabs (always visible when multiple drawings) ── */}
               {results.drawings?.length > 1 && (
@@ -18245,6 +18295,15 @@ const PIDVerificationV2 = () => {
         </div>
       )}
       {/* ── End Fullscreen Workflow Modal ──────────────────────────────────── */}
+
+      {/* ── Legend Sheets Modal (pid_checker_v2 bridge) ─────────────────────── */}
+      <LegendSheetsModal
+        open={legendModalOpen}
+        onClose={() => setLegendModalOpen(false)}
+        section={LEGEND_SECTION}
+        onActiveChange={() => {}}
+        projectId={selectedProject?.project_id}
+      />
 
     </DarkBg>
   );

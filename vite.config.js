@@ -183,6 +183,14 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        // Default legend symbol pictures (repo static files, served under
+        // Django's STATIC_URL) — same relative-URL-from-a-different-origin
+        // problem as /media above.
+        '/static': {
+          target: apiUrl,
+          changeOrigin: true,
+          secure: false,
+        },
         '/api': {
           target: apiUrl,
           changeOrigin: true,
@@ -224,7 +232,10 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: true,
+      // Production source maps more than doubled peak build memory for this
+      // large application and exhausted Node's default 4 GB heap. Enable them
+      // explicitly only in CI environments that upload maps to secure storage.
+      sourcemap: env.VITE_BUILD_SOURCEMAP === 'true',
       // Soft-coded: Increase chunk size warning limit to 2 MB
       // Production bundles are large due to comprehensive feature set
       // Relying on Vite's automatic chunking to avoid circular dependencies
@@ -249,6 +260,11 @@ export default defineConfig(({ mode }) => {
         '@mui/system/createTheme',
         '@mui/material',
         '@mui/material/styles',
+        // @mui/x-data-grid pulls in @emotion/styled for its own theming —
+        // same "styled_default is not a function" failure mode as the MUI
+        // packages above if it's left out of pre-bundling (see QHSE
+        // DetailedView.jsx, the only current consumer).
+        '@mui/x-data-grid',
       ],
     },
   }

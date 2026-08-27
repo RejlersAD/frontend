@@ -1,11 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { toast } from 'react-toastify'
 import * as XLSX from 'xlsx'
-import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText } from 'lucide-react'
+import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff } from 'lucide-react'
 
 import {
   listLegends, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate, LEGEND_SECTIONS,
+  activateLegend, getLegendDefaultTemplate, getSymbolImages,
+  getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
+  LEGEND_SECTIONS,
 } from '../../../../services/pidCheckerV2API'
 import { emitLegendSync, subscribeLegendSync, LEGEND_SYNC_ACTIONS, LEGEND_SYNC_POLL_MS } from '../../../../config/legendSheetsRules'
 import { parseLegendFile, IMPORT_ACCEPT } from '../../../../config/legendSheetsImport'
@@ -19,6 +22,7 @@ const THEME_TEXT = '#0f172a'
 const THEME_MUTED = '#64748b'
 const THEME_BORDER = '#e2e8f0'
 const THEME_BG_SOFT = '#f8fafc'
+const THEME_TAB_BG = 'linear-gradient(180deg, #241f4f 0%, #4c2f8f 100%)'
 const THEME_GRADIENT = `linear-gradient(135deg, ${THEME_PRIMARY} 0%, ${THEME_ACCENT} 100%)`
 
 const DEFAULT_SECTION = LEGEND_SECTIONS[0]?.id || 'line_list'
@@ -26,9 +30,16 @@ const JSON_INDENT = 2
 const EDITOR_MODE_FORM = 'form'
 const EDITOR_MODE_JSON = 'json'
 const DEFAULT_SEPARATOR = '-'
+const PASTE_MIME_TO_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/svg+xml': 'svg' }
 
 function prettyJson(obj) {
   try { return JSON.stringify(obj, null, JSON_INDENT) } catch { return '' }
+}
+
+// Must mirror the backend's normalisation (legend_image_extractor._normalise_name)
+// so lookup keys line up regardless of stray whitespace/casing.
+function normaliseSymbolName(s) {
+  return String(s || '').replace(/\s+/g, ' ').trim().toUpperCase()
 }
 
 // Convert lookup object → friendly "KEY = VALUE" text (one per line)
@@ -111,8 +122,30 @@ function newBlankField() {
  *                      legend for the CURRENT section changes; parent uses it
  *                      to refresh the "Active Legend" badge.
  */
-export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SECTION, onActiveChange }) {
+export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId }) {
   const [activeSection, setActiveSection] = useState(section || DEFAULT_SECTION)
+
+  // Reference pictures, manually uploaded per symbol (see LegendSymbolImage /
+  // SymbolImagesListView / SymbolImageUploadView) — keyed by
+  // "section::NORMALISED NAME" so FormEditor can look one up per lookup entry.
+  const [symbolImages, setSymbolImages] = useState({})
+  const refreshSymbolImages = useCallback(async () => {
+    if (!projectId) { setSymbolImages({}); return }
+    try {
+      const data = await getSymbolImages(projectId)
+      const map = {}
+      for (const img of (data?.images || [])) {
+        map[`${img.section}::${normaliseSymbolName(img.symbol_name)}`] = {
+          url: img.image_url,
+          contentType: img.content_type || 'image/png',
+        }
+      }
+      setSymbolImages(map)
+    } catch {
+      setSymbolImages({})
+    }
+  }, [projectId])
+  useEffect(() => { if (open) refreshSymbolImages() }, [open, projectId, refreshSymbolImages])
 
   // Re-sync internal section when the parent re-opens the modal with a new one.
   useEffect(() => { if (open) setActiveSection(section || DEFAULT_SECTION) }, [open, section])
@@ -134,14 +167,23 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     [legends, selectedId]
   )
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
+  // `silent` skips the loading indicator — used for background polling and
+  // cross-tab sync so the "Loading…" text doesn't flash back in every few
+  // seconds when data is already on screen. Only the user-driven load (modal
+  // open / section switch) shows it.
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const rows = await listLegends(activeSection)
       setLegends(Array.isArray(rows) ? rows : [])
       // Clear selection when switching sections so the editor doesn't show a
-      // stale legend belonging to a different section.
-      setSelectedId(null)
+      // stale legend belonging to a different section. Only do this for a
+      // user-driven load (tab click / modal open) — a silent background
+      // poll or cross-tab sync must NOT clear it, or the tab the user just
+      // opened blanks itself out a few seconds later. `selected` is derived
+      // from `legends.find(...)` anyway, so if the row really did disappear
+      // (deleted elsewhere), it naturally falls back to null on its own.
+      if (!silent) setSelectedId(null)
       // notify parent about active state (only when viewing the section the
       // parent originally opened us with)
       if (onActiveChange && activeSection === section) {
@@ -151,7 +193,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } catch (err) {
       toast.error('Failed to load legends')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [activeSection, section, onActiveChange])
 
@@ -159,12 +201,14 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
 
   // Realtime cross-tab sync: refresh when any other window mutates a legend
   // in the section we're currently viewing. Polling fallback covers browsers
-  // without BroadcastChannel (Safari private mode, older Edge, etc.).
+  // without BroadcastChannel (Safari private mode, older Edge, etc.). Both
+  // are silent — they happen behind the scenes and shouldn't interrupt the
+  // user with a loading flicker.
   useEffect(() => {
     if (!open) return undefined
-    const handler = (msg) => { if (!msg?.section || msg.section === activeSection) refresh() }
+    const handler = (msg) => { if (!msg?.section || msg.section === activeSection) refresh(true) }
     const unsub = subscribeLegendSync(handler)
-    const timer = setInterval(refresh, LEGEND_SYNC_POLL_MS)
+    const timer = setInterval(() => refresh(true), LEGEND_SYNC_POLL_MS)
     return () => { unsub(); clearInterval(timer) }
   }, [open, activeSection, refresh])
 
@@ -180,7 +224,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
       setDraftDefinition('')
       setJsonError(null)
     }
-  }, [selected])
+  }, [selected, activeSection])
 
   const parsedDefinition = useMemo(() => {
     if (!draftDefinition.trim()) return null
@@ -430,15 +474,24 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
 
   if (!open) return null
 
-  return (
+  // Rendered via a portal straight into document.body — this modal was
+  // getting visually trapped UNDER the app's fixed top header (z-40)
+  // despite its own zIndex being much higher (1000). z-index only ranks
+  // elements within the same stacking context; some ancestor between this
+  // component and the page root creates its own stacking context (a
+  // transform/filter/backdrop-blur wrapper somewhere in the layout), which
+  // silently caps this modal's stacking level regardless of the number.
+  // Escaping to document.body sidesteps that entirely.
+  return createPortal((
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 1000, padding: 20,
     }}>
-      <div style={{
+      <div className="legend-sheets-modal" style={{
         background: '#fff', borderRadius: 14, width: '100%', maxWidth: 1100,
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
       }}>
         {/* Header */}
@@ -494,24 +547,37 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
             borderRight: `1px solid ${THEME_BORDER}`, padding: 14, overflowY: 'auto',
             display: 'flex', flexDirection: 'column', gap: 8, background: THEME_BG_SOFT,
           }}>
-            {/* Section switcher — lets user browse and create legends in ANY section */}
-            <div style={{
-              display: 'flex', gap: 4, padding: 3, borderRadius: 8,
-              background: '#fff', border: `1px solid ${THEME_BORDER}`,
-            }}>
+            {/* Section switcher — vertical rail so every section's full label
+                stays readable no matter how many are registered (no cutoff,
+                no arrow-scrolling). Dark-navy + purple-accent chrome matches
+                the app's header styling. */}
+            <div
+              className="legend-tabstrip"
+              role="tablist"
+              aria-label="Legend section"
+              style={{
+                display: 'flex', flexDirection: 'column', gap: 2,
+                maxHeight: 240, overflowY: 'auto',
+                background: THEME_TAB_BG, borderRadius: 10, padding: 6,
+              }}
+            >
               {LEGEND_SECTIONS.map(s => {
                 const on = s.id === activeSection
                 return (
                   <button
                     key={s.id}
                     type="button"
+                    role="tab"
+                    aria-selected={on}
+                    className="legend-tab-item"
                     onClick={() => setActiveSection(s.id)}
                     title={s.label}
                     style={{
-                      flex: 1, padding: '6px 8px', borderRadius: 6,
-                      border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '8px 10px', borderRadius: 6,
+                      border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
                       background: on ? THEME_GRADIENT : 'transparent',
-                      color: on ? '#fff' : THEME_TEXT,
+                      color: on ? '#fff' : '#cbd5e1',
                     }}
                   >
                     {s.label}
@@ -593,7 +659,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
           </div>
 
           {/* ── Right: editor ──────────────────────────────────── */}
-          <div style={{ padding: 18, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div data-legend-scroll-pane style={{ padding: 18, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label style={fieldLabel()}>Name
               <input
                 value={draftName}
@@ -673,6 +739,10 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                   onChange={(nextDef) => setDraftDefinition(prettyJson(nextDef))}
                   onError={setJsonError}
                   jsonError={jsonError}
+                  activeSection={activeSection}
+                  symbolImages={symbolImages}
+                  projectId={projectId}
+                  onImagesChanged={refreshSymbolImages}
                 />
               )}
             </label>
@@ -707,9 +777,28 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
           </div>
         </div>
       </div>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        /* Thin, non-overlapping scrollbars everywhere inside this modal —
+           without this, Windows/Firefox render the classic thick scrollbar
+           (with up/down arrow buttons at each end) which sits ON TOP of
+           the last few characters of nearby text instead of in its own
+           reserved gutter, since these panes don't reserve extra width
+           for it. The outer modal itself is overflow:hidden (see above)
+           so only these designated inner panes ever scroll. */
+        .legend-sheets-modal * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+        .legend-sheets-modal *::-webkit-scrollbar { width: 6px; height: 6px; }
+        .legend-sheets-modal *::-webkit-scrollbar-track { background: transparent; }
+        .legend-sheets-modal *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+        .legend-sheets-modal *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+        .legend-tabstrip { scrollbar-width: thin; }
+        .legend-tabstrip::-webkit-scrollbar { width: 4px; }
+        .legend-tabstrip::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .legend-tab-item[aria-selected="false"]:hover { background: rgba(255,255,255,0.08) !important; }
+        .legend-symbol-cell:focus { outline: 2px solid ${THEME_PRIMARY}; outline-offset: 1px; }
+      `}</style>
     </div>
-  )
+  ), document.body)
 }
 
 
@@ -771,7 +860,94 @@ function tabBtnStyle(active) {
 // Source-of-truth is a JSON string on the parent; on every change we
 // re-emit the entire definition object.
 // ═════════════════════════════════════════════════════════════════════
-function FormEditor({ definition, onChange, onError, jsonError }) {
+function FormEditor({ definition, onChange, onError, jsonError, activeSection, symbolImages, projectId, onImagesChanged }) {
+  // Tracks which symbol keys ("section::NAME") currently have an upload in
+  // flight, so each cell can show its own small spinner independently.
+  const [uploadingKeys, setUploadingKeys] = useState({})
+
+  // Shared default pictures (repo static files, no DB) for whichever of the
+  // active section's lookup names this project hasn't uploaded its own
+  // image for — keyed by the raw symbol name (matches the batch request).
+  const [defaultImages, setDefaultImages] = useState({})
+  useEffect(() => {
+    const parsed = parseDefinitionSafely(definition)
+    const names = []
+    for (const f of (parsed?.fields || [])) {
+      for (const value of Object.values(f.lookup || {})) {
+        const key = `${activeSection}::${normaliseSymbolName(value)}`
+        if (!symbolImages?.[key]) names.push(value)
+      }
+    }
+    if (names.length === 0) { setDefaultImages({}); return undefined }
+    let cancelled = false
+    getDefaultSymbolImages(activeSection, names)
+      .then((data) => { if (!cancelled) setDefaultImages(data?.results || {}) })
+      .catch(() => { if (!cancelled) setDefaultImages({}) })
+    return () => { cancelled = true }
+  }, [activeSection, definition, symbolImages])
+
+  // Scroll positions captured just before a symbol cell is clicked, so the
+  // "Right: editor" pane (and any scrollable ancestor up to it) can be
+  // snapped back if the browser's native focus handling scrolls it out of
+  // position. Deliberately NOT done via preventDefault()+manual focus() on
+  // mousedown — that was cancelling the browser's own focus action and
+  // broke Ctrl+V paste, since the cell never actually became the focused
+  // element. Instead we only read scroll state on mousedown and correct it
+  // on focus, leaving the native focus (and therefore paste) untouched.
+  const pendingScrollLockRef = useRef(null)
+
+  const handleSymbolImageUpload = useCallback(async (symbolValue, file) => {
+    if (!projectId) { toast.warn('Select a project first — pictures are saved per project.'); return }
+    const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
+    setUploadingKeys(prev => ({ ...prev, [key]: true }))
+    try {
+      await uploadSymbolImage(projectId, activeSection, symbolValue, file)
+      await onImagesChanged?.()
+      toast.success(`Picture saved for "${symbolValue}"`)
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Upload failed')
+    } finally {
+      setUploadingKeys(prev => { const next = { ...prev }; delete next[key]; return next })
+    }
+  }, [projectId, activeSection, onImagesChanged])
+
+  const handleSymbolImageDelete = useCallback(async (symbolValue) => {
+    if (!projectId) return
+    if (!window.confirm(`Remove the picture for "${symbolValue}"?`)) return
+    const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
+    setUploadingKeys(prev => ({ ...prev, [key]: true }))
+    try {
+      await deleteSymbolImage(projectId, activeSection, symbolValue)
+      await onImagesChanged?.()
+    } catch {
+      toast.error('Delete failed')
+    } finally {
+      setUploadingKeys(prev => { const next = { ...prev }; delete next[key]; return next })
+    }
+  }, [projectId, activeSection, onImagesChanged])
+
+  // Paste-from-clipboard — click a symbol cell to focus it, then Ctrl+V a
+  // picture copied from Excel/anywhere else. Same upload path as the file
+  // picker, just sourced from clipboardData instead of an <input type=file>.
+  const handleSymbolImagePaste = useCallback((e, symbolValue) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type && item.type.startsWith('image/')) {
+        e.preventDefault()
+        const blob = item.getAsFile()
+        if (!blob) continue
+        // Clipboard blobs often have a generic/empty filename — rebuild the
+        // File with a correct extension from the actual MIME type, so the
+        // backend's extension check always passes regardless of source.
+        const ext = PASTE_MIME_TO_EXT[item.type] || 'png'
+        const file = new File([blob], `pasted-symbol.${ext}`, { type: item.type })
+        handleSymbolImageUpload(symbolValue, file)
+        return
+      }
+    }
+  }, [handleSymbolImageUpload])
+
   const model = useMemo(() => parseDefinitionSafely(definition), [definition])
 
   const emit = useCallback((nextModel) => {
@@ -835,7 +1011,7 @@ function FormEditor({ definition, onChange, onError, jsonError }) {
         />
         <span style={{ fontSize: 11, color: THEME_MUTED }}>
           e.g. <code style={{ background: '#fff', padding: '1px 5px', borderRadius: 4 }}>-</code>
-          &nbsp;means tags look like <code style={{ background: '#fff', padding: '1px 5px', borderRadius: 4 }}>06"-P-1001-11111-C</code>
+          &nbsp;means tags look like <code style={{ background: '#fff', padding: '1px 5px', borderRadius: 4 }}>06&quot;-P-1001-11111-C</code>
         </span>
       </div>
 
@@ -946,6 +1122,164 @@ function FormEditor({ definition, onChange, onError, jsonError }) {
               }}
             />
           </label>
+
+          {/* Reference pictures — uploaded manually, one per symbol (see
+              LegendSymbolImage). Placeholder + Upload shown where none exists yet. */}
+          {f.lookup && Object.keys(f.lookup).length > 0 && (
+            <div style={fieldLabel()}>
+              <span>Reference pictures</span>
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', gap: 10,
+                maxHeight: 320, overflowY: 'auto', padding: 8, borderRadius: 8,
+                border: `1px solid ${THEME_BORDER}`, background: THEME_BG_SOFT,
+              }}>
+                {Object.entries(f.lookup).map(([key, value]) => {
+                  const imgKey = `${activeSection}::${normaliseSymbolName(value)}`
+                  const imgData = symbolImages?.[imgKey]
+                  const defaultUrl = !imgData ? defaultImages[value] : null
+                  const displayUrl = imgData?.url || defaultUrl
+                  const isDefault = !imgData && !!defaultUrl
+                  const isBusy = !!uploadingKeys[imgKey]
+                  return (
+                    <div
+                      key={key}
+                      className="legend-symbol-cell"
+                      tabIndex={0}
+                      onPaste={(e) => handleSymbolImagePaste(e, value)}
+                      // Record scroll state before the click (no preventDefault, no
+                      // manual focus() here — that previously cancelled the browser's
+                      // native focus action and broke Ctrl+V paste). Native focus still
+                      // happens exactly as it would without this handler.
+                      onMouseDown={(e) => {
+                        const card = e.currentTarget
+                        const pane = card.closest('[data-legend-scroll-pane]')
+                        const scrollers = []
+                        let node = card.parentElement
+                        while (node) {
+                          if (node.scrollHeight > node.clientHeight) scrollers.push(node)
+                          if (node === pane) break
+                          node = node.parentElement
+                        }
+                        pendingScrollLockRef.current = { scrollers, positions: scrollers.map((el) => el.scrollTop) }
+                      }}
+                      // The browser's native focus-into-view can nudge the "Right:
+                      // editor" pane out of position by the time this fires. Snap the
+                      // scroll state captured on mousedown back immediately, then keep
+                      // re-asserting it briefly in case the browser's adjustment lands
+                      // a frame later — this only touches scroll, never focus, so
+                      // paste keeps working.
+                      onFocus={() => {
+                        const lock = pendingScrollLockRef.current
+                        pendingScrollLockRef.current = null
+                        if (!lock) return
+                        const { scrollers, positions } = lock
+                        const restore = () => scrollers.forEach((el, i) => { el.scrollTop = positions[i] })
+                        restore()
+                        scrollers.forEach((el) => el.addEventListener('scroll', restore))
+                        requestAnimationFrame(restore)
+                        setTimeout(() => {
+                          restore()
+                          scrollers.forEach((el) => el.removeEventListener('scroll', restore))
+                        }, 300)
+                      }}
+                      title="Click here, then press Ctrl+V to paste a picture copied from Excel or anywhere else"
+                      style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                        width: 136, flex: '0 0 auto',
+                        padding: 6, borderRadius: 8, background: '#fff', border: `1px solid ${THEME_BORDER}`,
+                      }}>
+                      {displayUrl ? (
+                        <div style={{
+                          position: 'relative',
+                          width: 120, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          borderRadius: 6, background: '#fff', border: `1px solid ${THEME_BORDER}`, padding: 8,
+                          boxSizing: 'border-box',
+                        }}>
+                          <img
+                            src={displayUrl}
+                            alt={value}
+                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                          />
+                          {isDefault && (
+                            <span title="Shared default picture — this project hasn't uploaded its own" style={{
+                              position: 'absolute', top: 2, right: 2, fontSize: 7, fontWeight: 700,
+                              padding: '1px 4px', borderRadius: 4, background: THEME_BG_SOFT,
+                              color: THEME_MUTED, border: `1px solid ${THEME_BORDER}`,
+                            }}>
+                              default
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{
+                          width: 120, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          borderRadius: 6, background: '#f1f5f9', color: THEME_MUTED,
+                          border: `1px dashed ${THEME_BORDER}`,
+                        }}>
+                          <ImageOff size={28} />
+                        </div>
+                      )}
+                      <span style={{
+                        fontSize: 10, color: THEME_TEXT, textAlign: 'center', lineHeight: 1.3,
+                        overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box',
+                        WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', minHeight: 26,
+                      }} title={value}>
+                        {value}
+                      </span>
+
+                      {isBusy ? (
+                        <Loader2 size={13} style={{ animation: 'spin 1s linear infinite', color: THEME_MUTED }} />
+                      ) : (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <label style={{
+                            position: 'relative',
+                            display: 'inline-flex', alignItems: 'center', gap: 2,
+                            fontSize: 9, fontWeight: 700, color: THEME_PRIMARY, cursor: 'pointer',
+                            padding: '2px 5px', borderRadius: 4, border: `1px solid ${THEME_PRIMARY}`,
+                          }}>
+                            {imgData ? <Upload size={10} /> : <Plus size={10} />} {imgData ? 'Replace' : 'Upload'}
+                            <input
+                              type="file"
+                              accept=".png,.jpg,.jpeg,.svg"
+                              // Visually hidden but NOT display:none — a display:none input
+                              // has no layout box, so the browser can't compute where to
+                              // scroll it into view when the label forwards a click to it,
+                              // and some browsers fall back to scrolling the page to the
+                              // very top (the "jumps up" bug). Keeping it in-layout (just
+                              // invisible + covering the label) makes the click land on the
+                              // real input directly, so no forwarding/scroll-jump happens.
+                              style={{
+                                position: 'absolute', inset: 0, width: '100%', height: '100%',
+                                opacity: 0, cursor: 'pointer', margin: 0, padding: 0, border: 0,
+                              }}
+                              onChange={(e) => { const file = e.target.files?.[0]; if (file) handleSymbolImageUpload(value, file); e.target.value = '' }}
+                            />
+                          </label>
+                          {imgData && (
+                            <button
+                              type="button"
+                              onClick={() => handleSymbolImageDelete(value)}
+                              title="Delete picture"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', padding: '2px 5px',
+                                borderRadius: 4, border: '1px solid #fecaca', background: '#fef2f2',
+                                color: '#b91c1c', cursor: 'pointer',
+                              }}
+                            >
+                              <Trash2 size={10} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {!isBusy && (
+                        <span style={{ fontSize: 8, color: THEME_MUTED }}>or click + Ctrl+V</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       ))}
 

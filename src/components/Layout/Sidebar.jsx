@@ -388,6 +388,14 @@ const Sidebar = ({
           moduleCode: "hr_self_service", // Accessible to all users via DEFAULT_ROLE_MODULES
           badge: "SELF",
         },
+        {
+          id: "enquiryManagement",
+          title: "2.6 Enquiry",
+          icon: EnvelopeIcon,
+          path: "/admin/enquiries",
+          description: "Customer enquiries from public contact form",
+          moduleCode: "enquiry_management",
+        },
       ],
     },
     // SOFT-CODED: CRS Multi-Revision Manager removed as per user request
@@ -793,14 +801,7 @@ const Sidebar = ({
           description: "Top AI users leaderboard & badges",
           moduleCode: "ai_champion",
         },
-        {
-          id: "enquiryManagement",
-          title: "9.6 Enquiry",
-          icon: EnvelopeIcon,
-          path: "/admin/enquiries",
-          description: "Customer enquiries from public contact form",
-          moduleCode: "enquiry_management",
-        },
+        // SOFT-CODED: Enquiry moved to Common section (2.6) — see "crs" section above
         // SOFT-CODED: Subscription feature disabled for in-house deployment
         // {
         //   id: 'subscriptionManagement',

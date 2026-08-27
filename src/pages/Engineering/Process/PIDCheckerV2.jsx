@@ -7,7 +7,7 @@ import { ROUTES } from '../../../config/routes.config'
 import {
   extractLineTags, listExtractions, getExtraction, deleteExtraction,
   listLegends, listLineLists, listEquipmentLists, listInstrumentIndexes,
-  MODE_OCR, MODE_VISION, VISION_PROVIDERS,
+  MODE_OCR, MODE_VISION, VISION_PROVIDERS, CLAUDE_VISION_MODELS, testApiKey,
 } from '../../../services/pidCheckerV2API'
 import { listProjects, createProject, updateProject, deleteProject, getProjectHistory } from '../../../services/pidProjectsService'
 import LegendSheetsModal from './components/LegendSheetsModal'
@@ -53,6 +53,7 @@ const CSV_HEADER = ['tag', 'size', 'service', 'spec', 'serial', 'service_group']
 const SS_KEY_PROVIDER = 'radai_pidv2_byok_provider'
 const SS_KEY_APIKEY   = 'radai_pidv2_byok_apikey'
 const SS_KEY_REMEMBER = 'radai_pidv2_byok_remember'
+const SS_KEY_CLAUDE_MODEL = 'radai_pidv2_byok_claude_model'
 
 
 function toCsv(tags) {
@@ -91,11 +92,30 @@ export default function PIDCheckerV2() {
   const [visionProvider, setVisionProvider] = useState(
     () => sessionStorage.getItem(SS_KEY_PROVIDER) || VISION_PROVIDERS[0].id
   )
+  const [visionClaudeModel, setVisionClaudeModel] = useState(
+    () => sessionStorage.getItem(SS_KEY_CLAUDE_MODEL) || CLAUDE_VISION_MODELS[0].id
+  )
   const [apiKey, setApiKey] = useState(() => sessionStorage.getItem(SS_KEY_APIKEY) || '')
   const [showKey, setShowKey] = useState(false)
   const [rememberKey, setRememberKey] = useState(
     () => sessionStorage.getItem(SS_KEY_REMEMBER) === '1'
   )
+  // "Test Connection" — quick BYOK key ping, independent of extraction.
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [connectionTestResult, setConnectionTestResult] = useState(null) // { valid, message } | null
+  const onTestConnection = useCallback(async () => {
+    if (!apiKey.trim()) { setConnectionTestResult({ valid: false, message: 'Enter an API key first.' }); return }
+    setTestingConnection(true)
+    setConnectionTestResult(null)
+    try {
+      const res = await testApiKey(visionProvider, apiKey.trim())
+      setConnectionTestResult(res)
+    } catch (err) {
+      setConnectionTestResult({ valid: false, message: err?.response?.data?.message || 'Connection test failed. Please try again.' })
+    } finally {
+      setTestingConnection(false)
+    }
+  }, [visionProvider, apiKey])
 
   // ── History (auto-saved extractions) ──────────────────────────────
   const [history, setHistory] = useState([])
@@ -127,6 +147,10 @@ export default function PIDCheckerV2() {
   const [legendModalOpen, setLegendModalOpen] = useState(false)
   const [activeLegend, setActiveLegend] = useState(null)
   const [effectiveLegend, setEffectiveLegend] = useState(null) // active OR most-recent
+  // Stable identity — an inline arrow here would change on every render of this
+  // page and, since LegendSheetsModal depends on it, retrigger its load effect
+  // and keep it stuck showing "Loading…".
+  const onLegendActiveChange = useCallback((a) => setActiveLegend(a), [])
 
   // ── Master Line List (Excel) ──────────────────────────────────────
   const [activeLineList, setActiveLineList] = useState(null)
@@ -327,6 +351,7 @@ export default function PIDCheckerV2() {
     // Persist / clear BYOK preference (sessionStorage only — cleared on tab close)
     if (mode === MODE_VISION && rememberKey) {
       sessionStorage.setItem(SS_KEY_PROVIDER, visionProvider)
+      sessionStorage.setItem(SS_KEY_CLAUDE_MODEL, visionClaudeModel)
       sessionStorage.setItem(SS_KEY_APIKEY, apiKey)
       sessionStorage.setItem(SS_KEY_REMEMBER, '1')
     } else {
@@ -342,6 +367,7 @@ export default function PIDCheckerV2() {
         mode,
         forceOcr,
         provider: visionProvider,
+        model: visionClaudeModel,
         apiKey: apiKey.trim(),
         projectId: selectedProject?.project_id,
         onProgress: setUploadPct,
@@ -356,7 +382,7 @@ export default function PIDCheckerV2() {
     } finally {
       setLoading(false)
     }
-  }, [file, mode, forceOcr, visionProvider, apiKey, rememberKey, refreshHistory, selectedProject])
+  }, [file, mode, forceOcr, visionProvider, visionClaudeModel, apiKey, rememberKey, refreshHistory, selectedProject])
 
   const onReset = useCallback(() => {
     setFile(null)
@@ -1170,13 +1196,18 @@ export default function PIDCheckerV2() {
             forceOcr={forceOcr}
             setForceOcr={setForceOcr}
             visionProvider={visionProvider}
-            setVisionProvider={setVisionProvider}
+            setVisionProvider={(v) => { setVisionProvider(v); setConnectionTestResult(null) }}
+            visionClaudeModel={visionClaudeModel}
+            setVisionClaudeModel={(v) => { setVisionClaudeModel(v); setConnectionTestResult(null) }}
             apiKey={apiKey}
-            setApiKey={setApiKey}
+            setApiKey={(v) => { setApiKey(v); setConnectionTestResult(null) }}
             showKey={showKey}
             setShowKey={setShowKey}
             rememberKey={rememberKey}
             setRememberKey={setRememberKey}
+            onTestConnection={onTestConnection}
+            testingConnection={testingConnection}
+            connectionTestResult={connectionTestResult}
             onSubmit={onExtract}
             loading={loading}
             uploadPct={uploadPct}
@@ -1240,6 +1271,38 @@ export default function PIDCheckerV2() {
         @media (max-width: ${LAYOUT_BREAKPOINT_PX}px) {
           .pidcv2-workspace { grid-template-columns: 1fr !important; grid-template-rows: auto 1fr !important; }
         }
+        /* Modern thin scrollbars — replaces the native default (with its
+           chunky up/down arrow buttons) on every internally-scrolling panel
+           in this page. Firefox uses scrollbar-width/-color; Chrome/Edge/
+           Safari need the ::-webkit-scrollbar pseudo-elements below. */
+        .pidcv2-left, .pidcv2-workspace * {
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
+        }
+        .pidcv2-left::-webkit-scrollbar,
+        .pidcv2-workspace *::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .pidcv2-left::-webkit-scrollbar-track,
+        .pidcv2-workspace *::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .pidcv2-left::-webkit-scrollbar-thumb,
+        .pidcv2-workspace *::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .pidcv2-left::-webkit-scrollbar-thumb:hover,
+        .pidcv2-workspace *::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+        .pidcv2-left::-webkit-scrollbar-button,
+        .pidcv2-workspace *::-webkit-scrollbar-button {
+          display: none;
+          width: 0;
+          height: 0;
+        }
       `}</style>
 
       {/* Legend Sheets modal */}
@@ -1247,7 +1310,8 @@ export default function PIDCheckerV2() {
         open={legendModalOpen}
         section={LEGEND_SECTION}
         onClose={() => { setLegendModalOpen(false); refreshActiveLegend() }}
-        onActiveChange={(a) => setActiveLegend(a)}
+        onActiveChange={onLegendActiveChange}
+        projectId={selectedProject?.project_id}
       />
     </div>
   )

@@ -242,3 +242,30 @@ body {
 .delay-2000 {
   animation-delay: 2s;
 }
+/* Planner Workspace: P6-style activity spreadsheet grid. */
+.planner-grid-header > div {
+  border-right: 1px solid #cbd5e1;
+}
+
+.planner-grid-header > div:last-child {
+  border-right: 0;
+}
+
+.planner-grid-table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.planner-grid-table tbody td {
+  border-right: 1px solid #d7dee8;
+  border-bottom: 1px solid #d7dee8;
+}
+
+.planner-grid-table tbody td:last-child {
+  border-right: 0;
+}
+
+.planner-grid-table tbody tr:hover td {
+  border-right-color: #b8c3d1;
+  border-bottom-color: #b8c3d1;
+}
