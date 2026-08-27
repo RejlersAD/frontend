@@ -373,9 +373,12 @@ const FiltersBar = ({
         {/* Search — only relevant for card/table/dept views, hidden in timesheet mode */}
         {viewMode !== "timesheet" && (
           <div className="relative flex-1 space-y-1.5">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <HeroIcons.MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <div className="relative">
+                {searching ? (
+                  <Spinner className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-600" />
+                ) : (
+                  <HeroIcons.MagnifyingGlassIcon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                )}
                 <input
                   type="text"
                   value={searchTerm}
@@ -388,8 +391,9 @@ const FiltersBar = ({
                   }}
                   placeholder={HR_COPY.searchPlaceholder}
                   aria-label={HR_COPY.searchPlaceholder}
+                  aria-busy={searching}
                   autoComplete="off"
-                  className="w-full pl-10 pr-10 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-10 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 [color-scheme:light] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 />
                 {searchTerm && (
                   <button
@@ -401,22 +405,6 @@ const FiltersBar = ({
                     <HeroIcons.XMarkIcon className="w-4 h-4" />
                   </button>
                 )}
-              </div>
-              <button
-                type="button"
-                onClick={commitSearch}
-                disabled={searching}
-                className={`inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-wait text-white text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${anim("transition")}`}
-              >
-                {searching ? (
-                  <Spinner className="w-4 h-4" />
-                ) : (
-                  <HeroIcons.MagnifyingGlassIcon className="w-4 h-4" />
-                )}
-                <span className="hidden sm:inline">
-                  {HR_COPY.searchButtonLabel}
-                </span>
-              </button>
             </div>
             {!embedded && (
               <div className="hidden flex-wrap gap-1.5 px-1 text-[10px] font-medium text-slate-500 sm:flex">
