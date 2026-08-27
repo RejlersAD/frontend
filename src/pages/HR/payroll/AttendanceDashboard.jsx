@@ -39,7 +39,7 @@ import {
   SUMMARY_ANNUAL_LEAVE_LABEL, SUMMARY_UNPAID_LEAVE_LABEL,
   SUMMARY_AL_SHOW_BALANCE,
 } from '../../../config/hrAttendance.config'
-import { getLeaveType, ABSENT_SYMBOL, BRANCHES, getBranch } from '../../../config/hrLeave.config'
+import { getLeaveType, ABSENT_SYMBOL, BRANCHES } from '../../../config/hrLeave.config'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared micro-components  (defined outside main component — stable references)
@@ -612,10 +612,6 @@ function SummaryTab() {
     }
   }
 
-  // Human-readable period string shown in the report header, e.g. "June 2026"
-  // Soft-coded: label text comes from MONTH_FULL in hrAttendance.config.js
-  const periodLabel = `${MONTH_FULL[month - 1]} ${year}`
-
   // Soft-coded: compute day-of-week for any date in the selected month.
   // 0 = Sunday, 6 = Saturday (standard JS)
   const dayOfWeek   = (d) => new Date(year, month - 1, d).getDay()
@@ -746,16 +742,18 @@ function SummaryTab() {
     <div className="space-y-4">
       {/* Report header */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <HeroIcons.TableCellsIcon className="w-5 h-5 text-blue-500" />
-              Time Sheet Summary — {summaryBranch ? getBranch(summaryBranch)?.fullName : 'All Branches (RAD + RIN)'}
-            </h2>
-            <p className="text-sm text-slate-500 mt-0.5">{periodLabel}</p>
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Search */}
+          <div className="min-w-[16rem] flex-1 max-w-sm">
+            <label className="block text-xs text-slate-500 mb-1">Search</label>
+            <div className="relative">
+              <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Name or department…" autoComplete="off"
+                className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+            </div>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
-            {/* Branch selector */}
+          {/* Branch selector */}
           <div>
             <label className="block text-xs text-slate-500 mb-1">Branch</label>
             <div className="flex gap-1">
@@ -800,16 +798,6 @@ function SummaryTab() {
                 className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
                 {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
-            </div>
-            {/* Search */}
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Search</label>
-              <div className="relative">
-                <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Name or department…" autoComplete="off"
-                  className="pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 w-44" />
-              </div>
             </div>
             {/* Quick exports — replaced with smart report panel */}
             <DownloadReportPanel year={year} month={month} tsService={ts} />
@@ -868,11 +856,6 @@ function SummaryTab() {
                 </span>
               )}
             </button>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs text-blue-800">
-          <HeroIcons.InformationCircleIcon className="h-4 w-4 shrink-0" />
-          <span><strong>Attendance upload:</strong> accepts the native COSEC <strong>Organization-Wise Attendance</strong> .xlsx report, Excel/CSV columns <strong>Employee ID, Date, Hours</strong>, or a monthly sheet with day columns 1–31. COSEC Work Hrs and weekend work are preserved.</span>
         </div>
         {attendanceUploadMsg && (
           <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
