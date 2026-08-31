@@ -18,7 +18,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   BuildingOffice2Icon,
   CalendarDaysIcon,
@@ -38,6 +38,7 @@ import {
   PROJECT_STATUS_OPTIONS,
   PROJECT_PRIORITY_OPTIONS,
 } from '../../../config/projectControl.config'
+import { getCostKpis } from '../../../services/projectControl.service'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Soft-coded display helpers
@@ -163,6 +164,15 @@ function ProgressBar({ pct = 0 }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjectDashboardTab({ project }) {
+  const [ledgerKpis, setLedgerKpis] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    getCostKpis(project.id)
+      .then((data) => { if (active) setLedgerKpis(data) })
+      .catch(() => { if (active) setLedgerKpis(null) })
+    return () => { active = false }
+  }, [project.id])
   if (!project) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400">
@@ -319,17 +329,13 @@ export default function ProjectDashboardTab({ project }) {
           accentClass="from-fuchsia-50 to-pink-50 border-fuchsia-100"
         />
 
-        {/* Internal Budget (informational) */}
-        {project.budget != null && project.budget !== '' && (
+        {/* Canonical posted cost ledger */}
+        {ledgerKpis && (
           <InfoCard
             icon={CurrencyDollarIcon}
-            label="Internal Budget"
-            value={`AED ${fmtNumber(project.budget)}`}
-            sub={
-              project.spent
-                ? `Spent: AED ${fmtNumber(project.spent)} (${project.budget > 0 ? Math.round((project.spent / project.budget) * 100) : 0}%)`
-                : null
-            }
+            label="Control Budget"
+            value={`${ledgerKpis.currency} ${fmtNumber(ledgerKpis.budget)}`}
+            sub={`Actual: ${ledgerKpis.currency} ${fmtNumber(ledgerKpis.spent)} (${Math.round(ledgerKpis.utilisation_pct || 0)}%) · Posted ledger`}
             accentClass="from-slate-50 to-slate-100 border-slate-200"
           />
         )}

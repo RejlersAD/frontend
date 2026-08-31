@@ -22,9 +22,19 @@ export const getProjectStats  = ()          => unwrap(apiClient.get(EP.projectSt
 
 // ─── Analytics (Phase 1 live) ────────────────────────────────────────────────
 export const getCostKpis        = (projectId)       => unwrap(apiClient.get(EP.costKpis,    { params: { project: projectId } }))
+export const getCommercialDashboard = (projectId) => unwrap(apiClient.get(EP.commercialDashboard, { params: { project: projectId } }))
 export const getEstimateVariance = (projectId, opts = {}) =>
   unwrap(apiClient.get(EP.variance, { params: { project: projectId, ...opts } }))
 export const runFinanceSync     = (projectId)       => unwrap(apiClient.post(EP.financeSync, { project: projectId }))
+export const listWbsNodes       = (projectId)       => unwrap(apiClient.get(EP.wbsNodes, { params: { project: projectId } }))
+export const createWbsNode      = (payload)         => unwrap(apiClient.post(EP.wbsNodes, payload))
+export const listBudgetAllocations = (projectId)    => unwrap(apiClient.get(EP.budgetAllocations, { params: { project: projectId } }))
+export const createBudgetAllocation = (payload)     => unwrap(apiClient.post(EP.budgetAllocations, payload))
+export const approveBudgetAllocation = (id)         => unwrap(apiClient.post(`${EP.budgetAllocations}${id}/approve/`))
+export const listCostAllocations = (projectId, params = {}) => unwrap(apiClient.get(EP.costAllocations, { params: { project: projectId, ...params } }))
+export const createCostAllocation = (payload)       => unwrap(apiClient.post(EP.costAllocations, payload))
+export const approveCostAllocation = (id)           => unwrap(apiClient.post(`${EP.costAllocations}${id}/approve/`))
+export const listCostLedger      = (projectId, params = {}) => unwrap(apiClient.get(EP.costLedger, { params: { project: projectId, ...params } }))
 
 // ─── Estimates ───────────────────────────────────────────────────────────────
 export const listEstimates    = (projectId, params = {}) =>
@@ -194,7 +204,10 @@ export const importQhseRows = async (qhseRows, existingProjects, onProgress) => 
 export default {
   getPhaseFlags,
   listProjects, getProject, createProject, updateProject, deleteProject, getProjectStats,
-  getCostKpis, getEstimateVariance, runFinanceSync,
+  getCostKpis, getCommercialDashboard, getEstimateVariance, runFinanceSync,
+  listWbsNodes, createWbsNode,
+  listBudgetAllocations, createBudgetAllocation, approveBudgetAllocation,
+  listCostAllocations, createCostAllocation, approveCostAllocation, listCostLedger,
   listEstimates, getEstimate, createEstimate, updateEstimate, approveEstimate, supersedeEstimate,
   importBoqExcel,
   listDocuments, uploadDocument, presignDocumentDownload, deleteDocument,
