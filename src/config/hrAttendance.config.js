@@ -226,8 +226,9 @@ export const ATTENDANCE_DAILY_COLS = [
   { id: 'out',     label: 'Check Out',  accessor: r => fmtTime(r.last_out) },
   // hours column uses cellType 'hours_worked' so AttendanceDashboard can render
   // the open-shift badge when `r.open_shift === true`.
-  { id: 'hours',   label: 'Hours',      accessor: r => r.hours_worked ?? 0, cellType: 'hours_worked' },
-  { id: 'overtime', label: 'Overtime',  accessor: r => r.overtime_hours ?? 0, cellType: 'hours_worked' },
+  { id: 'hours',   label: 'Regular Hours', accessor: r => r.regular_hours ?? r.hours_worked ?? 0, cellType: 'hours_worked' },
+  { id: 'overtime', label: 'Recorded OT (Unapproved)', accessor: r => r.overtime_hours ?? 0, cellType: 'hours_worked' },
+  { id: 'presence', label: 'Total Presence', accessor: r => r.total_presence_hours ?? r.hours_worked ?? 0, cellType: 'hours_worked' },
   { id: 'status',  label: 'Status',     accessor: r => classifyDay(r), cellType: 'att_status' },
 ]
 
@@ -243,7 +244,8 @@ export const ATTENDANCE_MONTHLY_COLS = [
   { id: 'half',    label: 'Half Days',  accessor: r => r.half_days || 0 },
   { id: 'late',    label: 'Late In',    accessor: r => r.late_arrivals || 0,   cellType: 'late_count' },
   { id: 'hours',   label: 'Total Hrs',  accessor: r => `${(r.total_hours || 0).toFixed(1)}h` },
-  { id: 'overtime', label: 'Overtime',  accessor: r => `${(r.overtime_hours || 0).toFixed(1)}h` },
+  { id: 'overtime', label: 'Recorded OT (Unapproved)', accessor: r => `${(r.overtime_hours || 0).toFixed(1)}h` },
+  { id: 'presence', label: 'Total Presence', accessor: r => `${(r.total_presence_hours || r.total_hours || 0).toFixed(1)}h` },
   { id: 'avg',     label: 'Avg/Day',    accessor: r => `${(r.avg_hours_per_day || 0).toFixed(1)}h` },
   { id: 'rate',    label: 'Rate %',     accessor: r => r._rate ?? 0,           cellType: 'att_rate' },
   { id: 'payroll', label: 'Payroll',    accessor: r => r._payrollReady,        cellType: 'payroll_ready' },

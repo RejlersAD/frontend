@@ -1770,12 +1770,12 @@ const ActivityBars = ({ rows }) => {
   );
   const maxHours = Math.max(
     target * 1.25,
-    ...sorted.map((r) => Number(r.hours_worked ?? r.hours ?? 0)),
+    ...sorted.map((r) => Number(r.total_presence_hours ?? r.hours_worked ?? r.hours ?? 0)),
   );
   return (
     <div className="space-y-1.5">
       {sorted.map((r) => {
-        const h = Number(r.hours_worked ?? r.hours ?? 0);
+        const h = Number(r.total_presence_hours ?? r.hours_worked ?? r.hours ?? 0);
         const pct = maxHours > 0 ? (h / maxHours) * 100 : 0;
         const band = _bandFor(h);
         const d = new Date(r.date);
@@ -1926,7 +1926,7 @@ const EmployeeTimesheetPanel = ({ emp }) => {
   }
 
   // ─── Derived metrics for hero band ──────────────────────────────────────
-  const totalHours = Number(summary.hours_worked || 0);
+  const totalHours = Number(summary.total_hours ?? summary.hours_worked ?? 0);
   const daysPresent = Number(summary.days_present || 0);
   const rangeDays = Number(summary.range_days || 0);
   const avgPerDay = daysPresent > 0 ? totalHours / daysPresent : 0;
@@ -2205,7 +2205,7 @@ const EmployeeTimesheetPanel = ({ emp }) => {
                         // Attach the band label so the soft-coded accessor
                         // can render a plain-text status without re-running
                         // the band lookup in the component.
-                        const h = Number(r.hours_worked ?? r.hours ?? 0);
+                        const h = Number(r.total_presence_hours ?? r.hours_worked ?? r.hours ?? 0);
                         return { ...r, __bandLabel: _bandFor(h)?.label || "" };
                       })
                       .sort((a, b) => {
