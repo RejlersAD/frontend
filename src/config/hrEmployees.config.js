@@ -391,13 +391,17 @@ export const HR_TIMESHEET_KPIS = [
   { id: 'days_full',     label: 'Full Days',       icon: 'SunIcon',            tone: 'amber',   accessor: (s) => s.days_full ?? 0 },
   { id: 'avg_first_in',  label: 'Avg First In',    icon: 'ArrowRightOnRectangleIcon',  tone: 'sky',  accessor: (s) => s.avg_first_in || '—' },
   { id: 'avg_last_out',  label: 'Avg Last Out',    icon: 'ArrowLeftOnRectangleIcon',   tone: 'rose', accessor: (s) => s.avg_last_out || '—' },
+  { id: 'recorded_ot', label: 'Recorded OT (Unapproved)', icon: 'ClockIcon', tone: 'amber', accessor: (s) => Number(s.recorded_overtime_hours || 0).toFixed(2) },
+  { id: 'presence', label: 'Total Presence', icon: 'ClockIcon', tone: 'blue', accessor: (s) => Number(s.total_presence_hours || s.total_hours || 0).toFixed(2) },
 ]
 
 export const HR_TIMESHEET_DAILY_COLUMNS = [
   { id: 'date',     label: 'Date',     accessor: (r) => r.date },
   { id: 'first_in', label: 'First In', accessor: (r) => (r.first_in || '').slice(11, 16) || '—' },
   { id: 'last_out', label: 'Last Out', accessor: (r) => (r.last_out || '').slice(11, 16) || '—' },
-  { id: 'hours',    label: 'Hours',    accessor: (r) => ((r.hours_worked ?? r.hours ?? 0)).toFixed(2) },
+  { id: 'hours',    label: 'Regular', accessor: (r) => Number(r.regular_hours ?? r.hours_worked ?? r.hours ?? 0).toFixed(2) },
+  { id: 'overtime', label: 'Recorded OT', accessor: (r) => Number(r.overtime_hours || 0).toFixed(2) },
+  { id: 'presence', label: 'Total', accessor: (r) => Number(r.total_presence_hours ?? r.hours_worked ?? r.hours ?? 0).toFixed(2) },
   { id: 'punches',  label: 'Punches',  accessor: (r) => r.punch_count ?? r.punches ?? 0 },
 ]
 
@@ -448,8 +452,16 @@ export const HR_TIMESHEET_ACTIVITY_COLUMNS = [
       const d = new Date(r.date)
       return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { weekday: 'short' })
     } },
-  { id: 'hours',  label: 'Hours',  accessor: (r) => {
-      const h = Number(r.hours_worked ?? r.hours ?? 0)
+  { id: 'hours',  label: 'Regular',  accessor: (r) => {
+      const h = Number(r.regular_hours ?? r.hours_worked ?? r.hours ?? 0)
+      return h > 0 ? `${h.toFixed(2)} h` : '—'
+    }, mono: true },
+  { id: 'overtime', label: 'Recorded OT', accessor: (r) => {
+      const h = Number(r.overtime_hours || 0)
+      return h > 0 ? `${h.toFixed(2)} h` : '—'
+    }, mono: true },
+  { id: 'presence', label: 'Total', accessor: (r) => {
+      const h = Number(r.total_presence_hours ?? r.hours_worked ?? r.hours ?? 0)
       return h > 0 ? `${h.toFixed(2)} h` : '—'
     }, mono: true },
   { id: 'status', label: 'Status', accessor: (r) => {
@@ -464,6 +476,8 @@ export const HR_TIMESHEET_ACTIVITY_SORT = 'desc'
 export const HR_TIMESHEET_MONTHLY_COLUMNS = [
   { id: 'month',   label: 'Month',     accessor: (m) => m.__monthLabel || m.month || '—' },
   { id: 'hours',   label: 'Hours',     accessor: (m) => `${Number(m.hours || 0).toFixed(1)} h`, mono: true },
+  { id: 'overtime', label: 'Recorded OT', accessor: (m) => `${Number(m.overtime_hours || 0).toFixed(1)} h`, mono: true },
+  { id: 'presence', label: 'Total Presence', accessor: (m) => `${Number(m.total_presence_hours || m.hours || 0).toFixed(1)} h`, mono: true },
   { id: 'days',    label: 'Days',      accessor: (m) => `${m.days_present || 0}` },
   { id: 'avg',     label: 'Avg/Day',   accessor: (m) => `${Number(m.avg_per_day || 0).toFixed(2)} h`, mono: true },
   { id: 'punches', label: 'Punches',   accessor: (m) => `${m.punches || 0}` },
@@ -477,11 +491,11 @@ export const HR_TIMESHEET_VISUALS = {
   hourBands: [
     { upTo: 0,   color: 'bg-slate-200', label: 'Absent' },
     { upTo: 4,   color: 'bg-amber-300', label: 'Half day' },
-    { upTo: 8,   color: 'bg-sky-400',   label: 'Standard' },
+    { upTo: 9,   color: 'bg-sky-400',   label: 'Standard' },
     { upTo: 999, color: 'bg-emerald-500', label: 'Overtime' },
   ],
   // Target hours per day — drives the bar-width %.
-  targetHoursPerDay: 8,
+  targetHoursPerDay: 9,
   // Donut ring (utilisation) — px geometry.
   ringSize: 132,
   ringStroke: 12,

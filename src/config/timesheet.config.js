@@ -163,7 +163,9 @@ export const TIMESHEET_DAILY_COLUMNS = [
   { id: 'dept',     label: 'Dept',     accessor: (r) => safe(r.radai_department || r.department) },
   { id: 'first_in', label: 'First In', accessor: (r) => fmtTime(r.first_in) },
   { id: 'last_out', label: 'Last Out', accessor: (r) => fmtTime(r.last_out) },
-  { id: 'hours',    label: 'Hours',    accessor: (r) => (r.hours_worked ?? 0).toFixed(2) },
+  { id: 'hours',    label: 'Regular Hours', accessor: (r) => (r.regular_hours ?? r.hours_worked ?? 0).toFixed(2) },
+  { id: 'overtime', label: 'Recorded OT (Unapproved)', accessor: (r) => (r.overtime_hours ?? 0).toFixed(2) },
+  { id: 'presence', label: 'Total Presence', accessor: (r) => (r.total_presence_hours ?? r.hours_worked ?? 0).toFixed(2) },
   { id: 'late',     label: 'Late?',    accessor: (r) => (r.is_late ? 'Yes' : 'No') },
   { id: 'full',     label: 'Full Day?', accessor: (r) => (r.is_full_day ? 'Yes' : 'No') },
 ]
@@ -176,7 +178,9 @@ export const TIMESHEET_MONTHLY_COLUMNS = [
   { id: 'full',         label: 'Full Days',    accessor: (r) => r.full_days || 0 },
   { id: 'half',         label: 'Half Days',    accessor: (r) => r.half_days || 0 },
   { id: 'late',         label: 'Late',         accessor: (r) => r.late_arrivals || 0 },
-  { id: 'hours',        label: 'Total Hours',  accessor: (r) => (r.total_hours || 0).toFixed(2) },
+  { id: 'hours',        label: 'Regular Hours', accessor: (r) => (r.total_hours || 0).toFixed(2) },
+  { id: 'overtime',     label: 'Recorded OT (Unapproved)', accessor: (r) => (r.overtime_hours || 0).toFixed(2) },
+  { id: 'presence',     label: 'Total Presence', accessor: (r) => (r.total_presence_hours || r.total_hours || 0).toFixed(2) },
   { id: 'avg',          label: 'Avg/Day',      accessor: (r) => (r.avg_hours_per_day || 0).toFixed(2) },
 ]
 
