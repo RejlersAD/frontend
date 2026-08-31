@@ -485,9 +485,11 @@ const Enquiry = () => {
                     style={{ color: REJLERS_COLORS.primary.base }}
                   >
                     <option value="">Select a service...</option>
-                    {ENQUIRY_CONFIG.services.map((service, index) => (
+                    {ENQUIRY_CONFIG.services
+                      .filter((service) => service.value !== 'password-reset')
+                      .map((service, index) => (
                       <option key={index} value={service.value}>{service.label}</option>
-                    ))}
+                      ))}
                   </select>
                 </div>
 

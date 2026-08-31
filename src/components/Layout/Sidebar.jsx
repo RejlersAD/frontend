@@ -732,6 +732,16 @@ const Sidebar = ({
 
   const filteredMenu = filterMenuByModules(menuStructure);
 
+  filteredMenu.unshift({
+    id: "myEnquiries",
+    title: "My Requests",
+    icon: EnvelopeIcon,
+    path: "/my-enquiries",
+    type: "single",
+    requiresModule: false,
+    description: "Create and track your enquiries",
+  });
+
   // SOFT-CODED: Request Access link disabled - remove the push() block to re-enable
   // filteredMenu.push({
   //   id: 'requestAccess',

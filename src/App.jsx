@@ -77,6 +77,10 @@ import UserDetail from './pages/UserDetail'
 import WrenchIntegration from './pages/WrenchIntegration'
 import AIChampion from './pages/Admin/AIChampion'
 import EnquiryManagement from './pages/Admin/EnquiryManagement'
+import EnquiryDetail from './pages/Admin/EnquiryDetail'
+import MyEnquiries from './pages/MyEnquiries'
+import MyEnquiryDetail from './pages/MyEnquiryDetail'
+import EnquiryFeedback from './pages/EnquiryFeedback'
 import ActivityReports from './pages/Admin/ActivityReports'
 // SOFT-CODED: Subscription feature disabled for in-house deployment
 // import SubscriptionManagement from './pages/SubscriptionManagement'
@@ -196,6 +200,9 @@ const PUBLIC_PATH_REDIRECTS = {
   register:     '/enquiry',
   contact:      '/enquiry',
   'contact-us': '/enquiry',
+  inquiries:    '/enquiry',
+  inquires:     '/enquiry',
+  inqures:      '/enquiry',
 }
 
 // Back-compat alias (kept for any external reference to this constant)
@@ -407,6 +414,7 @@ function App() {
             
             {/* Enquiry Page */}
             <Route path="enquiry" element={<Enquiry />} />
+            <Route path="enquiry/feedback/:token" element={<EnquiryFeedback />} />
             
             {/* Services */}
           <Route path="services/consulting" element={<ConsultingService />} />
@@ -1483,6 +1491,30 @@ function App() {
           element={
             <ProtectedRoute>
               <EnquiryManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/enquiries/:id"
+          element={
+            <ProtectedRoute>
+              <EnquiryDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="my-enquiries"
+          element={
+            <ProtectedRoute>
+              <MyEnquiries />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="my-enquiries/:id"
+          element={
+            <ProtectedRoute>
+              <MyEnquiryDetail />
             </ProtectedRoute>
           }
         />
