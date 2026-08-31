@@ -4,7 +4,7 @@ import {
   ArrowTrendingUpIcon, ShieldCheckIcon,
   PlusIcon, PencilSquareIcon, TrashIcon,
   ArrowsPointingOutIcon, ArrowsPointingInIcon,
-  CloudArrowDownIcon, Squares2X2Icon,
+  CloudArrowDownIcon, Squares2X2Icon, BanknotesIcon,
 } from '@heroicons/react/24/outline'
 
 import {
@@ -21,6 +21,7 @@ import ProjectFormModal from './components/ProjectFormModal'
 import QhseImportModal from './components/QhseImportModal'
 import ProjectDashboardTab from './tabs/ProjectDashboardTab'
 import CostDashboardTab from './tabs/CostDashboardTab'
+import CommercialDashboardTab from './tabs/CommercialDashboardTab'
 import EstimatesTab from './tabs/EstimatesTab'
 import DocumentsTab from './tabs/DocumentsTab'
 import TakeoffTab from './tabs/TakeoffTab'
@@ -35,11 +36,13 @@ const ICONS = {
   sparkles: SparklesIcon,
   trending: ArrowTrendingUpIcon,
   shield:   ShieldCheckIcon,
+  banknotes: BanknotesIcon,
 }
 
 const TAB_COMPONENTS = {
   'project-dashboard': ProjectDashboardTab,
   'cost-dashboard':    CostDashboardTab,
+  'commercial-dashboard': CommercialDashboardTab,
   'estimates':         EstimatesTab,
   'documents':         DocumentsTab,
   'ai-takeoff':        TakeoffTab,

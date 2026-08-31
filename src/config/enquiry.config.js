@@ -49,15 +49,19 @@ export const ENQUIRY_CONFIG = {
 
   // Services List (for dropdown)
   services: [
-    { value: 'pid-analysis', label: 'P&ID Analysis & Verification' },
-    { value: 'pfd-conversion', label: 'PFD to P&ID Conversion' },
-    { value: 'asset-integrity', label: 'Asset Integrity Management' },
-    { value: 'engineering-consulting', label: 'Engineering Consulting' },
-    { value: 'digital-twin', label: 'Digital Twin Solutions' },
-    { value: 'ai-ml-services', label: 'AI/ML Engineering Services' },
+    { value: 'technical_support', label: 'Technical Support' },
+    { value: 'complaint', label: 'Complaint' },
+    { value: 'suggestion', label: 'Suggestion' },
+    { value: 'partnership', label: 'Partnership' },
+    { value: 'legal', label: 'Legal' },
+    { value: 'hr', label: 'HR' },
+    { value: 'it_request', label: 'IT Request' },
+    { value: 'finance_request', label: 'Finance Request' },
+    { value: 'procurement', label: 'Procurement' },
+    { value: 'facility_request', label: 'Facility Request' },
     { value: 'password-reset', label: '🔐 Password Reset Request' },
-    { value: 'general', label: 'General Enquiry' },
-    { value: 'other', label: 'Other Services' }
+    { value: 'general', label: 'General Inquiry' },
+    { value: 'other', label: 'Other' }
   ],
 
   // Urgency Levels

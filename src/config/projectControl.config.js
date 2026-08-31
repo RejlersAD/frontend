@@ -28,6 +28,9 @@ export const PROJECT_CONTROL_ENDPOINTS = {
 
   // WBS
   wbsNodes:        '/project-control/wbs-nodes/',
+  budgetAllocations: '/project-control/budget-allocations/',
+  costAllocations: '/project-control/cost-allocations/',
+  costLedger:      '/project-control/cost-ledger/',
 
   // Cost / EVM / Changes
   snapshots:       '/project-control/cost-snapshots/',
@@ -39,6 +42,7 @@ export const PROJECT_CONTROL_ENDPOINTS = {
 
   // Analytics
   costKpis:        '/project-control/analytics/cost-kpis/',
+  commercialDashboard: '/project-control/analytics/commercial-dashboard/',
   variance:        '/project-control/analytics/estimate-variance/',
   financeSync:     '/project-control/analytics/finance-sync/',
   aiTakeoff:       '/project-control/analytics/ai-takeoff/',
@@ -55,6 +59,7 @@ export const PROJECT_CONTROL_ENDPOINTS = {
 export const PROJECT_VIEW_MODES = [
   // Project Dashboard — first tab; shows key commercial & scheduling facts.
   { key: 'project-dashboard', label: 'Project Dashboard', phaseFlag: 'phase_1_project_dashboard', icon: 'squares' },
+  { key: 'commercial-dashboard', label: 'Commercial', phaseFlag: 'phase_1_cost_dashboard', icon: 'banknotes' },
   { key: 'cost-dashboard',    label: 'Cost Dashboard',    phaseFlag: 'phase_1_cost_dashboard',    icon: 'chart' },
   { key: 'estimates',         label: 'Estimates',         phaseFlag: 'phase_1_estimate_variance', icon: 'document' },
   { key: 'documents',         label: 'Documents',         phaseFlag: 'phase_1_documents',         icon: 'folder' },

@@ -15,6 +15,7 @@
  * `/admin/users` so we keep one authoritative write surface.
  */
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import * as HeroIcons from "@heroicons/react/24/outline";
@@ -618,9 +619,96 @@ const EMPLOYEE_QUICK_ACTIONS = [
 
 const EmployeeQuickActions = ({ emp, onAction, compact = false }) => {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const positionMenu = useCallback(() => {
+    if (!buttonRef.current) return;
+
+    const trigger = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 208;
+    const menuHeight = menuRef.current?.offsetHeight || 176;
+    const viewportPadding = 8;
+    const gap = 6;
+    const roomBelow = window.innerHeight - trigger.bottom;
+    const openUpward = roomBelow < menuHeight + gap;
+
+    setMenuPosition({
+      left: Math.min(
+        Math.max(viewportPadding, trigger.right - menuWidth),
+        window.innerWidth - menuWidth - viewportPadding,
+      ),
+      top: openUpward
+        ? Math.max(viewportPadding, trigger.top - menuHeight - gap)
+        : trigger.bottom + gap,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setMenuPosition(null);
+      return undefined;
+    }
+
+    positionMenu();
+    const frame = window.requestAnimationFrame(positionMenu);
+    const closeOnOutsideClick = (event) => {
+      if (
+        !buttonRef.current?.contains(event.target) &&
+        !menuRef.current?.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+    };
+  }, [open, positionMenu]);
+
+  const menu = open && menuPosition && (
+    <div
+      ref={menuRef}
+      className="fixed z-[1000] grid w-52 grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-2xl"
+      style={{ left: menuPosition.left, top: menuPosition.top }}
+      role="menu"
+      aria-label={`Actions for ${fullName(emp)}`}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {EMPLOYEE_QUICK_ACTIONS.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            setOpen(false);
+            onAction(emp, action.id);
+          }}
+          className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold ${action.danger ? "text-rose-700 hover:bg-rose-50" : "text-slate-700 hover:bg-blue-50 hover:text-blue-700"}`}
+        >
+          <Icon name={action.icon} className="h-4 w-4" /> {action.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="relative" onClick={(event) => event.stopPropagation()}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-blue-300 hover:text-blue-700"
@@ -631,23 +719,7 @@ const EmployeeQuickActions = ({ emp, onAction, compact = false }) => {
         {!compact && <span>Quick actions</span>}
         <HeroIcons.ChevronDownIcon className="h-3 w-3" />
       </button>
-      {open && (
-        <div className="absolute right-0 z-40 mt-1 grid w-52 grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-xl">
-          {EMPLOYEE_QUICK_ACTIONS.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onAction(emp, action.id);
-              }}
-              className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold ${action.danger ? "text-rose-700 hover:bg-rose-50" : "text-slate-700 hover:bg-blue-50 hover:text-blue-700"}`}
-            >
-              <Icon name={action.icon} className="h-4 w-4" /> {action.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {menu && createPortal(menu, document.body)}
     </div>
   );
 };

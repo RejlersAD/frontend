@@ -19,7 +19,8 @@ import {
   ExternalLink,
   RefreshCw,
   Download,
-  Eye
+  Eye,
+  GitMerge
 } from 'lucide-react';
 
 // Soft-coded project configuration
@@ -284,6 +285,13 @@ const ProjectDashboard = () => {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/procurement/projects/reconciliation')}
+              className="px-4 py-2 bg-white border border-teal-300 text-teal-800 rounded-lg hover:bg-teal-50 transition-colors flex items-center gap-2 font-medium"
+            >
+              <GitMerge className="w-4 h-4" />
+              Reconcile Projects
+            </button>
             <button
               onClick={() => navigate('/finance/incoming-invoices')}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 font-medium"

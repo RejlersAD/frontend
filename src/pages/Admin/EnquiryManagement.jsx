@@ -1,551 +1,161 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  EnvelopeIcon,
-  MagnifyingGlassIcon,
-  ArrowPathIcon,
-  XMarkIcon,
-  EyeIcon,
-  TrashIcon,
-  ExclamationTriangleIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  InboxArrowDownIcon,
-  BuildingOffice2Icon,
-  PhoneIcon,
-} from '@heroicons/react/24/outline'
+import { useNavigate } from 'react-router-dom'
+import { ArrowPathIcon, ChevronRightIcon, EnvelopeIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import apiService from '../../services/api.service'
 
-// ---------------------------------------------------------------------------
-// Soft-coded configuration
-// ---------------------------------------------------------------------------
-// NOTE: apiService already prepends the API base ('/api/v1'), so these paths
-// must NOT include the '/api/v1' prefix — otherwise requests hit
-// '/api/v1/api/v1/enquiry/' and get a 404 back from the router.
-const ENQUIRY_API = {
-  list:   '/enquiry/',
-  stats:  '/enquiry/stats/',
-  detail: (id) => `/enquiry/${id}/`,
-}
-
-const PAGE_SIZE = 25
-
-const STATUS_OPTIONS = [
-  { value: '',           label: 'All statuses' },
-  { value: 'new',        label: 'New' },
-  { value: 'in_review',  label: 'In Review' },
-  { value: 'contacted',  label: 'Contacted' },
-  { value: 'resolved',   label: 'Resolved' },
-  { value: 'spam',       label: 'Spam' },
+const PAGE_SIZE = 20
+const API = { list: '/enquiry/', stats: '/enquiry/stats/' }
+const STATUS = [
+  ['', 'All statuses'], ['new', 'New'], ['assigned', 'Assigned'],
+  ['in_progress', 'In Progress'], ['waiting_user', 'Waiting for User'],
+  ['responded', 'Responded'], ['escalated', 'Escalated'],
+  ['pending_confirmation', 'Awaiting Confirmation'], ['reopened', 'Reopened'],
+  ['resolved', 'Resolved'], ['closed', 'Closed'], ['spam', 'Spam'],
 ]
-
-const URGENCY_OPTIONS = [
-  { value: '',       label: 'All urgencies' },
-  { value: 'low',    label: 'Low' },
-  { value: 'normal', label: 'Normal' },
-  { value: 'high',   label: 'High' },
-  { value: 'urgent', label: 'Urgent' },
-]
-
-const STATUS_BADGE = {
-  new:       'bg-blue-100 text-blue-800 ring-1 ring-blue-200',
-  in_review: 'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
-  contacted: 'bg-purple-100 text-purple-800 ring-1 ring-purple-200',
-  resolved:  'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
-  spam:      'bg-gray-200 text-gray-700 ring-1 ring-gray-300',
+const URGENCY = [['', 'All priorities'], ['low', 'Low'], ['normal', 'Normal'], ['high', 'High'], ['urgent', 'Urgent']]
+const STATUS_TONE = {
+  new: 'bg-blue-50 text-blue-700', assigned: 'bg-cyan-50 text-cyan-700',
+  in_progress: 'bg-amber-50 text-amber-700', waiting_user: 'bg-violet-50 text-violet-700',
+  responded: 'bg-indigo-50 text-indigo-700', resolved: 'bg-emerald-50 text-emerald-700',
+  escalated: 'bg-red-50 text-red-700', pending_confirmation: 'bg-fuchsia-50 text-fuchsia-700',
+  reopened: 'bg-orange-50 text-orange-700',
+  closed: 'bg-slate-100 text-slate-600', spam: 'bg-slate-100 text-slate-600',
 }
+const MIX_COLORS = ['#176b4d', '#318a91', '#d97800', '#64748b', '#dc2626', '#7c3aed']
 
-const URGENCY_BADGE = {
-  low:    'bg-gray-100 text-gray-700',
-  normal: 'bg-sky-100 text-sky-800',
-  high:   'bg-orange-100 text-orange-800',
-  urgent: 'bg-red-100 text-red-800',
-}
+const number = (value) => Number(value || 0).toLocaleString()
+const date = (value, compact = false) => value
+  ? new Date(value).toLocaleString(undefined, compact
+    ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    : { year: 'numeric', month: 'short', day: '2-digit' })
+  : '—'
+const label = (value = '') => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
-const STATUS_LABEL = {
-  new: 'New', in_review: 'In Review', contacted: 'Contacted', resolved: 'Resolved', spam: 'Spam',
-}
-const URGENCY_LABEL = {
-  low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent',
-}
-
-// Soft-coded service labels & badges — extend when new services are added.
-// Password reset requests originate from /forgot-password when SMTP is
-// unavailable, so we highlight them for the admin.
-const SERVICE_LABEL = {
-  'pid-analysis':          'P&ID Analysis',
-  'pfd-conversion':        'PFD → P&ID',
-  'asset-integrity':       'Asset Integrity',
-  'engineering-consulting':'Engineering Consulting',
-  'digital-twin':          'Digital Twin',
-  'ai-ml-services':        'AI/ML Services',
-  'password-reset':        '🔐 Password Reset',
-  'general':               'General Enquiry',
-  'other':                 'Other',
-}
-const SERVICE_BADGE = {
-  'password-reset': 'bg-red-100 text-red-800 ring-1 ring-red-200 font-semibold',
-}
-const formatServiceLabel = (code) => SERVICE_LABEL[code] || (code || '—')
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 export default function EnquiryManagement () {
-  const [items, setItems]               = useState([])
-  const [count, setCount]               = useState(0)
-  const [page, setPage]                 = useState(1)
-  const [loading, setLoading]           = useState(false)
-  const [error, setError]               = useState(null)
+  const navigate = useNavigate()
+  const [items, setItems] = useState([])
+  const [stats, setStats] = useState(null)
+  const [count, setCount] = useState(0)
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('')
+  const [urgency, setUrgency] = useState('')
+  const [department, setDepartment] = useState('')
 
-  const [stats, setStats]               = useState(null)
-
-  const [search, setSearch]             = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [urgencyFilter, setUrgencyFilter] = useState('')
-
-  const [selected, setSelected]         = useState(null)   // enquiry object shown in drawer
-  const [savingPatch, setSavingPatch]   = useState(false)
-
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil((count || 0) / PAGE_SIZE)),
-    [count]
-  )
-
-  const loadList = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true)
-    setError(null)
+    setError('')
     try {
-      const { data } = await apiService.get(ENQUIRY_API.list, {
-        params: {
-          page,
-          page_size: PAGE_SIZE,
-          status:    statusFilter || undefined,
-          urgency:   urgencyFilter || undefined,
-          search:    search || undefined,
-        },
-      })
-      setItems(data?.results || [])
-      setCount(data?.count || 0)
-    } catch (e) {
-      const msg = e?.response?.data?.message || e?.message || 'Failed to load enquiries'
-      setError(msg)
-      setItems([])
-      setCount(0)
-    } finally {
-      setLoading(false)
-    }
-  }, [page, statusFilter, urgencyFilter, search])
+      const [listResponse, statsResponse] = await Promise.all([
+        apiService.get(API.list, { params: { page, page_size: PAGE_SIZE, search: search || undefined, status: status || undefined, urgency: urgency || undefined, department: department || undefined } }),
+        apiService.get(API.stats),
+      ])
+      setItems(listResponse.data?.results || [])
+      setCount(listResponse.data?.count || 0)
+      setStats(statsResponse.data || null)
+    } catch (requestError) {
+      setError(requestError?.response?.data?.detail || requestError?.message || 'Could not load enquiries.')
+    } finally { setLoading(false) }
+  }, [department, page, search, status, urgency])
 
-  const loadStats = useCallback(async () => {
-    try {
-      const { data } = await apiService.get(ENQUIRY_API.stats)
-      setStats(data)
-    } catch {
-      setStats(null)
-    }
-  }, [])
+  useEffect(() => { load() }, [load])
+  useEffect(() => { setPage(1) }, [search, status, urgency, department])
 
-  useEffect(() => { loadList()  }, [loadList])
-  useEffect(() => { loadStats() }, [loadStats])
+  const departments = useMemo(() => stats?.by_department?.map((row) => row.name).filter((name) => name !== 'Unrouted') || [], [stats])
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE))
+  const active = (stats?.total || 0) - (stats?.by_status?.resolved || 0) - (stats?.by_status?.closed || 0) - (stats?.by_status?.spam || 0)
 
-  // Reset to page 1 whenever a filter / search changes
-  useEffect(() => { setPage(1) }, [search, statusFilter, urgencyFilter])
-
-  const refreshAll = () => { loadList(); loadStats() }
-
-  const openDetail = async (row) => {
-    try {
-      const { data } = await apiService.get(ENQUIRY_API.detail(row.id))
-      setSelected(data?.enquiry || row)
-    } catch {
-      setSelected(row)
-    }
-  }
-
-  const patchSelected = async (patch) => {
-    if (!selected) return
-    setSavingPatch(true)
-    try {
-      const { data } = await apiService.patch(ENQUIRY_API.detail(selected.id), patch)
-      const updated = data?.enquiry
-      if (updated) {
-        setSelected(updated)
-        setItems((rows) => rows.map((r) => (r.id === updated.id ? updated : r)))
-        loadStats()
-      }
-    } catch (e) {
-      alert(e?.response?.data?.message || 'Update failed')
-    } finally {
-      setSavingPatch(false)
-    }
-  }
-
-  const deleteEnquiry = async (row) => {
-    if (!window.confirm(`Delete enquiry ${row.reference || row.id}? This cannot be undone.`)) return
-    try {
-      await apiService.delete(ENQUIRY_API.detail(row.id))
-      setSelected((cur) => (cur && cur.id === row.id ? null : cur))
-      refreshAll()
-    } catch (e) {
-      alert(e?.response?.data?.message || 'Delete failed')
-    }
-  }
-
-  // ---- render -------------------------------------------------------------
   return (
-    <div className="p-6 max-w-[1500px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md">
-            <EnvelopeIcon className="w-7 h-7" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Enquiry Management</h1>
-            <p className="text-sm text-gray-500">
-              Customer enquiries submitted from the public contact form (<code>/enquiry</code>).
-            </p>
-          </div>
+    <main className="w-full min-w-0 bg-[#f5f6f3] px-3 py-4 text-slate-800 sm:px-5">
+      <header className="mb-4 grid items-end gap-3 xl:grid-cols-[auto_minmax(320px,1fr)_auto_auto]">
+        <div className="xl:pr-4">
+          <div className="flex items-center gap-2"><EnvelopeIcon className="h-5 w-5 text-emerald-800" /><h1 className="text-xl font-bold tracking-tight">Enquiry Operations</h1></div>
+          <p className="mt-1 text-xs text-slate-500">Assignment, service performance and requester response control</p>
         </div>
-        <button
-          onClick={refreshAll}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 text-sm font-medium"
-        >
-          <ArrowPathIcon className="w-4 h-4" />
-          Refresh
-        </button>
-      </div>
-
-      {/* Stat cards */}
-      <StatCards stats={stats} />
-
-      {/* Filters */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div className="md:col-span-2 relative">
-            <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email, company, subject or message…"
-              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select
-            value={urgencyFilter}
-            onChange={(e) => setUrgencyFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {URGENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+        <div className="relative min-w-0"><MagnifyingGlassIcon className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search reference, requester or subject" className="w-full rounded border border-slate-300 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-emerald-700" /></div>
+        <div className="flex flex-wrap gap-2 rounded border border-slate-200 bg-white p-1">
+          <Select value={status} onChange={setStatus} options={STATUS} />
+          <Select value={urgency} onChange={setUrgency} options={URGENCY} />
+          <select value={department} onChange={(event) => setDepartment(event.target.value)} className="rounded border-0 bg-slate-50 px-3 py-2 text-xs"><option value="">All departments</option>{departments.map((name) => <option key={name}>{name}</option>)}</select>
         </div>
-      </div>
+        <button onClick={load} className="inline-flex items-center justify-center gap-2 rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50"><ArrowPathIcon className="h-4 w-4" />Refresh dashboard</button>
+      </header>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <section className="grid gap-4 xl:grid-cols-3">
+        <Panel title="Overall request status">
+          <div className="grid grid-cols-3 gap-4 py-1">
+            <Metric label="Active requests" value={number(active)} note={`${stats?.assigned_to_me || 0} assigned to you`} tone="green" />
+            <Metric label="All requests" value={number(stats?.total)} note={`${stats?.new || 0} awaiting triage`} tone="blue" />
+            <Metric label="Avg response" value={`${stats?.average_response_hours || 0}h`} note={`${stats?.overdue || 0} overdue`} tone={stats?.overdue ? 'red' : 'green'} />
+          </div>
+        </Panel>
+
+        <Panel title="Service health index">
+          <div className="flex items-center gap-6">
+            <Gauge value={stats?.sla_compliance ?? 100} />
+            <div className="text-xs leading-5 text-slate-600"><div className="mb-1 uppercase tracking-wide text-slate-400">SLA rating</div><span className="rounded-sm bg-emerald-50 px-2 py-1 font-bold text-emerald-800">{(stats?.sla_compliance ?? 100) >= 90 ? 'OPTIMAL' : 'ATTENTION'}</span><div className="mt-2">• {stats?.overdue || 0} overdue requests</div><div>• {stats?.unassigned || 0} unassigned requests</div></div>
+          </div>
+        </Panel>
+
+        <Panel title="Critical findings & actions">
+          <div className="grid grid-cols-3 gap-3">
+            <Signal value={stats?.by_urgency?.urgent || 0} label="Urgent" tone="red" />
+            <Signal value={stats?.by_urgency?.high || 0} label="High priority" tone="amber" />
+            <Signal value={stats?.new || 0} label="New requests" tone="green" />
+          </div>
+        </Panel>
+
+        <div className="space-y-4">
+          <Panel title="Request trend (last six months)"><Trend rows={stats?.monthly_trend || []} /></Panel>
+          <Panel title="Workflow stage funnel"><Funnel values={stats?.funnel || {}} /></Panel>
+        </div>
+
+        <Panel title="High priority enquiries">
+          <CompactTable rows={stats?.priority_items || []} onOpen={(id) => navigate(`/admin/enquiries/${id}`)} />
+          <button onClick={() => document.getElementById('enquiry-register')?.scrollIntoView({ behavior: 'smooth' })} className="mt-3 flex w-full items-center justify-end gap-1 border-t pt-3 text-xs font-bold text-emerald-800">View all enquiries <ChevronRightIcon className="h-3 w-3" /></button>
+        </Panel>
+
+        <div className="space-y-4">
+          <Panel title="Request mix by department"><DepartmentMix rows={stats?.by_department || []} total={stats?.total || 0} /></Panel>
+          <Panel title="Upcoming response deadlines"><Deadlines rows={stats?.deadlines || []} onOpen={(id) => navigate(`/admin/enquiries/${id}`)} /></Panel>
+        </div>
+      </section>
+
+      <section id="enquiry-register" className="mt-4 rounded border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-end gap-2 border-b border-slate-200 p-4">
+          <div className="mr-auto"><h2 className="text-sm font-bold uppercase tracking-wider">Enquiry register</h2><p className="mt-1 text-xs text-slate-500">Open a record to manage assignment, replies, notes and status.</p></div>
+          {(search || status || urgency || department) && <button onClick={() => { setSearch(''); setStatus(''); setUrgency(''); setDepartment('') }} className="text-xs font-bold text-emerald-800">Clear active filters</button>}
+        </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <Th>Reference</Th>
-                <Th>Received</Th>
-                <Th>Name / Company</Th>
-                <Th>Contact</Th>
-                <Th>Subject</Th>
-                <Th>Service</Th>
-                <Th>Urgency</Th>
-                <Th>Status</Th>
-                <Th className="text-right pr-6">Actions</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr><td colSpan={9} className="py-10 text-center text-gray-500">Loading enquiries…</td></tr>
-              )}
-              {!loading && error && (
-                <tr><td colSpan={9} className="py-10 text-center text-red-600">{error}</td></tr>
-              )}
-              {!loading && !error && items.length === 0 && (
-                <tr><td colSpan={9} className="py-10 text-center text-gray-500">No enquiries found.</td></tr>
-              )}
-              {!loading && !error && items.map((row) => (
-                <tr key={row.id} className="hover:bg-blue-50/40 cursor-pointer" onClick={() => openDetail(row)}>
-                  <Td className="font-mono text-xs text-gray-700">{row.reference}</Td>
-                  <Td className="text-sm text-gray-600">{formatDate(row.created_at)}</Td>
-                  <Td>
-                    <div className="text-sm font-medium text-gray-900">{row.name}</div>
-                    {row.company && (
-                      <div className="text-xs text-gray-500 flex items-center gap-1">
-                        <BuildingOffice2Icon className="w-3.5 h-3.5" /> {row.company}
-                      </div>
-                    )}
-                  </Td>
-                  <Td>
-                    <div className="text-sm text-gray-700">{row.email}</div>
-                    <div className="text-xs text-gray-500 flex items-center gap-1">
-                      <PhoneIcon className="w-3.5 h-3.5" /> {row.phone}
-                    </div>
-                  </Td>
-                  <Td className="max-w-[240px] truncate text-sm text-gray-800" title={row.subject}>{row.subject}</Td>
-                  <Td className="text-sm text-gray-700">
-                    {SERVICE_BADGE[row.service] ? (
-                      <Badge cls={SERVICE_BADGE[row.service]}>{formatServiceLabel(row.service)}</Badge>
-                    ) : (
-                      formatServiceLabel(row.service)
-                    )}
-                  </Td>
-                  <Td><Badge cls={URGENCY_BADGE[row.urgency]}>{URGENCY_LABEL[row.urgency] || row.urgency}</Badge></Td>
-                  <Td><Badge cls={STATUS_BADGE[row.status]}>{STATUS_LABEL[row.status] || row.status}</Badge></Td>
-                  <Td className="text-right pr-6">
-                    <div className="inline-flex items-center gap-1">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openDetail(row) }}
-                        className="p-1.5 rounded hover:bg-blue-100 text-blue-700"
-                        title="View"
-                      >
-                        <EyeIcon className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); deleteEnquiry(row) }}
-                        className="p-1.5 rounded hover:bg-red-100 text-red-600"
-                        title="Delete"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </Td>
-                </tr>
-              ))}
+          <table className="w-full min-w-[950px] text-left text-xs">
+            <thead className="bg-slate-50 uppercase tracking-wide text-slate-500"><tr><Th>Reference</Th><Th>Requester</Th><Th>Subject</Th><Th>Department</Th><Th>Owner</Th><Th>Priority</Th><Th>Status</Th><Th>Due</Th><Th /></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading && <tr><td colSpan="9" className="p-10 text-center text-slate-500">Loading enquiries…</td></tr>}
+              {!loading && error && <tr><td colSpan="9" className="p-10 text-center text-red-600">{error}</td></tr>}
+              {!loading && !error && !items.length && <tr><td colSpan="9" className="p-10 text-center text-slate-500">No enquiries match these filters.</td></tr>}
+              {!loading && !error && items.map((row) => <tr key={row.id} onClick={() => navigate(`/admin/enquiries/${row.id}`)} className="cursor-pointer hover:bg-emerald-50/40"><Td className="font-mono font-semibold">{row.reference}</Td><Td><div className="font-semibold text-slate-800">{row.name}</div><div className="text-[11px] text-slate-400">{row.company || row.email}</div></Td><Td className="max-w-[280px] truncate font-medium">{row.subject}</Td><Td>{row.department || 'Unrouted'}</Td><Td>{row.assigned_to?.name || 'Unassigned'}</Td><Td><Priority value={row.urgency} /></Td><Td><Status value={row.status} /></Td><Td className={row.is_overdue ? 'font-bold text-red-600' : ''}>{date(row.due_at, true)}</Td><Td><ChevronRightIcon className="h-4 w-4 text-slate-400" /></Td></tr>)}
             </tbody>
           </table>
         </div>
-
-        {/* Pagination */}
-        {!loading && !error && count > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
-            <div className="text-xs text-gray-600">
-              Showing <span className="font-semibold">{(page - 1) * PAGE_SIZE + 1}</span>–
-              <span className="font-semibold">{Math.min(page * PAGE_SIZE, count)}</span> of{' '}
-              <span className="font-semibold">{count}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white disabled:opacity-50 hover:bg-gray-50"
-              >Prev</button>
-              <span className="text-xs text-gray-700">Page {page} / {totalPages}</span>
-              <button
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white disabled:opacity-50 hover:bg-gray-50"
-              >Next</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Detail drawer */}
-      {selected && (
-        <DetailDrawer
-          enquiry={selected}
-          saving={savingPatch}
-          onClose={() => setSelected(null)}
-          onPatch={patchSelected}
-          onDelete={() => deleteEnquiry(selected)}
-        />
-      )}
-    </div>
+        <div className="flex items-center justify-between border-t bg-slate-50 px-4 py-3 text-xs text-slate-500"><span>{count ? `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, count)} of ${count}` : '0 records'}</span><div className="flex items-center gap-2"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded border bg-white px-3 py-1.5 disabled:opacity-40">Previous</button><span>{page} / {totalPages}</span><button disabled={page === totalPages} onClick={() => setPage((value) => value + 1)} className="rounded border bg-white px-3 py-1.5 disabled:opacity-40">Next</button></div></div>
+      </section>
+    </main>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-const StatCards = ({ stats }) => {
-  const cards = [
-    { key: 'total',     label: 'Total Enquiries', value: stats?.total ?? 0,                        icon: InboxArrowDownIcon, color: 'from-blue-500 to-indigo-600' },
-    { key: 'new',       label: 'New (Unhandled)', value: stats?.new ?? 0,                          icon: ExclamationTriangleIcon, color: 'from-rose-500 to-red-600' },
-    { key: 'review',    label: 'In Review',       value: stats?.by_status?.in_review ?? 0,         icon: ClockIcon,         color: 'from-amber-500 to-orange-600' },
-    { key: 'resolved',  label: 'Resolved',        value: stats?.by_status?.resolved ?? 0,          icon: CheckCircleIcon,   color: 'from-emerald-500 to-green-600' },
-  ]
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      {cards.map((c) => (
-        <div key={c.key} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-gray-500 uppercase tracking-wide">{c.label}</div>
-              <div className="text-2xl font-bold text-gray-900 mt-1">{c.value}</div>
-            </div>
-            <div className={`p-2.5 rounded-lg bg-gradient-to-br ${c.color} text-white`}>
-              <c.icon className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const Th = ({ children, className = '' }) => (
-  <th className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${className}`}>{children}</th>
-)
-
-const Td = ({ children, className = '' }) => (
-  <td className={`px-4 py-3 align-top ${className}`}>{children}</td>
-)
-
-const Badge = ({ children, cls = 'bg-gray-100 text-gray-700' }) => (
-  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{children}</span>
-)
-
-const formatDate = (iso) => {
-  if (!iso) return '—'
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-  } catch { return iso }
-}
-
-// ---------------------------------------------------------------------------
-// Detail drawer (right-side panel)
-// ---------------------------------------------------------------------------
-const DetailDrawer = ({ enquiry, saving, onClose, onPatch, onDelete }) => {
-  const [notes, setNotes] = useState(enquiry.admin_notes || '')
-
-  useEffect(() => { setNotes(enquiry.admin_notes || '') }, [enquiry.id, enquiry.admin_notes])
-
-  const saveNotes = () => onPatch({ admin_notes: notes })
-
-  return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between">
-          <div>
-            <div className="text-xs text-gray-500 font-mono">{enquiry.reference}</div>
-            <h2 className="text-lg font-semibold text-gray-900">{enquiry.subject}</h2>
-            <div className="text-xs text-gray-500 mt-0.5">Received {formatDate(enquiry.created_at)}</div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100"><XMarkIcon className="w-5 h-5" /></button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Customer */}
-          <Section title="Customer">
-            <KV k="Name"     v={enquiry.name} />
-            <KV k="Email"    v={<a className="text-blue-600 hover:underline" href={`mailto:${enquiry.email}`}>{enquiry.email}</a>} />
-            <KV k="Phone"    v={<a className="text-blue-600 hover:underline" href={`tel:${enquiry.phone}`}>{enquiry.phone}</a>} />
-            <KV k="Company"  v={enquiry.company || '—'} />
-            <KV k="Service"  v={formatServiceLabel(enquiry.service)} />
-          </Section>
-
-          {/* Message */}
-          <Section title="Message">
-            <div className="whitespace-pre-wrap text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded-lg p-3">
-              {enquiry.message}
-            </div>
-          </Section>
-
-          {/* Triage */}
-          <Section title="Triage">
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-xs text-gray-600">
-                Status
-                <select
-                  value={enquiry.status}
-                  onChange={(e) => onPatch({ status: e.target.value })}
-                  disabled={saving}
-                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {STATUS_OPTIONS.filter((o) => o.value).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-xs text-gray-600">
-                Urgency
-                <select
-                  value={enquiry.urgency}
-                  onChange={(e) => onPatch({ urgency: e.target.value })}
-                  disabled={saving}
-                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {URGENCY_OPTIONS.filter((o) => o.value).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="block mt-4 text-xs text-gray-600">
-              Internal notes
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={4}
-                placeholder="Notes for the internal team…"
-                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </label>
-            <div className="mt-2 text-right">
-              <button
-                onClick={saveNotes}
-                disabled={saving || notes === (enquiry.admin_notes || '')}
-                className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium disabled:opacity-50 hover:bg-blue-700"
-              >
-                {saving ? 'Saving…' : 'Save notes'}
-              </button>
-            </div>
-          </Section>
-
-          {/* Meta */}
-          <Section title="Meta">
-            <KV k="Source IP"  v={enquiry.source_ip || '—'} />
-            <KV k="User Agent" v={<span className="text-xs break-all">{enquiry.user_agent || '—'}</span>} />
-            <KV k="Updated"    v={formatDate(enquiry.updated_at)} />
-          </Section>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-gray-200 flex justify-between bg-gray-50">
-          <button
-            onClick={onDelete}
-            className="inline-flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700"
-          >
-            <TrashIcon className="w-4 h-4" /> Delete enquiry
-          </button>
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 rounded-md bg-white border border-gray-300 text-sm hover:bg-gray-100"
-          >Close</button>
-        </div>
-      </aside>
-    </div>
-  )
-}
-
-const Section = ({ title, children }) => (
-  <div>
-    <div className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">{title}</div>
-    <div className="space-y-1.5">{children}</div>
-  </div>
-)
-
-const KV = ({ k, v }) => (
-  <div className="flex text-sm">
-    <div className="w-28 shrink-0 text-gray-500">{k}</div>
-    <div className="flex-1 text-gray-800">{v}</div>
-  </div>
-)
+const Panel = ({ title, children, className = '' }) => <article className={`rounded border border-slate-200 bg-white p-4 shadow-sm ${className}`}><h2 className="mb-4 text-[11px] font-bold uppercase tracking-[0.13em] text-slate-500">{title}</h2>{children}</article>
+const Metric = ({ label: text, value, note, tone }) => <div><div className="text-[10px] text-slate-500">{text}</div><div className="mt-1 text-3xl font-bold tracking-tight text-slate-800">{value}</div><span className={`mt-2 inline-block rounded-sm px-1.5 py-0.5 text-[9px] font-bold ${tone === 'red' ? 'bg-red-50 text-red-700' : tone === 'blue' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>{note}</span></div>
+const Signal = ({ value, label: text, tone }) => <div className={`rounded-sm py-5 text-center ${tone === 'red' ? 'bg-red-50 text-red-700' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}><div className="text-2xl font-black">{value}</div><div className="mt-1 text-[10px] font-bold">{text}</div></div>
+const Gauge = ({ value }) => { const safe = Math.min(100, Math.max(0, value)); return <div className="relative h-24 w-24 shrink-0"><svg viewBox="0 0 100 100" className="h-full w-full -rotate-90"><circle cx="50" cy="50" r="39" fill="none" stroke="#e5e7eb" strokeWidth="9" strokeDasharray="196 50" strokeLinecap="round"/><circle cx="50" cy="50" r="39" fill="none" stroke="#176b4d" strokeWidth="9" strokeDasharray={`${safe * 1.96} 246`} strokeLinecap="round"/></svg><div className="absolute inset-0 grid place-content-center text-center"><strong className="text-lg">{safe}%</strong><span className="text-[9px] text-slate-400">Target 95%</span></div></div> }
+const Trend = ({ rows }) => { const values = rows.length ? rows.map((row) => row.count) : [0]; const max = Math.max(...values, 1); const points = rows.map((row, index) => `${12 + (index * 76 / Math.max(rows.length - 1, 1))},${74 - (row.count / max) * 54}`).join(' '); return <div><svg viewBox="0 0 100 82" preserveAspectRatio="none" className="h-40 w-full"><defs><linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#176b4d" stopOpacity=".28"/><stop offset="1" stopColor="#176b4d" stopOpacity="0"/></linearGradient></defs>{[20,47,74].map((y) => <line key={y} x1="10" x2="92" y1={y} y2={y} stroke="#e2e8f0" strokeWidth=".5" />)}{rows.length > 1 && <><polygon points={`12,74 ${points} 88,74`} fill="url(#trend-fill)"/><polyline points={points} fill="none" stroke="#176b4d" strokeWidth="2" vectorEffect="non-scaling-stroke"/></>}</svg><div className="flex justify-between text-[9px] text-slate-400">{rows.map((row) => <span key={row.month}>{row.month}</span>)}</div></div> }
+const Funnel = ({ values }) => { const rows = [['Intake', values.intake], ['Assigned', values.assigned], ['In review', values.in_review], ['Resolution', values.resolution]]; const max = Math.max(values.intake || 0, 1); return <div className="space-y-4">{rows.map(([name, value], index) => <div key={name} className="grid grid-cols-[70px_1fr_70px] items-center gap-2 text-xs"><strong>{name}</strong><div className="h-8 bg-slate-100"><div style={{ width: `${Math.max(4, (value || 0) / max * 100)}%`, backgroundColor: MIX_COLORS[index] }} className="h-full" /></div><span className="text-right text-slate-500">{value || 0} · {Math.round((value || 0) / max * 100)}%</span></div>)}</div> }
+const CompactTable = ({ rows, onOpen }) => <div className="overflow-x-auto"><table className="w-full text-left text-[11px]"><thead className="border-b text-[9px] uppercase text-slate-400"><tr><th className="pb-2">ID</th><th className="pb-2">Request</th><th className="pb-2">Dept</th><th className="pb-2">Status</th></tr></thead><tbody className="divide-y">{rows.length ? rows.map((row) => <tr key={row.id} onClick={() => onOpen(row.id)} className="cursor-pointer hover:bg-slate-50"><td className="py-3 font-mono">{row.reference}</td><td className="max-w-[190px] truncate py-3 font-semibold">{row.subject}</td><td className="py-3 text-slate-500">{row.department}</td><td className="py-3"><Status value={row.status} /></td></tr>) : <tr><td colSpan="4" className="py-8 text-center text-slate-400">No active priority requests</td></tr>}</tbody></table></div>
+const DepartmentMix = ({ rows, total }) => { const top = rows.slice(0, 5); let cursor = 0; const segments = top.map((row, index) => { const start = cursor; cursor += total ? row.count / total * 100 : 0; return `${MIX_COLORS[index]} ${start}% ${cursor}%` }); if (cursor < 100) segments.push(`#e2e8f0 ${cursor}% 100%`); return <div className="flex items-center gap-6"><div style={{ background: `conic-gradient(${segments.join(',')})` }} className="relative h-28 w-28 shrink-0 rounded-full"><div className="absolute inset-6 grid place-content-center rounded-full bg-white text-center"><strong className="text-lg">{number(total)}</strong><span className="text-[8px] text-slate-400">Requests</span></div></div><div className="min-w-0 flex-1 space-y-2">{top.map((row, index) => <div key={row.name} className="flex items-start gap-2 text-[10px]"><span style={{ backgroundColor: MIX_COLORS[index] }} className="mt-1 h-2 w-2 shrink-0 rounded-full"/><span className="min-w-0 flex-1 truncate font-semibold">{row.name}</span><span className="text-slate-400">{row.count}</span></div>)}</div></div> }
+const Deadlines = ({ rows, onOpen }) => <div className="space-y-2">{rows.length ? rows.map((row) => <button key={row.id} onClick={() => onOpen(row.id)} className={`w-full border-l-2 px-3 py-2 text-left hover:bg-slate-50 ${row.is_overdue ? 'border-red-500' : 'border-emerald-700'}`}><div className="truncate text-[11px] font-bold">{row.subject}</div><div className="mt-1 flex justify-between text-[9px] text-slate-500"><span>Due {date(row.due_at, true)}</span><Status value={row.status} /></div></button>) : <div className="py-8 text-center text-xs text-slate-400">No upcoming deadlines</div>}</div>
+const Status = ({ value }) => <span className={`inline-flex rounded-sm px-2 py-0.5 text-[9px] font-bold uppercase ${STATUS_TONE[value] || 'bg-slate-100 text-slate-600'}`}>{label(value)}</span>
+const Priority = ({ value }) => <span className={`font-bold capitalize ${value === 'urgent' ? 'text-red-600' : value === 'high' ? 'text-amber-600' : 'text-slate-500'}`}>{value}</span>
+const Select = ({ value, onChange, options }) => <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded border border-slate-300 bg-white px-3 py-2 text-xs">{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select>
+const Th = ({ children }) => <th className="px-4 py-3 text-[10px] font-bold">{children}</th>
+const Td = ({ children, className = '' }) => <td className={`px-4 py-3 ${className}`}>{children}</td>
