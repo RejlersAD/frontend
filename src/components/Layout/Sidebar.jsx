@@ -389,12 +389,12 @@ const Sidebar = ({
           badge: "SELF",
         },
         {
-          id: "enquiryManagement",
-          title: "2.6 Enquiry",
+          id: "myEnquiries",
+          title: "2.6 My Requests",
           icon: EnvelopeIcon,
-          path: "/admin/enquiries",
-          description: "Customer enquiries from public contact form",
-          moduleCode: "enquiry_management",
+          path: "/my-enquiries",
+          description: "Create and track your enquiries",
+          requiresModule: false,
         },
       ],
     },
@@ -739,16 +739,6 @@ const Sidebar = ({
   };
 
   const filteredMenu = filterMenuByModules(menuStructure);
-
-  filteredMenu.unshift({
-    id: "myEnquiries",
-    title: "My Requests",
-    icon: EnvelopeIcon,
-    path: "/my-enquiries",
-    type: "single",
-    requiresModule: false,
-    description: "Create and track your enquiries",
-  });
 
   // SOFT-CODED: Request Access link disabled - remove the push() block to re-enable
   // filteredMenu.push({

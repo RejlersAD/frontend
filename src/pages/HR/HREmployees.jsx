@@ -19,11 +19,13 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import * as HeroIcons from "@heroicons/react/24/outline";
+import { BsMicrosoftTeams } from "react-icons/bs";
 import rbacService from "../../services/rbac.service";
 import analyticsService from "../../services/analyticsService";
 import payrollService from "../../services/payroll.service";
 import payrollEngineService from "../../services/payrollEngine.service";
 import TimeSheetAnalytics from "./TimeSheetAnalytics";
+import { microsoftTeamsAudioCallUrl } from "../../utils/microsoftTeams";
 import {
   fetchUserHistory,
   lookupByCode,
@@ -3442,6 +3444,9 @@ const DetailDrawer = ({
         candidate.department === emp.department,
     )
     .slice(0, 6);
+  const employeeEmail = getEmail(emp);
+  const teamsCallUrl = microsoftTeamsAudioCallUrl(employeeEmail);
+  const employeeCallUrl = teamsCallUrl || (emp.phone ? `tel:${emp.phone}` : null);
 
   return (
     <div className="fixed inset-0 z-50 flex lg:p-3" role="dialog" aria-modal="true" aria-label={`${fullName(emp)} employee profile`}>
@@ -3479,17 +3484,17 @@ const DetailDrawer = ({
                 {emp.department || emp.location}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {getEmail(emp) && (
-                  <a href={`mailto:${getEmail(emp)}`} title="Send email" aria-label={`Email ${fullName(emp)}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50">
+                {employeeEmail && (
+                  <a href={`mailto:${employeeEmail}`} title="Send email" aria-label={`Email ${fullName(emp)}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50">
                     <HeroIcons.ChatBubbleLeftEllipsisIcon className="h-[18px] w-[18px]" />
                   </a>
                 )}
                 <button type="button" onClick={() => setTab("employment")} title="View organization" aria-label="View organization" className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50">
                   <HeroIcons.UserGroupIcon className="h-[18px] w-[18px]" />
                 </button>
-                {emp.phone && (
-                  <a href={`tel:${emp.phone}`} title="Call employee" aria-label={`Call ${fullName(emp)}`} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50">
-                    <HeroIcons.PhoneIcon className="h-[18px] w-[18px]" />
+                {employeeCallUrl && (
+                  <a href={employeeCallUrl} target={teamsCallUrl ? "_blank" : undefined} rel={teamsCallUrl ? "noreferrer" : undefined} title={teamsCallUrl ? "Call in Microsoft Teams" : "Call employee"} aria-label={teamsCallUrl ? `Call ${fullName(emp)} in Microsoft Teams` : `Call ${fullName(emp)}`} className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${teamsCallUrl ? "border-[#6264a7]/30 text-[#6264a7] hover:border-[#6264a7]/60 hover:bg-[#6264a7]/10" : "border-slate-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50"}`}>
+                    {teamsCallUrl ? <BsMicrosoftTeams className="h-[18px] w-[18px]" /> : <HeroIcons.PhoneIcon className="h-[18px] w-[18px]" />}
                   </a>
                 )}
                 {canEdit && (
