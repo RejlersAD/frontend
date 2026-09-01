@@ -26,6 +26,7 @@ const Layout = () => {
     '/home',
     '/login',
     '/enquiry',
+    '/enquiries',
     '/solutions',
     '/about',
     '/services/pid-analysis',

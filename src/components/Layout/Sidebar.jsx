@@ -388,6 +388,14 @@ const Sidebar = ({
           moduleCode: "hr_self_service", // Accessible to all users via DEFAULT_ROLE_MODULES
           badge: "SELF",
         },
+        {
+          id: "myEnquiries",
+          title: "2.6 My Requests",
+          icon: EnvelopeIcon,
+          path: "/my-enquiries",
+          description: "Create and track your enquiries",
+          requiresModule: false,
+        },
       ],
     },
     // SOFT-CODED: CRS Multi-Revision Manager removed as per user request
@@ -731,16 +739,6 @@ const Sidebar = ({
   };
 
   const filteredMenu = filterMenuByModules(menuStructure);
-
-  filteredMenu.unshift({
-    id: "myEnquiries",
-    title: "My Requests",
-    icon: EnvelopeIcon,
-    path: "/my-enquiries",
-    type: "single",
-    requiresModule: false,
-    description: "Create and track your enquiries",
-  });
 
   // SOFT-CODED: Request Access link disabled - remove the push() block to re-enable
   // filteredMenu.push({

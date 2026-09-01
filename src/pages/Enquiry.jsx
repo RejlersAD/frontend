@@ -1,683 +1,207 @@
-/**
- * Enquiry Form Page - REJLERS RADAI
- * Advanced customer inquiry form with Rejlers brand theme
- */
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  ArrowRightIcon,
+  BuildingOffice2Icon,
+  CheckCircleIcon,
+  ClockIcon,
+  EnvelopeIcon,
+  LockClosedIcon,
+  PhoneIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+} from '@heroicons/react/24/outline'
+import apiService from '../services/api.service'
+import { ENQUIRY_CONFIG } from '../config/enquiry.config'
 
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import apiService from '../services/api.service';
-import { ENQUIRY_CONFIG } from '../config/enquiry.config';
-import { REJLERS_COLORS } from '../config/theme.config';
+const REQUIRED_FIELDS = ['name', 'email', 'phone', 'subject', 'message']
+const INPUT_CLASS = 'mt-2 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100'
+const ERROR_INPUT_CLASS = 'border-red-400 focus:border-red-500 focus:ring-red-100'
+
+const urgencyOptions = [
+  { value: 'low', label: 'Low', note: 'Within 72 hours' },
+  { value: 'normal', label: 'Normal', note: 'Within 24 hours' },
+  { value: 'high', label: 'High', note: 'Within 12 hours' },
+  { value: 'urgent', label: 'Urgent', note: 'Immediate review' },
+]
+
+const fieldError = (name, value) => {
+  const clean = String(value || '').trim()
+  if (name === 'name' && clean.length < 2) return clean ? 'Enter at least 2 characters.' : 'Full name is required.'
+  if (name === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return clean ? 'Enter a valid email address.' : 'Email address is required.'
+  if (name === 'phone' && clean.length < 8) return clean ? 'Enter a valid phone number.' : 'Phone number is required.'
+  if (name === 'subject' && clean.length < 5) return clean ? 'Enter at least 5 characters.' : 'Subject is required.'
+  if (name === 'message' && clean.length < 10) return clean ? `Add ${10 - clean.length} more characters.` : 'Request details are required.'
+  return ''
+}
 
 const Enquiry = () => {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [focusedField, setFocusedField] = useState(null);
-  const [progress, setProgress] = useState(0);
-  
-  // Initialize form data from URL params (for universal enquiry support)
-  const preSelectedService = searchParams.get('service') || '';
-  const preSelectedSubject = searchParams.get('subject') || '';
-  const preSelectedMessage = searchParams.get('message') || '';
-  
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [reference, setReference] = useState('')
+  const [errors, setErrors] = useState({})
+  const [touched, setTouched] = useState({})
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    company: '',
-    subject: preSelectedSubject,
-    message: preSelectedMessage,
-    service: preSelectedService,
-    urgency: 'normal'
-  });
-  const [errors, setErrors] = useState({});
-  const [touched, setTouched] = useState({});
+    name: '', email: '', phone: '', company: '',
+    subject: searchParams.get('subject') || '',
+    message: searchParams.get('message') || '',
+    service: searchParams.get('service') || '', urgency: 'normal',
+  })
 
-  // Calculate form completion progress
+  const progress = useMemo(() => {
+    const completed = REQUIRED_FIELDS.filter((field) => String(formData[field] || '').trim()).length
+    return Math.round((completed / REQUIRED_FIELDS.length) * 100)
+  }, [formData])
+
   useEffect(() => {
-    const requiredFields = ['name', 'email', 'phone', 'subject', 'message'];
-    const filledFields = requiredFields.filter(field => formData[field]?.trim().length > 0);
-    const newProgress = (filledFields.length / requiredFields.length) * 100;
-    setProgress(newProgress);
-  }, [formData]);
+    if (!submitted) return undefined
+    const timer = window.setTimeout(() => navigate('/'), 7000)
+    return () => window.clearTimeout(timer)
+  }, [navigate, submitted])
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    // Real-time validation
-    if (touched[name]) {
-      validateField(name, value);
-    }
-  };
+  const updateField = (event) => {
+    const { name, value } = event.target
+    setFormData((current) => ({ ...current, [name]: value }))
+    setErrors((current) => {
+      const next = { ...current }
+      delete next.submit
+      if (touched[name]) {
+        const validationMessage = fieldError(name, value)
+        if (validationMessage) next[name] = validationMessage
+        else delete next[name]
+      }
+      return next
+    })
+  }
 
-  const handleBlur = (field) => {
-    setTouched(prev => ({ ...prev, [field]: true }));
-    setFocusedField(null);
-    validateField(field, formData[field]);
-  };
-
-  const handleFocus = (field) => {
-    setFocusedField(field);
-  };
-
-  const validateField = (name, value) => {
-    const newErrors = { ...errors };
-    
-    switch (name) {
-      case 'name':
-        if (!value.trim()) {
-          newErrors.name = 'Name is required';
-        } else if (value.trim().length < 2) {
-          newErrors.name = 'Name must be at least 2 characters';
-        } else {
-          delete newErrors.name;
-        }
-        break;
-      
-      case 'email':
-        if (!value.trim()) {
-          newErrors.email = 'Email is required';
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-          newErrors.email = 'Invalid email format';
-        } else {
-          delete newErrors.email;
-        }
-        break;
-      
-      case 'phone':
-        if (!value.trim()) {
-          newErrors.phone = 'Phone number is required';
-        } else if (value.trim().length < 8) {
-          newErrors.phone = 'Phone number too short';
-        } else {
-          delete newErrors.phone;
-        }
-        break;
-      
-      case 'subject':
-        if (!value.trim()) {
-          newErrors.subject = 'Subject is required';
-        } else if (value.trim().length < 5) {
-          newErrors.subject = 'Subject too short (min 5 characters)';
-        } else {
-          delete newErrors.subject;
-        }
-        break;
-      
-      case 'message':
-        if (!value.trim()) {
-          newErrors.message = 'Message is required';
-        } else if (value.trim().length < 10) {
-          newErrors.message = `Need ${10 - value.trim().length} more characters (min 10)`;
-        } else {
-          delete newErrors.message;
-        }
-        break;
-      
-      default:
-        break;
-    }
-    
-    setErrors(newErrors);
-  };
+  const blurField = (event) => {
+    const { name, value } = event.target
+    setTouched((current) => ({ ...current, [name]: true }))
+    const validationMessage = fieldError(name, value)
+    setErrors((current) => {
+      const next = { ...current }
+      if (validationMessage) next[name] = validationMessage
+      else delete next[name]
+      return next
+    })
+  }
 
   const validateForm = () => {
-    const requiredFields = ['name', 'email', 'phone', 'subject', 'message'];
-    requiredFields.forEach(field => validateField(field, formData[field]));
-    return Object.keys(errors).length === 0;
-  };
+    const nextErrors = REQUIRED_FIELDS.reduce((result, field) => {
+      const validationMessage = fieldError(field, formData[field])
+      if (validationMessage) result[field] = validationMessage
+      return result
+    }, {})
+    setTouched(REQUIRED_FIELDS.reduce((result, field) => ({ ...result, [field]: true }), {}))
+    setErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Mark all fields as touched
-    const allTouched = {};
-    Object.keys(formData).forEach(key => { allTouched[key] = true; });
-    setTouched(allTouched);
-    
-    if (!validateForm()) {
-      return;
-    }
-    
-    setLoading(true);
-    
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!validateForm()) return
+    setLoading(true)
     try {
-      console.log('📧 [Enquiry] Submitting form:', formData);
-      
-      const response = await apiService.post('/enquiry/submit/', formData);
-      
-      console.log('✅ [Enquiry] Form submitted successfully:', response);
-      
-      setSubmitted(true);
-      
-      // Redirect after 5 seconds
-      setTimeout(() => {
-        navigate('/');
-      }, 5000);
-      
+      const response = await apiService.post('/enquiry/submit/', formData)
+      setReference(response.data?.reference || response.data?.enquiry?.reference || '')
+      setSubmitted(true)
     } catch (error) {
-      console.error('❌ [Enquiry] Submission failed:', error);
-      setErrors({
-        submit: error.response?.data?.message || 'Failed to submit enquiry. Please try again or contact us directly.'
-      });
+      setErrors({ submit: error.response?.data?.message || error.response?.data?.detail || 'We could not submit your request. Please try again.' })
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
-  // Success Screen
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-12 max-w-lg w-full text-center transform animate-fade-in">
-          {/* Success Animation */}
-          <div className="relative w-24 h-24 mx-auto mb-8">
-            <div className="absolute inset-0 bg-gradient-to-br from-green-400 to-green-600 rounded-full animate-pulse"></div>
-            <div className="relative w-24 h-24 bg-gradient-to-br from-green-500 to-green-700 rounded-full flex items-center justify-center transform animate-bounce">
-              <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
+      <main className="grid min-h-[calc(100vh-5rem)] place-content-center bg-[#f6f8fc] px-4 py-16 font-sans">
+        <section className="w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_80px_-32px_rgba(15,23,42,0.35)]">
+          <div className="h-1.5 bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400" />
+          <div className="p-8 text-center sm:p-10">
+            <div className="mx-auto grid h-14 w-14 place-content-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-200"><CheckCircleIcon className="h-8 w-8 text-emerald-600" /></div>
+            <div className="mt-6 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">Request received</div>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">We’ll take it from here.</h1>
+            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">Your enquiry is being routed to the right RADAI team. You’ll receive updates at <strong className="font-semibold text-slate-700">{formData.email}</strong>.</p>
+            {reference && <div className="mx-auto mt-5 w-fit rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs font-semibold text-slate-700">{reference}</div>}
+            <div className="mt-8 grid grid-cols-3 gap-2 text-left"><SuccessStep icon={CheckCircleIcon} label="Submitted" active /><SuccessStep icon={SparklesIcon} label="Routing" active /><SuccessStep icon={ClockIcon} label="Response" /></div>
+            <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center"><button type="button" onClick={() => window.location.reload()} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Submit another</button><button type="button" onClick={() => navigate('/')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-950">Return home <ArrowRightIcon className="h-4 w-4" /></button></div>
           </div>
-          
-          <h2 className="text-4xl font-bold mb-4" style={{ color: REJLERS_COLORS.primary.base }}>
-            Enquiry Submitted!
-          </h2>
-          <p className="text-lg text-gray-700 mb-3">
-            Thank you for reaching out to <span className="font-bold" style={{ color: REJLERS_COLORS.secondary.green.base }}>REJLERS RADAI</span>
-          </p>
-          <p className="text-gray-600 mb-6">
-            Our team will review your message and respond within 24 hours.
-          </p>
-          
-          {/* Features */}
-          <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-2xl p-6 mb-6">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <div className="text-3xl mb-2">📧</div>
-                <p className="text-xs text-gray-600 font-semibold">Email Sent</p>
-              </div>
-              <div>
-                <div className="text-3xl mb-2">⏱️</div>
-                <p className="text-xs text-gray-600 font-semibold">24h Response</p>
-              </div>
-              <div>
-                <div className="text-3xl mb-2">✅</div>
-                <p className="text-xs text-gray-600 font-semibold">Confirmed</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={() => navigate('/')}
-              className="flex-1 py-3 px-6 rounded-xl font-bold text-white transition-all transform hover:scale-105 active:scale-95 shadow-lg"
-              style={{ background: `linear-gradient(135deg, ${REJLERS_COLORS.primary.base}, ${REJLERS_COLORS.primary.accent})` }}
-            >
-              Return Home
-            </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-3 border-2 rounded-xl font-bold transition-all hover:bg-gray-50"
-              style={{ borderColor: REJLERS_COLORS.neutral.gray300, color: REJLERS_COLORS.primary.base }}
-            >
-              New Enquiry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+        </section>
+      </main>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto">
-        {/* Header with Back Button */}
-        <div className="mb-8">
-          <button
-            onClick={() => navigate('/')}
-            className="inline-flex items-center px-4 py-2 rounded-lg font-semibold transition-all transform hover:scale-105 hover:shadow-md mb-6"
-            style={{ color: REJLERS_COLORS.primary.base, backgroundColor: REJLERS_COLORS.primary.complement }}
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Home
-          </button>
-          
-          {/* Hero Section */}
-          <div className="text-center mb-8">
-            <div className="inline-block px-4 py-2 rounded-full mb-4" style={{ backgroundColor: REJLERS_COLORS.secondary.green.complement }}>
-              <span className="text-sm font-bold" style={{ color: REJLERS_COLORS.secondary.green.accent }}>
-                💬 GET IN TOUCH
-              </span>
-            </div>
-            <h1 className="text-5xl font-bold mb-4" style={{ color: REJLERS_COLORS.primary.base }}>
-              {ENQUIRY_CONFIG.page.title}
-            </h1>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              {ENQUIRY_CONFIG.page.subtitle}
-            </p>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="max-w-2xl mx-auto mb-8">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold" style={{ color: REJLERS_COLORS.primary.base }}>
-                Form Completion
-              </span>
-              <span className="text-sm font-bold" style={{ color: REJLERS_COLORS.secondary.green.accent }}>
-                {Math.round(progress)}%
-              </span>
-            </div>
-            <div className="h-3 bg-gray-200 rounded-full overflow-hidden shadow-inner">
-              <div 
-                className="h-full rounded-full transition-all duration-500 ease-out"
-                style={{ 
-                  width: `${progress}%`,
-                  background: `linear-gradient(90deg, ${REJLERS_COLORS.secondary.green.base}, ${REJLERS_COLORS.secondary.green.accent})`
-                }}
-              />
-            </div>
-          </div>
+    <main className="min-h-screen w-full min-w-0 overflow-x-hidden bg-[#f6f8fc] px-4 py-8 font-sans sm:px-6 lg:px-8 lg:py-12">
+      <div className="mx-auto w-full min-w-0 max-w-7xl">
+        <div className="mb-5 flex items-center justify-end">
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm"><span className="h-2 w-2 rounded-full bg-emerald-500" />RADAI Service Desk</div>
         </div>
 
-        {/* Quick Contact Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {ENQUIRY_CONFIG.contactMethods.map((method, index) => (
-            <a
-              key={index}
-              href={method.link}
-              className="bg-white rounded-2xl shadow-lg p-6 text-center hover:shadow-2xl transition-all transform hover:-translate-y-2 duration-300"
-              style={{ borderTop: `4px solid ${REJLERS_COLORS.secondary.green.base}` }}
-            >
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg transform hover:rotate-12 transition-transform"
-                style={{ background: `linear-gradient(135deg, ${REJLERS_COLORS.primary.base}, ${REJLERS_COLORS.primary.accent})` }}>
-                <span className="text-3xl">{method.icon}</span>
-              </div>
-              <h3 className="font-bold text-lg mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                {method.title}
-              </h3>
-              <p className="font-semibold hover:underline" style={{ color: REJLERS_COLORS.secondary.green.accent }}>
-                {method.value}
-              </p>
-            </a>
-          ))}
-        </div>
+        <div className="grid w-full min-w-0 items-start gap-5 xl:grid-cols-5 xl:gap-7">
+          <aside className="relative w-full min-w-0 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 p-7 text-white shadow-xl lg:p-8 xl:sticky xl:top-6 xl:col-span-2">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-400/15 blur-3xl" /><div className="pointer-events-none absolute -bottom-24 -left-20 h-64 w-64 rounded-full bg-indigo-400/20 blur-3xl" />
+            <div className="relative">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-cyan-100 backdrop-blur"><SparklesIcon className="h-3.5 w-3.5" />Enquiry & ticketing</div>
+              <h1 className="mt-6 text-4xl font-bold leading-[1.08] tracking-[-0.035em] sm:text-5xl lg:text-[3.25rem]">One request.<br /><span className="text-cyan-300">The right team.</span><br />Clear resolution.</h1>
+              <p className="mt-5 max-w-md text-sm leading-6 text-slate-300">Tell us what you need. RADAI automatically categorizes, assigns and tracks your request through resolution.</p>
+              <div className="mt-8 space-y-3"><RouteStep number="01" title="Submit" detail="Share the essential context" /><RouteStep number="02" title="Route" detail="Matched to the responsible team" /><RouteStep number="03" title="Resolve" detail="Track response and closure" /></div>
+              <div className="mt-8 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm"><div className="flex items-center gap-2 text-sm font-semibold"><ShieldCheckIcon className="h-5 w-5 text-cyan-300" />Secure by design</div><p className="mt-2 text-xs leading-5 text-slate-300">Your details are used only to manage this request and communicate service updates.</p></div>
+              <div className="mt-7 grid gap-2 text-xs text-slate-300 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2"><a href="mailto:radai@rejlers.ae" className="flex items-center gap-2 rounded-xl px-2 py-2 transition hover:bg-white/10"><EnvelopeIcon className="h-4 w-4 text-cyan-300" />radai@rejlers.ae</a><a href="tel:+971505606987" className="flex items-center gap-2 rounded-xl px-2 py-2 transition hover:bg-white/10"><PhoneIcon className="h-4 w-4 text-cyan-300" />+971 50 560 6987</a></div>
+            </div>
+          </aside>
 
-        {/* Main Form */}
-        <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-12">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Personal Information Section */}
-            <div>
-              <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: REJLERS_COLORS.primary.base }}>
-                <span className="w-8 h-8 rounded-full flex items-center justify-center mr-3 text-white text-sm font-bold"
-                  style={{ backgroundColor: REJLERS_COLORS.secondary.green.base }}>
-                  1
-                </span>
-                Personal Information
-              </h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Name Field */}
-                <div className="transform transition-all duration-300" style={{ 
-                  transform: focusedField === 'name' ? 'scale(1.02)' : 'scale(1)'
-                }}>
-                  <label className="block text-sm font-bold mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                    Full Name <span style={{ color: REJLERS_COLORS.status.error }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    onFocus={() => handleFocus('name')}
-                    onBlur={() => handleBlur('name')}
-                    className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:outline-none transition-all ${
-                      errors.name && touched.name
-                        ? 'border-red-500 focus:ring-red-200'
-                        : focusedField === 'name'
-                        ? 'focus:ring-opacity-30'
-                        : 'border-gray-300 focus:ring-opacity-30'
-                    }`}
-                    style={focusedField === 'name' ? { 
-                      borderColor: REJLERS_COLORS.secondary.green.accent,
-                      boxShadow: `0 0 0 4px ${REJLERS_COLORS.secondary.green.complement}`
-                    } : {}}
-                    placeholder="John Doe"
-                  />
-                  {errors.name && touched.name && (
-                    <p className="mt-2 text-sm font-semibold flex items-center" style={{ color: REJLERS_COLORS.status.error }}>
-                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      {errors.name}
-                    </p>
-                  )}
-                </div>
-
-                {/* Email Field */}
-                <div className="transform transition-all duration-300" style={{ 
-                  transform: focusedField === 'email' ? 'scale(1.02)' : 'scale(1)'
-                }}>
-                  <label className="block text-sm font-bold mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                    Email Address <span style={{ color: REJLERS_COLORS.status.error }}>*</span>
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    onFocus={() => handleFocus('email')}
-                    onBlur={() => handleBlur('email')}
-                    className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:outline-none transition-all ${
-                      errors.email && touched.email
-                        ? 'border-red-500 focus:ring-red-200'
-                        : focusedField === 'email'
-                        ? 'focus:ring-opacity-30'
-                        : 'border-gray-300 focus:ring-opacity-30'
-                    }`}
-                    style={focusedField === 'email' ? { 
-                      borderColor: REJLERS_COLORS.secondary.green.accent,
-                      boxShadow: `0 0 0 4px ${REJLERS_COLORS.secondary.green.complement}`
-                    } : {}}
-                    placeholder="john.doe@company.com"
-                  />
-                  {errors.email && touched.email && (
-                    <p className="mt-2 text-sm font-semibold flex items-center" style={{ color: REJLERS_COLORS.status.error }}>
-                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      {errors.email}
-                    </p>
-                  )}
-                </div>
-
-                {/* Phone Field */}
-                <div className="transform transition-all duration-300" style={{ 
-                  transform: focusedField === 'phone' ? 'scale(1.02)' : 'scale(1)'
-                }}>
-                  <label className="block text-sm font-bold mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                    Phone Number <span style={{ color: REJLERS_COLORS.status.error }}>*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    onFocus={() => handleFocus('phone')}
-                    onBlur={() => handleBlur('phone')}
-                    className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:outline-none transition-all ${
-                      errors.phone && touched.phone
-                        ? 'border-red-500 focus:ring-red-200'
-                        : focusedField === 'phone'
-                        ? 'focus:ring-opacity-30'
-                        : 'border-gray-300 focus:ring-opacity-30'
-                    }`}
-                    style={focusedField === 'phone' ? { 
-                      borderColor: REJLERS_COLORS.secondary.green.accent,
-                      boxShadow: `0 0 0 4px ${REJLERS_COLORS.secondary.green.complement}`
-                    } : {}}
-                    placeholder="+971 50 123 4567"
-                  />
-                  {errors.phone && touched.phone && (
-                    <p className="mt-2 text-sm font-semibold flex items-center" style={{ color: REJLERS_COLORS.status.error }}>
-                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      {errors.phone}
-                    </p>
-                  )}
-                </div>
-
-                {/* Company Field */}
-                <div className="transform transition-all duration-300" style={{ 
-                  transform: focusedField === 'company' ? 'scale(1.02)' : 'scale(1)'
-                }}>
-                  <label className="block text-sm font-bold mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                    Company Name
-                  </label>
-                  <input
-                    type="text"
-                    name="company"
-                    value={formData.company}
-                    onChange={handleChange}
-                    onFocus={() => handleFocus('company')}
-                    onBlur={() => handleBlur('company')}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-opacity-30 focus:outline-none transition-all"
-                    style={focusedField === 'company' ? { 
-                      borderColor: REJLERS_COLORS.secondary.green.accent,
-                      boxShadow: `0 0 0 4px ${REJLERS_COLORS.secondary.green.complement}`
-                    } : {}}
-                    placeholder="Your Company"
-                  />
-                </div>
-              </div>
+          <section className="w-full min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl xl:col-span-3">
+            <div className="border-b border-slate-200 px-5 py-5 sm:px-7 sm:py-6">
+              <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-600">Create a request</div><h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">How can we help?</h2><p className="mt-1 text-sm text-slate-500">Required fields are marked with an asterisk.</p></div><div className="min-w-[150px] text-right"><div className="text-xs font-semibold text-slate-500">{progress}% complete</div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300" style={{ width: `${progress}%` }} /></div></div></div>
             </div>
 
-            {/* Enquiry Details Section */}
-            <div className="pt-6 border-t-2 border-gray-200">
-              <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: REJLERS_COLORS.primary.base }}>
-                <span className="w-8 h-8 rounded-full flex items-center justify-center mr-3 text-white text-sm font-bold"
-                  style={{ backgroundColor: REJLERS_COLORS.secondary.turbine.base }}>
-                  2
-                </span>
-                Enquiry Details
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                {/* Service Field */}
-                <div>
-                  <label className="block text-sm font-bold mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                    Service of Interest
-                  </label>
-                  <select
-                    name="service"
-                    value={formData.service}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-opacity-30 focus:outline-none transition-all cursor-pointer"
-                    style={{ color: REJLERS_COLORS.primary.base }}
-                  >
-                    <option value="">Select a service...</option>
-                    {ENQUIRY_CONFIG.services
-                      .filter((service) => service.value !== 'password-reset')
-                      .map((service, index) => (
-                      <option key={index} value={service.value}>{service.label}</option>
-                      ))}
-                  </select>
+            <form onSubmit={submit} noValidate className="space-y-8 p-5 sm:p-7">
+              <FormSection number="1" title="Contact details" description="So the assigned team can reach you.">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="Full name" required error={touched.name && errors.name}><input autoComplete="name" name="name" value={formData.name} onChange={updateField} onBlur={blurField} className={`${INPUT_CLASS} ${touched.name && errors.name ? ERROR_INPUT_CLASS : ''}`} placeholder="Your full name" /></Field>
+                  <Field label="Email address" required error={touched.email && errors.email}><input type="email" autoComplete="email" name="email" value={formData.email} onChange={updateField} onBlur={blurField} className={`${INPUT_CLASS} ${touched.email && errors.email ? ERROR_INPUT_CLASS : ''}`} placeholder="you@company.com" /></Field>
+                  <Field label="Phone number" required error={touched.phone && errors.phone}><input type="tel" autoComplete="tel" name="phone" value={formData.phone} onChange={updateField} onBlur={blurField} className={`${INPUT_CLASS} ${touched.phone && errors.phone ? ERROR_INPUT_CLASS : ''}`} placeholder="+971 50 000 0000" /></Field>
+                  <Field label="Company" hint="Optional"><input autoComplete="organization" name="company" value={formData.company} onChange={updateField} className={INPUT_CLASS} placeholder="Company or organisation" /></Field>
                 </div>
+              </FormSection>
 
-                {/* Urgency Field */}
-                <div>
-                  <label className="block text-sm font-bold mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                    Urgency Level
-                  </label>
-                  <select
-                    name="urgency"
-                    value={formData.urgency}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-opacity-30 focus:outline-none transition-all cursor-pointer"
-                    style={{ color: REJLERS_COLORS.primary.base }}
-                  >
-                    {ENQUIRY_CONFIG.urgencyLevels.map((level, index) => (
-                      <option key={index} value={level.value}>{level.label}</option>
-                    ))}
-                  </select>
+              <FormSection number="2" title="Request details" description="Give us enough context to route it correctly.">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="Request type"><select name="service" value={formData.service} onChange={updateField} className={INPUT_CLASS}><option value="">Select a request type</option>{ENQUIRY_CONFIG.services.filter((service) => service.value !== 'password-reset').map((service) => <option key={service.value} value={service.value}>{service.label}</option>)}</select></Field>
+                  <Field label="Priority"><select name="urgency" value={formData.urgency} onChange={updateField} className={INPUT_CLASS}>{urgencyOptions.map((option) => <option key={option.value} value={option.value}>{option.label} — {option.note}</option>)}</select></Field>
+                  <div className="sm:col-span-2"><Field label="Subject" required error={touched.subject && errors.subject}><input name="subject" value={formData.subject} onChange={updateField} onBlur={blurField} maxLength="200" className={`${INPUT_CLASS} ${touched.subject && errors.subject ? ERROR_INPUT_CLASS : ''}`} placeholder="A short summary of your request" /></Field></div>
+                  <div className="sm:col-span-2"><Field label="Request details" required error={touched.message && errors.message} trailing={`${formData.message.length}/1000`}><textarea name="message" value={formData.message} onChange={updateField} onBlur={blurField} maxLength="1000" rows="7" className={`${INPUT_CLASS} resize-none ${touched.message && errors.message ? ERROR_INPUT_CLASS : ''}`} placeholder="Describe what happened, what you need, and any relevant dates or references." /></Field></div>
                 </div>
-              </div>
+              </FormSection>
 
-              {/* Subject Field */}
-              <div className="mb-6 transform transition-all duration-300" style={{ 
-                transform: focusedField === 'subject' ? 'scale(1.02)' : 'scale(1)'
-              }}>
-                <label className="block text-sm font-bold mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                  Subject <span style={{ color: REJLERS_COLORS.status.error }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  name="subject"
-                  value={formData.subject}
-                  onChange={handleChange}
-                  onFocus={() => handleFocus('subject')}
-                  onBlur={() => handleBlur('subject')}
-                  className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:outline-none transition-all ${
-                    errors.subject && touched.subject
-                      ? 'border-red-500 focus:ring-red-200'
-                      : focusedField === 'subject'
-                      ? 'focus:ring-opacity-30'
-                      : 'border-gray-300 focus:ring-opacity-30'
-                  }`}
-                  style={focusedField === 'subject' ? { 
-                    borderColor: REJLERS_COLORS.secondary.green.accent,
-                    boxShadow: `0 0 0 4px ${REJLERS_COLORS.secondary.green.complement}`
-                  } : {}}
-                  placeholder="Brief description of your enquiry"
-                />
-                {errors.subject && touched.subject && (
-                  <p className="mt-2 text-sm font-semibold flex items-center" style={{ color: REJLERS_COLORS.status.error }}>
-                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    {errors.subject}
-                  </p>
-                )}
-              </div>
-
-              {/* Message Field */}
-              <div className="transform transition-all duration-300" style={{ 
-                transform: focusedField === 'message' ? 'scale(1.02)' : 'scale(1)'
-              }}>
-                <label className="block text-sm font-bold mb-2" style={{ color: REJLERS_COLORS.primary.base }}>
-                  Message <span style={{ color: REJLERS_COLORS.status.error }}>*</span>
-                </label>
-                <textarea
-                  name="message"
-                  value={formData.message}
-                  onChange={handleChange}
-                  onFocus={() => handleFocus('message')}
-                  onBlur={() => handleBlur('message')}
-                  rows={6}
-                  className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-4 focus:outline-none transition-all resize-none ${
-                    errors.message && touched.message
-                      ? 'border-red-500 focus:ring-red-200'
-                      : focusedField === 'message'
-                      ? 'focus:ring-opacity-30'
-                      : 'border-gray-300 focus:ring-opacity-30'
-                  }`}
-                  style={focusedField === 'message' ? { 
-                    borderColor: REJLERS_COLORS.secondary.green.accent,
-                    boxShadow: `0 0 0 4px ${REJLERS_COLORS.secondary.green.complement}`
-                  } : {}}
-                  placeholder="Please provide details about your enquiry..."
-                />
-                <div className="mt-2 flex justify-between items-center">
-                  {errors.message && touched.message ? (
-                    <p className="text-sm font-semibold flex items-center" style={{ color: REJLERS_COLORS.status.error }}>
-                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      {errors.message}
-                    </p>
-                  ) : (
-                    <span className="text-sm font-semibold" style={{ 
-                      color: formData.message.length >= 10 ? REJLERS_COLORS.secondary.green.accent : REJLERS_COLORS.neutral.gray600
-                    }}>
-                      {formData.message.length >= 10 ? '✓ Looking good!' : 'Start typing...'}
-                    </span>
-                  )}
-                  <span className="text-sm font-semibold" style={{ color: REJLERS_COLORS.neutral.gray600 }}>
-                    {formData.message.length} / 1000
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Submit Error */}
-            {errors.submit && (
-              <div className="rounded-xl p-4" style={{ 
-                backgroundColor: REJLERS_COLORS.status.error + '20',
-                border: `2px solid ${REJLERS_COLORS.status.error}`
-              }}>
-                <div className="flex items-center">
-                  <svg className="w-6 h-6 mr-3" fill="currentColor" viewBox="0 0 20 20" style={{ color: REJLERS_COLORS.status.error }}>
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  <p className="font-semibold" style={{ color: REJLERS_COLORS.status.error }}>{errors.submit}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 pt-6">
-              <button
-                type="submit"
-                disabled={loading || Object.keys(errors).length > 0}
-                className="flex-1 py-4 px-8 rounded-xl font-bold text-lg text-white transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-xl"
-                style={{ 
-                  background: Object.keys(errors).length === 0
-                    ? `linear-gradient(135deg, ${REJLERS_COLORS.secondary.green.accent}, ${REJLERS_COLORS.secondary.green.base})`
-                    : REJLERS_COLORS.neutral.gray400
-                }}
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin h-6 w-6 mr-3" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Submitting...
-                  </span>
-                ) : (
-                  <span className="flex items-center justify-center">
-                    <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    Submit Enquiry
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigate('/')}
-                className="sm:w-auto px-8 py-4 border-2 rounded-xl font-bold transition-all hover:bg-gray-50 transform hover:scale-105 active:scale-95"
-                style={{ 
-                  borderColor: REJLERS_COLORS.neutral.gray300,
-                  color: REJLERS_COLORS.primary.base
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+              {errors.submit && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errors.submit}</div>}
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-xs text-slate-400"><LockClosedIcon className="h-4 w-4" />Encrypted and confidential</div><div className="flex gap-2"><button type="button" onClick={() => navigate('/')} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Cancel</button><button type="submit" disabled={loading} className="inline-flex min-w-[160px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60">{loading ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />Submitting</> : <>Submit request <ArrowRightIcon className="h-4 w-4" /></>}</button></div></div>
+            </form>
+          </section>
         </div>
-
-        {/* Security & Contact Info */}
-        <div className="mt-8 text-center">
-          <div className="inline-flex items-center px-6 py-3 rounded-full mb-4" style={{ backgroundColor: REJLERS_COLORS.primary.complement }}>
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: REJLERS_COLORS.primary.base }}>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-            <span className="text-sm font-bold" style={{ color: REJLERS_COLORS.primary.base }}>
-              Your information is secure and confidential
-            </span>
-          </div>
-          <p className="text-gray-600">
-            For urgent matters, call us at{' '}
-            <a href="tel:+971505606987" className="font-bold hover:underline" style={{ color: REJLERS_COLORS.secondary.green.accent }}>
-              +971 50 560 6987
-            </a>
-          </p>
-        </div>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-slate-400"><span className="inline-flex items-center gap-1.5"><ClockIcon className="h-4 w-4" />Target response within 24 hours</span><span className="inline-flex items-center gap-1.5"><BuildingOffice2Icon className="h-4 w-4" />Abu Dhabi, UAE</span><span className="inline-flex items-center gap-1.5"><ShieldCheckIcon className="h-4 w-4" />Managed by RADAI</span></div>
       </div>
-    </div>
-  );
-};
+    </main>
+  )
+}
 
-export default Enquiry;
+const Field = ({ label, required = false, hint, error, trailing, children }) => (
+  <label className="block text-sm font-semibold text-slate-700"><span className="flex items-center justify-between gap-3"><span>{label}{required && <span className="ml-1 text-red-500">*</span>}</span>{(hint || trailing) && <span className="text-xs font-normal text-slate-400">{trailing || hint}</span>}</span>{children}{error && <span className="mt-1.5 block text-xs font-medium text-red-600">{error}</span>}</label>
+)
+
+const FormSection = ({ number, title, description, children }) => (
+  <section><div className="mb-5 flex items-start gap-3"><span className="grid h-7 w-7 shrink-0 place-content-center rounded-lg bg-blue-50 text-xs font-bold text-blue-700 ring-1 ring-blue-100">{number}</span><div><h3 className="text-sm font-bold text-slate-900">{title}</h3><p className="mt-0.5 text-xs text-slate-500">{description}</p></div></div>{children}</section>
+)
+
+const RouteStep = ({ number, title, detail }) => (
+  <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-3"><span className="font-mono text-[10px] font-bold text-cyan-300">{number}</span><div className="min-w-0"><div className="text-sm font-semibold text-white">{title}</div><div className="text-xs text-slate-400">{detail}</div></div></div>
+)
+
+const SuccessStep = ({ icon: Icon, label, active = false }) => (
+  <div className={`rounded-xl border p-3 ${active ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-slate-50 text-slate-400'}`}><Icon className="h-5 w-5" /><div className="mt-2 text-xs font-semibold">{label}</div></div>
+)
+
+export default Enquiry

@@ -197,12 +197,12 @@ const ENABLE_DIGITIZATION_DATASHEET_ROUTE = false
 //   /contact    → /enquiry   (public "Contact Us" form lives at /enquiry)
 //   /contact-us → /enquiry   (alternate spelling used in external links)
 const PUBLIC_PATH_REDIRECTS = {
-  register:     '/enquiry',
-  contact:      '/enquiry',
-  'contact-us': '/enquiry',
-  inquiries:    '/enquiry',
-  inquires:     '/enquiry',
-  inqures:      '/enquiry',
+  register:     '/enquiries',
+  contact:      '/enquiries',
+  'contact-us': '/enquiries',
+  inquiries:    '/enquiries',
+  inquires:     '/enquiries',
+  inqures:      '/enquiries',
 }
 
 // Back-compat alias (kept for any external reference to this constant)
@@ -412,9 +412,11 @@ function App() {
             {/* Solutions Page */}
             <Route path="solutions" element={<Solutions />} />
             
-            {/* Enquiry Page */}
+            {/* Public enquiry form. Keep the singular path for existing links. */}
+            <Route path="enquiries" element={<Enquiry />} />
             <Route path="enquiry" element={<Enquiry />} />
             <Route path="enquiry/feedback/:token" element={<EnquiryFeedback />} />
+            <Route path="enquiries/feedback/:token" element={<EnquiryFeedback />} />
             
             {/* Services */}
           <Route path="services/consulting" element={<ConsultingService />} />
