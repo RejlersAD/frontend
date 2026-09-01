@@ -359,17 +359,12 @@ export const ENGINEERING_DISCIPLINES = {
         description: 'Extract and synchronize data from SmartPlant 3D models and databases',
         moduleCode: 'smart_plant_3d',
         badge: 'New'
-      },
-      {
-        id: 'valveStandardsReference',
-        name: 'Valve Standards',
-        fullName: 'Valve Standards Reference (ASME B16.34)',
-        icon: DocumentMagnifyingGlassIcon,
-        path: '/engineering/digitization/valve-standards',
-        description: 'Browse and validate ASME B16.34 pressure-temperature ratings, wall thickness, and material specs',
-        moduleCode: 'valve_standards_reference',
-        badge: 'New'
       }
+      // SOFT-CODED: 'Valve Standards Reference' is NOT a separate sidebar entry —
+      // it lives under Smart Plant 3D (opened via the card on SmartPlant3DPage,
+      // route still at /engineering/digitization/valve-standards). Previously
+      // duplicated here as a sibling sub-feature by mistake; removed 2026-08-27
+      // to avoid a second top-level Digitization menu item for the same feature.
     ]
   }
 }

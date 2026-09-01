@@ -8,6 +8,11 @@ const EXTRACT_ENDPOINT = `${BASE_PATH}/extract-line-tags/`
 const EXTRACTIONS_ENDPOINT = `${BASE_PATH}/extractions/`
 const LEGENDS_ENDPOINT = `${BASE_PATH}/legends/`
 const LEGENDS_DEFAULT_TEMPLATE_ENDPOINT = `${BASE_PATH}/legends/default-template/`
+const SYMBOL_IMAGES_ENDPOINT = `${BASE_PATH}/symbol-images/`
+const DEFAULT_SYMBOL_IMAGES_ENDPOINT = `${BASE_PATH}/default-symbol-images/`
+const SYMBOL_IMAGE_UPLOAD_ENDPOINT = `${BASE_PATH}/symbol-image/upload/`
+const SYMBOL_IMAGE_DELETE_ENDPOINT = `${BASE_PATH}/symbol-image/delete/`
+const TEST_API_KEY_ENDPOINT = `${BASE_PATH}/test-api-key/`
 const VALIDATE_ENDPOINT = `${BASE_PATH}/validate-line-tags/`
 const LINE_LISTS_ENDPOINT = `${BASE_PATH}/line-lists/`
 const CROSS_CHECK_ENDPOINT = `${BASE_PATH}/cross-check/`
@@ -32,6 +37,24 @@ export const LEGEND_SECTIONS = [
   { id: 'line_list', label: 'Line List' },
   { id: 'equipment_list', label: 'Equipment List' },
   { id: 'instrument_index', label: 'Instrument Index' },
+  { id: 'valve', label: 'Valve' },
+  { id: 'piping', label: 'Piping' },
+  { id: 'actuator_symbols', label: 'Actuator Symbols' },
+  { id: 'flow_detector', label: 'Flow Detector' },
+  { id: 'control_valve_regulator', label: 'Control Valve & Regulator' },
+  { id: 'instrument_signal', label: 'Instrument Signal' },
+  { id: 'equipment_symbols', label: 'Equipment Symbols' },
+  { id: 'instrument_function', label: 'Instrument Function' },
+  { id: 'pipe_connection', label: 'Pipe Connection' },
+  { id: 'pipe_end', label: 'Pipe End' },
+  { id: 'special_piping', label: 'Special Piping' },
+  { id: 'scope_symbols', label: 'Scope Symbols' },
+  { id: 'miscellaneous', label: 'Miscellaneous' },
+  { id: 'limit_line', label: 'Limit Line' },
+  { id: 'other_specialties', label: 'Other Specialties' },
+  { id: 'instrument_typical_letter', label: 'Instrument Typical Letter' },
+  { id: 'drawing_cont', label: 'Drawing Continuations' },
+  { id: 'general_instrument', label: 'General Instrument or Function Symbols' },
 ]
 
 // Extraction modes
@@ -40,8 +63,18 @@ export const MODE_VISION = 'vision'
 
 // Vision providers exposed to the UI
 export const VISION_PROVIDERS = [
-  { id: 'openai', label: 'OpenAI GPT-4o',    keyPrefix: 'sk-' },
-  { id: 'claude', label: 'Claude Sonnet 4.5', keyPrefix: 'sk-ant-' },
+  { id: 'openai', label: 'OpenAI GPT-4o', keyPrefix: 'sk-' },
+  { id: 'claude', label: 'Claude',        keyPrefix: 'sk-ant-' },
+]
+
+// Claude model variants — shown as a second dropdown when provider is
+// 'claude'. IDs must match vision_extractor.py's VISION_MODEL_CLAUDE_LATEST
+// / VISION_MODEL_CLAUDE_FALLBACK / VISION_MODEL_CLAUDE_OPUS exactly, since
+// this is sent as the `model` field and validated server-side.
+export const CLAUDE_VISION_MODELS = [
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 (latest, default)' },
+  { id: 'claude-opus-5', label: 'Claude Opus 5 (most powerful)' },
+  { id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5 (previous)' },
 ]
 
 /**
@@ -52,6 +85,7 @@ export const VISION_PROVIDERS = [
  *   forceOcr?: boolean,
  *   provider?: 'openai'|'claude',
  *   apiKey?: string,
+ *   model?: string,
  *   projectId?: number,
  *   onProgress?: (pct:number)=>void
  * }} [opts]
@@ -69,6 +103,7 @@ export async function extractLineTags(file, opts = {}) {
   if (mode === MODE_VISION) {
     if (opts.provider) form.append('provider', opts.provider)
     if (opts.apiKey)   form.append('api_key', opts.apiKey)
+    if (opts.model && opts.provider === 'claude') form.append('model', opts.model)
   }
   if (opts.projectId) {
     form.append('project_id', opts.projectId)
@@ -139,6 +174,48 @@ export async function activateLegend(legendId) {
 
 export async function getLegendDefaultTemplate(section) {
   const res = await apiClient.get(LEGENDS_DEFAULT_TEMPLATE_ENDPOINT, { params: { section } })
+  return res.data
+}
+
+// Legend symbol pictures uploaded for this project — see SymbolImagesListView.
+export async function getSymbolImages(projectId) {
+  const res = await apiClient.get(SYMBOL_IMAGES_ENDPOINT, { params: { project_id: projectId } })
+  return res.data
+}
+
+// Shared default pictures (repo static files, no DB) for a batch of symbol
+// names in one section — see DefaultSymbolImagesView. Returns
+// { results: { [symbolName]: urlOrNull } }.
+export async function getDefaultSymbolImages(section, symbolNames) {
+  const res = await apiClient.post(DEFAULT_SYMBOL_IMAGES_ENDPOINT, { section, symbol_names: symbolNames })
+  return res.data
+}
+
+// Manual per-symbol picture upload/replace — see SymbolImageUploadView.
+export async function uploadSymbolImage(projectId, section, symbolName, file) {
+  const fd = new FormData()
+  fd.append('project_id', projectId)
+  fd.append('section', section)
+  fd.append('symbol_name', symbolName)
+  fd.append('image', file)
+  const res = await apiClient.post(SYMBOL_IMAGE_UPLOAD_ENDPOINT, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+// Delete a manually-uploaded symbol picture — see SymbolImageDeleteView.
+export async function deleteSymbolImage(projectId, section, symbolName) {
+  const res = await apiClient.delete(SYMBOL_IMAGE_DELETE_ENDPOINT, {
+    params: { project_id: projectId, section, symbol_name: symbolName },
+  })
+  return res.data
+}
+
+// Quick BYOK connectivity check — one minimal text-only call, no image.
+// Returns { valid: boolean, message: string }.
+export async function testApiKey(provider, apiKey) {
+  const res = await apiClient.post(TEST_API_KEY_ENDPOINT, { provider, api_key: apiKey })
   return res.data
 }
 
@@ -545,7 +622,9 @@ export async function downloadTokenReport({ format = 'xlsx', since, until } = {}
 export default {
   extractLineTags, listExtractions, getExtraction, deleteExtraction,
   listLegends, getLegend, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate,
+  activateLegend, getLegendDefaultTemplate, getSymbolImages,
+  getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
+  testApiKey,
   validateLineTags,
   uploadLineList, listLineLists, getLineList, deleteLineList, activateLineList,
   crossCheck,
@@ -555,5 +634,5 @@ export default {
   instrumentCrossCheck, filterInstrumentTags, INSTRUMENT_TAG_REGEX,
   extractEquipmentTagsFromPid, extractInstrumentTagsFromPid,
   listUsage, getUsageSummary, downloadTokenReport,
-  MODE_OCR, MODE_VISION, VISION_PROVIDERS, LEGEND_SECTIONS,
+  MODE_OCR, MODE_VISION, VISION_PROVIDERS, CLAUDE_VISION_MODELS, LEGEND_SECTIONS,
 }

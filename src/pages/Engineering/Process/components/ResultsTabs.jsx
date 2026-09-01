@@ -117,47 +117,60 @@ export default function ResultsTabs({
     }}>
       {/* ── Tab bar ─────────────────────────────────────────────── */}
       <div style={{
-        display: 'flex', gap: 4, padding: '8px 8px 0', alignItems: 'flex-end',
+        display: 'flex', gap: 8, padding: '8px 8px 0', alignItems: 'flex-end',
         borderBottom: `1px solid ${THEME_BORDER}`,
-        flex: '0 0 auto',
+        flex: '0 0 auto', minWidth: 0,
       }}>
-        {TABS.map(({ id, label, Icon }) => {
-          const active = tab === id
-          const badge = badgeFor(id)
-          return (
-            <button
-              key={id} type="button" onClick={() => setTab(id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '10px 14px', borderRadius: '8px 8px 0 0',
-                border: 'none',
-                borderBottom: `2px solid ${active ? THEME_PRIMARY : 'transparent'}`,
-                background: active ? '#fff' : 'transparent',
-                color: active ? THEME_PRIMARY : THEME_MUTED,
-                fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                position: 'relative', marginBottom: -1,
-              }}
-            >
-              <Icon size={14} /> {label}
-              {Boolean(badge) && badge !== '•' && (
-                <span style={{
-                  padding: '1px 7px', borderRadius: 999, fontSize: 10,
-                  background: active ? THEME_PRIMARY : THEME_BG_SOFT,
-                  color: active ? '#fff' : THEME_MUTED, fontWeight: 700,
-                }}>{badge}</span>
-              )}
-              {badge === '•' && (
-                <span style={{
-                  width: 6, height: 6, borderRadius: 999,
-                  background: active ? THEME_PRIMARY : '#a3a3a3',
-                }} />
-              )}
-            </button>
-          )
-        })}
+        {/* Tabs scroll horizontally on their own when the container is too
+            narrow to fit all of them — keeps labels on one line (no wrap)
+            and guarantees the download button (outside this scroller,
+            flexShrink: 0 below) is never pushed off-screen or clipped. */}
+        <div style={{
+          display: 'flex', gap: 4, overflowX: 'auto', minWidth: 0,
+          scrollbarWidth: 'thin',
+        }}>
+          {TABS.map(({ id, label, Icon }) => {
+            const active = tab === id
+            const badge = badgeFor(id)
+            return (
+              <button
+                key={id} type="button" onClick={() => setTab(id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '10px 14px', borderRadius: '8px 8px 0 0',
+                  border: 'none',
+                  borderBottom: `2px solid ${active ? THEME_PRIMARY : 'transparent'}`,
+                  background: active ? '#fff' : 'transparent',
+                  color: active ? THEME_PRIMARY : THEME_MUTED,
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  position: 'relative', marginBottom: -1,
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                <Icon size={14} /> {label}
+                {Boolean(badge) && badge !== '•' && (
+                  <span style={{
+                    padding: '1px 7px', borderRadius: 999, fontSize: 10,
+                    background: active ? THEME_PRIMARY : THEME_BG_SOFT,
+                    color: active ? '#fff' : THEME_MUTED, fontWeight: 700,
+                  }}>{badge}</span>
+                )}
+                {badge === '•' && (
+                  <span style={{
+                    width: 6, height: 6, borderRadius: 999,
+                    background: active ? THEME_PRIMARY : '#a3a3a3',
+                    flexShrink: 0,
+                  }} />
+                )}
+              </button>
+            )
+          })}
+        </div>
 
         {/* Combined "Download full report" button — lives after the last tab
-            and is visible on every tab so users always see it. */}
+            and is visible on every tab so users always see it. flexShrink: 0
+            + marginLeft: auto keeps it fully visible and pinned right,
+            never clipped, regardless of how narrow the tab bar gets. */}
         <button
           type="button"
           onClick={onDownloadCombined}
@@ -166,12 +179,12 @@ export default function ResultsTabs({
             ? 'Download Overview, Legend, Line List, Equipment and Instrument results as one Excel workbook'
             : 'Run at least one extraction or cross-check first'}
           style={{
-            marginLeft: 'auto', marginBottom: 6,
+            marginLeft: 'auto', marginBottom: 6, flexShrink: 0,
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 12px', borderRadius: 8,
             border: 'none', color: '#fff',
             background: canDownloadCombined ? THEME_GRADIENT : '#cbd5e1',
-            fontSize: 12, fontWeight: 600,
+            fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
             cursor: canDownloadCombined ? 'pointer' : 'not-allowed',
           }}
         >

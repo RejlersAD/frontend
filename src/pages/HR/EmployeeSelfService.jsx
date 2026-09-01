@@ -3439,9 +3439,16 @@ export default function EmployeeSelfService() {
       // they hold an HR/Admin role (which otherwise gets unrestricted visibility
       // for the Leave Management / Approval Tracker views).
       payrollService.getLeaveRequests({ mine: true, page_size: 50 }).catch(() => ({ results: [] })),
-      // Backend auto-scopes to current user's employee_id with intelligent fallback
-      // No need to pass employee_code or search - backend detects from auth user
-      payrollService.getLeaveRecords({ page_size: 5 }).catch(() => ({ results: [] })),
+      // 2026-08-31: this call had no `mine: true` (unlike its sibling right
+      // above) — the comment below claimed the backend "auto-scopes... no
+      // need to pass employee_code", but it never actually did that for an
+      // HR/Admin-role user (the same "unrestricted visibility unless told
+      // otherwise" behavior mine:true exists to override on the request
+      // above). An HR Manager/admin viewing their OWN profile got the
+      // unfiltered list back and picked up an arbitrary employee's balance
+      // instead of their own — confirmed live for a super_admin account.
+      // mine=true forces self-scoping regardless of role, same as above.
+      payrollService.getLeaveRecords({ mine: true, page_size: 5 }).catch(() => ({ results: [] })),
     ]).then(([types, reqRes, recRes]) => {
       // Filter leave types to only show enabled types from ESS_LEAVE_TYPE_CONFIG.
       // To enable/disable a type, change `enabled` in hrLeave.config.js — no code change needed.
