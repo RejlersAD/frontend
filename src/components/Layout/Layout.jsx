@@ -50,8 +50,12 @@ const Layout = () => {
 
   const showSidebar = isAuthenticated && !isPublicRoute
   const showHeader = isAuthenticated && !isPublicRoute
+  const isPurchaseRecommendationFormRoute = (
+    location.pathname === '/procurement/requisitions/new'
+    || /^\/procurement\/requisitions\/[^/]+\/edit$/.test(location.pathname)
+  )
   // Hide the shared footer on public pages that render their own or are auth flow pages.
-  const showFooter = !isPublicRoute
+  const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute
 
   const contentOffsetClass = showHeader ? HEADER_HEIGHT_CLASS : ''
 

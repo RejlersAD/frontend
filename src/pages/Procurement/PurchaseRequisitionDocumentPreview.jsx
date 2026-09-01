@@ -111,13 +111,12 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
       <article className="overflow-hidden border-2 border-gray-700 bg-white text-[12px] leading-snug text-gray-900 shadow-sm">
         <div className="grid grid-cols-[2fr_1fr] border-b border-gray-700">
           <h3 className="px-4 py-3 text-center text-2xl font-bold">Purchase Requisition</h3>
-          <div className="flex flex-col items-center justify-center border-l border-gray-700 px-3 py-2">
+          <div className="flex items-center justify-center border-l border-gray-700 px-3 py-2">
             <img
               src={PROCUREMENT_DOCUMENT_BRANDING.logo.path}
               alt={PROCUREMENT_DOCUMENT_BRANDING.logo.alt}
-              className="h-7 w-auto max-w-full object-contain"
+              className="h-5 w-auto max-w-[120px] object-contain"
             />
-            <span className="mt-1 text-[8px] font-bold tracking-wide text-sky-700">{PROCUREMENT_DOCUMENT_BRANDING.tagline}</span>
           </div>
         </div>
 

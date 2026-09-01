@@ -31,11 +31,9 @@ import {
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import * as XLSX from 'xlsx';
-import { PageControlButtons } from '../../components/Common/PageControlButtons';
 import { usePageControls } from '../../hooks/usePageControls';
 import { getStatusConfig, getOrderTabs } from '../../config/procurement.config';
 import AIPurchaseOrderCreator from './AIPurchaseOrderCreator';
-import PurchaseRequisitionForm from './PurchaseRequisitionForm';
 import PurchaseRequisitionApproval from './PurchaseRequisitionApproval';
 import PurchaseRequisitionExcelImport from './PurchaseRequisitionExcelImport';
 import PurchaseRequisitionPdfImport from './PurchaseRequisitionPdfImport';
@@ -183,9 +181,10 @@ const OrderManagement = () => {
   const [requisitionSort, setRequisitionSort] = useState({ key: 'created_at', direction: 'desc' });
   const [requisitionPage, setRequisitionPage] = useState(1);
   const [requisitionPageSize, setRequisitionPageSize] = useState(25);
+  const [selectedRequisitionIds, setSelectedRequisitionIds] = useState([]);
+  const [batchActionLoading, setBatchActionLoading] = useState(false);
   const [showAICreator, setShowAICreator] = useState(false);
   const [showPOForm, setShowPOForm] = useState(false);
-  const [showPRForm, setShowPRForm] = useState(false);
   const [showPRExcelImport, setShowPRExcelImport] = useState(false);
   const [showPRPdfImport, setShowPRPdfImport] = useState(false);
   const [showPOExcelImport, setShowPOExcelImport] = useState(false);
@@ -200,7 +199,6 @@ const OrderManagement = () => {
   const [projects, setProjects] = useState([]);  // Smart project lookup for PO creation
   // Soft-coded edit state - track which record is being edited
   const [editingOrder, setEditingOrder] = useState(null);
-  const [editingRequisition, setEditingRequisition] = useState(null);
 
   const pageControls = usePageControls({
     autoRefreshInterval: 60,
@@ -422,10 +420,12 @@ const OrderManagement = () => {
     const vendorName = order?.vendor_name || '';
     const status = order?.status || '';
     const vendorId = order?.vendor?.toString() || '';
+    const deliveryDate = order?.delivery_date || order?.expected_delivery;
+    const isOverdue = Boolean(deliveryDate && status !== 'completed' && new Date(deliveryDate) < new Date());
     
     const matchesSearch = poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          vendorName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || status === filterStatus;
+    const matchesStatus = filterStatus === 'all' || (filterStatus === 'overdue' ? isOverdue : status === filterStatus);
     const matchesVendor = filterVendor === 'all' || vendorId === filterVendor;
     return matchesSearch && matchesStatus && matchesVendor;
   }).sort((a, b) => {
@@ -503,6 +503,46 @@ const OrderManagement = () => {
     requisitionPageStart + requisitionPageSize,
   );
 
+  const selectedRequisitions = requisitions.filter(req => selectedRequisitionIds.includes(String(req.id)));
+  const visibleRequisitionIds = paginatedRequisitions.map(req => String(req.id));
+  const allVisibleRequisitionsSelected = visibleRequisitionIds.length > 0
+    && visibleRequisitionIds.every(id => selectedRequisitionIds.includes(id));
+
+  const toggleRequisitionSelection = (requisitionId) => {
+    const id = String(requisitionId);
+    setSelectedRequisitionIds(current => (
+      current.includes(id) ? current.filter(item => item !== id) : [...current, id]
+    ));
+  };
+
+  const toggleVisibleRequisitionSelection = () => {
+    setSelectedRequisitionIds(current => {
+      if (allVisibleRequisitionsSelected) {
+        return current.filter(id => !visibleRequisitionIds.includes(id));
+      }
+      return [...new Set([...current, ...visibleRequisitionIds])];
+    });
+  };
+
+  const activeAssignedStage = (requisition) => {
+    const workflow = Array.isArray(requisition?.approval_workflow_config)
+      ? requisition.approval_workflow_config
+      : (Array.isArray(requisition?.approval_hierarchy) ? requisition.approval_hierarchy : []);
+    const pending = workflow.filter(stage => ['pending', 'in_review', 'under_review'].includes(String(stage?.status || 'pending').toLowerCase()));
+    if (!pending.length || !currentUserId) return null;
+    const levelOf = (stage, index) => Number.isFinite(Number(stage?.level)) ? Number(stage.level) : index + 1;
+    const activeLevel = Math.min(...pending.map((stage, index) => levelOf(stage, index)));
+    return pending.find((stage, index) => (
+      levelOf(stage, index) === activeLevel
+      && String(stage?.user_id || stage?.approver_id) === String(currentUserId)
+    )) || null;
+  };
+
+  const batchApprovableRequisitions = selectedRequisitions.filter(req => (
+    !['draft', 'approved', 'rejected', 'converted', 'cancelled'].includes(req.status)
+    && activeAssignedStage(req)
+  ));
+
   useEffect(() => {
     setRequisitionPage(1);
   }, [searchTerm, filterStatus, filterPriority, filterType, requisitionPageSize]);
@@ -511,27 +551,61 @@ const OrderManagement = () => {
     setViewMode('list');
   }, [activeTab]);
 
-  const exportRequisitionsToExcel = () => {
-    const rows = filteredRequisitions.map((req, rowIndex) => Object.fromEntries(
+  const exportRequisitionRowsToExcel = (requisitionRows, filenameSuffix = '') => {
+    const rows = requisitionRows.map((req, rowIndex) => Object.fromEntries(
       PR_REGISTER_COLUMNS.map(([column]) => [column, getPRRegisterValue(req, column, rowIndex)]),
     ));
     const worksheet = XLSX.utils.json_to_sheet(rows);
     worksheet['!cols'] = PR_REGISTER_COLUMNS.map(([, width]) => ({ width }));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Recommendations');
-    XLSX.writeFile(workbook, `RADAI_Purchase_Requisitions_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(workbook, `RADAI_Purchase_Requisitions${filenameSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const exportRequisitionsToExcel = () => exportRequisitionRowsToExcel(filteredRequisitions);
+
+  const exportOrdersToExcel = () => {
+    const rows = filteredOrders.map(order => Object.fromEntries(
+      PO_REGISTER_COLUMNS.map(([column]) => [column, getPORegisterValue(order, column)]),
+    ));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = PO_REGISTER_COLUMNS.map(([, width]) => ({ width }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Orders');
+    XLSX.writeFile(workbook, `RADAI_Purchase_Orders_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const exportSelectedRequisitions = () => {
+    if (!selectedRequisitions.length) return;
+    exportRequisitionRowsToExcel(selectedRequisitions, '_Selected');
+  };
+
+  const approveSelectedRequisitions = async () => {
+    if (!batchApprovableRequisitions.length || batchActionLoading) return;
+    const confirmed = window.confirm(
+      `Approve ${batchApprovableRequisitions.length} selected Purchase Recommendation${batchApprovableRequisitions.length === 1 ? '' : 's'} assigned to your active stage?`
+    );
+    if (!confirmed) return;
+
+    setBatchActionLoading(true);
+    const results = await Promise.allSettled(batchApprovableRequisitions.map(req => (
+      apiClient.post(`/procurement/requisitions/${req.id}/process_dynamic_approval/`, { signature: '' })
+    )));
+    const succeededIds = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') succeededIds.push(String(batchApprovableRequisitions[index].id));
+    });
+    const failedCount = results.length - succeededIds.length;
+    setSelectedRequisitionIds(current => current.filter(id => !succeededIds.includes(id)));
+    await fetchRequisitions();
+    setBatchActionLoading(false);
+    alert(`${succeededIds.length} approved${failedCount ? `; ${failedCount} could not be approved and remain selected.` : '.'}`);
   };
 
   const handleOrderCreated = async (orderData) => {
     console.log('Creating order with AI data:', orderData);
     // After successful creation, refresh order list
     await fetchOrders();
-  };
-
-  const handleRequisitionCreated = async (reqData) => {
-    console.log('Creating requisition with AI data:', reqData);
-    // After successful creation, refresh requisition list
-    await fetchRequisitions();
   };
 
   /**
@@ -610,9 +684,7 @@ const OrderManagement = () => {
       return;
     }
     
-    // Set the requisition to edit and open the form
-    setEditingRequisition(requisition);
-    setShowPRForm(true);
+    navigate(`/procurement/requisitions/${requisition.id}/edit`);
   };
 
   /**
@@ -906,148 +978,86 @@ const OrderManagement = () => {
       const selectedCardClass = (cardKey) => activeOrderCard === cardKey
         ? 'ring-4 ring-indigo-300 ring-offset-2'
         : '';
+      const percentage = (value, total) => total > 0 ? Math.round((value / total) * 100) : 0;
+      const orderShares = {
+        draft: percentage(stats.draft, stats.total),
+        sent: percentage(stats.sent, stats.total),
+        acknowledged: percentage(stats.acknowledged, stats.total),
+        overdue: percentage(stats.overdue, stats.total),
+        completed: percentage(stats.completed, stats.total),
+        topVendor: percentage(stats.topVendorOrders, stats.total),
+      };
+      const kpiCardClass = 'min-h-[104px] w-full overflow-hidden rounded-xl border-2 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2';
+      const kpiIconClass = 'grid h-9 w-9 shrink-0 place-items-center rounded-lg shadow-sm';
+      const kpiValueClass = 'text-2xl font-bold leading-none tabular-nums';
+
+      const operationalCards = [
+        { key: 'draft', status: 'draft', label: 'Draft', value: stats.draft, share: orderShares.draft, icon: ClockIcon, iconClass: 'from-slate-400 to-slate-500', textClass: 'text-slate-500', trackClass: 'bg-slate-200', barClass: 'from-slate-400 to-slate-500' },
+        { key: 'sent', status: 'sent', label: 'Sent', value: stats.sent, share: orderShares.sent, icon: PaperAirplaneIcon, iconClass: 'from-blue-400 to-blue-600', textClass: 'text-blue-600', trackClass: 'bg-blue-100', barClass: 'from-blue-400 to-blue-600' },
+        { key: 'acknowledged', status: 'acknowledged', label: 'Acknowledged', value: stats.acknowledged, share: orderShares.acknowledged, icon: DocumentCheckIcon, iconClass: 'from-amber-400 to-amber-500', textClass: 'text-amber-600', trackClass: 'bg-amber-100', barClass: 'from-amber-400 to-amber-500' },
+        { key: 'overdue', status: 'overdue', label: 'Overdue', value: stats.overdue, share: orderShares.overdue, icon: ExclamationTriangleIcon, iconClass: 'from-rose-400 to-rose-600', textClass: 'text-rose-600', trackClass: 'bg-rose-100', barClass: 'from-rose-400 to-rose-600' },
+        { key: 'completed', status: 'completed', label: 'Completed', value: stats.completed, share: orderShares.completed, icon: CheckCircleIcon, iconClass: 'from-emerald-400 to-emerald-600', textClass: 'text-emerald-600', trackClass: 'bg-emerald-100', barClass: 'from-emerald-400 to-emerald-600' },
+      ];
 
       return (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6 mb-6">
-        <button type="button" onClick={() => applyCardFilter('total', 'all')} aria-pressed={activeOrderCard === 'total'} className={`w-full text-left bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${selectedCardClass('total')}`}>
-          <div className="p-6 relative">
-            <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-            <div className="relative">
-              <div className="flex items-center justify-between mb-2">
-                <ShoppingCartIcon className="h-8 w-8 text-white/80" />
-                <div className="text-xs font-semibold text-white/60 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm">
-                  Total
+        <div className="mb-3 grid grid-cols-1 items-stretch gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm xl:grid-cols-[minmax(190px,1.05fr)_minmax(0,5fr)_minmax(190px,1.05fr)]">
+          <button type="button" onClick={() => applyCardFilter('total', 'all')} aria-pressed={activeOrderCard === 'total'} className={`${kpiCardClass} border-indigo-500 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 ${selectedCardClass('total')}`}>
+            <div className="relative flex h-full min-h-[100px] flex-col justify-between p-3">
+              <div className="absolute right-0 top-0 -mr-4 -mt-4 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
+              <div className="relative flex items-start justify-between">
+                <div className={`${kpiIconClass} bg-white/15`}><ShoppingCartIcon className="h-5 w-5 text-white" /></div>
+                <div className="min-w-0 text-right">
+                  <div className={`${kpiValueClass} text-white`}>{stats.total}</div>
+                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-white/80">Purchase Orders</div>
                 </div>
               </div>
-              <div className="text-4xl font-bold text-white mb-1">{stats.total}</div>
-              <div className="text-sm text-white/80 font-medium">Purchase Orders</div>
-              <div className="mt-3 border-t border-white/20 pt-3">
-                <div className="text-xs font-semibold text-white">Top Vendor</div>
-                <div className="mt-1 truncate text-xs text-white/75" title={stats.topVendorName}>
-                  {stats.topVendorOrders} order{stats.topVendorOrders === 1 ? '' : 's'} with {stats.topVendorName}
+              <div className="relative">
+                <div className="mb-1 flex h-3 items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-wide text-white/70">
+                  <span className="truncate" title={stats.topVendorName}>Top vendor · {stats.topVendorName}</span><span>{orderShares.topVendor}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-white/70 transition-all duration-500" style={{ width: `${orderShares.topVendor}%` }} /></div>
+              </div>
+            </div>
+          </button>
+
+          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+            {operationalCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <button key={card.key} type="button" onClick={() => applyCardFilter(card.key, card.status)} aria-pressed={activeOrderCard === card.key} className={`${kpiCardClass} bg-white hover:border-indigo-200 ${activeOrderCard === card.key ? 'border-indigo-300' : 'border-gray-100'} ${selectedCardClass(card.key)}`}>
+                  <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className={`${kpiIconClass} bg-gradient-to-br ${card.iconClass}`}><Icon className="h-5 w-5 text-white" /></div>
+                      <div className="min-w-0 text-right">
+                        <div className={`${kpiValueClass} text-slate-900`}>{card.value}</div>
+                        <div className={`mt-1 h-4 whitespace-nowrap text-[11px] font-medium ${card.textClass}`}>{card.label}</div>
+                      </div>
+                    </div>
+                    <div className={`mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide ${card.textClass}`}><span>Portfolio share</span><span>{card.share}%</span></div>
+                    <div className={`h-1.5 w-full overflow-hidden rounded-full ${card.trackClass}`}><div className={`h-full rounded-full bg-gradient-to-r transition-all duration-500 ${card.barClass}`} style={{ width: `${card.share}%` }} /></div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <button type="button" onClick={() => applyCardFilter('value', 'all')} aria-pressed={activeOrderCard === 'value'} className={`${kpiCardClass} border-cyan-400 bg-gradient-to-br from-teal-400 via-cyan-500 to-blue-500 ${selectedCardClass('value')}`}>
+            <div className="relative flex h-full min-h-[100px] flex-col justify-between p-3">
+              <div className="absolute bottom-0 left-0 -mb-4 -ml-4 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
+              <div className="relative flex items-start justify-between">
+                <div className={`${kpiIconClass} bg-white/15`}><CurrencyDollarIcon className="h-5 w-5 text-white" /></div>
+                <div className="min-w-0 text-right">
+                  <div className="text-xl font-bold leading-none tabular-nums text-white">{formatCurrency(stats.totalValue, 'AED')}</div>
+                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-white/80">Total Order Value</div>
                 </div>
               </div>
-            </div>
-          </div>
-        </button>
-
-        <button type="button" onClick={() => applyCardFilter('draft', 'draft')} aria-pressed={activeOrderCard === 'draft'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-indigo-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${activeOrderCard === 'draft' ? 'border-indigo-300' : 'border-gray-100'} ${selectedCardClass('draft')}`}>
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-shrink-0 bg-gradient-to-br from-gray-400 to-gray-500 rounded-xl p-3 shadow-md">
-                <ClockIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-gray-900">{stats.draft}</div>
-                <div className="text-xs text-gray-500 font-medium mt-1">Draft</div>
+              <div className="relative">
+                <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-white/80"><span className="rounded-full bg-white/15 px-1.5 text-[8px] leading-3 text-white">Portfolio</span><span>{stats.total} orders</span></div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full w-full rounded-full bg-white/70" /></div>
               </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-gray-400 to-gray-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${stats.total > 0 ? (stats.draft / stats.total) * 100 : 0}%` }}
-              />
-            </div>
-            <div className="mt-3 border-t border-gray-100 pt-3">
-              <div className="text-xs font-semibold text-amber-700">Orders Awaiting Action</div>
-              <div className="mt-1 text-xs leading-4 text-gray-500">
-                {stats.awaitingAction} order{stats.awaitingAction === 1 ? '' : 's'} pending approval or submission
-              </div>
-            </div>
-          </div>
-        </button>
-
-        <button type="button" onClick={() => applyCardFilter('sent', 'sent')} aria-pressed={activeOrderCard === 'sent'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-blue-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${activeOrderCard === 'sent' ? 'border-blue-300' : 'border-gray-100'} ${selectedCardClass('sent')}`}>
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-shrink-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl p-3 shadow-md">
-                <PaperAirplaneIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-gray-900">{stats.sent}</div>
-                <div className="text-xs text-blue-600 font-medium mt-1">Sent</div>
-              </div>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${stats.total > 0 ? (stats.sent / stats.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </button>
-
-        <button type="button" onClick={() => applyCardFilter('acknowledged', 'acknowledged')} aria-pressed={activeOrderCard === 'acknowledged'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-yellow-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${activeOrderCard === 'acknowledged' ? 'border-yellow-300' : 'border-gray-100'} ${selectedCardClass('acknowledged')}`}>
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-shrink-0 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl p-3 shadow-md">
-                <DocumentCheckIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-gray-900">{stats.acknowledged}</div>
-                <div className="text-xs text-yellow-600 font-medium mt-1">Acknowledged</div>
-              </div>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-yellow-400 to-amber-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${stats.total > 0 ? (stats.acknowledged / stats.total) * 100 : 0}%` }}
-              />
-            </div>
-            <div className="mt-3 border-t border-gray-100 pt-3">
-              <div className={`text-xs font-semibold ${stats.overdue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                {stats.overdue > 0 ? 'Delivery Delays' : 'Delivery Status'}
-              </div>
-              <div className="mt-1 text-xs leading-4 text-gray-500">
-                {stats.overdue > 0
-                  ? `${stats.overdue} order${stats.overdue === 1 ? '' : 's'} past expected delivery date`
-                  : 'No orders past the expected delivery date'}
-              </div>
-            </div>
-          </div>
-        </button>
-
-        <button type="button" onClick={() => applyCardFilter('completed', 'completed')} aria-pressed={activeOrderCard === 'completed'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-green-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${activeOrderCard === 'completed' ? 'border-green-300' : 'border-gray-100'} ${selectedCardClass('completed')}`}>
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-shrink-0 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl p-3 shadow-md">
-                <CheckCircleIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-gray-900">{stats.completed}</div>
-                <div className="text-xs text-green-600 font-medium mt-1">Completed</div>
-              </div>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-green-400 to-emerald-600 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </button>
-
-        <button type="button" onClick={() => applyCardFilter('value', 'all')} aria-pressed={activeOrderCard === 'value'} className={`w-full text-left bg-gradient-to-br from-teal-400 via-cyan-500 to-blue-500 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 transition-all duration-300 ${selectedCardClass('value')}`}>
-          <div className="p-6 relative">
-            <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-            <div className="relative">
-              <div className="flex items-center justify-between mb-2">
-                <CurrencyDollarIcon className="h-8 w-8 text-white/80" />
-                <div className="text-xs font-semibold text-white/60 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm">
-                  Value
-                </div>
-              </div>
-              <div className="text-3xl font-bold text-white mb-1">
-                ${(stats.totalValue / 1000).toFixed(0)}K
-              </div>
-              <div className="text-sm text-white/80 font-medium">Total Order Value</div>
-              <div className="mt-3 border-t border-white/20 pt-3 text-xs text-white/75">
-                Total value across {stats.total} purchase order{stats.total === 1 ? '' : 's'}
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
+          </button>
+        </div>
       );
     } else {
       // Requisitions stats
@@ -1072,137 +1082,158 @@ const OrderManagement = () => {
       const selectedCardClass = (cardKey) => activeRequisitionCard === cardKey
         ? 'ring-4 ring-purple-300 ring-offset-2'
         : '';
+      const percentage = (value, total) => total > 0 ? Math.round((value / total) * 100) : 0;
+      const draftShare = percentage(stats.draft, stats.total);
+      const reviewEntryRatio = percentage(stats.underReview, Math.max(0, stats.total - stats.draft));
+      const approvalYield = percentage(stats.approved + stats.converted, stats.approved + stats.converted + stats.rejected);
+      const overdueShare = percentage(stats.overdue, stats.total);
+      const rejectedShare = percentage(stats.rejected, stats.total);
+      const convertedShare = percentage(stats.converted, stats.total);
+      const kpiCardClass = 'min-h-[104px] w-full overflow-hidden rounded-xl border-2 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2';
+      const kpiIconClass = 'grid h-9 w-9 shrink-0 place-items-center rounded-lg shadow-sm';
+      const kpiValueClass = 'text-2xl font-bold leading-none tabular-nums';
 
       return (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-7 mb-6">
-          <button type="button" onClick={() => applyCardFilter('total', 'all')} aria-pressed={activeRequisitionCard === 'total'} className={`w-full text-left bg-gradient-to-br from-purple-500 via-purple-600 to-indigo-600 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${selectedCardClass('total')}`}>
-            <div className="p-6 relative">
+        <div className="mb-3 grid grid-cols-1 items-stretch gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm xl:grid-cols-[minmax(190px,1.05fr)_minmax(0,5fr)_minmax(190px,1.05fr)]">
+          <button type="button" onClick={() => applyCardFilter('total', 'all')} aria-pressed={activeRequisitionCard === 'total'} className={`${kpiCardClass} border-purple-500 bg-gradient-to-br from-purple-500 via-purple-600 to-indigo-600 ${selectedCardClass('total')}`}>
+            <div className="relative flex h-full min-h-[100px] flex-col justify-between p-3">
               <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
+              <div className="relative flex items-start justify-between">
+                <div className={`${kpiIconClass} bg-white/15`}><DocumentTextIcon className="h-5 w-5 text-white" /></div>
+                <div className="min-w-0 text-right">
+                  <div className={`${kpiValueClass} text-white`}>{stats.total}</div>
+                  <div className="mt-1 h-4 text-[11px] font-medium text-white/80">Requisitions</div>
+                </div>
+              </div>
               <div className="relative">
-                <div className="flex items-center justify-between mb-2">
-                  <DocumentTextIcon className="h-8 w-8 text-white/80" />
-                  <div className="text-xs font-semibold text-white/60 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm">
-                    Total
+                <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-white/70">
+                  <span className="inline-flex items-center gap-1"><span aria-hidden="true">↗</span> Live volume</span><span>100%</span>
                   </div>
-                </div>
-                <div className="text-4xl font-bold text-white mb-1">{stats.total}</div>
-                <div className="text-sm text-white/80 font-medium">Requisitions</div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full w-full rounded-full bg-white/70" /></div>
               </div>
             </div>
           </button>
 
-          <button type="button" onClick={() => applyCardFilter('draft', 'draft')} aria-pressed={activeRequisitionCard === 'draft'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-purple-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'draft' ? 'border-purple-300' : 'border-gray-100'} ${selectedCardClass('draft')}`}>
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex-shrink-0 bg-gradient-to-br from-gray-400 to-gray-500 rounded-xl p-3 shadow-md">
-                  <ClockIcon className="h-6 w-6 text-white" />
+          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+          <button type="button" onClick={() => applyCardFilter('draft', 'draft')} aria-pressed={activeRequisitionCard === 'draft'} className={`${kpiCardClass} bg-white hover:border-purple-200 ${activeRequisitionCard === 'draft' ? 'border-purple-300' : 'border-gray-100'} ${selectedCardClass('draft')}`}>
+            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className={`${kpiIconClass} bg-gradient-to-br from-gray-400 to-gray-500`}>
+                  <ClockIcon className="h-5 w-5 text-white" />
                 </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.draft}</div>
-                  <div className="text-xs text-gray-500 font-medium mt-1">Draft</div>
+                <div className="min-w-0 text-right">
+                  <div className={`${kpiValueClass} text-gray-900`}>{stats.draft}</div>
+                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-gray-500">Draft</div>
                 </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="mb-1 flex items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-slate-400"><span>Portfolio share</span><span>{draftShare}%</span></div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
                 <div 
-                  className="bg-gradient-to-r from-gray-400 to-gray-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.total > 0 ? (stats.draft / stats.total) * 100 : 0}%` }}
+                  className="h-1.5 rounded-full bg-gradient-to-r from-gray-400 to-gray-500 transition-all duration-500"
+                  style={{ width: `${draftShare}%` }}
                 />
               </div>
             </div>
           </button>
 
-          <button type="button" onClick={() => applyCardFilter('under_review', 'under_review')} aria-pressed={activeRequisitionCard === 'under_review'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-blue-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'under_review' ? 'border-blue-300' : 'border-gray-100'} ${selectedCardClass('under_review')}`}>
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex-shrink-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl p-3 shadow-md">
-                  <PaperAirplaneIcon className="h-6 w-6 text-white" />
+          <button type="button" onClick={() => applyCardFilter('under_review', 'under_review')} aria-pressed={activeRequisitionCard === 'under_review'} className={`${kpiCardClass} bg-white hover:border-blue-200 ${activeRequisitionCard === 'under_review' ? 'border-blue-300' : 'border-gray-100'} ${selectedCardClass('under_review')}`}>
+            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className={`${kpiIconClass} bg-gradient-to-br from-blue-400 to-blue-600`}>
+                  <PaperAirplaneIcon className="h-5 w-5 text-white" />
                 </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.underReview}</div>
-                  <div className="text-xs text-blue-600 font-medium mt-1">Under Review</div>
+                <div className="min-w-0 text-right">
+                  <div className={`${kpiValueClass} text-gray-900`}>{stats.underReview}</div>
+                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-blue-600">Under Review</div>
                 </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="mb-1 flex items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-blue-500"><span>Review entry</span><span>{reviewEntryRatio}%</span></div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-blue-100">
                 <div 
-                  className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.total > 0 ? (stats.underReview / stats.total) * 100 : 0}%` }}
+                  className="h-1.5 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
+                  style={{ width: `${reviewEntryRatio}%` }}
                 />
               </div>
             </div>
           </button>
 
-          <button type="button" onClick={() => applyCardFilter('approved', 'approved')} aria-pressed={activeRequisitionCard === 'approved'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-green-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'approved' ? 'border-green-300' : 'border-gray-100'} ${selectedCardClass('approved')}`}>
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex-shrink-0 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl p-3 shadow-md">
-                  <CheckCircleIcon className="h-6 w-6 text-white" />
+          <button type="button" onClick={() => applyCardFilter('approved', 'approved')} aria-pressed={activeRequisitionCard === 'approved'} className={`${kpiCardClass} bg-white hover:border-green-200 ${activeRequisitionCard === 'approved' ? 'border-green-300' : 'border-gray-100'} ${selectedCardClass('approved')}`}>
+            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className={`${kpiIconClass} bg-gradient-to-br from-green-400 to-emerald-600`}>
+                  <CheckCircleIcon className="h-5 w-5 text-white" />
                 </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.approved}</div>
-                  <div className="text-xs text-green-600 font-medium mt-1">Approved</div>
+                <div className="min-w-0 text-right">
+                  <div className={`${kpiValueClass} text-gray-900`}>{stats.approved}</div>
+                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-green-600">Approved</div>
                 </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="mb-1 flex items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-emerald-600"><span>Approval yield</span><span>{approvalYield}%</span></div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-emerald-100">
                 <div 
-                  className="bg-gradient-to-r from-green-400 to-emerald-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.total > 0 ? (stats.approved / stats.total) * 100 : 0}%` }}
+                  className="h-1.5 rounded-full bg-gradient-to-r from-green-400 to-emerald-600 transition-all duration-500"
+                  style={{ width: `${approvalYield}%` }}
                 />
               </div>
             </div>
           </button>
 
-          <button type="button" onClick={() => applyCardFilter('overdue', 'overdue')} aria-pressed={activeRequisitionCard === 'overdue'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-yellow-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'overdue' ? 'border-yellow-300' : 'border-gray-100'} ${selectedCardClass('overdue')}`}>
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex-shrink-0 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-xl p-3 shadow-md">
-                  <ClockIcon className="h-6 w-6 text-white" />
+          <button type="button" onClick={() => applyCardFilter('overdue', 'overdue')} aria-pressed={activeRequisitionCard === 'overdue'} className={`${kpiCardClass} bg-white hover:border-yellow-200 ${activeRequisitionCard === 'overdue' ? 'border-yellow-300' : 'border-gray-100'} ${selectedCardClass('overdue')}`}>
+            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className={`${kpiIconClass} bg-gradient-to-br from-yellow-400 to-amber-600`}>
+                  <ClockIcon className="h-5 w-5 text-white" />
                 </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.overdue}</div>
-                  <div className="text-xs text-red-600 font-medium mt-1">Overdue</div>
+                <div className="min-w-0 text-right">
+                  <div className={`${kpiValueClass} text-gray-900`}>{stats.overdue}</div>
+                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-red-600">Overdue</div>
                 </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-amber-600"><span>Portfolio share</span><span>{overdueShare}%</span></div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
                 <div
-                  className="bg-gradient-to-r from-yellow-400 to-amber-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.total > 0 ? (stats.overdue / stats.total) * 100 : 0}%` }}
+                  className="h-1.5 rounded-full bg-gradient-to-r from-yellow-400 to-amber-600 transition-all duration-500"
+                  style={{ width: `${overdueShare}%` }}
                 />
               </div>
             </div>
           </button>
 
-          <button type="button" onClick={() => applyCardFilter('rejected', 'rejected')} aria-pressed={activeRequisitionCard === 'rejected'} className={`w-full text-left bg-white overflow-hidden shadow-lg rounded-2xl border-2 hover:border-red-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${activeRequisitionCard === 'rejected' ? 'border-red-300' : 'border-gray-100'} ${selectedCardClass('rejected')}`}>
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex-shrink-0 bg-gradient-to-br from-red-400 to-red-600 rounded-xl p-3 shadow-md">
-                  <XCircleIcon className="h-6 w-6 text-white" />
+          <button type="button" onClick={() => applyCardFilter('rejected', 'rejected')} aria-pressed={activeRequisitionCard === 'rejected'} className={`${kpiCardClass} bg-white hover:border-red-200 ${activeRequisitionCard === 'rejected' ? 'border-red-300' : 'border-gray-100'} ${selectedCardClass('rejected')}`}>
+            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className={`${kpiIconClass} bg-gradient-to-br from-red-400 to-red-600`}>
+                  <XCircleIcon className="h-5 w-5 text-white" />
                 </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.rejected}</div>
-                  <div className="text-xs text-red-600 font-medium mt-1">Rejected</div>
+                <div className="min-w-0 text-right">
+                  <div className={`${kpiValueClass} text-gray-900`}>{stats.rejected}</div>
+                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-red-600">Rejected</div>
                 </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-red-500"><span>Portfolio share</span><span>{rejectedShare}%</span></div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
                 <div 
-                  className="bg-gradient-to-r from-red-400 to-red-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.total > 0 ? (stats.rejected / stats.total) * 100 : 0}%` }}
+                  className="h-1.5 rounded-full bg-gradient-to-r from-red-400 to-red-600 transition-all duration-500"
+                  style={{ width: `${rejectedShare}%` }}
                 />
               </div>
             </div>
           </button>
+          </div>
 
-          <button type="button" onClick={() => applyCardFilter('converted', 'converted')} aria-pressed={activeRequisitionCard === 'converted'} className={`w-full text-left bg-gradient-to-br from-purple-400 via-purple-500 to-indigo-500 overflow-hidden shadow-xl rounded-2xl transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-300 ${selectedCardClass('converted')}`}>
-            <div className="p-6 relative">
+          <button type="button" onClick={() => applyCardFilter('converted', 'converted')} aria-pressed={activeRequisitionCard === 'converted'} className={`${kpiCardClass} border-purple-400 bg-gradient-to-br from-purple-400 via-purple-500 to-indigo-500 ${selectedCardClass('converted')}`}>
+            <div className="relative flex h-full min-h-[100px] flex-col justify-between p-3">
               <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-              <div className="relative">
-                <div className="flex items-center justify-between mb-2">
-                  <ShoppingCartIcon className="h-8 w-8 text-white/80" />
-                  <div className="text-xs font-semibold text-white/60 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm">
-                    Success
-                  </div>
+              <div className="relative flex items-start justify-between">
+                <div className={`${kpiIconClass} bg-white/15`}><ShoppingCartIcon className="h-5 w-5 text-white" /></div>
+                <div className="min-w-0 text-right">
+                  <div className={`${kpiValueClass} text-white`}>{stats.converted}</div>
+                  <div className="mt-1 h-4 text-[11px] font-medium text-white/80">Converted to PO</div>
                 </div>
-                <div className="text-4xl font-bold text-white mb-1">{stats.converted}</div>
-                <div className="text-sm text-white/80 font-medium">Converted to PO</div>
+              </div>
+              <div className="relative">
+                <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-white/80"><span className="rounded-full bg-white/15 px-1.5 text-[8px] leading-3 text-white">Completed</span><span>{convertedShare}%</span></div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-white/70 transition-all duration-500" style={{ width: `${convertedShare}%` }} /></div>
               </div>
             </div>
           </button>
@@ -1213,43 +1244,31 @@ const OrderManagement = () => {
 
   return (
     <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
-      <div className="py-6" style={pageControls.styles.content}>
+      <div className="py-3" style={pageControls.styles.content}>
         {/* Header */}
         <div className="w-full px-3 sm:px-4 lg:px-6">
-          <div className="flex justify-between items-center mb-6">
+          <div className="mb-3 flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+              <h1 className="flex items-center text-2xl font-bold text-gray-900">
                 {activeTab === 'purchaseOrders' ? (
-                  <ShoppingCartIcon className="h-8 w-8 mr-3 text-indigo-600" />
+                  <ShoppingCartIcon className="mr-2 h-6 w-6 text-indigo-600" />
                 ) : (
-                  <DocumentTextIcon className="h-8 w-8 mr-3 text-purple-600" />
+                  <DocumentTextIcon className="mr-2 h-6 w-6 text-purple-600" />
                 )}
                 {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Recommendations'}
               </h1>
-              <p className="mt-2 text-sm text-gray-600 flex items-center">
-                <SparklesIcon className="h-4 w-4 mr-1 text-purple-500" />
+              <p className="mt-1 text-xs text-gray-500">
                 {activeTab === 'purchaseOrders'
-                  ? 'AI-powered procurement with smart vendor selection and order tracking'
+                  ? 'Manage vendor selection, purchase orders, and delivery tracking'
                   : 'Create, review, approve, and track purchase recommendations in one workspace'}
               </p>
             </div>
-            
-            <PageControlButtons 
-              isFullscreen={pageControls.isFullscreen}
-              toggleFullscreen={pageControls.toggleFullscreen}
-              sidebarVisible={pageControls.sidebarVisible}
-              toggleSidebar={pageControls.toggleSidebar}
-              autoRefreshEnabled={pageControls.autoRefreshEnabled}
-              toggleAutoRefresh={pageControls.toggleAutoRefresh}
-              isRefreshing={pageControls.isRefreshing}
-              manualRefresh={pageControls.manualRefresh}
-            />
           </div>
         </div>
 
         {/* Tab Navigation - Modern Pill Design */}
-        <div className="w-full px-3 sm:px-4 lg:px-6 mt-8">
-          <div className="bg-white rounded-2xl shadow-sm p-2 inline-flex space-x-2">
+        <div className="w-full px-3 sm:px-4 lg:px-6">
+          <div className="inline-flex space-x-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
             {orderTabs.map((tab) => {
               const isActive = activeTab === tab.key;
               const Icon = tab.icon === 'ShoppingCartIcon' ? ShoppingCartIcon : DocumentTextIcon;
@@ -1263,20 +1282,20 @@ const OrderManagement = () => {
                   key={tab.key}
                   onClick={() => handleTabChange(tab.key)}
                   className={`
-                    relative group flex items-center px-6 py-3 rounded-xl font-medium text-sm transition-all duration-300 transform
+                    relative group flex items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-200
                     ${isActive
-                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg scale-105'
+                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     }
                   `}
                 >
                   <Icon className={`
-                    h-5 w-5 mr-2 transition-transform duration-300
-                    ${isActive ? 'text-white animate-pulse' : 'text-gray-400 group-hover:text-gray-600'}
+                    mr-2 h-4 w-4 transition-colors duration-200
+                    ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'}
                   `} />
                   <span className="font-semibold">{tab.label}</span>
                   <div className={`
-                    ml-3 flex items-center justify-center min-w-[28px] h-7 px-2 rounded-full text-xs font-bold transition-all duration-300
+                    ml-2 flex h-5 min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold transition-colors duration-200
                     ${isActive 
                       ? 'bg-white/20 text-white backdrop-blur-sm' 
                       : 'bg-gradient-to-br from-gray-100 to-gray-200 text-gray-700 group-hover:from-indigo-50 group-hover:to-purple-50 group-hover:text-indigo-700'
@@ -1292,9 +1311,6 @@ const OrderManagement = () => {
                       / {totalCount}
                     </div>
                   )}
-                  {isActive && (
-                    <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-12 h-1 bg-white rounded-full shadow-lg" />
-                  )}
                 </button>
               );
             })}
@@ -1302,7 +1318,7 @@ const OrderManagement = () => {
         </div>
 
         {/* Statistics */}
-        <div className="w-full px-3 sm:px-4 lg:px-6 mt-8">
+        <div className="mt-3 w-full px-3 sm:px-4 lg:px-6">
           <OrderStats />
         </div>
 
@@ -1349,11 +1365,11 @@ const OrderManagement = () => {
         )}
 
         {/* Filters and Search - Soft-coded based on active tab */}
-        <div className="w-full px-3 sm:px-4 lg:px-6 mt-8">
-          <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-5">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="sticky top-[4.75rem] z-20 mt-3 w-full px-3 sm:px-4 lg:px-6">
+          <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm lg:flex-row lg:items-end lg:gap-2 lg:overflow-x-auto">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4 lg:contents">
               {/* Search */}
-              <div className="md:col-span-2">
+              <div className="min-w-0 md:col-span-2 lg:min-w-[300px] lg:flex-1">
                 <label htmlFor="search" className="block text-xs font-semibold text-gray-700 mb-1.5">
                   {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Purchase Recommendations'}
                 </label>
@@ -1377,7 +1393,7 @@ const OrderManagement = () => {
               </div>
 
               {/* Status Filter */}
-              <div>
+              <div className="lg:w-[150px] lg:shrink-0">
                 <label htmlFor="status" className="block text-xs font-semibold text-gray-700 mb-1.5">
                   Status
                 </label>
@@ -1402,6 +1418,7 @@ const OrderManagement = () => {
                       <option value="sent">Sent</option>
                       <option value="acknowledged">Acknowledged</option>
                       <option value="in_progress">In Progress</option>
+                      <option value="overdue">Overdue</option>
                       <option value="completed">Completed</option>
                       <option value="cancelled">Cancelled</option>
                     </>
@@ -1423,7 +1440,7 @@ const OrderManagement = () => {
 
               {/* Conditional Filters - Soft-coded based on tab */}
               {activeTab === 'purchaseOrders' ? (
-                <div>
+                <div className="lg:w-[170px] lg:shrink-0">
                   <label htmlFor="vendor" className="block text-xs font-semibold text-gray-700 mb-1.5">
                     Vendor
                   </label>
@@ -1442,7 +1459,7 @@ const OrderManagement = () => {
                   </select>
                 </div>
               ) : (
-                <div>
+                <div className="lg:w-[150px] lg:shrink-0">
                   <label htmlFor="priority" className="block text-xs font-semibold text-gray-700 mb-1.5">
                     Priority
                   </label>
@@ -1461,16 +1478,8 @@ const OrderManagement = () => {
               )}
             </div>
 
-            <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-gray-500">
-                {activeTab === 'purchaseOrders' 
-                  ? `Showing ${filteredOrders.length} of ${Array.isArray(orders) ? orders.length : 0} purchase orders`
-                  : filteredRequisitions.length > 0
-                    ? `Showing ${requisitionPageStart + 1}-${Math.min(requisitionPageStart + requisitionPageSize, filteredRequisitions.length)} of ${filteredRequisitions.length} filtered requisitions (${Array.isArray(requisitions) ? requisitions.length : 0} total)`
-                    : `Showing 0 of ${Array.isArray(requisitions) ? requisitions.length : 0} requisitions`
-                }
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-2 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between lg:contents">
+              <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:shrink-0 lg:flex-nowrap">
                 {activeTab === 'purchaseOrders' && (
                   <>
                     <button
@@ -1486,6 +1495,13 @@ const OrderManagement = () => {
                       className="inline-flex h-9 items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
                     >
                       <ArrowUpTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Import Excel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportOrdersToExcel}
+                      className="inline-flex h-9 items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      <ArrowDownTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Export Excel
                     </button>
                   </>
                 )}
@@ -1515,7 +1531,7 @@ const OrderManagement = () => {
                   </>
                 )}
                 {/* View Toggle - Soft-coded */}
-                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                <div className="order-last inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
                   <button
                     type="button"
                     onClick={() => setViewMode('card')}
@@ -1546,7 +1562,7 @@ const OrderManagement = () => {
                 
                 <button
                   type="button"
-                  onClick={() => activeTab === 'purchaseOrders' ? setShowPOForm(true) : setShowPRForm(true)}
+                  onClick={() => activeTab === 'purchaseOrders' ? setShowPOForm(true) : navigate('/procurement/requisitions/new')}
                   className="inline-flex h-9 items-center px-3.5 border border-transparent text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
                   <PlusIcon className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
@@ -1557,8 +1573,31 @@ const OrderManagement = () => {
           </div>
         </div>
 
+        {activeTab === 'purchaseRequisitions' && selectedRequisitions.length > 0 && (
+          <div className="sticky bottom-4 z-30 mt-3 w-full px-3 sm:px-4 lg:px-6">
+            <div className="mx-auto flex max-w-4xl flex-col gap-3 rounded-2xl border border-indigo-300 bg-slate-900 px-4 py-3 text-white shadow-2xl sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <span className="grid h-8 min-w-8 place-items-center rounded-lg bg-indigo-500 px-2 text-sm font-bold">{selectedRequisitions.length}</span>
+                <div>
+                  <p className="text-sm font-semibold">Purchase Recommendations selected</p>
+                  <p className="text-[11px] text-slate-300">{batchApprovableRequisitions.length} assigned to your active approval stage</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button type="button" onClick={exportSelectedRequisitions} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 text-xs font-semibold hover:bg-white/20">
+                  <ArrowDownTrayIcon className="h-4 w-4" /> Export selected
+                </button>
+                <button type="button" onClick={approveSelectedRequisitions} disabled={!batchApprovableRequisitions.length || batchActionLoading} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-bold text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40">
+                  <CheckCircleIcon className="h-4 w-4" /> {batchActionLoading ? 'Approving…' : `Approve assigned (${batchApprovableRequisitions.length})`}
+                </button>
+                <button type="button" onClick={() => setSelectedRequisitionIds([])} className="h-9 rounded-lg px-3 text-xs font-semibold text-slate-300 hover:bg-white/10 hover:text-white">Clear</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Content - Conditional based on active tab */}
-        <div className="w-full px-3 sm:px-4 lg:px-6 mt-8">
+        <div className="mt-4 w-full px-3 sm:px-4 lg:px-6">
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -1580,11 +1619,11 @@ const OrderManagement = () => {
               <div className="mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowAICreator(true)}
+                  onClick={() => setShowPOForm(true)}
                   className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
                 >
-                  <SparklesIcon className="-ml-1 mr-2 h-5 w-5" />
-                  Create with AI Assistant
+                  <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+                  Create Purchase Order
                 </button>
               </div>
             </div>
@@ -1726,81 +1765,95 @@ const OrderManagement = () => {
             </div>
           ) : (
             // List View for Purchase Orders
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-xl font-bold tracking-tight text-slate-900">Purchase Orders</h3>
-                  <p className="mt-1 text-xs text-slate-500">Track suppliers, order values, delivery dates, and fulfilment status.</p>
+            <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
+              <div className="flex flex-col gap-2 border-b border-slate-300 bg-slate-50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-8 w-8 place-items-center rounded-md bg-indigo-700 text-white shadow-sm">
+                    <ShoppingCartIcon className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-900">Purchase Orders Register</h3>
+                    <p className="text-[11px] text-slate-500">Corporate spreadsheet view</p>
+                  </div>
                 </div>
-                <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                <span className="inline-flex w-fit items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold tabular-nums text-slate-600">
                   {filteredOrders.length} record{filteredOrders.length === 1 ? '' : 's'}
                 </span>
               </div>
-              <div className="max-h-[68vh] overflow-auto">
-              <table className="w-full min-w-[1280px] table-fixed border-separate border-spacing-0">
+              <div className="max-h-[72vh] overflow-auto bg-slate-100">
+              <table className="w-full min-w-[1680px] table-fixed border-separate border-spacing-0 bg-white font-['Segoe_UI',Inter,Arial,sans-serif] text-xs text-slate-700">
                 <colgroup>
-                  <col className="w-[145px]" />
-                  <col className="w-[130px]" />
-                  <col className="w-[170px]" />
-                  <col className="w-[220px]" />
-                  <col className="w-[165px]" />
-                  <col className="w-[115px]" />
+                  <col className="w-[48px]" />
+                  <col className="w-[160px]" />
+                  <col className="w-[150px]" />
+                  <col className="w-[190px]" />
+                  <col className="w-[260px]" />
+                  <col className="w-[200px]" />
                   <col className="w-[120px]" />
-                  <col className="w-[135px]" />
-                  <col className="w-[115px]" />
-                  <col className="w-[170px]" />
+                  <col className="w-[130px]" />
+                  <col className="w-[145px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[155px]" />
                 </colgroup>
-                <thead className="sticky top-0 z-20 bg-slate-200/95 backdrop-blur">
-                  <tr>
+                <thead className="text-slate-700">
+                  <tr className="h-6 bg-slate-100 text-[10px] font-semibold text-slate-500">
+                    <th className="sticky left-0 top-0 z-50 border-b border-r border-slate-300 bg-slate-200" aria-label="Row number" />
+                    {['A','B','C','D','E','F','G','H','I','J'].map((letter, index) => (
+                      <th key={letter} className={`sticky top-0 z-30 border-b border-r border-slate-300 bg-slate-100 text-center ${index === 0 ? 'left-[48px] z-40' : index === 9 ? 'right-0 z-40 border-l shadow-[-4px_0_8px_rgba(15,23,42,0.08)]' : ''}`}>{letter}</th>
+                    ))}
+                  </tr>
+                  <tr className="h-10">
+                    <th scope="col" className="sticky left-0 top-6 z-50 border-b border-r border-slate-300 bg-slate-200 px-1 py-2.5 text-center text-xs font-semibold text-slate-700">#</th>
                     {['PO Number', 'PR Number', 'Supplier', 'Summary', 'Project / Department', 'Order Date', 'Delivery Date', 'Amount', 'Status'].map((column) => (
-                      <th key={column} scope="col" className="border-b border-r border-slate-300 bg-slate-200 px-4 py-3.5 text-left text-sm font-bold uppercase tracking-wide text-slate-700">
+                      <th key={column} scope="col" className={`sticky top-6 z-30 border-b border-r border-slate-300 bg-slate-200 px-2.5 py-2.5 text-left text-xs font-semibold tracking-normal text-slate-700 ${column === 'PO Number' ? 'left-[48px] z-40' : ''}`}>
                         {column}
                       </th>
                     ))}
-                    <th scope="col" className="sticky right-0 z-30 border-b border-l border-indigo-200 bg-indigo-50 px-4 py-3.5 text-right text-sm font-bold uppercase tracking-wide text-indigo-700 shadow-[-6px_0_12px_rgba(15,23,42,0.04)]">Actions</th>
+                    <th scope="col" className="sticky right-0 top-6 z-40 border-b border-l border-slate-300 bg-slate-200 px-2.5 py-2.5 text-center text-xs font-semibold tracking-normal text-slate-700 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white">
-                  {paginatedOrders.map((order) => {
+                  {paginatedOrders.map((order, rowIndex) => {
                     const summary = order.description || order.title || 'Untitled order';
                     const projectDepartment = order.project_number || order.project_display || '—';
                     const orderDate = order.po_date || order.created_at;
                     const deliveryDate = order.expected_delivery || order.delivery_date;
                     return (
-                      <tr key={order.id} className="group transition-colors hover:bg-slate-50">
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5">
-                          <button type="button" onClick={() => handleViewOrderDetails(order.id)} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
+                      <tr key={order.id} className={`group h-11 transition-colors hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}`}>
+                        <td className="sticky left-0 z-20 border-b border-r border-slate-300 bg-slate-100 px-1 text-center text-[11px] font-medium tabular-nums text-slate-500 group-hover:bg-blue-100">{orderPageStart + rowIndex + 1}</td>
+                        <td className={`sticky left-[48px] z-20 border-b border-r border-slate-300 px-2.5 py-2 align-middle group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                          <button type="button" onClick={() => handleViewOrderDetails(order.id)} className="whitespace-nowrap text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
                             {order.po_number || `PO-${order.id}`}
                           </button>
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
                           <p className="truncate" title={order.pr_number || ''}>{order.pr_number || '—'}</p>
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
                           <p className="truncate" title={order.vendor_name || ''}>{order.vendor_name || 'No supplier assigned'}</p>
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5">
-                          <p className="truncate text-sm font-medium text-slate-800" title={summary}>{summary}</p>
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2">
+                          <p className="truncate text-xs font-medium text-slate-800" title={summary}>{summary}</p>
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
-                          <p className="line-clamp-2" title={projectDepartment}>{projectDepartment}</p>
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                          <p className="truncate" title={projectDepartment}>{projectDepartment}</p>
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal tabular-nums text-slate-600">
                           {orderDate ? new Date(orderDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal tabular-nums text-slate-600">
                           {deliveryDate ? new Date(deliveryDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-sm font-semibold tabular-nums text-slate-800">
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-right text-xs font-semibold tabular-nums text-slate-800">
                           {formatCurrency(order.total_amount, order.currency || 'AED')}
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5">{getStatusBadge(order.status)}</td>
-                        <td className="sticky right-0 border-b border-l border-slate-200 bg-white px-3 py-3.5 shadow-[-6px_0_12px_rgba(15,23,42,0.04)] group-hover:bg-slate-50">
-                          <div className="flex items-center justify-end gap-1.5">
+                        <td className="border-b border-r border-slate-300 px-2 py-1.5">{getStatusBadge(order.status)}</td>
+                        <td className={`sticky right-0 border-b border-l border-slate-300 px-2 py-1.5 shadow-[-4px_0_8px_rgba(15,23,42,0.08)] group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                          <div className="flex items-center justify-center gap-1">
                             <button
                               type="button"
                               onClick={() => handleViewOrderDetails(order.id)}
-                              className="inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 p-1.5 text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-100"
+                              className="grid h-7 w-7 place-items-center rounded border border-sky-300 bg-white text-sky-700 transition hover:bg-sky-100"
                               title="View"
                             >
                               <EyeIcon className="h-4 w-4" />
@@ -1809,7 +1862,7 @@ const OrderManagement = () => {
                               <button
                                 type="button"
                                 onClick={() => handleEditOrder(order)}
-                                className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                                className="grid h-7 w-7 place-items-center rounded border border-amber-300 bg-white text-amber-700 transition hover:bg-amber-100"
                                 title="Edit"
                               >
                                 <PencilIcon className="h-4 w-4" />
@@ -1819,7 +1872,7 @@ const OrderManagement = () => {
                               <button
                                 type="button"
                                 onClick={() => handleSendOrder(order)}
-                                className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100"
+                                className="grid h-7 w-7 place-items-center rounded border border-emerald-300 bg-white text-emerald-700 transition hover:bg-emerald-100"
                                 title="Send"
                               >
                                 <PaperAirplaneIcon className="h-4 w-4" />
@@ -1829,7 +1882,7 @@ const OrderManagement = () => {
                               <button
                                 type="button"
                                 onClick={() => handleDeleteOrder(order)}
-                                className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 p-1.5 text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-100"
+                                className="grid h-7 w-7 place-items-center rounded border border-rose-300 bg-white text-rose-700 transition hover:bg-rose-100"
                                 title="Delete purchase order"
                                 aria-label={`Delete purchase order ${order.po_number || order.id}`}
                               >
@@ -1859,7 +1912,7 @@ const OrderManagement = () => {
               <div className="mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowAICreator(true)}
+                  onClick={() => navigate('/procurement/requisitions/new')}
                   className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
                 >
                   <SparklesIcon className="-ml-1 mr-2 h-5 w-5" />
@@ -1874,9 +1927,14 @@ const OrderManagement = () => {
                   ? Math.floor((new Date() - new Date(req.created_date)) / (1000 * 60 * 60 * 24))
                   : 0;
                 const isUrgent = req.priority === 'urgent' || req.priority === 'high';
+                const approvalStages = Array.isArray(req.approval_workflow_config)
+                  ? req.approval_workflow_config
+                  : (Array.isArray(req.approval_hierarchy) ? req.approval_hierarchy : []);
+                const supplierTag = req.supplier_name || req.vendor_name || req.vendor_details?.name;
+                const isSelected = selectedRequisitionIds.includes(String(req.id));
                 
                 return (
-                <div key={req.id} className="group bg-white overflow-hidden shadow-lg rounded-2xl hover:shadow-2xl transition-all duration-300 border-2 border-gray-100 hover:border-purple-400 transform hover:-translate-y-1">
+                <div key={req.id} className={`group overflow-hidden rounded-2xl border-2 bg-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:border-purple-400 hover:shadow-2xl ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-gray-100'}`}>
                   {/* Status Bar */}
                   <div className={`h-2 ${
                     req.status === 'converted' ? 'bg-gradient-to-r from-purple-400 to-indigo-500' :
@@ -1905,7 +1963,12 @@ const OrderManagement = () => {
                           </div>
                         </div>
                       </div>
-                      {getStatusBadge(req.status)}
+                      <div className="flex items-center gap-2">
+                        <label className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg border border-slate-200 bg-white shadow-sm" title="Select recommendation">
+                          <input type="checkbox" checked={isSelected} onChange={() => toggleRequisitionSelection(req.id)} className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                        </label>
+                        {getStatusBadge(req.status)}
+                      </div>
                     </div>
 
                     {/* Requisition Details Grid */}
@@ -1967,6 +2030,16 @@ const OrderManagement = () => {
                       )}
                     </div>
 
+                    <div className="mb-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                      {supplierTag && <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-[10px] font-semibold text-cyan-800">Supplier · {supplierTag}</span>}
+                      {approvalStages.slice(0, 4).map((stage, index) => {
+                        const stageStatus = String(stage?.status || 'pending').toLowerCase();
+                        const stageLabel = stage?.approval_label || stage?.role || `L${stage?.level ?? index + 1}`;
+                        return <span key={`${stageLabel}-${index}`} className={`rounded-full px-2 py-1 text-[10px] font-semibold ${stageStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' : stageStatus === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-50 text-amber-700'}`}>{stageLabel} · {stageStatus === 'approved' ? 'Done' : stageStatus === 'rejected' ? 'Rejected' : 'Pending'}</span>;
+                      })}
+                      {approvalStages.length > 4 && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">+{approvalStages.length - 4} stages</span>}
+                    </div>
+
                     {/* Actions - Soft-coded button handlers */}
                     <div className="grid grid-cols-2 gap-2">
                       <button 
@@ -2017,89 +2090,121 @@ const OrderManagement = () => {
             </div>
           ) : (
             // List View for Purchase Requisitions
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-xl font-bold tracking-tight text-slate-900">Purchase Recommendations</h3>
-                  <p className="mt-1 text-xs text-slate-500">Review requests, approval status, suppliers, and values.</p>
+            <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
+              <div className="flex flex-col gap-2 border-b border-slate-300 bg-slate-50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-8 w-8 place-items-center rounded-md bg-emerald-700 text-white shadow-sm">
+                    <Squares2X2Icon className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-900">Purchase Recommendations Register</h3>
+                    <p className="text-[11px] text-slate-500">Ready Procurement view  </p>
+                  </div>
                 </div>
-                <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                <span className="inline-flex w-fit items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold tabular-nums text-slate-600">
                   {filteredRequisitions.length} record{filteredRequisitions.length === 1 ? '' : 's'}
                 </span>
               </div>
-              <div className="max-h-[68vh] overflow-auto">
-              <table className="w-full min-w-[1180px] table-fixed border-separate border-spacing-0">
+              <div className="max-h-[72vh] overflow-auto bg-slate-100">
+              <table className="w-full min-w-[1780px] table-fixed border-separate border-spacing-0 bg-white font-['Segoe_UI',Inter,Arial,sans-serif] text-xs text-slate-700">
                 <colgroup>
-                  <col className="w-[135px]" />
-                  <col className="w-[105px]" />
-                  <col className="w-[220px]" />
+                  <col className="w-[48px]" />
                   <col className="w-[165px]" />
+                  <col className="w-[112px]" />
+                  <col className="w-[165px]" />
+                  <col className="w-[255px]" />
                   <col className="w-[150px]" />
-                  <col className="w-[125px]" />
-                  <col className="w-[90px]" />
-                  <col className="w-[115px]" />
-                  <col className="w-[150px]" />
+                  <col className="w-[190px]" />
+                  <col className="w-[185px]" />
+                  <col className="w-[135px]" />
+                  <col className="w-[100px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[155px]" />
                 </colgroup>
-                <thead className="sticky top-0 z-20 bg-slate-200/95 backdrop-blur">
-                  <tr>
+                <thead className="text-slate-700">
+                  <tr className="h-6 bg-slate-100 text-[10px] font-semibold text-slate-500">
+                    <th className="sticky left-0 top-0 z-50 border-b border-r border-slate-300 bg-slate-200" aria-label="Row number" />
+                    {['A','B','C','D','E','F','G','H','I','J','K'].map((letter, index) => (
+                      <th key={letter} className={`sticky top-0 z-30 border-b border-r border-slate-300 bg-slate-100 text-center ${index === 0 ? 'left-[48px] z-40' : index === 10 ? 'right-0 z-40 border-l shadow-[-4px_0_8px_rgba(15,23,42,0.08)]' : ''}`}>{letter}</th>
+                    ))}
+                  </tr>
+                  <tr className="h-10">
+                    <th scope="col" className="sticky left-0 top-6 z-50 border-b border-r border-slate-300 bg-slate-200 px-1 py-2.5 text-center text-xs font-semibold text-slate-700">
+                      <label className="flex cursor-pointer items-center justify-center gap-1" title="Select visible rows">
+                        <input type="checkbox" checked={allVisibleRequisitionsSelected} onChange={toggleVisibleRequisitionSelection} className="h-3.5 w-3.5 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500" />
+                        <span>#</span>
+                      </label>
+                    </th>
                     {[
                       ['PR number', 'PR Number'],
                       ['Date', 'PR Accepted Date'],
+                      ['PO reference', 'PO Number'],
                       ['Request', 'Summary of Purchase /Activity'],
+                      ['Requester', 'issued_by_name'],
                       ['Project / Department', 'Project short name/ Code'],
                       ['Supplier', 'Suppl.Name'],
                       ['Amount', 'PO Amount w/o VAT'],
                       ['Priority', 'priority'],
                       ['Status', 'PO Status'],
-                    ].map(([label, sortKey]) => (
-                      <th key={label} scope="col" className="border-b border-r border-slate-300 bg-slate-200 px-4 py-3.5 text-left text-sm font-bold uppercase tracking-wide text-slate-700 last:border-r-0">
-                        <button type="button" onClick={() => toggleRequisitionSort(sortKey)} className="inline-flex items-center gap-1 hover:text-indigo-700">
-                          {label}<ChevronUpDownIcon className="h-3.5 w-3.5" />
+                    ].map(([label, sortKey], index) => (
+                      <th key={label} scope="col" className={`sticky top-6 z-30 border-b border-r border-slate-300 bg-slate-200 px-2.5 py-2.5 text-left text-xs font-semibold tracking-normal text-slate-700 ${index === 0 ? 'left-[48px] z-40' : ''}`}>
+                        <button type="button" onClick={() => toggleRequisitionSort(sortKey)} className="inline-flex w-full items-center justify-between gap-1 whitespace-nowrap hover:text-indigo-700">
+                          {label}<ChevronUpDownIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                         </button>
                       </th>
                     ))}
-                    <th scope="col" className="sticky right-0 z-30 border-b border-l border-indigo-200 bg-indigo-50 px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-indigo-700 shadow-[-6px_0_12px_rgba(15,23,42,0.04)]">Actions</th>
+                    <th scope="col" className="sticky right-0 top-6 z-40 border-b border-l border-slate-300 bg-slate-200 px-2.5 py-2.5 text-center text-xs font-semibold tracking-normal text-slate-700 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white">
-                  {paginatedRequisitions.map((req) => {
+                  {paginatedRequisitions.map((req, rowIndex) => {
                     const requestSummary = req.product_service || req.title || 'Untitled request';
                     const projectDepartment = req.project_department || req.project || '—';
                     const supplier = req.supplier_name || req.vendor_name || 'Not selected';
                     const requestDate = req.issued_date || req.created_date;
                     return (
-                      <tr key={req.id} className="group transition-colors hover:bg-slate-50">
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 align-middle">
-                          <button type="button" onClick={() => handleOpenApproval(req)} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
+                      <tr key={req.id} className={`group h-11 transition-colors hover:bg-blue-50 ${selectedRequisitionIds.includes(String(req.id)) ? 'bg-indigo-50' : rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}`}>
+                        <td className="sticky left-0 z-20 border-b border-r border-slate-300 bg-slate-100 px-1 text-center text-[11px] font-medium tabular-nums text-slate-500 group-hover:bg-blue-100">
+                          <label className="flex cursor-pointer items-center justify-center gap-1" title="Select row">
+                            <input type="checkbox" checked={selectedRequisitionIds.includes(String(req.id))} onChange={() => toggleRequisitionSelection(req.id)} className="h-3.5 w-3.5 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500" />
+                            <span>{requisitionPageStart + rowIndex + 1}</span>
+                          </label>
+                        </td>
+                        <td className={`sticky left-[48px] z-20 border-b border-r border-slate-300 px-2 py-2 align-middle group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                          <button type="button" onClick={() => handleOpenApproval(req)} className="whitespace-nowrap text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
                             {req.pr_number || `PR-${req.id}`}
                           </button>
-                          {req.po_number_reference && <p className="mt-1 truncate text-[11px] text-slate-400">PO: {req.po_number_reference}</p>}
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal tabular-nums text-slate-600">
                           {requestDate ? new Date(requestDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 align-middle">
-                          <p className="truncate text-sm font-medium text-slate-800" title={requestSummary}>{requestSummary}</p>
-                          <p className="mt-1 truncate text-xs text-slate-500">{req.requester_name || req.issued_by_name || 'Requester not specified'}</p>
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                          <p className="truncate" title={req.po_number_reference || ''}>{req.po_number_reference || '—'}</p>
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
-                          <p className="line-clamp-2" title={projectDepartment}>{projectDepartment}</p>
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 align-middle">
+                          <p className="truncate text-xs font-medium text-slate-800" title={requestSummary}>{requestSummary}</p>
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-xs text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                          <p className="truncate" title={req.requester_name || req.issued_by_name || ''}>{req.requester_name || req.issued_by_name || '—'}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                          <p className="truncate" title={projectDepartment}>{projectDepartment}</p>
+                        </td>
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
                           <p className="truncate" title={supplier}>{supplier}</p>
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5 text-sm font-semibold tabular-nums text-slate-800">
+                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-right text-xs font-semibold tabular-nums text-slate-800">
                           {formatCurrency(req.total_price || req.estimated_value, req.currency || 'AED')}
                         </td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5">{getPriorityBadge(req.priority)}</td>
-                        <td className="border-b border-r border-slate-200 px-4 py-3.5">{getStatusBadge(req.status)}</td>
-                        <td className="sticky right-0 border-b border-l border-slate-200 bg-white px-3 py-3.5 shadow-[-6px_0_12px_rgba(15,23,42,0.04)] group-hover:bg-slate-50">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button onClick={() => handleOpenApproval(req)} className="rounded-lg border border-sky-200 bg-sky-50 p-1.5 text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-100" title="View"><EyeIcon className="h-4 w-4" /></button>
-                            {canModifyRequisition(req) && <button onClick={() => handleEditRequisition(req)} className="rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100" title="Edit"><PencilIcon className="h-4 w-4" /></button>}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && <button onClick={() => handleConvertToPO(req)} className="rounded-lg bg-indigo-600 p-1.5 text-white shadow-sm transition hover:bg-indigo-700" title="Convert to PO"><ShoppingCartIcon className="h-4 w-4" /></button>}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && <button onClick={() => handlePrintPreviewPR(req)} disabled={prPrintPreviewLoadingId === req.id} className="rounded-lg border border-violet-200 bg-violet-50 p-1.5 text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-100 disabled:opacity-50" title="Print Preview"><DocumentTextIcon className="h-4 w-4" /></button>}
-                            {canDeleteRequisition(req) && <button onClick={() => handleDeleteRequisition(req)} className="rounded-lg border border-rose-200 bg-rose-50 p-1.5 text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-100" title="Delete"><TrashIcon className="h-4 w-4" /></button>}
+                        <td className="border-b border-r border-slate-300 px-2 py-1.5">{getPriorityBadge(req.priority)}</td>
+                        <td className="border-b border-r border-slate-300 px-2 py-1.5">{getStatusBadge(req.status)}</td>
+                        <td className={`sticky right-0 border-b border-l border-slate-300 px-2 py-1.5 shadow-[-4px_0_8px_rgba(15,23,42,0.08)] group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => handleOpenApproval(req)} className="grid h-7 w-7 place-items-center rounded border border-sky-300 bg-white text-sky-700 transition hover:bg-sky-100" title="View"><EyeIcon className="h-3.5 w-3.5" /></button>
+                            {canModifyRequisition(req) && <button onClick={() => handleEditRequisition(req)} className="grid h-7 w-7 place-items-center rounded border border-amber-300 bg-white text-amber-700 transition hover:bg-amber-100" title="Edit"><PencilIcon className="h-3.5 w-3.5" /></button>}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && <button onClick={() => handleConvertToPO(req)} className="grid h-7 w-7 place-items-center rounded border border-indigo-600 bg-indigo-600 text-white transition hover:bg-indigo-700" title="Convert to PO"><ShoppingCartIcon className="h-3.5 w-3.5" /></button>}
+                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && <button onClick={() => handlePrintPreviewPR(req)} disabled={prPrintPreviewLoadingId === req.id} className="grid h-7 w-7 place-items-center rounded border border-violet-300 bg-white text-violet-700 transition hover:bg-violet-100 disabled:opacity-50" title="Print Preview"><DocumentTextIcon className="h-3.5 w-3.5" /></button>}
+                            {canDeleteRequisition(req) && <button onClick={() => handleDeleteRequisition(req)} className="grid h-7 w-7 place-items-center rounded border border-rose-300 bg-white text-rose-700 transition hover:bg-rose-100" title="Delete"><TrashIcon className="h-3.5 w-3.5" /></button>}
                           </div>
                         </td>
                       </tr>
@@ -2197,20 +2302,13 @@ const OrderManagement = () => {
         </div>
 
       {/* AI Creator Modals - Conditional based on active tab */}
-      {activeTab === 'purchaseOrders' ? (
+      {activeTab === 'purchaseOrders' && (
         <AIPurchaseOrderCreator
           isOpen={showAICreator}
           onClose={() => setShowAICreator(false)}
           onOrderCreated={handleOrderCreated}
           vendors={vendors}
           projects={projects}
-        />
-      ) : (
-        <PurchaseRequisitionForm
-          isOpen={showAICreator}
-          onClose={() => setShowAICreator(false)}
-          onSuccess={handleRequisitionCreated}
-          editData={null}
         />
       )}
 
@@ -2228,23 +2326,6 @@ const OrderManagement = () => {
             fetchOrders();  // Refresh orders to show updated data
           }}
           editData={editingOrder}  // Pass the order being edited
-        />
-      )}
-
-      {/* Purchase Requisition Form Modal */}
-      {showPRForm && (
-        <PurchaseRequisitionForm
-          isOpen={showPRForm}
-          onClose={() => {
-            setShowPRForm(false);
-            setEditingRequisition(null);  // Clear editing state on close
-          }}
-          onSuccess={() => {
-            setShowPRForm(false);
-            setEditingRequisition(null);  // Clear editing state on success
-            fetchRequisitions();  // Refresh requisitions to show updated data
-          }}
-          editData={editingRequisition}  // Pass the requisition being edited
         />
       )}
 
