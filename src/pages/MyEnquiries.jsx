@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   ArrowPathIcon, ArrowRightIcon, CheckCircleIcon, ChevronRightIcon, ClockIcon,
   DocumentTextIcon, ExclamationTriangleIcon, InboxIcon, MagnifyingGlassIcon,
-  PlusIcon, SparklesIcon, XMarkIcon,
+  PaperClipIcon, PlusIcon, SparklesIcon, XMarkIcon,
 } from '@heroicons/react/24/outline'
 import apiService from '../services/api.service'
 
@@ -15,7 +15,7 @@ const TYPES = [
   ['finance_request', 'Finance request'], ['procurement', 'Procurement'],
   ['facility_request', 'Facility request'], ['other', 'Other'],
 ]
-const EMPTY_FORM = { inquiry_type: 'general', subject: '', message: '', urgency: 'normal', phone: '', company: '' }
+const EMPTY_FORM = { name: '', email: '', inquiry_type: 'general', subject: '', message: '', urgency: 'normal', phone: '', company: '' }
 const CLOSED_STATUSES = ['resolved', 'closed', 'spam']
 const RESPONSE_STATUSES = ['responded', 'resolved', 'closed']
 const ATTENTION_STATUSES = ['waiting_user', 'pending_confirmation']
@@ -41,13 +41,15 @@ const dateText = (value) => value
 export default function MyEnquiries () {
   const navigate = useNavigate()
   const auth = useSelector((state) => state.auth?.user)
-  const user = auth?.user || auth || {}
+  const user = useMemo(() => auth?.user || auth || {}, [auth])
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [attachments, setAttachments] = useState([])
+  const [submitError, setSubmitError] = useState('')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -62,6 +64,29 @@ export default function MyEnquiries () {
     } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const identity = user.user || user
+    const fallbackName = identity.full_name || `${identity.first_name || ''} ${identity.last_name || ''}`.trim() || identity.username || ''
+    setForm((current) => ({
+      ...current,
+      name: current.name || fallbackName,
+      email: current.email || identity.email || '',
+      phone: current.phone || user.phone || '',
+      company: current.company || user.organization_name || user.organization?.name || '',
+    }))
+    apiService.get('/rbac/users/me/', { params: { view: 'profile' } }).then(({ data }) => {
+      const profileIdentity = data?.user || data || {}
+      const profileName = profileIdentity.full_name || `${profileIdentity.first_name || ''} ${profileIdentity.last_name || ''}`.trim() || profileIdentity.username || fallbackName
+      setForm((current) => ({
+        ...current,
+        name: profileName || current.name,
+        email: profileIdentity.email || data?.email || current.email,
+        phone: data?.phone || current.phone,
+        company: data?.organization_name || data?.organization?.name || current.company,
+      }))
+    }).catch(() => {})
+  }, [user])
 
   const stats = useMemo(() => ({
     total: items.length,
@@ -82,17 +107,19 @@ export default function MyEnquiries () {
   const submit = async (event) => {
     event.preventDefault()
     setSaving(true)
+    setSubmitError('')
     try {
-      await apiService.post('/enquiry/submit/', {
-        ...form, service: form.inquiry_type,
-        name: user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'RADAI User',
-        email: user.email,
-      })
-      setForm(EMPTY_FORM)
+      const payload = new FormData()
+      Object.entries({ ...form, service: form.inquiry_type }).forEach(([key, value]) => payload.append(key, value || ''))
+      attachments.forEach((file) => payload.append('attachments', file))
+      await apiService.post('/enquiry/submit/', payload)
+      setForm((current) => ({ ...EMPTY_FORM, name: current.name, email: current.email, phone: current.phone, company: current.company }))
+      setAttachments([])
       setCreating(false)
       await load()
     } catch (error) {
-      window.alert(error?.response?.data?.message || 'Could not submit the request.')
+      const fieldErrors = Object.values(error?.response?.data?.errors || {}).join(' ')
+      setSubmitError(fieldErrors || error?.response?.data?.message || (error?.code === 'ECONNABORTED' ? 'The request timed out. Please try again.' : 'Could not submit the request.'))
     } finally { setSaving(false) }
   }
   const firstName = user.first_name || user.full_name?.split(' ')[0] || 'there'
@@ -136,7 +163,7 @@ export default function MyEnquiries () {
           {loading ? <LoadingState /> : loadError ? <ErrorState message={loadError} retry={load} /> : filteredItems.length === 0 ? <EmptyState hasItems={items.length > 0} create={() => setCreating(true)} clear={() => { setQuery(''); setStatusFilter('all') }} /> : <RequestList rows={filteredItems} open={open} />}
         </section>
       </div>
-      {creating && <CreateDialog form={form} setForm={setForm} saving={saving} close={() => setCreating(false)} submit={submit} />}
+      {creating && <CreateDialog form={form} setForm={setForm} attachments={attachments} setAttachments={setAttachments} error={submitError} saving={saving} close={() => { setCreating(false); setSubmitError('') }} submit={submit} />}
     </main>
   )
 }
@@ -153,9 +180,19 @@ const LoadingState = () => <div className="grid min-h-64 place-content-center te
 const ErrorState = ({ message, retry }) => <div className="grid min-h-64 place-content-center px-6 text-center"><span className="mx-auto grid h-11 w-11 place-content-center rounded-xl bg-red-50 text-red-600"><ExclamationTriangleIcon className="h-6 w-6" /></span><p className="mt-3 text-sm font-semibold text-slate-800">Could not load requests</p><p className="mt-1 max-w-md text-xs text-slate-500">{message}</p><button type="button" onClick={retry} className="mx-auto mt-4 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Try again</button></div>
 const EmptyState = ({ hasItems, create, clear }) => <div className="grid min-h-72 place-content-center px-6 text-center"><span className="mx-auto grid h-12 w-12 place-content-center rounded-2xl bg-slate-100 text-slate-400"><InboxIcon className="h-6 w-6" /></span><p className="mt-4 text-sm font-semibold text-slate-900">{hasItems ? 'No matching requests' : 'No requests yet'}</p><p className="mt-1 text-xs text-slate-500">{hasItems ? 'Try changing your search or status filter.' : 'Create your first request and we will route it to the right team.'}</p><button type="button" onClick={hasItems ? clear : create} className="mx-auto mt-4 text-xs font-semibold text-blue-600 hover:text-blue-700">{hasItems ? 'Clear filters' : 'Create your first request'}</button></div>
 
-const CreateDialog = ({ form, setForm, saving, close, submit }) => {
+const CreateDialog = ({ form, setForm, attachments, setAttachments, error, saving, close, submit }) => {
+  const [fileError, setFileError] = useState('')
   const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }))
   const inputClass = 'mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100'
-  return <div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm"><form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="create-request-title" className="my-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-white/20 bg-white shadow-[0_30px_90px_-20px_rgba(15,23,42,0.55)]"><div className="h-1 bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400" /><div className="flex items-start justify-between border-b border-slate-200 px-6 py-5"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">RADAI service desk</p><h2 id="create-request-title" className="mt-1 text-xl font-bold tracking-tight text-slate-950">Create a request</h2><p className="mt-1 text-sm text-slate-500">Your request will be categorized and routed automatically.</p></div><button type="button" onClick={close} aria-label="Close dialog" className="grid h-9 w-9 place-content-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"><XMarkIcon className="h-5 w-5" /></button></div><div className="grid gap-4 px-6 py-5 sm:grid-cols-2"><DialogField label="Request type"><select value={form.inquiry_type} onChange={update('inquiry_type')} className={inputClass}>{TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DialogField><DialogField label="Priority"><select value={form.urgency} onChange={update('urgency')} className={inputClass}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></DialogField><DialogField label="Phone number" required><input type="tel" required value={form.phone} onChange={update('phone')} placeholder="+971 50 000 0000" className={inputClass} /></DialogField><DialogField label="Company" hint="Optional"><input value={form.company} onChange={update('company')} placeholder="Company or organisation" className={inputClass} /></DialogField><div className="sm:col-span-2"><DialogField label="Subject" required><input required minLength="5" maxLength="200" value={form.subject} onChange={update('subject')} placeholder="A short summary of your request" className={inputClass} /></DialogField></div><div className="sm:col-span-2"><DialogField label="Request details" required hint={`${form.message.length}/1000`}><textarea required minLength="10" maxLength="1000" rows="5" value={form.message} onChange={update('message')} placeholder="Describe what happened, what you need and any relevant dates or references." className={`${inputClass} resize-none`} /></DialogField></div></div><div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end"><button type="button" onClick={close} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Cancel</button><button type="submit" disabled={saving} className="inline-flex min-w-36 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">{saving ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />Submitting</> : <>Submit request <ArrowRightIcon className="h-4 w-4" /></>}</button></div></form></div>
+  const addFiles = (event) => {
+    const selected = Array.from(event.target.files || [])
+    setFileError('')
+    if (attachments.length + selected.length > 5) { setFileError('You can attach up to 5 files.'); return }
+    const invalid = selected.find((file) => file.size > 10 * 1024 * 1024)
+    if (invalid) { setFileError(`${invalid.name} exceeds the 10 MB limit.`); return }
+    setAttachments((current) => [...current, ...selected])
+    event.target.value = ''
+  }
+  return <div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm"><form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="create-request-title" className="my-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-white/20 bg-white shadow-[0_30px_90px_-20px_rgba(15,23,42,0.55)]"><div className="h-1 bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400"/><div className="flex items-start justify-between border-b border-slate-200 px-6 py-5"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">RADAI service desk</p><h2 id="create-request-title" className="mt-1 text-xl font-bold tracking-tight text-slate-950">Create a request</h2><p className="mt-1 text-sm text-slate-500">Your identity is filled from your employee profile.</p></div><button type="button" onClick={close} aria-label="Close dialog" className="grid h-9 w-9 place-content-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"><XMarkIcon className="h-5 w-5"/></button></div><div className="max-h-[72vh] overflow-y-auto px-6 py-5"><div className="mb-5 rounded-xl border border-blue-100 bg-blue-50/60 p-4"><div className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-blue-700">Requester profile</div><div className="grid gap-4 sm:grid-cols-2"><DialogField label="Requester name"><input readOnly value={form.name} className={`${inputClass} cursor-default bg-white/70 text-slate-600`}/></DialogField><DialogField label="Email address"><input readOnly type="email" value={form.email} className={`${inputClass} cursor-default bg-white/70 text-slate-600`}/></DialogField><DialogField label="Phone number" required><input type="tel" required value={form.phone} onChange={update('phone')} placeholder="Add phone number" className={inputClass}/></DialogField><DialogField label="Company / organization"><input value={form.company} onChange={update('company')} placeholder="Company or organization" className={inputClass}/></DialogField></div></div><div className="grid gap-4 sm:grid-cols-2"><DialogField label="Request type"><select value={form.inquiry_type} onChange={update('inquiry_type')} className={inputClass}>{TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DialogField><DialogField label="Priority"><select value={form.urgency} onChange={update('urgency')} className={inputClass}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></DialogField><div className="sm:col-span-2"><DialogField label="Subject" required><input required minLength="5" maxLength="200" value={form.subject} onChange={update('subject')} placeholder="A short summary of your request" className={inputClass}/></DialogField></div><div className="sm:col-span-2"><DialogField label="Request details" required hint={`${form.message.length}/1000`}><textarea required minLength="10" maxLength="1000" rows="5" value={form.message} onChange={update('message')} placeholder="Describe what happened, what you need and any relevant dates or references." className={`${inputClass} resize-none`}/></DialogField></div><div className="sm:col-span-2"><DialogField label="Attachments" hint="Optional · up to 5 files · 10 MB each"><label className="mt-1.5 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-600 transition hover:border-blue-400 hover:bg-blue-50"><PaperClipIcon className="h-5 w-5 text-blue-600"/>Attach image or document<input type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx" onChange={addFiles} className="sr-only"/></label></DialogField>{attachments.length > 0 && <div className="mt-2 space-y-2">{attachments.map((file, index) => <div key={`${file.name}-${file.lastModified}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-xs"><span className="min-w-0 truncate text-slate-600">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</span><button type="button" onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="ml-3 text-red-500 hover:text-red-700">Remove</button></div>)}</div>}{fileError && <p className="mt-2 text-xs font-semibold text-red-600">{fileError}</p>}</div>{error && <div role="alert" className="sm:col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}</div></div><div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end"><button type="button" onClick={close} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Cancel</button><button type="submit" disabled={saving || !form.name || !form.email} className="inline-flex min-w-36 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">{saving ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"/>Submitting</> : <>Submit request <ArrowRightIcon className="h-4 w-4"/></>}</button></div></form></div>
 }
 const DialogField = ({ label, required = false, hint, children }) => <label className="block text-xs font-semibold text-slate-700"><span className="flex items-center justify-between"><span>{label}{required && <span className="ml-1 text-red-500">*</span>}</span>{hint && <span className="font-normal text-slate-400">{hint}</span>}</span>{children}</label>

@@ -1,0 +1,22 @@
+@import '@fontsource-variable/geist/wght.css';
+@import '@fontsource-variable/geist-mono/wght.css';
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-sans/latin-700.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-600.css';
+@import '@fontsource/ibm-plex-mono/latin-700.css';
+
+.enquiry-typography {
+  --enquiry-font-sans: 'Geist Variable', 'Geist Sans', 'IBM Plex Sans', sans-serif;
+  --enquiry-font-mono: 'Geist Mono Variable', 'Geist Mono', 'IBM Plex Mono', monospace;
+  font-family: var(--enquiry-font-sans);
+  font-optical-sizing: auto;
+  font-synthesis: none;
+}
+
+.enquiry-typography .font-mono,
+.enquiry-typography .enquiry-mono {
+  font-family: var(--enquiry-font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
