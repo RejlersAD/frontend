@@ -801,7 +801,14 @@ const Sidebar = ({
           description: "Top AI users leaderboard & badges",
           moduleCode: "ai_champion",
         },
-        // SOFT-CODED: Enquiry moved to Common section (2.6) — see "crs" section above
+        {
+          id: "enquiryManagement",
+          title: "9.6 Enquiry Operations",
+          icon: EnvelopeIcon,
+          path: "/admin/enquiries",
+          description: "Assignment, responses, escalation and service reporting",
+          moduleCode: "enquiry_management",
+        },
         // SOFT-CODED: Subscription feature disabled for in-house deployment
         // {
         //   id: 'subscriptionManagement',
