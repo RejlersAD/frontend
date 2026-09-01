@@ -165,7 +165,7 @@ const buildInitialFormData = (editData) => ({
   project_department: editData?.project_department || '',
   description_reason: editData?.description_reason || '',
   preferred_supplier_if_any: editData?.preferred_supplier_if_any || '',
-  price_description: editData?.description_reason || editData?.price_description || '',
+  price_description: editData?.price_description || editData?.description_reason || '',
   total_price: editData?.total_price || '',
   currency: editData?.currency || 'USD',
   price_remarks: editData?.price_remarks || editData?.price_remarks_data?.negotiation_remarks || '',
@@ -337,7 +337,7 @@ const normalizeEmployeeName = (employee) => String(
     || '',
 ).trim().toLowerCase().replace(/\s+/g, ' ');
 
-const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }) => {
+const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, pageMode = false }) => {
   const authUser = useSelector((state) => state.auth?.user);
   const sessionUser = authUser?.user || authUser || {};
   const sessionUserName = String(
@@ -373,6 +373,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   const formDataRef = useRef(formData);
   const submissionInFlightRef = useRef(false);
   const lastAutoSaveFingerprintRef = useRef('');
+  const priceDescriptionEditedRef = useRef(Boolean(editData?.price_description));
+  const workspaceRef = useRef(null);
+  const [formPanePercent, setFormPanePercent] = useState(60);
+  const [isPaneResizing, setIsPaneResizing] = useState(false);
   
   // New state for dynamic features
   const [vendors, setVendors] = useState([]);
@@ -403,11 +407,55 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
     general_manager: null,
   });
 
+  const resizeFormPane = useCallback((clientX) => {
+    const bounds = workspaceRef.current?.getBoundingClientRect();
+    if (!bounds?.width) return;
+    const nextPercent = ((clientX - bounds.left) / bounds.width) * 100;
+    setFormPanePercent(Math.min(75, Math.max(35, nextPercent)));
+  }, []);
+
+  useEffect(() => {
+    if (!isPaneResizing || !pageMode) return undefined;
+
+    const handlePointerMove = (event) => resizeFormPane(event.clientX);
+    const stopResizing = () => setIsPaneResizing(false);
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResizing);
+    window.addEventListener('pointercancel', stopResizing);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResizing);
+      window.removeEventListener('pointercancel', stopResizing);
+    };
+  }, [isPaneResizing, pageMode, resizeFormPane]);
+
+  const handlePaneResizeKeyDown = (event) => {
+    const keyAdjustments = { ArrowLeft: -2, ArrowRight: 2 };
+    if (keyAdjustments[event.key]) {
+      event.preventDefault();
+      setFormPanePercent(current => Math.min(75, Math.max(35, current + keyAdjustments[event.key])));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setFormPanePercent(35);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      setFormPanePercent(75);
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) return;
 
     const initialData = buildInitialFormData(editData);
     setFormData(initialData);
+    priceDescriptionEditedRef.current = Boolean(editData?.price_description);
     formDataRef.current = initialData;
     draftIdRef.current = editData?.id || null;
     autoSaveInFlightRef.current = null;
@@ -965,6 +1013,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   }, [formData.currency, formData.net_total_excl_vat]);
 
   useEffect(() => {
+    if (priceDescriptionEditedRef.current) return;
     setFormData(prev => {
       const purchaseDescription = prev.description_reason || '';
       if (prev.price_description === purchaseDescription) return prev;
@@ -1012,7 +1061,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
         draftIdRef.current = response.data.id;
         lastAutoSaveFingerprintRef.current = fingerprint;
         if (response.data.pr_number) {
-          setFormData(prev => ({ ...prev, pr_number: response.data.pr_number }));
+          setFormData(prev => (
+            prev.pr_number
+              ? prev
+              : { ...prev, pr_number: response.data.pr_number }
+          ));
         }
         return response.data;
       } catch (error) {
@@ -1350,11 +1403,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="flex h-[94vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+    <div className={pageMode
+      ? 'min-h-screen bg-slate-100 px-3 py-4 sm:px-5 lg:px-6 xl:h-[calc(100dvh-4.75rem)] xl:min-h-0 xl:overflow-hidden'
+      : 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-0 sm:p-4'}>
+      <div className={pageMode
+        ? 'mx-auto flex w-full max-w-[1800px] flex-col overflow-hidden rounded-xl bg-white shadow-xl xl:h-full'
+        : 'flex h-dvh w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-[94vh] sm:max-w-[96vw] sm:rounded-xl'}>
 
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-5 rounded-t-xl flex-shrink-0">
+        <div className="flex-shrink-0 bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-4 text-white sm:rounded-t-xl sm:px-8 sm:py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <DocumentTextIcon className="h-8 w-8 text-purple-200" />
@@ -1386,12 +1443,18 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
           )}
         </div>
 
-        <div className="grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1.2fr)_minmax(440px,0.8fr)] xl:overflow-hidden">
+        <div
+          ref={workspaceRef}
+          style={pageMode ? { '--form-pane-width': `${formPanePercent}%` } : undefined}
+          className={pageMode
+            ? 'grid min-h-0 flex-1 xl:grid-cols-[minmax(0,var(--form-pane-width))_10px_minmax(0,1fr)] xl:overflow-hidden'
+            : 'grid min-h-0 flex-1 overflow-y-auto 2xl:grid-cols-[minmax(0,1.2fr)_minmax(400px,0.8fr)] 2xl:overflow-hidden'}
+        >
           {/* Form Body - Single Scroll Container with overflow-x-hidden */}
           <form
             id="pr-modal-form"
             onSubmit={(e) => handleSubmit(e, true)}
-            className="flex min-h-0 flex-col gap-8 overflow-x-hidden p-8 xl:overflow-y-auto"
+            className={`flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden p-4 sm:p-5 lg:p-6 [&>div.border-b]:pb-4 [&>div>h3]:mb-3 [&>div>h3]:text-base [&_label]:mb-1 [&_textarea]:px-3 [&_textarea]:py-1.5 [&_textarea]:text-sm [&_select]:px-3 [&_select]:py-1.5 [&_select]:text-sm [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:px-3 [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:py-1.5 [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:text-sm ${pageMode ? 'xl:overflow-y-auto xl:overscroll-contain' : '2xl:overflow-y-auto'}`}
           >
           {/* Signed approval PDF is intentionally first when editing. */}
           {editData && (
@@ -1803,12 +1866,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Purchase Description <span className="text-red-500">*</span>
+                <span className="ml-2 text-xs font-normal text-gray-500">Describe the scope and purchase reason</span>
               </label>
               <textarea
                 name="description_reason"
                 value={formData.description_reason}
                 onChange={handleChange}
-                rows={4}
+                rows={3}
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
                   errors.description_reason ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -1830,6 +1894,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                    Vendor Shortlist <span className="text-red-500">*</span>
+                   <span className="ml-2 text-xs font-normal text-gray-500">Search active vendors; ICV is filled automatically</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
@@ -1872,7 +1937,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                               disabled={alreadySelected}
                               onMouseDown={(event) => event.preventDefault()}
                               onClick={() => addVendorToShortlist(vendor.id)}
-                              className="block w-full border-b border-gray-100 px-4 py-3 text-left last:border-0 hover:bg-purple-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
+                              className="block w-full border-b border-gray-100 px-3 py-2 text-left last:border-0 hover:bg-purple-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
                             >
                               <span className="block text-sm font-medium text-gray-900">{vendor.name}</span>
                               <span className="block text-xs text-gray-500">{vendor.vendor_code} · Rating: {vendor.rating || 'N/A'}{alreadySelected ? ' · Already shortlisted' : ''}</span>
@@ -1883,14 +1948,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                     )}
                   </div>
                 </div>
-                <p className="mt-1 text-sm text-gray-500">
-                  Select a vendor from the dropdown to add it automatically. ICV values and validity are copied from the vendor portal.
-                </p>
                 {errors.selected_vendors && <p className="mt-1 text-sm text-red-600">{errors.selected_vendors}</p>}
                 {(formData.selected_vendors || []).length > 0 && (
-                  <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+                  <div className="mt-2 overflow-hidden rounded-lg border border-gray-200">
                     {(formData.selected_vendors || []).map(shortlisted => (
-                      <div key={shortlisted.vendor_id || shortlisted.id} className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 last:border-0">
+                      <div key={shortlisted.vendor_id || shortlisted.id} className="flex items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 last:border-0">
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{shortlisted.name}</p>
                           <p className="text-xs text-gray-500">
@@ -1925,7 +1987,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               </div>
 
               {(formData.selected_vendors || []).length === 1 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <label className="block text-sm font-semibold text-amber-900 mb-2">
                     Single Source Justification <span className="text-red-500">*</span>
                   </label>
@@ -1933,7 +1995,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                     name="single_source_justification"
                     value={formData.single_source_justification}
                     onChange={handleChange}
-                    rows={3}
+                    rows={2}
                     className="w-full rounded-lg border border-amber-300 px-4 py-2 focus:ring-2 focus:ring-amber-500"
                     placeholder="Explain why this purchase recommendation uses only one supplier..."
                   />
@@ -1969,19 +2031,21 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                    Purchase Description <span className="text-red-500">*</span>
-                   <span className="ml-2 text-xs font-normal text-gray-500">(From Purchase Description section)</span>
+                   <span className="ml-2 text-xs font-normal text-gray-500">Initially copied; editable for pricing</span>
                 </label>
                 <textarea
                   name="price_description"
                   value={formData.price_description}
-                  readOnly
+                  onChange={(event) => {
+                    priceDescriptionEditedRef.current = true;
+                    handleChange(event);
+                  }}
                   rows={2}
-                  className={`w-full px-4 py-2 border rounded-lg bg-gray-50 text-gray-700 ${
+                  className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-purple-500 ${
                     errors.price_description ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  placeholder="Enter the Purchase Description above; it will appear here automatically."
+                  placeholder="Initially copied from Purchase Description; edit pricing wording when needed."
                 />
-                <p className="mt-1 text-xs text-gray-500">Automatically synchronized to prevent duplicate or conflicting descriptions.</p>
                 {errors.price_description && (
                   <p className="mt-1 text-sm text-red-600">{errors.price_description}</p>
                 )}
@@ -2353,7 +2417,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
                 name="purchase_recommendation"
                 value={formData.purchase_recommendation}
                 onChange={handleChange}
-                rows={3}
+                rows={2}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="Any special requirements or notes..."
               />
@@ -2508,21 +2572,44 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
           </div>
           </form>
 
-          <aside className="min-h-[760px] overflow-y-auto border-t border-slate-300 bg-slate-200 p-4 xl:min-h-0 xl:border-l xl:border-t-0" aria-label="Live purchase recommendation preview">
+          {pageMode && (
+            <div
+              role="separator"
+              aria-label="Resize form and Live Preview panes"
+              aria-orientation="vertical"
+              aria-valuemin={35}
+              aria-valuemax={75}
+              aria-valuenow={Math.round(formPanePercent)}
+              tabIndex={0}
+              title="Drag to resize · Double-click to reset"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                resizeFormPane(event.clientX);
+                setIsPaneResizing(true);
+              }}
+              onDoubleClick={() => setFormPanePercent(60)}
+              onKeyDown={handlePaneResizeKeyDown}
+              className={`group relative z-10 hidden cursor-col-resize touch-none items-center justify-center bg-slate-300 outline-none transition-colors hover:bg-purple-400 focus-visible:bg-purple-500 xl:flex ${isPaneResizing ? 'bg-purple-500' : ''}`}
+            >
+              <span className="h-12 w-1 rounded-full bg-white/90 shadow-sm transition-transform group-hover:scale-y-110" />
+            </div>
+          )}
+
+          <aside className={`min-h-0 min-w-0 overflow-x-auto border-t border-slate-300 bg-slate-200 p-3 sm:p-4 ${pageMode ? 'xl:overflow-y-auto xl:overscroll-contain xl:border-t-0' : '2xl:overflow-y-auto 2xl:border-l 2xl:border-t-0'}`} aria-label="Live purchase recommendation preview">
             <PurchaseRequisitionDocumentPreview requisition={livePreviewRequisition} live />
           </aside>
         </div>
 
         {/* Modal Footer Actions - Fixed Bottom Bar */}
-        <div className="bg-gray-50 px-8 py-4 rounded-b-xl border-t border-gray-200 flex items-center justify-between flex-shrink-0">
+        <div className={`flex flex-shrink-0 flex-col gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:rounded-b-xl sm:px-8 md:flex-row md:items-center md:justify-between md:py-4 ${pageMode ? 'sticky bottom-0 z-20 shadow-[0_-4px_12px_rgba(15,23,42,0.08)]' : ''}`}>
           <div className="text-sm text-gray-500">
             <span className="text-red-500">*</span> Required fields
           </div>
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap justify-end gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors font-medium text-sm"
+              className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 sm:px-6"
             >
               Cancel
             </button>
@@ -2530,7 +2617,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               type="button"
               onClick={(e) => handleSubmit(e, false)}
               disabled={submitLoading}
-              className="px-6 py-2.5 border border-purple-300 rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors font-medium text-sm disabled:opacity-50"
+              className="rounded-lg border border-purple-300 bg-purple-50 px-4 py-2.5 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 disabled:opacity-50 sm:px-6"
             >
               {approvedPdfFile ? 'Record Signed PDF' : 'Save Draft'}
             </button>
@@ -2538,7 +2625,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
               type="submit"
               form="pr-modal-form"
               disabled={submitLoading}
-              className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all font-medium text-sm disabled:opacity-50 shadow-md flex items-center space-x-2"
+              className="flex items-center space-x-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 sm:px-6"
             >
               {submitLoading ? (
                 <>
@@ -2558,6 +2645,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null }
       </div>
     </div>
   );
+};
+
+PurchaseRequisitionForm.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSuccess: PropTypes.func,
+  editData: PropTypes.object,
+  pageMode: PropTypes.bool,
 };
 
 export default PurchaseRequisitionForm;

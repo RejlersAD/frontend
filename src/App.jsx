@@ -108,6 +108,7 @@ import NotFound from './pages/NotFound'
 import ProcurementDashboard from './pages/Procurement/ProcurementDashboard'
 import VendorManagement from './pages/Procurement/VendorManagement'
 import OrderManagement from './pages/Procurement/OrderManagement'
+import PurchaseRequisitionPage from './pages/Procurement/PurchaseRequisitionPage'
 import PurchaseOrderDetail from './pages/Procurement/PurchaseOrderDetail'
 import ReceiptManagement from './pages/Procurement/ReceiptManagement'
 import ProjectDashboard from './pages/Procurement/ProjectDashboard'
@@ -824,6 +825,22 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="procurement_requisitions">
               <OrderManagement />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="procurement/requisitions/new"
+          element={
+            <ModuleProtectedRoute moduleCode="procurement_requisitions">
+              <PurchaseRequisitionPage />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="procurement/requisitions/:id/edit"
+          element={
+            <ModuleProtectedRoute moduleCode="procurement_requisitions">
+              <PurchaseRequisitionPage />
             </ModuleProtectedRoute>
           }
         />

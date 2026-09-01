@@ -34,6 +34,7 @@ import payrollEngineService from '../../services/payrollEngine.service'
 import timesheetSvc   from '../../services/timesheet.service'
 import siteVisitService from '../../services/siteVisit.service'
 import notificationService from '../../services/notification.service'
+import { API_BASE_URL } from '../../config/api.config'
 import { fmtCurrency } from '../../config/hrPayroll.config'
 import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR, DAILY_TRACKER_PRIORITIES, DAILY_TRACKER_STATUSES, DAILY_TRACKER_PROJECT_CATEGORIES, DAILY_TRACKER_COPY, DAILY_TRACKER_APPROVAL_STATUSES, DAILY_TRACKER_WIZARD_STEPS, DAILY_TRACKER_SUBMIT_TO_OPTIONS, ESS_ATT_MONTHS_BACK, ESS_ATT_STANDARD_DAY_HRS, ESS_ATT_MAX_DAILY_HRS, ESS_ATT_STANDARD_WORKING_DAYS, ESS_ATT_RATE_GOOD, ESS_ATT_RATE_WARN, ESS_ATT_PARTIAL_DAY_HRS, ESS_ATT_OVERTIME_HRS, ESS_ATT_FEATURES, ESS_ATT_DAY_STATUS, ESS_ATT_DOW, ESS_ATT_COPY, ESS_TIMESHEET_TABS, ESS_TIMESHEET_DEFAULT_TAB, ESS_TIMESHEET_POLL_MS, ESS_TIMESHEET_COPY, ESS_TIMESHEET_STATUS } from '../../config/hrLeave.config'
 
@@ -237,7 +238,7 @@ const roleLabel = (role) => {
 }
 
 // Build a simple AI insight engine from live data
-const generateInsights = ({ leaveRecord, monthlyTs, today, slips }) => {
+const generateInsights = ({ leaveRecord, monthlyTs, today, slips, salaryVisible = false }) => {
   const insights = []
   const now = new Date()
 
@@ -308,7 +309,7 @@ const generateInsights = ({ leaveRecord, monthlyTs, today, slips }) => {
         id: 'payslip',
         icon: 'BanknotesIcon',
         severity: 'info',
-        title: `Latest payslip: ${fmtCurrency(net)} net`,
+        title: salaryVisible ? `Latest payslip: ${fmtCurrency(net)} net` : 'Latest payslip is available',
         description: `Your most recent salary slip (${MONTH_SHORT[(latest.month || 1) - 1]} ${latest.year}) has status: ${latest.status || 'generated'}.`,
       })
     }
@@ -338,7 +339,18 @@ const INSIGHT_TONES = {
 // Section: Employee Profile Header
 // -----------------------------------------------------------------------------
 
-const EmployeeProfileHeader = ({ profile, leaveRecord, monthlyTs, salaryInfo, loading }) => {
+const EmployeeProfileHeader = ({
+  profile,
+  leaveRecord,
+  monthlyTs,
+  salaryInfo,
+  loading,
+  activeTab,
+  onTabChange,
+  tabBadges,
+  salaryVisible,
+  onToggleSalary,
+}) => {
   // UserProfileSerializer declares first_name/last_name/username write_only —
   // they're never present on the GET response. The real values live on the
   // nested `user` object (UserSerializer), same as used elsewhere in this file.
@@ -346,6 +358,20 @@ const EmployeeProfileHeader = ({ profile, leaveRecord, monthlyTs, salaryInfo, lo
     ? [profile.user?.first_name, profile.user?.last_name].filter(Boolean).join(' ') || profile.user?.username
     : null
   const initials = name ? avatarInitials(name) : '??'
+  const [photoFailed, setPhotoFailed] = useState(false)
+  const rawPhotoUrl = profile?.profile_photo
+  const photoUrl = useMemo(() => {
+    if (!rawPhotoUrl) return null
+    if (/^(https?:|data:|blob:)/i.test(rawPhotoUrl)) return rawPhotoUrl
+    const backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
+    return new URL(rawPhotoUrl, backendOrigin || window.location.origin).toString()
+  }, [rawPhotoUrl])
+
+  useEffect(() => setPhotoFailed(false), [photoUrl])
+
+  const jobTitle = profile?.engineer_profile?.designation || profile?.designation || profile?.job_title
+  const email = profile?.email || profile?.user?.email
+  const location = profile?.office_location || profile?.location
 
   const quickStats = [
     {
@@ -368,109 +394,139 @@ const EmployeeProfileHeader = ({ profile, leaveRecord, monthlyTs, salaryInfo, lo
     },
     {
       label: 'Basic Salary',
-      value: salaryInfo ? fmtCurrency(salaryInfo.basic_salary) : EMPTY_DISPLAY,
+      value: salaryInfo ? (salaryVisible ? fmtCurrency(salaryInfo.basic_salary) : '****') : EMPTY_DISPLAY,
       icon: 'BanknotesIcon',
       tone: 'purple',
+      sensitive: true,
     },
   ]
 
   return (
-    <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 rounded-2xl shadow-lg overflow-hidden">
-      <div className="px-6 py-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-          {/* Avatar */}
-          <div className="relative flex-shrink-0">
-            {profile?.profile_photo ? (
+    <section className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_16px_rgba(0,0,0,0.08)]">
+      {/* Facebook-style cover: visual context first, controls stay secondary. */}
+      <div className="relative h-[280px] overflow-hidden bg-[#1877F2]">
+        <div className="absolute inset-0 bg-[linear-gradient(125deg,#1877F2_0%,#1769d2_50%,#0d47a1_100%)]" />
+        <div className="absolute -right-20 -top-28 h-80 w-80 rounded-full border-[52px] border-white/10" />
+        <div className="absolute bottom-[-190px] left-[12%] h-96 w-96 rounded-full border-[70px] border-white/[0.07]" />
+        <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:28px_28px]" />
+        <div className="relative flex h-full items-start justify-between p-5 sm:p-7">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/10 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
+            <Icon name="UserCircleIcon" className="h-4 w-4" />
+            Employee Profile
+          </div>
+          <div className="hidden items-center gap-2 rounded-xl border border-white/20 bg-black/10 px-3.5 py-2 text-white backdrop-blur-sm sm:flex">
+            <Icon name="SparklesIcon" className="h-5 w-5" />
+            <div>
+              <div className="text-xs font-bold">My Workspace</div>
+              <div className="text-[11px] text-blue-100">Personal and secure</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 sm:px-8">
+        <div className="relative flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end">
+          <div className="relative -mt-[76px] w-fit shrink-0">
+            {photoUrl && !photoFailed ? (
               <img
-                src={profile.profile_photo}
-                alt={name}
-                className="w-20 h-20 rounded-2xl object-cover border-4 border-white/30 shadow-lg"
+                src={photoUrl}
+                alt={name || 'Employee'}
+                onError={() => setPhotoFailed(true)}
+                className="h-[140px] w-[140px] rounded-full border-[5px] border-white bg-white object-cover shadow-md"
               />
             ) : (
-              <div className="w-20 h-20 rounded-2xl bg-white/20 border-4 border-white/30 flex items-center justify-center">
-                <span className="text-2xl font-bold text-white">{initials}</span>
+              <div className="flex h-[140px] w-[140px] items-center justify-center rounded-full border-[5px] border-white bg-blue-100 shadow-md">
+                <span className="text-4xl font-bold text-[#1877F2]">{initials}</span>
               </div>
             )}
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-400 border-2 border-white shadow" title="Active" />
+            <span
+              className={`absolute bottom-2 right-2 h-7 w-7 rounded-full border-4 border-white ${profile?.is_active !== false ? 'bg-emerald-500' : 'bg-slate-400'}`}
+              title={profile?.is_active !== false ? 'Active employee' : 'Inactive employee'}
+            />
           </div>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1 pb-1 sm:pt-3">
             {loading ? (
               <div className="space-y-2">
-                <SkeletonBox className="h-6 w-48 bg-white/20" />
-                <SkeletonBox className="h-4 w-32 bg-white/20" />
+                <SkeletonBox className="h-8 w-56" />
+                <SkeletonBox className="h-4 w-72 max-w-full" />
               </div>
             ) : (
               <>
-                <h1 className="text-2xl font-bold text-white truncate">{name || 'Employee'}</h1>
-                <div className="flex flex-wrap gap-3 mt-1 text-blue-100 text-sm">
-                  {profile?.employee_id && (
-                    <span className="flex items-center gap-1">
-                      <Icon name="IdentificationIcon" className="w-4 h-4" />
-                      {profile.employee_id}
-                    </span>
-                  )}
-                  {(profile?.engineer_profile?.designation || profile?.designation) && (
-                    <span className="flex items-center gap-1">
-                      <Icon name="BriefcaseIcon" className="w-4 h-4" />
-                      {profile?.engineer_profile?.designation || profile?.designation}
-                    </span>
-                  )}
-                  {profile?.department && (
-                    <span className="flex items-center gap-1">
-                      <Icon name="BuildingOfficeIcon" className="w-4 h-4" />
-                      {profile.department}
-                    </span>
-                  )}
-                  {profile?.email && (
-                    <span className="flex items-center gap-1">
-                      <Icon name="EnvelopeIcon" className="w-4 h-4" />
-                      {profile.email}
-                    </span>
-                  )}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-400/20 text-emerald-200 text-xs font-medium border border-emerald-300/30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    {profile?.is_active !== false ? 'Active Employee' : 'Inactive'}
-                  </span>
-                  {profile?.roles?.[0] && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 text-white/80 text-xs font-medium border border-white/20">
-                      {roleLabel(profile.roles[0])}
-                    </span>
-                  )}
+                <h1 className="truncate text-3xl font-bold tracking-tight text-slate-900">{name || 'Employee'}</h1>
+                <p className="mt-1 text-sm font-medium text-slate-600">
+                  {[jobTitle, profile?.department].filter(Boolean).join(` ${BULLET_DISPLAY} `) || 'RADAI Employee'}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                  {profile?.employee_id && <span className="inline-flex items-center gap-1.5"><Icon name="IdentificationIcon" className="h-4 w-4" />{profile.employee_id}</span>}
+                  {email && <span className="inline-flex items-center gap-1.5"><Icon name="EnvelopeIcon" className="h-4 w-4" />{email}</span>}
+                  {location && <span className="inline-flex items-center gap-1.5"><Icon name="MapPinIcon" className="h-4 w-4" />{location}</span>}
                 </div>
               </>
             )}
           </div>
 
-          {/* ESS badge */}
-          <div className="hidden lg:flex flex-col items-end gap-1">
-            <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-xl px-4 py-2">
-              <Icon name="SparklesIcon" className="w-5 h-5 text-blue-200" />
-              <div>
-                <div className="text-white font-semibold text-sm">My Workspace</div>
-                <div className="text-blue-200 text-xs">My Profile</div>
-              </div>
-            </div>
+          <div className="flex flex-wrap gap-2 pb-1 sm:justify-end">
+            <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {profile?.is_active !== false ? 'Active Employee' : 'Inactive'}
+            </span>
+            {profile?.roles?.[0] && (
+              <span className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                <Icon name="ShieldCheckIcon" className="h-4 w-4 text-[#1877F2]" />
+                {roleLabel(profile.roles[0])}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Quick stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-          {quickStats.map((s) => (
-            <div key={s.label} className="bg-white/10 border border-white/20 rounded-xl p-3 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-blue-200 text-xs">{s.label}</span>
-                <Icon name={s.icon} className="w-4 h-4 text-blue-200" />
+        <div className="grid grid-cols-2 gap-2 py-4 sm:grid-cols-4">
+          {quickStats.map((stat) => (
+            <div key={stat.label} className="rounded-2xl bg-[#F0F2F5] px-4 py-3 transition-colors hover:bg-slate-200/70">
+              <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <span>{stat.label}</span>
+                {stat.sensitive ? (
+                  <button
+                    type="button"
+                    onClick={onToggleSalary}
+                    className="rounded-full p-1 text-[#1877F2] hover:bg-blue-100"
+                    aria-label={salaryVisible ? 'Hide salary' : 'Show salary'}
+                    title={salaryVisible ? 'Hide salary' : 'Show salary'}
+                  >
+                    <Icon name={salaryVisible ? 'EyeSlashIcon' : 'EyeIcon'} className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <Icon name={stat.icon} className="h-4 w-4 text-[#1877F2]" />
+                )}
               </div>
-              <div className="text-white font-bold text-lg">{s.value}</div>
+              <div className="mt-1 text-lg font-bold text-slate-900">{stat.value}</div>
             </div>
           ))}
         </div>
       </div>
-    </div>
+
+      <nav aria-label="Employee profile sections" className="border-t border-slate-200 px-3 sm:px-6">
+        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+          {ESS_TABS.map((tab) => {
+            const isActive = tab.id === activeTab
+            const badge = tabBadges[tab.id]
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => onTabChange(tab.id)}
+                className={`relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-4 text-sm font-semibold transition-colors ${isActive ? 'bg-blue-50 text-[#1877F2]' : 'text-slate-600 hover:bg-[#F0F2F5] hover:text-slate-900'}`}
+              >
+                <Icon name={tab.icon} className={`h-4 w-4 ${isActive ? 'text-[#1877F2]' : 'text-slate-400'}`} />
+                {tab.label}
+                {badge && <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[#1877F2] px-1 text-[10px] font-bold text-white">{badge}</span>}
+                {isActive && <span className="absolute inset-x-2 bottom-0 h-[3px] rounded-t-full bg-[#1877F2]" />}
+              </button>
+            )
+          })}
+        </div>
+      </nav>
+    </section>
   )
 }
 
@@ -1098,8 +1154,15 @@ const AttendanceAnalytics = ({ profile, monthlyTs, loading: parentLoading }) => 
     if (!code) return
     setFetching(true)
     // Use new self-service endpoint that auto-filters by logged-in user
-    timesheetSvc.fetchMyMonthlyAttendance(selYear, selMonth)
+    let cancelled = false
+    const requestedYear = selYear
+    const requestedMonth = selMonth
+    timesheetSvc.fetchMyMonthlyAttendance(requestedYear, requestedMonth)
       .then(res => {
+        if (
+          cancelled || Number(res?.year) !== requestedYear ||
+          Number(res?.month) !== requestedMonth
+        ) return
         // New endpoint returns { data: {...}, employee_code, email, year, month }
         if (res?.data) {
           setSelData(res.data)
@@ -1107,8 +1170,9 @@ const AttendanceAnalytics = ({ profile, monthlyTs, loading: parentLoading }) => 
           setSelData(null)
         }
       })
-      .catch(() => setSelData(null))
-      .finally(() => setFetching(false))
+      .catch(() => { if (!cancelled) setSelData(null) })
+      .finally(() => { if (!cancelled) setFetching(false) })
+    return () => { cancelled = true }
   }, [selYear, selMonth, profile])
 
   const loading = parentLoading || fetching
@@ -1422,8 +1486,11 @@ const ESSTimesheetView = ({ profile }) => {
     if (activeTab !== 'daily') return
     setLoadingDaily(true)
     setError(null)
-    timesheetSvc.fetchMyDailyAttendance(selectedDate)
+    let cancelled = false
+    const requestedDate = selectedDate
+    timesheetSvc.fetchMyDailyAttendance(requestedDate)
       .then(data => {
+        if (cancelled || data?.date !== requestedDate) return
         if (!data.configured) {
           setError(ESS_TIMESHEET_COPY.notConfigured)
           setDailyData(null)
@@ -1436,11 +1503,13 @@ const ESSTimesheetView = ({ profile }) => {
         }
       })
       .catch(err => {
+        if (cancelled) return
         console.error('[ESS Timesheet] Daily fetch failed:', err)
         setError(err?.response?.data?.error || err.message || 'Failed to load daily data')
         setDailyData(null)
       })
-      .finally(() => setLoadingDaily(false))
+      .finally(() => { if (!cancelled) setLoadingDaily(false) })
+    return () => { cancelled = true }
   }, [activeTab, selectedDate])
 
   // Fetch Monthly data
@@ -1448,8 +1517,15 @@ const ESSTimesheetView = ({ profile }) => {
     if (activeTab !== 'monthly') return
     setLoadingMonthly(true)
     setError(null)
-    timesheetSvc.fetchMyMonthlyAttendance(selectedYear, selectedMonth)
+    let cancelled = false
+    const requestedYear = selectedYear
+    const requestedMonth = selectedMonth
+    timesheetSvc.fetchMyMonthlyAttendance(requestedYear, requestedMonth)
       .then(data => {
+        if (
+          cancelled || Number(data?.year) !== requestedYear ||
+          Number(data?.month) !== requestedMonth
+        ) return
         if (!data.configured) {
           setError(ESS_TIMESHEET_COPY.notConfigured)
           setMonthlyData(null)
@@ -1462,11 +1538,13 @@ const ESSTimesheetView = ({ profile }) => {
         }
       })
       .catch(err => {
+        if (cancelled) return
         console.error('[ESS Timesheet] Monthly fetch failed:', err)
         setError(err?.response?.data?.error || err.message || 'Failed to load monthly data')
         setMonthlyData(null)
       })
-      .finally(() => setLoadingMonthly(false))
+      .finally(() => { if (!cancelled) setLoadingMonthly(false) })
+    return () => { cancelled = true }
   }, [activeTab, selectedYear, selectedMonth])
 
   return (
@@ -1826,7 +1904,7 @@ const TimesheetInsights = ({ monthlyTs, userHistory, loading }) => {
 // Section: Payroll Snapshot (read-only)
 // -----------------------------------------------------------------------------
 
-const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
+const PayrollSnapshot = ({ salaryInfo, slips, loading, salaryVisible, onToggleSalary }) => {
   const latest = slips?.[0] || null
   const basic  = parseFloat(salaryInfo?.basic_salary ?? salaryInfo?.basic) || 0
   const gross  = parseFloat(latest?.gross_salary)               || 0
@@ -1842,16 +1920,41 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
     }))
   }, [slips])
 
+  const privateAmount = (amount) => {
+    if (!(amount > 0)) return EMPTY_DISPLAY
+    return salaryVisible ? fmtCurrency(amount) : '****'
+  }
+
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-[#1877F2]">
+            <Icon name="LockClosedIcon" className="h-5 w-5" />
+          </span>
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Salary privacy</div>
+            <div className="text-xs text-slate-500">Compensation values are hidden by default.</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleSalary}
+          className="inline-flex items-center gap-2 rounded-lg bg-[#1877F2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+        >
+          <Icon name={salaryVisible ? 'EyeSlashIcon' : 'EyeIcon'} className="h-4 w-4" />
+          {salaryVisible ? 'Hide salary' : 'Show salary'}
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
-        <KpiCard icon="BanknotesIcon"     label="Basic Salary"    value={basic > 0 ? fmtCurrency(basic) : EMPTY_DISPLAY} sub="Monthly" tone="blue" />
-        <KpiCard icon="ArrowUpIcon"       label="Gross Earnings"  value={gross > 0 ? fmtCurrency(gross) : EMPTY_DISPLAY} sub={latest ? `${MONTH_SHORT[(latest.month||1)-1]} ${latest.year}` : 'Latest'} tone="green" />
+        <KpiCard icon="BanknotesIcon"     label="Basic Salary"    value={privateAmount(basic)} sub="Monthly" tone="blue" />
+        <KpiCard icon="ArrowUpIcon"       label="Gross Earnings"  value={privateAmount(gross)} sub={latest ? `${MONTH_SHORT[(latest.month||1)-1]} ${latest.year}` : 'Latest'} tone="green" />
         {ESS_ATT_FEATURES.showOvertime && (
-          <KpiCard icon="ArrowTrendingUpIcon" label="Overtime Pay"  value={ot > 0 ? fmtCurrency(ot) : EMPTY_DISPLAY} sub="Included in gross" tone="amber" />
+          <KpiCard icon="ArrowTrendingUpIcon" label="Overtime Pay"  value={privateAmount(ot)} sub="Included in gross" tone="amber" />
         )}
-        <KpiCard icon="MinusCircleIcon"   label="Deductions"      value={deductions > 0 ? fmtCurrency(deductions) : EMPTY_DISPLAY} sub="This month" tone="rose" />
-        <KpiCard icon="CurrencyDollarIcon" label="Net Salary"     value={net > 0 ? fmtCurrency(net) : EMPTY_DISPLAY} sub={latest?.status || EMPTY_DISPLAY} tone="purple" />
+        <KpiCard icon="MinusCircleIcon"   label="Deductions"      value={privateAmount(deductions)} sub="This month" tone="rose" />
+        <KpiCard icon="CurrencyDollarIcon" label="Net Salary"     value={privateAmount(net)} sub={latest?.status || EMPTY_DISPLAY} tone="purple" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -1859,6 +1962,12 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
         <SectionCard title="Salary History" subtitle="Net vs Gross (last 6 months)" icon="ChartBarIcon">
           {loading ? (
             <SkeletonBox className="h-52 w-full" />
+          ) : !salaryVisible ? (
+            <div className="flex h-52 flex-col items-center justify-center gap-2 rounded-xl bg-[#F0F2F5] text-center text-slate-500">
+              <Icon name="EyeSlashIcon" className="h-8 w-8 text-slate-400" />
+              <div className="text-sm font-semibold text-slate-700">Salary trend hidden</div>
+              <div className="max-w-xs text-xs">Select “Show salary” to reveal compensation history for this session.</div>
+            </div>
           ) : history.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={history} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
@@ -1901,7 +2010,7 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
                       <div className="text-sm font-medium text-slate-800">
                         {MONTH_SHORT[(s.month || 1) - 1]} {s.year}
                       </div>
-                      <div className="text-xs text-slate-400">Net: {fmtCurrency(s.net_salary)}</div>
+                      <div className="text-xs text-slate-400">Net: {salaryVisible ? fmtCurrency(s.net_salary) : '****'}</div>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusMeta}`}>
                       {s.status?.replace(/_/g, ' ') || 'generated'}
@@ -3355,6 +3464,7 @@ export default function EmployeeSelfService() {
   const authProfile = currentUser || authUser
 
   const [activeTab, setActiveTab] = useState('overview')
+  const [salaryVisible, setSalaryVisible] = useState(false)
 
   // -- Data state --------------------------------------------------------------
   const [profile,      setProfile]      = useState(null)
@@ -3561,7 +3671,8 @@ export default function EmployeeSelfService() {
     monthlyTs,
     today: todayTs,
     slips,
-  }), [leaveRecord, monthlyTs, todayTs, slips])
+    salaryVisible,
+  }), [leaveRecord, monthlyTs, todayTs, slips, salaryVisible])
 
   // -- Leave request submit ----------------------------------------------------
   const handleLeaveSubmit = useCallback(async (form) => {
@@ -3791,7 +3902,15 @@ export default function EmployeeSelfService() {
         return <ESSTimesheetView profile={profile} />
 
       case 'payroll':
-        return <PayrollSnapshot salaryInfo={salaryInfo} slips={slips} loading={loadingPayroll} />
+        return (
+          <PayrollSnapshot
+            salaryInfo={salaryInfo}
+            slips={slips}
+            loading={loadingPayroll}
+            salaryVisible={salaryVisible}
+            onToggleSalary={() => setSalaryVisible((visible) => !visible)}
+          />
+        )
 
       case 'team':
         return <TeamCalendar />
@@ -3829,8 +3948,8 @@ export default function EmployeeSelfService() {
   }
 
   return (
-    <div className="bg-slate-50">
-      <div className="px-4 sm:px-6 lg:px-8 py-5 space-y-5">
+    <div className="min-h-full bg-[#F0F2F5] font-['Inter','Segoe_UI',sans-serif]">
+      <div className="mx-auto max-w-[1600px] space-y-5 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         {/* -- Profile Header -- */}
         <EmployeeProfileHeader
           profile={profile}
@@ -3838,39 +3957,12 @@ export default function EmployeeSelfService() {
           monthlyTs={monthlyTs}
           salaryInfo={salaryInfo}
           loading={loadingProfile}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          tabBadges={tabBadges}
+          salaryVisible={salaryVisible}
+          onToggleSalary={() => setSalaryVisible((visible) => !visible)}
         />
-
-        {/* -- Tab Navigation -- */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <div className="px-4 pt-1 pb-0 flex gap-0.5 overflow-x-auto scrollbar-hide border-b border-slate-100">
-            {ESS_TABS.map(tab => {
-              const isActive = tab.id === activeTab
-              const badge    = tabBadges[tab.id]
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`
-                    flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium
-                    whitespace-nowrap transition-colors flex-shrink-0 relative
-                    border-b-2 -mb-px
-                    ${isActive
-                      ? 'bg-blue-50/70 text-blue-700 border-blue-500 rounded-t-lg'
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-transparent rounded-t-lg'}
-                  `}
-                >
-                  <Icon name={tab.icon} className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                  {tab.label}
-                  {badge && (
-                    <span className="ml-1 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
-                      {badge}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
 
         {/* -- Active Section -- */}
         <div>
