@@ -521,7 +521,7 @@ const LiveTab = ({ refreshTick, onManualRefresh }) => {
       )}
 
       {/* ── Soft-coded stale sync diagnostic banner (when DB has data but it's too old) ── */}
-      {allRows.length === 0 && !activeFilter && !q && data?.sync_stale && (
+      {data?.sync_stale && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
           <HeroIcons.ExclamationTriangleIcon className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
