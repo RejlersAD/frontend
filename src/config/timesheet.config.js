@@ -246,12 +246,12 @@ export const TIMESHEET_COPY = {
   // Soft-coded stale sync detection (when DB has events but they’re too old)
   liveStaleSyncTitle: 'Sync agent has stopped running',
   liveStaleSyncSubtitle: (
-    'The database has attendance records, but they are outside the rolling time window. ' +
-    'This usually means the office-side sync agent has stopped running.'
+    'No heartbeat has been received from the office-side sync agent within the configured threshold. ' +
+    'Attendance records may therefore be out of date.'
   ),
   liveStaleSyncAction: 'Restart the sync agent on the office server',
-  liveStaleSyncLastEvent: 'Last punch synced:',
-  liveStaleSyncAge: 'Data age:',
+  liveStaleSyncLastEvent: 'Last punch received:',
+  liveStaleSyncAge: 'Agent heartbeat age:',
   
   // Soft-coded prefix shown next to the rolling-window cutoff time
   liveWindowPrefix: 'Showing punches since',
