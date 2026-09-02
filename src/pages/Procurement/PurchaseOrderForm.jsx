@@ -42,8 +42,13 @@ const TERMS_TEMPLATES = {
 
 const PROJECT_FINAL_APPROVER = 'Jarmo Suominen';
 const FINAL_APPROVER_TITLE = 'General Manager, VP';
-const DEFAULT_INVOICE_CONTACT = 'Aneef Thadikkarantavida';
-const DEFAULT_INVOICE_EMAIL = 'Aneef.Thadikkarantavida@rejlers.ae';
+const DEFAULT_INVOICE_CONTACT = 'Mr. Aneef Thadikkarantavida';
+const DEFAULT_INVOICE_EMAIL = 'aneef.thadikkarantavida@rejlers.ae';
+const DEFAULT_INVOICE_EMAILS = [
+  DEFAULT_INVOICE_EMAIL,
+  'uae.finance@rejlers.ae',
+  'uae.procurement@rejlers.ae',
+];
 const DEFAULT_BUYER_REFERENCE = 'Richa Hannah Thomas';
 const DEFAULT_ITEMS_TABLE_HEADERS = {
   line_code: 'Line Code',
@@ -57,12 +62,57 @@ const DEFAULT_ITEMS_TABLE_HEADERS = {
   total_price: 'Total Price',
 };
 
+const RichTextEditor = ({ value, onChange }) => {
+  const editorRef = useRef(null);
+
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== (value || '')) {
+      editorRef.current.innerHTML = value || '';
+    }
+  }, [value]);
+
+  const runCommand = (command, commandValue = null) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, commandValue);
+    onChange(editorRef.current?.innerHTML || '');
+  };
+
+  const addImage = (event) => {
+    const imageFile = event.target.files?.[0];
+    if (!imageFile) return;
+    const reader = new FileReader();
+    reader.onload = () => runCommand('insertImage', reader.result);
+    reader.readAsDataURL(imageFile);
+    event.target.value = '';
+  };
+
+  return (
+    <div className="mt-1 overflow-hidden rounded-xl border border-gray-300 bg-white focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
+      <div className="flex flex-wrap gap-1 border-b border-gray-200 bg-gray-50 p-2">
+        {[['bold', 'Bold'], ['italic', 'Italic'], ['underline', 'Underline'], ['insertUnorderedList', 'Bullets'], ['insertOrderedList', 'Numbering']].map(([command, label]) => (
+          <button key={command} type="button" onClick={() => runCommand(command)} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-blue-50">{label}</button>
+        ))}
+        <button type="button" onClick={() => runCommand('insertHTML', '<table border="1" style="border-collapse:collapse;width:100%"><tbody><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p><br></p>')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-blue-50">Table</button>
+        <label className="cursor-pointer rounded border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-blue-50">Picture<input type="file" accept="image/*" onChange={addImage} className="hidden" /></label>
+      </div>
+      <div ref={editorRef} contentEditable suppressContentEditableWarning onInput={(event) => onChange(event.currentTarget.innerHTML)} className="min-h-64 px-4 py-3 text-sm outline-none [&_img]:my-2 [&_img]:max-w-full [&_table]:my-2 [&_td]:border [&_td]:border-gray-400 [&_td]:p-2" data-placeholder="Enter the complete PO narrative..." />
+    </div>
+  );
+};
+
 const employeeDesignation = (employee) => (
   employee?.designation
   || employee?.job_title
   || employee?.title
   || employee?.position
   || FINAL_APPROVER_TITLE
+);
+const buyerEmployeeDesignation = (employee) => (
+  employee?.designation
+  || employee?.job_title
+  || employee?.title
+  || employee?.position
+  || ''
 );
 
 const defaultApprovalLog = () => [{
@@ -189,7 +239,7 @@ const normalizeRequisitionItems = (requisition) => {
 const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prReference = null }) => {
   const savedInvoiceEmails = Array.isArray(editData?.invoicing_emails)
     ? editData.invoicing_emails
-    : [DEFAULT_INVOICE_EMAIL];
+    : DEFAULT_INVOICE_EMAILS;
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -310,7 +360,10 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     contact_persons: editData?.contact_persons || {
       technical: [],
       project_team: [],
-      commercial: []
+      commercial: [],
+      buyer_references: [],
+      delivery_date_type: 'delivery',
+      attachment_details: [],
     },
     
     // Additional
@@ -326,12 +379,20 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     approval_log: mergeApprovalLog(editData?.approval_log),
     final_approver_notes: editData?.final_approver_notes || '',
     notes: editData?.notes || '',
+    attachments: editData?.attachments || [],
     // Short summary that is sent to vendor with the PO
     summary: editData?.summary || '',
     status: editData?.status || 'draft',
   });
   
-  const [files, setFiles] = useState([]);
+  const savedAttachmentDetails = editData?.contact_persons?.attachment_details || [];
+  const [attachmentSlots, setAttachmentSlots] = useState([0, 1].map((index) => ({
+    title: savedAttachmentDetails[index]?.title || editData?.attachments?.[index]?.title || `Attachment ${index + 1}`,
+    description: savedAttachmentDetails[index]?.description || editData?.attachments?.[index]?.description || '',
+    file: null,
+    existingAttachment: editData?.attachments?.[index] || null,
+  })));
+  const files = attachmentSlots.map((slot) => slot.file).filter(Boolean);
   const [errors, setErrors] = useState({});
   const [popupError, setPopupError] = useState('');
   const [autoSaving, setAutoSaving] = useState(false);
@@ -353,10 +414,28 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       ) || approvalEmployees.find((employee) =>
         String(employee.full_name || '').trim().toLowerCase() === DEFAULT_BUYER_REFERENCE.toLowerCase()
       );
+      const currentBuyerReferences = Array.isArray(previous.contact_persons?.buyer_references)
+        ? previous.contact_persons.buyer_references
+        : [];
+      const defaultBuyerReference = buyer ? {
+        user_id: buyer.id,
+        name: buyer.full_name || buyer.email,
+        designation: buyerEmployeeDesignation(buyer),
+        email: buyer.email || '',
+        primary: true,
+      } : null;
+      const buyerReferences = currentBuyerReferences.length
+        ? currentBuyerReferences
+        : defaultBuyerReference ? [defaultBuyerReference] : [];
       return {
         ...previous,
         buyer_reference_pm: buyer?.full_name || previous.buyer_reference_pm,
         buyer_reference_email: buyer?.email || previous.buyer_reference_email,
+        invoicing_emails: previous.invoicing_emails?.length ? previous.invoicing_emails : DEFAULT_INVOICE_EMAILS,
+        contact_persons: {
+          ...(previous.contact_persons || {}),
+          buyer_references: buyerReferences,
+        },
         ...(jarmo ? {
           management_approver: jarmo.full_name || jarmo.email,
           approved_by_name: jarmo.full_name || jarmo.email,
@@ -818,14 +897,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     if (errors.approval_log) setErrors((previous) => ({ ...previous, approval_log: null }));
   };
 
-  const handleFileChange = (e) => {
-    const selectedFiles = Array.from(e.target.files);
-    setFiles(prevFiles => [...prevFiles, ...selectedFiles]);
+  const updateAttachmentSlot = (index, field, value) => {
+    setAttachmentSlots((previous) => previous.map((slot, slotIndex) => (
+      slotIndex === index ? { ...slot, [field]: value } : slot
+    )));
   };
 
-  const removeFile = (index) => {
-    setFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
-  };
+  const removeFile = (index) => updateAttachmentSlot(index, 'file', null);
 
   const addPaymentMilestone = () => {
     setFormData(prev => ({
@@ -884,13 +962,28 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     });
   };
 
-  const handleBuyerReferenceSelection = (employeeId) => {
+  const handleBuyerReferenceSelection = (slotIndex, employeeId) => {
     const employee = approvalEmployees.find((candidate) => String(candidate.id) === String(employeeId));
-    setFormData((previous) => ({
-      ...previous,
-      buyer_reference_pm: employee?.full_name || employee?.email || '',
-      buyer_reference_email: employee?.email || '',
-    }));
+    setFormData((previous) => {
+      const buyerReferences = [...(previous.contact_persons?.buyer_references || [])];
+      if (!employee) buyerReferences.splice(slotIndex, 1);
+      else buyerReferences[slotIndex] = {
+        user_id: employee.id,
+        name: employee.full_name || employee.email || '',
+        designation: buyerEmployeeDesignation(employee),
+        email: employee.email || '',
+        primary: slotIndex === 0,
+      };
+      return {
+        ...previous,
+        buyer_reference_pm: buyerReferences[0]?.name || DEFAULT_BUYER_REFERENCE,
+        buyer_reference_email: buyerReferences[0]?.email || '',
+        contact_persons: {
+          ...(previous.contact_persons || {}),
+          buyer_references: buyerReferences.filter(Boolean).slice(0, 3),
+        },
+      };
+    });
   };
 
   const updateItemsTableHeader = (field, value) => {
@@ -968,6 +1061,12 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       newErrors.total_amount = 'Valid total amount is required';
     }
     if (!formData.payment_terms?.trim()) newErrors.payment_terms = 'Payment terms are required';
+    if (formData.contact_persons?.delivery_date_type === 'start' && !formData.start_date) {
+      newErrors.start_date = 'Start date is required';
+    }
+    if (formData.contact_persons?.delivery_date_type === 'start' && !formData.end_date) {
+      newErrors.end_date = 'End date is mandatory when Start Date is selected';
+    }
     if (requireSummary && !formData.summary?.trim()) newErrors.summary = 'Summary is required before sending to vendor';
     if (requireSummary && missingApprovalStages.length) {
       newErrors.approval_log = `Select an active employee for: ${missingApprovalStages.join(', ')}`;
@@ -997,7 +1096,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 ? `Please select: ${missingApprovalStages.join(', ')}.`
                 : 'Please add a short summary before sending to the vendor.';
       setPopupError(validationMessage);
-      setCurrentSection(missingApprovalStages.length ? 6
+      setCurrentSection(missingApprovalStages.length ? 1
         : !formData.pr_reference || !formData.po_number?.trim() || !formData.vendor || !formData.title?.trim() || (sendToVendor && !formData.summary?.trim()) ? 1 : 2);
       setTimeout(() => setPopupError(''), 6000);
       return;
@@ -1006,8 +1105,25 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setSubmitLoading(true);
     
     try {
+      const preparedFormData = {
+        ...formData,
+        payment_milestones: [],
+        attachments: attachmentSlots
+          .filter((slot) => slot.existingAttachment && !slot.file)
+          .map((slot) => ({
+            ...slot.existingAttachment,
+            title: slot.title.trim(),
+            description: slot.description.trim(),
+          })),
+        contact_persons: {
+          ...(formData.contact_persons || {}),
+          attachment_details: attachmentSlots
+            .filter((slot) => slot.file)
+            .map(({ title, description }) => ({ title: title.trim(), description: description.trim() })),
+        },
+      };
       const payload = buildPurchaseOrderPayload(
-        formData,
+        preparedFormData,
         sendToVendor ? 'sent' : (editData?.status || 'draft')
       );
       let submitData = payload;
@@ -1082,19 +1198,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     ));
   }).slice(0, 15);
 
-  const selectedBuyerEmployee = approvalEmployees.find((employee) =>
-    String(employee.full_name || employee.email || '').trim().toLowerCase()
-      === String(formData.buyer_reference_pm || '').trim().toLowerCase()
-  );
+  const buyerReferences = formData.contact_persons?.buyer_references || [];
 
   const sections = [
-    { id: 1, name: 'Header & Seller', icon: BuildingOfficeIcon },
-    { id: 2, name: 'Buyer & Payment', icon: CurrencyDollarIcon },
-    { id: 3, name: 'Project Details', icon: DocumentCheckIcon },
-    { id: 4, name: 'POD/Scope', icon: DocumentTextIcon },
-    { id: 5, name: 'Items & Pricing', icon: CurrencyDollarIcon },
-    { id: 6, name: 'Contract Terms', icon: DocumentTextIcon },
-    { id: 7, name: 'Contacts & Approval', icon: UserGroupIcon },
+    { id: 1, name: 'Header, Buyer & Project', icon: BuildingOfficeIcon },
+    { id: 2, name: 'PO Description & Scope', icon: DocumentTextIcon },
+    { id: 3, name: 'Summary of Prices', icon: CurrencyDollarIcon },
+    { id: 4, name: 'Attachments', icon: PaperClipIcon },
   ];
 
   return (
@@ -1164,13 +1274,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
         <form onSubmit={(e) => handleSubmit(e, false)} className="grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1.25fr)_minmax(400px,0.75fr)] xl:overflow-hidden">
           <div className="min-w-0 px-8 py-6 xl:overflow-y-auto">
           
-          {/* Section 1: Header & Seller */}
+          {/* Section 1: Header, buyer, seller and project details */}
           {currentSection === 1 && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Header & Seller Information</h3>
-                  <p className="text-sm text-gray-500">Capture the purchase order header and supplier details needed for PO creation.</p>
+                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Header, Buyer &amp; Project Details</h3>
+                  <p className="text-sm text-gray-500">Capture the complete PO header, seller, buyer, and project information in one place.</p>
                 </div>
               </div>
 
@@ -1304,7 +1414,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Vendor / Seller *</label>
+                  <label className="block text-sm font-medium text-gray-700">Seller Information *</label>
                   <select
                     name="vendor"
                     value={formData.vendor}
@@ -1326,9 +1436,6 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-gray-700">
                       <div className="font-semibold text-blue-700 mb-2">Selected vendor details</div>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        <div>
-                          <span className="font-medium">Contact Person:</span> {selectedVendor.contact_person || 'N/A'}
-                        </div>
                         <div>
                           <span className="font-medium">Email:</span> {selectedVendor.email || 'N/A'}
                         </div>
@@ -1415,18 +1522,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Contact Person Name</label>
-                    <input
-                      type="text"
-                      name="seller_contact_person"
-                      value={formData.seller_contact_person}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="Name of seller contact"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <label className="block text-sm font-medium text-gray-700">Seller Email</label>
                     <input
                       type="email"
                       name="seller_email"
@@ -1437,7 +1533,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+                    <label className="block text-sm font-medium text-gray-700">Seller Phone Number</label>
                     <input
                       type="text"
                       name="seller_phone"
@@ -1448,7 +1544,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Address</label>
+                    <label className="block text-sm font-medium text-gray-700">Seller Address</label>
                     <textarea
                       name="seller_address"
                       value={formData.seller_address}
@@ -1464,8 +1560,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
             </div>
           )}
 
-          {/* Section 2: Buyer & Payment */}
-          {currentSection === 2 && (
+          {/* Buyer and payment information is part of the merged first tab. */}
+          {currentSection === 1 && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -1475,7 +1571,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
               </div>
 
               <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Default Invoicing Address</label>
+                  <textarea
+                    readOnly
+                    rows={10}
+                    value={`Attn. ${DEFAULT_INVOICE_CONTACT}\n${DEFAULT_INVOICE_EMAIL}\ncc. uae.finance@rejlers.ae\nuae.procurement@rejlers.ae\nRejlers International Engineering\nSolutions AB\nPO Box 39317\nAbu Dhabi, UAE.\nTel: +971 2 639 7449\nFax: +971 2 639 7448`}
+                    className="mt-1 block w-full cursor-not-allowed resize-none rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm leading-5 text-gray-900"
+                  />
+                </div>
+                <div className="hidden grid-cols-2 gap-4" aria-hidden="true">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Invoicing Attention</label>
                     <input
@@ -1504,15 +1609,22 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Buyer Reference</label>
-                  <select
-                    value={selectedBuyerEmployee?.id || ''}
-                    onChange={(event) => handleBuyerReferenceSelection(event.target.value)}
-                    disabled={approversLoading}
-                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                  >
-                    <option value="">{approversLoading ? 'Loading RADAI employees...' : '-- Select existing employee --'}</option>
-                    {approvalEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name || employee.email}</option>)}
-                  </select>
+                  <p className="mt-1 text-xs text-gray-500">Richa Hannah Thomas is the primary default. Select up to three RADAI employees.</p>
+                  <div className="mt-3 space-y-3">
+                    {[0, 1, 2].map((slotIndex) => {
+                      const reference = buyerReferences[slotIndex];
+                      return <div key={slotIndex} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-20 text-xs font-bold uppercase text-gray-500">{slotIndex === 0 ? 'Primary' : `Name ${slotIndex + 1}`}</span>
+                          <select value={reference?.user_id || ''} onChange={(event) => handleBuyerReferenceSelection(slotIndex, event.target.value)} disabled={approversLoading || slotIndex === 0} className="block flex-1 rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100">
+                            <option value="">{approversLoading ? 'Loading RADAI employees...' : '-- Select employee --'}</option>
+                            {approvalEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name || employee.email}</option>)}
+                          </select>
+                        </div>
+                        {reference && <p className="mt-2 pl-24 text-xs text-gray-600"><b>{reference.name}</b> · {reference.designation} · {reference.email}</p>}
+                      </div>;
+                    })}
+                  </div>
                   <p className="mt-1 text-xs text-gray-500">{formData.buyer_reference_email || `Default: ${DEFAULT_BUYER_REFERENCE}. Email is fetched from RADAI.`}</p>
                 </div>
 
@@ -1613,57 +1725,12 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">Payment Milestones</label>
-                    <button
-                      type="button"
-                      onClick={addPaymentMilestone}
-                      className="text-sm text-blue-600 hover:text-blue-700"
-                    >
-                      + Add Milestone
-                    </button>
-                  </div>
-                  
-                  {Array.isArray(formData.payment_milestones) && formData.payment_milestones.map((milestone, index) => (
-                    <div key={index} className="grid grid-cols-5 gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={milestone.milestone}
-                        onChange={(e) => updatePaymentMilestone(index, 'milestone', e.target.value)}
-                        placeholder="Draft Report"
-                        className="col-span-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                      <input
-                        type="number"
-                        value={milestone.percentage}
-                        onChange={(e) => updatePaymentMilestone(index, 'percentage', e.target.value)}
-                        placeholder="%"
-                        className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                      <input
-                        type="number"
-                        value={milestone.amount}
-                        onChange={(e) => updatePaymentMilestone(index, 'amount', e.target.value)}
-                        placeholder="Amount"
-                        className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePaymentMilestone(index)}
-                        className="text-red-600 hover:text-red-700 text-sm"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           )}
 
-          {/* Section 3: Project Details */}
-          {currentSection === 3 && (
+          {/* Project details are part of the merged first tab. */}
+          {currentSection === 1 && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -1878,31 +1945,38 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                  <label className="block text-sm font-medium text-gray-700">Date for Delivery Information</label>
+                  <div className="mt-2 flex gap-6">
+                    {[['delivery', 'Delivery Date (supply)'], ['start', 'Start Date (services)']].map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm text-gray-700"><input type="radio" checked={(formData.contact_persons?.delivery_date_type || 'delivery') === value} onChange={() => setFormData((previous) => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), delivery_date_type: value } }))} />{label}</label>)}
+                  </div>
+                  {(formData.contact_persons?.delivery_date_type || 'delivery') === 'start' ? <div className="mt-4 grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Start Date</label>
+                    <label className="block text-sm font-medium text-gray-700">Start Date *</label>
                     <input
                       type="date"
                       name="start_date"
                       value={formData.start_date}
                       onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                      className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.start_date ? 'border-red-500' : 'border-gray-300'}`}
                     />
+                    {errors.start_date && <p className="mt-1 text-xs text-red-600">{errors.start_date}</p>}
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">End Date</label>
+                    <label className="block text-sm font-medium text-gray-700">End Date *</label>
                     <input
                       type="date"
                       name="end_date"
                       value={formData.end_date}
                       onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                      className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.end_date ? 'border-red-500' : 'border-gray-300'}`}
                     />
+                    {errors.end_date && <p className="mt-1 text-xs text-red-600">{errors.end_date}</p>}
                   </div>
-                  
+                  </div> : <div className="mt-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Expected Delivery</label>
+                    <label className="block text-sm font-medium text-gray-700">Delivery Date</label>
                     <input
                       type="date"
                       name="expected_delivery"
@@ -1911,52 +1985,35 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
+                  </div>}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Section 4: PO Description and Scope */}
-          {currentSection === 4 && (
+          {/* Section 2: PO Description and Scope */}
+          {currentSection === 2 && (
             <div className="space-y-6">
               <div>
                 <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
-                <p className="text-sm text-gray-500">Edit the PO narrative and detailed scope. Changes appear immediately in the live preview.</p>
+                <p className="text-sm text-gray-500">Use the single narrative editor for formatted text, pictures, and tables.</p>
               </div>
               <div className="space-y-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">PO Description</label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleChange}
-                    rows={8}
-                    className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="Enter the editable purchase order description or paste formatted Word text here."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Scope</label>
-                  <textarea
-                    name="scope_of_services"
-                    value={formData.scope_of_services}
-                    onChange={handleChange}
-                    rows={10}
-                    className="mt-1 block w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="Enter the complete PO scope. Long content automatically creates additional preview pages."
-                  />
+                  <label className="block text-sm font-medium text-gray-700">PO Narrative</label>
+                  <RichTextEditor value={formData.description} onChange={(description) => setFormData((previous) => ({ ...previous, description, scope_of_services: '' }))} />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Section 5: Items & Pricing */}
-          {currentSection === 5 && (
+          {/* Section 3: Summary of Prices */}
+          {currentSection === 3 && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Items & Pricing</h3>
-                  <p className="text-sm text-gray-500">Edit any column heading directly. Clear a heading to hide that column from the live and printed PO preview.</p>
+                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Summary of Prices</h3>
+                  <p className="text-sm text-gray-500">These pricing rows are rendered only in the final Summary of Prices pages.</p>
                 </div>
                 <button
                   type="button"
@@ -2305,47 +2362,29 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
             </div>
           )}
 
-          {/* File Attachments */}
-          <div className="mt-8 border-t pt-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Attachments</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-              <input
-                type="file"
-                multiple
-                onChange={handleFileChange}
-                className="hidden"
-                id="file-upload"
-              />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-sm text-gray-600">Click to upload or drag and drop</p>
-              </label>
+          {/* Section 4: all PO attachments are managed in this tab only. */}
+          {currentSection === 4 && <div className="space-y-6">
+            <div>
+              <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">Attachments</h3>
+              <p className="text-sm text-gray-500">Add up to two supporting documents with an editable title and description.</p>
             </div>
-            
-            {Array.isArray(files) && files.length > 0 && (
-              <div className="mt-4 space-y-2">
-                {files.map((file, index) => (
-                  <div key={index} className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded-lg">
-                    <div className="flex items-center space-x-2">
-                      <PaperClipIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm text-gray-700">{file.name}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      className="text-red-600 hover:text-red-700 text-sm"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+            {attachmentSlots.map((slot, index) => <section key={index} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h4 className="font-semibold text-gray-900">Attachment {index + 1}</h4>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div><label className="block text-sm font-medium text-gray-700">Title</label><input type="text" value={slot.title} onChange={(event) => updateAttachmentSlot(index, 'title', event.target.value)} className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
+                <div><label className="block text-sm font-medium text-gray-700">Description</label><input type="text" value={slot.description} onChange={(event) => updateAttachmentSlot(index, 'description', event.target.value)} placeholder="Editable attachment description" className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
               </div>
-            )}
-          </div>
+              <div className="mt-4 rounded-xl border-2 border-dashed border-gray-300 p-5 text-center">
+                <input type="file" onChange={(event) => updateAttachmentSlot(index, 'file', event.target.files?.[0] || null)} className="hidden" id={`po-attachment-${index}`} />
+                <label htmlFor={`po-attachment-${index}`} className="cursor-pointer"><CloudArrowUpIcon className="mx-auto h-10 w-10 text-gray-400" /><p className="mt-2 text-sm text-gray-600">{slot.file?.name || slot.existingAttachment?.filename || 'Select attachment'}</p></label>
+                {slot.file && <button type="button" onClick={() => removeFile(index)} className="mt-2 text-sm font-semibold text-red-600 hover:text-red-700">Remove file</button>}
+              </div>
+            </section>)}
+          </div>}
 
           </div>
           <aside className="min-h-[760px] overflow-hidden border-t border-slate-300 xl:min-h-0 xl:border-l xl:border-t-0" aria-label="Live purchase order preview">
-            <PurchaseOrderLivePreview formData={formData} vendor={selectedVendor} files={files} />
+            <PurchaseOrderLivePreview formData={formData} vendor={selectedVendor} files={attachmentSlots.filter((slot) => slot.file || slot.existingAttachment)} />
           </aside>
         </form>
 
@@ -2360,8 +2399,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
               ← Previous
             </button>
             <button
-              onClick={() => setCurrentSection(Math.min(7, currentSection + 1))}
-              disabled={currentSection === 7 || !hasRequiredRequisition}
+              onClick={() => setCurrentSection(Math.min(4, currentSection + 1))}
+              disabled={currentSection === 4 || !hasRequiredRequisition}
               className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
             >
               Next →
