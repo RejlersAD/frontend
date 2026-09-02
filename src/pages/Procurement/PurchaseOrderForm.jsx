@@ -14,6 +14,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../../services/api.service';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
+import PurchaseOrderPriceSpreadsheet from './PurchaseOrderPriceSpreadsheet';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -41,7 +42,8 @@ const TERMS_TEMPLATES = {
 };
 
 const PROJECT_FINAL_APPROVER = 'Jarmo Suominen';
-const FINAL_APPROVER_TITLE = 'General Manager, VP';
+const FINAL_APPROVER_TITLE = 'Sr. Vice President, Middle East\nCEO, Rejlers Abu Dhabi';
+const USD_TO_AED_RATE = 3.6725;
 const DEFAULT_INVOICE_CONTACT = 'Mr. Aneef Thadikkarantavida';
 const DEFAULT_INVOICE_EMAIL = 'aneef.thadikkarantavida@rejlers.ae';
 const DEFAULT_INVOICE_EMAILS = [
@@ -64,6 +66,12 @@ const DEFAULT_ITEMS_TABLE_HEADERS = {
 
 const RichTextEditor = ({ value, onChange }) => {
   const editorRef = useRef(null);
+  const savedRangeRef = useRef(null);
+  const [ribbonTab, setRibbonTab] = useState('home');
+  const [showTableDialog, setShowTableDialog] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableColumns, setTableColumns] = useState(3);
+  const [tableHeaderRow, setTableHeaderRow] = useState(true);
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== (value || '')) {
@@ -71,11 +79,79 @@ const RichTextEditor = ({ value, onChange }) => {
     }
   }, [value]);
 
+  const rememberSelection = () => {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode)) {
+      savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
+  };
+
+  const restoreSelection = () => {
+    if (!savedRangeRef.current) return;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(savedRangeRef.current);
+  };
+
   const runCommand = (command, commandValue = null) => {
     editorRef.current?.focus();
+    restoreSelection();
     document.execCommand(command, false, commandValue);
+    rememberSelection();
     onChange(editorRef.current?.innerHTML || '');
   };
+
+  const selectedBlocks = () => {
+    const editor = editorRef.current;
+    const range = savedRangeRef.current;
+    if (!editor || !range) return [];
+    const candidates = [...editor.querySelectorAll('p, div, h1, h2, h3, h4, blockquote, li')]
+      .filter((node) => {
+        try { return range.intersectsNode(node); } catch { return false; }
+      });
+    return candidates.filter((node) => !candidates.some((other) => other !== node && node.contains(other)));
+  };
+
+  const changeIndent = (direction) => {
+    editorRef.current?.focus();
+    restoreSelection();
+    let blocks = selectedBlocks();
+    if (!blocks.length) {
+      document.execCommand('formatBlock', false, 'p');
+      rememberSelection();
+      blocks = selectedBlocks();
+    }
+    blocks.forEach((block) => {
+      const currentIndent = Number.parseFloat(block.style.marginLeft || '0') || 0;
+      block.style.marginLeft = `${Math.max(0, currentIndent + (direction * 24))}px`;
+    });
+    rememberSelection();
+    onChange(editorRef.current?.innerHTML || '');
+  };
+
+  const ribbonButton = (label, command, commandValue = null, extraClass = '') => (
+    <button
+      type="button"
+      title={label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => runCommand(command, commandValue)}
+      className={`min-w-8 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-100 active:bg-blue-200 ${extraClass}`}
+    >
+      {label}
+    </button>
+  );
+
+  const actionButton = (label, action, extraClass = '') => (
+    <button
+      type="button"
+      title={label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={action}
+      className={`min-w-8 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-100 active:bg-blue-200 ${extraClass}`}
+    >
+      {label}
+    </button>
+  );
 
   const addImage = (event) => {
     const imageFile = event.target.files?.[0];
@@ -86,27 +162,106 @@ const RichTextEditor = ({ value, onChange }) => {
     event.target.value = '';
   };
 
+  const insertLink = () => {
+    const url = window.prompt('Enter the link URL');
+    if (url) runCommand('createLink', url);
+  };
+
+  const insertCustomTable = () => {
+    const rows = Math.min(30, Math.max(1, Number(tableRows) || 1));
+    const columns = Math.min(12, Math.max(1, Number(tableColumns) || 1));
+    const cells = (rowIndex) => Array.from({ length: columns }, (_, columnIndex) => {
+      const isHeader = tableHeaderRow && rowIndex === 0;
+      const tag = isHeader ? 'th' : 'td';
+      const label = isHeader ? `Heading ${columnIndex + 1}` : 'Cell';
+      const style = isHeader ? 'background:#f1f5f9;font-weight:700;' : '';
+      return `<${tag} style="border:1px solid #64748b;padding:6px;${style}">${label}</${tag}>`;
+    }).join('');
+    const body = Array.from({ length: rows }, (_, rowIndex) => `<tr>${cells(rowIndex)}</tr>`).join('');
+    runCommand('insertHTML', `<table style="border-collapse:collapse;width:100%"><tbody>${body}</tbody></table><p><br></p>`);
+    setShowTableDialog(false);
+  };
+
   return (
-    <div className="mt-1 overflow-hidden rounded-xl border border-gray-300 bg-white focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
-      <div className="flex flex-wrap gap-1 border-b border-gray-200 bg-gray-50 p-2">
-        {[['bold', 'Bold'], ['italic', 'Italic'], ['underline', 'Underline'], ['insertUnorderedList', 'Bullets'], ['insertOrderedList', 'Numbering']].map(([command, label]) => (
-          <button key={command} type="button" onClick={() => runCommand(command)} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-blue-50">{label}</button>
-        ))}
-        <button type="button" onClick={() => runCommand('insertHTML', '<table border="1" style="border-collapse:collapse;width:100%"><tbody><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p><br></p>')} className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-blue-50">Table</button>
-        <label className="cursor-pointer rounded border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-blue-50">Picture<input type="file" accept="image/*" onChange={addImage} className="hidden" /></label>
+    <div className="relative mt-1 overflow-visible rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-[#2b579a] focus-within:ring-1 focus-within:ring-[#2b579a]">
+      <div className="sticky top-0 z-20 rounded-t-lg shadow-md">
+      <div className="rounded-t-lg bg-[#2b579a] px-3 pt-2 text-white">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold">PO Narrative Editor</span>
+          <span className="text-[10px] text-blue-100">Microsoft-style formatting</span>
+        </div>
+        <div className="mt-2 flex gap-1">
+          {['home', 'insert'].map((tab) => <button key={tab} type="button" onClick={() => setRibbonTab(tab)} className={`rounded-t px-4 py-1.5 text-xs font-semibold capitalize ${ribbonTab === tab ? 'bg-white text-[#2b579a]' : 'text-white hover:bg-white/10'}`}>{tab}</button>)}
+        </div>
       </div>
-      <div ref={editorRef} contentEditable suppressContentEditableWarning onInput={(event) => onChange(event.currentTarget.innerHTML)} className="min-h-64 px-4 py-3 text-sm outline-none [&_img]:my-2 [&_img]:max-w-full [&_table]:my-2 [&_td]:border [&_td]:border-gray-400 [&_td]:p-2" data-placeholder="Enter the complete PO narrative..." />
+
+      <div className="min-h-[76px] border-b border-slate-300 bg-[#f5f6f8] px-2 py-2">
+        {ribbonTab === 'home' ? <div className="flex flex-wrap items-stretch gap-2">
+          <div className="flex items-center gap-0.5 border-r border-slate-300 pr-2">
+            {ribbonButton('↶', 'undo')}{ribbonButton('↷', 'redo')}{ribbonButton('Clear', 'removeFormat')}
+          </div>
+          <div className="flex flex-col justify-between border-r border-slate-300 pr-2">
+            <div className="flex gap-1">
+              <select aria-label="Font family" defaultValue="Arial" onChange={(event) => runCommand('fontName', event.target.value)} className="h-7 w-36 rounded border-slate-300 bg-white px-2 py-0 text-xs"><option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option></select>
+              <select aria-label="Font size" defaultValue="3" onChange={(event) => runCommand('fontSize', event.target.value)} className="h-7 w-16 rounded border-slate-300 bg-white px-1 py-0 text-xs"><option value="1">8</option><option value="2">10</option><option value="3">12</option><option value="4">14</option><option value="5">18</option><option value="6">24</option><option value="7">36</option></select>
+            </div>
+            <div className="flex items-center gap-0.5">
+              {ribbonButton('B', 'bold', null, 'font-black')}{ribbonButton('I', 'italic', null, 'italic')}{ribbonButton('U', 'underline', null, 'underline')}{ribbonButton('x₂', 'subscript')}{ribbonButton('x²', 'superscript')}
+              <label title="Font colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">A<input type="color" onChange={(event) => runCommand('foreColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
+              <label title="Highlight colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">Highlight<input type="color" defaultValue="#fff2cc" onChange={(event) => runCommand('hiliteColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
+            </div>
+          </div>
+          <div className="flex flex-col justify-between border-r border-slate-300 pr-2">
+            <div className="flex gap-0.5">{ribbonButton('• List', 'insertUnorderedList')}{ribbonButton('1. List', 'insertOrderedList')}{actionButton('←', () => changeIndent(-1))}{actionButton('→', () => changeIndent(1))}</div>
+            <div className="flex gap-0.5">{actionButton('Left', () => runCommand('justifyLeft'))}{actionButton('Centre', () => runCommand('justifyCenter'))}{actionButton('Right', () => runCommand('justifyRight'))}{actionButton('Justify', () => runCommand('justifyFull'))}</div>
+          </div>
+          <div className="flex items-center gap-1">
+            <select aria-label="Text style" defaultValue="p" onChange={(event) => runCommand('formatBlock', event.target.value)} className="h-8 rounded border-slate-300 bg-white px-2 py-0 text-xs"><option value="p">Normal</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="blockquote">Quote</option></select>
+          </div>
+        </div> : <div className="flex flex-wrap items-stretch gap-2">
+          <div className="flex items-center gap-1 border-r border-slate-300 pr-3">
+            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setShowTableDialog(true)} className="rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">▦ Table</button>
+            <label className="cursor-pointer rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">▧ Picture<input type="file" accept="image/*" onChange={addImage} className="hidden" /></label>
+            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={insertLink} className="rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">🔗 Link</button>
+          </div>
+          <div className="flex items-center gap-1">{ribbonButton('Horizontal line', 'insertHorizontalRule')}{ribbonButton('Page Break', 'insertHTML', '<div data-po-page-break="true" contenteditable="false" style="page-break-after:always;border-top:2px dashed #94a3b8;margin:16px 0;padding-top:4px;color:#64748b;font-size:11px">Page Break</div><p><br></p>')}</div>
+        </div>}
+      </div>
+      </div>
+
+      {showTableDialog && <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/30 p-4" role="dialog" aria-modal="true" aria-label="Insert table">
+        <div className="w-full max-w-sm rounded-lg border border-slate-300 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div><h4 className="text-sm font-semibold text-slate-900">Insert Table</h4><p className="text-xs text-slate-500">Choose the table dimensions.</p></div>
+            <button type="button" onClick={() => setShowTableDialog(false)} className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100" aria-label="Close table dialog">×</button>
+          </div>
+          <div className="space-y-4 p-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-xs font-semibold text-slate-700">Rows</label><input type="number" min="1" max="30" value={tableRows} onChange={(event) => setTableRows(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–30 rows</p></div>
+              <div><label className="block text-xs font-semibold text-slate-700">Columns</label><input type="number" min="1" max="12" value={tableColumns} onChange={(event) => setTableColumns(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–12 columns</p></div>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={tableHeaderRow} onChange={(event) => setTableHeaderRow(event.target.checked)} className="rounded border-slate-300 text-[#2b579a] focus:ring-[#2b579a]" />Use first row as a header</label>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-600">Preview: <b>{Math.min(30, Math.max(1, Number(tableRows) || 1))} × {Math.min(12, Math.max(1, Number(tableColumns) || 1))}</b> table</div>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3"><button type="button" onClick={() => setShowTableDialog(false)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={insertCustomTable} className="rounded-md bg-[#2b579a] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#244b87]">Insert Table</button></div>
+        </div>
+      </div>}
+
+      <div ref={editorRef} contentEditable suppressContentEditableWarning onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={(event) => { rememberSelection(); onChange(event.currentTarget.innerHTML); }} className="min-h-80 rounded-b-lg bg-white px-8 py-6 font-sans text-sm leading-6 outline-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)] [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_img]:my-2 [&_img]:max-w-full [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-7 [&_table]:my-3 [&_table]:w-full [&_td]:border [&_td]:border-gray-400 [&_td]:p-2 [&_ul]:list-disc [&_ul]:pl-7" data-placeholder="Enter the complete PO narrative..." />
     </div>
   );
 };
 
-const employeeDesignation = (employee) => (
-  employee?.designation
-  || employee?.job_title
-  || employee?.title
-  || employee?.position
-  || FINAL_APPROVER_TITLE
-);
+const employeeDesignation = (employee) => {
+  if (String(employee?.full_name || '').trim().toLowerCase() === PROJECT_FINAL_APPROVER.toLowerCase()) {
+    return FINAL_APPROVER_TITLE;
+  }
+  return employee?.designation
+    || employee?.job_title
+    || employee?.title
+    || employee?.position
+    || FINAL_APPROVER_TITLE;
+};
 const buyerEmployeeDesignation = (employee) => (
   employee?.designation
   || employee?.job_title
@@ -385,12 +540,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     status: editData?.status || 'draft',
   });
   
-  const savedAttachmentDetails = editData?.contact_persons?.attachment_details || [];
-  const [attachmentSlots, setAttachmentSlots] = useState([0, 1].map((index) => ({
-    title: savedAttachmentDetails[index]?.title || editData?.attachments?.[index]?.title || `Attachment ${index + 1}`,
-    description: savedAttachmentDetails[index]?.description || editData?.attachments?.[index]?.description || '',
+  const [attachmentSlots, setAttachmentSlots] = useState((editData?.attachments || []).map((attachment, index) => ({
+    title: attachment.title || attachment.filename || `Item ${index + 1}`,
+    description: attachment.description || '',
     file: null,
-    existingAttachment: editData?.attachments?.[index] || null,
+    existingAttachment: attachment,
   })));
   const files = attachmentSlots.map((slot) => slot.file).filter(Boolean);
   const [errors, setErrors] = useState({});
@@ -903,7 +1057,32 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     )));
   };
 
-  const removeFile = (index) => updateAttachmentSlot(index, 'file', null);
+  const addAttachmentFiles = (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    if (!selectedFiles.length) return;
+    setAttachmentSlots((previous) => {
+      const currentNewFiles = previous.filter((item) => item.file).length;
+      const availableCount = Math.max(0, Math.min(10 - currentNewFiles, 20 - previous.length));
+      const acceptedFiles = selectedFiles.slice(0, availableCount);
+      if (acceptedFiles.length < selectedFiles.length) {
+        setPopupError('A maximum of 10 new files and 20 total PO attachments is supported.');
+      }
+      return [
+        ...previous,
+        ...acceptedFiles.map((file) => ({
+        title: file.name.replace(/\.[^.]+$/, ''),
+        description: '',
+        file,
+        existingAttachment: null,
+        })),
+      ];
+    });
+    event.target.value = '';
+  };
+
+  const removeAttachmentItem = (index) => {
+    setAttachmentSlots((previous) => previous.filter((_, itemIndex) => itemIndex !== index));
+  };
 
   const addPaymentMilestone = () => {
     setFormData(prev => ({
@@ -990,11 +1169,89 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setFormData(prev => ({
       ...prev,
       items_table_headers: {
-        ...DEFAULT_ITEMS_TABLE_HEADERS,
         ...prev.items_table_headers,
         [field]: value,
       },
     }));
+  };
+
+  const addItemsTableColumn = (afterField) => {
+    const field = `custom_${Date.now()}`;
+    setFormData((previous) => {
+      const currentHeaders = previous.items_table_headers || {};
+      const currentOrder = Array.isArray(currentHeaders.__column_order)
+        ? currentHeaders.__column_order
+        : Object.keys(currentHeaders).filter((key) => !key.startsWith('__'));
+      const insertIndex = Math.max(0, currentOrder.indexOf(afterField) + 1);
+      const nextOrder = [...currentOrder];
+      nextOrder.splice(insertIndex, 0, field);
+      const newColumnNumber = currentOrder.filter((key) => key.startsWith('custom_')).length + 1;
+      const nextHeaders = { ...currentHeaders, [field]: `New Column ${newColumnNumber}`, __column_order: nextOrder };
+      return {
+        ...previous,
+        items_table_headers: nextHeaders,
+        items: (previous.items || []).map((item) => ({ ...item, [field]: '' })),
+      };
+    });
+  };
+
+  const handleBuyerReferenceInput = (slotIndex, value) => {
+    const normalizedValue = value.trim().toLowerCase();
+    const employee = approvalEmployees.find((candidate) => (
+      [candidate.full_name, candidate.email].some((candidateValue) => (
+        String(candidateValue || '').trim().toLowerCase() === normalizedValue
+      ))
+    ));
+    setFormData((previous) => {
+      const buyerReferences = [...(previous.contact_persons?.buyer_references || [])];
+      if (!value.trim()) buyerReferences.splice(slotIndex, 1);
+      else buyerReferences[slotIndex] = employee ? {
+        user_id: employee.id,
+        name: employee.full_name || employee.email || '',
+        designation: buyerEmployeeDesignation(employee),
+        email: employee.email || '',
+        primary: false,
+      } : {
+        user_id: null,
+        name: value,
+        designation: '',
+        email: '',
+        primary: false,
+      };
+      return {
+        ...previous,
+        contact_persons: {
+          ...(previous.contact_persons || {}),
+          buyer_references: buyerReferences.filter(Boolean).slice(0, 3),
+        },
+      };
+    });
+  };
+
+  const removeItemsTableColumn = (field) => {
+    const visibleColumns = Object.keys(formData.items_table_headers || {}).filter((key) => !key.startsWith('__'));
+    if (visibleColumns.length <= 1) return;
+    setFormData((previous) => {
+      const nextHeaders = { ...(previous.items_table_headers || {}) };
+      delete nextHeaders[field];
+      if (nextHeaders.__column_widths) {
+        nextHeaders.__column_widths = { ...nextHeaders.__column_widths };
+        delete nextHeaders.__column_widths[field];
+      }
+      nextHeaders.__column_order = (Array.isArray(nextHeaders.__column_order)
+        ? nextHeaders.__column_order
+        : Object.keys(nextHeaders).filter((key) => !key.startsWith('__'))
+      ).filter((key) => key !== field);
+      return {
+        ...previous,
+        items_table_headers: nextHeaders,
+        items: (previous.items || []).map((item) => {
+          const nextItem = { ...item };
+          delete nextItem[field];
+          return nextItem;
+        }),
+      };
+    });
   };
 
   const removeItem = (index) => {
@@ -1272,19 +1529,20 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
         {/* Form Content */}
         <form onSubmit={(e) => handleSubmit(e, false)} className="grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1.25fr)_minmax(400px,0.75fr)] xl:overflow-hidden">
-          <div className="min-w-0 px-8 py-6 xl:overflow-y-auto">
+          <div className="min-w-0 px-5 py-4 xl:overflow-y-auto">
           
           {/* Section 1: Header, buyer, seller and project details */}
           {currentSection === 1 && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Header, Buyer &amp; Project Details</h3>
-                  <p className="text-sm text-gray-500">Capture the complete PO header, seller, buyer, and project information in one place.</p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-blue-200 border-l-4 border-l-blue-600 bg-blue-50 px-3 py-2">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><DocumentTextIcon className="h-4 w-4" /></span>
+                  <div><h3 id="po-header-group" className="text-base font-bold text-blue-950">Header, Buyer &amp; Project Details</h3><p className="text-xs text-blue-700">PO identity, requisition and seller information</p></div>
                 </div>
+                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700"></span>
               </div>
 
-              <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/60 p-5 shadow-sm">
+              <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/60 p-4 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <label htmlFor="po-pr-search" className="block text-sm font-bold text-gray-900">
@@ -1371,7 +1629,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   <p className="mt-1 text-sm text-amber-700">RADAI will link the PO to that requisition and prefill the available supplier, scope, project, pricing, and delivery data.</p>
                 </div>
               ) : (
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-6">
+              <div className="space-y-4 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm" aria-labelledby="po-header-group">
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">PO Number *</label>
@@ -1513,14 +1771,14 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     name="summary"
                     value={formData.summary}
                     onChange={handleChange}
-                    rows={3}
+                    rows={2}
                     className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.summary ? 'border-red-500' : ''}`}
                     placeholder="Short summary to appear in vendor notification..."
                   />
                   {errors.summary && <p className="mt-1 text-xs text-red-600">{errors.summary}</p>}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-3 md:grid-cols-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Seller Email</label>
                     <input
@@ -1544,14 +1802,17 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Seller Address</label>
-                    <textarea
+                    <label htmlFor="seller-address" className="block text-sm font-medium text-gray-700">Seller Address</label>
+                    <input
+                      type="text"
+                      id="seller-address"
                       name="seller_address"
                       value={formData.seller_address}
                       onChange={handleChange}
-                      rows={2}
-                      className="mt-1 block w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="Seller office or registered address"
+                      autoComplete="street-address"
+                      spellCheck="true"
+                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Building, street, city, postal code, country"
                     />
                   </div>
                 </div>
@@ -1562,24 +1823,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
           {/* Buyer and payment information is part of the merged first tab. */}
           {currentSection === 1 && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Buyer & Payment Information</h3>
-                  <p className="text-sm text-gray-500">Enter the buyer billing and payment terms for this purchase order.</p>
+            <div className="mt-5 space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-violet-200 border-l-4 border-l-violet-600 bg-violet-50 px-3 py-2">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white"><CurrencyDollarIcon className="h-4 w-4" /></span>
+                  <div><h3 id="po-buyer-payment-group" className="text-base font-bold text-violet-950">Buyer &amp; Payment Information</h3><p className="text-xs text-violet-700">Buyer references, totals and commercial terms</p></div>
                 </div>
+                <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-violet-700"></span>
               </div>
 
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Default Invoicing Address</label>
-                  <textarea
-                    readOnly
-                    rows={10}
-                    value={`Attn. ${DEFAULT_INVOICE_CONTACT}\n${DEFAULT_INVOICE_EMAIL}\ncc. uae.finance@rejlers.ae\nuae.procurement@rejlers.ae\nRejlers International Engineering\nSolutions AB\nPO Box 39317\nAbu Dhabi, UAE.\nTel: +971 2 639 7449\nFax: +971 2 639 7448`}
-                    className="mt-1 block w-full cursor-not-allowed resize-none rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm leading-5 text-gray-900"
-                  />
-                </div>
+              <div className="space-y-4 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm" aria-labelledby="po-buyer-payment-group">
                 <div className="hidden grid-cols-2 gap-4" aria-hidden="true">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Invoicing Attention</label>
@@ -1609,17 +1862,33 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Buyer Reference</label>
-                  <p className="mt-1 text-xs text-gray-500">Richa Hannah Thomas is the primary default. Select up to three RADAI employees.</p>
                   <div className="mt-3 space-y-3">
                     {[0, 1, 2].map((slotIndex) => {
                       const reference = buyerReferences[slotIndex];
                       return <div key={slotIndex} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                         <div className="flex items-center gap-3">
-                          <span className="w-20 text-xs font-bold uppercase text-gray-500">{slotIndex === 0 ? 'Primary' : `Name ${slotIndex + 1}`}</span>
-                          <select value={reference?.user_id || ''} onChange={(event) => handleBuyerReferenceSelection(slotIndex, event.target.value)} disabled={approversLoading || slotIndex === 0} className="block flex-1 rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100">
-                            <option value="">{approversLoading ? 'Loading RADAI employees...' : '-- Select employee --'}</option>
-                            {approvalEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name || employee.email}</option>)}
-                          </select>
+                          <span className="w-20 text-xs font-bold uppercase text-gray-500">{slotIndex === 0 ? 'Primary' : `Reference ${slotIndex + 1}`}</span>
+                          {slotIndex === 0 ? (
+                            <select value={reference?.user_id || ''} onChange={(event) => handleBuyerReferenceSelection(slotIndex, event.target.value)} disabled className="block flex-1 rounded-md border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900">
+                              <option value={reference?.user_id || ''}>{reference?.name || DEFAULT_BUYER_REFERENCE}</option>
+                            </select>
+                          ) : (
+                            <>
+                              <input
+                                type="text"
+                                list={`buyer-reference-options-${slotIndex}`}
+                                value={reference?.name || ''}
+                                onChange={(event) => handleBuyerReferenceInput(slotIndex, event.target.value)}
+                                placeholder={approversLoading ? 'Loading RADAI employees...' : 'Type a name or search RADAI...'}
+                                disabled={approversLoading}
+                                autoComplete="off"
+                                className="block flex-1 rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100"
+                              />
+                              <datalist id={`buyer-reference-options-${slotIndex}`}>
+                                {approvalEmployees.map((employee) => <option key={employee.id} value={employee.full_name || employee.email} label={[buyerEmployeeDesignation(employee), employee.email].filter(Boolean).join(' · ')} />)}
+                              </datalist>
+                            </>
+                          )}
                         </div>
                         {reference && <p className="mt-2 pl-24 text-xs text-gray-600"><b>{reference.name}</b> · {reference.designation} · {reference.email}</p>}
                       </div>;
@@ -1731,15 +2000,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
           {/* Project details are part of the merged first tab. */}
           {currentSection === 1 && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Project Details</h3>
-                  <p className="text-sm text-gray-500">Enter project and contract details for this purchase order.</p>
+            <div className="mt-5 space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-emerald-200 border-l-4 border-l-emerald-600 bg-emerald-50 px-3 py-2">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white"><BuildingOfficeIcon className="h-4 w-4" /></span>
+                  <div><h3 id="po-project-group" className="text-base font-bold text-emerald-950">Project Details</h3><p className="text-xs text-emerald-700">Project linkage, parties and delivery dates</p></div>
                 </div>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700"></span>
               </div>
 
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-6">
+              <div className="space-y-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm" aria-labelledby="po-project-group">
                 <div>
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
@@ -1993,12 +2263,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
           {/* Section 2: PO Description and Scope */}
           {currentSection === 2 && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div>
                 <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
-                <p className="text-sm text-gray-500">Use the single narrative editor for formatted text, pictures, and tables.</p>
               </div>
-              <div className="space-y-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">PO Narrative</label>
                   <RichTextEditor value={formData.description} onChange={(description) => setFormData((previous) => ({ ...previous, description, scope_of_services: '' }))} />
@@ -2009,7 +2278,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
           {/* Section 3: Summary of Prices */}
           {currentSection === 3 && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Summary of Prices</h3>
@@ -2018,13 +2287,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 <button
                   type="button"
                   onClick={addItem}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+                  className="hidden items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
                 >
                   + Add Item
                 </button>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
+              <div className="hidden overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -2147,6 +2416,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 </table>
               </div>
 
+              <PurchaseOrderPriceSpreadsheet
+                items={formData.items}
+                headers={formData.items_table_headers || DEFAULT_ITEMS_TABLE_HEADERS}
+                currency={formData.currency}
+                onItemsChange={(items) => setFormData((previous) => ({ ...previous, items }))}
+                onHeaderChange={updateItemsTableHeader}
+                onAddColumn={addItemsTableColumn}
+                onRemoveColumn={removeItemsTableColumn}
+              />
+
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="lg:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 p-4">
                   <div className="text-sm text-gray-600">Pricing details are calculated automatically as you update quantities, unit prices, and discounts.</div>
@@ -2155,20 +2434,26 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   <div className="space-y-3">
                     <div className="flex justify-between text-sm text-gray-500">
                       <span>Subtotal</span>
-                      <span>${calculateSubtotal().toFixed(2)}</span>
+                      <span>{formData.currency} {calculateSubtotal().toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-500">
                       <span>VAT ({formData.vat_percentage}%)</span>
-                      <span>${calculateTaxAmount(calculateSubtotal()).toFixed(2)}</span>
+                      <span>{formData.currency} {calculateTaxAmount(calculateSubtotal()).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-500">
                       <span>Discount (line items only)</span>
-                      <span>${(formData.items || []).reduce((sum, item) => sum + Number(item.discount || 0), 0).toFixed(2)}</span>
+                      <span>{formData.currency} {(formData.items || []).reduce((sum, item) => sum + Number(item.discount || 0), 0).toFixed(2)}</span>
                     </div>
                     <div className="border-t pt-3 flex justify-between text-base font-semibold text-gray-900">
                       <span>Grand Total</span>
-                      <span>${calculateGrandTotal(calculateSubtotal(), calculateTaxAmount(calculateSubtotal())).toFixed(2)}</span>
+                      <span>{formData.currency} {calculateGrandTotal(calculateSubtotal(), calculateTaxAmount(calculateSubtotal())).toFixed(2)}</span>
                     </div>
+                    {String(formData.currency || '').toUpperCase() === 'USD' && (
+                      <div className="flex justify-between text-sm font-semibold text-blue-700">
+                        <span>Grand Total USD in AED</span>
+                        <span>AED {(calculateGrandTotal(calculateSubtotal(), calculateTaxAmount(calculateSubtotal())) * USD_TO_AED_RATE).toFixed(2)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2363,23 +2648,34 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
           )}
 
           {/* Section 4: all PO attachments are managed in this tab only. */}
-          {currentSection === 4 && <div className="space-y-6">
+          {currentSection === 4 && <div className="space-y-4">
             <div>
               <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">Attachments</h3>
-              <p className="text-sm text-gray-500">Add up to two supporting documents with an editable title and description.</p>
+              <p className="text-sm text-gray-500">Attachment 1 supports multiple files. Each selected item has its own editable title and description.</p>
             </div>
-            {attachmentSlots.map((slot, index) => <section key={index} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h4 className="font-semibold text-gray-900">Attachment {index + 1}</h4>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div><label className="block text-sm font-medium text-gray-700">Title</label><input type="text" value={slot.title} onChange={(event) => updateAttachmentSlot(index, 'title', event.target.value)} className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
-                <div><label className="block text-sm font-medium text-gray-700">Description</label><input type="text" value={slot.description} onChange={(event) => updateAttachmentSlot(index, 'description', event.target.value)} placeholder="Editable attachment description" className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
+            <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3"><h4 className="font-semibold text-gray-900">Attachment 1</h4><span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{attachmentSlots.length} item{attachmentSlots.length === 1 ? '' : 's'}</span></div>
+              <div className="mt-3 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/40 p-4 text-center hover:border-blue-400">
+                <input type="file" multiple onChange={addAttachmentFiles} className="hidden" id="po-attachment-multiple" />
+                <label htmlFor="po-attachment-multiple" className="cursor-pointer"><CloudArrowUpIcon className="mx-auto h-10 w-10 text-blue-500" /><p className="mt-2 text-sm font-semibold text-blue-700">Select multiple attachments</p><p className="mt-1 text-xs text-gray-500">PDF, Word, Excel, PNG, or JPEG · up to 10 new files per save</p></label>
               </div>
-              <div className="mt-4 rounded-xl border-2 border-dashed border-gray-300 p-5 text-center">
-                <input type="file" onChange={(event) => updateAttachmentSlot(index, 'file', event.target.files?.[0] || null)} className="hidden" id={`po-attachment-${index}`} />
-                <label htmlFor={`po-attachment-${index}`} className="cursor-pointer"><CloudArrowUpIcon className="mx-auto h-10 w-10 text-gray-400" /><p className="mt-2 text-sm text-gray-600">{slot.file?.name || slot.existingAttachment?.filename || 'Select attachment'}</p></label>
-                {slot.file && <button type="button" onClick={() => removeFile(index)} className="mt-2 text-sm font-semibold text-red-600 hover:text-red-700">Remove file</button>}
+
+              <div className="mt-4 space-y-3">
+                {attachmentSlots.length ? attachmentSlots.map((slot, index) => <div key={`${slot.existingAttachment?.s3_key || slot.file?.name || 'attachment'}-${index}`} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <PaperClipIcon className="mt-1 h-5 w-5 shrink-0 text-blue-500" />
+                    <div className="min-w-0 flex-1">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div><label className="block text-xs font-semibold text-gray-600">Item {index + 1} title</label><input type="text" value={slot.title} onChange={(event) => updateAttachmentSlot(index, 'title', event.target.value)} className="mt-1 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
+                        <div><label className="block text-xs font-semibold text-gray-600">Description</label><input type="text" value={slot.description} onChange={(event) => updateAttachmentSlot(index, 'description', event.target.value)} placeholder="Editable attachment description" className="mt-1 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
+                      </div>
+                      <p className="mt-2 truncate text-xs text-gray-500">{slot.file?.name || slot.existingAttachment?.filename}</p>
+                    </div>
+                    <button type="button" onClick={() => removeAttachmentItem(index)} className="rounded px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button>
+                  </div>
+                </div>) : <div className="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">No attachment items selected.</div>}
               </div>
-            </section>)}
+            </section>
           </div>}
 
           </div>
