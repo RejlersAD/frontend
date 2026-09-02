@@ -224,8 +224,7 @@ const OrderManagement = () => {
     && (isCurrentUserAdmin || (currentUserId && String(requisition.issued_by) === String(currentUserId)))
   );
   const canDeleteRequisition = (requisition) => Boolean(
-    ['draft', 'rejected', 'cancelled'].includes(requisition?.status)
-    && (isCurrentUserAdmin || (currentUserId && String(requisition.issued_by) === String(currentUserId)))
+    isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId))
   );
 
   /**
@@ -690,18 +689,11 @@ const OrderManagement = () => {
   /**
    * Soft-coded handler: Delete Purchase Order
    * Permission-based delete with confirmation dialog
-   * Only allows deletion of draft/pending orders
+   * Available for every PO status; API permissions still apply.
    */
   const handleDeleteOrder = async (order) => {
     if (!order || !order.id) {
       console.error('Invalid order data');
-      return;
-    }
-
-    // Soft-coded permission check - only allow delete for certain statuses
-    const DELETABLE_STATUSES = ['draft', 'pending', 'cancelled'];
-    if (!DELETABLE_STATUSES.includes(order.status)) {
-      alert(`Cannot delete order with status '${order.status}'. Only ${DELETABLE_STATUSES.join(', ')} orders can be deleted.`);
       return;
     }
 
@@ -740,18 +732,11 @@ const OrderManagement = () => {
   /**
    * Soft-coded handler: Delete Purchase Requisition
    * Permission-based delete with confirmation dialog
-   * Only allows deletion of draft/rejected requisitions
+   * Available for every PR status to the issuer or an administrator.
    */
   const handleDeleteRequisition = async (requisition) => {
     if (!requisition || !requisition.id) {
       console.error('Invalid requisition data');
-      return;
-    }
-
-    // Soft-coded permission check - only allow delete for certain statuses
-    const DELETABLE_STATUSES = ['draft', 'rejected', 'withdrawn'];
-    if (!DELETABLE_STATUSES.includes(requisition.status)) {
-      alert(`Cannot delete requisition with status '${requisition.status}'. Only ${DELETABLE_STATUSES.join(', ')} requisitions can be deleted.`);
       return;
     }
 
@@ -1576,16 +1561,14 @@ const OrderManagement = () => {
                           <span>Send</span>
                         </button>
                       )}
-                      {['draft', 'pending', 'cancelled'].includes(order.status) && (
-                        <button 
-                          type="button"
-                          onClick={() => handleDeleteOrder(order)}
-                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                          title="Delete purchase order"
-                          aria-label={`Delete purchase order ${order.po_number || order.id}`}>
-                          <TrashIcon className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteOrder(order)}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:border-red-300 hover:bg-red-100 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                        title={`Delete ${order.status || ''} purchase order`}
+                        aria-label={`Delete purchase order ${order.po_number || order.id}`}>
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 </article>
@@ -1707,17 +1690,15 @@ const OrderManagement = () => {
                                 <PaperAirplaneIcon className="h-4 w-4" />
                               </button>
                             )}
-                            {['draft', 'pending', 'cancelled'].includes(order.status) && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteOrder(order)}
-                                className="grid h-7 w-7 place-items-center rounded border border-rose-300 bg-white text-rose-700 transition hover:bg-rose-100"
-                                title="Delete purchase order"
-                                aria-label={`Delete purchase order ${order.po_number || order.id}`}
-                              >
-                                <TrashIcon className="h-4 w-4" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOrder(order)}
+                              className="grid h-7 w-7 place-items-center rounded border border-rose-300 bg-white text-rose-700 transition hover:bg-rose-100"
+                              title={`Delete ${order.status || ''} purchase order`}
+                              aria-label={`Delete purchase order ${order.po_number || order.id}`}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
