@@ -1111,9 +1111,9 @@ const OrderManagement = () => {
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => handleTabChange(tab.key)}
-                    className={`group relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${
+                    className={`group relative isolate flex items-center gap-2 overflow-hidden rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${
                       isActive
-                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm hover:from-blue-700 hover:to-indigo-700'
+                        ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20 ring-1 ring-inset ring-white/20 hover:from-blue-700 hover:via-indigo-700 hover:to-violet-700'
                         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                     }`}
                   >
