@@ -1249,12 +1249,7 @@ const OrderManagement = () => {
         <div className="w-full px-3 sm:px-4 lg:px-6">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h1 className="flex items-center text-2xl font-bold text-gray-900">
-                {activeTab === 'purchaseOrders' ? (
-                  <ShoppingCartIcon className="mr-2 h-6 w-6 text-indigo-600" />
-                ) : (
-                  <DocumentTextIcon className="mr-2 h-6 w-6 text-purple-600" />
-                )}
+              <h1 className="text-2xl font-bold text-gray-900">
                 {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Recommendations'}
               </h1>
               <p className="mt-1 text-xs text-gray-500">
@@ -1772,7 +1767,7 @@ const OrderManagement = () => {
                     <ShoppingCartIcon className="h-4 w-4" />
                   </span>
                   <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-900">Purchase Orders Register</h3>
+                    <h3 className="text-base font-bold uppercase tracking-wide text-slate-900">Purchase Orders Register</h3>
                     <p className="text-[11px] text-slate-500">Corporate spreadsheet view</p>
                   </div>
                 </div>
@@ -1781,7 +1776,7 @@ const OrderManagement = () => {
                 </span>
               </div>
               <div className="max-h-[72vh] overflow-auto bg-slate-100">
-              <table className="w-full min-w-[1680px] table-fixed border-separate border-spacing-0 bg-white font-['Segoe_UI',Inter,Arial,sans-serif] text-xs text-slate-700">
+              <table className="w-full min-w-[1840px] table-fixed border-separate border-spacing-0 bg-white font-['Segoe_UI',Inter,Arial,sans-serif] text-[13px] font-medium text-slate-700">
                 <colgroup>
                   <col className="w-[48px]" />
                   <col className="w-[160px]" />
@@ -1796,20 +1791,20 @@ const OrderManagement = () => {
                   <col className="w-[155px]" />
                 </colgroup>
                 <thead className="text-slate-700">
-                  <tr className="h-6 bg-slate-100 text-[10px] font-semibold text-slate-500">
+                  <tr className="h-6 bg-slate-100 text-xs font-semibold text-slate-500">
                     <th className="sticky left-0 top-0 z-50 border-b border-r border-slate-300 bg-slate-200" aria-label="Row number" />
                     {['A','B','C','D','E','F','G','H','I','J'].map((letter, index) => (
                       <th key={letter} className={`sticky top-0 z-30 border-b border-r border-slate-300 bg-slate-100 text-center ${index === 0 ? 'left-[48px] z-40' : index === 9 ? 'right-0 z-40 border-l shadow-[-4px_0_8px_rgba(15,23,42,0.08)]' : ''}`}>{letter}</th>
                     ))}
                   </tr>
-                  <tr className="h-10">
-                    <th scope="col" className="sticky left-0 top-6 z-50 border-b border-r border-slate-300 bg-slate-200 px-1 py-2.5 text-center text-xs font-semibold text-slate-700">#</th>
+                  <tr className="h-11">
+                    <th scope="col" className="sticky left-0 top-6 z-50 border-b border-r border-slate-300 bg-slate-200 px-1 py-3 text-center text-sm font-bold text-slate-800">#</th>
                     {['PO Number', 'PR Number', 'Supplier', 'Summary', 'Project / Department', 'Order Date', 'Delivery Date', 'Amount', 'Status'].map((column) => (
-                      <th key={column} scope="col" className={`sticky top-6 z-30 border-b border-r border-slate-300 bg-slate-200 px-2.5 py-2.5 text-left text-xs font-semibold tracking-normal text-slate-700 ${column === 'PO Number' ? 'left-[48px] z-40' : ''}`}>
+                      <th key={column} scope="col" className={`sticky top-6 z-30 border-b border-r border-slate-300 bg-slate-200 px-3 py-3 text-left text-sm font-bold tracking-normal text-slate-800 ${column === 'PO Number' ? 'left-[48px] z-40' : ''}`}>
                         {column}
                       </th>
                     ))}
-                    <th scope="col" className="sticky right-0 top-6 z-40 border-b border-l border-slate-300 bg-slate-200 px-2.5 py-2.5 text-center text-xs font-semibold tracking-normal text-slate-700 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]">Actions</th>
+                    <th scope="col" className="sticky right-0 top-6 z-40 border-b border-l border-slate-300 bg-slate-200 px-3 py-3 text-center text-sm font-bold tracking-normal text-slate-800 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white">
@@ -1819,32 +1814,32 @@ const OrderManagement = () => {
                     const orderDate = order.po_date || order.created_at;
                     const deliveryDate = order.expected_delivery || order.delivery_date;
                     return (
-                      <tr key={order.id} className={`group h-11 transition-colors hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}`}>
-                        <td className="sticky left-0 z-20 border-b border-r border-slate-300 bg-slate-100 px-1 text-center text-[11px] font-medium tabular-nums text-slate-500 group-hover:bg-blue-100">{orderPageStart + rowIndex + 1}</td>
+                      <tr key={order.id} className={`group h-12 transition-colors hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}`}>
+                        <td className="sticky left-0 z-20 border-b border-r border-slate-300 bg-slate-100 px-1 text-center text-xs font-semibold tabular-nums text-slate-600 group-hover:bg-blue-100">{orderPageStart + rowIndex + 1}</td>
                         <td className={`sticky left-[48px] z-20 border-b border-r border-slate-300 px-2.5 py-2 align-middle group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                          <button type="button" onClick={() => handleViewOrderDetails(order.id)} className="whitespace-nowrap text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
+                          <button type="button" onClick={() => handleViewOrderDetails(order.id)} className="whitespace-nowrap text-[13px] font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
                             {order.po_number || `PO-${order.id}`}
                           </button>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
                           <p className="truncate" title={order.pr_number || ''}>{order.pr_number || '—'}</p>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
                           <p className="truncate" title={order.vendor_name || ''}>{order.vendor_name || 'No supplier assigned'}</p>
                         </td>
                         <td className="border-b border-r border-slate-300 px-2.5 py-2">
-                          <p className="truncate text-xs font-medium text-slate-800" title={summary}>{summary}</p>
+                          <p className="truncate text-[13px] font-semibold text-slate-800" title={summary}>{summary}</p>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
                           <p className="truncate" title={projectDepartment}>{projectDepartment}</p>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal tabular-nums text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium tabular-nums text-slate-700">
                           {orderDate ? new Date(orderDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal tabular-nums text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium tabular-nums text-slate-700">
                           {deliveryDate ? new Date(deliveryDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-right text-xs font-semibold tabular-nums text-slate-800">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-right text-[13px] font-semibold tabular-nums text-slate-900">
                           {formatCurrency(order.total_amount, order.currency || 'AED')}
                         </td>
                         <td className="border-b border-r border-slate-300 px-2 py-1.5">{getStatusBadge(order.status)}</td>
@@ -2097,7 +2092,7 @@ const OrderManagement = () => {
                     <Squares2X2Icon className="h-4 w-4" />
                   </span>
                   <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-900">Purchase Recommendations Register</h3>
+                    <h3 className="text-base font-bold uppercase tracking-wide text-slate-900">Purchase Recommendations Register</h3>
                     <p className="text-[11px] text-slate-500">Ready Procurement view  </p>
                   </div>
                 </div>
@@ -2106,7 +2101,7 @@ const OrderManagement = () => {
                 </span>
               </div>
               <div className="max-h-[72vh] overflow-auto bg-slate-100">
-              <table className="w-full min-w-[1780px] table-fixed border-separate border-spacing-0 bg-white font-['Segoe_UI',Inter,Arial,sans-serif] text-xs text-slate-700">
+              <table className="w-full min-w-[1940px] table-fixed border-separate border-spacing-0 bg-white font-['Segoe_UI',Inter,Arial,sans-serif] text-[13px] font-medium text-slate-700">
                 <colgroup>
                   <col className="w-[48px]" />
                   <col className="w-[165px]" />
@@ -2122,14 +2117,14 @@ const OrderManagement = () => {
                   <col className="w-[155px]" />
                 </colgroup>
                 <thead className="text-slate-700">
-                  <tr className="h-6 bg-slate-100 text-[10px] font-semibold text-slate-500">
+                  <tr className="h-6 bg-slate-100 text-xs font-semibold text-slate-500">
                     <th className="sticky left-0 top-0 z-50 border-b border-r border-slate-300 bg-slate-200" aria-label="Row number" />
                     {['A','B','C','D','E','F','G','H','I','J','K'].map((letter, index) => (
                       <th key={letter} className={`sticky top-0 z-30 border-b border-r border-slate-300 bg-slate-100 text-center ${index === 0 ? 'left-[48px] z-40' : index === 10 ? 'right-0 z-40 border-l shadow-[-4px_0_8px_rgba(15,23,42,0.08)]' : ''}`}>{letter}</th>
                     ))}
                   </tr>
-                  <tr className="h-10">
-                    <th scope="col" className="sticky left-0 top-6 z-50 border-b border-r border-slate-300 bg-slate-200 px-1 py-2.5 text-center text-xs font-semibold text-slate-700">
+                  <tr className="h-11">
+                    <th scope="col" className="sticky left-0 top-6 z-50 border-b border-r border-slate-300 bg-slate-200 px-1 py-3 text-center text-sm font-bold text-slate-800">
                       <label className="flex cursor-pointer items-center justify-center gap-1" title="Select visible rows">
                         <input type="checkbox" checked={allVisibleRequisitionsSelected} onChange={toggleVisibleRequisitionSelection} className="h-3.5 w-3.5 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500" />
                         <span>#</span>
@@ -2147,13 +2142,13 @@ const OrderManagement = () => {
                       ['Priority', 'priority'],
                       ['Status', 'PO Status'],
                     ].map(([label, sortKey], index) => (
-                      <th key={label} scope="col" className={`sticky top-6 z-30 border-b border-r border-slate-300 bg-slate-200 px-2.5 py-2.5 text-left text-xs font-semibold tracking-normal text-slate-700 ${index === 0 ? 'left-[48px] z-40' : ''}`}>
+                      <th key={label} scope="col" className={`sticky top-6 z-30 border-b border-r border-slate-300 bg-slate-200 px-3 py-3 text-left text-sm font-bold tracking-normal text-slate-800 ${index === 0 ? 'left-[48px] z-40' : ''}`}>
                         <button type="button" onClick={() => toggleRequisitionSort(sortKey)} className="inline-flex w-full items-center justify-between gap-1 whitespace-nowrap hover:text-indigo-700">
-                          {label}<ChevronUpDownIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          {label}<ChevronUpDownIcon className="h-4 w-4 shrink-0 text-slate-400" />
                         </button>
                       </th>
                     ))}
-                    <th scope="col" className="sticky right-0 top-6 z-40 border-b border-l border-slate-300 bg-slate-200 px-2.5 py-2.5 text-center text-xs font-semibold tracking-normal text-slate-700 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]">Actions</th>
+                    <th scope="col" className="sticky right-0 top-6 z-40 border-b border-l border-slate-300 bg-slate-200 px-3 py-3 text-center text-sm font-bold tracking-normal text-slate-800 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white">
@@ -2163,37 +2158,37 @@ const OrderManagement = () => {
                     const supplier = req.supplier_name || req.vendor_name || 'Not selected';
                     const requestDate = req.issued_date || req.created_date;
                     return (
-                      <tr key={req.id} className={`group h-11 transition-colors hover:bg-blue-50 ${selectedRequisitionIds.includes(String(req.id)) ? 'bg-indigo-50' : rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}`}>
-                        <td className="sticky left-0 z-20 border-b border-r border-slate-300 bg-slate-100 px-1 text-center text-[11px] font-medium tabular-nums text-slate-500 group-hover:bg-blue-100">
+                      <tr key={req.id} className={`group h-12 transition-colors hover:bg-blue-50 ${selectedRequisitionIds.includes(String(req.id)) ? 'bg-indigo-50' : rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}`}>
+                        <td className="sticky left-0 z-20 border-b border-r border-slate-300 bg-slate-100 px-1 text-center text-xs font-semibold tabular-nums text-slate-600 group-hover:bg-blue-100">
                           <label className="flex cursor-pointer items-center justify-center gap-1" title="Select row">
                             <input type="checkbox" checked={selectedRequisitionIds.includes(String(req.id))} onChange={() => toggleRequisitionSelection(req.id)} className="h-3.5 w-3.5 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500" />
                             <span>{requisitionPageStart + rowIndex + 1}</span>
                           </label>
                         </td>
                         <td className={`sticky left-[48px] z-20 border-b border-r border-slate-300 px-2 py-2 align-middle group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                          <button type="button" onClick={() => handleOpenApproval(req)} className="whitespace-nowrap text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
+                          <button type="button" onClick={() => handleOpenApproval(req)} className="whitespace-nowrap text-[13px] font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
                             {req.pr_number || `PR-${req.id}`}
                           </button>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal tabular-nums text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium tabular-nums text-slate-700">
                           {requestDate ? new Date(requestDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
                           <p className="truncate" title={req.po_number_reference || ''}>{req.po_number_reference || '—'}</p>
                         </td>
                         <td className="border-b border-r border-slate-300 px-2.5 py-2 align-middle">
-                          <p className="truncate text-xs font-medium text-slate-800" title={requestSummary}>{requestSummary}</p>
+                          <p className="truncate text-[13px] font-semibold text-slate-800" title={requestSummary}>{requestSummary}</p>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
                           <p className="truncate" title={req.requester_name || req.issued_by_name || ''}>{req.requester_name || req.issued_by_name || '—'}</p>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
                           <p className="truncate" title={projectDepartment}>{projectDepartment}</p>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-xs font-normal text-slate-600">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
                           <p className="truncate" title={supplier}>{supplier}</p>
                         </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 text-right text-xs font-semibold tabular-nums text-slate-800">
+                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-right text-[13px] font-semibold tabular-nums text-slate-900">
                           {formatCurrency(req.total_price || req.estimated_value, req.currency || 'AED')}
                         </td>
                         <td className="border-b border-r border-slate-300 px-2 py-1.5">{getPriorityBadge(req.priority)}</td>
