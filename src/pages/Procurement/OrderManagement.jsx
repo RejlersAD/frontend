@@ -975,9 +975,6 @@ const OrderManagement = () => {
         setFilterVendor('all');
         setOrderPage(1);
       };
-      const selectedCardClass = (cardKey) => activeOrderCard === cardKey
-        ? 'ring-4 ring-indigo-300 ring-offset-2'
-        : '';
       const percentage = (value, total) => total > 0 ? Math.round((value / total) * 100) : 0;
       const orderShares = {
         draft: percentage(stats.draft, stats.total),
@@ -987,76 +984,46 @@ const OrderManagement = () => {
         completed: percentage(stats.completed, stats.total),
         topVendor: percentage(stats.topVendorOrders, stats.total),
       };
-      const kpiCardClass = 'min-h-[104px] w-full overflow-hidden rounded-xl border-2 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2';
-      const kpiIconClass = 'grid h-9 w-9 shrink-0 place-items-center rounded-lg shadow-sm';
-      const kpiValueClass = 'text-2xl font-bold leading-none tabular-nums';
-
-      const operationalCards = [
-        { key: 'draft', status: 'draft', label: 'Draft', value: stats.draft, share: orderShares.draft, icon: ClockIcon, iconClass: 'from-slate-400 to-slate-500', textClass: 'text-slate-500', trackClass: 'bg-slate-200', barClass: 'from-slate-400 to-slate-500' },
-        { key: 'sent', status: 'sent', label: 'Sent', value: stats.sent, share: orderShares.sent, icon: PaperAirplaneIcon, iconClass: 'from-blue-400 to-blue-600', textClass: 'text-blue-600', trackClass: 'bg-blue-100', barClass: 'from-blue-400 to-blue-600' },
-        { key: 'acknowledged', status: 'acknowledged', label: 'Acknowledged', value: stats.acknowledged, share: orderShares.acknowledged, icon: DocumentCheckIcon, iconClass: 'from-amber-400 to-amber-500', textClass: 'text-amber-600', trackClass: 'bg-amber-100', barClass: 'from-amber-400 to-amber-500' },
-        { key: 'overdue', status: 'overdue', label: 'Overdue', value: stats.overdue, share: orderShares.overdue, icon: ExclamationTriangleIcon, iconClass: 'from-rose-400 to-rose-600', textClass: 'text-rose-600', trackClass: 'bg-rose-100', barClass: 'from-rose-400 to-rose-600' },
-        { key: 'completed', status: 'completed', label: 'Completed', value: stats.completed, share: orderShares.completed, icon: CheckCircleIcon, iconClass: 'from-emerald-400 to-emerald-600', textClass: 'text-emerald-600', trackClass: 'bg-emerald-100', barClass: 'from-emerald-400 to-emerald-600' },
+      const metrics = [
+        { key: 'total', status: 'all', label: 'All Purchase Orders', value: stats.total, context: `${orderShares.topVendor}% top vendor share`, icon: ShoppingCartIcon, surfaceClass: 'border-slate-900 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white', contextClass: 'bg-white/15 text-slate-100' },
+        { key: 'draft', status: 'draft', label: 'Draft', value: stats.draft, context: `${orderShares.draft}% of total`, icon: ClockIcon, surfaceClass: 'border-slate-600 bg-gradient-to-br from-slate-500 to-slate-700 text-white', contextClass: 'bg-white/15 text-slate-50' },
+        { key: 'sent', status: 'sent', label: 'Sent', value: stats.sent, context: `${orderShares.sent}% of total`, icon: PaperAirplaneIcon, surfaceClass: 'border-blue-600 bg-gradient-to-br from-blue-500 to-indigo-700 text-white', contextClass: 'bg-white/15 text-blue-50' },
+        { key: 'acknowledged', status: 'acknowledged', label: 'Acknowledged', value: stats.acknowledged, context: `${orderShares.acknowledged}% acknowledged`, icon: DocumentCheckIcon, surfaceClass: 'border-cyan-600 bg-gradient-to-br from-cyan-500 to-sky-700 text-white', contextClass: 'bg-white/15 text-cyan-50' },
+        { key: 'overdue', status: 'overdue', label: 'Overdue', value: stats.overdue, context: `${orderShares.overdue}% require attention`, icon: ExclamationTriangleIcon, surfaceClass: 'border-orange-500 bg-gradient-to-br from-amber-400 to-orange-600 text-white', contextClass: 'bg-black/15 text-white' },
+        { key: 'completed', status: 'completed', label: 'Completed', value: stats.completed, context: `${orderShares.completed}% completed`, icon: CheckCircleIcon, surfaceClass: 'border-emerald-600 bg-gradient-to-br from-emerald-500 to-teal-700 text-white', contextClass: 'bg-white/15 text-emerald-50' },
+        { key: 'value', status: 'all', label: 'Total Order Value', value: formatCurrency(stats.totalValue, 'AED'), context: `${stats.total} orders`, icon: CurrencyDollarIcon, surfaceClass: 'border-violet-600 bg-gradient-to-br from-violet-500 to-purple-700 text-white', contextClass: 'bg-white/15 text-violet-50', compactValue: true },
       ];
 
       return (
-        <div className="mb-3 grid grid-cols-1 items-stretch gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm xl:grid-cols-[minmax(190px,1.05fr)_minmax(0,5fr)_minmax(190px,1.05fr)]">
-          <button type="button" onClick={() => applyCardFilter('total', 'all')} aria-pressed={activeOrderCard === 'total'} className={`${kpiCardClass} border-indigo-500 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 ${selectedCardClass('total')}`}>
-            <div className="relative flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="absolute right-0 top-0 -mr-4 -mt-4 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
-              <div className="relative flex items-start justify-between">
-                <div className={`${kpiIconClass} bg-white/15`}><ShoppingCartIcon className="h-5 w-5 text-white" /></div>
-                <div className="min-w-0 text-right">
-                  <div className={`${kpiValueClass} text-white`}>{stats.total}</div>
-                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-white/80">Purchase Orders</div>
-                </div>
-              </div>
-              <div className="relative">
-                <div className="mb-1 flex h-3 items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-wide text-white/70">
-                  <span className="truncate" title={stats.topVendorName}>Top vendor · {stats.topVendorName}</span><span>{orderShares.topVendor}%</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-white/70 transition-all duration-500" style={{ width: `${orderShares.topVendor}%` }} /></div>
-              </div>
-            </div>
-          </button>
-
-          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-            {operationalCards.map((card) => {
-              const Icon = card.icon;
+        <div className="mb-4 overflow-x-auto pb-1" aria-label="Purchase order status filters">
+          <div className="grid min-w-[1120px] grid-cols-7 gap-3">
+            {metrics.map((metric) => {
+              const Icon = metric.icon;
+              const isSelected = activeOrderCard === metric.key;
               return (
-                <button key={card.key} type="button" onClick={() => applyCardFilter(card.key, card.status)} aria-pressed={activeOrderCard === card.key} className={`${kpiCardClass} bg-white hover:border-indigo-200 ${activeOrderCard === card.key ? 'border-indigo-300' : 'border-gray-100'} ${selectedCardClass(card.key)}`}>
-                  <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <div className={`${kpiIconClass} bg-gradient-to-br ${card.iconClass}`}><Icon className="h-5 w-5 text-white" /></div>
-                      <div className="min-w-0 text-right">
-                        <div className={`${kpiValueClass} text-slate-900`}>{card.value}</div>
-                        <div className={`mt-1 h-4 whitespace-nowrap text-[11px] font-medium ${card.textClass}`}>{card.label}</div>
-                      </div>
+                <button
+                  key={metric.key}
+                  type="button"
+                  onClick={() => applyCardFilter(metric.key, metric.status)}
+                  aria-pressed={isSelected}
+                  className={`group relative h-[112px] min-w-[148px] overflow-hidden rounded-xl border p-3 text-left shadow-sm transition duration-200 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 ${metric.surfaceClass} ${
+                    isSelected
+                      ? 'z-[1] shadow-lg ring-2 ring-slate-950 ring-offset-2'
+                      : 'hover:-translate-y-0.5 hover:brightness-105 hover:shadow-md'
+                  }`}
+                >
+                  <Icon className="pointer-events-none absolute -right-2 -top-2 h-[72px] w-[72px] opacity-[0.14] transition-transform duration-200 group-hover:scale-105" aria-hidden="true" />
+                  <div className="relative z-[1] flex h-full flex-col">
+                    <p className={`${metric.compactValue ? 'text-[17px]' : 'text-[25px]'} truncate font-semibold leading-none tabular-nums`} title={String(metric.value)}>{metric.value}</p>
+                    <p className="mt-1.5 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.065em] opacity-90">{metric.label}</p>
+                    <div className="mt-auto min-w-0">
+                      <span className={`inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold ${metric.contextClass}`}>{metric.context}</span>
                     </div>
-                    <div className={`mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide ${card.textClass}`}><span>Portfolio share</span><span>{card.share}%</span></div>
-                    <div className={`h-1.5 w-full overflow-hidden rounded-full ${card.trackClass}`}><div className={`h-full rounded-full bg-gradient-to-r transition-all duration-500 ${card.barClass}`} style={{ width: `${card.share}%` }} /></div>
                   </div>
                 </button>
               );
             })}
           </div>
-
-          <button type="button" onClick={() => applyCardFilter('value', 'all')} aria-pressed={activeOrderCard === 'value'} className={`${kpiCardClass} border-cyan-400 bg-gradient-to-br from-teal-400 via-cyan-500 to-blue-500 ${selectedCardClass('value')}`}>
-            <div className="relative flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="absolute bottom-0 left-0 -mb-4 -ml-4 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
-              <div className="relative flex items-start justify-between">
-                <div className={`${kpiIconClass} bg-white/15`}><CurrencyDollarIcon className="h-5 w-5 text-white" /></div>
-                <div className="min-w-0 text-right">
-                  <div className="text-xl font-bold leading-none tabular-nums text-white">{formatCurrency(stats.totalValue, 'AED')}</div>
-                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-white/80">Total Order Value</div>
-                </div>
-              </div>
-              <div className="relative">
-                <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-white/80"><span className="rounded-full bg-white/15 px-1.5 text-[8px] leading-3 text-white">Portfolio</span><span>{stats.total} orders</span></div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full w-full rounded-full bg-white/70" /></div>
-              </div>
-            </div>
-          </button>
         </div>
       );
     } else {
@@ -1079,9 +1046,6 @@ const OrderManagement = () => {
         setFilterType('all');
         setRequisitionPage(1);
       };
-      const selectedCardClass = (cardKey) => activeRequisitionCard === cardKey
-        ? 'ring-4 ring-purple-300 ring-offset-2'
-        : '';
       const percentage = (value, total) => total > 0 ? Math.round((value / total) * 100) : 0;
       const draftShare = percentage(stats.draft, stats.total);
       const reviewEntryRatio = percentage(stats.underReview, Math.max(0, stats.total - stats.draft));
@@ -1089,154 +1053,44 @@ const OrderManagement = () => {
       const overdueShare = percentage(stats.overdue, stats.total);
       const rejectedShare = percentage(stats.rejected, stats.total);
       const convertedShare = percentage(stats.converted, stats.total);
-      const kpiCardClass = 'min-h-[104px] w-full overflow-hidden rounded-xl border-2 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2';
-      const kpiIconClass = 'grid h-9 w-9 shrink-0 place-items-center rounded-lg shadow-sm';
-      const kpiValueClass = 'text-2xl font-bold leading-none tabular-nums';
+      const metrics = [
+        { key: 'total', status: 'all', label: 'All Recommendations', value: stats.total, context: 'Current portfolio', icon: DocumentTextIcon, surfaceClass: 'border-slate-900 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white', contextClass: 'bg-white/15 text-slate-100' },
+        { key: 'draft', status: 'draft', label: 'Draft', value: stats.draft, context: `${draftShare}% of total`, icon: ClockIcon, surfaceClass: 'border-slate-600 bg-gradient-to-br from-slate-500 to-slate-700 text-white', contextClass: 'bg-white/15 text-slate-50' },
+        { key: 'under_review', status: 'under_review', label: 'Under Review', value: stats.underReview, context: `${reviewEntryRatio}% entered review`, icon: PaperAirplaneIcon, surfaceClass: 'border-blue-600 bg-gradient-to-br from-blue-500 to-indigo-700 text-white', contextClass: 'bg-white/15 text-blue-50' },
+        { key: 'approved', status: 'approved', label: 'Approved', value: stats.approved, context: `${approvalYield}% approval yield`, icon: CheckCircleIcon, surfaceClass: 'border-emerald-600 bg-gradient-to-br from-emerald-500 to-teal-700 text-white', contextClass: 'bg-white/15 text-emerald-50' },
+        { key: 'overdue', status: 'overdue', label: 'Overdue', value: stats.overdue, context: `${overdueShare}% require attention`, icon: ExclamationTriangleIcon, surfaceClass: 'border-orange-500 bg-gradient-to-br from-amber-400 to-orange-600 text-white', contextClass: 'bg-black/15 text-white' },
+        { key: 'rejected', status: 'rejected', label: 'Rejected', value: stats.rejected, context: `${rejectedShare}% of total`, icon: XCircleIcon, surfaceClass: 'border-rose-600 bg-gradient-to-br from-rose-500 to-red-700 text-white', contextClass: 'bg-white/15 text-rose-50' },
+        { key: 'converted', status: 'converted', label: 'Converted to PO', value: stats.converted, context: `${convertedShare}% converted`, icon: ShoppingCartIcon, surfaceClass: 'border-violet-600 bg-gradient-to-br from-violet-500 to-purple-700 text-white', contextClass: 'bg-white/15 text-violet-50' },
+      ];
 
       return (
-        <div className="mb-3 grid grid-cols-1 items-stretch gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm xl:grid-cols-[minmax(190px,1.05fr)_minmax(0,5fr)_minmax(190px,1.05fr)]">
-          <button type="button" onClick={() => applyCardFilter('total', 'all')} aria-pressed={activeRequisitionCard === 'total'} className={`${kpiCardClass} border-purple-500 bg-gradient-to-br from-purple-500 via-purple-600 to-indigo-600 ${selectedCardClass('total')}`}>
-            <div className="relative flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-              <div className="relative flex items-start justify-between">
-                <div className={`${kpiIconClass} bg-white/15`}><DocumentTextIcon className="h-5 w-5 text-white" /></div>
-                <div className="min-w-0 text-right">
-                  <div className={`${kpiValueClass} text-white`}>{stats.total}</div>
-                  <div className="mt-1 h-4 text-[11px] font-medium text-white/80">Requisitions</div>
-                </div>
-              </div>
-              <div className="relative">
-                <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-white/70">
-                  <span className="inline-flex items-center gap-1"><span aria-hidden="true">↗</span> Live volume</span><span>100%</span>
+        <div className="mb-4 overflow-x-auto pb-1" aria-label="Purchase recommendation status filters">
+          <div className="grid min-w-[1120px] grid-cols-7 gap-3">
+            {metrics.map((metric) => {
+              const Icon = metric.icon;
+              const isSelected = activeRequisitionCard === metric.key;
+              return (
+                <button
+                  key={metric.key}
+                  type="button"
+                  onClick={() => applyCardFilter(metric.key, metric.status)}
+                  aria-pressed={isSelected}
+                  className={`group relative h-[112px] min-w-[148px] overflow-hidden rounded-xl border p-3 text-left shadow-sm transition duration-200 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 ${metric.surfaceClass} ${
+                    isSelected
+                      ? 'z-[1] shadow-lg ring-2 ring-slate-950 ring-offset-2'
+                      : 'hover:-translate-y-0.5 hover:brightness-105 hover:shadow-md'
+                  }`}
+                >
+                  <Icon className="pointer-events-none absolute -right-2 -top-2 h-[72px] w-[72px] opacity-[0.14] transition-transform duration-200 group-hover:scale-105" aria-hidden="true" />
+                  <div className="relative z-[1] flex h-full flex-col">
+                    <p className="text-[25px] font-semibold leading-none tabular-nums">{metric.value}</p>
+                    <p className="mt-1.5 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.065em] opacity-90">{metric.label}</p>
+                    <span className={`mt-auto inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold ${metric.contextClass}`}>{metric.context}</span>
                   </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full w-full rounded-full bg-white/70" /></div>
-              </div>
-            </div>
-          </button>
-
-          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-          <button type="button" onClick={() => applyCardFilter('draft', 'draft')} aria-pressed={activeRequisitionCard === 'draft'} className={`${kpiCardClass} bg-white hover:border-purple-200 ${activeRequisitionCard === 'draft' ? 'border-purple-300' : 'border-gray-100'} ${selectedCardClass('draft')}`}>
-            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className={`${kpiIconClass} bg-gradient-to-br from-gray-400 to-gray-500`}>
-                  <ClockIcon className="h-5 w-5 text-white" />
-                </div>
-                <div className="min-w-0 text-right">
-                  <div className={`${kpiValueClass} text-gray-900`}>{stats.draft}</div>
-                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-gray-500">Draft</div>
-                </div>
-              </div>
-              <div className="mb-1 flex items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-slate-400"><span>Portfolio share</span><span>{draftShare}%</span></div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                <div 
-                  className="h-1.5 rounded-full bg-gradient-to-r from-gray-400 to-gray-500 transition-all duration-500"
-                  style={{ width: `${draftShare}%` }}
-                />
-              </div>
-            </div>
-          </button>
-
-          <button type="button" onClick={() => applyCardFilter('under_review', 'under_review')} aria-pressed={activeRequisitionCard === 'under_review'} className={`${kpiCardClass} bg-white hover:border-blue-200 ${activeRequisitionCard === 'under_review' ? 'border-blue-300' : 'border-gray-100'} ${selectedCardClass('under_review')}`}>
-            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className={`${kpiIconClass} bg-gradient-to-br from-blue-400 to-blue-600`}>
-                  <PaperAirplaneIcon className="h-5 w-5 text-white" />
-                </div>
-                <div className="min-w-0 text-right">
-                  <div className={`${kpiValueClass} text-gray-900`}>{stats.underReview}</div>
-                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-blue-600">Under Review</div>
-                </div>
-              </div>
-              <div className="mb-1 flex items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-blue-500"><span>Review entry</span><span>{reviewEntryRatio}%</span></div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-blue-100">
-                <div 
-                  className="h-1.5 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
-                  style={{ width: `${reviewEntryRatio}%` }}
-                />
-              </div>
-            </div>
-          </button>
-
-          <button type="button" onClick={() => applyCardFilter('approved', 'approved')} aria-pressed={activeRequisitionCard === 'approved'} className={`${kpiCardClass} bg-white hover:border-green-200 ${activeRequisitionCard === 'approved' ? 'border-green-300' : 'border-gray-100'} ${selectedCardClass('approved')}`}>
-            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className={`${kpiIconClass} bg-gradient-to-br from-green-400 to-emerald-600`}>
-                  <CheckCircleIcon className="h-5 w-5 text-white" />
-                </div>
-                <div className="min-w-0 text-right">
-                  <div className={`${kpiValueClass} text-gray-900`}>{stats.approved}</div>
-                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-green-600">Approved</div>
-                </div>
-              </div>
-              <div className="mb-1 flex items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-emerald-600"><span>Approval yield</span><span>{approvalYield}%</span></div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-emerald-100">
-                <div 
-                  className="h-1.5 rounded-full bg-gradient-to-r from-green-400 to-emerald-600 transition-all duration-500"
-                  style={{ width: `${approvalYield}%` }}
-                />
-              </div>
-            </div>
-          </button>
-
-          <button type="button" onClick={() => applyCardFilter('overdue', 'overdue')} aria-pressed={activeRequisitionCard === 'overdue'} className={`${kpiCardClass} bg-white hover:border-yellow-200 ${activeRequisitionCard === 'overdue' ? 'border-yellow-300' : 'border-gray-100'} ${selectedCardClass('overdue')}`}>
-            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className={`${kpiIconClass} bg-gradient-to-br from-yellow-400 to-amber-600`}>
-                  <ClockIcon className="h-5 w-5 text-white" />
-                </div>
-                <div className="min-w-0 text-right">
-                  <div className={`${kpiValueClass} text-gray-900`}>{stats.overdue}</div>
-                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-red-600">Overdue</div>
-                </div>
-              </div>
-              <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-amber-600"><span>Portfolio share</span><span>{overdueShare}%</span></div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className="h-1.5 rounded-full bg-gradient-to-r from-yellow-400 to-amber-600 transition-all duration-500"
-                  style={{ width: `${overdueShare}%` }}
-                />
-              </div>
-            </div>
-          </button>
-
-          <button type="button" onClick={() => applyCardFilter('rejected', 'rejected')} aria-pressed={activeRequisitionCard === 'rejected'} className={`${kpiCardClass} bg-white hover:border-red-200 ${activeRequisitionCard === 'rejected' ? 'border-red-300' : 'border-gray-100'} ${selectedCardClass('rejected')}`}>
-            <div className="flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className={`${kpiIconClass} bg-gradient-to-br from-red-400 to-red-600`}>
-                  <XCircleIcon className="h-5 w-5 text-white" />
-                </div>
-                <div className="min-w-0 text-right">
-                  <div className={`${kpiValueClass} text-gray-900`}>{stats.rejected}</div>
-                  <div className="mt-1 h-4 whitespace-nowrap text-[11px] font-medium text-red-600">Rejected</div>
-                </div>
-              </div>
-              <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-red-500"><span>Portfolio share</span><span>{rejectedShare}%</span></div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                <div 
-                  className="h-1.5 rounded-full bg-gradient-to-r from-red-400 to-red-600 transition-all duration-500"
-                  style={{ width: `${rejectedShare}%` }}
-                />
-              </div>
-            </div>
-          </button>
+                </button>
+              );
+            })}
           </div>
-
-          <button type="button" onClick={() => applyCardFilter('converted', 'converted')} aria-pressed={activeRequisitionCard === 'converted'} className={`${kpiCardClass} border-purple-400 bg-gradient-to-br from-purple-400 via-purple-500 to-indigo-500 ${selectedCardClass('converted')}`}>
-            <div className="relative flex h-full min-h-[100px] flex-col justify-between p-3">
-              <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-              <div className="relative flex items-start justify-between">
-                <div className={`${kpiIconClass} bg-white/15`}><ShoppingCartIcon className="h-5 w-5 text-white" /></div>
-                <div className="min-w-0 text-right">
-                  <div className={`${kpiValueClass} text-white`}>{stats.converted}</div>
-                  <div className="mt-1 h-4 text-[11px] font-medium text-white/80">Converted to PO</div>
-                </div>
-              </div>
-              <div className="relative">
-                <div className="mb-1 flex h-3 items-center justify-between text-[9px] font-semibold uppercase tracking-wide text-white/80"><span className="rounded-full bg-white/15 px-1.5 text-[8px] leading-3 text-white">Completed</span><span>{convertedShare}%</span></div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-white/70 transition-all duration-500" style={{ width: `${convertedShare}%` }} /></div>
-              </div>
-            </div>
-          </button>
         </div>
       );
     }
@@ -1245,75 +1099,55 @@ const OrderManagement = () => {
   return (
     <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
       <div className="py-3" style={pageControls.styles.content}>
-        {/* Header */}
+        {/* Header and workspace navigation */}
         <div className="w-full px-3 sm:px-4 lg:px-6">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+          <div className="mb-4 flex flex-col gap-4 border-b border-slate-200 lg:flex-row lg:items-end lg:justify-between">
+            <div className="pb-1">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-600">Procurement workspace</p>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
                 {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Recommendations'}
               </h1>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-sm text-slate-500">
                 {activeTab === 'purchaseOrders'
                   ? 'Manage vendor selection, purchase orders, and delivery tracking'
                   : 'Create, review, approve, and track purchase recommendations in one workspace'}
               </p>
             </div>
-          </div>
-        </div>
+            <div className="flex shrink-0 gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Procurement workspace">
+              {orderTabs.map((tab) => {
+                const isActive = activeTab === tab.key;
+                const Icon = tab.icon === 'ShoppingCartIcon' ? ShoppingCartIcon : DocumentTextIcon;
+                const totalCount = tab.key === 'purchaseOrders' ? (Array.isArray(orders) ? orders.length : 0) : (Array.isArray(requisitions) ? requisitions.length : 0);
 
-        {/* Tab Navigation - Modern Pill Design */}
-        <div className="w-full px-3 sm:px-4 lg:px-6">
-          <div className="inline-flex space-x-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
-            {orderTabs.map((tab) => {
-              const isActive = activeTab === tab.key;
-              const Icon = tab.icon === 'ShoppingCartIcon' ? ShoppingCartIcon : DocumentTextIcon;
-              
-              // Properly reference counts based on tab key to prevent cross-tab mismatch
-              const count = tab.key === 'purchaseOrders' ? filteredOrders.length : filteredRequisitions.length;
-              const totalCount = tab.key === 'purchaseOrders' ? (Array.isArray(orders) ? orders.length : 0) : (Array.isArray(requisitions) ? requisitions.length : 0);
-              
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => handleTabChange(tab.key)}
-                  className={`
-                    relative group flex items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-200
-                    ${isActive
-                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                    }
-                  `}
-                >
-                  <Icon className={`
-                    mr-2 h-4 w-4 transition-colors duration-200
-                    ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'}
-                  `} />
-                  <span className="font-semibold">{tab.label}</span>
-                  <div className={`
-                    ml-2 flex h-5 min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold transition-colors duration-200
-                    ${isActive 
-                      ? 'bg-white/20 text-white backdrop-blur-sm' 
-                      : 'bg-gradient-to-br from-gray-100 to-gray-200 text-gray-700 group-hover:from-indigo-50 group-hover:to-purple-50 group-hover:text-indigo-700'
-                    }
-                  `}>
-                    {count}
-                  </div>
-                  {totalCount > count && (
-                    <div className={`
-                      ml-1 text-xs font-normal transition-opacity duration-300
-                      ${isActive ? 'text-white/70' : 'text-gray-400 group-hover:text-gray-600'}
-                    `}>
-                      / {totalCount}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => handleTabChange(tab.key)}
+                    className={`group relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm hover:from-blue-700 hover:to-indigo-700'
+                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} aria-hidden="true" />
+                    <span className="whitespace-nowrap">{tab.label}</span>
+                    <span className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                      isActive ? 'bg-white/20 text-white ring-1 ring-white/20' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {totalCount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
         {/* Statistics */}
-        <div className="mt-3 w-full px-3 sm:px-4 lg:px-6">
+        <div className="w-full px-3 sm:px-4 lg:px-6">
           <OrderStats />
         </div>
 
