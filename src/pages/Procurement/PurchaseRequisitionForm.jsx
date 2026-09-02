@@ -37,6 +37,8 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'
 ]);
 
+const getCurrencyLabel = (currency = 'USD') => String(currency || 'USD').toUpperCase();
+
 const normalizeApiErrors = (payload) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
   return Object.fromEntries(Object.entries(payload).map(([field, value]) => {
@@ -2158,18 +2160,25 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Total Price <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="total_price"
-                    value={formData.total_price}
-                    onChange={handleChange}
-                    readOnly={formData.items?.length > 0}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
-                      errors.total_price ? 'border-red-500' : 'border-gray-300'
-                    } ${formData.items?.length > 0 ? 'bg-gray-50' : ''}`}
-                    placeholder="4000.00"
-                  />
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="total_price"
+                      value={formData.total_price}
+                      onChange={handleChange}
+                      readOnly={formData.items?.length > 0}
+                      className={`w-full border rounded-lg py-2 pl-4 pr-14 focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                        errors.total_price ? 'border-red-500' : 'border-gray-300'
+                      } ${
+                        formData.items?.length > 0 ? 'bg-gray-50' : ''
+                      }`}
+                      placeholder="4000.00"
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-sm font-medium text-gray-600">
+                      {getCurrencyLabel(formData.currency)}
+                    </span>
+                  </div>
                   {errors.total_price && (
                     <p className="mt-1 text-sm text-red-600">{errors.total_price}</p>
                   )}
@@ -2179,15 +2188,20 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Net Total (excl. VAT)
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="net_total_excl_vat"
-                    value={formData.net_total_excl_vat}
-                    readOnly
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                    placeholder="4000.00"
-                  />
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="net_total_excl_vat"
+                      value={formData.net_total_excl_vat}
+                      readOnly
+                      className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2 pl-4 pr-14 text-gray-700"
+                      placeholder="4000.00"
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-sm font-medium text-gray-600">
+                      {getCurrencyLabel(formData.currency)}
+                    </span>
+                  </div>
                   <p className="mt-1 text-xs text-gray-500">Calculated from the pricing total before VAT.</p>
                 </div>
               </div>
