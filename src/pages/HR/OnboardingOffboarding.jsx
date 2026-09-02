@@ -20,6 +20,16 @@ const API_ENDPOINTS = {
 }
 
 const API_BASE = API_ENDPOINTS.onboarding
+const DEFAULT_COMPANY = 'Rejlers International Engineering Solutions AB'
+
+// ISO 3166-1 regions, rendered with localized country names by the browser.
+const COUNTRY_CODES = `AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW`.split(' ')
+
+const countryDisplayNames = new Intl.DisplayNames(['en'], { type: 'region' })
+const COUNTRIES = COUNTRY_CODES
+  .map(code => countryDisplayNames.of(code))
+  .filter(Boolean)
+  .sort((a, b) => a.localeCompare(b))
 
 // ── Soft-coded quick-edit fields for list view ────────────────────────────
 const QUICK_EDIT_FIELDS = [
@@ -833,17 +843,6 @@ const SmartButtonGroup = ({ section, stats, buttons = OVERVIEW_BUTTONS, onTabCha
       ))}
     </div>
   )
-}
-
-// ── Soft-coded probation period configuration ─────────────────────────────
-const PROBATION_PERIOD_MONTHS = 6
-
-// ── Utility function to calculate probation end date ──────────────────────
-const calculateProbationEndDate = (joiningDate) => {
-  if (!joiningDate) return null
-  const date = new Date(joiningDate)
-  date.setMonth(date.getMonth() + PROBATION_PERIOD_MONTHS)
-  return date.toISOString().split('T')[0]
 }
 
 // ── Spinner Component ──────────────────────────────────────────────────────
@@ -5095,15 +5094,9 @@ function CreateEmployeeTab() {
     // Other Information
     mobile_phone: '',
     email: '',
-    initials: '',
-    employee_number: '',
-    employee_code: '',
-    account_name: '',
-    employment_id: '',
-    candidate_id: '',
     
     // Organization Information
-    company: '',
+    company: DEFAULT_COMPANY,
     business_unit: '',
     division: '',
     business_area: '',
@@ -5128,6 +5121,7 @@ function CreateEmployeeTab() {
   })
   
   const [managers, setManagers] = useState([])
+  const [managerSearch, setManagerSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState(null)
@@ -5135,25 +5129,6 @@ function CreateEmployeeTab() {
   // Passport photo upload states
   const [photo, setPhoto] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
-  
-  // Document upload states
-  const [documents, setDocuments] = useState([])
-  const [createdEmployeeId, setCreatedEmployeeId] = useState(null)
-  
-  // Soft-coded document types
-  const DOCUMENT_TYPES = [
-    { value: 'passport', label: 'Passport Copy' },
-    { value: 'visa', label: 'Visa' },
-    { value: 'emirates_id', label: 'Emirates ID' },
-    { value: 'driving_license', label: 'Driving License' },
-    { value: 'degree', label: 'Educational Certificates' },
-    { value: 'certificate', label: 'Professional Certificate' },
-    { value: 'experience', label: 'Experience Letters' },
-    { value: 'bank_details', label: 'Bank Account Details' },
-    { value: 'medical', label: 'Medical/Insurance Forms' },
-    { value: 'vaccination', label: 'Vaccination Certificate' },
-    { value: 'other', label: 'Other' },
-  ]
   
   useEffect(() => {
     // Load managers list from active employees (EmployeeMaster)
@@ -5173,6 +5148,26 @@ function CreateEmployeeTab() {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }))
+  }
+
+  const handlePhoneChange = (e) => {
+    const localNumber = e.target.value.replace(/\D/g, '').slice(0, 9)
+    setFormData(prev => ({
+      ...prev,
+      mobile_phone: localNumber ? `+971${localNumber}` : '',
+    }))
+  }
+
+  const managerOptions = useMemo(() => managers.map(manager => ({
+    id: String(manager.user_id),
+    label: `${manager.first_name} ${manager.last_name} - ${manager.designation || 'Employee'} (${manager.employee_number})`,
+  })), [managers])
+
+  const handleManagerChange = (e) => {
+    const value = e.target.value
+    const selectedManager = managerOptions.find(option => option.label === value)
+    setManagerSearch(value)
+    setFormData(prev => ({ ...prev, manager_id: selectedManager?.id || '' }))
   }
   
   // Handle passport photo selection with preview
@@ -5213,6 +5208,16 @@ function CreateEmployeeTab() {
   
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (!/^[^@\s]+@rejlers\.ae$/i.test(formData.email.trim())) {
+      setError('Email address must use the @rejlers.ae domain')
+      return
+    }
+    if (!/^\+9715\d{8}$/.test(formData.mobile_phone)) {
+      setError('Mobile Phone (Work) must use UAE format +9715XXXXXXXX')
+      return
+    }
+
     setLoading(true)
     setError(null)
     setSuccess(false)
@@ -5241,16 +5246,6 @@ function CreateEmployeeTab() {
       setSuccess(true)
       setError(null)
       
-      // Store created employee/onboarding record IDs for document uploads
-      // Response includes: user_id, employee_master_id (UUID), onboarding_id, employee_number (auto-generated), email
-      const onboardingRecordId = response.data.onboarding_id
-      setCreatedEmployeeId(onboardingRecordId)
-      
-      // Upload documents if any
-      if (documents.length > 0 && onboardingRecordId) {
-        await uploadDocuments(onboardingRecordId)
-      }
-      
       // Reset form
       setFormData({
         first_name: '',
@@ -5260,13 +5255,7 @@ function CreateEmployeeTab() {
         country: '',
         mobile_phone: '',
         email: '',
-        initials: '',
-        employee_number: '',
-        employee_code: '',
-        account_name: '',
-        employment_id: '',
-        candidate_id: '',
-        company: '',
+        company: DEFAULT_COMPANY,
         business_unit: '',
         division: '',
         business_area: '',
@@ -5283,9 +5272,9 @@ function CreateEmployeeTab() {
         branch: 'RAD',
         notes: ''
       })
-      setDocuments([])
       setPhoto(null)
       setPhotoPreview(null)
+      setManagerSearch('')
       
       // Show enhanced success message with role assignment and navigation info
       const successDetails = [
@@ -5294,6 +5283,7 @@ function CreateEmployeeTab() {
         `📧 Email: ${response.data.email}`,
         `🔢 Employee Number: ${response.data.employee_number}`,
         `🆔 Employee Code: ${response.data.employee_code}`,
+        `📋 Employment ID: ${response.data.employment_id}`,
         `🏢 Branch: ${response.data.branch}`,
         response.data.reporting_manager ? `👤 Reports to: ${response.data.reporting_manager}` : '',
         `📋 Onboarding ID: ${response.data.onboarding_id}`,
@@ -5301,8 +5291,6 @@ function CreateEmployeeTab() {
         `🎯 RBAC: ${SUCCESS_CONFIG.defaultRole} role automatically assigned`,
         `📍 Employee now visible in:`,
         ...SUCCESS_CONFIG.visibilityLocations.map(loc => `   • ${loc}`),
-        ``,
-        documents.length > 0 ? `📎 ${documents.length} document(s) uploaded` : '',
         ``,
         `💡 The employee will receive login credentials via email.`
       ].filter(Boolean).join('\n')
@@ -5321,50 +5309,23 @@ function CreateEmployeeTab() {
     }
   }
   
-  const addDocument = () => {
-    setDocuments([...documents, {
-      id: Date.now(),
-      document_type: 'emirates_id',
-      document_name: '',
-      file: null
-    }])
-  }
-  
-  const removeDocument = (id) => {
-    setDocuments(documents.filter(doc => doc.id !== id))
-  }
-  
-  const updateDocument = (id, field, value) => {
-    setDocuments(documents.map(doc => 
-      doc.id === id ? { ...doc, [field]: value } : doc
-    ))
-  }
-  
-  const uploadDocuments = async (onboardingRecordId) => {
-    const uploadPromises = documents.map(async (doc) => {
-      if (!doc.file) return
-      
-      const docFormData = new FormData()
-      docFormData.append('file', doc.file)
-      docFormData.append('document_type', doc.document_type)
-      docFormData.append('document_name', doc.document_name || doc.file.name)
-      docFormData.append('onboarding_record', onboardingRecordId)
-      
-      return apiClient.post(`${API_ENDPOINTS.documents}/`, docFormData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      })
-    })
-    
-    await Promise.all(uploadPromises)
-  }
-  
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 lg:p-5 space-y-3.5">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm">
+            <HeroIcons.UserPlusIcon className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Create Employee Onboarding</h2>
+            <p className="text-xs text-slate-500">Employee profile, organisation, and joining information</p>
+          </div>
+        </div>
+        <p className="hidden text-xs text-slate-500 sm:block"><span className="text-rose-500">*</span> Required fields</p>
+      </div>
       {/* Success/Error Messages */}
       {success && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
           <div className="flex items-center gap-2 text-emerald-700">
             <HeroIcons.CheckCircleIcon className="w-5 h-5" />
             <span className="font-medium">Employee created successfully!</span>
@@ -5373,7 +5334,7 @@ function CreateEmployeeTab() {
       )}
       
       {error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg p-4">
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
           <div className="flex items-center gap-2 text-rose-700">
             <HeroIcons.ExclamationCircleIcon className="w-5 h-5" />
             <span className="font-medium">{error}</span>
@@ -5382,14 +5343,16 @@ function CreateEmployeeTab() {
       )}
       
       {/* Contact Information */}
-      <div className="bg-gradient-to-br from-white to-blue-50 rounded-xl border border-blue-200 p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-800 mb-6 flex items-center gap-2">
-          <HeroIcons.UserIcon className="w-5 h-5 text-blue-600" />
+      <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
+        <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-100 text-blue-700">
+            <HeroIcons.UserIcon className="w-4 h-4" />
+          </span>
           Contact Information
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr,auto] gap-6">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_7.5rem]">
           {/* Left Side - All Form Fields */}
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-x-3 gap-y-3 md:grid-cols-2 xl:grid-cols-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                 First Names <span className="text-rose-500">*</span>
@@ -5433,50 +5396,89 @@ function CreateEmployeeTab() {
                 placeholder="Optional"
               />
             </div>
-            
+
             <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Rejlers Email <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                pattern=".+@rejlers[.]ae"
+                placeholder="name@rejlers.ae"
+                title="Email address must end with @rejlers.ae"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Mobile Phone <span className="text-rose-500">*</span>
+              </label>
+              <div className="flex rounded-lg border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-blue-500">
+                <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">+971</span>
+                <input
+                  type="tel"
+                  value={formData.mobile_phone.replace('+971', '')}
+                  onChange={handlePhoneChange}
+                  inputMode="numeric"
+                  maxLength={9}
+                  pattern="5[0-9]{8}"
+                  placeholder="5XXXXXXXX"
+                  title="Enter 9 digits beginning with 5 after +971"
+                  required
+                  className="min-w-0 flex-1 rounded-r-lg px-3 py-2.5 text-sm focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="xl:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                 Manager
               </label>
-              <select
-                name="manager_id"
-                value={formData.manager_id}
-                onChange={handleChange}
+              <input
+                type="search"
+                list="onboarding-manager-options"
+                value={managerSearch}
+                onChange={handleManagerChange}
+                placeholder="Type to search reporting managers"
+                autoComplete="off"
                 className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-              >
-                <option value="">--Select Reporting Manager--</option>
-                {managers.map(mgr => (
-                  <option key={mgr.user_id} value={mgr.user_id}>
-                    {mgr.first_name} {mgr.last_name} - {mgr.designation || 'Employee'} ({mgr.employee_number})
-                  </option>
+              />
+              <datalist id="onboarding-manager-options">
+                {managerOptions.map(option => (
+                  <option key={option.id} value={option.label} />
                 ))}
-              </select>
-              <p className="text-xs text-slate-500 mt-1">
-                👤 Select the direct manager this employee will report to
-              </p>
+              </datalist>
             </div>
             
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                 Country
               </label>
-              <select
+              <input
+                type="search"
+                list="onboarding-country-options"
                 name="country"
                 value={formData.country}
                 onChange={handleChange}
+                placeholder="Type to search countries"
+                autoComplete="off"
                 className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-              >
-                <option value="">--Select Country--</option>
-                <option value="UAE">United Arab Emirates</option>
-                <option value="Finland">Finland</option>
-                <option value="India">India</option>
-                <option value="Sweden">Sweden</option>
-              </select>
+              />
+              <datalist id="onboarding-country-options">
+                {COUNTRIES.map(country => (
+                  <option key={country} value={country} />
+                ))}
+              </datalist>
             </div>
           </div>
           
           {/* Right Side - Passport Photo */}
-          <div className="flex flex-col items-center justify-center md:pl-6 md:border-l border-blue-200">
+          <div className="flex flex-col items-center justify-center xl:border-l xl:border-slate-200 xl:pl-4">
             <input
               type="file"
               accept="image/jpeg,image/jpg,image/png"
@@ -5486,7 +5488,7 @@ function CreateEmployeeTab() {
             />
             <label
               htmlFor="passport-photo-upload"
-              className="w-44 h-56 bg-white rounded-xl border-2 border-dashed border-blue-300 overflow-hidden hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer group relative"
+              className="h-32 w-full min-w-28 bg-white rounded-xl border border-dashed border-blue-300 overflow-hidden hover:border-blue-500 hover:shadow-sm transition-all cursor-pointer group relative"
               title="Click to upload passport photo"
             >
               {photoPreview ? (
@@ -5511,175 +5513,46 @@ function CreateEmployeeTab() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center w-full h-full text-slate-400 group-hover:text-blue-600 transition-all">
-                  <div className="w-20 h-20 rounded-full bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center mb-3 transition-all">
-                    <HeroIcons.CameraIcon className="w-10 h-10" />
+                  <div className="w-10 h-10 rounded-full bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center mb-2 transition-all">
+                    <HeroIcons.CameraIcon className="w-5 h-5" />
                   </div>
                   <span className="text-sm font-medium">Click to upload</span>
                   <span className="text-xs text-slate-400 mt-1">Photo</span>
                 </div>
               )}
             </label>
-            <div className="mt-3 text-center">
-              <p className="text-xs font-medium text-slate-600">Passport Size</p>
-              <p className="text-xs text-slate-500">3.5 × 4.5 cm</p>
-            </div>
           </div>
         </div>
-      </div>
+      </section>
       
-      {/* Other Information */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-          <HeroIcons.IdentificationIcon className="w-5 h-5 text-violet-600" />
-          Other Information
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              E-mail Address (Rejlers) <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Mobile Phone (Work)
-            </label>
-            <input
-              type="text"
-              name="mobile_phone"
-              value={formData.mobile_phone}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Initials
-            </label>
-            <input
-              type="text"
-              name="initials"
-              value={formData.initials}
-              onChange={handleChange}
-              maxLength={10}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Employee Number
-              <span className="ml-2 text-xs text-green-600 font-normal">(✓ Auto-generated)</span>
-            </label>
-            <input
-              type="text"
-              name="employee_number"
-              value={formData.employee_number}
-              onChange={handleChange}
-              placeholder="Leave empty for auto-generation (e.g., EMP20267890)"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
-            />
-            <p className="text-xs text-slate-500 mt-1">
-              📦 Leave empty - system will generate unique employee number
-            </p>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Employee Code (Finance/Payroll)
-              <span className="ml-2 text-xs text-amber-600 font-normal">(⚠️ Recommended)</span>
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                name="employee_code"
-                value={formData.employee_code}
-                onChange={handleChange}
-                placeholder="e.g., EMP-2026-001 or REJAD-001"
-                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  // Generate employee code based on email or name
-                  const firstName = formData.first_name.substring(0, 3).toUpperCase()
-                  const lastName = formData.surname.substring(0, 3).toUpperCase()
-                  const year = new Date().getFullYear()
-                  const random = Math.floor(Math.random() * 999) + 1
-                  const code = `${firstName}${lastName}-${year}-${String(random).padStart(3, '0')}`
-                  setFormData(prev => ({ ...prev, employee_code: code }))
-                }}
-                disabled={!formData.first_name || !formData.surname}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg text-xs font-medium hover:bg-blue-600 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                title="Generate employee code from name"
-              >
-                <HeroIcons.SparklesIcon className="w-4 h-4" />
-                Generate
-              </button>
+      {/* System-generated identifiers */}
+      <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-blue-100 bg-blue-50/60 text-xs md:grid-cols-4 md:divide-x md:divide-blue-100">
+        {[
+          ['Employee Number', 'Auto-generated'],
+          ['Employee Code', '2302 + sequence'],
+          ['Employment ID', '2302 + sequence'],
+          ['Account Name', 'From Rejlers email'],
+        ].map(([label, value]) => (
+          <div key={label} className="flex items-center gap-2.5 px-3 py-2.5">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+            <div>
+              <div className="font-medium text-slate-700">{label}</div>
+              <div className="text-blue-700">{value}</div>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              🎯 Used for payroll, finance systems, and official documents
-            </p>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Account Name
-            </label>
-            <input
-              type="text"
-              name="account_name"
-              value={formData.account_name}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Employment ID (from HRM)
-            </label>
-            <input
-              type="text"
-              name="employment_id"
-              value={formData.employment_id}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Candidate ID
-            </label>
-            <input
-              type="text"
-              name="candidate_id"
-              value={formData.candidate_id}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
+        ))}
       </div>
       
       {/* Organization Information */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-          <HeroIcons.BuildingOfficeIcon className="w-5 h-5 text-emerald-600" />
+      <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
+        <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
+            <HeroIcons.BuildingOfficeIcon className="w-4 h-4" />
+          </span>
           Organisation Information
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="xl:col-span-2">
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Company
             </label>
@@ -5770,15 +5643,17 @@ function CreateEmployeeTab() {
             />
           </div>
         </div>
-      </div>
+      </section>
       
       {/* Onboarding Details */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-          <HeroIcons.CalendarDaysIcon className="w-5 h-5 text-amber-600" />
+      <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
+        <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-100 text-amber-700">
+            <HeroIcons.CalendarDaysIcon className="w-4 h-4" />
+          </span>
           Onboarding Details
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Joining Date
@@ -5807,7 +5682,7 @@ function CreateEmployeeTab() {
             </select>
           </div>
           
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 xl:col-span-2">
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Notes
             </label>
@@ -5815,158 +5690,15 @@ function CreateEmployeeTab() {
               name="notes"
               value={formData.notes}
               onChange={handleChange}
-              rows={3}
+              rows={2}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
-      </div>
-      
-      {/* Probation Period */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-          <HeroIcons.ClockIcon className="w-5 h-5 text-indigo-600" />
-          Probation Period
-        </h3>
-        
-        {formData.joining_date ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="text-xs font-medium text-blue-600 mb-1">Joining Date</div>
-                <div className="text-lg font-semibold text-slate-800">
-                  {new Date(formData.joining_date).toLocaleDateString('en-GB', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric'
-                  })}
-                </div>
-              </div>
-              
-              <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-                <div className="text-xs font-medium text-indigo-600 mb-1">Probation End Date</div>
-                <div className="text-lg font-semibold text-slate-800">
-                  {calculateProbationEndDate(formData.joining_date) &&
-                    new Date(calculateProbationEndDate(formData.joining_date)).toLocaleDateString('en-GB', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric'
-                    })}
-                </div>
-                <div className="text-xs text-indigo-600 mt-1">
-                  ({PROBATION_PERIOD_MONTHS} months from joining)
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <HeroIcons.InformationCircleIcon className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-800">
-                <strong>Note:</strong> Employee is under probation for {PROBATION_PERIOD_MONTHS} months from the date of joining. 
-                Performance will be reviewed before confirmation.
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-lg">
-            <HeroIcons.ClockIcon className="w-12 h-12 mx-auto text-slate-300 mb-2" />
-            <p className="text-sm text-slate-500">Please set a joining date to view probation period</p>
-            <p className="text-xs text-slate-400 mt-1">Probation period is automatically calculated as {PROBATION_PERIOD_MONTHS} months from joining date</p>
-          </div>
-        )}
-      </div>
-      
-      {/* Document Upload Section */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <HeroIcons.DocumentTextIcon className="w-5 h-5 text-violet-600" />
-            Upload Documents (Optional)
-          </h3>
-          <button
-            type="button"
-            onClick={addDocument}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-lg transition-colors flex items-center gap-1"
-          >
-            <HeroIcons.PlusIcon className="w-4 h-4" />
-            Add Document
-          </button>
-        </div>
-        
-        {documents.length === 0 ? (
-          <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-lg">
-            <HeroIcons.DocumentIcon className="w-12 h-12 mx-auto text-slate-300 mb-2" />
-            <p className="text-sm text-slate-500">No documents added yet</p>
-            <p className="text-xs text-slate-400 mt-1">You can add documents like Emirates ID, certificates, etc.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {documents.map((doc, index) => (
-              <div key={doc.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="flex items-start justify-between mb-3">
-                  <span className="text-sm font-medium text-slate-700">Document #{index + 1}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeDocument(doc.id)}
-                    className="p-1 text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                    title="Remove"
-                  >
-                    <HeroIcons.TrashIcon className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Document Type</label>
-                    <select
-                      value={doc.document_type}
-                      onChange={(e) => updateDocument(doc.id, 'document_type', e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    >
-                      {DOCUMENT_TYPES.map((type) => (
-                        <option key={type.value} value={type.value}>{type.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Document Name</label>
-                    <input
-                      type="text"
-                      value={doc.document_name}
-                      onChange={(e) => updateDocument(doc.id, 'document_name', e.target.value)}
-                      placeholder="e.g., Emirates ID - John Doe"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      File {!doc.file && <span className="text-rose-500">*</span>}
-                    </label>
-                    <input
-                      type="file"
-                      onChange={(e) => updateDocument(doc.id, 'file', e.target.files[0])}
-                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    />
-                  </div>
-                </div>
-                {doc.file && (
-                  <div className="mt-2 text-xs text-slate-600 flex items-center gap-2">
-                    <HeroIcons.CheckCircleIcon className="w-4 h-4 text-emerald-500" />
-                    <span>{doc.file.name} ({(doc.file.size / 1024).toFixed(2)} KB)</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        <p className="text-xs text-slate-500 mt-3">
-          <HeroIcons.InformationCircleIcon className="w-4 h-4 inline mr-1" />
-          Accepted formats: PDF, JPG, PNG, DOC, DOCX (Max 10MB per file)
-        </p>
-      </div>
+      </section>
       
       {/* Submit Button */}
-      <div className="flex justify-end gap-3">
+      <div className="flex justify-end gap-3 border-t border-slate-100 pt-3">
         <button
           type="button"
           onClick={() => window.location.reload()}
