@@ -358,6 +358,7 @@ export const HR_DETAIL_TABS = [
   { id: 'competency',    label: 'Competency',          icon: 'AcademicCapIcon' },
   { id: 'access',        label: 'Roles & Access',      icon: 'KeyIcon' },
   { id: 'security',      label: 'Security & Activity', icon: 'ShieldCheckIcon' },
+  { id: 'data_quality',  label: 'Data Quality',         icon: 'CircleStackIcon' },
 ]
 export const HR_DEFAULT_DETAIL_TAB = 'overview'
 
