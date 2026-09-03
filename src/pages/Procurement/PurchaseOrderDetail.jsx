@@ -14,6 +14,7 @@ import {
   CheckCircleIcon,
   XMarkIcon,
   PrinterIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { getStatusConfig } from '../../config/procurement.config';
@@ -70,6 +71,7 @@ const PurchaseOrderDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState('');
   const [showEditForm, setShowEditForm] = useState(false);
 
   const handlePrintPurchaseOrder = () => {
@@ -88,6 +90,40 @@ const PurchaseOrderDetail = () => {
     window.addEventListener('afterprint', restoreTitle, { once: true });
     window.print();
     window.setTimeout(restoreTitle, 1000);
+  };
+
+  const handleExportPurchaseOrder = async (format) => {
+    try {
+      setExportLoading(format);
+      const response = await apiClient.get(`/procurement/orders/${id}/export-${format}/`, {
+        responseType: 'blob',
+        timeout: 120000,
+      });
+      const fallbackPdfName = buildProcurementPdfFilename(
+        order?.po_number || `PO-${id}`,
+        'po',
+        order?.po_date,
+      );
+      const fallbackName = format === 'word'
+        ? fallbackPdfName.replace(/\.pdf$/i, '.docx')
+        : fallbackPdfName;
+      const disposition = response.headers?.['content-disposition'] || '';
+      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = filenameMatch?.[1] || fallbackName;
+      const downloadUrl = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+    } catch (exportError) {
+      console.error(`Failed to export Purchase Order as ${format}:`, exportError);
+      alert(`Failed to export the Purchase Order as ${format === 'word' ? 'Word' : 'PDF'}.`);
+    } finally {
+      setExportLoading('');
+    }
   };
 
   /**
@@ -619,7 +655,27 @@ const PurchaseOrderDetail = () => {
                 className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
               >
                 <PrinterIcon className="h-4 w-4 mr-2" />
-                Print / Save PDF
+                Print Preview
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleExportPurchaseOrder('pdf')}
+                disabled={Boolean(exportLoading)}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                {exportLoading === 'pdf' ? 'Preparing PDF...' : 'Export PDF'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleExportPurchaseOrder('word')}
+                disabled={Boolean(exportLoading)}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                {exportLoading === 'word' ? 'Preparing Word...' : 'Export Word'}
               </button>
               
               {order.status === 'draft' && (
