@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { ArrowTopRightOnSquareIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
 import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentBranding.config';
 import { convertToAed } from '../../config/procurement.config';
+import { nameOnly } from '../../utils/employeeDisplayName';
 
 const valueOrDash = (value) => (value === null || value === undefined || value === '' ? '—' : value);
 
@@ -83,7 +84,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
           _levelOneIndex: isLevelOne ? levelOneDisplayIndex : undefined,
           approval_label: stage.approval_label || savedApprovalLabels[stage.user_id || stage.approver_id],
         }, index),
-        stage.user_name || stage.approver_name || stage.approver,
+        nameOnly(stage.user_name || stage.approver_name || stage.approver),
         stage.signature,
         stage.status,
         stage.approved_at || stage.decided_at,

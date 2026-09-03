@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentBranding.config';
+import { nameOnly } from '../../utils/employeeDisplayName';
 
 const text = (value, fallback = '—') => String(value ?? '').trim() || fallback;
 const date = (value) => {
@@ -314,7 +315,7 @@ const ApprovalStamp = ({ approval, placement = 'page' }) => {
 };
 ApprovalStamp.propTypes = { approval: PropTypes.object, placement: PropTypes.oneOf(['page', 'approved-by']) };
 
-const FinalSignatory = ({ name, designation, signedDate }) => <div className="max-w-[250px]"><div className="mb-2 border-t border-slate-600" /><p className="text-[11px] font-bold">{text(name, FINAL_APPROVER)}</p><p className="whitespace-pre-line">{text(designation, FINAL_APPROVER_TITLE)}</p><p>{FINAL_APPROVER_COMPANY}</p><p className="mt-1"><b>Date:</b> {signedDate ? dateTime(signedDate).split(',')[0] : ''}</p></div>;
+const FinalSignatory = ({ name, designation, signedDate }) => <div className="max-w-[250px]"><div className="mb-2 border-t border-slate-600" /><p className="text-[11px] font-bold">{text(nameOnly(name), FINAL_APPROVER)}</p><p className="whitespace-pre-line">{text(designation, FINAL_APPROVER_TITLE)}</p><p>{FINAL_APPROVER_COMPANY}</p><p className="mt-1"><b>Date:</b> {signedDate ? dateTime(signedDate).split(',')[0] : ''}</p></div>;
 FinalSignatory.propTypes = { name: PropTypes.string, designation: PropTypes.string, signedDate: PropTypes.string };
 
 const DocumentHeader = ({ data }) => <header className="flex items-start justify-between px-1 pb-5"><div className="text-[#3275b6]"><h1 className="text-[11px] font-black uppercase tracking-wide">Purchase Order</h1><p className="mt-0.5 text-[9px] font-black">{text(data.po_number, 'PO NUMBER PENDING')}</p><p className="text-[7px] text-slate-500">{text(data.form_note, '(PO no. to be used in all documents)')}</p><p className="mt-2 text-[9px] font-bold">{date(data.po_date)}</p></div><div className="w-[100px] text-right"><img src={PROCUREMENT_DOCUMENT_BRANDING.logo.path} alt={PROCUREMENT_DOCUMENT_BRANDING.logo.alt} className="ml-auto h-auto w-full object-contain" /><p className="mt-1 text-[9px] font-bold leading-[10px] tracking-tight text-[#3275b6]">HOME OF THE<br />LEARNING MINDS</p></div></header>;
@@ -346,7 +347,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
   const approvals = Array.isArray(formData.approval_log) ? formData.approval_log : [];
   const finalApproval = approvals.find((approval) => approval.stage === FINAL_MANAGEMENT_STAGE);
   const finalApprovalDisplay = finalApproval || { stage: FINAL_MANAGEMENT_STAGE, approver: formData.approved_by_name || FINAL_APPROVER, status: 'Pending' };
-  const finalApproverName = finalApprovalDisplay.approver || formData.approved_by_name || FINAL_APPROVER;
+  const finalApproverName = nameOnly(finalApprovalDisplay.approver || formData.approved_by_name) || FINAL_APPROVER;
   const finalDesignation = String(finalApproverName).trim().toLowerCase() === FINAL_APPROVER.toLowerCase()
     ? FINAL_APPROVER_TITLE
     : finalApprovalDisplay.designation || formData.approved_by_title || FINAL_APPROVER_TITLE;

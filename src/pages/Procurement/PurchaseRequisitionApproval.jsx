@@ -12,6 +12,7 @@
 import React, { useState, useRef } from 'react';
 import apiClient from '../../services/api.service';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
+import { nameOnly } from '../../utils/employeeDisplayName';
 import {
   XMarkIcon,
   CheckCircleIcon,
@@ -575,7 +576,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       <div className="flex-1">
                         <h3 className="text-sm font-bold text-blue-900">Approval has not started</h3>
                         <p className="mt-1 text-xs leading-relaxed text-blue-800">
-                          {currentStage.user_name || currentStageLabel} is assigned and pending, but this requisition is still a draft. Approve and Reject become available only after submission.
+                          {nameOnly(currentStage.user_name) || currentStageLabel} is assigned and pending, but this requisition is still a draft. Approve and Reject become available only after submission.
                         </p>
                         {(isCurrentUserIssuer || isSuperAdmin) ? (
                           <button type="button" onClick={handleSubmitForApproval} disabled={loading} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">

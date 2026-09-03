@@ -18,6 +18,7 @@ import apiClient from '../../services/api.service';
 import { uploadSignedRequisitionPdf, validateSignedRequisitionPdf } from './PurchaseRequisitionPdfImport';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
 import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
+import { employeeDisplayName } from '../../utils/employeeDisplayName';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -103,7 +104,7 @@ const ActiveEmployeePicker = ({
       {selected ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-gray-900">{selected.full_name || selected.username || 'Active employee'}</p>
+            <p className="truncate text-sm font-semibold text-gray-900">{employeeDisplayName(selected)}</p>
             {selected.job_title && <p className="truncate text-xs text-gray-600">{selected.job_title}</p>}
           </div>
           {!disabled && <button type="button" onClick={() => { onChange(''); setSearch(''); }} className="shrink-0 text-xs font-semibold text-purple-700 hover:text-red-600">Edit</button>}
@@ -121,7 +122,7 @@ const ActiveEmployeePicker = ({
             <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
               {matches.length ? matches.map(employee => (
                 <button key={employee.id} type="button" onClick={() => { onChange(employee.id); setSearch(''); }} className="block w-full border-b border-gray-100 px-3 py-2 text-left hover:bg-purple-50 last:border-0">
-                  <span className="block text-sm font-semibold text-gray-900">{employee.full_name || employee.username || 'Active employee'}</span>
+                  <span className="block text-sm font-semibold text-gray-900">{employeeDisplayName(employee)}</span>
                   <span className="block text-xs text-gray-500">{[employee.job_title, employee.department].filter(Boolean).join(' · ') || 'Active employee'}</span>
                 </button>
               )) : <p className="px-3 py-2 text-xs text-gray-500">No active employee matches this search.</p>}
@@ -271,7 +272,7 @@ const buildApprovalWorkflow = ({
     workflow.push({
       step: step++, level: 0, stage: 'Level 0 - Procurement Department Approval',
       role: 'Procurement Department', approval_label: stageLabels?.procurement || 'L0- PRO', user_id: selectedApprovers.procurement,
-      user_name: user?.full_name || user?.username || 'Active employee',
+      user_name: employeeDisplayName(user),
       username: user?.username || '', user_email: user?.email || '', status: 'pending', approved_at: null,
     });
   }
@@ -282,7 +283,7 @@ const buildApprovalWorkflow = ({
       step: step++, level: 1, stage: `Level 1 - Approver ${index + 1} of ${levelOneApproverCount}`,
       role: 'Level 1 Approver', approval_label: levelOneLabels?.[userId] || `L1-${index + 1}`,
       approval_group: 'level_1', group_mode: 'all', user_id: userId,
-      user_name: user?.full_name || user?.username || 'Active employee', status: 'pending', approved_at: null,
+      user_name: employeeDisplayName(user), status: 'pending', approved_at: null,
     });
   });
 
@@ -291,7 +292,7 @@ const buildApprovalWorkflow = ({
     workflow.push({
       step: step++, level: 2, stage: 'Level 2 - Manager of Engineering (Optional)',
       role: 'Manager of Engineering (MoE)', approval_label: stageLabels?.engineering_manager || 'L2 MoE', user_id: selectedApprovers.engineering_manager,
-      user_name: user?.full_name || user?.username || 'Active employee', status: 'pending', approved_at: null,
+      user_name: employeeDisplayName(user), status: 'pending', approved_at: null,
     });
   }
 
@@ -300,7 +301,7 @@ const buildApprovalWorkflow = ({
     workflow.push({
       step: step++, level: 3, stage: 'Level 3 - Manager of Projects', role: 'Manager of Projects (MoP)',
       approval_label: stageLabels?.manager_projects || 'L3 MoP',
-      user_id: selectedApprovers.manager_projects, user_name: user?.full_name || user?.username || 'Active employee',
+      user_id: selectedApprovers.manager_projects, user_name: employeeDisplayName(user),
       status: 'pending', approved_at: null,
     });
   }
@@ -312,7 +313,7 @@ const buildApprovalWorkflow = ({
       stage: requisitionType === 'general' ? 'Level 2 - Vice President' : 'Level 4 - VP Delivery',
       role: requisitionType === 'general' ? 'Vice President' : 'VP Delivery',
       approval_label: stageLabels?.vp_operations || 'L4 VOP/VP',
-      user_id: selectedApprovers.vp_operations, user_name: user?.full_name || user?.username || 'Active employee',
+      user_id: selectedApprovers.vp_operations, user_name: employeeDisplayName(user),
       status: 'pending', approved_at: null,
     });
   }
@@ -322,7 +323,7 @@ const buildApprovalWorkflow = ({
     workflow.push({
       step: step++, level: 5, stage: 'Level 5 - General Manager Approval',
       role: 'General Manager', approval_label: stageLabels?.general_manager || 'CEO', user_id: selectedApprovers.general_manager,
-      user_name: user?.full_name || user?.username || 'Active employee',
+      user_name: employeeDisplayName(user),
       username: user?.username || '', user_email: user?.email || '', status: 'pending', approved_at: null,
     });
   }

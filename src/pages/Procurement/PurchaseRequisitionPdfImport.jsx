@@ -9,6 +9,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import { employeeDisplayName } from '../../utils/employeeDisplayName';
 
 const ROLE_LABELS = { pm: 'Project Manager', moe: 'Manager of Engineering', mop: 'Manager of Projects', vp: 'VP Operations' };
 const MAX_SIGNED_PR_PDF_SIZE = 15 * 1024 * 1024;
@@ -282,7 +283,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                     {employeeLoadError && <p className="mt-2 text-xs text-amber-700">{employeeLoadError}</p>}
                     <datalist id="approved-pr-active-employees">
                       {employees.map((employee) => (
-                        <option key={employee.id} value={employee.full_name || employee.username || employee.email}>
+                        <option key={employee.id} value={employeeDisplayName(employee)}>
                           {[employee.email, employee.job_title, employee.department].filter(Boolean).join(' · ')}
                         </option>
                       ))}

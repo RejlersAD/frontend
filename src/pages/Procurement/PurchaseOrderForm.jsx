@@ -15,6 +15,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../../services/api.service';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 import PurchaseOrderPriceSpreadsheet from './PurchaseOrderPriceSpreadsheet';
+import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -280,12 +281,16 @@ const defaultApprovalLog = () => [{
   comments: '',
 }];
 
-const mergeApprovalLog = (approvalLog) => defaultApprovalLog().map((defaultEntry) => ({
-  ...defaultEntry,
-  ...(Array.isArray(approvalLog)
+const mergeApprovalLog = (approvalLog) => defaultApprovalLog().map((defaultEntry) => {
+  const savedEntry = Array.isArray(approvalLog)
     ? approvalLog.find((entry) => entry.stage === defaultEntry.stage)
-    : null),
-}));
+    : null;
+  return {
+    ...defaultEntry,
+    ...savedEntry,
+    approver: nameOnly(savedEntry?.approver || defaultEntry.approver),
+  };
+});
 
 const normalizeApiErrors = (data) => {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
@@ -532,7 +537,9 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     financial_approver: editData?.financial_approver || '',
     management_approver: (prReference?.id || editData?.pr_reference) ? '' : (editData?.management_approver || PROJECT_FINAL_APPROVER),
     approval_log: (prReference?.id || editData?.pr_reference)
-      ? (editData?.approval_log || []).filter((entry) => entry.stage !== 'Final Management Sign-off')
+      ? (editData?.approval_log || [])
+        .filter((entry) => entry.stage !== 'Final Management Sign-off')
+        .map((entry) => ({ ...entry, approver: nameOnly(entry.approver) }))
       : mergeApprovalLog(editData?.approval_log),
     final_approver_notes: editData?.final_approver_notes || '',
     notes: editData?.notes || '',
@@ -1033,7 +1040,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       approvalLog[index] = {
         ...approvalLog[index],
         user_id: employee?.id || '',
-        approver: employee?.full_name || employee?.username || 'Active employee',
+        approver: employeeDisplayName(employee),
         approver_email: employee?.email || '',
         status: 'Pending',
         date: '',
@@ -1041,8 +1048,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       return {
         ...previous,
         approval_log: approvalLog,
-        management_approver: employee?.full_name || employee?.username || 'Active employee',
-        approved_by_name: employee?.full_name || employee?.username || 'Active employee',
+        management_approver: employeeDisplayName(employee),
+        approved_by_name: employeeDisplayName(employee),
         approved_by_title: employeeDesignation(employee),
       };
     });
