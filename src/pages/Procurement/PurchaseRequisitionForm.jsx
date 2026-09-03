@@ -217,7 +217,7 @@ const selectedApproversFromWorkflow = (workflow = []) => {
     else if (role.includes('engineering manager')) selection.engineering_manager = userId;
     else if (role.includes('manager of projects') || role.includes('projects manager')) selection.manager_projects = userId;
     else if (role.includes('vice president') || role.includes('vp operations') || role.includes('procurement manager')) selection.vp_operations = userId;
-    else if (level === 5 || role.includes('general manager')) selection.general_manager = userId;
+    else if (level === 5 || role.includes('general manager') || role.includes('ceo')) selection.general_manager = userId;
     else if (role.includes('project manager') || role.includes('department manager') || role.includes('technical review')) {
       selection.project_manager = userId;
       if (userId && !selection.level_one.includes(userId)) selection.level_one.push(userId);
@@ -243,7 +243,7 @@ const stageLabelsFromWorkflow = (workflow = [], savedLabels = {}) => {
     const role = `${stage.role || ''} ${stage.stage || ''}`.toLowerCase();
     const level = Number(stage.level);
     if (level === 0 || role.includes('procurement department')) labels.procurement = approvalLabel;
-    else if (level === 5 || role.includes('general manager')) labels.general_manager = approvalLabel;
+    else if (level === 5 || role.includes('general manager') || role.includes('ceo')) labels.general_manager = approvalLabel;
     else if (role.includes('engineering manager') || role.includes('manager of engineering')) labels.engineering_manager = approvalLabel;
     else if (role.includes('manager of projects') || role.includes('projects manager')) labels.manager_projects = approvalLabel;
     else if (role.includes('vice president') || role.includes('vp delivery') || role.includes('vp operations')) labels.vp_operations = approvalLabel;
@@ -322,8 +322,8 @@ const buildApprovalWorkflow = ({
   if (!String(poNumberReference || '').trim() && selectedApprovers.general_manager) {
     const user = activeEmployees.find(candidate => candidate.id === selectedApprovers.general_manager);
     workflow.push({
-      step: step++, level: 5, stage: 'Level 5 - General Manager Approval',
-      role: 'General Manager', approval_label: stageLabels?.general_manager || 'CEO', user_id: selectedApprovers.general_manager,
+      step: step++, level: 5, stage: 'Level 5 - CEO Approval',
+      role: 'CEO', approval_label: stageLabels?.general_manager || 'CEO', user_id: selectedApprovers.general_manager,
       user_name: employeeDisplayName(user),
       username: user?.username || '', user_email: user?.email || '', status: 'pending', approved_at: null,
     });
@@ -1321,8 +1321,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         setErrors(prev => ({
           ...prev,
           approval_workflow_config: formData.requisition_type === 'general'
-            ? `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), the Level 2 Vice President${formData.po_number_reference?.trim() ? '.' : ', and default Level 5 General Manager.'}`
-            : `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), Level 3 (MoP), Level 4 (VP Delivery)${formData.po_number_reference?.trim() ? '. Level 2 (MoE) is optional.' : ', and default Level 5 General Manager. Level 2 (MoE) is optional.'}`
+            ? `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), the Level 2 Vice President${formData.po_number_reference?.trim() ? '.' : ', and default Level 5 CEO.'}`
+            : `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), Level 3 (MoP), Level 4 (VP Delivery)${formData.po_number_reference?.trim() ? '. Level 2 (MoE) is optional.' : ', and default Level 5 CEO. Level 2 (MoE) is optional.'}`
         }));
         alert('Complete the required approval levels before submitting.');
         return;
@@ -2510,8 +2510,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
                 {formData.requisition_type === 'project'
-                  ? `Project workflow: Procurement Level 0 → Level 1 → optional Level 2 → Level 3 → default Level 4${formData.po_number_reference?.trim() ? '.' : ' → default Level 5 General Manager.'}`
-                  : `Internal workflow: Procurement Level 0 → Level 1 Department Manager → selectable Level 2 Vice President${formData.po_number_reference?.trim() ? '.' : ' → default Level 5 General Manager.'}`}
+                  ? `Project workflow: Procurement Level 0 → Level 1 → optional Level 2 → Level 3 → default Level 4${formData.po_number_reference?.trim() ? '.' : ' → default Level 5 CEO.'}`
+                  : `Internal workflow: Procurement Level 0 → Level 1 Department Manager → selectable Level 2 Vice President${formData.po_number_reference?.trim() ? '.' : ' → default Level 5 CEO.'}`}
               </p>
 
               <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
@@ -2536,7 +2536,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
                     <tr><td className="p-3 align-top"><input value={stageLabels.vp_operations} onChange={(event) => changeStageLabel('vp_operations', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">{formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'}</p><p className="mt-1 text-xs text-gray-500">{formData.requisition_type === 'general' ? 'Level 2 · Required' : 'Level 4 · Required'}</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Vice President / Delivery Approver" value={selectedApprovers.vp_operations || ''} employees={vpOperations} onChange={(value) => handleApproverChange('vp_operations', value)} required disabled={loadingApprovers || formData.requisition_type === 'project'} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{formData.requisition_type === 'project' ? 'Default' : 'Required'}</span></td></tr>
 
-                    {!String(formData.po_number_reference || '').trim() && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">General Manager</p><p className="mt-1 text-xs text-gray-500">Level 5 · Required when no PO Reference exists</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="General Manager Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} required disabled />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">Jarmo Suominen could not be found as an active employee.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
+                    {!String(formData.po_number_reference || '').trim() && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">CEO</p><p className="mt-1 text-xs text-gray-500">Level 5 · Required when no PO Reference exists</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="CEO Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} required disabled />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">Jarmo Suominen could not be found as an active employee.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
                   </tbody>
                 </table>
               </div>

@@ -12,7 +12,7 @@
 import React, { useState, useRef } from 'react';
 import apiClient from '../../services/api.service';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
-import { nameOnly } from '../../utils/employeeDisplayName';
+import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
 import {
   XMarkIcon,
   CheckCircleIcon,
@@ -68,11 +68,15 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   // Dynamic Workflow Hierarchy Array
-  const approvalHierarchy = Array.isArray(requisition.approval_workflow_config) && requisition.approval_workflow_config.length > 0
+  const rawApprovalHierarchy = Array.isArray(requisition.approval_workflow_config) && requisition.approval_workflow_config.length > 0
     ? requisition.approval_workflow_config
     : Array.isArray(requisition.approval_hierarchy)
       ? requisition.approval_hierarchy
       : [];
+  const approvalHierarchy = displayApprovalWorkflow(
+    rawApprovalHierarchy,
+    requisition.po_number_reference,
+  );
 
   // Active stage determination
   const pendingStages = approvalHierarchy.filter((entry) => {
@@ -109,7 +113,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         ? 'vp'
         : currentStageRole.includes('level 1 approver') || currentStageRole.includes('project manager') || currentStageRole.includes('department manager') || currentStageRole.includes('technical review')
           ? 'pm'
-          : currentStageRole.includes('general manager')
+          : currentStageRole.includes('general manager') || currentStageRole.includes('ceo')
             ? 'general_manager'
             : null;
 
@@ -187,7 +191,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       canApprove: isApprovalInProgress && currentStageKey === 'vp' && canActOnCurrentStage
     },
     general_manager: {
-      label: 'General Manager',
+      label: 'CEO',
       approveEndpoint: 'process_dynamic_approval',
       rejectEndpoint: 'process_dynamic_rejection',
       canApprove: isApprovalInProgress && currentStageKey === 'general_manager' && canActOnCurrentStage

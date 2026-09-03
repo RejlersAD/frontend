@@ -21,3 +21,26 @@ export const employeeDisplayName = (employee, fallback = 'Active employee') => {
   }
   return nameOnly(employee.email || username) || fallback;
 };
+
+export const isJarmoCeoStage = (stage = {}) => {
+  const identity = [stage.user_name, stage.approver, stage.user_email, stage.approver_email]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const role = `${stage.role || ''} ${stage.stage || ''}`.toLowerCase();
+  return identity.includes('jarmo suominen')
+    || identity.includes('jarmo.suominen@')
+    || (Number(stage.level) === 5 && (role.includes('general manager') || role.includes('ceo')));
+};
+
+export const displayApprovalWorkflow = (workflow, poReference = '') => (
+  (Array.isArray(workflow) ? workflow : []).flatMap((entry) => {
+    if (!isJarmoCeoStage(entry)) return [entry];
+    if (String(poReference || '').trim()) return [];
+    return [{
+      ...entry,
+      role: 'CEO',
+      stage: String(entry.stage || '').replace(/general manager/gi, 'CEO') || 'Level 5 - CEO Approval',
+    }];
+  })
+);

@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { ArrowTopRightOnSquareIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
 import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentBranding.config';
 import { convertToAed } from '../../config/procurement.config';
-import { nameOnly } from '../../utils/employeeDisplayName';
+import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
 
 const valueOrDash = (value) => (value === null || value === undefined || value === '' ? '—' : value);
 
@@ -37,7 +37,7 @@ const workflowRoleLabel = (stage, index) => {
   if (stage?.approval_label) return stage.approval_label;
   const role = `${stage?.role || ''} ${stage?.stage || ''}`.toLowerCase();
   if (role.includes('procurement')) return 'L0- PRO';
-  if (role.includes('general manager')) return 'CEO';
+  if (role.includes('general manager') || role.includes('ceo')) return 'CEO';
   if (role.includes('engineering')) return 'L2 MoE';
   if (role.includes('manager of projects') || role.includes('projects manager')) return 'L3 MoP';
   if (role.includes('vice president') || role.includes('vp delivery') || role.includes('vp operations')) return 'L4 VOP/VP';
@@ -62,9 +62,13 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
   const netTotalAed = metadata.net_total_aed !== null && metadata.net_total_aed !== undefined && metadata.net_total_aed !== ''
     ? Number(metadata.net_total_aed)
     : calculatedNetTotalAed;
-  const configuredWorkflow = Array.isArray(requisition.approval_workflow_config)
+  const rawConfiguredWorkflow = Array.isArray(requisition.approval_workflow_config)
     ? requisition.approval_workflow_config
     : (Array.isArray(requisition.approval_hierarchy) ? requisition.approval_hierarchy : []);
+  const configuredWorkflow = displayApprovalWorkflow(
+    rawConfiguredWorkflow,
+    requisition.po_number_reference,
+  );
   const savedApprovalLabels = metadata.approval_table_labels || {};
   const persistedApprovalRows = [
     ['PM', requisition.pm_name_display, requisition.pm_signature, requisition.pm_approval_status, requisition.pm_approved_at],
