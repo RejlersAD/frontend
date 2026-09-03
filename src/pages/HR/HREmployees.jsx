@@ -27,6 +27,8 @@ import payrollEngineService from "../../services/payrollEngine.service";
 import TimeSheetAnalytics from "./TimeSheetAnalytics";
 import ProbationPerformancePanel from "../../components/HR/ProbationPerformancePanel";
 import EmployeeDataQualityPanel from "../../components/HR/EmployeeDataQualityPanel";
+import EmployeeTalentPerformancePanel from "../../components/HR/EmployeeTalentPerformancePanel";
+import EmployeeWorkforceSchedulePanel from "../../components/HR/EmployeeWorkforceSchedulePanel";
 import { microsoftTeamsAudioCallUrl } from "../../utils/microsoftTeams";
 import {
   fetchUserHistory,
@@ -3565,7 +3567,7 @@ const DetailDrawer = ({
         {/* Tabs */}
         <div className="border-b border-slate-200 bg-white px-4 sm:px-6">
           <div
-            className="grid grid-cols-2 sm:grid-cols-6 xl:grid-cols-11"
+            className="grid grid-cols-2 sm:grid-cols-6 xl:grid-cols-12"
             role="tablist"
             aria-label="Employee profile sections"
           >
@@ -3773,6 +3775,7 @@ const DetailDrawer = ({
           {tab === "performance" && (
             <div className="mx-auto w-full max-w-5xl space-y-5">
               <ProbationPerformancePanel employee={emp} currentUser={currentUser} />
+              <EmployeeTalentPerformancePanel employee={emp} />
               <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
                   <div className="flex items-start gap-3">
@@ -3826,6 +3829,8 @@ const DetailDrawer = ({
           )}
 
           {tab === "timesheet" && <EmployeeTimesheetPanel emp={emp} />}
+
+          {tab === "workforce" && <EmployeeWorkforceSchedulePanel employee={emp} />}
 
           {tab === "competency" && (
             <div className="mx-auto w-full max-w-5xl space-y-5">

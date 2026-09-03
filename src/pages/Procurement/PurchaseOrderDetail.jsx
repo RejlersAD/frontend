@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import {
   ArrowLeftIcon,
   ShoppingCartIcon,
@@ -73,13 +74,7 @@ const PurchaseOrderDetail = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState('');
   const [printPreviewLoading, setPrintPreviewLoading] = useState(false);
-  const [printPreview, setPrintPreview] = useState(null);
-  const printPreviewFrameRef = useRef(null);
   const [showEditForm, setShowEditForm] = useState(false);
-
-  useEffect(() => () => {
-    if (printPreview?.url) URL.revokeObjectURL(printPreview.url);
-  }, [printPreview?.url]);
 
   const handlePrintPurchaseOrder = async () => {
     try {
@@ -88,32 +83,57 @@ const PurchaseOrderDetail = () => {
         responseType: 'blob',
         timeout: 120000,
       });
-      const fallbackName = buildProcurementPdfFilename(
-        order?.po_number || `PO-${id}`,
+      const previewFilename = buildProcurementPdfFilename(
+        order?.po_number || 'Purchase_Order',
         'po',
         order?.po_date,
       );
-      const disposition = response.headers?.['content-disposition'] || '';
-      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      setPrintPreview((current) => {
-        if (current?.url) URL.revokeObjectURL(current.url);
-        return { url, filename: filenameMatch?.[1] || fallbackName };
-      });
+
+      // Open the preview tab only after the PDF is fully generated.
+      const previewWindow = window.open('', '_blank');
+      if (!previewWindow) {
+        URL.revokeObjectURL(url);
+        toast.error('Popup blocked. Please allow popups to open print preview.');
+        return;
+      }
+
+      const previewHtml = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${previewFilename}</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #0f172a; }
+    .shell { height: 100%; display: flex; flex-direction: column; }
+    .bar { color: #e2e8f0; font: 600 13px/1.4 Arial, sans-serif; padding: 10px 14px; border-bottom: 1px solid #334155; background: #111827; }
+    embed { flex: 1; width: 100%; border: 0; background: #fff; }
+    .fallback { padding: 12px 14px; background: #0b1220; color: #cbd5e1; font: 500 12px/1.4 Arial, sans-serif; }
+    .fallback a { color: #93c5fd; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="bar">${previewFilename}</div>
+    <embed src="${url}#toolbar=1&navpanes=0&scrollbar=1" type="application/pdf" />
+    <div class="fallback">If preview is not visible, <a href="${url}" target="_self">open the PDF directly</a>.</div>
+  </div>
+</body>
+</html>`;
+
+      previewWindow.document.open();
+      previewWindow.document.write(previewHtml);
+      previewWindow.document.close();
+
+      window.setTimeout(() => URL.revokeObjectURL(url), 600000);
     } catch (previewError) {
       console.error('Failed to prepare the Purchase Order print preview:', previewError);
-      alert('Failed to prepare the Purchase Order print preview.');
+      toast.error('Failed to prepare the Purchase Order print preview.');
     } finally {
       setPrintPreviewLoading(false);
     }
-  };
-
-  const printMergedPreview = () => {
-    const frameWindow = printPreviewFrameRef.current?.contentWindow;
-    if (!frameWindow) return;
-    frameWindow.focus();
-    frameWindow.print();
   };
 
   const handleExportPurchaseOrder = async (format) => {
@@ -200,10 +220,10 @@ const PurchaseOrderDetail = () => {
       
       // Update local state
       setOrder(prev => ({ ...prev, status: 'sent' }));
-      alert('✅ Purchase Order sent successfully!');
+      toast.success('Purchase Order sent successfully.');
     } catch (error) {
       console.error('Error sending order:', error);
-      alert(`❌ Failed to send order: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to send order: ${error.response?.data?.detail || error.message}`);
     } finally {
       setActionLoading(false);
     }
@@ -221,10 +241,10 @@ const PurchaseOrderDetail = () => {
       await apiClient.patch(`/procurement/orders/${id}/`, { status: 'completed' });
       
       setOrder(prev => ({ ...prev, status: 'completed' }));
-      alert('✅ Purchase Order marked as completed!');
+      toast.success('Purchase Order marked as completed.');
     } catch (error) {
       console.error('Error updating order:', error);
-      alert(`❌ Failed to update order: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to update order: ${error.response?.data?.detail || error.message}`);
     } finally {
       setActionLoading(false);
     }
@@ -894,33 +914,6 @@ const PurchaseOrderDetail = () => {
         </div>
       </div>
     </div>
-
-    {printPreview && (
-      <div className="fixed inset-0 z-[90] flex flex-col bg-slate-950/90" role="dialog" aria-modal="true" aria-labelledby="po-print-preview-title">
-        <div className="flex items-center justify-between border-b border-white/10 bg-slate-900 px-5 py-3 text-white">
-          <div>
-            <h2 id="po-print-preview-title" className="font-semibold">Print Preview · {order.po_number}</h2>
-            <p className="text-xs text-slate-300">The PO and all attachments are merged in their saved order. Use Print and select “Save as PDF”.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={printMergedPreview} className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500">
-              <PrinterIcon className="h-4 w-4" /> Print / Save as PDF
-            </button>
-            <button type="button" onClick={() => setPrintPreview(null)} className="rounded-md border border-white/20 p-2 text-slate-200 hover:bg-white/10" aria-label="Close print preview">
-              <XMarkIcon className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 p-4">
-          <iframe
-            ref={printPreviewFrameRef}
-            src={`${printPreview.url}#toolbar=0&navpanes=0&scrollbar=1`}
-            title={`${printPreview.filename} print preview`}
-            className="h-full w-full rounded-lg bg-white shadow-2xl"
-          />
-        </div>
-      </div>
-    )}
     </>
   );
 };

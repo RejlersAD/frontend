@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 import PurchaseOrderPriceSpreadsheet from './PurchaseOrderPriceSpreadsheet';
@@ -396,7 +397,7 @@ const normalizeRequisitionItems = (requisition) => {
   });
 };
 
-const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prReference = null }) => {
+const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData = null, prReference = null }) => {
   const savedInvoiceEmails = Array.isArray(editData?.invoicing_emails)
     ? editData.invoicing_emails
     : DEFAULT_INVOICE_EMAILS;
@@ -625,13 +626,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
   // Fetch the master data required to create a PO whenever the form is opened.
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || pageMode) {
       fetchVendors();
       fetchProjects();
       fetchPOApprovers();
       if (!editData) fetchAvailableRequisitions();
     }
-  }, [isOpen, editData]);
+  }, [isOpen, pageMode, editData]);
 
   // Auto-calculate tax when total amount or VAT% changes
   useEffect(() => {
@@ -828,14 +829,60 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setRequisitionsLoading(true);
     setRequisitionLoadError('');
     try {
-      const response = await apiClient.get('/procurement/orders/available-requisitions/');
+      const response = await apiClient.get('/procurement/orders/available-requisitions/', {
+        params: {
+          limit: 500,
+          _fresh: Date.now(),
+        },
+      });
       setAvailableRequisitions(normalizeApiArray(response.data));
     } catch (error) {
       console.error('Error fetching available requisitions:', error);
-      setAvailableRequisitions([]);
-      setRequisitionLoadError(
-        error.response?.data?.detail || 'Existing Purchase Recommendations could not be loaded.'
-      );
+      try {
+        const fallbackResponse = await apiClient.get('/procurement/requisitions/', {
+          params: {
+            page_size: 500,
+            _fresh: Date.now(),
+          },
+          silentTimeout: true,
+        });
+        const fallbackRows = normalizeApiArray(fallbackResponse.data).map((requisition) => ({
+          id: requisition.id,
+          pr_number: requisition.pr_number,
+          status: requisition.status,
+          status_display: requisition.status_display,
+          vendor: requisition.vendor,
+          vendor_name: requisition.vendor_name,
+          supplier_name: requisition.supplier_name,
+          project_department: requisition.project_department,
+          product_service: requisition.product_service,
+          title: requisition.title,
+          total_price: requisition.total_price,
+          net_total_excl_vat: requisition.net_total_excl_vat,
+          estimated_budget: requisition.estimated_budget,
+          currency: requisition.currency,
+          issued_by_name: requisition.issued_by_name,
+          requested_by_name: requisition.requested_by_name,
+          description_reason: requisition.description_reason,
+          category: requisition.category,
+          required_date: requisition.required_date,
+          items: requisition.items,
+          purchase_recommendation: requisition.purchase_recommendation,
+          project_details: requisition.project_details,
+          project: requisition.project,
+          created_at: requisition.created_at,
+        }));
+        setAvailableRequisitions(fallbackRows);
+        setRequisitionLoadError('');
+      } catch (fallbackError) {
+        console.error('Fallback requisition loading failed:', fallbackError);
+        setAvailableRequisitions([]);
+        setRequisitionLoadError(
+          error.response?.data?.detail
+          || fallbackError.response?.data?.detail
+          || 'Existing Purchase Recommendations could not be loaded.'
+        );
+      }
     } finally {
       setRequisitionsLoading(false);
     }
@@ -1409,6 +1456,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       
       let response;
       const persistedOrderId = editData?.id || draftId || persistedOrderIdRef.current;
+      const isExistingOrder = Boolean(persistedOrderId);
       if (persistedOrderId) {
         response = await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, submitData, config);
       } else {
@@ -1416,14 +1464,25 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
         persistedOrderIdRef.current = response.data.id;
         setDraftId(response.data.id);
       }
+
+      const poLabel = response.data?.po_number || formData.po_number || 'Purchase Order';
+      if (sendToVendor) {
+        toast.success(`${poLabel} sent to vendor successfully.`);
+      } else if (isExistingOrder) {
+        toast.success(`${poLabel} saved successfully.`);
+      } else {
+        toast.success(`${poLabel} draft created successfully.`);
+      }
       
       if (onSuccess) onSuccess(response.data);
       if (onClose) onClose();
     } catch (error) {
       console.error('Error submitting PO:', error);
       const fieldErrors = normalizeApiErrors(error.response?.data);
+      const apiErrorMessage = getApiErrorMessage(error, fieldErrors);
       setErrors(fieldErrors);
-      setPopupError(getApiErrorMessage(error, fieldErrors));
+      setPopupError(apiErrorMessage);
+      toast.error(apiErrorMessage);
       setTimeout(() => setPopupError(''), 8000);
     } finally {
       setSubmitLoading(false);
@@ -1432,7 +1491,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   };
 
   // Don't render if not open - check AFTER all hooks
-  if (!isOpen) return null;
+  if (!isOpen && !pageMode) return null;
 
   const isNewOrder = !editData;
   const hasRequiredRequisition = !isNewOrder || Boolean(formData.pr_reference && selectedRequisition);
@@ -1470,7 +1529,9 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   ];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
+    <div className={pageMode
+      ? 'min-h-screen bg-slate-100 px-3 py-4 sm:px-5 lg:px-6 xl:h-[calc(100dvh-4.75rem)] xl:min-h-0 xl:overflow-hidden'
+      : 'fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black bg-opacity-50 p-4'}>
       {popupError && (
         <div className="fixed top-6 right-6 z-60">
           <div className="flex items-start space-x-3 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg max-w-sm">
@@ -1482,7 +1543,9 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
           </div>
         </div>
       )}
-      <div className="flex h-[94vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div className={pageMode
+        ? 'mx-auto flex w-full max-w-[1800px] flex-col overflow-hidden rounded-xl bg-white shadow-xl xl:h-full'
+        : 'flex h-[94vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl'}>
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-6 rounded-t-xl">
           <div className="flex items-center justify-between">
@@ -1533,8 +1596,15 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
         </div>
 
         {/* Form Content */}
-        <form onSubmit={(e) => handleSubmit(e, false)} className="grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1.25fr)_minmax(400px,0.75fr)] xl:overflow-hidden">
-          <div className="min-w-0 px-5 py-4 xl:overflow-y-auto">
+        <form
+          onSubmit={(e) => handleSubmit(e, false)}
+          className={pageMode
+            ? 'grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1.25fr)_minmax(400px,0.75fr)] xl:overflow-hidden'
+            : 'grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1.25fr)_minmax(400px,0.75fr)] xl:overflow-hidden'}
+        >
+          <div className={pageMode
+            ? 'min-h-0 min-w-0 overflow-x-hidden px-5 py-4 xl:overflow-y-auto xl:overscroll-contain'
+            : 'min-w-0 px-5 py-4 xl:overflow-y-auto'}>
           
           {/* Section 1: Header, buyer, seller and project details */}
           {currentSection === 1 && (
@@ -2684,7 +2754,12 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
           </div>}
 
           </div>
-          <aside className="min-h-[760px] overflow-hidden border-t border-slate-300 xl:min-h-0 xl:border-l xl:border-t-0" aria-label="Live purchase order preview">
+          <aside
+            className={pageMode
+              ? 'min-h-0 min-w-0 overflow-x-auto border-t border-slate-300 bg-slate-200 p-3 sm:p-4 xl:overflow-y-auto xl:border-l xl:border-t-0 xl:overscroll-contain'
+              : 'min-h-[760px] overflow-hidden border-t border-slate-300 xl:min-h-0 xl:border-l xl:border-t-0'}
+            aria-label="Live purchase order preview"
+          >
             <PurchaseOrderLivePreview formData={formData} vendor={selectedVendor} files={attachmentSlots.filter((slot) => slot.file || slot.existingAttachment)} />
           </aside>
         </form>

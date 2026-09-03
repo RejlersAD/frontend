@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import {
   ShoppingCartIcon,
   MagnifyingGlassIcon,
@@ -671,14 +672,14 @@ const OrderManagement = () => {
       );
 
       // Soft-coded success notification
-      alert(`Γ£à Purchase Order ${order.po_number || order.id} sent successfully!`);
+      toast.success(`Purchase Order ${order.po_number || order.id} sent successfully.`);
       
       // Refresh orders to get latest data
       await fetchOrders();
     } catch (error) {
       console.error('Error sending order:', error);
       // Soft-coded error handling
-      alert(`Γ¥î Failed to send order: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to send order: ${error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -1404,7 +1405,7 @@ const OrderManagement = () => {
                 
                 <button
                   type="button"
-                  onClick={() => activeTab === 'purchaseOrders' ? setShowPOForm(true) : navigate('/procurement/requisitions/new')}
+                  onClick={() => activeTab === 'purchaseOrders' ? navigate('/procurement/orders/new') : navigate('/procurement/requisitions/new')}
                   className="inline-flex h-9 items-center px-3.5 border border-transparent text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
                   <PlusIcon className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
@@ -1461,7 +1462,7 @@ const OrderManagement = () => {
               <div className="mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowPOForm(true)}
+                  onClick={() => navigate('/procurement/orders/new')}
                   className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
                 >
                   <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
