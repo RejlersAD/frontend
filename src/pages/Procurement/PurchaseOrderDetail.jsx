@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
@@ -72,24 +72,48 @@ const PurchaseOrderDetail = () => {
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState('');
+  const [printPreviewLoading, setPrintPreviewLoading] = useState(false);
+  const [printPreview, setPrintPreview] = useState(null);
+  const printPreviewFrameRef = useRef(null);
   const [showEditForm, setShowEditForm] = useState(false);
 
-  const handlePrintPurchaseOrder = () => {
-    const filename = buildProcurementPdfFilename(
-      order?.po_number || `PO-${id}`,
-      'po',
-      order?.po_date,
-    );
-    const previousTitle = document.title;
-    const restoreTitle = () => {
-      document.title = previousTitle;
-      window.removeEventListener('afterprint', restoreTitle);
-    };
+  useEffect(() => () => {
+    if (printPreview?.url) URL.revokeObjectURL(printPreview.url);
+  }, [printPreview?.url]);
 
-    document.title = filename.replace(/\.pdf$/i, '');
-    window.addEventListener('afterprint', restoreTitle, { once: true });
-    window.print();
-    window.setTimeout(restoreTitle, 1000);
+  const handlePrintPurchaseOrder = async () => {
+    try {
+      setPrintPreviewLoading(true);
+      const response = await apiClient.get(`/procurement/orders/${id}/export-pdf/`, {
+        responseType: 'blob',
+        timeout: 120000,
+      });
+      const fallbackName = buildProcurementPdfFilename(
+        order?.po_number || `PO-${id}`,
+        'po',
+        order?.po_date,
+      );
+      const disposition = response.headers?.['content-disposition'] || '';
+      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      setPrintPreview((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url);
+        return { url, filename: filenameMatch?.[1] || fallbackName };
+      });
+    } catch (previewError) {
+      console.error('Failed to prepare the Purchase Order print preview:', previewError);
+      alert('Failed to prepare the Purchase Order print preview.');
+    } finally {
+      setPrintPreviewLoading(false);
+    }
+  };
+
+  const printMergedPreview = () => {
+    const frameWindow = printPreviewFrameRef.current?.contentWindow;
+    if (!frameWindow) return;
+    frameWindow.focus();
+    frameWindow.print();
   };
 
   const handleExportPurchaseOrder = async (format) => {
@@ -652,20 +676,11 @@ const PurchaseOrderDetail = () => {
               <button
                 type="button"
                 onClick={handlePrintPurchaseOrder}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <PrinterIcon className="h-4 w-4 mr-2" />
-                Print Preview
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleExportPurchaseOrder('pdf')}
-                disabled={Boolean(exportLoading)}
+                disabled={printPreviewLoading}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
               >
-                <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
-                {exportLoading === 'pdf' ? 'Preparing PDF...' : 'Export PDF'}
+                <PrinterIcon className="h-4 w-4 mr-2" />
+                {printPreviewLoading ? 'Preparing Preview...' : 'Print Preview'}
               </button>
 
               <button
@@ -879,6 +894,33 @@ const PurchaseOrderDetail = () => {
         </div>
       </div>
     </div>
+
+    {printPreview && (
+      <div className="fixed inset-0 z-[90] flex flex-col bg-slate-950/90" role="dialog" aria-modal="true" aria-labelledby="po-print-preview-title">
+        <div className="flex items-center justify-between border-b border-white/10 bg-slate-900 px-5 py-3 text-white">
+          <div>
+            <h2 id="po-print-preview-title" className="font-semibold">Print Preview · {order.po_number}</h2>
+            <p className="text-xs text-slate-300">The PO and all attachments are merged in their saved order. Use Print and select “Save as PDF”.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={printMergedPreview} className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500">
+              <PrinterIcon className="h-4 w-4" /> Print / Save as PDF
+            </button>
+            <button type="button" onClick={() => setPrintPreview(null)} className="rounded-md border border-white/20 p-2 text-slate-200 hover:bg-white/10" aria-label="Close print preview">
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 p-4">
+          <iframe
+            ref={printPreviewFrameRef}
+            src={`${printPreview.url}#toolbar=0&navpanes=0&scrollbar=1`}
+            title={`${printPreview.filename} print preview`}
+            className="h-full w-full rounded-lg bg-white shadow-2xl"
+          />
+        </div>
+      </div>
+    )}
     </>
   );
 };
