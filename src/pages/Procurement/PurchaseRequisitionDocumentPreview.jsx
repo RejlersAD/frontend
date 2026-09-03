@@ -47,6 +47,7 @@ const workflowRoleLabel = (stage, index) => {
 
 const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
   const metadata = requisition.price_remarks_data || {};
+  const negotiationRemarks = requisition.price_remarks || metadata.negotiation_remarks;
   const signedDocument = (requisition.attachments || []).find((item) => (
     item?.type === 'signed_purchase_requisition_pdf'
     || item?.document_type === 'signed_purchase_requisition_pdf'
@@ -178,6 +179,10 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
                 ? `AED ${netTotalAed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 : '—'}
             </div>
+          </div>
+          <div className="border-t border-gray-700 px-2 py-2">
+            <span className="font-semibold">Negotiation Remarks:</span>{' '}
+            <span className="whitespace-pre-wrap font-normal">{valueOrDash(negotiationRemarks)}</span>
           </div>
         </section>
 
