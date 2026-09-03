@@ -1309,8 +1309,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     if (!formData.pr_reference) newErrors.pr_reference = 'An existing Purchase Requisition is required';
     if (!formData.po_number?.trim()) {
       newErrors.po_number = 'PO number is required';
-    } else if (!/^RAD-(GEN|PRJ)-PUR-\d{4,}_\d{4}$/.test(formData.po_number.trim())) {
-      newErrors.po_number = 'Use RAD-{GEN|PRJ}-PUR-####_YYYY format';
+    } else if (!/^RAD-(GEN|PRJ)-PUR-\d{4,}_(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)?\d{4})$/.test(formData.po_number.trim())) {
+      newErrors.po_number = 'Use RAD-{GEN|PRJ}-PUR-####_YYYY or RAD-{GEN|PRJ}-PUR-####_MMMYYYY format';
     }
     if (!formData.vendor) newErrors.vendor = 'Vendor is required';
     if (!formData.title?.trim()) newErrors.title = 'Title is required';
@@ -1339,7 +1339,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     if (!validateForm(sendToVendor)) {
       const validationMessage = !formData.pr_reference
         ? 'Please select an existing Purchase Requisition.'
-        : !/^RAD-(GEN|PRJ)-PUR-\d{4,}_\d{4}$/.test(formData.po_number?.trim() || '')
+        : !/^RAD-(GEN|PRJ)-PUR-\d{4,}_(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)?\d{4})$/.test(formData.po_number?.trim() || '')
           ? 'Please use a valid RAD Purchase Order number.'
         : !formData.vendor
           ? 'Please select a vendor.'

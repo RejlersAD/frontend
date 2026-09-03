@@ -25,6 +25,8 @@ import analyticsService from "../../services/analyticsService";
 import payrollService from "../../services/payroll.service";
 import payrollEngineService from "../../services/payrollEngine.service";
 import TimeSheetAnalytics from "./TimeSheetAnalytics";
+import ProbationPerformancePanel from "../../components/HR/ProbationPerformancePanel";
+import EmployeeDataQualityPanel from "../../components/HR/EmployeeDataQualityPanel";
 import { microsoftTeamsAudioCallUrl } from "../../utils/microsoftTeams";
 import {
   fetchUserHistory,
@@ -724,6 +726,30 @@ const EmployeeQuickActions = ({ emp, onAction, compact = false }) => {
       {menu && createPortal(menu, document.body)}
     </div>
   );
+};
+
+const probationSummary = (employee) => {
+  const joinedValue = employee?.join_date || employee?.created_at;
+  if (!joinedValue) return null;
+  const joined = new Date(`${String(joinedValue).slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(joined.getTime())) return null;
+  let probationEnd;
+  if (employee?.probation_end_date) {
+    probationEnd = new Date(`${String(employee.probation_end_date).slice(0, 10)}T00:00:00Z`);
+  } else {
+    const targetMonth = joined.getUTCMonth() + 6;
+    const targetYear = joined.getUTCFullYear() + Math.floor(targetMonth / 12);
+    const normalizedMonth = targetMonth % 12;
+    const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+    probationEnd = new Date(Date.UTC(targetYear, normalizedMonth, Math.min(joined.getUTCDate(), lastDay)));
+  }
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  if (today < joined) return { label: 'Probation not started', tone: 'bg-slate-100 text-slate-600', end: probationEnd };
+  const daysLeft = Math.ceil((probationEnd - today) / 86400000);
+  if (daysLeft <= 0) return { label: 'Probation completed', tone: 'bg-emerald-100 text-emerald-700', end: probationEnd };
+  const remaining = daysLeft > 45 ? `${Math.ceil(daysLeft / 30.4375)} months left` : `${daysLeft} days left`;
+  return { label: `In probation period · ${remaining}`, tone: 'bg-amber-100 text-amber-700', end: probationEnd };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2845,6 +2871,7 @@ const DetailDrawer = ({
   const [championPerformance, setChampionPerformance] = useState(null);
   const [championPerformanceLoading, setChampionPerformanceLoading] = useState(false);
   const [championPerformanceError, setChampionPerformanceError] = useState("");
+  const probation = useMemo(() => probationSummary(emp), [emp]);
 
   // Fetch dynamic options (roles, organizations, managers)
   const [roles, setRoles] = useState([]);
@@ -3538,7 +3565,7 @@ const DetailDrawer = ({
         {/* Tabs */}
         <div className="border-b border-slate-200 bg-white px-4 sm:px-6">
           <div
-            className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10"
+            className="grid grid-cols-2 sm:grid-cols-6 xl:grid-cols-11"
             role="tablist"
             aria-label="Employee profile sections"
           >
@@ -3605,7 +3632,7 @@ const DetailDrawer = ({
                   {!isEditing && (
                     <>
                       <Field label="Years of Service" value={formatYearsOfService(emp.join_date || emp.created_at)} />
-                      <Field label="Joined" value={formatDate(emp.join_date || emp.created_at)} />
+                      <Field label="Joined" value={<div><span>{formatDate(emp.join_date || emp.created_at)}</span>{probation && <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${probation.tone}`}>{probation.label}</span>}</div>} />
                       <Field label="Company" value={emp.organization_name || "—"} />
                     </>
                   )}
@@ -3745,6 +3772,7 @@ const DetailDrawer = ({
 
           {tab === "performance" && (
             <div className="mx-auto w-full max-w-5xl space-y-5">
+              <ProbationPerformancePanel employee={emp} currentUser={currentUser} />
               <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
                   <div className="flex items-start gap-3">
@@ -3888,6 +3916,8 @@ const DetailDrawer = ({
               />
             </div>
           )}
+
+          {tab === "data_quality" && <EmployeeDataQualityPanel employee={emp} />}
         </div>
 
         {/* Footer actions */}
