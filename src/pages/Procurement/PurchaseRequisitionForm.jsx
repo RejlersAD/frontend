@@ -204,7 +204,8 @@ const selectedApproversFromWorkflow = (workflow = []) => {
 
   workflow.forEach((stage) => {
     const role = `${stage?.role || ''} ${stage?.stage || ''}`.toLowerCase();
-    const userId = stage?.user_id || stage?.approver_id || null;
+    const rawUserId = stage?.user_id || stage?.approver_id || null;
+    const userId = rawUserId === null || rawUserId === '' ? null : String(rawUserId);
     const level = Number(stage?.level);
     if (level === 0 || role.includes('procurement department')) {
       selection.procurement = userId;
