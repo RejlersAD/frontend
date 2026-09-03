@@ -220,8 +220,7 @@ const OrderManagement = () => {
     module => (typeof module === 'string' ? module : module?.code) === 'procurement_orders'
   );
   const canModifyRequisition = (requisition) => Boolean(
-    requisition?.status === 'draft'
-    && (isCurrentUserAdmin || (currentUserId && String(requisition.issued_by) === String(currentUserId)))
+    isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId))
   );
   const canDeleteRequisition = (requisition) => Boolean(
     isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId))
@@ -1949,8 +1948,8 @@ const OrderManagement = () => {
                       ['PR number', 'PR Number'],
                       ['Date', 'PR Accepted Date'],
                       ['PO reference', 'PO Number'],
-                      ['Request', 'Summary of Purchase /Activity'],
-                      ['Requester', 'issued_by_name'],
+                      ['Request / Service', 'Summary of Purchase /Activity'],
+                      ['Requested by', 'issued_by_name'],
                       ['Project / Department', 'Project short name/ Code'],
                       ['Supplier', 'Suppl.Name'],
                       ['Amount', 'PO Amount w/o VAT'],
@@ -1995,7 +1994,7 @@ const OrderManagement = () => {
                           <p className="truncate text-[13px] font-semibold text-slate-800" title={requestSummary}>{requestSummary}</p>
                         </td>
                         <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
-                          <p className="truncate" title={req.requester_name || req.issued_by_name || ''}>{req.requester_name || req.issued_by_name || '—'}</p>
+                          <p className="truncate" title={req.requester_name || req.issued_by_name || req.requested_by_name || ''}>{req.requester_name || req.issued_by_name || req.requested_by_name || '—'}</p>
                         </td>
                         <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
                           <p className="truncate" title={projectDepartment}>{projectDepartment}</p>

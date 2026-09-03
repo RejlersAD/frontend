@@ -12,6 +12,7 @@
 import React, { useState, useRef } from 'react';
 import apiClient from '../../services/api.service';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
+import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
 import {
   XMarkIcon,
   CheckCircleIcon,
@@ -67,11 +68,15 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   // Dynamic Workflow Hierarchy Array
-  const approvalHierarchy = Array.isArray(requisition.approval_workflow_config) && requisition.approval_workflow_config.length > 0
+  const rawApprovalHierarchy = Array.isArray(requisition.approval_workflow_config) && requisition.approval_workflow_config.length > 0
     ? requisition.approval_workflow_config
     : Array.isArray(requisition.approval_hierarchy)
       ? requisition.approval_hierarchy
       : [];
+  const approvalHierarchy = displayApprovalWorkflow(
+    rawApprovalHierarchy,
+    requisition.po_number_reference,
+  );
 
   // Active stage determination
   const pendingStages = approvalHierarchy.filter((entry) => {
@@ -108,7 +113,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         ? 'vp'
         : currentStageRole.includes('level 1 approver') || currentStageRole.includes('project manager') || currentStageRole.includes('department manager') || currentStageRole.includes('technical review')
           ? 'pm'
-          : currentStageRole.includes('general manager')
+          : currentStageRole.includes('general manager') || currentStageRole.includes('ceo')
             ? 'general_manager'
             : null;
 
@@ -186,7 +191,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       canApprove: isApprovalInProgress && currentStageKey === 'vp' && canActOnCurrentStage
     },
     general_manager: {
-      label: 'General Manager',
+      label: 'CEO',
       approveEndpoint: 'process_dynamic_approval',
       rejectEndpoint: 'process_dynamic_rejection',
       canApprove: isApprovalInProgress && currentStageKey === 'general_manager' && canActOnCurrentStage
@@ -575,7 +580,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       <div className="flex-1">
                         <h3 className="text-sm font-bold text-blue-900">Approval has not started</h3>
                         <p className="mt-1 text-xs leading-relaxed text-blue-800">
-                          {currentStage.user_name || currentStageLabel} is assigned and pending, but this requisition is still a draft. Approve and Reject become available only after submission.
+                          {nameOnly(currentStage.user_name) || currentStageLabel} is assigned and pending, but this requisition is still a draft. Approve and Reject become available only after submission.
                         </p>
                         {(isCurrentUserIssuer || isSuperAdmin) ? (
                           <button type="button" onClick={handleSubmitForApproval} disabled={loading} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">

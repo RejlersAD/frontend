@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { ArrowTopRightOnSquareIcon, CheckBadgeIcon } from '@heroicons/react/24/outline';
 import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentBranding.config';
 import { convertToAed } from '../../config/procurement.config';
+import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
 
 const valueOrDash = (value) => (value === null || value === undefined || value === '' ? '—' : value);
 
@@ -36,7 +37,7 @@ const workflowRoleLabel = (stage, index) => {
   if (stage?.approval_label) return stage.approval_label;
   const role = `${stage?.role || ''} ${stage?.stage || ''}`.toLowerCase();
   if (role.includes('procurement')) return 'L0- PRO';
-  if (role.includes('general manager')) return 'CEO';
+  if (role.includes('general manager') || role.includes('ceo')) return 'CEO';
   if (role.includes('engineering')) return 'L2 MoE';
   if (role.includes('manager of projects') || role.includes('projects manager')) return 'L3 MoP';
   if (role.includes('vice president') || role.includes('vp delivery') || role.includes('vp operations')) return 'L4 VOP/VP';
@@ -46,6 +47,7 @@ const workflowRoleLabel = (stage, index) => {
 
 const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
   const metadata = requisition.price_remarks_data || {};
+  const negotiationRemarks = requisition.price_remarks || metadata.negotiation_remarks;
   const signedDocument = (requisition.attachments || []).find((item) => (
     item?.type === 'signed_purchase_requisition_pdf'
     || item?.document_type === 'signed_purchase_requisition_pdf'
@@ -61,9 +63,13 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
   const netTotalAed = metadata.net_total_aed !== null && metadata.net_total_aed !== undefined && metadata.net_total_aed !== ''
     ? Number(metadata.net_total_aed)
     : calculatedNetTotalAed;
-  const configuredWorkflow = Array.isArray(requisition.approval_workflow_config)
+  const rawConfiguredWorkflow = Array.isArray(requisition.approval_workflow_config)
     ? requisition.approval_workflow_config
     : (Array.isArray(requisition.approval_hierarchy) ? requisition.approval_hierarchy : []);
+  const configuredWorkflow = displayApprovalWorkflow(
+    rawConfiguredWorkflow,
+    requisition.po_number_reference,
+  );
   const savedApprovalLabels = metadata.approval_table_labels || {};
   const persistedApprovalRows = [
     ['PM', requisition.pm_name_display, requisition.pm_signature, requisition.pm_approval_status, requisition.pm_approved_at],
@@ -83,7 +89,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
           _levelOneIndex: isLevelOne ? levelOneDisplayIndex : undefined,
           approval_label: stage.approval_label || savedApprovalLabels[stage.user_id || stage.approver_id],
         }, index),
-        [stage.user_name || stage.approver_name || stage.approver, stage.user_email].filter(Boolean).join(' — '),
+        nameOnly(stage.user_name || stage.approver_name || stage.approver),
         stage.signature,
         stage.status,
         stage.approved_at || stage.decided_at,
@@ -173,6 +179,10 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
                 ? `AED ${netTotalAed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 : '—'}
             </div>
+          </div>
+          <div className="border-t border-gray-700 px-2 py-2">
+            <span className="font-semibold">Negotiation Remarks:</span>{' '}
+            <span className="whitespace-pre-wrap font-normal">{valueOrDash(negotiationRemarks)}</span>
           </div>
         </section>
 

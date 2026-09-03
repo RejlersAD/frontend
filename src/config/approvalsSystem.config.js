@@ -118,6 +118,10 @@ export const APPROVAL_TYPES = {
     gradientTo: '#4f46e5',
     apiEndpoint: '/procurement/requisitions/pending-for-me/',
     actionApiEndpoint: '/procurement/requisitions/',
+    actionEndpointMap: {
+      approve: 'process_dynamic_approval',
+      reject: 'process_dynamic_rejection',
+    },
     moduleCode: 'procurement_requisitions',
     // Assignment, rather than role, grants access to the employee's approval queue.
     allowedRoles: [],
