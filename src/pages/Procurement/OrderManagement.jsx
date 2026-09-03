@@ -220,8 +220,7 @@ const OrderManagement = () => {
     module => (typeof module === 'string' ? module : module?.code) === 'procurement_orders'
   );
   const canModifyRequisition = (requisition) => Boolean(
-    requisition?.status === 'draft'
-    && (isCurrentUserAdmin || (currentUserId && String(requisition.issued_by) === String(currentUserId)))
+    isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId))
   );
   const canDeleteRequisition = (requisition) => Boolean(
     isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId))

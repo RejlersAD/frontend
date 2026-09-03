@@ -492,7 +492,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     },
     
     // Approval Section
-    approved_by_name: editData?.approved_by_name || PROJECT_FINAL_APPROVER,
+    approved_by_name: (prReference?.id || editData?.pr_reference) ? '' : (editData?.approved_by_name || PROJECT_FINAL_APPROVER),
     approved_by_title: editData?.approved_by_title || FINAL_APPROVER_TITLE,
     approved_date: editData?.approved_date || '',
     approved_at: editData?.approved_at || '',
@@ -530,8 +530,10 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     liquidated_damages: editData?.liquidated_damages || '',
     technical_approver: editData?.technical_approver || '',
     financial_approver: editData?.financial_approver || '',
-    management_approver: editData?.management_approver || PROJECT_FINAL_APPROVER,
-    approval_log: mergeApprovalLog(editData?.approval_log),
+    management_approver: (prReference?.id || editData?.pr_reference) ? '' : (editData?.management_approver || PROJECT_FINAL_APPROVER),
+    approval_log: (prReference?.id || editData?.pr_reference)
+      ? (editData?.approval_log || []).filter((entry) => entry.stage !== 'Final Management Sign-off')
+      : mergeApprovalLog(editData?.approval_log),
     final_approver_notes: editData?.final_approver_notes || '',
     notes: editData?.notes || '',
     attachments: editData?.attachments || [],
@@ -590,7 +592,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
           ...(previous.contact_persons || {}),
           buyer_references: buyerReferences,
         },
-        ...(jarmo ? {
+        ...(!previous.pr_reference && jarmo ? {
           management_approver: jarmo.full_name || jarmo.email,
           approved_by_name: jarmo.full_name || jarmo.email,
           approved_by_title: employeeDesignation(jarmo),
@@ -605,6 +607,10 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 date: '',
               }
             : entry),
+        } : previous.pr_reference ? {
+          management_approver: '',
+          approved_by_name: '',
+          approval_log: (previous.approval_log || []).filter((entry) => entry.stage !== 'Final Management Sign-off'),
         } : {}),
       };
     });
@@ -944,18 +950,10 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       items: normalizedItems,
       scope_of_services: requisition.description_reason || prev.scope_of_services,
       final_approver_notes: requisition.purchase_recommendation || prev.final_approver_notes,
-      management_approver: PROJECT_FINAL_APPROVER,
-      approved_by_name: PROJECT_FINAL_APPROVER,
-      approved_by_title: FINAL_APPROVER_TITLE,
-      approval_log: (Array.isArray(prev.approval_log) && prev.approval_log.length
-        ? prev.approval_log
-        : defaultApprovalLog()
-      ).map((entry) => entry.stage === 'Final Management Sign-off'
-        ? {
-            ...entry,
-            approver: PROJECT_FINAL_APPROVER,
-          }
-        : entry),
+      management_approver: '',
+      approved_by_name: '',
+      approved_by_title: '',
+      approval_log: (prev.approval_log || []).filter((entry) => entry.stage !== 'Final Management Sign-off'),
     }));
     setErrors((prev) => ({ ...prev, pr_reference: null }));
     setPopupError('');
@@ -1035,7 +1033,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       approvalLog[index] = {
         ...approvalLog[index],
         user_id: employee?.id || '',
-        approver: employee?.full_name || employee?.email || '',
+        approver: employee?.full_name || employee?.username || 'Active employee',
         approver_email: employee?.email || '',
         status: 'Pending',
         date: '',
@@ -1043,8 +1041,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       return {
         ...previous,
         approval_log: approvalLog,
-        management_approver: employee?.full_name || employee?.email || '',
-        approved_by_name: employee?.full_name || employee?.email || '',
+        management_approver: employee?.full_name || employee?.username || 'Active employee',
+        approved_by_name: employee?.full_name || employee?.username || 'Active employee',
         approved_by_title: employeeDesignation(employee),
       };
     });
@@ -1297,7 +1295,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     });
   }, [formData.items, formData.vat_percentage]);
 
-  const requiredApprovalStages = ['Final Management Sign-off'];
+  const requiredApprovalStages = formData.pr_reference ? [] : ['Final Management Sign-off'];
   const assignedApprovalStages = new Set(
     formData.approval_log.filter((entry) => entry.user_id || entry.approver).map((entry) => entry.stage)
   );
@@ -2589,11 +2587,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">Final Signatory</h3>
-                    <p className="text-sm text-gray-500">The final signatory and designation are fetched from the RADAI employee directory.</p>
+                    <p className="text-sm text-gray-500">{formData.pr_reference ? 'Approval is inherited from the referenced Purchase Requisition; no Jarmo Suominen approval is required.' : 'The final signatory and designation are fetched from the RADAI employee directory.'}</p>
                   </div>
                 </div>
 
-                <div className="mt-6 overflow-x-auto">
+                {!formData.pr_reference && <div className="mt-6 overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-gray-50">
                       <tr>
@@ -2616,7 +2614,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                               <option value="">{approversLoading ? 'Loading active employees...' : '-- Select active employee --'}</option>
                               {approvalEmployees.map((employee) => (
                                 <option key={employee.id} value={employee.id}>
-                                  {employee.full_name || employee.email}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.department ? ` (${employee.department})` : ''}
+                                  {employee.full_name || employee.username || 'Active employee'}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.department ? ` (${employee.department})` : ''}
                                 </option>
                               ))}
                             </select>
@@ -2635,14 +2633,14 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                       ))}
                     </tbody>
                   </table>
-                </div>
-                {approverLoadError && (
+                </div>}
+                {!formData.pr_reference && approverLoadError && (
                   <div className="mt-4 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     <span>{approverLoadError}</span>
                     <button type="button" onClick={fetchPOApprovers} className="font-semibold underline">Retry</button>
                   </div>
                 )}
-                {errors.approval_log && <p className="mt-3 text-sm font-medium text-red-600">{errors.approval_log}</p>}
+                {!formData.pr_reference && errors.approval_log && <p className="mt-3 text-sm font-medium text-red-600">{errors.approval_log}</p>}
               </div>
             </div>
           )}

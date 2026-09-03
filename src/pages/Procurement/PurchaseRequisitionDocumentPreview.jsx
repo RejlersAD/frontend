@@ -83,7 +83,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
           _levelOneIndex: isLevelOne ? levelOneDisplayIndex : undefined,
           approval_label: stage.approval_label || savedApprovalLabels[stage.user_id || stage.approver_id],
         }, index),
-        [stage.user_name || stage.approver_name || stage.approver, stage.user_email].filter(Boolean).join(' — '),
+        stage.user_name || stage.approver_name || stage.approver,
         stage.signature,
         stage.status,
         stage.approved_at || stage.decided_at,

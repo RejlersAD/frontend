@@ -103,8 +103,8 @@ const ActiveEmployeePicker = ({
       {selected ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-gray-900">{selected.full_name || selected.username || selected.email}</p>
-            <p className="truncate text-xs text-gray-600">{selected.email}{selected.job_title ? ` · ${selected.job_title}` : ''}</p>
+            <p className="truncate text-sm font-semibold text-gray-900">{selected.full_name || selected.username || 'Active employee'}</p>
+            {selected.job_title && <p className="truncate text-xs text-gray-600">{selected.job_title}</p>}
           </div>
           {!disabled && <button type="button" onClick={() => { onChange(''); setSearch(''); }} className="shrink-0 text-xs font-semibold text-purple-700 hover:text-red-600">Edit</button>}
         </div>
@@ -121,8 +121,8 @@ const ActiveEmployeePicker = ({
             <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
               {matches.length ? matches.map(employee => (
                 <button key={employee.id} type="button" onClick={() => { onChange(employee.id); setSearch(''); }} className="block w-full border-b border-gray-100 px-3 py-2 text-left hover:bg-purple-50 last:border-0">
-                  <span className="block text-sm font-semibold text-gray-900">{employee.full_name || employee.username || employee.email}</span>
-                  <span className="block text-xs text-gray-500">{employee.email}{employee.job_title ? ` · ${employee.job_title}` : ''}{employee.department ? ` · ${employee.department}` : ''}</span>
+                  <span className="block text-sm font-semibold text-gray-900">{employee.full_name || employee.username || 'Active employee'}</span>
+                  <span className="block text-xs text-gray-500">{[employee.job_title, employee.department].filter(Boolean).join(' · ') || 'Active employee'}</span>
                 </button>
               )) : <p className="px-3 py-2 text-xs text-gray-500">No active employee matches this search.</p>}
             </div>
@@ -260,7 +260,7 @@ const buildApprovalWorkflow = ({
   vpOperations,
   activeEmployees,
   levelOneLabels,
-  poApplicable,
+  poNumberReference,
   stageLabels,
 }) => {
   const workflow = [];
@@ -271,7 +271,7 @@ const buildApprovalWorkflow = ({
     workflow.push({
       step: step++, level: 0, stage: 'Level 0 - Procurement Department Approval',
       role: 'Procurement Department', approval_label: stageLabels?.procurement || 'L0- PRO', user_id: selectedApprovers.procurement,
-      user_name: user?.full_name || user?.username || user?.email || '',
+      user_name: user?.full_name || user?.username || 'Active employee',
       username: user?.username || '', user_email: user?.email || '', status: 'pending', approved_at: null,
     });
   }
@@ -282,7 +282,7 @@ const buildApprovalWorkflow = ({
       step: step++, level: 1, stage: `Level 1 - Approver ${index + 1} of ${levelOneApproverCount}`,
       role: 'Level 1 Approver', approval_label: levelOneLabels?.[userId] || `L1-${index + 1}`,
       approval_group: 'level_1', group_mode: 'all', user_id: userId,
-      user_name: user?.full_name || user?.email || '', status: 'pending', approved_at: null,
+      user_name: user?.full_name || user?.username || 'Active employee', status: 'pending', approved_at: null,
     });
   });
 
@@ -291,7 +291,7 @@ const buildApprovalWorkflow = ({
     workflow.push({
       step: step++, level: 2, stage: 'Level 2 - Manager of Engineering (Optional)',
       role: 'Manager of Engineering (MoE)', approval_label: stageLabels?.engineering_manager || 'L2 MoE', user_id: selectedApprovers.engineering_manager,
-      user_name: user?.full_name || user?.email || '', status: 'pending', approved_at: null,
+      user_name: user?.full_name || user?.username || 'Active employee', status: 'pending', approved_at: null,
     });
   }
 
@@ -300,7 +300,7 @@ const buildApprovalWorkflow = ({
     workflow.push({
       step: step++, level: 3, stage: 'Level 3 - Manager of Projects', role: 'Manager of Projects (MoP)',
       approval_label: stageLabels?.manager_projects || 'L3 MoP',
-      user_id: selectedApprovers.manager_projects, user_name: user?.full_name || user?.email || '',
+      user_id: selectedApprovers.manager_projects, user_name: user?.full_name || user?.username || 'Active employee',
       status: 'pending', approved_at: null,
     });
   }
@@ -312,17 +312,17 @@ const buildApprovalWorkflow = ({
       stage: requisitionType === 'general' ? 'Level 2 - Vice President' : 'Level 4 - VP Delivery',
       role: requisitionType === 'general' ? 'Vice President' : 'VP Delivery',
       approval_label: stageLabels?.vp_operations || 'L4 VOP/VP',
-      user_id: selectedApprovers.vp_operations, user_name: user?.full_name || user?.email || '',
+      user_id: selectedApprovers.vp_operations, user_name: user?.full_name || user?.username || 'Active employee',
       status: 'pending', approved_at: null,
     });
   }
 
-  if (!poApplicable && selectedApprovers.general_manager) {
+  if (!String(poNumberReference || '').trim() && selectedApprovers.general_manager) {
     const user = activeEmployees.find(candidate => candidate.id === selectedApprovers.general_manager);
     workflow.push({
       step: step++, level: 5, stage: 'Level 5 - General Manager Approval',
       role: 'General Manager', approval_label: stageLabels?.general_manager || 'CEO', user_id: selectedApprovers.general_manager,
-      user_name: user?.full_name || user?.username || user?.email || '',
+      user_name: user?.full_name || user?.username || 'Active employee',
       username: user?.username || '', user_email: user?.email || '', status: 'pending', approved_at: null,
     });
   }
@@ -367,6 +367,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const [newProjectReference, setNewProjectReference] = useState({ number: '', name: '' });
   const [projectCreatorError, setProjectCreatorError] = useState('');
   const [vendorLoadError, setVendorLoadError] = useState('');
+  const [manualIcv, setManualIcv] = useState({ vendorId: null, value: '', expiryDate: '', saving: false, error: '' });
   const [prNumberStatus, setPrNumberStatus] = useState({ checking: false, available: null, message: '' });
   const [errors, setErrors] = useState({});
   const [autoSaving, setAutoSaving] = useState(false);
@@ -952,6 +953,47 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       supplier_business_id: masterVendor?.trade_license_number || masterVendor?.tax_id || masterVendor?.vendor_code || '',
       preferred_supplier_if_any: shortlistEntry?.name || masterVendor?.name || '',
     }));
+    const selectedVendor = shortlistEntry || masterVendor;
+    const hasIcv = selectedVendor?.icv_percentage !== null
+      && selectedVendor?.icv_percentage !== undefined
+      && selectedVendor?.icv_percentage !== '';
+    setManualIcv(hasIcv || !vendorId
+      ? { vendorId: null, value: '', expiryDate: '', saving: false, error: '' }
+      : { vendorId, value: '', expiryDate: selectedVendor?.icv_expiry_date || '', saving: false, error: '' });
+  };
+
+  const saveManualIcv = async () => {
+    const numericValue = Number(manualIcv.value);
+    if (manualIcv.value === '' || !Number.isFinite(numericValue) || numericValue < 0 || numericValue > 100) {
+      setManualIcv(previous => ({ ...previous, error: 'Enter an ICV percentage from 0 to 100.' }));
+      return;
+    }
+    setManualIcv(previous => ({ ...previous, saving: true, error: '' }));
+    try {
+      const response = await apiClient.patch('/procurement/requisitions/vendor-icv/', {
+        vendor_id: manualIcv.vendorId,
+        icv_percentage: numericValue,
+        icv_expiry_date: manualIcv.expiryDate || null,
+      });
+      const savedVendor = response.data;
+      setVendors(previous => previous.map(vendor => String(vendor.id) === String(savedVendor.id) ? savedVendor : vendor));
+      setFormData(previous => ({
+        ...previous,
+        selected_vendors: (previous.selected_vendors || []).map(vendor => (
+          String(vendor.vendor_id || vendor.id) === String(savedVendor.id)
+            ? { ...vendor, icv_percentage: savedVendor.icv_percentage, icv_expiry_date: savedVendor.icv_expiry_date, is_icv_certified: true }
+            : vendor
+        )),
+      }));
+      setManualIcv({ vendorId: null, value: '', expiryDate: '', saving: false, error: '' });
+      toast.success(`ICV saved for ${savedVendor.name}.`);
+    } catch (error) {
+      const percentageError = error.response?.data?.icv_percentage;
+      const message = (Array.isArray(percentageError) ? percentageError[0] : percentageError)
+        || error.response?.data?.detail
+        || 'Could not save the vendor ICV. Please try again.';
+      setManualIcv(previous => ({ ...previous, saving: false, error: message }));
+    }
   };
 
   const checkPrNumber = (number) => {
@@ -1265,20 +1307,20 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         vpOperations,
         activeEmployees: projectManagers,
         levelOneLabels,
-        poApplicable: formData.po_applicable,
+        poNumberReference: formData.po_number_reference,
         stageLabels,
       });
 
       const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount;
       const requiredApproversMissing = formData.requisition_type === 'general'
-        ? (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations || (!formData.po_applicable && !selectedApprovers.general_manager))
-        : (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.manager_projects || !selectedApprovers.vp_operations || (!formData.po_applicable && !selectedApprovers.general_manager));
+        ? (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations || (!formData.po_number_reference?.trim() && !selectedApprovers.general_manager))
+        : (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.manager_projects || !selectedApprovers.vp_operations || (!formData.po_number_reference?.trim() && !selectedApprovers.general_manager));
       if (submitForApproval && requiredApproversMissing) {
         setErrors(prev => ({
           ...prev,
           approval_workflow_config: formData.requisition_type === 'general'
-            ? `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), the Level 2 Vice President${formData.po_applicable ? '.' : ', and default Level 5 General Manager.'}`
-            : `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), Level 3 (MoP), Level 4 (VP Delivery)${formData.po_applicable ? '. Level 2 (MoE) is optional.' : ', and default Level 5 General Manager. Level 2 (MoE) is optional.'}`
+            ? `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), the Level 2 Vice President${formData.po_number_reference?.trim() ? '.' : ', and default Level 5 General Manager.'}`
+            : `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), Level 3 (MoP), Level 4 (VP Delivery)${formData.po_number_reference?.trim() ? '. Level 2 (MoE) is optional.' : ', and default Level 5 General Manager. Level 2 (MoE) is optional.'}`
         }));
         alert('Complete the required approval levels before submitting.');
         return;
@@ -1296,6 +1338,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           ),
         },
       };
+      if (editData && String(editData.status || '').toLowerCase() !== 'draft') {
+        delete formDataWithWorkflow.approval_workflow_config;
+      }
       
       Object.keys(formDataWithWorkflow).forEach(key => {
         if (formDataWithWorkflow[key] !== null && formDataWithWorkflow[key] !== undefined && formDataWithWorkflow[key] !== '') {
@@ -1389,7 +1434,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     vpOperations,
     activeEmployees: projectManagers,
     levelOneLabels,
-    poApplicable: formData.po_applicable,
+    poNumberReference: formData.po_number_reference,
     stageLabels,
   });
   const livePreviewRequisition = {
@@ -1986,6 +2031,21 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   ))}
                 </select>
                 {errors.vendor && <p className="mt-1 text-sm text-red-600">{errors.vendor}</p>}
+                {manualIcv.vendorId && (
+                  <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+                    <p className="text-sm font-semibold text-amber-900">The selected vendor has no ICV recorded. Would you like to enter it manually?</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                      <label className="text-xs font-semibold text-amber-900">ICV percentage
+                        <input type="number" min="0" max="100" step="0.01" value={manualIcv.value} onChange={(event) => setManualIcv(previous => ({ ...previous, value: event.target.value, error: '' }))} className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" placeholder="0–100" />
+                      </label>
+                      <label className="text-xs font-semibold text-amber-900">Certificate expiry (optional)
+                        <input type="date" value={manualIcv.expiryDate} onChange={(event) => setManualIcv(previous => ({ ...previous, expiryDate: event.target.value, error: '' }))} className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" />
+                      </label>
+                      <button type="button" onClick={saveManualIcv} disabled={manualIcv.saving} className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50">{manualIcv.saving ? 'Saving…' : 'Save ICV'}</button>
+                    </div>
+                    {manualIcv.error && <p className="mt-2 text-sm font-medium text-red-600">{manualIcv.error}</p>}
+                  </div>
+                )}
               </div>
 
               {(formData.selected_vendors || []).length === 1 && (
@@ -2448,14 +2508,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
                 {formData.requisition_type === 'project'
-                  ? `Project workflow: Procurement Level 0 → Level 1 → optional Level 2 → Level 3 → default Level 4${formData.po_applicable ? '.' : ' → default Level 5 General Manager.'}`
-                  : `Internal workflow: Procurement Level 0 → Level 1 Department Manager → selectable Level 2 Vice President${formData.po_applicable ? '.' : ' → default Level 5 General Manager.'}`}
+                  ? `Project workflow: Procurement Level 0 → Level 1 → optional Level 2 → Level 3 → default Level 4${formData.po_number_reference?.trim() ? '.' : ' → default Level 5 General Manager.'}`
+                  : `Internal workflow: Procurement Level 0 → Level 1 Department Manager → selectable Level 2 Vice President${formData.po_number_reference?.trim() ? '.' : ' → default Level 5 General Manager.'}`}
               </p>
 
               <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
                 <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_100px] md:items-end">
                   <div><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Level 1 required</label><input type="number" min="1" max="20" value={levelOneApproverCount} onChange={(event) => changeLevelOneCount(event.target.value)} className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" /></div>
-                  <div className="relative"><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Add Level 1 approver</label><input value={levelOneSearch} onChange={(event) => setLevelOneSearch(event.target.value)} disabled={loadingApprovers || (selectedApprovers.level_one || []).length >= levelOneApproverCount} placeholder="Search employee by name, email, ID, title, or department" className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" />{levelOneSearch.trim() && (selectedApprovers.level_one || []).length < levelOneApproverCount && <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">{projectManagers.filter(user => employeeSearchText(user).includes(levelOneSearch.trim().toLowerCase()) && !(selectedApprovers.level_one || []).includes(user.id)).slice(0, 20).map(user => <button key={user.id} type="button" onClick={() => addLevelOneApprover(user.id)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-purple-50 last:border-0"><span className="block font-semibold text-gray-900">{user.full_name || user.email}</span><span className="block text-xs text-gray-500">{user.email} · {user.job_title || user.department || user.employee_id}</span></button>)}</div>}</div>
+                  <div className="relative"><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Add Level 1 approver</label><input value={levelOneSearch} onChange={(event) => setLevelOneSearch(event.target.value)} disabled={loadingApprovers || (selectedApprovers.level_one || []).length >= levelOneApproverCount} placeholder="Search employee by name, ID, title, or department" className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" />{levelOneSearch.trim() && (selectedApprovers.level_one || []).length < levelOneApproverCount && <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">{projectManagers.filter(user => employeeSearchText(user).includes(levelOneSearch.trim().toLowerCase()) && !(selectedApprovers.level_one || []).includes(user.id)).slice(0, 20).map(user => <button key={user.id} type="button" onClick={() => addLevelOneApprover(user.id)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-purple-50 last:border-0"><span className="block font-semibold text-gray-900">{user.full_name || user.username || 'Active employee'}</span><span className="block text-xs text-gray-500">{user.job_title || user.department || user.employee_id || 'Active employee'}</span></button>)}</div>}</div>
                   <div className={`rounded-full px-3 py-2 text-center text-xs font-bold ${(selectedApprovers.level_one || []).length === levelOneApproverCount ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{(selectedApprovers.level_one || []).length} of {levelOneApproverCount}</div>
                 </div>
               </div>
@@ -2466,7 +2526,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   <tbody className="divide-y divide-gray-200">
                     <tr className="bg-blue-50/50"><td className="p-3 align-top"><input value={stageLabels.procurement} onChange={(event) => changeStageLabel('procurement', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Procurement Department</p><p className="mt-1 text-xs text-gray-500">Level 0 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Procurement Department Approval" value={selectedApprovers.procurement || ''} employees={projectManagers} onChange={(value) => handleApproverChange('procurement', value)} required disabled /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Default</span></td></tr>
 
-                    {(selectedApprovers.level_one || []).length ? (selectedApprovers.level_one || []).map((userId, index) => { const user = projectManagers.find(candidate => candidate.id === userId); return <tr key={userId}><td className="p-3"><input value={levelOneLabels[userId] ?? `L1-${index + 1}`} onChange={(event) => changeLevelOneLabel(userId, event.target.value)} maxLength={20} aria-label={`Approval table level for ${user?.full_name || userId}`} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3"><p className="font-semibold text-gray-900">Level 1 Approver {index + 1}</p><p className="mt-1 text-xs text-gray-500">All Level 1 approvers must approve</p></td><td className="p-3"><p className="font-semibold text-gray-900">{user?.full_name || userId}</p><p className="text-xs text-gray-500">{user?.email || user?.job_title || 'Active employee'}</p></td><td className="p-3 text-center"><button type="button" onClick={() => removeLevelOneApprover(userId)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button></td></tr>; }) : <tr><td className="p-3 text-center font-semibold text-purple-700">L1</td><td className="p-3"><p className="font-semibold">Level 1 Approvers</p><p className="text-xs text-gray-500">Required</p></td><td className="p-3 text-gray-500">Use the search box above to add approvers.</td><td className="p-3 text-center text-xs font-semibold text-amber-700">0 selected</td></tr>}
+                    {(selectedApprovers.level_one || []).length ? (selectedApprovers.level_one || []).map((userId, index) => { const user = projectManagers.find(candidate => candidate.id === userId); return <tr key={userId}><td className="p-3"><input value={levelOneLabels[userId] ?? `L1-${index + 1}`} onChange={(event) => changeLevelOneLabel(userId, event.target.value)} maxLength={20} aria-label={`Approval table level for ${user?.full_name || userId}`} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3"><p className="font-semibold text-gray-900">Level 1 Approver {index + 1}</p><p className="mt-1 text-xs text-gray-500">All Level 1 approvers must approve</p></td><td className="p-3"><p className="font-semibold text-gray-900">{user?.full_name || userId}</p><p className="text-xs text-gray-500">{user?.job_title || user?.department || 'Active employee'}</p></td><td className="p-3 text-center"><button type="button" onClick={() => removeLevelOneApprover(userId)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button></td></tr>; }) : <tr><td className="p-3 text-center font-semibold text-purple-700">L1</td><td className="p-3"><p className="font-semibold">Level 1 Approvers</p><p className="text-xs text-gray-500">Required</p></td><td className="p-3 text-gray-500">Use the search box above to add approvers.</td><td className="p-3 text-center text-xs font-semibold text-amber-700">0 selected</td></tr>}
 
                     {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input value={stageLabels.engineering_manager} onChange={(event) => changeStageLabel('engineering_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Engineering (MoE)</p><p className="mt-1 text-xs text-gray-500">Level 2 · Optional</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Engineering (MoE)" value={selectedApprovers.engineering_manager || ''} employees={engineeringManagers} onChange={(value) => handleApproverChange('engineering_manager', value)} disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">Optional</span></td></tr>}
 
@@ -2474,7 +2534,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
                     <tr><td className="p-3 align-top"><input value={stageLabels.vp_operations} onChange={(event) => changeStageLabel('vp_operations', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">{formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'}</p><p className="mt-1 text-xs text-gray-500">{formData.requisition_type === 'general' ? 'Level 2 · Required' : 'Level 4 · Required'}</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Vice President / Delivery Approver" value={selectedApprovers.vp_operations || ''} employees={vpOperations} onChange={(value) => handleApproverChange('vp_operations', value)} required disabled={loadingApprovers || formData.requisition_type === 'project'} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{formData.requisition_type === 'project' ? 'Default' : 'Required'}</span></td></tr>
 
-                    {!formData.po_applicable && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">General Manager</p><p className="mt-1 text-xs text-gray-500">Level 5 · Required when PO is No</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="General Manager Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} required disabled />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">Jarmo Suominen could not be found as an active employee.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
+                    {!String(formData.po_number_reference || '').trim() && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">General Manager</p><p className="mt-1 text-xs text-gray-500">Level 5 · Required when no PO Reference exists</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="General Manager Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} required disabled />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">Jarmo Suominen could not be found as an active employee.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
                   </tbody>
                 </table>
               </div>
