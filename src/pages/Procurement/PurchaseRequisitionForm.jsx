@@ -376,6 +376,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const draftIdRef = useRef(editData?.id || null);
   const autoSaveInFlightRef = useRef(null);
   const formDataRef = useRef(formData);
+  const approvalWorkflowRef = useRef(editData?.approval_workflow_config || []);
   const submissionInFlightRef = useRef(false);
   const lastAutoSaveFingerprintRef = useRef('');
   const priceDescriptionEditedRef = useRef(Boolean(editData?.price_description));
@@ -462,6 +463,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     setFormData(initialData);
     priceDescriptionEditedRef.current = Boolean(editData?.price_description);
     formDataRef.current = initialData;
+    approvalWorkflowRef.current = editData?.approval_workflow_config || [];
     draftIdRef.current = editData?.id || null;
     autoSaveInFlightRef.current = null;
     submissionInFlightRef.current = false;
@@ -1090,9 +1092,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       return autoSaveInFlightRef.current;
     }
 
-    // Approver selections live in separate UI state and are persisted only by
-    // explicit Save/Submit actions. Auto-save must never erase them with [].
-    const { approval_workflow_config: _workflow, ...autoSavePayload } = formDataRef.current;
+    const autoSavePayload = {
+      ...formDataRef.current,
+      approval_workflow_config: approvalWorkflowRef.current,
+    };
     const fingerprint = JSON.stringify(autoSavePayload);
     if (fingerprint === lastAutoSaveFingerprintRef.current) return null;
 
@@ -1139,6 +1142,26 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
     return () => clearInterval(autoSaveInterval);
   }, [handleAutoSave, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !editData?.id) return undefined;
+    const timer = setTimeout(() => {
+      const latestForm = formDataRef.current;
+      if (latestForm.pr_number && (latestForm.product_service || latestForm.description_reason)) {
+        handleAutoSave().catch(() => {});
+      }
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [
+    editData?.id,
+    formData,
+    handleAutoSave,
+    isOpen,
+    levelOneApproverCount,
+    levelOneLabels,
+    selectedApprovers,
+    stageLabels,
+  ]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -1340,10 +1363,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           ),
         },
       };
-      if (editData && String(editData.status || '').toLowerCase() !== 'draft') {
-        delete formDataWithWorkflow.approval_workflow_config;
-      }
-      
       Object.keys(formDataWithWorkflow).forEach(key => {
         if (formDataWithWorkflow[key] !== null && formDataWithWorkflow[key] !== undefined && formDataWithWorkflow[key] !== '') {
           if (typeof formDataWithWorkflow[key] === 'object') {
@@ -1382,10 +1401,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       const { approval_workflow_config: _workflow, ...savedAutoSavePayload } = formDataRef.current;
       lastAutoSaveFingerprintRef.current = JSON.stringify(savedAutoSavePayload);
 
-      if (submitForApproval) {
-        if (response.data.status !== 'draft') {
-          throw new Error(`Requisition cannot be submitted from status ${response.data.status}.`);
-        }
+      const responseStatus = String(response.data.status || '').toLowerCase();
+      const shouldSubmitForApproval = submitForApproval && responseStatus === 'draft';
+      if (shouldSubmitForApproval) {
         response = await apiClient.post(`/procurement/requisitions/${response.data.id}/submit/`, {
           approval_workflow_config: approvalWorkflow,
         });
@@ -1394,9 +1412,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       const requisitionLabel = response.data.pr_number
         ? `PR ${response.data.pr_number}`
         : 'Purchase requisition';
-      toast.success(submitForApproval
+      toast.success(shouldSubmitForApproval
           ? `${requisitionLabel} successfully created and submitted for approval.`
-          : `${requisitionLabel} saved as draft.`);
+          : `${requisitionLabel} changes saved successfully.`);
       
       if (onSuccess) onSuccess(response.data);
       if (onClose) onClose();
@@ -1439,6 +1457,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     poNumberReference: formData.po_number_reference,
     stageLabels,
   });
+  approvalWorkflowRef.current = liveApprovalWorkflow;
+  const canSubmitForApproval = !editData
+    || String(editData.status || 'draft').toLowerCase() === 'draft';
   const livePreviewRequisition = {
     ...formData,
     issued_by_name: editData?.issued_by_name || sessionUserName,
@@ -1487,7 +1508,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           {autoSaving && (
             <div className="mt-2 flex items-center space-x-2 text-purple-100 text-xs">
               <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
-              <span>Auto-saving draft...</span>
+              <span>Auto-saving changes...</span>
             </div>
           )}
         </div>
@@ -1502,7 +1523,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           {/* Form Body - Single Scroll Container with overflow-x-hidden */}
           <form
             id="pr-modal-form"
-            onSubmit={(e) => handleSubmit(e, true)}
+            onSubmit={(e) => handleSubmit(e, canSubmitForApproval)}
             className={`flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden p-4 sm:p-5 lg:p-6 [&>div.border-b]:pb-4 [&>div>h3]:mb-3 [&>div>h3]:text-base [&_label]:mb-1 [&_textarea]:px-3 [&_textarea]:py-1.5 [&_textarea]:text-sm [&_select]:px-3 [&_select]:py-1.5 [&_select]:text-sm [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:px-3 [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:py-1.5 [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:text-sm ${pageMode ? 'xl:overflow-y-auto xl:overscroll-contain' : '2xl:overflow-y-auto'}`}
           >
           {/* Signed approval PDF is intentionally first when editing. */}
@@ -2695,9 +2716,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               disabled={submitLoading}
               className="rounded-lg border border-purple-300 bg-purple-50 px-4 py-2.5 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 disabled:opacity-50 sm:px-6"
             >
-              {approvedPdfFile ? 'Record Signed PDF' : 'Save Draft'}
+              {approvedPdfFile ? 'Record Signed PDF' : editData ? 'Save Changes' : 'Save Draft'}
             </button>
-            {!approvedPdfFile && <button
+            {!approvedPdfFile && canSubmitForApproval && <button
               type="submit"
               form="pr-modal-form"
               disabled={submitLoading}
