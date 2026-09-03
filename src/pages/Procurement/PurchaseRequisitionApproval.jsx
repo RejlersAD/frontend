@@ -57,7 +57,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const isFullyApproved = normalizedRequisitionStatus === 'approved';
   const isRejected = normalizedRequisitionStatus === 'rejected';
   const isConverted = normalizedRequisitionStatus === 'converted';
-  const isApprovalInProgress = ['submitted', 'in_review'].includes(
+  const isStandardApprovalInProgress = ['submitted', 'in_review'].includes(
     normalizedRequisitionStatus
   );
 
@@ -69,13 +69,19 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     return 'pending';
   };
 
-  const approvalDisplayStatus = (rawStatus) => {
+  const approvalDisplayStatus = (stageOrStatus) => {
+    const stage = typeof stageOrStatus === 'object' && stageOrStatus !== null
+      ? stageOrStatus
+      : null;
+    const rawStatus = stage ? stage.status : stageOrStatus;
     const normalized = normalizeApprovalStatus(rawStatus);
-    return isConverted && normalized === 'pending' ? 'not_recorded' : normalized;
+    return isConverted && normalized === 'pending' && !stage?.evidence_requested_at
+      ? 'not_recorded'
+      : normalized;
   };
 
-  const approvalStatusLabel = (rawStatus) => {
-    const normalized = approvalDisplayStatus(rawStatus);
+  const approvalStatusLabel = (stageOrStatus) => {
+    const normalized = approvalDisplayStatus(stageOrStatus);
     if (normalized === 'approved') return 'Approved';
     if (normalized === 'not_approved') return 'Rejected';
     if (normalized === 'not_recorded') return 'Not recorded';
@@ -96,8 +102,14 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   // Active stage determination
   const pendingStages = approvalHierarchy.filter((entry) => {
     const status = (entry?.status || 'pending').toString().trim().toLowerCase();
-    return status === 'pending' || status === 'in_review';
+    return (status === 'pending' || status === 'in_review')
+      && (!isConverted || Boolean(entry?.evidence_requested_at));
   });
+  const isEvidenceRecoveryActive = isConverted && pendingStages.length > 0;
+  const isApprovalInProgress = isStandardApprovalInProgress || isEvidenceRecoveryActive;
+  const hasMissingApprovalEvidence = isConverted && approvalHierarchy.some(
+    stage => approvalDisplayStatus(stage) === 'not_recorded'
+  );
   const workflowLevel = (entry, fallbackIndex = 0) => {
     const explicitLevel = Number(entry?.level);
     return Number.isFinite(explicitLevel) ? Math.max(0, explicitLevel) : fallbackIndex + 1;
@@ -230,6 +242,31 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     }
   };
 
+  const handleResendMissingApprovals = async () => {
+    if (!isConverted) return;
+    const confirmed = window.confirm(
+      'Resend the missing approval requests? Approvers will be notified and must record their own decisions.'
+    );
+    if (!confirmed) return;
+
+    setLoading(true);
+    try {
+      const response = await apiClient.post(
+        `/procurement/requisitions/${requisition.id}/resend-missing-approvals/`
+      );
+      alert(response.data?.message || 'Missing approval requests were resent.');
+      onApprovalComplete?.(response.data);
+    } catch (error) {
+      alert(
+        error.response?.data?.error
+        || error.response?.data?.detail
+        || 'Failed to resend missing approval requests.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const validateRejectionReason = (reason) => {
     if (!reason || !reason.trim()) {
       return { valid: false, error: REJECTION_CONFIG.ERROR_MESSAGES.missing };
@@ -343,8 +380,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const getStatusColor = (status) => {
-    const normalized = approvalDisplayStatus(status);
+  const getStatusColor = (stageOrStatus) => {
+    const normalized = approvalDisplayStatus(stageOrStatus);
     if (normalized === 'approved') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
     if (normalized === 'not_approved') return 'bg-red-100 text-red-800 border-red-300';
     if (normalized === 'not_recorded') return 'bg-slate-100 text-slate-700 border-slate-300';
@@ -378,8 +415,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
               {approvalHierarchy.map((stage, idx) => (
                 <div key={idx} className="flex items-center space-x-2">
                   <span className="text-indigo-100 text-xs font-medium">{stage.role || stage.stage}:</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(stage.status)}`}>
-                    {approvalStatusLabel(stage.status)}
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(stage)}`}>
+                    {approvalStatusLabel(stage)}
                   </span>
                 </div>
               ))}
@@ -521,9 +558,25 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                   </h3>
 
                   <div className="space-y-4">
-                    {isConverted && approvalHierarchy.some(stage => approvalDisplayStatus(stage.status) === 'not_recorded') && (
+                    {hasMissingApprovalEvidence && (
                       <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs text-slate-700">
-                        This PR is linked to a converted PO, but internal approval evidence was not recorded for the stages marked below. These stages are not awaiting action.
+                        <p>
+                          This PR is linked to a converted PO, but internal approval evidence was not recorded for the stages marked below.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleResendMissingApprovals}
+                          disabled={loading}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                          {loading ? 'Resending...' : 'Resend approval requests'}
+                        </button>
+                      </div>
+                    )}
+                    {isEvidenceRecoveryActive && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+                        Approval recovery is active. The current approver has been notified and can record a decision from the Approvals tab.
                       </div>
                     )}
                     {approvalHierarchy.length > 0 ? (
@@ -534,8 +587,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                               <span className="text-sm font-semibold text-gray-800">
                                 {stage.role || stage.stage || `Stage ${index + 1}`}
                               </span>
-                              <span className={`px-2.5 py-0.5 rounded text-xs font-semibold border ${getStatusColor(stage.status)}`}>
-                                {approvalStatusLabel(stage.status)}
+                              <span className={`px-2.5 py-0.5 rounded text-xs font-semibold border ${getStatusColor(stage)}`}>
+                                {approvalStatusLabel(stage)}
                               </span>
                             </div>
                             {stage.user_name && (

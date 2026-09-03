@@ -93,6 +93,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
         stage.signature,
         stage.status,
         stage.approved_at || stage.decided_at,
+        stage.evidence_requested_at,
       ]);
     })
     : persistedApprovalRows;
@@ -203,9 +204,10 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
             <div className="border-r border-gray-700 px-2 py-1">Status</div>
             <div className="px-2 py-1">Approval Timestamp</div>
           </div>
-          {approvalRows.map(([role, name, signature, status, approvedAt], index) => {
+          {approvalRows.map(([role, name, signature, status, approvedAt, evidenceRequestedAt], index) => {
             const approved = String(status || '').toLowerCase() === 'approved';
             const notRecorded = String(requisition.status || '').toLowerCase() === 'converted'
+              && !evidenceRequestedAt
               && ['pending', 'in_review', 'not_recorded', ''].includes(String(status || '').toLowerCase());
             return (
               <div key={`${role}-${index}`} className="grid min-h-[38px] grid-cols-[0.5fr_1.35fr_1fr_0.85fr_1.3fr] border-b border-gray-700 last:border-b-0">
