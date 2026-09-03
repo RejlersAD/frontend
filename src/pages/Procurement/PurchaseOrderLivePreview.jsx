@@ -386,9 +386,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
   const attachments = files.map((entry, index) => {
     const saved = entry.existingAttachment || entry;
     return {
-      title: entry.title || saved.title || `Attachment ${index + 1}`,
       description: entry.description || saved.description || saved.filename || saved.name || entry.file?.name || `Attachment ${index + 1}`,
-      filename: saved.filename || saved.name || entry.file?.name || '',
     };
   });
 
@@ -446,7 +444,6 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
         <div className="flex h-full min-h-[560px] flex-col items-center justify-center text-center">
           <h2 className="text-[22px] font-black uppercase tracking-wide text-[#3275b6]">ATTACHMENT - {index + 1}</h2>
           <p className="mt-8 max-w-[420px] whitespace-pre-wrap text-[12px] leading-5 text-slate-700">{text(attachment.description)}</p>
-          {attachment.filename && <p className="mt-5 text-[8px] text-slate-400">{attachment.filename}</p>}
         </div>
       </Page>)}
     </div>
