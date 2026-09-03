@@ -383,6 +383,12 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
   const termsChunks = [];
   const summaryChunks = chunkArray(items, 9);
   const middlePageCount = narrativePages.length;
+  const attachments = files.map((entry, index) => {
+    const saved = entry.existingAttachment || entry;
+    return {
+      description: entry.description || saved.description || saved.filename || saved.name || entry.file?.name || `Attachment ${index + 1}`,
+    };
+  });
 
   return <div className={documentOnly ? 'po-template-document' : 'h-full overflow-y-auto bg-slate-200 p-4'}>
     {!documentOnly && <div className="sticky top-0 z-10 mb-3 flex items-center justify-between rounded-lg bg-slate-200/95 py-1 backdrop-blur"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#3275b6]">Live PO preview</p><p className="text-xs text-slate-500">Dynamic document · header and footer on every page</p></div><span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-700"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Live</span></div>}
@@ -430,9 +436,16 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
         return <Page key={`summary-${pageIndex}`} data={formData} page={2 + middlePageCount + pageIndex} finalApproval={finalApproval}>
           <SectionTitle>Summary of Prices {summaryChunks.length > 1 ? `(${pageIndex + 1}/${summaryChunks.length})` : ''}</SectionTitle>
           {itemColumns.length > 0 && <table className="mt-4 w-full border-collapse"><thead><tr className="border-y-2 border-slate-600">{itemColumns.map((column) => <th key={column.key} className={`p-1 ${column.numeric ? 'text-right' : 'text-left'}`}>{headers[column.key]}</th>)}</tr></thead><tbody>{pageItems.length ? pageItems.map((item, index) => <tr key={`summary-${offset + index}`} className="align-top">{itemColumns.map((column) => <td key={column.key} className={`px-2 py-3 ${column.numeric ? 'text-right' : 'text-left'} ${column.key === 'description' || column.key === 'total_price' ? 'font-bold' : ''}`}>{column.render(item, offset + index)}</td>)}</tr>) : <tr><td colSpan={itemColumns.length} className="py-16 text-center italic text-slate-400">Price summary will appear when items are added.</td></tr>}</tbody></table>}
-          {last && <><div className="mt-8 ml-auto w-[230px] border-2 border-slate-600 p-2 text-[10px]"><div className="flex justify-between"><b>Total Price:</b><b>{money(subtotal, formData.currency)}</b></div>{lineDiscount > 0 && <div className="flex justify-between"><b>Discount:</b><span>{money(lineDiscount, formData.currency)}</span></div>}<div className="flex justify-between"><b>VAT ({Number(formData.vat_percentage || 0)}%):</b><b>{money(tax, formData.currency)}</b></div><div className="flex justify-between"><b>Total Sum:</b><b>{money(total, formData.currency)}</b></div>{String(formData.currency || '').toUpperCase() === 'USD' && <div className="mt-1 flex justify-between border-t border-slate-400 pt-1"><b>Grand Total USD in AED:</b><b>{money(total * USD_TO_AED_RATE, 'AED')}</b></div>}</div><div className="mt-8"><FinalSignatory name={finalApprovalDisplay.approver || formData.approved_by_name} designation={finalDesignation} signedDate={finalApprovalDisplay.approved_at || finalApprovalDisplay.date || formData.approved_at || formData.approved_date} /></div><SectionTitle>Attachments</SectionTitle>{files.length ? <ul className="space-y-1">{files.map((entry, index) => <li key={`${entry.title}-${index}`}><b>{text(entry.title, `Attachment ${index + 1}`)}:</b> {text(entry.description || entry.filename || entry.file?.name || entry.existingAttachment?.filename)}</li>)}</ul> : <p>{text(formData.notes, 'Supporting documents will be listed here when attached.')}</p>}</>}
+          {last && <div className="mt-8 ml-auto w-[230px] border-2 border-slate-600 p-2 text-[10px]"><div className="flex justify-between"><b>Total Price:</b><b>{money(subtotal, formData.currency)}</b></div>{lineDiscount > 0 && <div className="flex justify-between"><b>Discount:</b><span>{money(lineDiscount, formData.currency)}</span></div>}<div className="flex justify-between"><b>VAT ({Number(formData.vat_percentage || 0)}%):</b><b>{money(tax, formData.currency)}</b></div><div className="flex justify-between"><b>Total Sum:</b><b>{money(total, formData.currency)}</b></div>{String(formData.currency || '').toUpperCase() === 'USD' && <div className="mt-1 flex justify-between border-t border-slate-400 pt-1"><b>Grand Total USD in AED:</b><b>{money(total * USD_TO_AED_RATE, 'AED')}</b></div>}</div>}
         </Page>;
       })}
+
+      {attachments.map((attachment, index) => <Page key={`attachment-${index}`} data={formData} page={2 + middlePageCount + summaryChunks.length + index} finalApproval={finalApproval} showPageStamp={false}>
+        <div className="flex h-full min-h-[560px] flex-col items-center justify-center text-center">
+          <h2 className="text-[22px] font-black uppercase tracking-wide text-[#3275b6]">ATTACHMENT - {index + 1}</h2>
+          <p className="mt-8 max-w-[420px] whitespace-pre-wrap text-[12px] leading-5 text-slate-700">{text(attachment.description)}</p>
+        </div>
+      </Page>)}
     </div>
   </div>;
 };
