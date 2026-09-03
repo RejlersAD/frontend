@@ -56,6 +56,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const isDraft = normalizedRequisitionStatus === 'draft';
   const isFullyApproved = normalizedRequisitionStatus === 'approved';
   const isRejected = normalizedRequisitionStatus === 'rejected';
+  const isConverted = normalizedRequisitionStatus === 'converted';
   const isApprovalInProgress = ['submitted', 'in_review'].includes(
     normalizedRequisitionStatus
   );
@@ -64,7 +65,21 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     const normalized = (rawStatus || '').toString().trim().toLowerCase();
     if (['approved', 'complete', 'completed'].includes(normalized)) return 'approved';
     if (['not_approved', 'rejected', 'declined'].includes(normalized)) return 'not_approved';
+    if (['not_recorded', 'not recorded', 'unknown'].includes(normalized)) return 'not_recorded';
     return 'pending';
+  };
+
+  const approvalDisplayStatus = (rawStatus) => {
+    const normalized = normalizeApprovalStatus(rawStatus);
+    return isConverted && normalized === 'pending' ? 'not_recorded' : normalized;
+  };
+
+  const approvalStatusLabel = (rawStatus) => {
+    const normalized = approvalDisplayStatus(rawStatus);
+    if (normalized === 'approved') return 'Approved';
+    if (normalized === 'not_approved') return 'Rejected';
+    if (normalized === 'not_recorded') return 'Not recorded';
+    return 'Pending';
   };
 
   // Dynamic Workflow Hierarchy Array
@@ -329,9 +344,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   const getStatusColor = (status) => {
-    const normalized = normalizeApprovalStatus(status);
+    const normalized = approvalDisplayStatus(status);
     if (normalized === 'approved') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
     if (normalized === 'not_approved') return 'bg-red-100 text-red-800 border-red-300';
+    if (normalized === 'not_recorded') return 'bg-slate-100 text-slate-700 border-slate-300';
     return 'bg-amber-100 text-amber-800 border-amber-300';
   };
 
@@ -363,8 +379,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                 <div key={idx} className="flex items-center space-x-2">
                   <span className="text-indigo-100 text-xs font-medium">{stage.role || stage.stage}:</span>
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(stage.status)}`}>
-                    {normalizeApprovalStatus(stage.status) === 'approved' ? 'Approved' : 
-                     normalizeApprovalStatus(stage.status) === 'not_approved' ? 'Rejected' : 'Pending'}
+                    {approvalStatusLabel(stage.status)}
                   </span>
                 </div>
               ))}
@@ -506,9 +521,13 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                   </h3>
 
                   <div className="space-y-4">
+                    {isConverted && approvalHierarchy.some(stage => approvalDisplayStatus(stage.status) === 'not_recorded') && (
+                      <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs text-slate-700">
+                        This PR is linked to a converted PO, but internal approval evidence was not recorded for the stages marked below. These stages are not awaiting action.
+                      </div>
+                    )}
                     {approvalHierarchy.length > 0 ? (
                       approvalHierarchy.map((stage, index) => {
-                        const statusNormalized = normalizeApprovalStatus(stage.status);
                         return (
                           <div key={index} className="pb-3 border-b border-gray-100 last:border-0 last:pb-0">
                             <div className="flex items-center justify-between mb-1">
@@ -516,8 +535,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                                 {stage.role || stage.stage || `Stage ${index + 1}`}
                               </span>
                               <span className={`px-2.5 py-0.5 rounded text-xs font-semibold border ${getStatusColor(stage.status)}`}>
-                                {statusNormalized === 'approved' ? 'Approved' : 
-                                 statusNormalized === 'not_approved' ? 'Rejected' : 'Pending'}
+                                {approvalStatusLabel(stage.status)}
                               </span>
                             </div>
                             {stage.user_name && (

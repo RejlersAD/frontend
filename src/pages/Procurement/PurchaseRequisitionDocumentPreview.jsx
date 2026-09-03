@@ -205,14 +205,16 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
           </div>
           {approvalRows.map(([role, name, signature, status, approvedAt], index) => {
             const approved = String(status || '').toLowerCase() === 'approved';
+            const notRecorded = String(requisition.status || '').toLowerCase() === 'converted'
+              && ['pending', 'in_review', 'not_recorded', ''].includes(String(status || '').toLowerCase());
             return (
               <div key={`${role}-${index}`} className="grid min-h-[38px] grid-cols-[0.5fr_1.35fr_1fr_0.85fr_1.3fr] border-b border-gray-700 last:border-b-0">
                 <div className="px-2 py-2 font-semibold">{role}</div>
                 <div className="border-x border-gray-700 px-2 py-2">{valueOrDash(name)}</div>
                 <div className="flex items-center justify-center border-r border-gray-700 px-2 py-2">
-                  {signature || approved ? <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckBadgeIcon className="h-4 w-4" /> Signed</span> : <span className="text-gray-400">Pending</span>}
+                  {signature || approved ? <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckBadgeIcon className="h-4 w-4" /> Signed</span> : <span className="text-gray-400">{notRecorded ? 'Not recorded' : 'Pending'}</span>}
                 </div>
-                <div className="border-r border-gray-700 px-2 py-2">{approved ? 'Approved' : valueOrDash(status)}</div>
+                <div className="border-r border-gray-700 px-2 py-2">{approved ? 'Approved' : notRecorded ? 'Not recorded' : valueOrDash(status)}</div>
                 <div className="px-2 py-2 text-[10px]">{approved ? timestampForDocument(approvedAt) : '—'}</div>
               </div>
             );
