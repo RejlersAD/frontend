@@ -41,6 +41,7 @@ import PurchaseOrderExcelImport from './PurchaseOrderExcelImport';
 import PurchaseOrderPdfImport from './PurchaseOrderPdfImport';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
+import { employeeDisplayName } from '../../utils/employeeDisplayName';
 
 const PR_REGISTER_COLUMNS = [
   ['SN', 8],
@@ -143,6 +144,22 @@ const getPRRegisterValue = (requisition, column, rowIndex = 0) => {
     Remarks: requisition?.notes || requisition?.price_remarks,
   };
   return fallbacks[column] ?? '';
+};
+
+const approverUsersFromResponse = (response) => {
+  const payload = response?.data?.data || response?.data || {};
+  return Array.isArray(payload.users) ? payload.users : [];
+};
+
+const resolveRequesterName = (requisition, employeesById) => {
+  const suppliedName = requisition?.requester_name
+    || requisition?.issued_by_name
+    || requisition?.requested_by_name;
+  if (String(suppliedName || '').trim()) return suppliedName;
+
+  const requesterId = requisition?.requested_by || requisition?.issued_by;
+  const employee = employeesById.get(String(requesterId ?? ''));
+  return employee ? employeeDisplayName(employee, '') : '';
 };
 
 const OrderManagement = () => {
@@ -314,7 +331,13 @@ const OrderManagement = () => {
       setLoading(true);
       setError(null);
 
-      const response = await apiClient.get('/procurement/requisitions/');
+      const [response, employeeResponse] = await Promise.all([
+        apiClient.get('/procurement/requisitions/', { params: { _fresh: Date.now() } }),
+        apiClient.get('/procurement/requisitions/get_approvers/', {
+          params: { role: 'any_active', _fresh: Date.now() },
+          silentTimeout: true,
+        }).catch(() => ({ data: { users: [] } })),
+      ]);
       const data = response.data;
       
       // Soft-coded data normalization - ensure array
@@ -327,7 +350,13 @@ const OrderManagement = () => {
         normalizedData = [data];
       }
       
-      setRequisitions(normalizedData);
+      const employeesById = new Map(
+        approverUsersFromResponse(employeeResponse).map(employee => [String(employee.id), employee]),
+      );
+      setRequisitions(normalizedData.map(requisition => ({
+        ...requisition,
+        requester_name: resolveRequesterName(requisition, employeesById),
+      })));
     } catch (error) {
       console.error('Error fetching requisitions:', error);
       setError({ 
