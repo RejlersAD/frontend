@@ -355,6 +355,7 @@ export const HR_DETAIL_TABS = [
   { id: 'performance',   label: 'Performance',         icon: 'ChartBarIcon' },
   { id: 'compensation',  label: 'Compensation',        icon: 'BanknotesIcon' },
   { id: 'timesheet',     label: 'Time Sheet',          icon: 'ClockIcon' },
+  { id: 'workforce',     label: 'Shifts & Overtime',   icon: 'CalendarDaysIcon' },
   { id: 'competency',    label: 'Competency',          icon: 'AcademicCapIcon' },
   { id: 'access',        label: 'Roles & Access',      icon: 'KeyIcon' },
   { id: 'security',      label: 'Security & Activity', icon: 'ShieldCheckIcon' },

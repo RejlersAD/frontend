@@ -34,6 +34,9 @@ import payrollEngineService from '../../services/payrollEngine.service'
 import timesheetSvc   from '../../services/timesheet.service'
 import siteVisitService from '../../services/siteVisit.service'
 import notificationService from '../../services/notification.service'
+import EmployeeServiceRequestsPanel from '../../components/HR/EmployeeServiceRequestsPanel'
+import EmployeeTalentPerformancePanel from '../../components/HR/EmployeeTalentPerformancePanel'
+import EmployeeWorkforceSchedulePanel from '../../components/HR/EmployeeWorkforceSchedulePanel'
 import { API_BASE_URL } from '../../config/api.config'
 import { fmtCurrency } from '../../config/hrPayroll.config'
 import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR, DAILY_TRACKER_PRIORITIES, DAILY_TRACKER_STATUSES, DAILY_TRACKER_PROJECT_CATEGORIES, DAILY_TRACKER_COPY, DAILY_TRACKER_APPROVAL_STATUSES, DAILY_TRACKER_WIZARD_STEPS, DAILY_TRACKER_SUBMIT_TO_OPTIONS, ESS_ATT_MONTHS_BACK, ESS_ATT_STANDARD_DAY_HRS, ESS_ATT_MAX_DAILY_HRS, ESS_ATT_STANDARD_WORKING_DAYS, ESS_ATT_RATE_GOOD, ESS_ATT_RATE_WARN, ESS_ATT_PARTIAL_DAY_HRS, ESS_ATT_OVERTIME_HRS, ESS_ATT_FEATURES, ESS_ATT_DAY_STATUS, ESS_ATT_DOW, ESS_ATT_COPY, ESS_TIMESHEET_TABS, ESS_TIMESHEET_DEFAULT_TAB, ESS_TIMESHEET_POLL_MS, ESS_TIMESHEET_COPY, ESS_TIMESHEET_STATUS } from '../../config/hrLeave.config'
@@ -48,6 +51,9 @@ const ESS_TABS = [
   { id: 'attendance',  label: 'Attendance',      icon: 'ClipboardDocumentCheckIcon' },
   { id: 'timesheet',   label: 'Timesheet',       icon: 'ClockIcon' },
   { id: 'payroll',     label: 'Payroll',         icon: 'BanknotesIcon' },
+  { id: 'requests',    label: 'My Requests',     icon: 'InboxStackIcon' },
+  { id: 'performance', label: 'Performance',     icon: 'ChartBarSquareIcon' },
+  { id: 'schedule',    label: 'Schedule',        icon: 'CalendarIcon' },
   { id: 'team',          label: 'Team',            icon: 'UserGroupIcon' },
   { id: 'daily_tracker', label: 'Daily Tracker',   icon: 'ClipboardDocumentListIcon' },
   { id: 'site_visits', label: 'Site Visits',    icon: 'MapPinIcon' },
@@ -3911,6 +3917,15 @@ export default function EmployeeSelfService() {
             onToggleSalary={() => setSalaryVisible((visible) => !visible)}
           />
         )
+
+      case 'requests':
+        return <EmployeeServiceRequestsPanel employeeIdentifier={profile?.employee_id || currentUser?.email || authProfile?.email} />
+
+      case 'performance':
+        return <EmployeeTalentPerformancePanel employee={{ id: profile?.employee_id || currentUser?.email || authProfile?.email }} />
+
+      case 'schedule':
+        return <EmployeeWorkforceSchedulePanel employee={{ id: profile?.employee_id || currentUser?.email || authProfile?.email }} />
 
       case 'team':
         return <TeamCalendar />
