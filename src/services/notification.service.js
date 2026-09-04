@@ -97,12 +97,18 @@ export const notificationService = {
    * Get notification statistics
    * @returns {Promise}
    */
-  getStats: async () => {
+  getStats: async (options = {}) => {
     try {
-      const response = await apiClient.get(`${NOTIFICATION_BASE_URL}/stats/`)
+      const response = await apiClient.get(`${NOTIFICATION_BASE_URL}/stats/`, {
+        timeout: NOTIFICATION_POLL_TIMEOUT_MS,
+        silentTimeout: true,
+        ...options,
+      })
       return response.data
     } catch (error) {
-      console.error('[Notification Service] Error fetching stats:', error)
+      if (error.code !== 'ERR_CANCELED') {
+        console.warn('[Notification Service] Notification statistics unavailable:', error.message)
+      }
       throw error
     }
   },

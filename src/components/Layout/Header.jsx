@@ -161,7 +161,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
           <GlobalSearch user={user} rbacData={rbacData} />
         </div>
 
-        <div className="flex min-w-0 items-center justify-end gap-1.5">
+        <div className="flex min-w-0 flex-none items-center justify-end gap-1">
           {isAuthenticated && <NotificationBell />}
           {isAuthenticated && <PWAHeaderInstall />}
 
@@ -197,11 +197,11 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
                   )}
                   <span aria-hidden="true">{initials}</span>
                 </span>
-                <span className="hidden min-w-0 max-w-36 sm:block">
+                <span className="hidden min-w-0 max-w-36 xl:block">
                   <span className="block truncate text-sm font-semibold leading-4 text-slate-800 dark:text-white">{firstName}</span>
                   <span className="block truncate text-[10px] leading-4 text-slate-500 dark:text-slate-400">{roleLabel}</span>
                 </span>
-                <ChevronDownIcon className={`h-4 w-4 text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+                <ChevronDownIcon className={`hidden h-4 w-4 text-slate-400 transition-transform sm:block ${userMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {userMenuOpen && (

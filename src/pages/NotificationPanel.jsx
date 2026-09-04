@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -38,6 +38,31 @@ const FILTERS = [
 ]
 
 const PAGE_SIZE = 10
+
+const requestErrorMessage = (error) => {
+  const status = error?.response?.status || error?.originalError?.response?.status
+  if (error?.isTimeout || error?.code === 'ECONNABORTED' || /timeout/i.test(error?.message || '')) {
+    return 'Notification refresh timed out. The existing inbox remains available; select Retry when the server is less busy.'
+  }
+  if (status === 401) return 'Your session has expired. Sign in again to refresh notifications.'
+  if (status === 403) return 'You do not have permission to refresh this notification inbox.'
+  if (status >= 500) return 'The notification service returned a server error. The existing inbox remains available.'
+  if (error?.isNetworkError || !error?.response) {
+    return 'The notification service could not be reached. Check the connection and select Retry.'
+  }
+  return error?.response?.data?.detail || 'Notifications could not be refreshed. The existing inbox remains available.'
+}
+
+const statsFromNotifications = (items) => ({
+  total_count: items.length,
+  unread_count: items.filter((item) => !item.is_read).length,
+  read_count: items.filter((item) => item.is_read).length,
+  by_priority: items.reduce((counts, item) => {
+    const priority = String(item.priority || 'NORMAL').toUpperCase()
+    counts[priority] = (counts[priority] || 0) + 1
+    return counts
+  }, {}),
+})
 
 const PRIORITY_STYLES = {
   CRITICAL: {
@@ -126,25 +151,57 @@ const NotificationPanel = () => {
   const [bulkLoading, setBulkLoading] = useState(false)
   const [recordPreview, setRecordPreview] = useState({ loading: false, data: null, error: '' })
   const [previewDecision, setPreviewDecision] = useState({ loading: false, mode: null, reason: '', message: '', error: '' })
+  const refreshAbortRef = useRef(null)
+  const hasLoadedInboxRef = useRef(false)
 
   const previewType = searchParams.get('preview')
   const previewId = searchParams.get('id')
 
   const fetchNotifications = useCallback(async ({ quiet = false } = {}) => {
+    if (refreshAbortRef.current) refreshAbortRef.current.abort()
+    const controller = new AbortController()
+    refreshAbortRef.current = controller
     if (!quiet) setLoading(true)
-    setError('')
     try {
-      const [listData, statsData] = await Promise.all([
-        notificationService.getNotifications({ ordering: '-created_at', page_size: 100 }),
-        notificationService.getStats(),
+      const [listResult, statsResult] = await Promise.allSettled([
+        notificationService.getNotifications(
+          { ordering: '-created_at', page_size: 100 },
+          { signal: controller.signal },
+        ),
+        notificationService.getStats({ signal: controller.signal }),
       ])
-      setNotifications(Array.isArray(listData?.results) ? listData.results : Array.isArray(listData) ? listData : [])
-      setStats(statsData)
-    } catch (requestError) {
-      console.error('[NotificationPanel] Error fetching notifications:', requestError)
-      setError('Notifications could not be refreshed. Your last loaded inbox is still shown.')
+
+      if (controller.signal.aborted) return
+
+      if (listResult.status === 'rejected') {
+        console.error('[NotificationPanel] Inbox refresh failed:', listResult.reason)
+        if (!quiet || !hasLoadedInboxRef.current) {
+          setError(requestErrorMessage(listResult.reason))
+        }
+        return
+      }
+
+      const listData = listResult.value
+      const nextNotifications = Array.isArray(listData?.results)
+        ? listData.results
+        : Array.isArray(listData) ? listData : []
+      setNotifications(nextNotifications)
+      hasLoadedInboxRef.current = true
+      setError('')
+
+      if (statsResult.status === 'fulfilled') {
+        setStats(statsResult.value)
+      } else {
+        // Statistics are supplementary. Keep the freshly loaded inbox usable
+        // and calculate the visible counters locally when that endpoint fails.
+        console.warn('[NotificationPanel] Statistics refresh failed:', statsResult.reason)
+        setStats(statsFromNotifications(nextNotifications))
+      }
     } finally {
-      if (!quiet) setLoading(false)
+      if (refreshAbortRef.current === controller) {
+        refreshAbortRef.current = null
+        setLoading(false)
+      }
     }
   }, [])
 
@@ -152,7 +209,10 @@ const NotificationPanel = () => {
     if (!isAuthenticated) return undefined
     fetchNotifications()
     const interval = setInterval(() => fetchNotifications({ quiet: true }), 60000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      refreshAbortRef.current?.abort()
+    }
   }, [fetchNotifications, isAuthenticated])
 
   useEffect(() => {
@@ -479,6 +539,14 @@ const NotificationPanel = () => {
             <div className="mx-5 mt-5 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
               <ExclamationTriangleIcon className="h-5 w-5 flex-none" />
               <span className="flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={() => fetchNotifications()}
+                disabled={loading}
+                className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+              >
+                {loading ? 'Retrying…' : 'Retry'}
+              </button>
               <button type="button" onClick={() => setError('')}><XMarkIcon className="h-4 w-4" /></button>
             </div>
           )}
