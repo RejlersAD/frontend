@@ -57,7 +57,7 @@ export const notificationService = {
       if (error.response?.status === 401) {
         console.error('[Notification Service] ⚠️ Unauthorized - User may need to login')
       }
-      return 0
+      throw error
     }
   },
 

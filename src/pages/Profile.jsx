@@ -321,20 +321,21 @@ const buildProjectId = (projectName, projects = [], startDate = "") => {
 
 // Completeness weights — must sum to 100
 const COMPLETENESS_FIELDS = [
-  { key: "first_name", src: "basic", w: 6 },
-  { key: "last_name", src: "basic", w: 6 },
-  { key: "phone", src: "basic", w: 4 },
-  { key: "location", src: "basic", w: 4 },
-  { key: "department", src: "basic", w: 4 },
-  { key: "job_title", src: "basic", w: 6 },
-  { key: "bio", src: "basic", w: 6 },
+  { key: "first_name", src: "basic", w: 5 },
+  { key: "last_name", src: "basic", w: 5 },
+  { key: "profile_photo", src: "basic", w: 10 },
+  { key: "phone", src: "basic", w: 5 },
+  { key: "location", src: "basic", w: 5 },
+  { key: "department", src: "basic", w: 5 },
+  { key: "job_title", src: "basic", w: 5 },
+  { key: "bio", src: "basic", w: 5 },
   { key: "expertise_level", src: "eng", w: 10 },
-  { key: "years_experience", src: "eng", w: 6 },
-  { key: "engineering_disciplines", src: "arr", w: 12 },
-  { key: "technical_skills", src: "arr", w: 12 },
-  { key: "certifications", src: "arr", w: 12 },
-  { key: "availability_status", src: "eng", w: 6 },
-  { key: "languages", src: "arr", w: 6 },
+  { key: "years_experience", src: "eng", w: 5 },
+  { key: "engineering_disciplines", src: "arr", w: 10 },
+  { key: "technical_skills", src: "arr", w: 10 },
+  { key: "certifications", src: "arr", w: 10 },
+  { key: "availability_status", src: "eng", w: 5 },
+  { key: "languages", src: "arr", w: 5 },
 ];
 
 const DEFAULT_EP = {
@@ -456,15 +457,19 @@ const Profile = ({ embedded = false }) => {
   const completeness = useMemo(() => {
     let total = 0;
     COMPLETENESS_FIELDS.forEach(({ key, src, w }) => {
-      const val = src === "basic" ? formData[key] : ep[key];
+      const val = key === "profile_photo"
+        ? photoPreview
+        : src === "basic" ? formData[key] : ep[key];
       if (src === "arr") {
         if (Array.isArray(val) && val.length > 0) total += w;
+      } else if (key === "years_experience") {
+        if (val !== "" && val !== null && val !== undefined) total += w;
       } else {
         if (val && String(val).trim()) total += w;
       }
     });
     return Math.min(100, total);
-  }, [formData, ep]);
+  }, [formData, ep, photoPreview]);
 
   useEffect(() => {
     fetchProfile();

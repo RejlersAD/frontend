@@ -62,11 +62,9 @@ const ESS_TABS = [
   { id: 'requests',    label: 'My Requests',     icon: 'InboxStackIcon' },
   { id: 'performance', label: 'Performance',     icon: 'ChartBarSquareIcon' },
   { id: 'schedule',    label: 'Schedule',        icon: 'CalendarIcon' },
-  { id: 'team',          label: 'Team',            icon: 'UserGroupIcon' },
   { id: 'daily_tracker', label: 'Daily Tracker',   icon: 'ClipboardDocumentListIcon' },
   { id: 'site_visits', label: 'Site Visits',    icon: 'MapPinIcon' },
   { id: 'twin',        label: 'Digital Twin',    icon: 'SparklesIcon' },
-  { id: 'notifications', label: 'Notifications', icon: 'BellIcon' },
   { id: 'assistant',     label: 'HR Assistant',   icon: 'ChatBubbleLeftRightIcon' },
 ]
 
@@ -368,6 +366,8 @@ const EmployeeProfileHeader = ({
   uploadingPhoto,
   photoUploadState,
   onPhotoUpload,
+  todayData,
+  liveAttendance,
 }) => {
   // UserProfileSerializer declares first_name/last_name/username write_only —
   // they're never present on the GET response. The real values live on the
@@ -391,6 +391,45 @@ const EmployeeProfileHeader = ({
   const jobTitle = profile?.engineer_profile?.designation || profile?.designation || profile?.job_title
   const email = profile?.email || profile?.user?.email
   const location = profile?.office_location || profile?.location
+  const presence = useMemo(() => {
+    const liveData = liveAttendance?.data || liveAttendance
+    const userActivity = liveAttendance?.user_activity
+    const checkIn = todayData?.check_in_time || todayData?.first_in
+    const checkOut = todayData?.check_out_time || todayData?.last_out
+    const attendanceStatus = String(todayData?.status || '').toLowerCase()
+    const lastLoginValue = userActivity?.last_login || profile?.last_login_at || profile?.last_login || profile?.user?.last_login
+    const lastLogin = lastLoginValue ? new Date(lastLoginValue) : null
+    const hasValidLogin = lastLogin && !Number.isNaN(lastLogin.getTime())
+    const loginIsRecent = hasValidLogin && (Date.now() - lastLogin.getTime()) <= (30 * 60 * 1000)
+    const loginIsToday = hasValidLogin && lastLogin.toDateString() === new Date().toDateString()
+    const punchInCount = Number(liveData?.punch_in_count ?? todayData?.punch_in_count)
+    const punchOutCount = Number(liveData?.punch_out_count ?? todayData?.punch_out_count)
+    const hasAuthoritativeLiveState = typeof liveData?.is_in === 'boolean'
+    const isPunchedIn = hasAuthoritativeLiveState
+      ? liveData.is_in
+      : todayData?.is_in === true
+        || (Number.isFinite(punchInCount) && Number.isFinite(punchOutCount) && punchInCount > punchOutCount)
+        || Boolean(checkIn && !checkOut)
+    const loginIsActive = userActivity?.is_active === true || loginIsRecent
+    const hasRecordedActivity = Boolean(
+      checkIn
+      || checkOut
+      || liveData?.last_punch
+      || loginIsToday
+      || (attendanceStatus && !['missing', 'absent'].includes(attendanceStatus))
+    )
+
+    if (isPunchedIn || loginIsActive) {
+      return {
+        label: isPunchedIn ? 'In office' : 'Active online',
+        className: 'bg-emerald-500',
+      }
+    }
+    if (hasRecordedActivity) {
+      return { label: 'Away', className: 'bg-slate-400' }
+    }
+    return { label: 'No activity today', className: 'bg-rose-500' }
+  }, [liveAttendance, profile, todayData])
 
   const quickStats = [
     {
@@ -421,30 +460,23 @@ const EmployeeProfileHeader = ({
   ]
 
   return (
-    <section className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_16px_rgba(0,0,0,0.08)]">
+    <section className="overflow-hidden rounded-b-2xl bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]">
       {/* Facebook-style cover: visual context first, controls stay secondary. */}
       <div className="relative h-[280px] overflow-hidden bg-[#1877F2]">
         <div className="absolute inset-0 bg-[linear-gradient(125deg,#1877F2_0%,#1769d2_50%,#0d47a1_100%)]" />
         <div className="absolute -right-20 -top-28 h-80 w-80 rounded-full border-[52px] border-white/10" />
         <div className="absolute bottom-[-190px] left-[12%] h-96 w-96 rounded-full border-[70px] border-white/[0.07]" />
         <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:28px_28px]" />
-        <div className="relative flex h-full items-start justify-between p-5 sm:p-7">
+        <div className="relative flex h-full items-start p-5 sm:p-7">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/10 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
             <Icon name="UserCircleIcon" className="h-4 w-4" />
             Employee Profile
-          </div>
-          <div className="hidden items-center gap-2 rounded-xl border border-white/20 bg-black/10 px-3.5 py-2 text-white backdrop-blur-sm sm:flex">
-            <Icon name="SparklesIcon" className="h-5 w-5" />
-            <div>
-              <div className="text-xs font-bold">My Workspace</div>
-              <div className="text-[11px] text-blue-100">Personal and secure</div>
-            </div>
           </div>
         </div>
       </div>
 
       <div className="px-5 sm:px-8">
-        <div className="relative flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end">
+        <div className="relative flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start">
           <div className="relative -mt-[76px] w-fit shrink-0">
             {photoUrl && !photoFailed ? (
               <img
@@ -459,8 +491,9 @@ const EmployeeProfileHeader = ({
               </div>
             )}
             <span
-              className={`absolute bottom-2 right-2 h-7 w-7 rounded-full border-4 border-white ${profile?.is_active !== false ? 'bg-emerald-500' : 'bg-slate-400'}`}
-              title={profile?.is_active !== false ? 'Active employee' : 'Inactive employee'}
+              className={`absolute bottom-2 right-2 h-7 w-7 rounded-full border-4 border-white ${presence.className}`}
+              title={presence.label}
+              aria-label={`Presence: ${presence.label}`}
             />
             <input
               ref={photoInputRef}
@@ -478,8 +511,8 @@ const EmployeeProfileHeader = ({
               onClick={() => photoInputRef.current?.click()}
               disabled={uploadingPhoto || loading}
               className="absolute bottom-1 left-1 grid h-10 w-10 place-items-center rounded-full border-2 border-white bg-[#1877F2] text-white shadow-md transition hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
-              aria-label={uploadingPhoto ? 'Uploading profile picture' : 'Upload profile picture'}
-              title="Upload JPEG, PNG or WebP (maximum 5 MB)"
+              aria-label={uploadingPhoto ? 'Uploading profile picture' : photoUrl ? 'Change profile picture' : 'Upload profile picture'}
+              title={photoUrl ? 'Change profile picture' : 'Upload a profile picture'}
             >
               <Icon name={uploadingPhoto ? 'ArrowPathIcon' : 'CameraIcon'} className={`h-5 w-5 ${uploadingPhoto ? 'animate-spin' : ''}`} />
             </button>
@@ -515,9 +548,8 @@ const EmployeeProfileHeader = ({
             )}
           </div>
 
-          <div className="flex flex-wrap gap-2 pb-1 sm:justify-end">
-            <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <div className="flex flex-wrap gap-2 pb-1 sm:self-center sm:justify-end">
+            <span className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold ${profile?.is_active !== false ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
               {profile?.is_active !== false ? 'Active Employee' : 'Inactive'}
             </span>
             {profile?.roles?.[0] && (
@@ -3527,7 +3559,10 @@ export default function EmployeeSelfService() {
   const { currentUser }    = useSelector((s) => s.rbac) || {}
   const authProfile = currentUser || authUser
 
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get('tab')
+    return ESS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
+  })
   const [salaryVisible, setSalaryVisible] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoUploadState, setPhotoUploadState] = useState(null)
@@ -3536,6 +3571,7 @@ export default function EmployeeSelfService() {
   const [profile,      setProfile]      = useState(null)
   const [monthlyTs,    setMonthlyTs]    = useState(null)
   const [todayTs,      setTodayTs]      = useState(null)
+  const [liveAttendance, setLiveAttendance] = useState(null)
   const [userHistory,  setUserHistory]  = useState(null)
   const [leaveRecord,  setLeaveRecord]  = useState(null)
   const [leaveTypes,   setLeaveTypes]   = useState([])
@@ -3637,6 +3673,28 @@ export default function EmployeeSelfService() {
       setUserHistory(history)
     }).finally(() => setLoadingTs(false))
   }, [profile])
+
+  // Live presence is authoritative for the latest IN/OUT punch and also
+  // carries the current authenticated RADAI activity heartbeat.
+  useEffect(() => {
+    let cancelled = false
+    const refreshPresence = () => {
+      timesheetSvc.fetchMyLiveAttendance()
+        .then((response) => {
+          if (!cancelled) setLiveAttendance(response)
+        })
+        .catch(() => {
+          // Retain the last known state during a temporary biometric outage.
+        })
+    }
+
+    refreshPresence()
+    const timer = window.setInterval(refreshPresence, 60 * 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
 
   // -- Load leave data ---------------------------------------------------------
   useEffect(() => {
@@ -4092,7 +4150,7 @@ export default function EmployeeSelfService() {
 
   return (
     <div className="min-h-full min-w-0 overflow-x-hidden bg-[#F0F2F5] font-['Inter','Segoe_UI',sans-serif]">
-      <div className="w-full min-w-0 max-w-none space-y-5 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <div className="w-full min-w-0 max-w-none space-y-4 px-3 sm:px-6 lg:px-8">
         {/* -- Profile Header -- */}
         <EmployeeProfileHeader
           profile={profile}
@@ -4108,6 +4166,8 @@ export default function EmployeeSelfService() {
           uploadingPhoto={uploadingPhoto}
           photoUploadState={photoUploadState}
           onPhotoUpload={handleProfilePhotoUpload}
+          todayData={todayTs}
+          liveAttendance={liveAttendance}
         />
 
         {/* -- Active Section -- */}
