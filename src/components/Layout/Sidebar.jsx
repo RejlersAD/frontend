@@ -383,7 +383,7 @@ const Sidebar = ({
           id: "myProfile",
           title: "2.5 My Profile",
           icon: SparklesIcon,
-          path: "/hr/leave", // Keep existing route for backward compatibility
+          path: "/hr/Employeprofile",
           description: "My leave, attendance, timesheet & payroll",
           moduleCode: "hr_self_service", // Accessible to all users via DEFAULT_ROLE_MODULES
           badge: "SELF",

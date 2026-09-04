@@ -68,6 +68,9 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [showUploadPanel, setShowUploadPanel] = useState(false)
   const [deletingSlipId, setDeletingSlipId] = useState(null)
+  const [compliance, setCompliance] = useState(null)
+  const [paymentBatch, setPaymentBatch] = useState(null)
+  const [accountingExport, setAccountingExport] = useState(null)
 
   const load = async () => {
     if (!runId) return
@@ -179,6 +182,39 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
       const blob = await payrollEngineService.downloadRunPayslipPack(run.id)
       downloadBlob(blob, `payroll_payslips_${run.cycle_code}.xlsx`)
     } catch (e) { setError(e?.response?.data?.error || e.message) }
+  }
+
+  const runCompliance = async () => {
+    setBusy(true); setError(null)
+    try { setCompliance(await payrollEngineService.runComplianceCheck(run.id)) }
+    catch (e) { setError(e?.response?.data?.error || e.message) }
+    finally { setBusy(false) }
+  }
+
+  const generatePayment = async (batchType) => {
+    setBusy(true); setError(null)
+    try { setPaymentBatch(await payrollEngineService.generatePaymentBatch(run.id, batchType)) }
+    catch (e) { setError(e?.response?.data?.error || e.message) }
+    finally { setBusy(false) }
+  }
+
+  const downloadPayment = async () => {
+    try {
+      const type = paymentBatch?.batch_type || 'wps'
+      downloadBlob(await payrollEngineService.downloadPaymentFile(run.id, type), `${type}_${run.cycle_code}.csv`)
+    } catch (e) { setError(e?.response?.data?.error || e.message) }
+  }
+
+  const generateJournal = async () => {
+    setBusy(true); setError(null)
+    try { setAccountingExport(await payrollEngineService.generateAccountingExport(run.id, 'generic')) }
+    catch (e) { setError(e?.response?.data?.error || e.message) }
+    finally { setBusy(false) }
+  }
+
+  const downloadJournal = async () => {
+    try { downloadBlob(await payrollEngineService.downloadAccountingFile(run.id, accountingExport?.target_system || 'generic'), `payroll_journal_${run.cycle_code}.csv`) }
+    catch (e) { setError(e?.response?.data?.error || e.message) }
   }
 
   const handleDeleteSlip = async (slip) => {
@@ -331,6 +367,22 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
             {error}
           </div>
         )}
+      </div>
+
+      {/* Compliance, salary payment, and accounting integration */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <IntegrationCard icon="ShieldCheckIcon" title="Payroll Compliance" subtitle="UAE identity, banking, net-pay and reconciliation controls">
+          {compliance && <ResultBadge tone={compliance.status === 'failed' ? 'red' : compliance.status === 'warning' ? 'amber' : 'green'}>{compliance.status} · {compliance.error_count} errors · {compliance.warning_count} warnings</ResultBadge>}
+          <button disabled={busy} onClick={runCompliance} className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Run compliance check</button>
+        </IntegrationCard>
+        <IntegrationCard icon="BuildingLibraryIcon" title="WPS & Banking" subtitle="Validated UAE WPS or bank-transfer payment files">
+          {paymentBatch && <ResultBadge tone={paymentBatch.validation_errors?.length ? 'red' : 'green'}>{paymentBatch.batch_type?.toUpperCase()} · {paymentBatch.record_count} records · {paymentBatch.status}</ResultBadge>}
+          <div className="mt-3 grid grid-cols-3 gap-2"><button disabled={busy} onClick={() => generatePayment('wps')} className="rounded-md bg-violet-600 px-2 py-2 text-xs font-semibold text-white">WPS</button><button disabled={busy} onClick={() => generatePayment('bank')} className="rounded-md bg-sky-600 px-2 py-2 text-xs font-semibold text-white">Bank</button><button disabled={!paymentBatch || paymentBatch.status === 'draft'} onClick={downloadPayment} className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold disabled:opacity-40">Export</button></div>
+        </IntegrationCard>
+        <IntegrationCard icon="CalculatorIcon" title="Accounting Journal" subtitle="Balanced payroll journal for Dynamics, SAP, Oracle or CSV">
+          {accountingExport && <ResultBadge tone={accountingExport.total_debit === accountingExport.total_credit ? 'green' : 'red'}>{accountingExport.reference} · {accountingExport.status}</ResultBadge>}
+          <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={busy} onClick={generateJournal} className="rounded-md bg-emerald-600 px-2 py-2 text-xs font-semibold text-white">Generate</button><button disabled={!accountingExport} onClick={downloadJournal} className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold disabled:opacity-40">Export CSV</button></div>
+        </IntegrationCard>
       </div>
 
       {/* Workflow log */}
@@ -587,4 +639,19 @@ function KpiTile({ label, value, tone = 'slate' }) {
       <div className="text-lg font-semibold tabular-nums mt-1">{value}</div>
     </div>
   )
+}
+
+function IntegrationCard({ icon, title, subtitle, children }) {
+  const Icon = HeroIcons[icon] || HeroIcons.Squares2X2Icon
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3"><div className="rounded-lg bg-slate-100 p-2"><Icon className="h-5 w-5 text-slate-700" /></div><div><h3 className="text-sm font-semibold text-slate-900">{title}</h3><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div></div>
+      <div className="mt-3">{children}</div>
+    </section>
+  )
+}
+
+function ResultBadge({ tone, children }) {
+  const tones = { red: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-700', green: 'bg-emerald-50 text-emerald-700' }
+  return <div className={`rounded-lg px-3 py-2 text-xs font-medium ${tones[tone] || tones.green}`}>{children}</div>
 }

@@ -710,7 +710,7 @@ export const HR_DASHBOARD_QUICK_LINKS = [
     id: 'selfservice',
     label: 'Self-Service Portal',
     description: 'Personal leave, attendance, timesheet & payroll',
-    to: '/hr/leave',
+    to: '/hr/Employeprofile',
     icon: 'SparklesIcon',
     tone: 'bg-violet-50 text-violet-700 border-violet-100 hover:bg-violet-100',
   },

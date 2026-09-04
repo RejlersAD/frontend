@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import hrFoundationService from '../../services/hrFoundation.service'
+import EmployeeTabLoading from './EmployeeTabLoading'
 
 const TYPES = [
   ['expense', 'Expense', 'Receipt, amount and business purpose', 'ReceiptPercentIcon'],
@@ -62,7 +63,7 @@ export default function EmployeeServiceRequestsPanel({ employeeIdentifier }) {
     catch (error) { setMessage(error?.response?.data?.detail || `Could not ${decision} request.`) }
   }
 
-  if (loading) return <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading your service workspace…</div>
+  if (loading) return <EmployeeTabLoading message="Loading your service requests…" />
   return (
     <div className="space-y-5">
       {message && <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{message}</div>}

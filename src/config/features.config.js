@@ -97,7 +97,7 @@ export const FEATURE_FLAGS = {
   enableSalesModule: import.meta.env.VITE_ENABLE_SALES_MODULE !== 'false',
   
   // ✅ Human Resource Module — ENABLED (MODULE-BASED ACCESS CONTROL)
-  // Controls ALL HR features: /hr, /hr/employees, /hr/payroll, /hr/leave, /hr/onboarding
+  // Controls ALL HR features: /hr, /hr/employees, /hr/payroll, /hr/Employeprofile, /hr/onboarding
   // Users with 'hr_management', 'payroll', or 'timesheet' modules will see this section
   // Set VITE_ENABLE_HR_MODULE=false in .env to disable globally (for maintenance)
   enableHRModule: import.meta.env.VITE_ENABLE_HR_MODULE === 'false' ? false : true,  // ✅ ENABLED by default, uses RBAC for access control

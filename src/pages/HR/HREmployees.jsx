@@ -2542,7 +2542,7 @@ const EmployeeLeavePanel = ({ emp }) => {
   const monthly = Array.isArray(record?.monthly_breakdown) ? record.monthly_breakdown : [];
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-bold text-slate-950">Leave overview · {currentYear}</h3><p className="mt-1 text-xs text-slate-500">Live data from Payroll Leave Records and Leave Request workflow APIs</p></div><Link to="/hr/leave" className="inline-flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-800"><HeroIcons.CalendarDaysIcon className="h-4 w-4" /> Open Leave Workspace</Link></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-bold text-slate-950">Leave overview · {currentYear}</h3><p className="mt-1 text-xs text-slate-500">Live data from Payroll Leave Records and Leave Request workflow APIs</p></div><Link to="/hr/Employeprofile" className="inline-flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-800"><HeroIcons.CalendarDaysIcon className="h-4 w-4" /> Open Employee Profile</Link></div>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h4 className="mb-4 text-sm font-bold text-slate-950">Annual leave balance</h4>
@@ -4385,7 +4385,7 @@ export default function HREmployees() {
               <HeroIcons.UserCircleIcon className="w-4 h-4" /> My Profile
             </Link>
             <Link
-              to="/hr/leave"
+              to="/hr/Employeprofile"
               className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 inline-flex items-center gap-1.5"
             >
               <HeroIcons.SparklesIcon className="w-4 h-4" /> My Workspace

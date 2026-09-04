@@ -41,6 +41,7 @@ import WorkExperienceSection from "../components/Profile/WorkExperienceSection";
 import SocialMediaLinksSection from "../components/Profile/SocialMediaLinksSection";
 import DocumentUploadSection from "../components/Profile/DocumentUploadSection";
 import { InitiateExitModal } from "./HR/OnboardingOffboarding";
+import EmployeeTabLoading from "../components/HR/EmployeeTabLoading";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Soft-coded engineering constants
@@ -351,7 +352,7 @@ const DEFAULT_EP = {
   current_projects: [],
 };
 
-const Profile = () => {
+const Profile = ({ embedded = false }) => {
   const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
 
@@ -958,27 +959,18 @@ const Profile = () => {
   ];
 
   if (isFetching) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600 font-medium">
-            Loading your engineering profile…
-          </p>
-        </div>
-      </div>
-    );
+    return <EmployeeTabLoading message="Loading your engineering profile…" />;
   }
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 px-3 py-5 sm:px-4 sm:py-6">
-        <div className="w-full space-y-6">
+      <div className={embedded ? 'w-full min-w-0 max-w-full overflow-x-hidden' : 'min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 px-3 py-5 sm:px-4 sm:py-6'}>
+        <div className={embedded ? 'w-full min-w-0 max-w-full space-y-4' : 'w-full space-y-6'}>
           {/* ── Cross-link nav ── */}
-          <PeopleNav activeId="profile" />
+          {!embedded && <PeopleNav activeId="profile" />}
 
           {/* ── Profile Hero ── */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+          {!embedded && <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
             <div className="relative h-28 bg-gradient-to-r from-blue-600 via-purple-600 to-teal-500">
               <h1 className="absolute bottom-4 left-40 right-6 truncate text-2xl font-bold leading-tight text-white sm:right-8">
                 {formData.first_name || formData.last_name
@@ -1115,16 +1107,16 @@ const Profile = () => {
                 )}
               </div>
             </div>
-          </div>
+          </div>}
 
           {/* ── Tabbed Card ── */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="flex border-b border-gray-100 bg-gray-50/50">
+          <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-white shadow-lg">
+            <div className="flex max-w-full overflow-x-auto border-b border-gray-100 bg-gray-50/50">
               {TABS.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setActiveTab(id)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-semibold transition-all ${
+                  className={`flex min-w-[112px] flex-none items-center justify-center gap-2 px-3 py-4 text-sm font-semibold transition-all ${
                     activeTab === id
                       ? "text-blue-600 border-b-2 border-blue-600 bg-white"
                       : "text-gray-500 hover:text-gray-700 hover:bg-white/70"
