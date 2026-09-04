@@ -28,6 +28,26 @@ import {
 } from '@heroicons/react/24/outline'
 import { API_BASE_URL } from '../config/api.config'
 
+const normalizeUserProfile = (profile) => {
+  const account = profile.user || {}
+  const identity = profile.canonical_identity || {}
+  return {
+    ...profile,
+    first_name: identity.first_name || account.first_name || '',
+    last_name: identity.last_name || account.last_name || '',
+    email: identity.email || account.email || '',
+    is_active: account.is_active ?? false,
+    is_staff: account.is_staff ?? false,
+    is_superuser: account.is_superuser ?? false,
+    department: identity.department || profile.department || '',
+    job_title: identity.designation || profile.job_title || '',
+    employee_number: identity.employee_number || profile.employee_id || '',
+    login_account_id: identity.login_account_id || account.id,
+    employee_uuid: identity.employee_uuid || profile.canonical_employee,
+    access_profile_uuid: identity.access_profile_uuid || profile.id,
+  }
+}
+
 /**
  * Reusable Detail Page Component
  * This pattern can be replicated for other entities
@@ -62,7 +82,7 @@ const UserDetail = () => {
       const userResponse = await fetch(`${API_BASE_URL}/rbac/users/${id}/`, { headers })
       if (!userResponse.ok) throw new Error('Failed to fetch user')
       const user = await userResponse.json()
-      setUserData(user)
+      setUserData(normalizeUserProfile(user))
 
       // Fetch user modules
       try {
@@ -146,7 +166,7 @@ const UserDetail = () => {
       if (!response.ok) throw new Error('Failed to update status')
 
       const updated = await response.json()
-      setUserData(updated)
+      setUserData(normalizeUserProfile(updated))
     } catch (err) {
       console.error('Error updating status:', err)
       alert('Failed to update user status')
@@ -313,8 +333,8 @@ const UserDetail = () => {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-blue-100 text-sm mb-1">User ID</p>
-              <p className="text-2xl font-bold">#{userData.employee_id || userData.id}</p>
+              <p className="text-blue-100 text-sm mb-1">Employee Number</p>
+              <p className="text-2xl font-bold">#{userData.employee_number || 'Not assigned'}</p>
             </div>
           </div>
         </div>
@@ -403,6 +423,18 @@ const UserDetail = () => {
                       Account Details
                     </h3>
                     <div className="space-y-3">
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Canonical Employee UUID</p>
+                        <p className="break-all font-mono text-sm text-gray-900">{userData.employee_uuid || 'Not linked'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Login Account ID</p>
+                        <p className="font-mono text-sm text-gray-900">{userData.login_account_id || 'Not linked'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Access Profile UUID</p>
+                        <p className="break-all font-mono text-sm text-gray-900">{userData.access_profile_uuid}</p>
+                      </div>
                       <div>
                         <p className="text-sm text-gray-500 mb-1">Created At</p>
                         <p className="text-gray-900 font-medium">

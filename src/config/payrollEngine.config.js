@@ -381,18 +381,18 @@ export function canEditPayrollEmployee(authUser, rbacUser) {
 export const EMPLOYEE_EDIT_FIELDS = [
   // ── Identity ─────────────────────────────────────────────────────────────
   { key: 'employee_no',        label: 'Employee #',       type: 'text',   group: 'Identity', required: true, readOnly: true },
-  { key: 'full_name',          label: 'Full Name',        type: 'text',   group: 'Identity', required: true },
+  { key: 'full_name',          label: 'Full Name',        type: 'text',   group: 'Identity', required: true, canonical: true },
   { key: 'emirates_id',        label: 'Emirates ID',      type: 'text',   group: 'Identity' },
   { key: 'mol_no',             label: 'MOL #',            type: 'text',   group: 'Identity' },
   { key: 'nationality_group',  label: 'Nationality',      type: 'text',   group: 'Identity' },
 
   // ── Org ──────────────────────────────────────────────────────────────────────
   // type: 'datalist' renders <input list="..."> for freeform entry with suggestions
-  { key: 'department',         label: 'Department',       type: 'datalist', group: 'Organisation', optionsFrom: 'departments'  },
+  { key: 'department',         label: 'Department',       type: 'datalist', group: 'Organisation', optionsFrom: 'departments', canonical: true  },
   { key: 'discipline',         label: 'Discipline',       type: 'text',     group: 'Organisation' },
-  { key: 'designation',        label: 'Designation',      type: 'datalist', group: 'Organisation', optionsFrom: 'designations' },
+  { key: 'designation',        label: 'Designation',      type: 'datalist', group: 'Organisation', optionsFrom: 'designations', canonical: true },
   { key: 'grade',              label: 'Grade',            type: 'text',     group: 'Organisation' },
-  { key: 'joining_date',       label: 'Joining Date',     type: 'date',     group: 'Organisation' },
+  { key: 'joining_date',       label: 'Joining Date',     type: 'date',     group: 'Organisation', canonical: true },
   { key: 'leaving_date',       label: 'Leaving Date',     type: 'date',     group: 'Organisation' },
 
   // ── Banking ─────────────────────────────────────────────────────────────
