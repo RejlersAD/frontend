@@ -115,6 +115,27 @@ const payrollEngineService = {
   getRunWorkflowLog: (id) =>
     unwrap(apiClient.get(`${BASE}/runs/${id}/workflow-log/`)),
 
+  runComplianceCheck: (id) =>
+    unwrap(apiClient.post(`${BASE}/runs/${id}/compliance-check/`)),
+
+  generatePaymentBatch: (id, batchType = 'wps') =>
+    unwrap(apiClient.post(`${BASE}/runs/${id}/payment-batch/`, { batch_type: batchType })),
+
+  downloadPaymentFile: (id, batchType = 'wps') =>
+    apiClient.get(`${BASE}/runs/${id}/payment-file/`, { params: { batch_type: batchType }, responseType: 'blob' }).then((r) => r.data),
+
+  updatePaymentBatchStatus: (id, payload) =>
+    unwrap(apiClient.post(`${BASE}/runs/${id}/payment-batch-status/`, payload)),
+
+  generateAccountingExport: (id, targetSystem = 'generic') =>
+    unwrap(apiClient.post(`${BASE}/runs/${id}/accounting-export/`, { target_system: targetSystem })),
+
+  downloadAccountingFile: (id, targetSystem = 'generic') =>
+    apiClient.get(`${BASE}/runs/${id}/accounting-file/`, { params: { target_system: targetSystem }, responseType: 'blob' }).then((r) => r.data),
+
+  markAccountingPosted: (id, payload) =>
+    unwrap(apiClient.post(`${BASE}/runs/${id}/accounting-posted/`, payload)),
+
   downloadRunMasterXlsx: (id) =>
     apiClient.get(`${BASE}/runs/${id}/download-master-xlsx/`, { responseType: 'blob' })
       .then((r) => r.data),

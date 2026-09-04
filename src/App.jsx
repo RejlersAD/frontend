@@ -17,7 +17,6 @@ import RequestPasswordReset from './pages/RequestPasswordReset'
 import TermsOfService from './pages/TermsOfService'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import Dashboard from './pages/Dashboard'
-import Profile from './pages/Profile'
 import ProfileAlignedComprehensive from './pages/ProfileAlignedComprehensive'  // ✅ Comprehensive profile with engineering expertise
 import ProfileNew from './pages/ProfileNew'  // ✅ NEW: Modern redesigned profile page
 import NotificationPanel from './pages/NotificationPanel'
@@ -512,10 +511,11 @@ function App() {
           path="profile"
           element={
             <ProtectedRoute>
-              <Profile />
+              <EmployeeSelfService />
             </ProtectedRoute>
           }
         />
+        <Route path="profile-" element={<Navigate to="/profile" replace />} />
         <Route
           path="notifications"
           element={
@@ -745,13 +745,14 @@ function App() {
               }
             />
             <Route
-              path="hr/leave"
+              path="hr/Employeprofile"
               element={
                 <ProtectedRoute>
                   <EmployeeSelfService />
                 </ProtectedRoute>
               }
             />
+            <Route path="hr/leave" element={<Navigate to="/hr/Employeprofile" replace />} />
             <Route
               path="hr/onboarding"
               element={

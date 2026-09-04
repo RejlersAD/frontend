@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AcademicCapIcon, ArrowPathIcon, ChatBubbleLeftRightIcon, CheckCircleIcon,
+  AcademicCapIcon, ChatBubbleLeftRightIcon, CheckCircleIcon,
   FlagIcon, PlusIcon, SparklesIcon, StarIcon, TrophyIcon,
 } from '@heroicons/react/24/outline'
 import hrFoundationService from '../../services/hrFoundation.service'
+import EmployeeTabLoading from './EmployeeTabLoading'
 
 const statusTone = (status) => ({ active: 'bg-emerald-100 text-emerald-700', completed: 'bg-blue-100 text-blue-700', submitted: 'bg-violet-100 text-violet-700', approved: 'bg-emerald-100 text-emerald-700', pending: 'bg-amber-100 text-amber-700' }[status] || 'bg-slate-100 text-slate-600')
 
@@ -67,7 +68,7 @@ const EmployeeTalentPerformancePanel = ({ employee }) => {
     finally { setSaving(false) }
   }
 
-  if (loading) return <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-500"><ArrowPathIcon className="h-4 w-4 animate-spin" /> Loading performance and talent records…</div>
+  if (loading) return <EmployeeTabLoading message="Loading performance and talent records…" />
 
   const submittedReviews = data.reviews.filter((review) => ['submitted', 'acknowledged'].includes(review.status))
   const average = submittedReviews.length ? (submittedReviews.reduce((sum, review) => sum + Number(review.overall_score || 0), 0) / submittedReviews.length).toFixed(2) : '—'

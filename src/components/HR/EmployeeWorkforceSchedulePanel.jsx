@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowPathIcon, CalendarDaysIcon, ClockIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { CalendarDaysIcon, ClockIcon, PlusIcon } from '@heroicons/react/24/outline'
 import hrFoundationService from '../../services/hrFoundation.service'
+import EmployeeTabLoading from './EmployeeTabLoading'
 
 const EmployeeWorkforceSchedulePanel = ({ employee }) => {
   const [employeeId, setEmployeeId] = useState('')
@@ -34,7 +35,7 @@ const EmployeeWorkforceSchedulePanel = ({ employee }) => {
     finally { setSaving(false) }
   }
 
-  if (loading) return <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-sm text-slate-500"><ArrowPathIcon className="h-4 w-4 animate-spin" /> Loading shifts and overtime…</div>
+  if (loading) return <EmployeeTabLoading message="Loading shifts and overtime…" />
 
   return <div className="mx-auto w-full max-w-5xl space-y-5">
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}

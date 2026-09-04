@@ -1,6 +1,6 @@
 ﻿/**
  * Employee Self-Service (ESS) Portal
- * Route: /hr/leave
+ * Route: /hr/Employeprofile
  * ============================================================
  * A standalone employee-facing dashboard. Read-only integration
  * with existing payroll, timesheet, and RBAC services.
@@ -37,6 +37,10 @@ import notificationService from '../../services/notification.service'
 import EmployeeServiceRequestsPanel from '../../components/HR/EmployeeServiceRequestsPanel'
 import EmployeeTalentPerformancePanel from '../../components/HR/EmployeeTalentPerformancePanel'
 import EmployeeWorkforceSchedulePanel from '../../components/HR/EmployeeWorkforceSchedulePanel'
+import UnifiedHRWorkspacePanel from '../../components/HR/UnifiedHRWorkspacePanel'
+import HRAssistantPanel from '../../components/HR/HRAssistantPanel'
+import EmployeeTabLoading from '../../components/HR/EmployeeTabLoading'
+import Profile from '../Profile'
 import { API_BASE_URL } from '../../config/api.config'
 import { fmtCurrency } from '../../config/hrPayroll.config'
 import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR, DAILY_TRACKER_PRIORITIES, DAILY_TRACKER_STATUSES, DAILY_TRACKER_PROJECT_CATEGORIES, DAILY_TRACKER_COPY, DAILY_TRACKER_APPROVAL_STATUSES, DAILY_TRACKER_WIZARD_STEPS, DAILY_TRACKER_SUBMIT_TO_OPTIONS, ESS_ATT_MONTHS_BACK, ESS_ATT_STANDARD_DAY_HRS, ESS_ATT_MAX_DAILY_HRS, ESS_ATT_STANDARD_WORKING_DAYS, ESS_ATT_RATE_GOOD, ESS_ATT_RATE_WARN, ESS_ATT_PARTIAL_DAY_HRS, ESS_ATT_OVERTIME_HRS, ESS_ATT_FEATURES, ESS_ATT_DAY_STATUS, ESS_ATT_DOW, ESS_ATT_COPY, ESS_TIMESHEET_TABS, ESS_TIMESHEET_DEFAULT_TAB, ESS_TIMESHEET_POLL_MS, ESS_TIMESHEET_COPY, ESS_TIMESHEET_STATUS } from '../../config/hrLeave.config'
@@ -47,6 +51,8 @@ import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR,
 
 const ESS_TABS = [
   { id: 'overview',    label: 'Overview',        icon: 'HomeIcon' },
+  { id: 'career',      label: 'Career Profile',  icon: 'AcademicCapIcon' },
+  { id: 'workspace',   label: 'My Work',         icon: 'Squares2X2Icon' },
   { id: 'leave',       label: 'Leave',           icon: 'CalendarDaysIcon' },
   { id: 'attendance',  label: 'Attendance',      icon: 'ClipboardDocumentCheckIcon' },
   { id: 'timesheet',   label: 'Timesheet',       icon: 'ClockIcon' },
@@ -59,6 +65,7 @@ const ESS_TABS = [
   { id: 'site_visits', label: 'Site Visits',    icon: 'MapPinIcon' },
   { id: 'twin',        label: 'Digital Twin',    icon: 'SparklesIcon' },
   { id: 'notifications', label: 'Notifications', icon: 'BellIcon' },
+  { id: 'assistant',     label: 'HR Assistant',   icon: 'ChatBubbleLeftRightIcon' },
 ]
 
 // Leave type config sourced from hrLeave.config.js \u2014 single source of truth
@@ -1553,6 +1560,16 @@ const ESSTimesheetView = ({ profile }) => {
     return () => { cancelled = true }
   }, [activeTab, selectedYear, selectedMonth])
 
+  const activeTimesheetLoading = (
+    (activeTab === 'live' && loadingLive)
+    || (activeTab === 'daily' && loadingDaily)
+    || (activeTab === 'monthly' && loadingMonthly)
+  )
+
+  if (activeTimesheetLoading) {
+    return <EmployeeTabLoading message="Loading your timesheet…" />
+  }
+
   return (
     <div className="space-y-5">
       {/* Tab selector */}
@@ -2092,6 +2109,8 @@ const TeamCalendar = () => {
 
   const dayKey = (d) => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`
 
+  if (loading) return <EmployeeTabLoading message="Loading team availability…" />
+
   return (
     <SectionCard
       title="Team Availability Calendar"
@@ -2111,9 +2130,7 @@ const TeamCalendar = () => {
         </div>
       }
     >
-      {loading ? (
-        <SkeletonBox className="h-64 w-full" />
-      ) : error ? (
+      {error ? (
         <div className="py-12 text-center">
           <Icon name="ExclamationTriangleIcon" className="w-8 h-8 text-amber-500 mx-auto mb-2" />
           <p className="text-sm text-slate-600">{error}</p>
@@ -2274,6 +2291,8 @@ const SiteVisitsPanel = () => {
   const pending = requests.filter(r => String(r.status).toUpperCase() === 'PENDING').length
   const approved = requests.filter(r => String(r.status).toUpperCase() === 'APPROVED').length
   const active = checkIns.filter(v => !v.check_out_time).length
+
+  if (loading) return <EmployeeTabLoading message="Loading your site visits…" />
 
   return (
     <div className="space-y-5">
@@ -3086,6 +3105,8 @@ function DailyTrackerTab({ currentUser }) {
   }
 
   // -- Render ----------------------------------------------------------------
+  if (loading) return <EmployeeTabLoading message="Loading your daily activities…" />
+
   return (
     <div className="space-y-5">
 
@@ -3758,8 +3779,30 @@ export default function EmployeeSelfService() {
   const renderSection = () => {
     // Check if profile is incomplete (missing employee_id or has placeholder/marker)
     const empId = profile?.employee_id
+    const employeeIdentifier = currentUser?.email || authProfile?.email || profile?.user_email || profile?.email || empId
     const invalidMarkers = ['DELETED', 'TEST_ACCOUNT', 'EXTERNAL']
     const needsConfig = !empId || empId === '' || empId.includes('@') || empId.startsWith('EMP') || invalidMarkers.includes(empId)
+
+    const loadingByTab = {
+      overview: loadingProfile || loadingTs || loadingLeave || loadingPayroll,
+      leave: loadingProfile || loadingLeave,
+      attendance: loadingProfile || loadingTs,
+      payroll: loadingProfile || loadingPayroll,
+      twin: loadingProfile || loadingTs || loadingLeave || loadingPayroll,
+      notifications: loadingNotifications,
+    }
+    const loadingMessageByTab = {
+      overview: 'Loading your employee overview…',
+      leave: 'Loading your leave information…',
+      attendance: 'Loading your attendance…',
+      payroll: 'Loading your payroll information…',
+      twin: 'Loading your employee insights…',
+      notifications: 'Loading your notifications…',
+    }
+
+    if (loadingByTab[activeTab]) {
+      return <EmployeeTabLoading message={loadingMessageByTab[activeTab]} />
+    }
     
     switch (activeTab) {
       case 'overview':
@@ -3807,6 +3850,9 @@ export default function EmployeeSelfService() {
             </SectionCard>
           </div>
         )
+
+      case 'career':
+        return <Profile embedded />
 
       case 'leave':
         return (
@@ -3918,14 +3964,17 @@ export default function EmployeeSelfService() {
           />
         )
 
+      case 'workspace':
+        return <UnifiedHRWorkspacePanel />
+
       case 'requests':
-        return <EmployeeServiceRequestsPanel employeeIdentifier={profile?.employee_id || currentUser?.email || authProfile?.email} />
+        return <EmployeeServiceRequestsPanel employeeIdentifier={employeeIdentifier} />
 
       case 'performance':
-        return <EmployeeTalentPerformancePanel employee={{ id: profile?.employee_id || currentUser?.email || authProfile?.email }} />
+        return <EmployeeTalentPerformancePanel employee={{ id: employeeIdentifier }} />
 
       case 'schedule':
-        return <EmployeeWorkforceSchedulePanel employee={{ id: profile?.employee_id || currentUser?.email || authProfile?.email }} />
+        return <EmployeeWorkforceSchedulePanel employee={{ id: employeeIdentifier }} />
 
       case 'team':
         return <TeamCalendar />
@@ -3957,14 +4006,17 @@ export default function EmployeeSelfService() {
       case 'site_visits':
         return <SiteVisitsPanel />
 
+      case 'assistant':
+        return <HRAssistantPanel />
+
       default:
         return null
     }
   }
 
   return (
-    <div className="min-h-full bg-[#F0F2F5] font-['Inter','Segoe_UI',sans-serif]">
-      <div className="mx-auto max-w-[1600px] space-y-5 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="min-h-full min-w-0 overflow-x-hidden bg-[#F0F2F5] font-['Inter','Segoe_UI',sans-serif]">
+      <div className="w-full min-w-0 max-w-none space-y-5 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         {/* -- Profile Header -- */}
         <EmployeeProfileHeader
           profile={profile}
@@ -3980,7 +4032,7 @@ export default function EmployeeSelfService() {
         />
 
         {/* -- Active Section -- */}
-        <div>
+        <div className="min-w-0 max-w-full overflow-hidden">
           {renderSection()}
         </div>
 

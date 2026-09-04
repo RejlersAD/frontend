@@ -9,9 +9,8 @@ import * as HeroIcons from '@heroicons/react/24/outline'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import payrollService from '../../../services/payroll.service'
 import payrollEngineService from '../../../services/payrollEngine.service'
-import timesheetSvc from '../../../services/timesheet.service'
 import {
-  PAYROLL_KPIS, ATT_KPIS, PAYROLL_RUN_COLUMNS, PAYROLL_COPY,
+  PAYROLL_KPIS, PAYROLL_RUN_COLUMNS, PAYROLL_COPY,
   PAYROLL_KPI_REPORTS, PAYROLL_SLIP_STATUS, PAYROLL_ALERT_SEVERITY,
   PAYROLL_RUN_COPY, PAYROLL_RUN_MONTHS,
   PAYROLL_WORKFLOW_STAGES,
@@ -208,6 +207,14 @@ const normaliseRun = (r) => ({
   total_gross_salary: r.total_gross,
   total_net_salary:   r.total_net,
 })
+
+// Dashboard charts and table read from the canonical payroll engine. The
+// finance payroll-runs endpoint is retained only for legacy screens.
+const fetchPayrollRuns = async (params = {}) => {
+  const data = await payrollEngineService.listRuns({ page_size: 12, ...params })
+  const rows = data?.results ?? (Array.isArray(data) ? data : [])
+  return { results: rows.map(normaliseRun) }
+}
 
 // EmployeeLeaveRecord API rows expose total_earned/total_taken/leave_balance;
 // the leave-record report columns expect days_earned/days_taken/balance.
@@ -808,11 +815,7 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
   const [runs,         setRuns]         = useState([])
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
-  const [processing,   setProcessing]   = useState(null)
   const [reportId,     setReportId]     = useState(null)
-  const [editRun,      setEditRun]      = useState(null)
-  const [deleteRun,    setDeleteRun]    = useState(null)
-  const [attStats,     setAttStats]     = useState(null)
   const [trackerData,  setTrackerData]  = useState(null)   // approval pipeline widget
 
   // Role — used to gate the Approval Pipeline widget
@@ -828,9 +831,20 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
   useEffect(() => {
     setLoading(true)
     Promise.all([
+      payrollEngineService.getDashboardSummary().catch(() => null),
       payrollService.getDashboardSummary().catch(() => null),
-      payrollService.getPayrollRuns({ page_size: 12 }).catch(() => ({ results: [] })),
-    ]).then(async ([s, r]) => {
+      fetchPayrollRuns().catch(() => ({ results: [] })),
+    ]).then(async ([engineSummary, legacySummary, r]) => {
+      // Payroll values come from Payroll Engine; leave intelligence still
+      // comes from the HR/payroll summary until that API is consolidated.
+      const s = engineSummary || legacySummary
+        ? {
+            ...(legacySummary || {}),
+            ...(engineSummary || {}),
+            current_year: engineSummary?.year ?? legacySummary?.current_year,
+            current_month: engineSummary?.month ?? legacySummary?.current_month,
+          }
+        : null
       // The backend summary counts draft payslips across every PayrollRun
       // (all months), but the Pending Approvals modal only ever shows the
       // current month's run — recompute the card's count the same way so
@@ -852,28 +866,6 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
       setSummary(s)
       setRuns(r?.results ?? r ?? [])
     }).catch((e) => setError(e.message)).finally(() => setLoading(false))
-
-    // Attendance stats — non-blocking, biometric data is optional
-    const now = new Date()
-    timesheetSvc.fetchMonthly(now.getFullYear(), now.getMonth() + 1)
-      .then((res) => {
-        const rows = res?.rows ?? []
-        if (!rows.length) return
-        const totalEmployees = rows.length
-        const presentCount   = rows.filter((r) => (r.days_present ?? 0) > 0).length
-        const totalHours     = rows.reduce((s, r) => s + (r.total_hours ?? 0), 0)
-        const avgHoursPerDay = totalEmployees
-          ? rows.reduce((s, r) => s + (r.avg_hours_per_day ?? 0), 0) / totalEmployees
-          : 0
-        setAttStats({
-          presentCount,
-          totalEmployees,
-          attendanceRateMtd: totalEmployees ? (presentCount / totalEmployees) * 100 : 0,
-          avgHoursPerDay,
-          totalHours,
-        })
-      })
-      .catch(() => {}) // biometric tile degrades gracefully
   }, [])
 
   // Approval tracker — loaded separately; only for super-admins.
@@ -894,21 +886,6 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
     net:    parseFloat(r.total_net_salary)   || 0,
   }))
 
-  const reloadRuns = async () => {
-    const r = await payrollService.getPayrollRuns({ page_size: 12 }).catch(() => ({ results: [] }))
-    setRuns(r?.results ?? r ?? [])
-  }
-
-  const handleProcess = async (runId) => {
-    setProcessing(runId)
-    try {
-      await payrollService.processPayrollRun(runId)
-      await reloadRuns()
-    } finally {
-      setProcessing(null)
-    }
-  }
-
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <Spinner />
@@ -928,32 +905,6 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
           <KpiTile key={kpi.id} kpi={kpi} summary={summary} onClick={() => setReportId(kpi.id)} />
         ))}
       </div>
-
-      {/* Attendance KPI Tiles — live biometric data (non-clickable, gracefully hidden if unavailable) */}
-      {attStats && (
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 uppercase tracking-wider">
-            <HeroIcons.SignalIcon className="w-3.5 h-3.5" />
-            Biometric Attendance
-          </div>
-          {ATT_KPIS.map((kpi) => {
-            const Icon = HeroIcons[kpi.icon] || HeroIcons.ClockIcon
-            return (
-              <div
-                key={kpi.id}
-                className={`rounded-xl border p-4 ${kpi.tone} border-current/10 min-w-[160px] flex-1 max-w-xs`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon className="w-4 h-4 opacity-70" />
-                  <span className="text-xs font-semibold uppercase tracking-wider opacity-70">{kpi.label}</span>
-                </div>
-                <div className="text-xl font-bold leading-tight">{kpi.compute(attStats)}</div>
-                <div className="text-[10px] opacity-60 mt-0.5">{kpi.sub(attStats)}</div>
-              </div>
-            )
-          })}
-        </div>
-      )}
 
       {/* Leave Intelligence Panel — always shown when summary is loaded */}
       {summary && (
@@ -1103,7 +1054,10 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
                   <tr
                     key={r.id}
                     className="hover:bg-slate-50 cursor-pointer"
-                    onClick={() => onSelectRun?.(r)}
+                    onClick={() => {
+                      onSelectRun?.(r)
+                      onSwitchTab?.('salary')
+                    }}
                   >
                     {PAYROLL_RUN_COLUMNS.map((c) => {
                       const v = c.accessor(r)
@@ -1118,36 +1072,18 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
                       return <td key={c.id} className="px-4 py-3 text-slate-700">{v}</td>
                     })}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* Process */}
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); handleProcess(r.id) }}
-                          disabled={r.status === 'completed' || processing === r.id}
-                          title="Process this payroll run"
-                          className="text-xs px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-md transition"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onSelectRun?.(r)
+                            onSwitchTab?.('salary')
+                          }}
+                          title="Open this run in Salary Management"
+                          className="text-xs px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition"
                         >
-                          {processing === r.id ? '…' : 'Process'}
-                        </button>
-                        {/* Edit */}
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setEditRun(r) }}
-                          title={r.status !== 'draft' ? PAYROLL_RUN_COPY.tooltipEdit + ' (draft only)' : PAYROLL_RUN_COPY.tooltipEdit}
-                          className="text-xs px-2.5 py-1 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-md transition flex items-center gap-1"
-                        >
-                          <HeroIcons.PencilSquareIcon className="w-3 h-3" />
-                          Edit
-                        </button>
-                        {/* Delete */}
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setDeleteRun(r) }}
-                          title={r.status !== 'draft' ? PAYROLL_RUN_COPY.tooltipDelete + ' (draft only)' : PAYROLL_RUN_COPY.tooltipDelete}
-                          className="text-xs px-2.5 py-1 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-md transition flex items-center gap-1"
-                        >
-                          <HeroIcons.TrashIcon className="w-3 h-3" />
-                          Delete
+                          Open
                         </button>
                       </div>
                     </td>
@@ -1164,23 +1100,6 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
         <KpiReportModal reportId={reportId} onClose={() => setReportId(null)} />
       )}
 
-      {/* Edit payroll run modal */}
-      {editRun && (
-        <RunEditModal
-          run={editRun}
-          onClose={() => setEditRun(null)}
-          onSaved={() => { setEditRun(null); reloadRuns() }}
-        />
-      )}
-
-      {/* Delete payroll run confirmation */}
-      {deleteRun && (
-        <DeleteConfirmModal
-          run={deleteRun}
-          onClose={() => setDeleteRun(null)}
-          onDeleted={() => { setDeleteRun(null); reloadRuns() }}
-        />
-      )}
     </div>
   )
 }

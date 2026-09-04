@@ -51,7 +51,7 @@ export const PEOPLE_NAV_TABS = [
     id: 'ess',
     label: 'My Workspace',
     description: 'Leave, attendance, timesheet & payroll',
-    to: '/hr/leave',
+    to: '/hr/Employeprofile',
     icon: 'SparklesIcon',
     visibility: 'always',
     accent: 'from-blue-500 to-cyan-500',
