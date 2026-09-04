@@ -93,6 +93,7 @@ const Sidebar = ({
   setIsOpen,
   isCollapsed: isCollapsedProp,
   setIsCollapsed: setIsCollapsedProp,
+  profilePhotoUrl,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -1209,9 +1210,9 @@ const Sidebar = ({
           >
             <div className="w-10 h-10 rounded-full flex items-center justify-center relative overflow-hidden ring-2 ring-white dark:ring-gray-700 shadow-lg bg-gradient-to-br from-blue-500 to-indigo-600">
               {/* Show profile photo when available, fall back to initials */}
-              {user?.profile_photo ? (
+              {profilePhotoUrl || user?.profile_photo ? (
                 <img
-                  src={user.profile_photo}
+                  src={profilePhotoUrl || user.profile_photo}
                   alt="Profile"
                   className="absolute inset-0 w-full h-full object-cover z-10"
                   onError={(e) => {

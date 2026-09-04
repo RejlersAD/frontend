@@ -25,7 +25,7 @@ import {
 
 const ACCOUNT_NAV_IDS = new Set(['profile', 'change-password'])
 
-const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
+const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const dispatch = useDispatch()
@@ -52,7 +52,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
   const initials = USER_DISPLAY_CONFIG.formatting.getUserInitials(user)
   const email = USER_DISPLAY_CONFIG.formatting.getEmailDisplay(user)
   const userData = user?.user || user
-  const profilePhoto = user?.profile_photo || userData?.profile_photo || user?.employee?.profile_photo
+  const profilePhoto = profilePhotoUrl || user?.profile_photo || userData?.profile_photo || user?.employee?.profile_photo
   const roleLabel = user?.roles?.[0]?.name || userData?.job_title || 'Team member'
 
   useEffect(() => {
