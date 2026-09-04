@@ -368,6 +368,7 @@ const EmployeeProfileHeader = ({
   onPhotoUpload,
   todayData,
   liveAttendance,
+  authenticatedPhotoUrl,
 }) => {
   // UserProfileSerializer declares first_name/last_name/username write_only —
   // they're never present on the GET response. The real values live on the
@@ -378,7 +379,7 @@ const EmployeeProfileHeader = ({
   const initials = name ? avatarInitials(name) : '??'
   const [photoFailed, setPhotoFailed] = useState(false)
   const photoInputRef = useRef(null)
-  const rawPhotoUrl = profile?.profile_photo
+  const rawPhotoUrl = authenticatedPhotoUrl || profile?.profile_photo
   const photoUrl = useMemo(() => {
     if (!rawPhotoUrl) return null
     if (/^(https?:|data:|blob:)/i.test(rawPhotoUrl)) return rawPhotoUrl
@@ -3566,6 +3567,7 @@ export default function EmployeeSelfService() {
   const [salaryVisible, setSalaryVisible] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoUploadState, setPhotoUploadState] = useState(null)
+  const [authenticatedPhotoUrl, setAuthenticatedPhotoUrl] = useState(null)
 
   // -- Data state --------------------------------------------------------------
   const [profile,      setProfile]      = useState(null)
@@ -3636,6 +3638,33 @@ export default function EmployeeSelfService() {
       setUploadingPhoto(false)
     }
   }, [dispatch])
+
+  // Load the canonical photo through an authenticated endpoint. This avoids
+  // broken images when a production S3 signature expires, media is private,
+  // or a proxy rewrites the public backend origin.
+  useEffect(() => {
+    if (!profile?.profile_photo) {
+      setAuthenticatedPhotoUrl(null)
+      return undefined
+    }
+
+    let active = true
+    let objectUrl = null
+    apiClient.get('/users/employees/my-profile-photo/', { responseType: 'blob' })
+      .then((response) => {
+        if (!active || !response?.data || !String(response.data.type || '').startsWith('image/')) return
+        objectUrl = URL.createObjectURL(response.data)
+        setAuthenticatedPhotoUrl(objectUrl)
+      })
+      .catch(() => {
+        // The serializer URL remains available as a graceful fallback.
+      })
+
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [profile?.profile_photo])
 
   // -- Load timesheet data for current user ------------------------------------
   useEffect(() => {
@@ -4168,6 +4197,7 @@ export default function EmployeeSelfService() {
           onPhotoUpload={handleProfilePhotoUpload}
           todayData={todayTs}
           liveAttendance={liveAttendance}
+          authenticatedPhotoUrl={authenticatedPhotoUrl}
         />
 
         {/* -- Active Section -- */}
