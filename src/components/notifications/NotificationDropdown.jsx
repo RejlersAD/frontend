@@ -5,7 +5,10 @@ import {
   TrashIcon, 
   XMarkIcon,
   ArrowPathIcon,
-  BellSlashIcon
+  BellSlashIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
+  DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline'
 import { formatDistanceToNow } from '../../utils/dateFormatter'
 import { resolveNotificationTarget } from '../../utils/notificationNavigation'
@@ -25,7 +28,11 @@ const NotificationDropdown = forwardRef(({
   onRefresh,
   onOffboardingDecision,
   decisionLoadingId,
-  decisionMessage
+  decisionMessage,
+  soundEnabled,
+  onToggleSound,
+  pushState,
+  onTogglePush
 }, ref) => {
 
   const getPriorityColor = (priority) => {
@@ -87,6 +94,25 @@ const NotificationDropdown = forwardRef(({
         </div>
         <div className="flex items-center space-x-2">
           <button
+            onClick={onToggleSound}
+            className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+            title={soundEnabled ? 'Mute notification sounds' : 'Enable notification sounds'}
+            aria-label={soundEnabled ? 'Mute notification sounds' : 'Enable notification sounds'}
+          >
+            {soundEnabled
+              ? <SpeakerWaveIcon className="w-4 h-4 text-white" />
+              : <SpeakerXMarkIcon className="w-4 h-4 text-white" />}
+          </button>
+          <button
+            onClick={onTogglePush}
+            disabled={pushState?.busy || pushState?.supported === false}
+            className={`p-1.5 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${pushState?.enabled ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-white/20 hover:bg-white/30'}`}
+            title={pushState?.enabled ? 'Disable browser push notifications' : 'Enable browser push notifications'}
+            aria-label={pushState?.enabled ? 'Disable browser push notifications' : 'Enable browser push notifications'}
+          >
+            <DevicePhoneMobileIcon className={`w-4 h-4 text-white ${pushState?.busy ? 'animate-pulse' : ''}`} />
+          </button>
+          <button
             onClick={onRefresh}
             className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
             title="Refresh"
@@ -107,6 +133,11 @@ const NotificationDropdown = forwardRef(({
 
       {/* Notifications List */}
       <div className="overflow-y-auto max-h-[500px]">
+        {pushState?.error && (
+          <div className="mx-3 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+            {pushState.error}
+          </div>
+        )}
         {decisionMessage && (
           <div className="mx-3 mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800">
             {decisionMessage}

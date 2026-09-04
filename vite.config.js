@@ -128,6 +128,7 @@ export default defineConfig(({ mode }) => {
           }
         },
         workbox: {
+          importScripts: ['/push-handler.js'],
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           cleanupOutdatedCaches: true,
           // CRITICAL: Increase file size limit for precaching large bundles

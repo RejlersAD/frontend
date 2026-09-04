@@ -3,6 +3,8 @@ import { useSelector } from 'react-redux'
 import { BellIcon } from '@heroicons/react/24/outline'
 import { BellAlertIcon } from '@heroicons/react/24/solid'
 import notificationService from '../../services/notification.service'
+import notificationAlertService from '../../services/notificationAlert.service'
+import pushNotificationService from '../../services/pushNotification.service'
 import NotificationDropdown from './NotificationDropdown'
 
 /**
@@ -30,18 +32,35 @@ const NotificationBell = () => {
   const [loading, setLoading] = useState(false)
   const [decisionLoadingId, setDecisionLoadingId] = useState(null)
   const [decisionMessage, setDecisionMessage] = useState('')
+  const [soundEnabled, setSoundEnabled] = useState(notificationAlertService.isSoundEnabled())
+  const [pushState, setPushState] = useState({ supported: true, available: true, enabled: false, busy: false, error: '' })
   const dropdownRef = useRef(null)
   const bellRef = useRef(null)
   const errorCountRef = useRef(0)
   const pollingIntervalRef = useRef(null)
   const unreadAbortRef = useRef(null)
   const notificationListAbortRef = useRef(null)
+  const lastUnreadCountRef = useRef(null)
+
+  useEffect(() => {
+    notificationAlertService.installUnlockListeners()
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined
+    let active = true
+    pushNotificationService.getStatus()
+      .then((status) => active && setPushState((previous) => ({ ...previous, ...status, error: '' })))
+      .catch((error) => active && setPushState((previous) => ({ ...previous, error: error.message })))
+    return () => { active = false }
+  }, [isAuthenticated])
 
   // Fetch unread count on mount and every 2 minutes (optimized from 60s) - only if authenticated
   useEffect(() => {
     if (!isAuthenticated) {
       console.log('[NotificationBell] ⚠️ User not authenticated, skipping fetch')
       errorCountRef.current = 0
+      lastUnreadCountRef.current = null
       return
     }
     
@@ -110,6 +129,14 @@ const NotificationBell = () => {
       const count = await notificationService.getUnreadCount({ signal: controller.signal })
       console.log('[NotificationBell] ✅ Unread count fetched:', count)
       setUnreadCount(count)
+
+      if (lastUnreadCountRef.current !== null && count > lastUnreadCountRef.current) {
+        const newCount = count - lastUnreadCountRef.current
+        notificationAlertService.play()
+        window.dispatchEvent(new CustomEvent('radai:new-notification', { detail: { count: newCount } }))
+        if (showDropdown) fetchNotifications()
+      }
+      lastUnreadCountRef.current = count
 
       // Reset error count on success
       errorCountRef.current = 0
@@ -196,7 +223,11 @@ const NotificationBell = () => {
         prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
       )
       // Update unread count
-      setUnreadCount(prev => Math.max(0, prev - 1))
+      setUnreadCount(prev => {
+        const next = Math.max(0, prev - 1)
+        lastUnreadCountRef.current = next
+        return next
+      })
       // Refresh count from server to sync cache
       setTimeout(() => fetchUnreadCount(), 500)
     } catch (error) {
@@ -210,6 +241,7 @@ const NotificationBell = () => {
       // Update local state
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
       setUnreadCount(0)
+      lastUnreadCountRef.current = 0
       // Refresh count from server to sync cache
       setTimeout(() => fetchUnreadCount(), 500)
     } catch (error) {
@@ -225,10 +257,32 @@ const NotificationBell = () => {
       // Update unread count if notification was unread
       const notification = notifications.find(n => n.id === notificationId)
       if (notification && !notification.is_read) {
-        setUnreadCount(prev => Math.max(0, prev - 1))
+        setUnreadCount(prev => {
+          const next = Math.max(0, prev - 1)
+          lastUnreadCountRef.current = next
+          return next
+        })
       }
     } catch (error) {
       console.error('Failed to delete notification:', error)
+    }
+  }
+
+  const handleToggleSound = () => {
+    const enabled = notificationAlertService.setSoundEnabled(!soundEnabled)
+    setSoundEnabled(enabled)
+    if (enabled) notificationAlertService.play()
+  }
+
+  const handleTogglePush = async () => {
+    setPushState((previous) => ({ ...previous, busy: true, error: '' }))
+    try {
+      const enabled = pushState.enabled
+        ? await pushNotificationService.disable()
+        : await pushNotificationService.enable()
+      setPushState((previous) => ({ ...previous, enabled, busy: false, error: '' }))
+    } catch (error) {
+      setPushState((previous) => ({ ...previous, busy: false, error: error.message }))
     }
   }
 
@@ -311,6 +365,10 @@ const NotificationBell = () => {
           onOffboardingDecision={handleOffboardingDecision}
           decisionLoadingId={decisionLoadingId}
           decisionMessage={decisionMessage}
+          soundEnabled={soundEnabled}
+          onToggleSound={handleToggleSound}
+          pushState={pushState}
+          onTogglePush={handleTogglePush}
         />
       )}
     </div>

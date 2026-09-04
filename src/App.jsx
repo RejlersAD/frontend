@@ -9,6 +9,7 @@ import Layout from './components/Layout/Layout'
 import FirstLoginCheck from './components/Auth/FirstLoginCheck'
 import ChangePasswordModal from './components/Auth/ChangePasswordModal'
 import PasswordExpiryBanner from './components/PasswordExpiryBanner'
+import ProfileCompletionGuard from './components/ProfileCompletionGuard'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import SetupPassword from './pages/SetupPassword'
@@ -405,6 +406,8 @@ function App() {
           onSuccess={handlePasswordChangeSuccess}
         />
       )}
+
+      {isAuthenticated && !mustChangePassword && <ProfileCompletionGuard />}
       
       <FirstLoginCheck onPasswordChanged={handlePasswordChangeSuccess}>
         <Routes>
