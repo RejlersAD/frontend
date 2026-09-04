@@ -23,6 +23,7 @@ const AUTH_RESILIENCE_CONFIG = {
     '/notifications/categories',
     '/usage_tracking/',
     '/activity/heartbeat',
+    '/users/employees/my-profile-photo/',
     '/rbac/ai-champion/champion/current/',
     '/admin/',
     '/rbac/users/me/',
@@ -39,6 +40,7 @@ const AUTH_RESILIENCE_CONFIG = {
     '/notifications/categories',
     '/usage_tracking/',
     '/activity/heartbeat',
+    '/users/employees/my-profile-photo/',
     '/spec-customization/paper-spec/',  // job-status polling
     '/health/',                          // warmup ping — caller treats failure as non-fatal
     '/process-datasheet/mov-job-status/', // MOV async job poller — server may be briefly busy with extraction

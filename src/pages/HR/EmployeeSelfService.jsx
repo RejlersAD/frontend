@@ -3643,14 +3643,17 @@ export default function EmployeeSelfService() {
   // broken images when a production S3 signature expires, media is private,
   // or a proxy rewrites the public backend origin.
   useEffect(() => {
-    if (!profile?.profile_photo) {
+    if (!profile) {
       setAuthenticatedPhotoUrl(null)
       return undefined
     }
 
     let active = true
     let objectUrl = null
-    apiClient.get('/users/employees/my-profile-photo/', { responseType: 'blob' })
+    apiClient.get('/users/employees/my-profile-photo/', {
+      responseType: 'blob',
+      silentTimeout: true,
+    })
       .then((response) => {
         if (!active || !response?.data || !String(response.data.type || '').startsWith('image/')) return
         objectUrl = URL.createObjectURL(response.data)
@@ -3664,7 +3667,7 @@ export default function EmployeeSelfService() {
       active = false
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [profile?.profile_photo])
+  }, [profile?.id, profile?.canonical_employee, profile?.profile_photo])
 
   // -- Load timesheet data for current user ------------------------------------
   useEffect(() => {
