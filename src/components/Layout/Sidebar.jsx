@@ -19,20 +19,22 @@ import {
   HomeIcon,
   DocumentTextIcon,
   DocumentPlusIcon,
-  BeakerIcon,
   CogIcon,
   UsersIcon,
   ChartBarIcon,
   XMarkIcon,
   FolderIcon,
-  BriefcaseIcon,
   CurrencyDollarIcon,
   ShieldCheckIcon,
   TableCellsIcon,
   SparklesIcon,
   BuildingOffice2Icon,
-  RocketLaunchIcon,
   WrenchScrewdriverIcon,
+  RectangleGroupIcon,
+  PresentationChartLineIcon,
+  ClipboardDocumentListIcon,
+  ShoppingCartIcon,
+  IdentificationIcon,
   EnvelopeIcon,
   CubeIcon,
 } from "@heroicons/react/24/outline";
@@ -52,6 +54,19 @@ const ADMIN_MODULE_CODES = [
   "wrench_integration",
   "ai_champion",
   "enquiry_management",
+];
+
+// Only one primary navigation group may be expanded at a time. Nested
+// Engineering disciplines use the same accordion rule within Engineering.
+const TOP_LEVEL_ACCORDION_IDS = [
+  "processEngineering",
+  "crs",
+  "finance",
+  "human_resource",
+  "projectControl",
+  "procurement",
+  "qhse",
+  "admin",
 ];
 
 // Strip HTML/script markup from string fields before persisting API data to
@@ -90,29 +105,11 @@ const Sidebar = ({
   const [freshIsAdmin, setFreshIsAdmin] = useState(false);
   // If parent Layout drives collapse state, use those props; otherwise
   // fall back to local state so the component still works standalone.
-  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const [internalCollapsed, setInternalCollapsed] = useState(true);
   const isCollapsed =
     isCollapsedProp !== undefined ? isCollapsedProp : internalCollapsed;
   const setIsCollapsed = setIsCollapsedProp || setInternalCollapsed;
-  const [expandedSections, setExpandedSections] = useState({
-    processEngineering: true,
-    // Engineering disciplines
-    process: false,
-    piping: false,
-    instrument: false,
-    electrical: false,
-    civil: false,
-    mechanical: false,
-    digitization: false,
-    // Other sections
-    crs: true,
-    finance: true,
-    human_resource: true,
-    projectControl: true,
-    procurement: true,
-    qhse: true,
-    admin: true,
-  });
+  const [expandedSections, setExpandedSections] = useState({});
 
   // Handle nested user object from API response (user.user.is_staff vs user.is_staff)
   const userData = user?.user || user;
@@ -284,10 +281,21 @@ const Sidebar = ({
     freshIsAdmin,
   ]);
   const toggleSection = (section) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
+    setExpandedSections((prev) => {
+      if (TOP_LEVEL_ACCORDION_IDS.includes(section)) {
+        return prev[section] ? {} : { [section]: true };
+      }
+
+      const nestedSectionIds = getEngineeringDisciplines().map(
+        (discipline) => discipline.id,
+      );
+      const next = { ...prev };
+      nestedSectionIds.forEach((id) => {
+        next[id] = false;
+      });
+      next[section] = !prev[section];
+      return next;
+    });
   };
 
   // Check if route is active
@@ -310,7 +318,7 @@ const Sidebar = ({
     {
       id: "processEngineering",
       title: getSectionTitle("processEngineering"),
-      icon: BeakerIcon,
+      icon: WrenchScrewdriverIcon,
       type: "section",
       expanded: expandedSections.processEngineering,
       children: getEngineeringDisciplines().map((discipline, index) => ({
@@ -336,7 +344,7 @@ const Sidebar = ({
     {
       id: "crs",
       title: getSectionTitle("crs"),
-      icon: ChartBarIcon,
+      icon: RectangleGroupIcon,
       type: "section",
       expanded: expandedSections.crs,
       children: [
@@ -449,7 +457,7 @@ const Sidebar = ({
     {
       id: "human_resource",
       title: getSectionTitle("human_resource"),
-      icon: UsersIcon,
+      icon: IdentificationIcon,
       type: "section",
       expanded: expandedSections.human_resource,
       enabled:
@@ -492,7 +500,7 @@ const Sidebar = ({
     {
       id: "sales",
       title: getSectionTitle("sales"),
-      icon: RocketLaunchIcon,
+      icon: PresentationChartLineIcon,
       type: "single",
       path: "/sales",
       moduleCode: "sales",
@@ -503,7 +511,7 @@ const Sidebar = ({
     {
       id: "projectControl",
       title: getSectionTitle("projectControl"),
-      icon: BriefcaseIcon,
+      icon: ClipboardDocumentListIcon,
       type: "section",
       expanded: expandedSections.projectControl,
       children: [
@@ -529,7 +537,7 @@ const Sidebar = ({
     {
       id: "procurement",
       title: getSectionTitle("procurement"),
-      icon: BriefcaseIcon,
+      icon: ShoppingCartIcon,
       type: "section",
       expanded: expandedSections.procurement,
       children: [
@@ -827,31 +835,99 @@ const Sidebar = ({
     });
   }
 
+  // Keep the accordion synchronized with direct links, browser history, and
+  // programmatic navigation. A route can activate one top-level section and,
+  // for Engineering, one nested discipline.
+  React.useEffect(() => {
+    let activeTopLevel = null;
+    let activeNested = null;
+
+    for (const item of filteredMenu) {
+      if (item.type !== "section") continue;
+
+      for (const child of item.children || []) {
+        if (child.type === "subsection") {
+          const hasActiveChild = (child.children || []).some((nestedChild) =>
+            isActiveRoute(nestedChild.path),
+          );
+          if (hasActiveChild) {
+            activeTopLevel = item.id;
+            activeNested = child.id;
+            break;
+          }
+        } else if (child.path && isActiveRoute(child.path)) {
+          activeTopLevel = item.id;
+          break;
+        }
+      }
+
+      if (activeTopLevel) break;
+    }
+
+    setExpandedSections((prev) => {
+      const next = {};
+      if (activeTopLevel) next[activeTopLevel] = true;
+      if (activeNested) next[activeNested] = true;
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+  }, [location.pathname, userModules, isAdmin]);
+
+  React.useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key !== "Escape") return;
+      if (window.matchMedia("(min-width: 1024px)").matches) {
+        setIsCollapsed(true);
+      } else {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [setIsCollapsed, setIsOpen]);
+
   const handleNavigation = (path) => {
     navigate(path);
-    // Close sidebar on mobile after navigation
     if (window.innerWidth < 1024) {
       setIsOpen(false);
+    } else {
+      setIsCollapsed(true);
     }
   };
 
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Mobile drawer backdrop */}
       {isOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+        <button
+          type="button"
+          aria-label="Close navigation menu"
+          className="fixed inset-0 top-16 z-40 bg-black/50 lg:hidden"
           onClick={() => setIsOpen(false)}
+        />
+      )}
+
+      {/* Desktop flyout backdrop: expanded navigation overlays content. */}
+      {isOpen && !isCollapsed && (
+        <button
+          type="button"
+          aria-label="Collapse navigation menu"
+          className="fixed inset-0 top-16 z-20 hidden bg-slate-950/10 lg:block"
+          onClick={() => setIsCollapsed(true)}
         />
       )}
 
       {/* Sidebar */}
       <aside
+        aria-label="Application navigation"
+        aria-hidden={!isOpen ? true : undefined}
+        inert={!isOpen ? "" : undefined}
         className={`
-          sticky top-0 z-30 ${showHeader ? "mt-2 h-[calc(100vh-4.5rem)]" : "h-screen"}
+          fixed bottom-0 left-0 top-16 z-50 lg:sticky lg:bottom-auto lg:top-0 lg:z-30 ${showHeader ? "lg:mt-2 h-[calc(100vh-4rem)] lg:h-[calc(100vh-4.5rem)]" : "h-screen"}
           ${isCollapsed ? SIDEBAR.collapsed.widthClass : SIDEBAR.expanded.widthClass} bg-white dark:bg-gray-800
           ${showHeader ? "border-0" : "border-r border-gray-200 dark:border-gray-700"}
-          transform transition-all duration-300 ease-in-out
+          ${!isCollapsed ? "lg:-mr-52 lg:border-r lg:border-slate-200 lg:shadow-2xl dark:lg:border-slate-700" : ""}
+          transform transition-all duration-300 ease-in-out motion-reduce:transition-none
           ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
           flex flex-col
         `}
@@ -905,6 +981,7 @@ const Sidebar = ({
 
         {/* Navigation Menu */}
         <nav
+          aria-label="Primary application sections"
           className={`flex-1 overflow-y-auto px-3 space-y-1 ${showHeader ? "pt-6 pb-4" : "py-4"}`}
         >
           {filteredMenu.map((item) => (
@@ -913,9 +990,11 @@ const Sidebar = ({
                 // Single menu item
                 <button
                   onClick={() => handleNavigation(item.path)}
+                  aria-current={isActiveRoute(item.path) ? "page" : undefined}
+                  aria-label={item.title}
                   className={`
                     w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between"} px-3 py-2.5 rounded-lg
-                    transition-all duration-200 relative overflow-hidden group
+                    transition-all duration-200 motion-reduce:transition-none relative overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
                     ${
                       isActiveRoute(item.path)
                         ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900 dark:to-indigo-900 text-blue-700 dark:text-blue-300 font-semibold shadow-md ring-2 ring-blue-200"
@@ -946,10 +1025,20 @@ const Sidebar = ({
                 // Section with children
                 <div className="space-y-1">
                   <button
-                    onClick={() =>
-                      isCollapsed ? null : toggleSection(item.id)
-                    }
-                    className={`w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between"} px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-semibold`}
+                    onClick={() => {
+                      if (isCollapsed) {
+                        setIsCollapsed(false);
+                        setExpandedSections((prev) => (
+                          prev[item.id] ? prev : { [item.id]: true }
+                        ));
+                        return;
+                      }
+                      toggleSection(item.id);
+                    }}
+                    aria-expanded={!isCollapsed && Boolean(item.expanded)}
+                    aria-controls={`sidebar-section-${item.id}`}
+                    aria-label={item.title}
+                    className={`w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between"} px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors motion-reduce:transition-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1`}
                     title={isCollapsed ? item.title : ""}
                   >
                     {isCollapsed ? (
@@ -978,16 +1067,18 @@ const Sidebar = ({
 
                   {/* Child items */}
                   {!isCollapsed && item.expanded && (
-                    <div className="ml-4 pl-4 border-l-2 border-gray-200 dark:border-gray-700 space-y-1">
+                    <div id={`sidebar-section-${item.id}`} className="ml-4 pl-4 border-l-2 border-gray-200 dark:border-gray-700 space-y-1">
                       {item.children.map((child) =>
                         child.type === "subsection" ? (
                           // Subsection with nested children (like Engineering disciplines)
                           <div key={child.id} className="space-y-1">
                             <button
                               onClick={() => toggleSection(child.id)}
+                              aria-expanded={Boolean(expandedSections[child.id])}
+                              aria-controls={`sidebar-subsection-${child.id}`}
                               className={`
                                 w-full flex items-center justify-between px-3 py-2 rounded-lg
-                                transition-all duration-200
+                                transition-all duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
                                 ${
                                   expandedSections[child.id]
                                     ? "bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-gray-100"
@@ -1010,16 +1101,17 @@ const Sidebar = ({
 
                             {/* Nested sub-features */}
                             {expandedSections[child.id] && (
-                              <div className="ml-4 pl-3 border-l-2 border-gray-100 dark:border-gray-600 space-y-0.5">
+                              <div id={`sidebar-subsection-${child.id}`} className="ml-4 pl-3 border-l-2 border-gray-100 dark:border-gray-600 space-y-0.5">
                                 {child.children.map((subFeature) => (
                                   <button
                                     key={subFeature.id}
                                     onClick={() =>
                                       handleNavigation(subFeature.path)
                                     }
+                                    aria-current={isActiveRoute(subFeature.path) ? "page" : undefined}
                                     className={`
                                       w-full flex items-center justify-between px-2.5 py-2 rounded-md
-                                      transition-all duration-200 text-left group
+                                      transition-all duration-200 motion-reduce:transition-none text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
                                       ${
                                         isActiveRoute(subFeature.path)
                                           ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 text-blue-700 dark:text-blue-300 font-medium shadow-sm"
@@ -1059,9 +1151,10 @@ const Sidebar = ({
                           <button
                             key={child.id}
                             onClick={() => handleNavigation(child.path)}
+                            aria-current={isActiveRoute(child.path) ? "page" : undefined}
                             className={`
                               w-full flex items-center justify-between px-3 py-2.5 rounded-lg
-                              transition-all duration-200 text-left
+                              transition-all duration-200 motion-reduce:transition-none text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
                               ${
                                 isActiveRoute(child.path)
                                   ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900 dark:to-indigo-900 text-blue-700 dark:text-blue-300 font-medium shadow-sm"

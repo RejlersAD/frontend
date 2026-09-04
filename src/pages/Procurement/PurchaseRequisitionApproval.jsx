@@ -9,7 +9,7 @@
  * - Digital signature support
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import apiClient from '../../services/api.service';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
 import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
@@ -49,6 +49,20 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const [referralTarget, setReferralTarget] = useState('moe');
   const [referralRemarks, setReferralRemarks] = useState('');
   const [referralError, setReferralError] = useState('');
+  const [linkedOrder, setLinkedOrder] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const linkedId = requisition?.linked_po_id;
+    if (!isOpen || !linkedId) {
+      setLinkedOrder(null);
+      return undefined;
+    }
+    apiClient.get(`/procurement/orders/${linkedId}/`)
+      .then((response) => { if (!cancelled) setLinkedOrder(response.data); })
+      .catch(() => { if (!cancelled) setLinkedOrder(null); });
+    return () => { cancelled = true; };
+  }, [isOpen, requisition?.linked_po_id]);
 
   if (!isOpen || !requisition) return null;
 
@@ -296,6 +310,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       );
 
       alert(`Requisition approved by ${config.label}!`);
+      window.dispatchEvent(new Event('procurement-approval-updated'));
       if (onApprovalComplete) onApprovalComplete(response.data);
       onClose();
     } catch (error) {
@@ -338,6 +353,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       );
 
       alert(`Requisition rejected by ${config.label}`);
+      window.dispatchEvent(new Event('procurement-approval-updated'));
       if (onApprovalComplete) onApprovalComplete(response.data);
       onClose();
       setShowRejectModal(false);
@@ -425,6 +441,22 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
           {/* Modal Content Body */}
           <div className="p-8 max-h-[70vh] overflow-y-auto">
+            {linkedOrder && (
+              <section className="mb-6 grid gap-4 lg:grid-cols-2" aria-label="Linked procurement records">
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Purchase Requisition</p>
+                  <p className="mt-1 font-bold text-slate-950">{requisition.pr_number}</p>
+                  <p className="mt-1 text-sm text-slate-600">{requisition.description_reason || requisition.product_service || 'No description'}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-500">{requisition.project_department || requisition.enterprise_project_name || 'No project assigned'}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Linked Purchase Order</p>
+                  <a href={`/procurement/orders/${linkedOrder.id}`} className="mt-1 inline-block font-bold text-emerald-800 hover:underline">{linkedOrder.po_number}</a>
+                  <p className="mt-1 text-sm text-slate-600">{linkedOrder.description || linkedOrder.title || 'No description'}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-500">{linkedOrder.project_display || linkedOrder.enterprise_project_name || linkedOrder.project_number || 'No project assigned'}</p>
+                </div>
+              </section>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               
               {/* Left Column - PR Form Information */}

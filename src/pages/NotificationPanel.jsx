@@ -18,17 +18,15 @@ import {
   InformationCircleIcon,
   MagnifyingGlassIcon,
   ShieldCheckIcon,
-  Squares2X2Icon,
-  TableCellsIcon,
   TrashIcon,
   UserIcon,
   WrenchScrewdriverIcon,
+  XCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import notificationService from '../services/notification.service'
 import apiClient from '../services/api.service'
 import { formatDistanceToNow } from '../utils/dateFormatter'
-import { LAYOUT_CONFIG } from '../config/enterpriseDashboard.config'
 import { resolveNotificationTarget } from '../utils/notificationNavigation'
 import PurchaseOrderLivePreview from './Procurement/PurchaseOrderLivePreview'
 import PurchaseRequisitionDocumentPreview from './Procurement/PurchaseRequisitionDocumentPreview'
@@ -115,18 +113,19 @@ const categoryName = (notification) => (
 const NotificationPanel = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { user, isAuthenticated } = useSelector((state) => state.auth)
+  const { isAuthenticated } = useSelector((state) => state.auth)
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [viewMode, setViewMode] = useState('cards')
+  const viewMode = 'list'
   const [currentPage, setCurrentPage] = useState(1)
   const [stats, setStats] = useState(null)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [recordPreview, setRecordPreview] = useState({ loading: false, data: null, error: '' })
+  const [previewDecision, setPreviewDecision] = useState({ loading: false, mode: null, reason: '', message: '', error: '' })
 
   const previewType = searchParams.get('preview')
   const previewId = searchParams.get('id')
@@ -159,6 +158,7 @@ const NotificationPanel = () => {
   useEffect(() => {
     if (!['po', 'pr'].includes(previewType) || !previewId) {
       setRecordPreview({ loading: false, data: null, error: '' })
+      setPreviewDecision({ loading: false, mode: null, reason: '', message: '', error: '' })
       return undefined
     }
 
@@ -193,6 +193,55 @@ const NotificationPanel = () => {
     nextParams.delete('id')
     setSearchParams(nextParams, { replace: true })
   }, [searchParams, setSearchParams])
+
+  const handlePreviewDecision = async (decision) => {
+    if (!recordPreview.data || !['approve', 'reject'].includes(decision)) return
+
+    const reason = previewDecision.reason.trim()
+    if (decision === 'reject' && reason.length < 10) {
+      setPreviewDecision((current) => ({ ...current, error: 'Please provide a rejection reason of at least 10 characters.', message: '' }))
+      return
+    }
+
+    setPreviewDecision((current) => ({ ...current, loading: true, error: '', message: '' }))
+    try {
+      const isPurchaseOrder = previewType === 'po'
+      const endpoint = isPurchaseOrder
+        ? `/procurement/orders/${previewId}/${decision}/`
+        : `/procurement/requisitions/${previewId}/${decision === 'approve' ? 'process_dynamic_approval' : 'process_dynamic_rejection'}/`
+      const payload = isPurchaseOrder
+        ? {
+            approval_stage: recordPreview.data.current_approval?.stage || recordPreview.data.approval_stage,
+            note: reason,
+            reason,
+          }
+        : decision === 'approve'
+          ? { signature: '' }
+          : { reason }
+
+      const response = await apiClient.post(endpoint, payload)
+      const updatedRecord = response.data?.purchase_order || response.data?.requisition || response.data
+      if (updatedRecord && typeof updatedRecord === 'object') {
+        setRecordPreview((current) => ({ ...current, data: { ...current.data, ...updatedRecord } }))
+      }
+      setPreviewDecision({
+        loading: false,
+        mode: null,
+        reason: '',
+        message: `${previewType === 'po' ? 'Purchase Order' : 'Purchase Requisition'} ${decision === 'approve' ? 'approved' : 'rejected'} successfully.`,
+        error: '',
+      })
+      window.dispatchEvent(new Event('procurement-approval-updated'))
+      void fetchNotifications({ quiet: true })
+    } catch (requestError) {
+      setPreviewDecision((current) => ({
+        ...current,
+        loading: false,
+        error: requestError.response?.data?.detail || requestError.response?.data?.error || `Unable to ${decision} this request.`,
+        message: '',
+      }))
+    }
+  }
 
   useEffect(() => {
     if (!previewType || !previewId) return undefined
@@ -234,7 +283,7 @@ const NotificationPanel = () => {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [filter, search, viewMode])
+  }, [filter, search])
 
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages))
@@ -306,9 +355,8 @@ const NotificationPanel = () => {
 
   const openNotification = (notification) => {
     const target = resolveNotificationTarget(notification)
-    if (!target) return
-
     if (!notification.is_read) void handleMarkAsRead(notification.id)
+    if (!target) return
 
     if (target.isExternal) {
       window.location.assign(target.href)
@@ -329,47 +377,39 @@ const NotificationPanel = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#f3f6fb]">
-      <div className={`mx-auto ${LAYOUT_CONFIG.paddingX} ${LAYOUT_CONFIG.paddingY}`} style={{ maxWidth: LAYOUT_CONFIG.maxWidth }}>
-        <div className="space-y-7">
-        <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 px-5 py-7 text-white shadow-[0_24px_70px_-28px_rgba(37,99,235,0.65)] sm:px-8">
-          <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-white/15 blur-3xl" />
-          <div className="absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-cyan-100/20 blur-3xl" />
-          <div className="relative flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
+    <div className="h-full min-h-0 w-full overflow-hidden bg-[#f5f6f8]">
+      <div className="h-full min-h-0 w-full max-w-none overflow-y-auto px-3 py-3 [scrollbar-width:none] sm:px-4 lg:px-5 xl:px-6 [&::-webkit-scrollbar]:hidden">
+        <div className="space-y-3">
+        {false && (
+        <section className="rounded-lg border border-slate-200 bg-white px-4 py-3 sm:px-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
-                  <BellAlertIcon className="h-7 w-7 text-cyan-100" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#0f6cbd] text-white">
+                  <BellAlertIcon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-100">Personal command inbox</p>
-                  <h1 className="mt-1 break-words text-3xl font-black tracking-tight sm:text-4xl">Notifications Center</h1>
+                  <div className="flex items-center gap-2 whitespace-nowrap text-xs text-slate-500"><span>Management</span><span>/</span><span className="font-semibold text-[#0f6cbd]">Notifications</span></div>
+                  <h1 className="mt-0.5 text-base font-semibold text-slate-950">Notification inbox</h1>
                 </div>
               </div>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/85">
-                Prioritize urgent alerts, track unread work, and move directly to the action that needs your attention, {user?.first_name || user?.username || 'there'}.
-              </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="border-r border-white/15 pr-5">
-                <p className="text-3xl font-black tabular-nums">{unreadCount}</p>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">Unread</p>
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => fetchNotifications()}
                 disabled={loading}
-                className="rounded-xl border border-white/25 bg-white/10 p-2.5 text-white transition hover:bg-white/20 disabled:opacity-50"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:border-[#0f6cbd] hover:text-[#0f6cbd] disabled:opacity-40"
                 title="Refresh notifications"
               >
-                <ArrowPathIcon className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+                <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
               <button
                 type="button"
                 onClick={handleMarkAllAsRead}
                 disabled={bulkLoading || unreadCount === 0}
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-[#0f6cbd] px-3 text-xs font-semibold text-white transition hover:bg-[#115ea3] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <EnvelopeOpenIcon className="h-4 w-4" />
                 {bulkLoading ? 'Updating…' : 'Mark all read'}
@@ -377,26 +417,27 @@ const NotificationPanel = () => {
             </div>
           </div>
 
-          <div className="relative mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-5 sm:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 sm:grid-cols-4">
             {[
-              { label: 'Total', value: stats?.total_count ?? notifications.length, tone: 'text-white' },
-              { label: 'Unread', value: unreadCount, tone: 'text-cyan-300' },
-              { label: 'Urgent / high', value: urgentCount, tone: urgentCount ? 'text-rose-300' : 'text-emerald-300' },
-              { label: 'Read', value: stats?.read_count ?? notifications.filter((item) => item.is_read).length, tone: 'text-emerald-300' },
+              { label: 'Total', value: stats?.total_count ?? notifications.length, tone: 'text-slate-950' },
+              { label: 'Unread', value: unreadCount, tone: 'text-[#0f6cbd]' },
+              { label: 'Urgent / high', value: urgentCount, tone: urgentCount ? 'text-rose-700' : 'text-slate-950' },
+              { label: 'Read', value: stats?.read_count ?? notifications.filter((item) => item.is_read).length, tone: 'text-emerald-700' },
             ].map((metric) => (
-              <div key={metric.label} className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3">
-                <p className={`text-2xl font-black tabular-nums ${metric.tone}`}>{metric.value}</p>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-white/70">{metric.label}</p>
+              <div key={metric.label} className="border-l border-slate-200 px-3 first:border-l-0">
+                <p className={`text-lg font-semibold tabular-nums ${metric.tone}`}>{metric.value}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{metric.label}</p>
               </div>
             ))}
           </div>
         </section>
+        )}
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_45px_-30px_rgba(15,23,42,0.55)]">
-          <div className="flex flex-col gap-4 border-b border-slate-200 bg-white px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600">Attention stream</p>
-              <h2 className="mt-1 text-xl font-black text-slate-950">Your inbox</h2>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0f6cbd]">Attention stream</p>
+              <h2 className="mt-0.5 text-base font-semibold text-slate-950">Your inbox</h2>
               <p className="mt-1 text-xs text-slate-500">{filteredNotifications.length} item{filteredNotifications.length === 1 ? '' : 's'} in the current view</p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
@@ -406,7 +447,7 @@ const NotificationPanel = () => {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search title, message, category…"
-                className="h-11 w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                className="h-10 w-full rounded-md border border-slate-300 bg-white pl-10 pr-10 text-sm text-slate-800 outline-none transition focus:border-[#0f6cbd] focus:ring-2 focus:ring-blue-100"
               />
               {search && (
                 <button type="button" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" aria-label="Clear search">
@@ -414,27 +455,10 @@ const NotificationPanel = () => {
                 </button>
               )}
               </div>
-              <div className="grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-100 p-1" aria-label="Notification view">
-                {[
-                  { id: 'cards', label: 'Cards', Icon: Squares2X2Icon },
-                  { id: 'list', label: 'List', Icon: TableCellsIcon },
-                ].map(({ id, label, Icon }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setViewMode(id)}
-                    aria-pressed={viewMode === id}
-                    className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-bold transition ${viewMode === id ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {label}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto border-b border-slate-100 bg-slate-50/80 px-5 py-3">
+          <div className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-[#f8f9fa] px-4 py-2">
             {FILTERS.map((option) => {
               const count = option.id === 'unread' ? unreadCount : option.id === 'urgent' ? urgentCount : stats?.total_count ?? notifications.length
               return (
@@ -442,10 +466,10 @@ const NotificationPanel = () => {
                   key={option.id}
                   type="button"
                   onClick={() => setFilter(option.id)}
-                  className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-xs font-bold transition ${filter === option.id ? 'bg-slate-900 text-white shadow-md shadow-slate-300' : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700'}`}
+                  className={`inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-md border px-3 text-xs font-semibold transition ${filter === option.id ? 'border-[#0f6cbd] bg-blue-50 text-[#0f6cbd]' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white hover:text-slate-950'}`}
                 >
                   {option.label}
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${filter === option.id ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'}`}>{count}</span>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${filter === option.id ? 'bg-[#0f6cbd] text-white' : 'bg-slate-200 text-slate-600'}`}>{count}</span>
                 </button>
               )
             })}
@@ -459,7 +483,7 @@ const NotificationPanel = () => {
             </div>
           )}
 
-          <div className={viewMode === 'cards' ? 'grid grid-cols-1 gap-4 p-4 sm:p-5 xl:grid-cols-2' : 'p-0'}>
+          <div className="p-0">
             {loading ? (
               [1, 2, 3, 4].map((item) => <div key={item} className="h-32 animate-pulse rounded-2xl bg-slate-100" />)
             ) : filteredNotifications.length === 0 ? (
@@ -529,14 +553,13 @@ const NotificationPanel = () => {
               })
             ) : (
               <div className="w-full overflow-x-auto">
-                <table className="w-full min-w-[880px] table-fixed text-left">
-                  <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                <table className="w-full min-w-[820px] table-fixed text-left">
+                  <thead className="bg-[#f8f9fa] text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                     <tr>
-                      <th className="w-[42%] px-5 py-3.5">Notification</th>
-                      <th className="w-[15%] px-4 py-3.5">Priority</th>
-                      <th className="w-[15%] px-4 py-3.5">Category</th>
-                      <th className="w-[15%] px-4 py-3.5">Received</th>
-                      <th className="w-[13%] px-5 py-3.5 text-right">Actions</th>
+                      <th className="w-[52%] px-4 py-2.5">Notification</th>
+                      <th className="w-[14%] px-3 py-2.5">Priority</th>
+                      <th className="w-[17%] px-3 py-2.5">Category</th>
+                      <th className="w-[17%] px-3 py-2.5">Received</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -545,12 +568,21 @@ const NotificationPanel = () => {
                       const priorityStyle = PRIORITY_STYLES[priority] || PRIORITY_STYLES.NORMAL
                       const category = categoryName(notification).toUpperCase()
                       const CategoryIcon = CATEGORY_ICONS[category] || InformationCircleIcon
-                      const isBusy = busyId === notification.id
-                      const actionTarget = resolveNotificationTarget(notification)
-
                       return (
-                        <tr key={notification.id} className={`border-b border-slate-200 transition last:border-b-0 ${priorityStyle.listRow} ${notification.is_read ? 'opacity-75' : ''}`}>
-                          <td className={`border-l-4 px-5 py-4 align-top ${priorityStyle.listBorder}`}>
+                        <tr
+                          key={notification.id}
+                          className={`cursor-pointer border-b border-slate-100 transition last:border-b-0 hover:bg-blue-50/50 focus-within:bg-blue-50/50 ${notification.is_read ? 'opacity-75' : ''}`}
+                          onClick={() => openNotification(notification)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              openNotification(notification)
+                            }
+                          }}
+                          tabIndex={0}
+                          aria-label={`Open notification: ${notification.title}`}
+                        >
+                          <td className={`border-l-[3px] px-4 py-3 align-top ${priorityStyle.listBorder}`}>
                             <div className="flex min-w-0 items-start gap-3">
                               <div className="relative flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-slate-100 text-slate-600">
                                 <CategoryIcon className="h-4 w-4" />
@@ -558,35 +590,18 @@ const NotificationPanel = () => {
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className="truncate text-sm font-extrabold text-slate-900" title={notification.title}>{notification.title}</p>
-                                  {!notification.is_read && <span className="flex-none rounded-full bg-indigo-600 px-1.5 py-0.5 text-[8px] font-black uppercase text-white">New</span>}
+                                  <p className="truncate text-xs font-semibold text-slate-900" title={notification.title}>{notification.title}</p>
+                                  {!notification.is_read && <span className="flex-none rounded-full bg-[#0f6cbd] px-1.5 py-0.5 text-[8px] font-semibold uppercase text-white">New</span>}
                                 </div>
                                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500" title={notification.message}>{notification.message}</p>
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-4 align-top">
-                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ring-1 ${priorityStyle.badge}`}>{priorityStyle.label}</span>
+                          <td className="px-3 py-3 align-top">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${priorityStyle.badge}`}>{priorityStyle.label}</span>
                           </td>
-                          <td className="px-4 py-4 align-top text-xs font-semibold text-slate-600">{category.replaceAll('_', ' ')}</td>
-                          <td className="px-4 py-4 align-top text-xs font-semibold text-slate-500">{notification.time_ago || formatDistanceToNow(notification.created_at)}</td>
-                          <td className="px-5 py-4 align-top">
-                            <div className="flex justify-end gap-1.5">
-                              {actionTarget && (
-                                <button type="button" onClick={() => openNotification(notification)} disabled={isBusy} className="rounded-lg bg-indigo-600 p-2 text-white transition hover:bg-indigo-700 disabled:opacity-50" title={actionTarget.isRecordPreview ? 'Preview' : notification.action_label || 'Open'}>
-                                  <ArrowRightIcon className="h-4 w-4" />
-                                </button>
-                              )}
-                              {!notification.is_read && (
-                                <button type="button" onClick={() => handleMarkAsRead(notification.id)} disabled={isBusy} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 transition hover:text-emerald-700 disabled:opacity-50" title="Mark as read">
-                                  <EnvelopeOpenIcon className="h-4 w-4" />
-                                </button>
-                              )}
-                              <button type="button" onClick={() => handleDelete(notification.id)} disabled={isBusy} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-rose-700 disabled:opacity-50" title="Delete notification">
-                                <TrashIcon className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
+                          <td className="px-3 py-3 align-top text-xs font-medium text-slate-600">{category.replaceAll('_', ' ')}</td>
+                          <td className="px-3 py-3 align-top text-xs text-slate-500">{notification.time_ago || formatDistanceToNow(notification.created_at)}</td>
                         </tr>
                       )
                     })}
@@ -688,6 +703,60 @@ const NotificationPanel = () => {
                 <PurchaseRequisitionDocumentPreview requisition={recordPreview.data} />
               ) : null}
             </div>
+
+            {recordPreview.data && !recordPreview.loading && !recordPreview.error && (
+              <footer className="border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+                {previewDecision.mode === 'reject' && !previewDecision.message && (
+                  <div className="mb-3">
+                    <label htmlFor="notification-preview-rejection" className="mb-1.5 block text-xs font-semibold text-slate-700">Rejection reason</label>
+                    <textarea
+                      id="notification-preview-rejection"
+                      value={previewDecision.reason}
+                      onChange={(event) => setPreviewDecision((current) => ({ ...current, reason: event.target.value, error: '' }))}
+                      rows={3}
+                      maxLength={1000}
+                      disabled={previewDecision.loading}
+                      placeholder="Explain why this request is being rejected..."
+                      className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#0f6cbd] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">Minimum 10 characters · {previewDecision.reason.length}/1000</p>
+                  </div>
+                )}
+
+                {previewDecision.error && (
+                  <div className="mb-3 flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                    <ExclamationTriangleIcon className="h-4 w-4 flex-none" />{previewDecision.error}
+                  </div>
+                )}
+                {previewDecision.message && (
+                  <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+                    <CheckCircleIcon className="h-4 w-4 flex-none" />{previewDecision.message}
+                  </div>
+                )}
+
+                {!previewDecision.message && (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {previewDecision.mode === 'reject' && (
+                      <button type="button" onClick={() => setPreviewDecision((current) => ({ ...current, mode: null, reason: '', error: '' }))} disabled={previewDecision.loading} className="h-9 rounded-md border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">Cancel</button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => previewDecision.mode === 'reject' ? handlePreviewDecision('reject') : setPreviewDecision((current) => ({ ...current, mode: 'reject', message: '', error: '' }))}
+                      disabled={previewDecision.loading}
+                      className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-300 bg-white px-4 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-40"
+                    >
+                      <XCircleIcon className="h-4 w-4" />
+                      {previewDecision.loading && previewDecision.mode === 'reject' ? 'Rejecting...' : previewDecision.mode === 'reject' ? 'Confirm rejection' : 'Reject'}
+                    </button>
+                    {previewDecision.mode !== 'reject' && (
+                      <button type="button" onClick={() => handlePreviewDecision('approve')} disabled={previewDecision.loading} className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-600 px-4 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40">
+                        <CheckCircleIcon className="h-4 w-4" />{previewDecision.loading ? 'Approving...' : 'Approve'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </footer>
+            )}
           </section>
         </div>
       )}
