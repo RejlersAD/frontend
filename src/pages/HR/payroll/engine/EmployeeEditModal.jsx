@@ -100,7 +100,7 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
     if (!employee?.id) return
     // Validation — required fields
     for (const f of EMPLOYEE_EDIT_FIELDS) {
-      if (f.required && !f.readOnly) {
+      if (f.required && !f.readOnly && !(employee.employee && f.canonical)) {
         const v = form[f.key]
         if (v === '' || v === null || v === undefined) {
           setError(`${f.label} is required.`)
@@ -112,7 +112,7 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
     try {
       const payload = {}
       for (const f of EMPLOYEE_EDIT_FIELDS) {
-        if (f.readOnly) continue
+        if (f.readOnly || (employee.employee && f.canonical)) continue
         payload[f.key] = toPayloadValue(form[f.key], f.type)
       }
       const updated = await payrollEngineService.updateEmployee(employee.id, payload)
@@ -134,6 +134,7 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
   const renderInput = (field) => {
     const id = `emp-edit-${field.key}`
     const value = form[field.key]
+    const isReadOnly = field.readOnly || Boolean(employee.employee && field.canonical)
     const baseCls =
       'w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 ' +
       'focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 ' +
@@ -146,7 +147,7 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
             id={id}
             type="checkbox"
             checked={!!value}
-            disabled={field.readOnly}
+            disabled={isReadOnly}
             onChange={(e) => handleChange(field.key, e.target.checked)}
             className="rounded"
           />
@@ -161,7 +162,7 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
         <select
           id={id}
           value={value ?? ''}
-          disabled={field.readOnly}
+          disabled={isReadOnly}
           onChange={(e) => handleChange(field.key, e.target.value)}
           className={baseCls}
         >
@@ -187,7 +188,7 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
             type="text"
             list={listId}
             value={value ?? ''}
-            disabled={field.readOnly}
+            disabled={isReadOnly}
             onChange={(e) => handleChange(field.key, e.target.value)}
             className={baseCls}
             placeholder="Type or select…"
@@ -207,7 +208,7 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
           id={id}
           rows={3}
           value={value ?? ''}
-          disabled={field.readOnly}
+          disabled={isReadOnly}
           onChange={(e) => handleChange(field.key, e.target.value)}
           className={baseCls}
         />
@@ -221,8 +222,8 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
           type={field.type || 'text'}
           step={field.type === 'number' ? (field.step || '0.01') : undefined}
           value={value ?? ''}
-          readOnly={field.readOnly}
-          disabled={field.readOnly}
+          readOnly={isReadOnly}
+          disabled={isReadOnly}
           onChange={(e) => handleChange(field.key, e.target.value)}
           className={`${baseCls} ${field.currency ? 'pr-12' : ''}`}
         />
@@ -270,6 +271,11 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
 
         {/* Body */}
         <div className="px-5 py-4 overflow-y-auto space-y-5">
+          {employee.employee && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              Name, employee number, department, designation and joining date come from the canonical employee profile. Edit them in HR Employee Profile; payroll controls only compensation, banking and payroll eligibility.
+            </div>
+          )}
           {FIELD_GROUPS_ORDER.map((group) => (
             <fieldset key={group} className="space-y-2">
               <legend className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
