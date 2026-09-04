@@ -6,6 +6,7 @@ import {
   DevicePhoneMobileIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
+import pwaInstallService from '../services/pwaInstall.service'
 
 const isStandaloneDisplay = () => (
   window.matchMedia('(display-mode: standalone)').matches
@@ -13,9 +14,12 @@ const isStandaloneDisplay = () => (
 )
 
 const PWAHeaderInstall = () => {
-  const [deferredPrompt, setDeferredPrompt] = useState(null)
+  const [promptAvailable, setPromptAvailable] = useState(
+    () => pwaInstallService.getState().available,
+  )
   const [installed, setInstalled] = useState(isStandaloneDisplay)
   const [instructionsOpen, setInstructionsOpen] = useState(false)
+  const [installing, setInstalling] = useState(false)
 
   const device = useMemo(() => {
     const agent = navigator.userAgent.toLowerCase()
@@ -27,42 +31,36 @@ const PWAHeaderInstall = () => {
 
   useEffect(() => {
     const displayQuery = window.matchMedia('(display-mode: standalone)')
-    const handleInstallPrompt = (event) => {
-      event.preventDefault()
-      setDeferredPrompt(event)
-    }
-    const handleInstalled = () => {
-      setInstalled(true)
-      setDeferredPrompt(null)
-      setInstructionsOpen(false)
-    }
     const handleDisplayChange = () => setInstalled(isStandaloneDisplay())
+    const unsubscribe = pwaInstallService.subscribe((state) => {
+      setPromptAvailable(state.available)
+      setInstalled(state.installed || isStandaloneDisplay())
+      if (state.installed) setInstructionsOpen(false)
+    })
 
-    window.addEventListener('beforeinstallprompt', handleInstallPrompt)
-    window.addEventListener('appinstalled', handleInstalled)
     displayQuery.addEventListener?.('change', handleDisplayChange)
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleInstallPrompt)
-      window.removeEventListener('appinstalled', handleInstalled)
+      unsubscribe()
       displayQuery.removeEventListener?.('change', handleDisplayChange)
     }
   }, [])
 
   const install = async () => {
-    if (!deferredPrompt) {
+    if (!promptAvailable) {
       setInstructionsOpen(true)
       return
     }
 
+    setInstalling(true)
     try {
-      await deferredPrompt.prompt()
-      const choice = await deferredPrompt.userChoice
-      setDeferredPrompt(null)
-      if (choice.outcome === 'accepted') setInstalled(true)
+      const result = await pwaInstallService.install()
+      if (!result.available) setInstructionsOpen(true)
+      if (result.outcome === 'accepted') setInstalled(true)
     } catch (error) {
       console.warn('RADAI installation prompt was unavailable:', error)
-      setDeferredPrompt(null)
       setInstructionsOpen(true)
+    } finally {
+      setInstalling(false)
     }
   }
 
@@ -81,12 +79,12 @@ const PWAHeaderInstall = () => {
       <button
         type="button"
         onClick={install}
-        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white sm:px-2.5"
+        disabled={installing}
+        className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-wait disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
         aria-label="Install RADAI on this device"
         title="Install RADAI"
       >
-        <ArrowDownTrayIcon className="h-5 w-5" />
-        <span className="hidden text-xs font-semibold xl:inline">Install</span>
+        <ArrowDownTrayIcon className={`h-5 w-5 ${installing ? 'animate-bounce' : ''}`} />
       </button>
 
       {instructionsOpen && (
