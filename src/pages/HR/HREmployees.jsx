@@ -569,6 +569,8 @@ const Avatar = ({ emp, size = "md" }) => {
       <img
         src={photoUrl}
         alt={fullName(emp)}
+        loading="lazy"
+        decoding="async"
         className={`${cls} shrink-0 rounded-full object-cover ring-2 ring-white shadow`}
         onError={() => setPhotoFailed(true)}
       />
@@ -1440,17 +1442,7 @@ const DepartmentsView = ({ employees, onSelect, navigate }) => {
                         className="w-8 h-8 rounded-full ring-2 ring-white/60 flex-shrink-0 overflow-hidden shadow"
                         style={{ zIndex: clusterMax - i }}
                       >
-                        {e.profile_photo ? (
-                          <img
-                            src={e.profile_photo}
-                            alt={fullName(e)}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-white/25 flex items-center justify-center text-white font-bold text-[10px]">
-                            {initials(e)}
-                          </div>
-                        )}
+                        <Avatar emp={e} size="sm" />
                       </div>
                     ))}
                     {list.length > clusterMax && (
