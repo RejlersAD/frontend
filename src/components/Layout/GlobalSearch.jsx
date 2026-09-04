@@ -40,6 +40,13 @@ const SEARCH_ICONS = {
 
 const normalise = (value) => String(value || '').trim().toLowerCase()
 
+const SEARCH_PROMPTS = [
+  HEADER_SEARCH_CONFIG.placeholder,
+  'Find employees, projects, and approvals...',
+  'Search policies, documents, and requests...',
+  'Open any RADAI workspace...',
+]
+
 const GlobalSearch = ({ user, rbacData }) => {
   const navigate = useNavigate()
   const rootRef = useRef(null)
@@ -48,6 +55,8 @@ const GlobalSearch = ({ user, rbacData }) => {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
+  const [inputFocused, setInputFocused] = useState(false)
+  const [animatedPlaceholder, setAnimatedPlaceholder] = useState(SEARCH_PROMPTS[0])
 
   const userData = user?.user || user
   const moduleCodes = useMemo(
@@ -130,6 +139,47 @@ const GlobalSearch = ({ user, rbacData }) => {
   }, [query])
 
   useEffect(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reducedMotion || inputFocused || query) {
+      setAnimatedPlaceholder(SEARCH_PROMPTS[0])
+      return undefined
+    }
+
+    let promptIndex = 0
+    let displayedText = SEARCH_PROMPTS[0]
+    let phase = 'hold'
+    let timer
+
+    const advancePrompt = () => {
+      if (phase === 'hold') {
+        phase = 'delete'
+        timer = window.setTimeout(advancePrompt, 22)
+        return
+      }
+
+      if (phase === 'delete') {
+        displayedText = displayedText.slice(0, -1)
+        setAnimatedPlaceholder(displayedText)
+        if (displayedText.length === 0) {
+          promptIndex = (promptIndex + 1) % SEARCH_PROMPTS.length
+          phase = 'type'
+        }
+        timer = window.setTimeout(advancePrompt, 22)
+        return
+      }
+
+      const nextPrompt = SEARCH_PROMPTS[promptIndex]
+      displayedText = nextPrompt.slice(0, displayedText.length + 1)
+      setAnimatedPlaceholder(displayedText)
+      if (displayedText === nextPrompt) phase = 'hold'
+      timer = window.setTimeout(advancePrompt, displayedText === nextPrompt ? 2200 : 38)
+    }
+
+    timer = window.setTimeout(advancePrompt, 2200)
+    return () => window.clearTimeout(timer)
+  }, [inputFocused, query])
+
+  useEffect(() => {
     const handlePointerDown = (event) => {
       if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false)
     }
@@ -176,9 +226,13 @@ const GlobalSearch = ({ user, rbacData }) => {
   const inputProps = {
     value: query,
     onChange: (event) => setQuery(event.target.value),
-    onFocus: () => setOpen(true),
+    onFocus: () => {
+      setInputFocused(true)
+      setOpen(true)
+    },
+    onBlur: () => setInputFocused(false),
     onKeyDown: handleKeyDown,
-    placeholder: HEADER_SEARCH_CONFIG.placeholder,
+    placeholder: animatedPlaceholder,
     role: 'combobox',
     'aria-label': 'Global search',
     'aria-expanded': open,
@@ -187,16 +241,16 @@ const GlobalSearch = ({ user, rbacData }) => {
   }
 
   return (
-    <div ref={rootRef} className="relative flex w-full max-w-2xl justify-center">
-      <div className="ai-search-frame hidden w-full rounded-xl p-px md:block">
-        <div className="relative h-full w-full rounded-[11px] bg-[#122552] transition-colors hover:bg-[#172d5d]">
-          <MagnifyingGlassIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7fcab5]" />
+    <div ref={rootRef} className="relative flex w-full max-w-4xl justify-start">
+      <div className="hidden w-full md:block">
+        <div className="relative h-full w-full rounded-lg border border-slate-200 bg-slate-50 transition-colors hover:border-slate-300 hover:bg-white focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 dark:border-slate-700 dark:bg-slate-900/50 dark:hover:border-slate-600 dark:hover:bg-slate-900 dark:focus-within:border-blue-500 dark:focus-within:ring-blue-950">
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             ref={desktopInputRef}
             {...inputProps}
-            className="h-[38px] w-full rounded-[11px] bg-white/[0.015] pl-10 pr-20 text-sm text-white outline-none transition placeholder:text-blue-200/45 focus:bg-white/[0.035]"
+            className="h-10 w-full rounded-lg bg-transparent pl-9 pr-20 text-sm text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-white/10 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-blue-100/55">
+          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-500">
             Ctrl K
           </span>
         </div>
@@ -208,14 +262,14 @@ const GlobalSearch = ({ user, rbacData }) => {
           setOpen(true)
           window.setTimeout(() => mobileInputRef.current?.focus(), 0)
         }}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-blue-100 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7fcab5] md:hidden"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white md:hidden"
         aria-label="Open global search"
       >
         <MagnifyingGlassIcon className="h-5 w-5" />
       </button>
 
       {open && (
-        <div className="fixed left-4 right-4 top-[4.5rem] overflow-hidden rounded-2xl border border-slate-200/80 bg-white text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/5 md:absolute md:left-0 md:right-0 md:top-full md:mt-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+        <div className="fixed left-4 right-4 top-16 overflow-hidden rounded-xl border border-slate-200/80 bg-white text-slate-900 shadow-[0_20px_50px_rgba(15,23,42,0.2)] ring-1 ring-slate-900/5 md:absolute md:left-0 md:right-0 md:top-full md:mt-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           <div className="flex items-center gap-2 border-b border-slate-100 p-3 md:hidden dark:border-slate-800">
             <MagnifyingGlassIcon className="h-5 w-5 text-slate-400" />
             <input

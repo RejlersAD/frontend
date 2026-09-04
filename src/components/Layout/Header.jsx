@@ -14,6 +14,7 @@ import { logout } from '../../store/slices/authSlice'
 import { toggleTheme } from '../../store/slices/themeSlice'
 import { LOGO_CONFIG, getLogoPath } from '../../config/logo.config'
 import NotificationBell from '../notifications/NotificationBell'
+import PWAHeaderInstall from '../PWAHeaderInstall'
 import GlobalSearch from './GlobalSearch'
 import { USER_DISPLAY_CONFIG } from '../../config/userDisplay.config'
 import {
@@ -50,6 +51,9 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
   const firstName = displayName.split(' ')[0] || displayName
   const initials = USER_DISPLAY_CONFIG.formatting.getUserInitials(user)
   const email = USER_DISPLAY_CONFIG.formatting.getEmailDisplay(user)
+  const userData = user?.user || user
+  const profilePhoto = user?.profile_photo || userData?.profile_photo || user?.employee?.profile_photo
+  const roleLabel = user?.roles?.[0]?.name || userData?.job_title || 'Team member'
 
   useEffect(() => {
     setUserMenuOpen(false)
@@ -116,14 +120,17 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
   }
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 h-16 border-b border-white/10 bg-gradient-to-r from-[#08142f]/[0.98] via-[#10255a]/[0.98] to-[#172554]/[0.98] text-white shadow-[0_8px_30px_rgba(2,8,23,0.18)] backdrop-blur-xl">
-      <nav className="mx-auto flex h-full max-w-[1600px] items-center gap-4 px-4 sm:px-6" aria-label="Primary navigation">
+    <header className="relative z-40 h-14 flex-none border-b border-slate-200 bg-white text-slate-700 shadow-sm dark:border-slate-700 dark:bg-gray-800 dark:text-slate-100">
+      <nav
+        className="grid h-full w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:gap-3 sm:px-5 lg:grid-cols-[minmax(12rem,1fr)_minmax(28rem,54rem)_minmax(12rem,1fr)]"
+        aria-label="Primary navigation"
+      >
         <div className="flex min-w-0 items-center gap-2">
           {showSidebar && (
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-blue-100 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7fcab5] lg:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white lg:hidden"
               aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
               aria-expanded={sidebarOpen}
             >
@@ -132,38 +139,36 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
           )}
 
           <Link
-            to="/"
-            className="group flex min-w-0 items-center gap-2.5 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7fcab5]"
-            aria-label="RADAI home"
+            to="/dashboard"
+            className="flex min-w-0 items-center gap-2 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            aria-label="Rejlers dashboard"
           >
-            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl border border-white/60 bg-white shadow-sm transition-shadow group-hover:shadow-md">
+            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-md bg-white p-1 ring-1 ring-slate-200 dark:ring-slate-600">
               <img
                 src={getLogoPath()}
                 alt={LOGO_CONFIG.primary.alt}
-                className="h-7 w-auto"
-                onError={(event) => {
-                  event.currentTarget.src = LOGO_CONFIG.fallback.image
-                }}
+                className="h-full w-full object-contain"
+                onError={(event) => { event.currentTarget.src = LOGO_CONFIG.fallback.image }}
               />
             </span>
-            <span className="hidden min-w-0 sm:block">
-              <span className="block text-[17px] font-extrabold leading-none tracking-wide text-[#7fcab5]">RADAI</span>
-              <span className="mt-1 block text-[9px] font-medium uppercase tracking-[0.18em] text-blue-200/65">AI Platform</span>
+            <span className="hidden truncate text-xs font-extrabold tracking-[0.14em] text-slate-700 dark:text-slate-200 sm:block">
+              REJLERS
             </span>
           </Link>
         </div>
 
-        <div className="flex min-w-0 flex-1 justify-center px-1 sm:px-4 lg:px-8">
+        <div className="flex min-w-0 justify-center">
           <GlobalSearch user={user} rbacData={rbacData} />
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex min-w-0 items-center justify-end gap-1.5">
           {isAuthenticated && <NotificationBell />}
+          {isAuthenticated && <PWAHeaderInstall />}
 
           <button
             type="button"
             onClick={handleThemeToggle}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-blue-100 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7fcab5]"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
             aria-label={mode === 'light' ? 'Use dark theme' : 'Use light theme'}
             title={mode === 'light' ? 'Dark theme' : 'Light theme'}
           >
@@ -177,15 +182,26 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar }) => {
               <button
                 type="button"
                 onClick={() => setUserMenuOpen((open) => !open)}
-                className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] pl-1.5 pr-2 text-left transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7fcab5]"
+                className="flex h-11 items-center gap-2 rounded-lg pl-1 pr-1.5 text-left transition-colors hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700"
                 aria-haspopup="menu"
                 aria-expanded={userMenuOpen}
               >
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#00a896] to-[#3182a0] text-[11px] font-bold text-white shadow-sm">
-                  {initials}
+                <span className="relative flex h-9 w-9 flex-none items-center justify-center overflow-hidden rounded-full bg-blue-600 text-[11px] font-bold text-white ring-1 ring-slate-200 dark:ring-slate-600">
+                  {profilePhoto && (
+                    <img
+                      src={profilePhoto}
+                      alt=""
+                      className="absolute inset-0 z-10 h-full w-full object-cover"
+                      onError={(event) => { event.currentTarget.style.display = 'none' }}
+                    />
+                  )}
+                  <span aria-hidden="true">{initials}</span>
                 </span>
-                <span className="hidden max-w-32 truncate text-sm font-semibold text-white sm:block">{firstName}</span>
-                <ChevronDownIcon className={`h-4 w-4 text-blue-200/70 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+                <span className="hidden min-w-0 max-w-36 sm:block">
+                  <span className="block truncate text-sm font-semibold leading-4 text-slate-800 dark:text-white">{firstName}</span>
+                  <span className="block truncate text-[10px] leading-4 text-slate-500 dark:text-slate-400">{roleLabel}</span>
+                </span>
+                <ChevronDownIcon className={`h-4 w-4 text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {userMenuOpen && (

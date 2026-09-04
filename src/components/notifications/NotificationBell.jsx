@@ -281,18 +281,18 @@ const NotificationBell = () => {
         ref={bellRef}
         onClick={handleBellClick}
         type="button"
-        className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-blue-100 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7fcab5] cursor-pointer"
+        className="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
         aria-label="Notifications"
         style={{ pointerEvents: 'auto' }}
       >
         {unreadCount > 0 ? (
-          <BellAlertIcon className="h-5 w-5 text-[#7fcab5]" />
+          <BellAlertIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         ) : (
           <BellIcon className="h-5 w-5" />
         )}
         
         {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-4 text-white shadow-sm ring-2 ring-[#10255a]">
+          <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-4 text-white shadow-sm ring-2 ring-white dark:ring-gray-800">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

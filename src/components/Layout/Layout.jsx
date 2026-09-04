@@ -4,7 +4,6 @@ import { useSelector } from 'react-redux'
 import Header from './Header'
 import Footer from './Footer'
 import Sidebar from './Sidebar'
-import { HEADER_HEIGHT_CLASS } from '../../config/layout.config'
 import ProcurementApprovalReminder from '../ProcurementApprovalReminder'
 
 /**
@@ -74,28 +73,27 @@ const Layout = () => {
   // Hide the shared footer on public pages that render their own or are auth flow pages.
   const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isViewportWorkspace
 
-  const contentOffsetClass = showHeader ? HEADER_HEIGHT_CLASS : ''
-
   return (
-    <div className={`${isApplicationShell ? 'h-screen overflow-hidden' : 'min-h-screen'} flex flex-col bg-gray-50 dark:bg-gray-900`}>
-      {showHeader && (
-        <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} showSidebar={showSidebar} />
+    <div className={`${isApplicationShell ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex bg-gray-50 dark:bg-gray-900`}>
+      {showSidebar && (
+        <Sidebar
+          isOpen={sidebarOpen}
+          setIsOpen={setSidebarOpen}
+          isCollapsed={sidebarCollapsed}
+          setIsCollapsed={setSidebarCollapsed}
+        />
       )}
-      <div className={`flex min-h-0 flex-1 ${contentOffsetClass}`}>
-        {showSidebar && (
-          <Sidebar
-            isOpen={sidebarOpen}
-            setIsOpen={setSidebarOpen}
-            isCollapsed={sidebarCollapsed}
-            setIsCollapsed={setSidebarCollapsed}
-            showHeader={showHeader}
-          />
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {showHeader && (
+          <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} showSidebar={showSidebar} />
         )}
         <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader ? 'pt-2 sm:pt-3' : ''}`}>
           <Outlet />
         </main>
+        {showFooter && <Footer />}
       </div>
-      {showFooter && <Footer />}
+
       {showHeader && <ProcurementApprovalReminder />}
     </div>
   )

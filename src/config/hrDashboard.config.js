@@ -235,8 +235,11 @@ export const HR_DASHBOARD_SECTIONS = {
   quickLinks: true,
   aiChampion: true,
   pendingActions: true,    // Inbox: leave + alerts + salary + slips
-  payrollSnapshot: true,   // Second KPI row from 4.2 + 4.3 data
+  pendingActionsPanel: false, // Keep notification data/bell without the large dashboard panel
+  payrollSnapshot: false,  // Removed from the HR overview; payroll remains available in 4.2
+  attendanceAtTop: true,   // Place attendance intelligence directly below headcount KPIs
   leaveRecordsConsolidated: true,  // Consolidated leave report for all users
+  leaveRecordsDetailPanel: false, // Summary now lives in the four-column operational row
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
