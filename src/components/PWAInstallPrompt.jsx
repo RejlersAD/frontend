@@ -3,7 +3,7 @@ import PWAInstallModal from './PWAInstallModal'
 
 /**
  * PWA Install Prompt Component
- * Shows "Download Desktop App" button for PWA installation
+ * Shows an install button for desktop and mobile PWA installation
  * 
  * Strategy:
  * - Always shows button by default (except if already installed)
@@ -253,10 +253,10 @@ const PWAInstallPrompt = () => {
             
             <div className="text-left">
               <div className="text-white font-black text-sm leading-tight">
-                Download Desktop App
+                Install RADAI
               </div>
               <div className="text-cyan-100 text-xs font-semibold">
-                Install RADAI for faster access
+                Desktop, tablet, or mobile
               </div>
             </div>
 

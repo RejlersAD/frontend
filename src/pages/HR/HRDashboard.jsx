@@ -661,6 +661,43 @@ const LiveFeedRow = ({ row }) => {
   );
 };
 
+const LeaveRecordRow = ({ record }) => {
+  const name = record.employee_name || record.employee?.name || "Employee";
+  const leaveType = record.leave_type_detail?.name || record.leave_type || "Leave";
+  const status = (record.status || "PENDING").toUpperCase();
+  const statusColors = HR_DASHBOARD_LEAVE_REPORT.statusColors[status]
+    || HR_DASHBOARD_LEAVE_REPORT.statusColors.PENDING;
+  const statusLabel = status.replaceAll("_", " ");
+  const rowInitials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  const dateLabel = record.start_date
+    ? `${formatDate(record.start_date)}${record.end_date && record.end_date !== record.start_date ? ` – ${formatDate(record.end_date)}` : ""}`
+    : "Date unavailable";
+
+  return (
+    <div className="flex items-center gap-3 border-b border-slate-100 py-2.5 last:border-b-0">
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+        {rowInitials || "?"}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-slate-900">{name}</div>
+        <div className="truncate text-xs text-slate-500">{leaveType}</div>
+      </div>
+      <div className="flex-shrink-0 text-right">
+        <div className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusColors.bg} ${statusColors.text} ${statusColors.border}`}>
+          {statusLabel}
+        </div>
+        <div className="mt-0.5 max-w-40 truncate text-[11px] text-slate-400">{dateLabel}</div>
+      </div>
+    </div>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: recent joiner card
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1065,6 +1102,150 @@ function ApprovalPipelineWidget({ data, onViewAll }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
+function AttendanceOverviewPanels({
+  liveFeed,
+  punctuality,
+  monthRollup,
+  leaveRecords,
+  loadingLeaveRecords,
+  onOpenLeaveRecords,
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {HR_DASHBOARD_SECTIONS.liveFeed && (
+        <Section
+          title={HR_DASHBOARD_COPY.sectionLive}
+          hint={HR_DASHBOARD_COPY.sectionLiveHint}
+          icon="SignalIcon"
+          action={
+            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-700">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+              {HR_DASHBOARD_COPY.liveBadge}
+            </span>
+          }
+        >
+          {liveFeed.length === 0 ? (
+            <div className="py-6 text-center text-sm italic text-slate-500">{HR_DASHBOARD_COPY.emptyLive}</div>
+          ) : (
+            <div className="-my-2 divide-y divide-slate-100">
+              {liveFeed.map((row, index) => (
+                <LiveFeedRow
+                  key={`${row.employee_code || index}-${row.punch_time || index}`}
+                  row={row}
+                />
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
+      {HR_DASHBOARD_SECTIONS.todayPunctuality && (
+        <Section
+          title={HR_DASHBOARD_COPY.sectionToday}
+          hint={HR_DASHBOARD_COPY.sectionTodayHint}
+          icon="ClockIcon"
+        >
+          {punctuality.total === 0 ? (
+            <div className="py-6 text-center text-sm italic text-slate-500">{HR_DASHBOARD_COPY.emptyDaily}</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                  <div className="text-2xl font-bold text-emerald-700">{punctuality.onTime}</div>
+                  <div className="mt-0.5 text-[11px] uppercase tracking-wider text-emerald-600">On time</div>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                  <div className="text-2xl font-bold text-amber-700">{punctuality.late}</div>
+                  <div className="mt-0.5 text-[11px] uppercase tracking-wider text-amber-600">Late</div>
+                </div>
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                  <div className="text-2xl font-bold text-blue-700">{punctuality.full}</div>
+                  <div className="mt-0.5 text-[11px] uppercase tracking-wider text-blue-600">Full day</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                  <span className="text-slate-600">On-time rate</span>
+                  <span className="font-semibold text-slate-900">{punctuality.onTimePct}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                  <span className="text-slate-600">Full-day rate</span>
+                  <span className="font-semibold text-slate-900">{punctuality.fullPct}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {HR_DASHBOARD_SECTIONS.monthRollup && (
+        <Section
+          title={HR_DASHBOARD_COPY.sectionMonth}
+          hint={HR_DASHBOARD_COPY.sectionMonthHint}
+          icon="CalendarIcon"
+        >
+          {monthRollup.employees === 0 ? (
+            <div className="py-6 text-center text-sm italic text-slate-500">{HR_DASHBOARD_COPY.emptyMonthly}</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <div className="text-2xl font-bold text-slate-900">{monthRollup.totalHours.toLocaleString()}</div>
+                <div className="mt-0.5 text-[11px] uppercase tracking-wider text-slate-500">Total hours</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <div className="text-2xl font-bold text-slate-900">{monthRollup.avgHoursPerEmployee}</div>
+                <div className="mt-0.5 text-[11px] uppercase tracking-wider text-slate-500">Avg hrs / emp</div>
+              </div>
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                <div className="text-2xl font-bold text-blue-700">{monthRollup.totalFull.toLocaleString()}</div>
+                <div className="mt-0.5 text-[11px] uppercase tracking-wider text-blue-600">Full days</div>
+              </div>
+              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                <div className="text-2xl font-bold text-amber-700">{monthRollup.totalLate.toLocaleString()}</div>
+                <div className="mt-0.5 text-[11px] uppercase tracking-wider text-amber-600">Late arrivals</div>
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {HR_DASHBOARD_SECTIONS.leaveRecordsConsolidated && (
+        <Section
+          title={HR_DASHBOARD_LEAVE_REPORT.title}
+          hint={HR_DASHBOARD_LEAVE_REPORT.subtitle}
+          icon="ClipboardDocumentListIcon"
+          action={
+            <button
+              type="button"
+              onClick={onOpenLeaveRecords}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+            >
+              View records
+            </button>
+          }
+        >
+          {loadingLeaveRecords ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
+              <Icon name="ArrowPathIcon" className="h-4 w-4 animate-spin" />
+              Loading leave records...
+            </div>
+          ) : leaveRecords.length === 0 ? (
+            <div className="py-6 text-center text-sm italic text-slate-500">
+              No leave records found.
+            </div>
+          ) : (
+            <div className="-my-2 divide-y divide-slate-100">
+              {leaveRecords.slice(0, 8).map((record, index) => (
+                <LeaveRecordRow key={record.id || index} record={record} />
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+    </div>
+  );
+}
+
 export default function HRDashboard() {
   const currentUser = useSelector((state) => state.auth?.user);
   const navigate = useNavigate();
@@ -1609,6 +1790,17 @@ export default function HRDashboard() {
           ))}
         </div>
 
+        {HR_DASHBOARD_SECTIONS.attendanceAtTop && (
+          <AttendanceOverviewPanels
+            liveFeed={liveFeed}
+            punctuality={punctuality}
+            monthRollup={monthRollup}
+            leaveRecords={allLeaveRecords}
+            loadingLeaveRecords={loadingLeaveRecords}
+            onOpenLeaveRecords={() => navigate("/hr/payroll?tab=leave")}
+          />
+        )}
+
         {/* ── KPI drill-down report modal ──────────────────────────────── */}
         {reportKpiId && (
           <KpiReportModal
@@ -1654,7 +1846,7 @@ export default function HRDashboard() {
         )} */}
 
         {/* ── Pending Actions inbox ────────────────────────────────────── */}
-        {HR_DASHBOARD_SECTIONS.pendingActions && (
+        {HR_DASHBOARD_SECTIONS.pendingActionsPanel && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -1688,7 +1880,7 @@ export default function HRDashboard() {
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* SOFT-CODED: Consolidated Leave Records Report (HR Manager Dashboard) */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
-        {HR_DASHBOARD_SECTIONS.leaveRecordsConsolidated && (
+        {HR_DASHBOARD_SECTIONS.leaveRecordsDetailPanel && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             {/* Header */}
             <div
@@ -1984,7 +2176,7 @@ export default function HRDashboard() {
         {/* ── Main grid ────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Live activity feed (spans 1 col, tall) */}
-          {HR_DASHBOARD_SECTIONS.liveFeed && (
+          {!HR_DASHBOARD_SECTIONS.attendanceAtTop && HR_DASHBOARD_SECTIONS.liveFeed && (
             <div className="lg:row-span-2">
               <Section
                 title={HR_DASHBOARD_COPY.sectionLive}
@@ -2016,7 +2208,7 @@ export default function HRDashboard() {
           )}
 
           {/* Today punctuality */}
-          {HR_DASHBOARD_SECTIONS.todayPunctuality && (
+          {!HR_DASHBOARD_SECTIONS.attendanceAtTop && HR_DASHBOARD_SECTIONS.todayPunctuality && (
             <Section
               title={HR_DASHBOARD_COPY.sectionToday}
               hint={HR_DASHBOARD_COPY.sectionTodayHint}
@@ -2074,7 +2266,7 @@ export default function HRDashboard() {
           )}
 
           {/* Month-to-date */}
-          {HR_DASHBOARD_SECTIONS.monthRollup && (
+          {!HR_DASHBOARD_SECTIONS.attendanceAtTop && HR_DASHBOARD_SECTIONS.monthRollup && (
             <Section
               title={HR_DASHBOARD_COPY.sectionMonth}
               hint={HR_DASHBOARD_COPY.sectionMonthHint}

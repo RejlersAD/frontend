@@ -57,29 +57,46 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['assets/Rejlers_Logo.png', 'favicon.ico'],
+        includeAssets: [
+          'assets/Rejlers_Logo.png',
+          'assets/radai-icon-192.png',
+          'assets/radai-icon-512.png',
+          'assets/radai-icon-maskable-512.png',
+          'assets/radai-apple-touch-icon.png',
+        ],
         manifest: {
+          id: '/',
           name: 'RADAI',
           short_name: 'RADAI',
           description: 'Next-generation AI-powered engineering workspace for the Oil & Gas industry',
           theme_color: '#0A1628',
-          background_color: '#0A1628',
+          background_color: '#f5f6f8',
           display: 'standalone',
+          display_override: ['window-controls-overlay', 'standalone', 'minimal-ui'],
           scope: '/',
-          start_url: '/',
+          start_url: '/dashboard',
           orientation: 'any',
+          lang: 'en',
+          dir: 'ltr',
+          categories: ['business', 'productivity', 'utilities'],
           icons: [
             {
-              src: '/assets/icon-192x192.png',
+              src: '/assets/radai-icon-192.png',
               sizes: '192x192',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
             },
             {
-              src: '/assets/icon-512x512.png',
+              src: '/assets/radai-icon-512.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
+            },
+            {
+              src: '/assets/radai-icon-maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ],
           // Desktop shortcuts for quick access to common features
@@ -89,26 +106,30 @@ export default defineConfig(({ mode }) => {
               short_name: 'Login',
               description: 'Quick login to RADAI',
               url: '/login',
-              icons: [{ src: '/assets/icon-192x192.png', sizes: '192x192' }]
+              icons: [{ src: '/assets/radai-icon-192.png', sizes: '192x192', type: 'image/png' }]
             },
             {
               name: 'Dashboard',
               short_name: 'Dashboard',
               description: 'Open RADAI Dashboard',
               url: '/dashboard',
-              icons: [{ src: '/assets/icon-192x192.png', sizes: '192x192' }]
+              icons: [{ src: '/assets/radai-icon-192.png', sizes: '192x192', type: 'image/png' }]
             },
             {
               name: 'PID Verification',
               short_name: 'PID',
               description: 'PID Verification Tool',
               url: '/engineering/process/pid-verification-v1', // SOFT-CODED: Updated to V1 route
-              icons: [{ src: '/assets/icon-192x192.png', sizes: '192x192' }]
+              icons: [{ src: '/assets/radai-icon-192.png', sizes: '192x192', type: 'image/png' }]
             }
-          ]
+          ],
+          launch_handler: {
+            client_mode: ['navigate-existing', 'auto']
+          }
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          cleanupOutdatedCaches: true,
           // CRITICAL: Increase file size limit for precaching large bundles
           // Default 2 MB is too small for production builds with all features
           // The current full-feature bundle is ~14 MB before gzip (~2.6 MB
@@ -118,25 +139,16 @@ export default defineConfig(({ mode }) => {
           // SOFT-CODED: Allow navigation to all routes (not just /)
           navigateFallback: 'index.html',
           navigateFallbackAllowlist: [/.*/], // Allow all paths for SPA routing
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/radai\.ae\/api\/.*/i,
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'api-cache',
-                expiration: {
-                  maxEntries: 100,
-                  maxAgeSeconds: 60 * 5 // 5 minutes
-                },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
-              }
-            }
-          ]
+          navigateFallbackDenylist: [/^\/api\//, /^\/media\//, /^\/static\//],
+          // Authenticated API responses can contain HR, payroll and project
+          // data. Keep them network-only instead of persisting them in a
+          // device-level service-worker cache.
+          runtimeCaching: []
         },
         devOptions: {
-          enabled: false, // Avoid stale cached application code during development
+          // localhost is a secure PWA context, so keep installability testable
+          // during local development. Set VITE_PWA_DEV_ENABLED=false to opt out.
+          enabled: env.VITE_PWA_DEV_ENABLED !== 'false',
           type: 'module',
           navigateFallback: 'index.html',
           navigateFallbackAllowlist: [/.*/] // Allow all paths in dev mode

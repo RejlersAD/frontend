@@ -93,7 +93,6 @@ const Sidebar = ({
   setIsOpen,
   isCollapsed: isCollapsedProp,
   setIsCollapsed: setIsCollapsedProp,
-  showHeader,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -902,7 +901,7 @@ const Sidebar = ({
         <button
           type="button"
           aria-label="Close navigation menu"
-          className="fixed inset-0 top-16 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -912,7 +911,7 @@ const Sidebar = ({
         <button
           type="button"
           aria-label="Collapse navigation menu"
-          className="fixed inset-0 top-16 z-20 hidden bg-slate-950/10 lg:block"
+          className="fixed inset-0 z-20 hidden bg-slate-950/10 lg:block"
           onClick={() => setIsCollapsed(true)}
         />
       )}
@@ -923,10 +922,10 @@ const Sidebar = ({
         aria-hidden={!isOpen ? true : undefined}
         inert={!isOpen ? "" : undefined}
         className={`
-          fixed bottom-0 left-0 top-16 z-50 lg:sticky lg:bottom-auto lg:top-0 lg:z-30 ${showHeader ? "lg:mt-2 h-[calc(100vh-4rem)] lg:h-[calc(100vh-4.5rem)]" : "h-screen"}
+          fixed inset-y-0 left-0 z-50 h-dvh lg:relative lg:inset-auto lg:z-50
           ${isCollapsed ? SIDEBAR.collapsed.widthClass : SIDEBAR.expanded.widthClass} bg-white dark:bg-gray-800
-          ${showHeader ? "border-0" : "border-r border-gray-200 dark:border-gray-700"}
-          ${!isCollapsed ? "lg:-mr-52 lg:border-r lg:border-slate-200 lg:shadow-2xl dark:lg:border-slate-700" : ""}
+          border-r border-slate-200 dark:border-slate-700
+          ${!isCollapsed ? "lg:-mr-52 lg:shadow-2xl" : ""}
           transform transition-all duration-300 ease-in-out motion-reduce:transition-none
           ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
           flex flex-col
@@ -934,19 +933,18 @@ const Sidebar = ({
       >
         {/* Sidebar Header */}
         <div
-          className={`h-16 flex items-center justify-between px-4 ${showHeader ? "border-b-0 bg-transparent" : "border-b border-gray-200 dark:border-gray-700"}`}
+          className="flex h-14 flex-none items-center justify-between border-b border-slate-200 px-3 dark:border-slate-700"
         >
           {!isCollapsed ? (
             <>
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">AI</span>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-blue-600">
+                  <span className="text-sm font-bold text-white">AI</span>
                 </div>
-                {!showHeader && (
-                  <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    RADAI
-                  </span>
-                )}
+                <div className="min-w-0">
+                  <span className="block truncate text-sm font-extrabold tracking-wide text-slate-900 dark:text-white">RADAI</span>
+                  <span className="block text-[8px] font-semibold uppercase tracking-[0.18em] text-slate-400">AI Platform</span>
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -970,11 +968,11 @@ const Sidebar = ({
             <button
               type="button"
               onClick={() => setIsCollapsed(false)}
-              className="w-full flex justify-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white shadow-sm transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
               title="Expand sidebar"
               aria-label="Expand sidebar"
             >
-              <ChevronRightIcon className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+              AI
             </button>
           )}
         </div>
@@ -982,7 +980,7 @@ const Sidebar = ({
         {/* Navigation Menu */}
         <nav
           aria-label="Primary application sections"
-          className={`flex-1 overflow-y-auto px-3 space-y-1 ${showHeader ? "pt-6 pb-4" : "py-4"}`}
+          className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4 [scrollbar-width:thin]"
         >
           {filteredMenu.map((item) => (
             <div key={item.id}>
@@ -1205,7 +1203,7 @@ const Sidebar = ({
         </nav>
 
         {/* Sidebar Footer - User Info */}
-        <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+        <div className="flex-none border-t border-gray-200 p-3 dark:border-gray-700">
           <div
             className={`flex items-center ${isCollapsed ? "justify-center" : "space-x-3"}`}
           >

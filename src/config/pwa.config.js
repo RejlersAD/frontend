@@ -12,7 +12,7 @@ export const PWA_MODAL_CONFIG = {
   header: {
     logo: '/assets/Rejlers_Logo.png', // Professional Rejlers branding
     title: 'Install RADAI',
-    subtitle: 'Get instant access from your desktop',
+    subtitle: 'Get instant access from desktop, tablet, or mobile',
     badge: {
       text: 'One-Click Install',
       gradient: 'linear-gradient(135deg, #0891b2, #06b6d4)'
@@ -23,7 +23,7 @@ export const PWA_MODAL_CONFIG = {
   appInfo: {
     name: 'RADAI',
     tagline: 'AI-Powered Engineering for Oil & Gas',
-    description: 'Transform your workflow with intelligent P&ID verification, automated compliance checking, and real-time collaboration - all from your desktop.',
+    description: 'Transform your workflow with intelligent P&ID verification, automated compliance checking, and real-time collaboration from any supported device.',
     publisher: 'Rejlers Abu Dhabi',
     version: '2.0'
   },
@@ -33,22 +33,22 @@ export const PWA_MODAL_CONFIG = {
     {
       id: 1,
       icon: '📥',
-      title: 'One-Click Installation',
-      description: 'Click "Install Now" below - the app downloads instantly to your desktop',
+      title: 'Add RADAI to this device',
+      description: 'Select "Install Now" and follow the secure browser installation prompt',
       color: '#0ea5e9'
     },
     {
       id: 2,
       icon: '🖥️',
-      title: 'Desktop Shortcut Created',
-      description: 'RAD AI icon appears in your Start Menu and Desktop with Rejlers branding',
+      title: 'Quick access created',
+      description: 'Open RADAI from Apps, Start, Dock, or your mobile home screen',
       color: '#2AA784'
     },
     {
       id: 3,
       icon: '⚡',
       title: 'Launch & Work',
-      description: 'Open like any desktop app - faster loading, offline access, auto-updates',
+      description: 'Open in a focused standalone window with automatic application updates',
       color: '#7FCAB5'
     }
   ],
@@ -58,8 +58,8 @@ export const PWA_MODAL_CONFIG = {
     {
       icon: '🚄',
       title: 'Lightning Fast',
-      description: 'Cached assets load 5x faster than web',
-      metric: '75% faster'
+      description: 'Core application assets are cached for faster repeat launches',
+      metric: 'Fast launch'
     },
     {
       icon: '🔄',
@@ -68,10 +68,10 @@ export const PWA_MODAL_CONFIG = {
       metric: 'Always current'
     },
     {
-      icon: '📴',
-      title: 'Works Offline',
-      description: 'Access cached data without internet',
-      metric: 'Offline ready'
+      icon: '🔒',
+      title: 'Secure Data Access',
+      description: 'Authenticated business data remains online and access-controlled',
+      metric: 'Network protected'
     },
     {
       icon: '🎯',
@@ -84,8 +84,8 @@ export const PWA_MODAL_CONFIG = {
   // Technical Details (expandable section)
   technicalInfo: {
     size: '~15 MB',
-    platform: 'Windows, Mac, Linux',
-    requirements: 'Chrome 90+, Edge 90+',
+    platform: 'Windows, macOS, Linux, Android, iOS and iPadOS',
+    requirements: 'Current Chrome, Edge or Safari',
     updates: 'Automatic background sync',
     security: 'HTTPS encrypted, same as web version',
     storage: 'Browser cache (can be cleared anytime)'
@@ -107,9 +107,9 @@ export const PWA_MODAL_CONFIG = {
   // Trust Signals
   trustSignals: [
     '✓ Same security as web version',
-    '✓ No personal data stored locally',
+    '✓ Existing identity and access controls remain active',
     '✓ Uninstall anytime from Settings',
-    '✓ Used by 1,200+ engineers'
+    '✓ One workspace across supported devices'
   ],
 
   // Animation Settings

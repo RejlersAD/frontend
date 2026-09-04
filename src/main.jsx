@@ -12,9 +12,11 @@ import 'react-toastify/dist/ReactToastify.css'
 // PWA Service Worker Registration
 import { registerSW } from 'virtual:pwa-register'
 
-// Register the PWA only for production builds. In development, remove any
-// previously registered worker so it cannot keep serving stale source files.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// Keep the PWA installable in production and on localhost. Local registration
+// can be disabled with VITE_PWA_DEV_ENABLED=false when debugging cache issues.
+const pwaEnabled = import.meta.env.PROD || import.meta.env.VITE_PWA_DEV_ENABLED !== 'false'
+
+if (pwaEnabled && 'serviceWorker' in navigator) {
   registerSW({
     immediate: true,
     onNeedRefresh() {

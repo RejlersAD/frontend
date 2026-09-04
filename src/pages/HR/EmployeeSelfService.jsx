@@ -20,7 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -41,6 +41,8 @@ import UnifiedHRWorkspacePanel from '../../components/HR/UnifiedHRWorkspacePanel
 import HRAssistantPanel from '../../components/HR/HRAssistantPanel'
 import EmployeeTabLoading from '../../components/HR/EmployeeTabLoading'
 import Profile from '../Profile'
+import apiClient from '../../services/api.service'
+import { updateUser } from '../../store/slices/authSlice'
 import { API_BASE_URL } from '../../config/api.config'
 import { fmtCurrency } from '../../config/hrPayroll.config'
 import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR, DAILY_TRACKER_PRIORITIES, DAILY_TRACKER_STATUSES, DAILY_TRACKER_PROJECT_CATEGORIES, DAILY_TRACKER_COPY, DAILY_TRACKER_APPROVAL_STATUSES, DAILY_TRACKER_WIZARD_STEPS, DAILY_TRACKER_SUBMIT_TO_OPTIONS, ESS_ATT_MONTHS_BACK, ESS_ATT_STANDARD_DAY_HRS, ESS_ATT_MAX_DAILY_HRS, ESS_ATT_STANDARD_WORKING_DAYS, ESS_ATT_RATE_GOOD, ESS_ATT_RATE_WARN, ESS_ATT_PARTIAL_DAY_HRS, ESS_ATT_OVERTIME_HRS, ESS_ATT_FEATURES, ESS_ATT_DAY_STATUS, ESS_ATT_DOW, ESS_ATT_COPY, ESS_TIMESHEET_TABS, ESS_TIMESHEET_DEFAULT_TAB, ESS_TIMESHEET_POLL_MS, ESS_TIMESHEET_COPY, ESS_TIMESHEET_STATUS } from '../../config/hrLeave.config'
@@ -363,6 +365,9 @@ const EmployeeProfileHeader = ({
   tabBadges,
   salaryVisible,
   onToggleSalary,
+  uploadingPhoto,
+  photoUploadState,
+  onPhotoUpload,
 }) => {
   // UserProfileSerializer declares first_name/last_name/username write_only —
   // they're never present on the GET response. The real values live on the
@@ -372,6 +377,7 @@ const EmployeeProfileHeader = ({
     : null
   const initials = name ? avatarInitials(name) : '??'
   const [photoFailed, setPhotoFailed] = useState(false)
+  const photoInputRef = useRef(null)
   const rawPhotoUrl = profile?.profile_photo
   const photoUrl = useMemo(() => {
     if (!rawPhotoUrl) return null
@@ -456,6 +462,27 @@ const EmployeeProfileHeader = ({
               className={`absolute bottom-2 right-2 h-7 w-7 rounded-full border-4 border-white ${profile?.is_active !== false ? 'bg-emerald-500' : 'bg-slate-400'}`}
               title={profile?.is_active !== false ? 'Active employee' : 'Inactive employee'}
             />
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) onPhotoUpload(file)
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={uploadingPhoto || loading}
+              className="absolute bottom-1 left-1 grid h-10 w-10 place-items-center rounded-full border-2 border-white bg-[#1877F2] text-white shadow-md transition hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
+              aria-label={uploadingPhoto ? 'Uploading profile picture' : 'Upload profile picture'}
+              title="Upload JPEG, PNG or WebP (maximum 5 MB)"
+            >
+              <Icon name={uploadingPhoto ? 'ArrowPathIcon' : 'CameraIcon'} className={`h-5 w-5 ${uploadingPhoto ? 'animate-spin' : ''}`} />
+            </button>
           </div>
 
           <div className="min-w-0 flex-1 pb-1 sm:pt-3">
@@ -475,6 +502,15 @@ const EmployeeProfileHeader = ({
                   {email && <span className="inline-flex items-center gap-1.5"><Icon name="EnvelopeIcon" className="h-4 w-4" />{email}</span>}
                   {location && <span className="inline-flex items-center gap-1.5"><Icon name="MapPinIcon" className="h-4 w-4" />{location}</span>}
                 </div>
+                {photoUploadState && (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className={`mt-2 text-xs font-medium ${photoUploadState.type === 'error' ? 'text-rose-600' : 'text-emerald-600'}`}
+                  >
+                    {photoUploadState.message}
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -3486,12 +3522,15 @@ function DailyTrackerTab({ currentUser }) {
 // -----------------------------------------------------------------------------
 
 export default function EmployeeSelfService() {
+  const dispatch = useDispatch()
   const { user: authUser } = useSelector((s) => s.auth) || {}
   const { currentUser }    = useSelector((s) => s.rbac) || {}
   const authProfile = currentUser || authUser
 
   const [activeTab, setActiveTab] = useState('overview')
   const [salaryVisible, setSalaryVisible] = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoUploadState, setPhotoUploadState] = useState(null)
 
   // -- Data state --------------------------------------------------------------
   const [profile,      setProfile]      = useState(null)
@@ -3524,6 +3563,43 @@ export default function EmployeeSelfService() {
       .catch(() => setProfile(authProfile))
       .finally(() => setLoadingProfile(false))
   }, [])
+
+  const handleProfilePhotoUpload = useCallback(async (file) => {
+    const supportedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!supportedTypes.includes(file.type)) {
+      setPhotoUploadState({ type: 'error', message: 'Choose a JPEG, PNG or WebP image.' })
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoUploadState({ type: 'error', message: 'The image must be 5 MB or smaller.' })
+      return
+    }
+
+    setUploadingPhoto(true)
+    setPhotoUploadState(null)
+    const formData = new FormData()
+    formData.append('photo', file)
+
+    try {
+      const response = await apiClient.post('/users/employees/my-profile-photo/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const photoUrl = response?.data?.photo_url
+      if (!photoUrl) throw new Error('The server did not return the uploaded photo.')
+
+      setProfile((current) => ({ ...current, profile_photo: photoUrl }))
+      dispatch(updateUser({ profile_photo: photoUrl }))
+      setPhotoUploadState({ type: 'success', message: 'Profile picture updated successfully.' })
+    } catch (error) {
+      const message = error?.response?.data?.error
+        || error?.response?.data?.detail
+        || error?.message
+        || 'The profile picture could not be uploaded.'
+      setPhotoUploadState({ type: 'error', message })
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }, [dispatch])
 
   // -- Load timesheet data for current user ------------------------------------
   useEffect(() => {
@@ -4029,6 +4105,9 @@ export default function EmployeeSelfService() {
           tabBadges={tabBadges}
           salaryVisible={salaryVisible}
           onToggleSalary={() => setSalaryVisible((visible) => !visible)}
+          uploadingPhoto={uploadingPhoto}
+          photoUploadState={photoUploadState}
+          onPhotoUpload={handleProfilePhotoUpload}
         />
 
         {/* -- Active Section -- */}
