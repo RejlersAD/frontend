@@ -86,7 +86,7 @@ function AccountLinkModal({ employee, linkedEmployeesByUser, onClose, onLinked }
 }
 
 function PayrollEmployeeDrawer({ employee, canEdit, onClose, onEdit, onLink }) {
-  const [detail, setDetail] = useState(employee)
+  const detail = employee
   const [payslips, setPayslips] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -94,15 +94,11 @@ function PayrollEmployeeDrawer({ employee, canEdit, onClose, onEdit, onLink }) {
   useEffect(() => {
     let cancelled = false
     setLoading(true); setError('')
-    Promise.allSettled([
-      payrollEngineService.getEmployee(employee.id),
-      payrollEngineService.listPayslips({ employee: employee.id, page_size: 36 }),
-    ]).then(([profileResult, slipsResult]) => {
+    payrollEngineService.listPayslips({ employee: employee.id, page_size: 36 }).then((data) => {
       if (cancelled) return
-      if (profileResult.status === 'fulfilled') setDetail(profileResult.value)
-      if (slipsResult.status === 'fulfilled') setPayslips(listFrom(slipsResult.value).sort((a, b) => String(b.run_cycle || '').localeCompare(String(a.run_cycle || ''))))
-      if (profileResult.status === 'rejected') setError(profileResult.reason?.response?.data?.detail || profileResult.reason?.message || 'Employee payroll identity could not be refreshed.')
-      else if (slipsResult.status === 'rejected') setError(slipsResult.reason?.response?.data?.detail || slipsResult.reason?.message || 'Payslip history could not be loaded.')
+      setPayslips(listFrom(data).sort((a, b) => String(b.run_cycle || '').localeCompare(String(a.run_cycle || ''))))
+    }).catch((requestError) => {
+      if (!cancelled) setError(requestError?.response?.data?.detail || requestError?.message || 'Payslip history could not be loaded.')
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [employee.id])
