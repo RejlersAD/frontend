@@ -867,8 +867,8 @@ const Dashboard = () => {
     : null
 
   return (
-    <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-hidden" style={{ background: 'linear-gradient(135deg, #f8f7f4 0%, #f2f1ee 60%, #ede9e3 100%)' }}>
-      <div className={`mx-auto w-full min-w-0 box-border ${LAYOUT.outerPaddingX} ${LAYOUT.outerPaddingY} ${LAYOUT.innerGap}`} style={{ maxWidth: LAYOUT.maxWidth }}>
+    <div className="h-full min-h-0 w-full min-w-0 max-w-full overflow-hidden" style={{ background: 'linear-gradient(135deg, #f8f7f4 0%, #f2f1ee 60%, #ede9e3 100%)' }}>
+      <div className={`mx-auto h-full min-h-0 w-full min-w-0 box-border overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${LAYOUT.outerPaddingX} ${LAYOUT.outerPaddingY} ${LAYOUT.innerGap}`} style={{ maxWidth: LAYOUT.maxWidth }}>
 
         {/* ── Header ───────────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between min-w-0">

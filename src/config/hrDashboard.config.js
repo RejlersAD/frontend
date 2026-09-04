@@ -10,7 +10,7 @@
  *   • timesheetService.fetchLive()    → live IN/OUT roster + summary
  *   • timesheetService.fetchDaily()   → today's per-user hours
  *   • timesheetService.fetchMonthly() → month-to-date hours / late / full day
- *   • rbacService.getUsers()          → workforce master (status, MFA, dept)
+ *   • HR workforce-summary API        → EmployeeMaster status, MFA and department
  *
  * Everything visible on the page — labels, polling intervals, KPI compute
  * functions, section visibility, colours, accent gradients, empty-state
@@ -43,10 +43,6 @@ export const formatLeaveRecord = (record) => ({
 export const HR_DASHBOARD_POLL_MS = Number(
   import.meta.env?.VITE_HR_DASHBOARD_POLL_MS || 30000
 )
-
-// Maximum employees to pull for workforce analytics. Matches the page-size used
-// by /hr/employees so caching can be shared if a future enhancement adds it.
-export const HR_DASHBOARD_FETCH_PAGE_SIZE = 500
 
 // Number of recent punches to show in the live activity feed.
 export const HR_DASHBOARD_LIVE_FEED_LIMIT = 8
@@ -982,7 +978,6 @@ export const getGreeting = () => {
 // ─────────────────────────────────────────────────────────────────────────────
 export default {
   HR_DASHBOARD_POLL_MS,
-  HR_DASHBOARD_FETCH_PAGE_SIZE,
   HR_DASHBOARD_LIVE_FEED_LIMIT,
   HR_DASHBOARD_RECENT_JOINER_DAYS,
   HR_DASHBOARD_RECENT_JOINER_LIMIT,

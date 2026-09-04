@@ -20,6 +20,7 @@ import Dashboard from './pages/Dashboard'
 import ProfileAlignedComprehensive from './pages/ProfileAlignedComprehensive'  // ✅ Comprehensive profile with engineering expertise
 import ProfileNew from './pages/ProfileNew'  // ✅ NEW: Modern redesigned profile page
 import NotificationPanel from './pages/NotificationPanel'
+import PurchaseRequisitionReviewPage from './pages/Procurement/PurchaseRequisitionReviewPage'
 import UsageDashboard from './pages/UsageDashboard'
 // SOFT-CODED: /pid/upload disabled — replaced by Engineering > Process > P&ID Verification
 // import PIDUpload from './pages/PIDUpload'
@@ -849,9 +850,9 @@ function App() {
         <Route
           path="procurement/requisitions/:id"
           element={
-            <ModuleProtectedRoute moduleCode="procurement_requisitions">
-              <OrderManagement />
-            </ModuleProtectedRoute>
+            <ProtectedRoute>
+              <PurchaseRequisitionReviewPage />
+            </ProtectedRoute>
           }
         />
         <Route
@@ -873,9 +874,9 @@ function App() {
         <Route
           path="procurement/orders/:id"
           element={
-            <ModuleProtectedRoute moduleCode="procurement_orders">
+            <ProtectedRoute>
               <PurchaseOrderDetail />
-            </ModuleProtectedRoute>
+            </ProtectedRoute>
           }
         />
         <Route

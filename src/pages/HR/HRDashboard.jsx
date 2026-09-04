@@ -19,7 +19,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import * as HeroIcons from "@heroicons/react/24/outline";
 
-import rbacService from "../../services/rbac.service";
+import hrCoreService from "../../services/hrCore.service";
 import timesheetService from "../../services/timesheet.service";
 import payrollService from "../../services/payroll.service";
 import apiClient from "../../services/api.service";
@@ -30,7 +30,6 @@ import {
 
 import {
   HR_DASHBOARD_POLL_MS,
-  HR_DASHBOARD_FETCH_PAGE_SIZE,
   HR_DASHBOARD_COPY,
   HR_DASHBOARD_KPIS,
   HR_DASHBOARD_PAYROLL_KPIS,
@@ -76,6 +75,36 @@ const formatTime = (d) =>
         second: "2-digit",
       })
     : "—";
+
+const workforceErrorMessage = (error) => {
+  if (error?.code === "ECONNABORTED" || /timeout/i.test(error?.message || "")) {
+    return "The workforce directory timed out. Automatic retries also received no response.";
+  }
+  if (error?.response?.status === 401 || error?.response?.status === 403) {
+    return "Permission denied. HR Management access is required to view workforce analytics.";
+  }
+  if ((error?.response?.status || 0) >= 500) {
+    return "The workforce service returned a server error. Please retry or contact support if it continues.";
+  }
+  if (!error?.response) {
+    return "The workforce service could not be reached. Check the network or backend connection and retry.";
+  }
+  return error?.response?.data?.detail || HR_DASHBOARD_COPY.workforceError;
+};
+
+const retryDelay = (milliseconds) =>
+  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+const isRetryableWorkforceError = (error) => {
+  const status = error?.response?.status;
+  return (
+    error?.code === "ECONNABORTED" ||
+    !error?.response ||
+    status === 408 ||
+    status === 429 ||
+    status >= 500
+  );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Badge palette for KPI report modal cells (status codes → Tailwind classes)
@@ -407,23 +436,23 @@ const KpiTile = ({ kpi, value, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${kpi.accent} text-white p-5 shadow-md hover:shadow-xl hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer text-left w-full group`}
+    className="group w-full rounded-lg border border-l-[3px] border-slate-200 border-l-blue-600 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 motion-reduce:transition-none"
     title={`Click to view ${kpi.label} report`}
   >
     <div className="flex items-start justify-between">
-      <div className="opacity-90">
-        <Icon name={kpi.icon} className="w-7 h-7" />
+      <div className="grid h-8 w-8 place-items-center rounded-md bg-blue-50 text-blue-700">
+        <Icon name={kpi.icon} className="w-4 h-4" />
       </div>
-      <span className="text-[10px] uppercase tracking-wider opacity-80">
+      <span className="max-w-[65%] text-right text-[9px] font-medium uppercase tracking-wide text-slate-400">
         {kpi.sub}
       </span>
     </div>
-    <div className="mt-3 text-3xl font-bold leading-tight">
+    <div className="mt-2 text-2xl font-bold leading-tight tabular-nums text-slate-950">
       {value === null || value === undefined ? "—" : value}
     </div>
-    <div className="mt-1 text-sm font-medium opacity-95">{kpi.label}</div>
+    <div className="mt-1 text-xs font-semibold text-slate-800">{kpi.label}</div>
     {/* Click hint — appears on hover */}
-    <div className="absolute bottom-2.5 right-3 opacity-0 group-hover:opacity-80 transition-opacity text-[10px] uppercase tracking-widest flex items-center gap-1">
+    <div className="absolute bottom-2.5 right-3 flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 motion-reduce:transition-none">
       <Icon name="ArrowTopRightOnSquareIcon" className="w-3 h-3" />
       View report
     </div>
@@ -439,29 +468,29 @@ const PayrollKpiTile = ({ kpi, value, onClick }) => {
     <button
       type="button"
       onClick={onClick}
-      className={`relative overflow-hidden rounded-xl p-4 text-left w-full transition-all shadow-sm hover:shadow-md
+      className={`relative w-full overflow-hidden rounded-lg border p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 motion-reduce:transition-none
         ${
           isUrgent
-            ? `bg-gradient-to-br ${kpi.accent} text-white`
-            : "bg-white border border-slate-200 text-slate-800"
+            ? "border-rose-200 bg-rose-50 text-rose-800"
+            : "border-slate-200 bg-white text-slate-800"
         }`}
     >
       <div className="flex items-center justify-between mb-2">
         <Icon
           name={kpi.icon}
-          className={`w-5 h-5 ${isUrgent ? "text-white/90" : "text-slate-500"}`}
+          className={`w-4 h-4 ${isUrgent ? "text-rose-600" : "text-slate-500"}`}
         />
         {isUrgent && (
-          <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
         )}
       </div>
       <div
-        className={`text-2xl font-bold ${isUrgent ? "text-white" : "text-slate-900"}`}
+        className={`text-xl font-bold tabular-nums ${isUrgent ? "text-rose-800" : "text-slate-900"}`}
       >
         {value === null || value === undefined ? "—" : value}
       </div>
       <div
-        className={`text-xs mt-0.5 font-medium ${isUrgent ? "text-white/80" : "text-slate-500"}`}
+        className={`text-xs mt-0.5 font-medium ${isUrgent ? "text-rose-700" : "text-slate-500"}`}
       >
         {kpi.label}
       </div>
@@ -473,16 +502,16 @@ const PayrollKpiTile = ({ kpi, value, onClick }) => {
 // Sub-component: section card wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 const Section = ({ title, hint, icon, children, action }) => (
-  <section className="bg-white border border-slate-200 rounded-2xl shadow-sm">
-    <header className="flex items-start justify-between gap-3 px-5 py-4 border-b border-slate-100">
+  <section className="rounded-lg border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
       <div className="flex items-start gap-3 min-w-0">
         {icon && (
-          <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center flex-shrink-0">
-            <Icon name={icon} className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-700 flex items-center justify-center flex-shrink-0">
+            <Icon name={icon} className="w-4 h-4" />
           </div>
         )}
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-slate-900 truncate">
+          <h2 className="text-sm font-semibold text-slate-950 truncate">
             {title}
           </h2>
           {hint && <p className="text-xs text-slate-500 mt-0.5">{hint}</p>}
@@ -490,7 +519,7 @@ const Section = ({ title, hint, icon, children, action }) => (
       </div>
       {action && <div className="flex-shrink-0">{action}</div>}
     </header>
-    <div className="p-5">{children}</div>
+    <div className="p-4">{children}</div>
   </section>
 );
 
@@ -1040,6 +1069,10 @@ export default function HRDashboard() {
   const currentUser = useSelector((state) => state.auth?.user);
   const navigate = useNavigate();
   const notifRef = useRef(null);
+  const workforceRequestRef = useRef(false);
+  const lifecycleRequestRef = useRef(false);
+  const timesheetRequestRef = useRef(false);
+  const payrollRequestRef = useRef(false);
 
   const [workforce, setWorkforce] = useState([]);
   const [live, setLive] = useState(null);
@@ -1109,33 +1142,46 @@ export default function HRDashboard() {
 
   // ── Fetch workforce (one-time on mount; doesn't need to poll every 30s)
   const loadWorkforce = useCallback(async () => {
+    if (workforceRequestRef.current) return;
+    workforceRequestRef.current = true;
     setLoadingWorkforce(true);
     setWorkforceError(null);
     try {
-      const resp = await rbacService.getUsers({
-        page_size: HR_DASHBOARD_FETCH_PAGE_SIZE,
-      });
-      const raw = Array.isArray(resp?.data?.results)
-        ? resp.data.results
-        : Array.isArray(resp?.results)
-          ? resp.results
-          : Array.isArray(resp?.data)
-            ? resp.data
+      let finalError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const resp = await hrCoreService.getWorkforceSummary();
+          const raw = Array.isArray(resp?.results)
+            ? resp.results
             : Array.isArray(resp)
               ? resp
               : [];
-      setWorkforce(raw.map(normalizeEmployee));
+          setWorkforce(raw.map(normalizeEmployee));
+          finalError = null;
+          break;
+        } catch (err) {
+          finalError = err;
+          if (attempt < 2 && isRetryableWorkforceError(err)) {
+            await retryDelay(attempt === 0 ? 1500 : 4000);
+          } else {
+            break;
+          }
+        }
+      }
+      if (finalError) throw finalError;
     } catch (err) {
-      console.warn("[HRDashboard] workforce load failed", err);
+      console.warn("[HRDashboard] workforce summary load failed", err);
       setWorkforceError(err);
-      setWorkforce([]);
     } finally {
       setLoadingWorkforce(false);
+      workforceRequestRef.current = false;
     }
   }, []);
 
   // Active Onboarding | Offboarding requests shown in Pending Onboarding.
   const loadLifecycleRequests = useCallback(async () => {
+    if (lifecycleRequestRef.current) return;
+    lifecycleRequestRef.current = true;
     try {
       const response = await apiClient.get(
         "/onboarding/onboarding/command-center-pending/",
@@ -1144,11 +1190,15 @@ export default function HRDashboard() {
     } catch (err) {
       console.warn("[HRDashboard] lifecycle requests load failed", err);
       setLifecycleRequests([]);
+    } finally {
+      lifecycleRequestRef.current = false;
     }
   }, []);
 
   // ── Fetch live + today + month rollup (polled)
   const loadTimesheets = useCallback(async () => {
+    if (timesheetRequestRef.current) return;
+    timesheetRequestRef.current = true;
     setLoadingLive(true);
     setTimesheetError(null);
     try {
@@ -1174,6 +1224,7 @@ export default function HRDashboard() {
       setTimesheetError(err);
     } finally {
       setLoadingLive(false);
+      timesheetRequestRef.current = false;
     }
   }, []);
 
@@ -1184,6 +1235,8 @@ export default function HRDashboard() {
       !HR_DASHBOARD_SECTIONS.payrollSnapshot
     )
       return;
+    if (payrollRequestRef.current) return;
+    payrollRequestRef.current = true;
     setLoadingPayroll(true);
     try {
       const [leaveRes, alertsRes, salaryRes, slipsRes, summaryRes] =
@@ -1243,6 +1296,7 @@ export default function HRDashboard() {
       console.warn("[HRDashboard] payroll data load failed", err);
     } finally {
       setLoadingPayroll(false);
+      payrollRequestRef.current = false;
     }
   }, []);
 
@@ -1405,20 +1459,23 @@ export default function HRDashboard() {
     "there";
 
   return (
-    <div className="bg-gradient-to-br from-slate-50 via-white to-blue-50/40 p-4 sm:p-6 lg:p-8">
-      <div className="space-y-6">
+    <div className="min-h-full w-full bg-[#f5f6f8] px-3 py-2 sm:px-4 lg:px-5 xl:px-6">
+      <div className="space-y-4">
         {/* ── Header ───────────────────────────────────────────────────── */}
-        <header className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+        <header className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md">
-                <Icon name="PresentationChartBarIcon" className="w-6 h-6" />
+              <div className="w-10 h-10 rounded-lg bg-[#0f6cbd] text-white flex items-center justify-center shadow-sm">
+                <Icon name="IdentificationIcon" className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">
+                  Human Resources / Overview
+                </div>
+                <h1 className="text-xl font-bold text-slate-950 tracking-tight sm:text-2xl">
                   {HR_DASHBOARD_COPY.pageTitle}
                 </h1>
-                <p className="text-sm text-slate-600">
+                <p className="max-w-3xl text-xs text-slate-500 sm:text-sm">
                   {greeting},{" "}
                   <span className="font-semibold">{userFirstName}</span>.{" "}
                   {HR_DASHBOARD_COPY.pageSubtitle}
@@ -1428,7 +1485,7 @@ export default function HRDashboard() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm text-slate-700 font-mono">
+            <div className="hidden px-3 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-600 font-mono sm:block">
               {formatTime(now)}
             </div>
 
@@ -1438,7 +1495,7 @@ export default function HRDashboard() {
                 <button
                   type="button"
                   onClick={() => setNotifOpen((v) => !v)}
-                  className="relative px-3 py-1.5 rounded-lg border bg-white border-slate-200 text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors"
+                  className="relative flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
                   title="Pending actions"
                 >
                   <Icon name="BellIcon" className="w-4 h-4" />
@@ -1462,7 +1519,7 @@ export default function HRDashboard() {
             <button
               type="button"
               onClick={() => setAutoRefresh((v) => !v)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+              className={`h-8 rounded-md border px-3 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
                 autoRefresh
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
                   : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
@@ -1486,7 +1543,7 @@ export default function HRDashboard() {
                 loadLifecycleRequests();
               }}
               disabled={loadingLive || loadingPayroll}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              className="h-8 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:opacity-60"
             >
               <Icon
                 name="ArrowPathIcon"
@@ -1497,7 +1554,7 @@ export default function HRDashboard() {
                 : HR_DASHBOARD_COPY.manualRefresh}
             </button>
             {lastUpdated && (
-              <div className="text-[11px] text-slate-500 ml-1">
+              <div className="hidden text-[10px] text-slate-500 ml-1 xl:block">
                 {HR_DASHBOARD_COPY.lastUpdated}: {formatTime(lastUpdated)}
               </div>
             )}
@@ -1508,12 +1565,24 @@ export default function HRDashboard() {
         {(workforceError || timesheetError) && (
           <div className="space-y-2">
             {workforceError && (
-              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm">
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-sm" role="alert">
                 <Icon
                   name="ExclamationTriangleIcon"
                   className="w-5 h-5 flex-shrink-0"
                 />
-                <span>{HR_DASHBOARD_COPY.workforceError}</span>
+                <span className="flex-1">{workforceErrorMessage(workforceError)}</span>
+                <button
+                  type="button"
+                  onClick={loadWorkforce}
+                  disabled={loadingWorkforce}
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <Icon
+                    name="ArrowPathIcon"
+                    className={`h-3.5 w-3.5 ${loadingWorkforce ? "animate-spin" : ""}`}
+                  />
+                  {loadingWorkforce ? "Retrying…" : "Retry"}
+                </button>
               </div>
             )}
             {timesheetError && (
@@ -1529,7 +1598,7 @@ export default function HRDashboard() {
         )}
 
         {/* ── KPI tile strip ───────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
           {HR_DASHBOARD_KPIS.map((kpi) => (
             <KpiTile
               key={kpi.id}
@@ -2157,7 +2226,7 @@ export default function HRDashboard() {
 
         {/* ── Footer note ─────────────────────────────────────────────── */}
         <div className="text-center text-[11px] text-slate-400 py-2">
-          Data sources: RBAC users · biometric timesheet · activity feed —
+          Data sources: Employee Master · biometric timesheet · activity feed —
           auto-refresh every {Math.round(HR_DASHBOARD_POLL_MS / 1000)} seconds
         </div>
       </div>

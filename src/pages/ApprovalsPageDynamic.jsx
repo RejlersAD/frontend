@@ -9,11 +9,11 @@
  * - Real-time approval counts
  * - Hierarchical approval visualization
  */
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { API_BASE_URL } from '../config/api.config'
-import { API_CONFIG, LAYOUT_CONFIG } from '../config/enterpriseDashboard.config'
+import { API_CONFIG } from '../config/enterpriseDashboard.config'
 import {
   APPROVAL_ACTIONS,
   getApprovalFilters,
@@ -29,7 +29,6 @@ import {
   ShoppingCartIcon,
   CalendarDaysIcon,
   FolderIcon,
-  BellIcon,
   ArrowPathIcon,
   SparklesIcon,
   EyeIcon,
@@ -43,10 +42,14 @@ import {
   ShieldCheckIcon,
   ArrowTrendingUpIcon,
   CommandLineIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline'
 
 // Import reusable components
 import ActivityTimeline from '../components/EnterpriseDashboard/ActivityTimeline'
+import ProcurementApprovalPreviewModal from '../components/approvals/ProcurementApprovalPreviewModal'
 import { fetchCurrentUser } from '../store/slices/rbacSlice'
 
 // Icon map for dynamic icon rendering
@@ -68,17 +71,15 @@ const ICON_MAP = {
 
 const ApprovalsPageDynamic = () => {
   const dispatch = useDispatch()
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
   const { user } = useSelector(s => s.auth)
   const rbacData = useSelector(s => s.rbac?.currentUser)
+  const dashboardRequestRef = useRef(false)
 
   // State
-  const [loading, setLoading] = useState(true)
   const [approvalCounts, setApprovalCounts] = useState({})
   const [statistics, setStatistics] = useState({})
-  const [notifications, setNotifications] = useState([])
-  const [selectedApprovalType, setSelectedApprovalType] = useState(searchParams.get('tab'))
+  const [approvalSearch, setApprovalSearch] = useState('')
+  const [approvalFilter, setApprovalFilter] = useState('all')
 
   // Get auth token
   const token = useMemo(() => {
@@ -108,9 +109,9 @@ const ApprovalsPageDynamic = () => {
 
   // Fetch all approval data
   const fetchApprovalData = useCallback(async () => {
-    if (!token) return
+    if (!token || dashboardRequestRef.current || document.visibilityState === 'hidden') return
+    dashboardRequestRef.current = true
 
-    setLoading(true)
     const headers = {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -156,16 +157,11 @@ const ApprovalsPageDynamic = () => {
         .then(r => r.ok ? r.json() : {})
         .catch(() => ({}))
 
-      const notificationsPromise = fetch(`${API_BASE_URL}/notifications/`, { headers })
-        .then(r => r.ok ? r.json() : { results: [] })
-        .catch(() => ({ results: [] }))
-
       // Wait for all promises
-      const [counts, metrics, projects, notifs] = await Promise.all([
+      const [counts, metrics, projects] = await Promise.all([
         Promise.all(countPromises),
         metricsPromise,
-        projectsPromise,
-        notificationsPromise
+        projectsPromise
       ])
 
       // Build approval counts object
@@ -175,8 +171,6 @@ const ApprovalsPageDynamic = () => {
       }, {})
 
       setApprovalCounts(countsObj)
-      setNotifications(notifs.results || [])
-      
       // Calculate statistics
       setStatistics({
         approved_today: metrics?.approved_today ?? 0,
@@ -190,7 +184,7 @@ const ApprovalsPageDynamic = () => {
     } catch (error) {
       console.error('Failed to fetch approval data:', error)
     } finally {
-      setLoading(false)
+      dashboardRequestRef.current = false
     }
   }, [token, user, rbacData, enabledTypes])
 
@@ -226,72 +220,62 @@ const ApprovalsPageDynamic = () => {
   const totalPending = approvalQueues.reduce((sum, queue) => sum + queue.count, 0)
   const overdueTotal = approvalQueues.reduce((sum, queue) => sum + queue.overdue, 0)
   const priorityQueue = approvalQueues[0]
-
-  const unreadCount = notifications.filter(n => !n.is_read).length
-
+  const approvalTypesWithCounts = useMemo(() => enabledTypes.map(({ key, ...config }) => ({
+    key,
+    ...config,
+    queueCount: Number(approvalCounts[key]?.count || 0),
+  })), [enabledTypes, approvalCounts])
   return (
-    <div className="min-h-screen bg-[#f3f6fb]">
+    <div className="h-full min-h-0 w-full overflow-hidden bg-[#f5f6f8]">
       <div 
-        className={`mx-auto ${LAYOUT_CONFIG.paddingX} ${LAYOUT_CONFIG.paddingY}`}
-        style={{ maxWidth: LAYOUT_CONFIG.maxWidth }}
+        className="flex h-full min-h-0 w-full max-w-none flex-col overflow-hidden px-3 py-2 sm:px-4 lg:px-5 xl:px-6"
       >
-        <div className="space-y-8">
+        <div className="flex h-full min-h-0 flex-col gap-3">
           {/* Page Header */}
-          <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 p-6 text-white shadow-[0_24px_70px_-28px_rgba(37,99,235,0.65)] sm:p-8">
-            <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-white/15 blur-3xl" />
-            <div className="absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-cyan-100/20 blur-3xl" />
-            <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
-                  <CommandLineIcon className="h-7 w-7 text-cyan-100" />
+          <div className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-3 sm:px-5">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div className="flex shrink-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#0f6cbd] text-white shadow-sm">
+                  <CommandLineIcon className="h-6 w-6" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-100">Management workspace</p>
-                  <h1 className="mt-1 break-words text-3xl font-black tracking-tight sm:text-4xl">Approval Command Center</h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/85">
-                    Prioritize decisions, protect SLA performance, and keep every approval queue moving{isAdmin ? ' across the organization.' : ' for your team.'}
-                  </p>
-                </div>
+                <div className="flex items-center gap-2 whitespace-nowrap text-xs text-slate-500"><span>Management</span><span>/</span><span className="font-semibold text-[#0f6cbd]">Approvals</span></div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="mr-1 border-r border-white/15 pr-5">
-                  <p className="text-3xl font-black tabular-nums">{loading ? '—' : totalPending}</p>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">Open decisions</p>
+              <div className="relative w-full min-w-[220px] xl:max-w-xl">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={approvalSearch}
+                  onChange={(event) => setApprovalSearch(event.target.value)}
+                  placeholder="Search all approvals by number, title, requester, type or amount..."
+                  aria-label="Search all approvals"
+                  className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#0f6cbd] focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+
+              <nav className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Filter unified approvals">
+                <div className="flex min-w-max items-center justify-end gap-1">
+                  <button type="button" onClick={() => setApprovalFilter('all')} className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold transition ${approvalFilter === 'all' ? 'border-[#0f6cbd] bg-blue-50 text-[#0f6cbd]' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-950'}`}>
+                    All approvals
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${approvalFilter === 'all' ? 'bg-[#0f6cbd] text-white' : 'bg-slate-200 text-slate-600'}`}>{totalPending}</span>
+                  </button>
+                  {approvalTypesWithCounts.map(({ key, id, label, queueCount }) => {
+                    const filterId = id || key
+                    const isActive = approvalFilter === filterId
+                    return (
+                      <button key={key} type="button" onClick={() => setApprovalFilter(filterId)} className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold transition ${isActive ? 'border-[#0f6cbd] bg-blue-50 text-[#0f6cbd]' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-950'}`}>
+                        {label}
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${isActive ? 'bg-[#0f6cbd] text-white' : 'bg-slate-200 text-slate-600'}`}>{queueCount || 0}</span>
+                      </button>
+                    )
+                  })}
                 </div>
-                <button
-                  onClick={fetchApprovalData}
-                  className="rounded-xl border border-white/25 bg-white/10 p-2.5 text-white transition hover:bg-white/20"
-                  title="Refresh"
-                >
-                  <ArrowPathIcon className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-                </button>
-
-                <button
-                  onClick={() => navigate('/notifications')}
-                  className="relative rounded-xl border border-white/15 bg-white/10 p-2.5 text-slate-200 transition hover:bg-white/20 hover:text-white"
-                  title="Notifications"
-                >
-                  <BellIcon className="w-5 h-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-indigo-700">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </button>
-
-                {/* <button
-                  onClick={() => navigate('/dashboard')}
-                  className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 shadow-sm transition hover:bg-cyan-50"
-                >
-                  Back to Dashboard
-                </button> */}
+              </nav>
               </div>
             </div>
-          </div>
 
           {/* Grouped management KPIs */}
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <div className="grid shrink-0 grid-cols-1 gap-3 xl:grid-cols-3">
             <KPIGroup
               eyebrow="Decision queue"
               title="Workload requiring action"
@@ -325,25 +309,29 @@ const ApprovalsPageDynamic = () => {
           </div>
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 gap-7 xl:grid-cols-12">
+          <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 overflow-y-auto [scrollbar-width:none] xl:overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_390px] [&::-webkit-scrollbar]:hidden">
             {/* Left Column - Approval Center */}
-            <div className="xl:col-span-8">
+            <div className="h-full min-h-0 min-w-0">
               <DynamicApprovalCenter
-                approvalTypes={enabledTypes}
+                approvalTypes={approvalTypesWithCounts}
                 user={user}
                 rbacData={rbacData}
                 token={token}
-                selectedType={selectedApprovalType}
+                searchQuery={approvalSearch}
+                filterType={approvalFilter}
                 onRefresh={fetchApprovalData}
               />
             </div>
 
             {/* Right Column */}
-            <div className="space-y-7 xl:col-span-4">
+            <div className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <ApprovalIntelligencePanel
                 queues={approvalQueues}
                 statistics={statistics}
-                onSelectQueue={setSelectedApprovalType}
+                onSelectQueue={(queueKey) => {
+                  const queue = approvalTypesWithCounts.find(({ key }) => key === queueKey)
+                  setApprovalFilter(queue?.id || queue?.key || 'all')
+                }}
               />
               {/* Reporting Hierarchy Widget (if not admin) */}
               {!isAdmin && (
@@ -443,25 +431,29 @@ const KPIGroup = ({ eyebrow, title, tone = 'normal', metrics }) => {
   const GroupIcon = style.Icon
 
   return (
-    <section className={`relative overflow-hidden rounded-2xl border bg-white p-5 shadow-[0_14px_35px_-24px_rgba(15,23,42,0.5)] ${style.ring}`}>
+    <section className={`relative overflow-hidden rounded-lg border bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${style.ring}`}>
       <div className={`absolute inset-y-0 left-0 w-1 ${style.bar}`} />
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{eyebrow}</p>
-          <h2 className="mt-1 text-base font-extrabold text-slate-900">{title}</h2>
-        </div>
-        <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${style.icon}`}>
-          <GroupIcon className="h-5 w-5" />
-        </div>
-      </div>
-      <div className="mt-5 grid grid-cols-1 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        {metrics.map((metric) => (
-          <div key={metric.label} className="min-w-0 py-3 first:pt-0 last:pb-0 sm:px-3 sm:py-0 sm:first:pl-0 sm:last:pr-0">
-            <p className="text-2xl font-black tracking-tight text-slate-950 tabular-nums">{metric.value}</p>
-            <p className="mt-1 text-[11px] font-bold text-slate-600">{metric.label}</p>
-            <p className="mt-1 truncate text-[10px] text-slate-400" title={metric.helper}>{metric.helper}</p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex min-w-[145px] items-center gap-2 pl-1">
+          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${style.icon}`}>
+            <GroupIcon className="h-3.5 w-3.5" />
           </div>
-        ))}
+          <div className="min-w-0">
+            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">{eyebrow}</p>
+            <h2 className="truncate text-xs font-semibold text-slate-900">{title}</h2>
+          </div>
+        </div>
+        <div className="grid min-w-0 flex-1 grid-cols-3 divide-x divide-slate-100">
+          {metrics.map((metric) => (
+            <div key={metric.label} className="min-w-0 px-2 first:pl-0 last:pr-0">
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-base font-semibold tracking-tight text-slate-950 tabular-nums">{metric.value}</p>
+                <p className="truncate text-[10px] font-semibold text-slate-600">{metric.label}</p>
+              </div>
+              <p className="truncate text-[9px] text-slate-400" title={metric.helper}>{metric.helper}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   )
@@ -506,26 +498,26 @@ const ApprovalIntelligencePanel = ({ queues, statistics, onSelectQueue }) => {
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 text-white shadow-[0_18px_45px_-24px_rgba(15,23,42,0.9)]">
-      <div className="border-b border-white/10 bg-gradient-to-r from-indigo-500/20 to-cyan-400/10 p-5">
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-950 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+      <div className="border-b border-slate-200 bg-gradient-to-r from-[#f3f8fd] via-white to-violet-50 p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 shadow-lg shadow-indigo-950/40">
-            <SparklesIcon className="h-5 w-5" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[#0f6cbd] to-violet-600 text-white shadow-sm">
+            <SparklesIcon className="h-4 w-4" />
           </div>
           <div>
-            <h2 className="text-base font-extrabold">Decision Intelligence</h2>
-            <p className="text-xs text-slate-400">Prioritized from live queue signals</p>
+            <h2 className="text-sm font-semibold">Decision Intelligence</h2>
+            <p className="text-xs text-slate-500">Copilot-prioritized queue signals</p>
           </div>
         </div>
       </div>
-      <div className="space-y-3 p-4">
+      <div className="space-y-2 p-3">
         {recommendations.map((insight, index) => (
           <button
             key={insight.title}
             type="button"
             onClick={() => insight.queue && onSelectQueue(insight.queue)}
             disabled={!insight.queue}
-            className={`w-full rounded-xl border p-4 text-left transition ${toneStyles[insight.tone] || toneStyles.normal} ${insight.queue ? 'hover:-translate-y-0.5 hover:shadow-md' : 'cursor-default'}`}
+            className={`w-full rounded-lg border p-3 text-left transition ${toneStyles[insight.tone] || toneStyles.normal} ${insight.queue ? 'hover:border-[#0f6cbd] hover:shadow-sm' : 'cursor-default'}`}
           >
             <div className="flex items-start gap-3">
               <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-white/70 text-xs font-black">{index + 1}</span>
@@ -538,30 +530,39 @@ const ApprovalIntelligencePanel = ({ queues, statistics, onSelectQueue }) => {
           </button>
         ))}
       </div>
-      <div className="flex items-center justify-between border-t border-white/10 px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+      <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
         <span>Live analysis</span><span>Refreshes with dashboard</span>
       </div>
     </section>
   )
 }
 
-const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedType, onRefresh }) => {
+const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, searchQuery, filterType, onRefresh }) => {
+  const navigate = useNavigate()
   const [approvals, setApprovals] = useState([])
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState(selectedType || approvalTypes[0]?.key)
-
-  useEffect(() => {
-    if (selectedType && approvalTypes.some((type) => type.key === selectedType)) {
-      setActiveTab(selectedType)
-    }
-  }, [selectedType, approvalTypes])
 
   // Professional action modal state (replaces window.alert/confirm/prompt)
-  const [modalState, setModalState] = useState({ isOpen: false, mode: null, item: null, actionId: null })
+  const [modalState, setModalState] = useState({ isOpen: false, mode: null, item: null, actionId: null, config: null })
+  const [procurementPreview, setProcurementPreview] = useState({ isOpen: false, type: null, recordId: null })
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState(null) // { type: 'success' | 'error', message }
 
-  const activeConfig = approvalTypes.find(t => t.key === activeTab)
+  const filteredApprovals = useMemo(() => {
+    const normalizedQuery = String(searchQuery || '').trim().toLowerCase()
+    const queueItems = filterType && filterType !== 'all'
+      ? approvals.filter((item) => item._approvalType === filterType)
+      : approvals
+    if (!normalizedQuery) return queueItems
+
+    return queueItems.filter((item) => {
+      try {
+        return JSON.stringify(item).toLowerCase().includes(normalizedQuery)
+      } catch {
+        return Object.values(item || {}).some((value) => String(value ?? '').toLowerCase().includes(normalizedQuery))
+      }
+    })
+  }, [approvals, filterType, searchQuery])
 
   // Auto-dismiss toast notifications
   useEffect(() => {
@@ -571,56 +572,70 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
   }, [toast])
 
   const fetchApprovals = useCallback(async () => {
-    if (!activeConfig || !token) return
+    if (!approvalTypes.length || !token) return
     setLoading(true)
-    const filters = getApprovalFilters(activeConfig.filterLogic, user, rbacData)
-    const queryParams = new URLSearchParams({
-      ...filters,
-      [activeConfig.statusField + '__in']: activeConfig.pendingStatuses.join(','),
-      limit: 50
-    })
-
     try {
-      const response = await fetch(
-        `${API_BASE_URL}${activeConfig.apiEndpoint}?${queryParams}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      )
+      const queueResults = await Promise.all(approvalTypes.map(async (config) => {
+        const filters = getApprovalFilters(config.filterLogic, user, rbacData)
+        const queryParams = new URLSearchParams({
+          ...filters,
+          [config.statusField + '__in']: config.pendingStatuses.join(','),
+          limit: 200,
+          page_size: 200,
+        })
 
-      if (!response.ok) {
-        console.error(`Failed to fetch ${activeConfig.label}:`, response.status)
-        setApprovals([])
-        return
-      }
-
-      const data = await response.json()
-      
-      // SOFT-CODED: Apply field mapping transformations if configured
-      let items = data.results || data || []
-      if (activeConfig.fieldMapping) {
-        items = items.map(item => {
-          const transformed = { ...item }
-          Object.entries(activeConfig.fieldMapping).forEach(([targetField, mapperFn]) => {
-            if (typeof mapperFn === 'function') {
-              transformed[targetField] = mapperFn(item)
+        try {
+          const response = await fetch(`${API_BASE_URL}${config.apiEndpoint}?${queryParams}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
             }
           })
-          return transformed
-        })
-      }
-      
-      setApprovals(items)
+          if (!response.ok) {
+            console.error(`Failed to fetch ${config.label}:`, response.status)
+            return []
+          }
+
+          const data = await response.json()
+          const sourceItems = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+          return sourceItems.map((item) => {
+            const transformed = { ...item }
+            if (config.fieldMapping) {
+              Object.entries(config.fieldMapping).forEach(([targetField, mapperFn]) => {
+                if (typeof mapperFn === 'function') transformed[targetField] = mapperFn(item)
+              })
+            }
+            return {
+              ...transformed,
+              _approvalType: config.id,
+              _approvalLabel: config.label,
+              _approvalConfig: config,
+            }
+          })
+        } catch (error) {
+          console.error(`Error fetching ${config.label}:`, error)
+          return []
+        }
+      }))
+
+      const mergedApprovals = queueResults.flat().sort((left, right) => {
+        const leftStatus = approvalRowStatus(left)
+        const rightStatus = approvalRowStatus(right)
+        const urgencyRank = { Urgent: 3, Attention: 2, 'On track': 1 }
+        const urgencyDifference = (urgencyRank[rightStatus.label] || 0) - (urgencyRank[leftStatus.label] || 0)
+        if (urgencyDifference) return urgencyDifference
+        const leftDate = new Date(left.submitted_at || left.created_at || left.requested_at || left.date_submitted || 0).getTime()
+        const rightDate = new Date(right.submitted_at || right.created_at || right.requested_at || right.date_submitted || 0).getTime()
+        return rightDate - leftDate
+      })
+      setApprovals(mergedApprovals)
     } catch (error) {
-      console.error(`Error fetching ${activeConfig.label}:`, error)
+      console.error('Error fetching unified approval inbox:', error)
       setApprovals([])
     } finally {
       setLoading(false)
     }
-  }, [activeConfig, user, rbacData, token])
+  }, [approvalTypes, user, rbacData, token])
 
   useEffect(() => {
     fetchApprovals()
@@ -628,10 +643,25 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
 
   // Soft-coded: open the professional modal instead of window.alert/confirm/prompt
   const handleAction = (actionId, item) => {
+    const itemConfig = item?._approvalConfig
     const action = APPROVAL_ACTIONS[actionId]
     if (!action) {
       console.error(`Unknown action: ${actionId}`)
       setToast({ type: 'error', message: `Unknown action: ${actionId}` })
+      return
+    }
+
+    if (actionId === 'view' && ['procurement', 'purchase_order'].includes(itemConfig?.id)) {
+      setProcurementPreview({
+        isOpen: true,
+        type: itemConfig.id === 'purchase_order' ? 'po' : 'pr',
+        recordId: item.id,
+      })
+      return
+    }
+
+    if (actionId === 'view' && typeof itemConfig?.detailPath === 'function') {
+      navigate(itemConfig.detailPath(item))
       return
     }
 
@@ -646,26 +676,27 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
       isOpen: true,
       mode: actionId === 'view' ? 'view' : 'action',
       item,
-      actionId
+      actionId,
+      config: itemConfig,
     })
   }
 
   const closeModal = () => {
     if (submitting) return
-    setModalState({ isOpen: false, mode: null, item: null, actionId: null })
+    setModalState({ isOpen: false, mode: null, item: null, actionId: null, config: null })
   }
 
   // Executes the actual approve/reject/comment API call (triggered from the modal)
   const executeAction = async (comment) => {
-    const { item, actionId } = modalState
-    if (!item || !actionId) return
+    const { item, actionId, config } = modalState
+    if (!item || !actionId || !config) return
 
     setSubmitting(true)
     try {
       // Determine the correct endpoint based on approval type and status
       let endpoint = ''
 
-      if (activeConfig.id === 'leave') {
+      if (config.id === 'leave') {
         // Leave requests use different endpoints based on current status
         if (item.status === 'PENDING') {
           // Stage 1: Reporting Manager approval
@@ -684,7 +715,7 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
         }
       } else if (actionId === 'comment') {
         // Generic comment endpoint (soft-coded pattern, same base as approve/reject)
-        endpoint = `${activeConfig.actionApiEndpoint || activeConfig.apiEndpoint}${item.id}/comment/`
+        endpoint = `${config.actionApiEndpoint || config.apiEndpoint}${item.id}/comment/`
       } else {
         // For other approval types, use the standard pattern
         const actionMap = {
@@ -695,8 +726,8 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
           'finance-review': 'finance-review',
           'release': 'release'
         }
-        const endpointAction = activeConfig.actionEndpointMap?.[actionId] || actionMap[actionId] || actionId
-        endpoint = `${activeConfig.actionApiEndpoint || activeConfig.apiEndpoint}${item.id}/${endpointAction}/`
+        const endpointAction = config.actionEndpointMap?.[actionId] || actionMap[actionId] || actionId
+        endpoint = `${config.actionApiEndpoint || config.apiEndpoint}${item.id}/${endpointAction}/`
       }
 
       console.log(`📤 Sending ${actionId} request to: ${API_BASE_URL}${endpoint}`)
@@ -708,9 +739,9 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(
-          activeConfig.id === 'purchase_order'
+          config.id === 'purchase_order'
             ? { note: comment || '', reason: comment || '', approval_stage: item.approval_stage }
-            : (activeConfig.id === 'procurement' || activeConfig.id === 'profile_document') && actionId === 'reject'
+            : (config.id === 'procurement' || config.id === 'profile_document') && actionId === 'reject'
               ? { reason: comment || '' }
               : { note: comment || '', signature: '' }
         )
@@ -729,12 +760,14 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
         type: 'success',
         message: `${APPROVAL_ACTIONS[actionId]?.label || actionId} completed successfully.`
       })
-      setModalState({ isOpen: false, mode: null, item: null, actionId: null })
+      setModalState({ isOpen: false, mode: null, item: null, actionId: null, config: null })
 
       // ═══════════════════════════════════════════════════════════════════════════
       // SOFT-CODED: Optimistic UI update - Remove acted item immediately
       // ═══════════════════════════════════════════════════════════════════════════
-      setApprovals(prevApprovals => prevApprovals.filter(a => a.id !== item.id))
+      setApprovals(prevApprovals => prevApprovals.filter(a => !(
+        String(a.id) === String(item.id) && a._approvalType === item._approvalType
+      )))
 
       // Refresh parent dashboard + background refresh (item already removed from UI)
       onRefresh()
@@ -749,7 +782,7 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
   }
 
   return (
-    <section className="relative min-h-[640px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_20px_55px_-30px_rgba(15,23,42,0.55)]">
+    <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       {/* Toast notification (replaces window.alert) */}
       {toast && (
         <div
@@ -771,63 +804,26 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
         </div>
       )}
 
-      <div className="flex flex-col gap-4 border-b border-slate-200 bg-gradient-to-r from-white via-white to-indigo-50/70 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-200">
-              <CheckCircleIcon className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600">Primary workspace</p>
-              <h2 className="text-xl font-black tracking-tight text-slate-950">Approval Center</h2>
-            </div>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">Review context, decide, and advance the highest-priority work.</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-right shadow-sm">
-          <p className="text-2xl font-black text-slate-950 tabular-nums">{loading ? '—' : approvals.length}</p>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">In selected queue</p>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 overflow-x-auto border-b border-slate-100 bg-slate-50/80 px-6 py-3">
-        {approvalTypes.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`whitespace-nowrap rounded-xl px-4 py-2 text-xs font-bold transition-all ${
-              activeTab === key
-                ? 'bg-slate-900 text-white shadow-md shadow-slate-300'
-                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* Approvals List */}
-      <div className="max-h-[760px] space-y-3 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {loading ? (
           <div className="space-y-3 py-2">
             {[1, 2, 3].map((item) => <div key={item} className="h-28 animate-pulse rounded-2xl bg-slate-100" />)}
           </div>
         ) : approvals.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/60 py-16 text-center text-emerald-800">
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-20 text-center text-slate-700">
             <CheckCircleIcon className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
-            <p className="font-bold">Queue cleared</p>
-            <p className="mt-1 text-xs">No pending {activeConfig?.label?.toLowerCase()} found.</p>
+            <p className="font-bold">All queues cleared</p>
+            <p className="mt-1 text-xs">No pending approvals were found.</p>
+          </div>
+        ) : filteredApprovals.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-20 text-center text-slate-700">
+            <MagnifyingGlassIcon className="mx-auto mb-3 h-10 w-10 text-slate-400" />
+            <p className="font-bold">No matching requests</p>
+            <p className="mt-1 text-xs">Try another approval filter, name, request number, status, or amount.</p>
           </div>
         ) : (
-          approvals.map((item, index) => (
-            <ApprovalCard
-              key={item.approval_queue_id || item.id || index}
-              item={item}
-              config={activeConfig}
-              onAction={handleAction}
-            />
-          ))
+          <ApprovalTable key={`${filterType || 'all'}:${searchQuery || ''}`} items={filteredApprovals} onAction={handleAction} />
         )}
       </div>
 
@@ -837,12 +833,27 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, selectedT
         mode={modalState.mode}
         item={modalState.item}
         actionId={modalState.actionId}
-        config={activeConfig}
+        config={modalState.config}
         token={token}
         submitting={submitting}
         onClose={closeModal}
         onConfirm={executeAction}
         onSelectAction={handleAction}
+      />
+
+      <ProcurementApprovalPreviewModal
+        isOpen={procurementPreview.isOpen}
+        type={procurementPreview.type}
+        recordId={procurementPreview.recordId}
+        onClose={() => setProcurementPreview({ isOpen: false, type: null, recordId: null })}
+        onDecision={() => {
+          setApprovals((current) => current.filter((item) => !(
+            String(item.id) === String(procurementPreview.recordId)
+            && item._approvalType === (procurementPreview.type === 'po' ? 'purchase_order' : 'procurement')
+          )))
+          onRefresh()
+          setTimeout(() => fetchApprovals(), 500)
+        }}
       />
     </section>
   )
@@ -1146,65 +1157,159 @@ const ApprovalActionModal = ({ isOpen, mode, item, actionId, config, token, subm
   )
 }
 
-/**
- * Approval Card - renders a single approval item
- */
-const ApprovalCard = ({ item, config, onAction }) => {
+const tableCellValue = (item, field) => {
+  const raw = item[field.key]
+  if (raw === null || raw === undefined || raw === '') return <span className="text-slate-400">—</span>
+  if (field.type === 'currency') {
+    const amount = Number(raw)
+    return Number.isFinite(amount) ? amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(raw)
+  }
+  if (field.type === 'date') {
+    const date = new Date(raw)
+    return Number.isNaN(date.getTime()) ? String(raw) : date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+  }
+  if (field.type === 'badge') {
+    return <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold capitalize text-slate-700">{String(raw).replace(/_/g, ' ')}</span>
+  }
+  if (field.type === 'progress') {
+    const percent = Math.max(0, Math.min(100, Number(raw) || 0))
+    return <div className="flex min-w-[90px] items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#0f6cbd]" style={{ width: `${percent}%` }} /></div><span className="text-[10px] font-semibold tabular-nums">{percent}%</span></div>
+  }
+  return String(raw)
+}
+
+const approvalRowStatus = (item) => {
   const submittedAt = item.submitted_at || item.created_at || item.requested_at || item.date_submitted
   const submittedTime = submittedAt ? new Date(submittedAt).getTime() : NaN
-  const hasSubmittedTime = Number.isFinite(submittedTime)
-  const ageHours = hasSubmittedTime ? Math.max(0, (Date.now() - submittedTime) / 3600000) : 0
+  const ageHours = Number.isFinite(submittedTime) ? Math.max(0, (Date.now() - submittedTime) / 3600000) : 0
   const priority = String(item.priority || '').toLowerCase()
-  const urgency = ['urgent', 'critical', 'high'].includes(priority) || ageHours >= 48
-    ? 'critical'
-    : ageHours >= 24 ? 'attention' : 'normal'
-  const urgencyStyles = {
-    critical: { card: 'border-rose-200 border-l-4 border-l-rose-500 bg-rose-50/30', badge: 'bg-rose-100 text-rose-700', label: 'Urgent' },
-    attention: { card: 'border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/30', badge: 'bg-amber-100 text-amber-700', label: 'Attention' },
-    normal: { card: 'border-slate-200 border-l-4 border-l-emerald-500 bg-white', badge: 'bg-emerald-100 text-emerald-700', label: 'On track' },
+  if (['urgent', 'critical', 'high'].includes(priority) || ageHours >= 48) return { label: 'Urgent', dot: 'bg-rose-500', text: 'text-rose-700', ageHours }
+  if (ageHours >= 24) return { label: 'Attention', dot: 'bg-amber-500', text: 'text-amber-700', ageHours }
+  return { label: 'On track', dot: 'bg-emerald-500', text: 'text-emerald-700', ageHours }
+}
+
+const firstApprovalValue = (item, keys) => {
+  for (const key of keys) {
+    const value = item?.[key]
+    if (value !== undefined && value !== null && value !== '') return value
   }
-  const style = urgencyStyles[urgency]
+  return '—'
+}
+
+const unifiedApprovalDetails = (item) => {
+  const config = item._approvalConfig || {}
+  const firstConfiguredField = config.displayFields?.[0]?.key
+  const reference = firstApprovalValue(item, [
+    'requisition_number', 'pr_number', 'order_number', 'po_number', 'invoice_number',
+    'request_number', 'document_number', 'month_year', firstConfiguredField,
+  ].filter(Boolean))
+  const title = firstApprovalValue(item, [
+    'title', 'description', 'purpose', 'reason', 'document_name', 'leave_type',
+    'category', 'invoice_type', 'destination',
+  ])
+  const requester = firstApprovalValue(item, [
+    'requester_name', 'requested_by_name', 'employee_name', 'issued_by_name',
+    'generated_by', 'vendor_name', 'supplier_name',
+  ])
+  const amount = firstApprovalValue(item, [
+    'total_estimated_cost', 'total_amount', 'amount', 'total_gross', 'total_net',
+  ])
+  const stage = firstApprovalValue(item, [
+    'approval_stage', 'approval_level', 'workflow_stage', config.statusField, 'status',
+  ].filter(Boolean))
+  return { reference, title, requester, amount, stage }
+}
+
+/** Unified table containing every enabled approval queue. */
+const ApprovalTable = ({ items, onAction }) => {
+  const pageSize = 10
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
+  const pageStart = (currentPage - 1) * pageSize
+  const visibleItems = items.slice(pageStart, pageStart + pageSize)
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages))
+  }, [totalPages])
+
+  const openRequest = (item) => onAction('view', item)
 
   return (
-    <article className={`rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg ${style.card}`}>
-      <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200/70 pb-3">
+    <div className="overflow-hidden rounded-md border border-slate-200">
+      <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <table className="w-full min-w-[1120px] border-collapse text-left">
+      <thead className="sticky top-0 z-10 bg-[#f8f9fa] text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+        <tr>
+          <th className="w-32 border-b border-slate-200 px-3 py-2.5">Queue status</th>
+          <th className="w-44 border-b border-slate-200 px-3 py-2.5">Approval type</th>
+          <th className="w-48 border-b border-slate-200 px-3 py-2.5">Reference</th>
+          <th className="border-b border-slate-200 px-3 py-2.5">Details</th>
+          <th className="w-44 border-b border-slate-200 px-3 py-2.5">Requested by</th>
+          <th className="w-36 border-b border-slate-200 px-3 py-2.5">Amount</th>
+          <th className="w-40 border-b border-slate-200 px-3 py-2.5">Current stage</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-100 bg-white">
+        {visibleItems.map((item, index) => {
+          const status = approvalRowStatus(item)
+          const details = unifiedApprovalDetails(item)
+          const numericAmount = Number(String(details.amount).replace(/,/g, ''))
+          return (
+            <tr
+              key={item.approval_queue_id || item.id || pageStart + index}
+              className="group cursor-pointer hover:bg-blue-50/40 focus-within:bg-blue-50/40"
+              onClick={() => openRequest(item)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  openRequest(item)
+                }
+              }}
+              tabIndex={0}
+              aria-label={`Open ${item._approvalLabel || 'approval'} request details`}
+            >
+              <td className="border-l-[3px] border-l-transparent px-3 py-3 group-hover:border-l-[#0f6cbd]">
+                <div className={`flex items-center gap-2 text-xs font-semibold ${status.text}`}><span className={`h-2 w-2 rounded-full ${status.dot}`} />{status.label}</div>
+                <p className="mt-1 text-[10px] text-slate-400">{status.ageHours > 0 ? `Waiting ${status.ageHours < 1 ? '<1' : Math.floor(status.ageHours)}h` : 'Decision required'}</p>
+              </td>
+              <td className="px-3 py-3"><span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-[#0f6cbd]">{item._approvalLabel}</span></td>
+              <td className="max-w-[210px] px-3 py-3 text-xs font-semibold text-slate-950"><div className="truncate" title={String(details.reference)}>{String(details.reference)}</div></td>
+              <td className="max-w-[300px] px-3 py-3 text-xs text-slate-700"><div className="truncate" title={String(details.title)}>{String(details.title)}</div></td>
+              <td className="max-w-[190px] px-3 py-3 text-xs text-slate-700"><div className="truncate" title={String(details.requester)}>{String(details.requester)}</div></td>
+              <td className="px-3 py-3 text-xs font-medium tabular-nums text-slate-700">{Number.isFinite(numericAmount) ? `AED ${numericAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : String(details.amount)}</td>
+              <td className="px-3 py-3"><span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold capitalize text-slate-700">{String(details.stage).replace(/_/g, ' ')}</span></td>
+            </tr>
+          )
+        })}
+      </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          Showing <span className="font-semibold text-slate-900">{pageStart + 1}</span>–<span className="font-semibold text-slate-900">{Math.min(pageStart + pageSize, items.length)}</span> of <span className="font-semibold text-slate-900">{items.length}</span>
+        </p>
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${style.badge}`}>{style.label}</span>
-          {hasSubmittedTime && <span className="text-[11px] font-medium text-slate-400">Waiting {ageHours < 1 ? '<1' : Math.floor(ageHours)}h</span>}
-        </div>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Decision required</span>
-      </div>
-      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="grid flex-1 grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-2">
-          {config.displayFields.map(field => (
-            <div key={field.key} className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{field.label}</p>
-              <p className="mt-0.5 truncate text-sm font-semibold text-slate-800" title={String(item[field.key] || 'N/A')}>{item[field.key] || 'N/A'}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex w-full flex-row flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
-          {config.actions.map(actionId => {
-            const action = APPROVAL_ACTIONS[actionId]
-            if (!action) return null
-
-            const IconComponent = ICON_MAP[action.icon] || CheckCircleIcon
-
-            return (
-              <button
-                key={actionId}
-                onClick={() => onAction(actionId, item)}
-                className={`rounded-xl p-2.5 shadow-sm transition-all ${action.bgColor} ${action.hoverColor} ${action.textColor}`}
-                title={action.label}
-              >
-                <IconComponent className="w-5 h-5" />
-              </button>
-            )
-          })}
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            disabled={currentPage === 1}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 font-semibold text-slate-700 transition hover:border-[#0f6cbd] hover:text-[#0f6cbd] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeftIcon className="h-3.5 w-3.5" /> Previous
+          </button>
+          <span className="min-w-20 text-center font-medium tabular-nums">Page {currentPage} of {totalPages}</span>
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+            disabled={currentPage === totalPages}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 font-semibold text-slate-700 transition hover:border-[#0f6cbd] hover:text-[#0f6cbd] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next <ChevronRightIcon className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
-    </article>
+    </div>
   )
 }
 

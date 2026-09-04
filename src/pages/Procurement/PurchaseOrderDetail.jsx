@@ -75,6 +75,7 @@ const PurchaseOrderDetail = () => {
   const [exportLoading, setExportLoading] = useState('');
   const [printPreviewLoading, setPrintPreviewLoading] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [approvalComment, setApprovalComment] = useState('');
 
   const handlePrintPurchaseOrder = async () => {
     try {
@@ -245,6 +246,28 @@ const PurchaseOrderDetail = () => {
     } catch (error) {
       console.error('Error updating order:', error);
       toast.error(`Failed to update order: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleApprovalDecision = async (decision) => {
+    if (decision === 'reject' && approvalComment.trim().length < 3) {
+      toast.error('Please enter a rejection reason.');
+      return;
+    }
+    try {
+      setActionLoading(true);
+      const response = await apiClient.post(`/procurement/orders/${id}/${decision}/`, {
+        approval_stage: order.current_approval?.stage,
+        note: approvalComment.trim(),
+      });
+      setOrder(response.data.purchase_order);
+      setApprovalComment('');
+      window.dispatchEvent(new Event('procurement-approval-updated'));
+      toast.success(`Purchase Order ${decision === 'approve' ? 'approved' : 'rejected'} successfully.`);
+    } catch (decisionError) {
+      toast.error(decisionError.response?.data?.detail || decisionError.response?.data?.error || `Failed to ${decision} Purchase Order.`);
     } finally {
       setActionLoading(false);
     }
@@ -746,6 +769,36 @@ const PurchaseOrderDetail = () => {
               )}
             </div>
           </div>
+
+          {order.can_approve && (
+            <section className="mb-6 rounded-xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700">Decision required</p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-950">
+                    Level {order.current_approval?.level ?? '—'} · {order.current_approval?.stage || 'Purchase Order approval'}
+                  </h2>
+                  <label className="mt-3 block text-xs font-semibold text-slate-700" htmlFor="po-approval-comment">Comment / rejection reason</label>
+                  <textarea
+                    id="po-approval-comment"
+                    value={approvalComment}
+                    onChange={(event) => setApprovalComment(event.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                    placeholder="Optional for approval; required for rejection"
+                  />
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" disabled={actionLoading} onClick={() => handleApprovalDecision('reject')} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50">
+                    <XMarkIcon className="h-5 w-5" /> Reject
+                  </button>
+                  <button type="button" disabled={actionLoading} onClick={() => handleApprovalDecision('approve')} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+                    <CheckCircleIcon className="h-5 w-5" /> Approve
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
 
           {showEditForm && order.status !== 'completed' && (
             <PurchaseOrderForm

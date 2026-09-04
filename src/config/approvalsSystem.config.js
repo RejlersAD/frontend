@@ -118,6 +118,7 @@ export const APPROVAL_TYPES = {
     gradientTo: '#4f46e5',
     apiEndpoint: '/procurement/requisitions/pending-for-me/',
     actionApiEndpoint: '/procurement/requisitions/',
+    detailPath: (item) => `/procurement/requisitions/${item.id}`,
     actionEndpointMap: {
       approve: 'process_dynamic_approval',
       reject: 'process_dynamic_rejection',
@@ -170,6 +171,7 @@ export const APPROVAL_TYPES = {
     gradientTo: '#1d4ed8',
     apiEndpoint: '/procurement/orders/pending-for-me/',
     actionApiEndpoint: '/procurement/orders/',
+    detailPath: (item) => `/procurement/orders/${item.id}`,
     // Assignment, rather than role, grants access to this personal queue.
     allowedRoles: [],
     requiresReportingManager: false,

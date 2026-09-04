@@ -4,6 +4,7 @@ const unwrap = (promise) => promise.then((response) => response.data)
 const BASE = '/hr'
 
 const hrCoreService = {
+  getWorkforceSummary: () => unwrap(apiClient.get(`${BASE}/employees/workforce-summary/`, { timeout: 20_000 })),
   getWorkspace: () => unwrap(apiClient.get(`${BASE}/self-service-workspace/`)),
   askAssistant: (question) => unwrap(apiClient.post(`${BASE}/assistant/ask/`, { question })),
   getAssistantHistory: () => unwrap(apiClient.get(`${BASE}/assistant/`)),
