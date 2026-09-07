@@ -16,6 +16,7 @@ import {
   XMarkIcon,
   PrinterIcon,
   ArrowDownTrayIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { getStatusConfig } from '../../config/procurement.config';
@@ -58,6 +59,19 @@ const formatMoney = (value, currency = 'USD') => {
 };
 
 const textOrDash = (value) => String(value || '').trim() || '—';
+const purchaseOrderPdfRequests = new Map();
+
+const requestPurchaseOrderPdf = (id) => {
+  if (!purchaseOrderPdfRequests.has(id)) {
+    const request = apiClient.get(`/procurement/orders/${id}/export-pdf/`, {
+      responseType: 'blob',
+      timeout: 120000,
+      suppressErrorToast: true,
+    }).finally(() => purchaseOrderPdfRequests.delete(id));
+    purchaseOrderPdfRequests.set(id, request);
+  }
+  return purchaseOrderPdfRequests.get(id);
+};
 
 /**
  * Purchase Order Detail Page - Soft-Coded Design
@@ -76,6 +90,11 @@ const PurchaseOrderDetail = () => {
   const [printPreviewLoading, setPrintPreviewLoading] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [approvalComment, setApprovalComment] = useState('');
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState('');
+  const [pdfPreviewFilename, setPdfPreviewFilename] = useState('');
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
+  const [pdfPreviewError, setPdfPreviewError] = useState('');
+  const [pdfPreviewRetryKey, setPdfPreviewRetryKey] = useState(0);
 
   const handlePrintPurchaseOrder = async () => {
     try {
@@ -213,6 +232,44 @@ const PurchaseOrderDetail = () => {
     }
   }, [id, navigate]);
 
+  useEffect(() => {
+    if (!id || !order) return undefined;
+
+    let active = true;
+    let objectUrl = '';
+    setPdfPreviewLoading(true);
+    setPdfPreviewError('');
+    setPdfPreviewUrl('');
+
+    requestPurchaseOrderPdf(id)
+      .then((response) => {
+        if (!active) return;
+        const fallbackFilename = buildProcurementPdfFilename(
+          order.po_number || `PO-${id}`,
+          'po',
+          order.po_date,
+        );
+        const disposition = response.headers?.['content-disposition'] || '';
+        const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+        objectUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        setPdfPreviewFilename(filenameMatch?.[1] || fallbackFilename);
+        setPdfPreviewUrl(objectUrl);
+      })
+      .catch((previewError) => {
+        if (!active) return;
+        console.error('Failed to load the embedded Purchase Order PDF:', previewError);
+        setPdfPreviewError('The Purchase Order PDF could not be generated.');
+      })
+      .finally(() => {
+        if (active) setPdfPreviewLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [id, order, pdfPreviewRetryKey]);
+
   /**
    * Soft-coded action handler: Send Order
    */
@@ -292,7 +349,7 @@ const PurchaseOrderDetail = () => {
     };
     
     return (
-      <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold border-2 ${colorClasses[config.color]}`}>
+      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${colorClasses[config.color]}`}>
         {config.label}
       </span>
     );
@@ -683,49 +740,50 @@ const PurchaseOrderDetail = () => {
         document.body
       )}
 
-    <div className="po-screen-view min-h-screen bg-gray-50">
-      <div className="py-6">
-        {/* Header - Soft-coded */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-4">
+    <div className="po-screen-view min-h-screen bg-slate-50">
+      <div className="py-4 sm:py-6">
+        <div className="mx-auto max-w-[1680px] px-4 sm:px-6 lg:px-8">
+          <header className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
               <button
                 onClick={() => navigate('/procurement/orders')}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  aria-label="Back to purchase orders"
+                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
               >
                 <ArrowLeftIcon className="h-4 w-4 mr-2" />
                 Back
               </button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                  <ShoppingCartIcon className="h-8 w-8 mr-3 text-indigo-600" />
-                  {order.po_number || `PO-${order.id}`}
-                </h1>
-                {typeof order.po_number_verified === 'boolean' && (
-                  <span
-                    className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      order.po_number_verified
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}
-                    title={order.po_number_verification_message}
-                  >
-                    {order.po_number_verified ? 'PO number verified' : 'PO number requires correction'}
-                  </span>
-                )}
-                <p className="mt-1 text-sm text-gray-600">
-                  Purchase Order Details
-                </p>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600">Procurement · Purchase Order</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
+                      {order.po_number || `PO-${order.id}`}
+                    </h1>
+                    {getStatusBadge(order.status)}
+                    {typeof order.po_number_verified === 'boolean' && (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          order.po_number_verified
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                        title={order.po_number_verification_message}
+                      >
+                        {order.po_number_verified ? 'Number verified' : 'Number requires correction'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 truncate text-sm text-slate-500">{order.title || 'Purchase Order Details'}</p>
+                </div>
               </div>
-            </div>
-            
-            {/* Action Buttons - Soft-coded based on status */}
-            <div className="flex space-x-3">
+
+              <div className="flex flex-wrap items-center gap-2" aria-label="Purchase order actions">
               <button
                 type="button"
                 onClick={handlePrintPurchaseOrder}
                 disabled={printPreviewLoading}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                  className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
               >
                 <PrinterIcon className="h-4 w-4 mr-2" />
                 {printPreviewLoading ? 'Preparing Preview...' : 'Print Preview'}
@@ -735,7 +793,7 @@ const PurchaseOrderDetail = () => {
                 type="button"
                 onClick={() => handleExportPurchaseOrder('word')}
                 disabled={Boolean(exportLoading)}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                  className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
               >
                 <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
                 {exportLoading === 'word' ? 'Preparing Word...' : 'Export Word'}
@@ -745,7 +803,7 @@ const PurchaseOrderDetail = () => {
                 <button
                   onClick={handleSendOrder}
                   disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
+                    className="inline-flex h-9 items-center rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
                 >
                   <PaperAirplaneIcon className="h-4 w-4 mr-2" />
                   {actionLoading ? 'Sending...' : 'Send to Vendor'}
@@ -756,7 +814,7 @@ const PurchaseOrderDetail = () => {
                 <button
                   onClick={handleMarkComplete}
                   disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:opacity-50"
+                    className="inline-flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50"
                 >
                   <CheckCircleIcon className="h-4 w-4 mr-2" />
                   {actionLoading ? 'Updating...' : 'Mark Complete'}
@@ -766,14 +824,15 @@ const PurchaseOrderDetail = () => {
               {order.status !== 'completed' && (
                 <button
                   onClick={() => setShowEditForm(true)}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                 >
                   <PencilIcon className="h-4 w-4 mr-2" />
                   Edit
                 </button>
               )}
+              </div>
             </div>
-          </div>
+          </header>
 
           {order.can_approve && (
             <section className="mb-6 rounded-xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
@@ -817,86 +876,136 @@ const PurchaseOrderDetail = () => {
             />
           )}
 
-          {/* Status Badge */}
-          <div className="mb-6">
-            {getStatusBadge(order.status)}
-          </div>
-
-          {/* Main Content Grid - Soft-coded layout */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
             {/* Left Column - Order Information */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="space-y-6 xl:col-span-3">
               {/* Basic Information Card */}
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="mb-5 flex items-center text-base font-semibold text-slate-900">
                   <DocumentTextIcon className="h-5 w-5 mr-2 text-indigo-600" />
                   Order Information
                 </h2>
-                
-                <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                <dl className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">PO Number</dt>
-                    <dd className="mt-1 text-sm text-gray-900 font-semibold">{order.po_number || '-'}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">PO Number</dt>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950">{order.po_number || '-'}</dd>
                   </div>
                   
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Order Date</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order Date</dt>
+                    <dd className="mt-1 text-sm text-slate-900">
                       {order.po_date ? new Date(order.po_date).toLocaleDateString() : '-'}
                     </dd>
                   </div>
                   
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Expected Delivery</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expected Delivery</dt>
+                    <dd className="mt-1 text-sm text-slate-900">
                       {order.expected_delivery ? new Date(order.expected_delivery).toLocaleDateString() : '-'}
                     </dd>
                   </div>
                   
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Project</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{order.project_number || '-'}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project</dt>
+                    <dd className="mt-1 text-sm text-slate-900">{order.project_number || '-'}</dd>
                   </div>
                   
                   <div className="sm:col-span-2">
-                    <dt className="text-sm font-medium text-gray-500">Title/Description</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{order.title || order.description || '-'}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Title / Description</dt>
+                    <dd className="mt-1 text-sm leading-6 text-slate-900">{order.title || order.description || '-'}</dd>
                   </div>
                   
                   {order.notes && (
                     <div className="sm:col-span-2">
-                      <dt className="text-sm font-medium text-gray-500">Notes</dt>
-                      <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{order.notes}</dd>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes</dt>
+                      <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-900">{order.notes}</dd>
                     </div>
                   )}
                 </dl>
-              </div>
+              </section>
 
               {/* Financial Information Card */}
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="mb-5 flex items-center text-base font-semibold text-slate-900">
                   <CurrencyDollarIcon className="h-5 w-5 mr-2 text-green-600" />
                   Financial Details
                 </h2>
-                
-                <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2 bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-200">
-                    <dt className="text-sm font-medium text-gray-600">Total Amount</dt>
-                    <dd className="mt-1 text-3xl font-bold text-green-700">
-                      {order.currency || 'USD'} {parseFloat(order.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </dd>
+
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg bg-slate-50 p-4">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net Amount</dt>
+                    <dd className="mt-1 text-lg font-bold text-slate-900">{formatMoney(itemSubtotal, currency)}</dd>
                   </div>
-                  
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Currency</dt>
-                    <dd className="mt-1 text-sm text-gray-900 font-semibold">{order.currency || 'USD'}</dd>
+                  <div className="rounded-lg bg-slate-50 p-4">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">VAT / Tax</dt>
+                    <dd className="mt-1 text-lg font-bold text-slate-900">{formatMoney(taxAmount, currency)}</dd>
                   </div>
-                  
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Payment Terms</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{order.payment_terms || 'Not specified'}</dd>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Total Amount</dt>
+                    <dd className="mt-1 text-xl font-bold text-emerald-800">{formatMoney(grandTotal, currency)}</dd>
                   </div>
                 </dl>
+                <dl className="mt-5 grid grid-cols-1 gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                  <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Currency</dt><dd className="mt-1 text-sm font-semibold text-slate-900">{currency}</dd></div>
+                  <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment Terms</dt><dd className="mt-1 text-sm text-slate-900">{order.payment_terms || 'Not specified'}</dd></div>
+                </dl>
+              </section>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="mb-4 flex items-center text-base font-semibold text-slate-900">
+                    <UserIcon className="mr-2 h-5 w-5 text-purple-600" />
+                    Vendor Details
+                  </h2>
+                  <dl className="space-y-3">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vendor Name</dt>
+                      <dd className="mt-1 text-sm font-semibold text-slate-950">{order.vendor_name || 'Not assigned'}</dd>
+                    </div>
+                    {(order.seller_contact_person || order.seller_reference) && (
+                      <div>
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact</dt>
+                        <dd className="mt-1 text-sm text-slate-900">{order.seller_contact_person || order.seller_reference}</dd>
+                      </div>
+                    )}
+                    {order.seller_email && (
+                      <div>
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</dt>
+                        <dd className="mt-1 break-all text-sm text-slate-900">{order.seller_email}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="mb-4 flex items-center text-base font-semibold text-slate-900">
+                    <CalendarIcon className="mr-2 h-5 w-5 text-indigo-600" />
+                    Timeline
+                  </h2>
+                  <div className="space-y-3">
+                    <div className="flex items-start">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100">
+                        <CheckCircleIcon className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-slate-900">Order Created</p>
+                        <p className="text-xs text-slate-500">{order.created_at ? new Date(order.created_at).toLocaleString() : '-'}</p>
+                      </div>
+                    </div>
+                    {order.updated_at && order.updated_at !== order.created_at && (
+                      <div className="flex items-start">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                          <PencilIcon className="h-5 w-5 text-amber-600" />
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm font-medium text-slate-900">Last Updated</p>
+                          <p className="text-xs text-slate-500">{new Date(order.updated_at).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
               </div>
 
               {/* Shipping Information */}
@@ -911,62 +1020,60 @@ const PurchaseOrderDetail = () => {
               )}
             </div>
 
-            {/* Right Column - Vendor & Additional Info */}
-            <div className="space-y-6">
-              {/* Vendor Information Card */}
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <UserIcon className="h-5 w-5 mr-2 text-purple-600" />
-                  Vendor Details
-                </h2>
-                
-                <dl className="space-y-3">
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Vendor Name</dt>
-                    <dd className="mt-1 text-sm text-gray-900 font-semibold">{order.vendor_name || 'Not assigned'}</dd>
+            {/* Right Column - PDF Preview */}
+            <div className="space-y-6 xl:col-span-2">
+              <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
+                <header className="flex min-h-14 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+                  <div className="min-w-0">
+                    <h2 className="flex items-center text-base font-semibold text-gray-900">
+                      <DocumentTextIcon className="mr-2 h-5 w-5 shrink-0 text-indigo-600" />
+                      PDF Preview
+                    </h2>
+                    {pdfPreviewFilename && (
+                      <p className="mt-0.5 truncate text-xs text-gray-500" title={pdfPreviewFilename}>{pdfPreviewFilename}</p>
+                    )}
                   </div>
-                </dl>
-              </div>
-
-              {/* Timeline Card - Soft-coded status history */}
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <CalendarIcon className="h-5 w-5 mr-2 text-indigo-600" />
-                  Timeline
-                </h2>
-                
-                <div className="space-y-3">
-                  <div className="flex items-start">
-                    <div className="flex-shrink-0">
-                      <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                        <CheckCircleIcon className="h-5 w-5 text-indigo-600" />
-                      </div>
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">Order Created</p>
-                      <p className="text-xs text-gray-500">
-                        {order.created_at ? new Date(order.created_at).toLocaleString() : '-'}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {order.updated_at && order.updated_at !== order.created_at && (
-                    <div className="flex items-start">
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                          <PencilIcon className="h-5 w-5 text-yellow-600" />
-                        </div>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-900">Last Updated</p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(order.updated_at).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
+                  {pdfPreviewUrl && (
+                    <a
+                      href={pdfPreviewUrl}
+                      download={pdfPreviewFilename}
+                      className="inline-flex shrink-0 items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700"
+                    >
+                      <ArrowDownTrayIcon className="mr-1.5 h-4 w-4" /> Download
+                    </a>
                   )}
-                </div>
-              </div>
+                </header>
+
+                {pdfPreviewLoading && (
+                  <div className="flex h-[800px] items-center justify-center gap-2 bg-slate-50 text-sm text-gray-500">
+                    <ArrowPathIcon className="h-5 w-5 animate-spin" /> Generating PDF preview…
+                  </div>
+                )}
+
+                {!pdfPreviewLoading && pdfPreviewError && (
+                  <div className="flex h-[800px] flex-col items-center justify-center bg-slate-50 px-8 text-center">
+                    <DocumentTextIcon className="h-12 w-12 text-gray-300" />
+                    <p className="mt-4 text-sm font-semibold text-gray-800">PDF preview unavailable</p>
+                    <p className="mt-1 text-xs text-gray-500">{pdfPreviewError}</p>
+                    <button
+                      type="button"
+                      onClick={() => setPdfPreviewRetryKey((value) => value + 1)}
+                      className="mt-4 inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700"
+                    >
+                      <ArrowPathIcon className="mr-1.5 h-4 w-4" /> Retry preview
+                    </button>
+                  </div>
+                )}
+
+                {!pdfPreviewLoading && pdfPreviewUrl && (
+                  <iframe
+                    title={`Purchase Order ${order.po_number || order.id} PDF preview`}
+                    src={`${pdfPreviewUrl}#page=1&view=FitH&toolbar=1&navpanes=0`}
+                    className="h-[800px] w-full bg-slate-100"
+                  />
+                )}
+              </section>
+
             </div>
           </div>
         </div>
