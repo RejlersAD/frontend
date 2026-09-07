@@ -10,11 +10,15 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
+import PropTypes from 'prop-types';
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../../services/api.service';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
 import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
+import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
 import {
-  XMarkIcon,
+  ArrowLeftIcon,
+  ArrowDownTrayIcon,
   CheckCircleIcon,
   XCircleIcon,
   DocumentTextIcon,
@@ -26,7 +30,23 @@ import {
   ArrowPathIcon,
   LockClosedIcon,
   PaperAirplaneIcon,
+  PrinterIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
+
+const linkedPurchaseOrderPdfRequests = new Map();
+
+const requestLinkedPurchaseOrderPdf = (id) => {
+  if (!linkedPurchaseOrderPdfRequests.has(id)) {
+    const request = apiClient.get(`/procurement/orders/${id}/export-pdf/`, {
+      responseType: 'blob',
+      timeout: 120000,
+      suppressErrorToast: true,
+    }).finally(() => linkedPurchaseOrderPdfRequests.delete(id));
+    linkedPurchaseOrderPdfRequests.set(id, request);
+  }
+  return linkedPurchaseOrderPdfRequests.get(id);
+};
 
 const REJECTION_CONFIG = {
   MIN_REASON_LENGTH: 10,
@@ -39,7 +59,8 @@ const REJECTION_CONFIG = {
   }
 };
 
-const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete }) => {
+const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete, pageMode = false }) => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [currentApproverType, setCurrentApproverType] = useState(null);
@@ -49,26 +70,172 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const [referralTarget, setReferralTarget] = useState('moe');
   const [referralRemarks, setReferralRemarks] = useState('');
   const [referralError, setReferralError] = useState('');
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState('');
+  const [pdfPreviewFilename, setPdfPreviewFilename] = useState('');
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
+  const [pdfPreviewError, setPdfPreviewError] = useState('');
+  const [pdfPreviewRetryKey, setPdfPreviewRetryKey] = useState(0);
+  const [activePreview, setActivePreview] = useState('pr');
   const [linkedOrder, setLinkedOrder] = useState(null);
+  const [linkedPoPreviewUrl, setLinkedPoPreviewUrl] = useState('');
+  const [linkedPoPreviewFilename, setLinkedPoPreviewFilename] = useState('');
+  const [linkedPoPreviewLoading, setLinkedPoPreviewLoading] = useState(false);
+  const [linkedPoPreviewError, setLinkedPoPreviewError] = useState('');
+  const [linkedPoPreviewRetryKey, setLinkedPoPreviewRetryKey] = useState(0);
+  const pdfFrameRef = useRef(null);
+  const pdfSourceRef = useRef(null);
 
   useEffect(() => {
-    let cancelled = false;
-    const linkedId = requisition?.linked_po_id;
-    if (!isOpen || !linkedId) {
+    if (!isOpen || !requisition?.linked_po_id) {
       setLinkedOrder(null);
+      setActivePreview('pr');
       return undefined;
     }
-    apiClient.get(`/procurement/orders/${linkedId}/`)
-      .then((response) => { if (!cancelled) setLinkedOrder(response.data); })
-      .catch(() => { if (!cancelled) setLinkedOrder(null); });
-    return () => { cancelled = true; };
+
+    let active = true;
+    apiClient.get(`/procurement/orders/${requisition.linked_po_id}/`, {
+      params: { _fresh: Date.now() },
+      suppressErrorToast: true,
+    })
+      .then((response) => { if (active) setLinkedOrder(response.data); })
+      .catch((error) => {
+        if (!active) return;
+        console.error('Failed to load linked Purchase Order details:', error);
+        setLinkedOrder(null);
+      });
+    return () => { active = false; };
   }, [isOpen, requisition?.linked_po_id]);
+
+  useEffect(() => {
+    if (!isOpen || !requisition?.id) return undefined;
+
+    let active = true;
+    let objectUrl = '';
+    const generatePreviewPdf = async () => {
+      setPdfPreviewLoading(true);
+      setPdfPreviewError('');
+      setPdfPreviewUrl('');
+      try {
+        const source = pdfSourceRef.current;
+        if (!source) throw new Error('The live preview source is not ready.');
+
+        await document.fonts?.ready;
+        await Promise.all(Array.from(source.querySelectorAll('img')).map((image) => (
+          image.complete
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+              image.addEventListener('load', resolve, { once: true });
+              image.addEventListener('error', resolve, { once: true });
+            })
+        )));
+
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+          import('html2canvas'),
+          import('jspdf'),
+        ]);
+        const canvas = await html2canvas(source, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          windowWidth: 1200,
+        });
+        if (!active) return;
+
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+        const pageWidth = 210;
+        const pageHeight = 297;
+        const margin = 6;
+        const printableWidth = pageWidth - (margin * 2);
+        const printableHeight = pageHeight - (margin * 2);
+        const imageHeight = (canvas.height * printableWidth) / canvas.width;
+        const imageData = canvas.toDataURL('image/jpeg', 0.96);
+        let remainingHeight = imageHeight;
+        let yPosition = margin;
+
+        pdf.addImage(imageData, 'JPEG', margin, yPosition, printableWidth, imageHeight, undefined, 'FAST');
+        remainingHeight -= printableHeight;
+        while (remainingHeight > 0) {
+          pdf.addPage();
+          yPosition = margin - (imageHeight - remainingHeight);
+          pdf.addImage(imageData, 'JPEG', margin, yPosition, printableWidth, imageHeight, undefined, 'FAST');
+          remainingHeight -= printableHeight;
+        }
+
+        objectUrl = URL.createObjectURL(pdf.output('blob'));
+        setPdfPreviewFilename(buildProcurementPdfFilename(
+          requisition.pr_number || `PR-${requisition.id}`,
+          'pr',
+          requisition.issued_date || requisition.created_at,
+        ));
+        setPdfPreviewUrl(objectUrl);
+      } catch (previewError) {
+        if (!active) return;
+        console.error('Failed to generate the Live Purchase Recommendation PDF:', previewError);
+        setPdfPreviewError(previewError.message || 'The Live Purchase Recommendation PDF could not be generated.');
+      } finally {
+        if (active) setPdfPreviewLoading(false);
+      }
+    };
+
+    const generationTimer = window.setTimeout(generatePreviewPdf, 100);
+
+    return () => {
+      active = false;
+      window.clearTimeout(generationTimer);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [isOpen, requisition?.id, requisition?.pr_number, requisition?.issued_date, requisition?.created_at, pdfPreviewRetryKey]);
+
+  useEffect(() => {
+    const linkedOrderId = requisition?.linked_po_id;
+    if (!isOpen || activePreview !== 'po' || !linkedOrderId) return undefined;
+
+    let active = true;
+    let objectUrl = '';
+    setLinkedPoPreviewLoading(true);
+    setLinkedPoPreviewError('');
+    setLinkedPoPreviewUrl('');
+
+    requestLinkedPurchaseOrderPdf(linkedOrderId)
+      .then((response) => {
+        if (!active) return;
+        const disposition = response.headers?.['content-disposition'] || '';
+        const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+        objectUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        setLinkedPoPreviewFilename(filenameMatch?.[1] || buildProcurementPdfFilename(
+          linkedOrder?.po_number || requisition.po_number_reference || `PO-${linkedOrderId}`,
+          'po',
+          linkedOrder?.po_date || linkedOrder?.created_at,
+        ));
+        setLinkedPoPreviewUrl(objectUrl);
+      })
+      .catch(async (previewError) => {
+        if (!active) return;
+        console.error('Failed to load linked Purchase Order PDF:', previewError);
+        let serviceMessage = previewError.response?.data?.detail || previewError.response?.data?.error;
+        if (previewError.response?.data instanceof Blob) {
+          try {
+            const errorPayload = JSON.parse(await previewError.response.data.text());
+            serviceMessage = errorPayload.detail || errorPayload.error;
+          } catch {
+            // Preserve the safe fallback for non-JSON upstream responses.
+          }
+        }
+        setLinkedPoPreviewError(serviceMessage || 'The linked Purchase Order PDF is unavailable.');
+      })
+      .finally(() => { if (active) setLinkedPoPreviewLoading(false); });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [activePreview, isOpen, requisition?.linked_po_id, requisition?.po_number_reference, linkedPoPreviewRetryKey]);
 
   if (!isOpen || !requisition) return null;
 
   const normalizedRequisitionStatus = (requisition.status || '').toString().trim().toLowerCase();
   const isDraft = normalizedRequisitionStatus === 'draft';
-  const isFullyApproved = normalizedRequisitionStatus === 'approved';
   const isRejected = normalizedRequisitionStatus === 'rejected';
   const isConverted = normalizedRequisitionStatus === 'converted';
   const isStandardApprovalInProgress = ['submitted', 'in_review'].includes(
@@ -387,14 +554,62 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount) return 'N/A';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+    const numericAmount = Number(amount || 0);
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(numericAmount);
+    } catch {
+      return `${currency || 'USD'} ${numericAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    }
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    if (!dateString) return '—';
+    return new Date(dateString).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
   };
+
+  const formatTimestamp = (dateString) => {
+    if (!dateString) return '—';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  };
+
+  const showingLinkedPo = activePreview === 'po' && Boolean(requisition.linked_po_id);
+  const activePdfUrl = showingLinkedPo ? linkedPoPreviewUrl : pdfPreviewUrl;
+  const activePdfFilename = showingLinkedPo ? linkedPoPreviewFilename : pdfPreviewFilename;
+  const activePdfLoading = showingLinkedPo ? linkedPoPreviewLoading : pdfPreviewLoading;
+  const activePdfError = showingLinkedPo ? linkedPoPreviewError : pdfPreviewError;
+
+  const downloadPdf = () => {
+    if (!activePdfUrl) return;
+    const link = document.createElement('a');
+    link.href = activePdfUrl;
+    link.download = activePdfFilename || (showingLinkedPo ? 'Purchase_Order.pdf' : 'Purchase_Recommendation.pdf');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const printPdf = () => {
+    if (pdfFrameRef.current?.contentWindow) {
+      pdfFrameRef.current.contentWindow.focus();
+      pdfFrameRef.current.contentWindow.print();
+    }
+  };
+
+  const totalPrice = Number(requisition.total_price || 0);
+  const hasExplicitNetPrice = requisition.net_total_excl_vat !== null
+    && requisition.net_total_excl_vat !== undefined
+    && requisition.net_total_excl_vat !== '';
+  const netPrice = hasExplicitNetPrice ? Number(requisition.net_total_excl_vat) : totalPrice;
+  const taxAmount = Math.max(0, totalPrice - netPrice);
+  const vendor = requisition.vendor_details || {};
+  const selectedVendor = (requisition.selected_vendors || [])[0] || {};
+  const vendorName = requisition.vendor_name || requisition.supplier_name || selectedVendor.name || '—';
+  const vendorContact = vendor.contact_person || selectedVendor.contact_person || '—';
+  const vendorEmail = vendor.email || selectedVendor.email || '—';
 
   const getStatusColor = (stageOrStatus) => {
     const normalized = approvalDisplayStatus(stageOrStatus);
@@ -404,64 +619,114 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     return 'bg-amber-100 text-amber-800 border-amber-300';
   };
 
+  const getRecordStatusColor = () => {
+    if (normalizedRequisitionStatus === 'converted') return 'border-slate-300 bg-slate-100 text-slate-700';
+    if (normalizedRequisitionStatus === 'approved') return 'border-emerald-300 bg-emerald-100 text-emerald-800';
+    if (normalizedRequisitionStatus === 'rejected') return 'border-red-300 bg-red-100 text-red-800';
+    if (['submitted', 'in_review'].includes(normalizedRequisitionStatus)) return 'border-blue-300 bg-blue-100 text-blue-800';
+    return 'border-slate-300 bg-white text-slate-700';
+  };
+
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
-        <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full my-8">
+      <div className="pointer-events-none fixed left-[-10000px] top-0 w-[794px] bg-white p-4" aria-hidden="true">
+        <div ref={pdfSourceRef} className="bg-white p-3">
+          <PurchaseRequisitionDocumentPreview requisition={requisition} live documentOnly />
+        </div>
+      </div>
+      <div className={pageMode ? 'min-h-[calc(100vh-4rem)] bg-slate-50' : 'fixed inset-0 z-50 overflow-y-auto bg-slate-50'}>
+        <div className="mx-auto min-h-full w-full max-w-[1680px] px-4 py-5 sm:px-6 lg:px-8">
           
           {/* Modal Header */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-6 rounded-t-xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <DocumentTextIcon className="h-8 w-8" />
-                <div>
-                  <h2 className="text-2xl font-bold">Purchase Requisition Review</h2>
-                  <p className="text-indigo-100 text-sm mt-1">
-                    PR No: {requisition.pr_number} <span aria-hidden="true">&middot;</span> Status: {requisition.status_display || requisition.status}
-                  </p>
+          <header className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+              <div className="flex min-w-0 items-start gap-3">
+                <button type="button" onClick={onClose} aria-label="Back to Purchase Recommendations" title="Back to Purchase Recommendations" className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+                  <ArrowLeftIcon className="h-4 w-4" />
+                </button>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{requisition.pr_number || `PR-${requisition.id}`}</h1>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getRecordStatusColor()}`}>{requisition.status_display || requisition.status || 'Draft'}</span>
+                    {requisition.linked_po_id && <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700" title={linkedOrder?.po_number || requisition.po_number_reference || 'Linked Purchase Order'}><LinkIcon className="h-3.5 w-3.5" /> Linked PO</span>}
+                  </div>
                 </div>
               </div>
-              <button onClick={onClose} className="text-white hover:text-indigo-200 transition-colors">
-                <XMarkIcon className="h-7 w-7" />
-              </button>
-            </div>
-
-            {/* Dynamic Status Header Badges */}
-            <div className="mt-4 flex flex-wrap items-center gap-4">
-              {approvalHierarchy.map((stage, idx) => (
-                <div key={idx} className="flex items-center space-x-2">
-                  <span className="text-indigo-100 text-xs font-medium">{stage.role || stage.stage}:</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(stage)}`}>
-                    {approvalStatusLabel(stage)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Modal Content Body */}
-          <div className="p-8 max-h-[70vh] overflow-y-auto">
-            {linkedOrder && (
-              <section className="mb-6 grid gap-4 lg:grid-cols-2" aria-label="Linked procurement records">
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Purchase Requisition</p>
-                  <p className="mt-1 font-bold text-slate-950">{requisition.pr_number}</p>
-                  <p className="mt-1 text-sm text-slate-600">{requisition.description_reason || requisition.product_service || 'No description'}</p>
-                  <p className="mt-2 text-xs font-semibold text-slate-500">{requisition.project_department || requisition.enterprise_project_name || 'No project assigned'}</p>
-                </div>
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Linked Purchase Order</p>
-                  <a href={`/procurement/orders/${linkedOrder.id}`} className="mt-1 inline-block font-bold text-emerald-800 hover:underline">{linkedOrder.po_number}</a>
-                  <p className="mt-1 text-sm text-slate-600">{linkedOrder.description || linkedOrder.title || 'No description'}</p>
-                  <p className="mt-2 text-xs font-semibold text-slate-500">{linkedOrder.project_display || linkedOrder.enterprise_project_name || linkedOrder.project_number || 'No project assigned'}</p>
+              <section className="min-w-0 flex-1 xl:mx-6" aria-label="Approval history">
+                <div className="flex min-w-0 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50" role="list" aria-label="Approval workflow progress">
+                  {approvalHierarchy.length > 0 ? approvalHierarchy.map((stage, index) => {
+                    const stageStatus = approvalDisplayStatus(stage);
+                    const stageTimestamp = stage.approved_at || stage.rejected_at || stage.evidence_requested_at;
+                    return (
+                      <div key={`${stage.role || stage.stage}-${index}`} className="flex min-w-[170px] flex-1 items-center gap-2.5 border-r border-slate-200 px-3 py-2 last:border-r-0" role="listitem" title={[stage.role || stage.stage, stage.user_name, approvalStatusLabel(stage), stageTimestamp && formatTimestamp(stageTimestamp)].filter(Boolean).join(' · ')}>
+                          <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border ${getStatusColor(stage)}`}>
+                            {stageStatus === 'approved' ? <CheckCircleIcon className="h-4 w-4" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+                          </span>
+                          <div className="min-w-0"><p className="truncate text-[11px] font-bold text-slate-800">{stage.role || stage.stage || `Stage ${index + 1}`}</p><p className="truncate text-[10px] text-slate-500">{nameOnly(stage.user_name) || approvalStatusLabel(stage)}</p><p className="mt-0.5 truncate text-[9px] font-medium text-slate-400">{stageTimestamp ? formatTimestamp(stageTimestamp) : 'Pending'}</p></div>
+                      </div>
+                    );
+                  }) : <p className="text-xs text-slate-500">Approval workflow has not been configured.</p>}
                 </div>
               </section>
-            )}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label="Purchase Recommendation actions">
+                <button type="button" onClick={printPdf} disabled={!activePdfUrl} aria-label={`Print ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} preview`} title={`Print ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} preview`} className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
+                  <PrinterIcon className="h-4 w-4" />
+                </button>
+                <button type="button" onClick={downloadPdf} disabled={!activePdfUrl} aria-label={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`} title={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`} className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
+                  <ArrowDownTrayIcon className="h-4 w-4" />
+                </button>
+                {isDraft && (isCurrentUserIssuer || isSuperAdmin) && (
+                  <button type="button" onClick={() => navigate(`/procurement/requisitions/${requisition.id}/edit`)} className="inline-flex h-9 items-center rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+                    <PencilSquareIcon className="mr-2 h-4 w-4" /> Edit
+                  </button>
+                )}
+              </div>
+            </div>
+          </header>
+
+          {/* Modal Content Body */}
+          <main>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
               
               {/* Left Column - PR Form Information */}
-              <div className="lg:col-span-2 space-y-6">
-                <PurchaseRequisitionDocumentPreview requisition={requisition} />
+              <div className="space-y-6 xl:col-span-3">
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <h2 className="mb-5 flex items-center text-base font-semibold text-slate-900"><DocumentTextIcon className="mr-2 h-5 w-5 text-indigo-600" /> Recommendation Information</h2>
+                  <dl className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">PR Number</dt><dd className="mt-1 text-sm font-semibold text-slate-950">{requisition.pr_number || '—'}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Issued Date</dt><dd className="mt-1 text-sm text-slate-900">{formatDate(requisition.issued_date)}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Issued By</dt><dd className="mt-1 text-sm text-slate-900">{requisition.issued_by_name || '—'}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project / Department</dt><dd className="mt-1 text-sm text-slate-900">{requisition.project_department || requisition.enterprise_project_name || '—'}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Type</dt><dd className="mt-1 text-sm text-slate-900">{requisition.requisition_type_display || requisition.requisition_type || '—'}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priority</dt><dd className="mt-1 text-sm text-slate-900">{requisition.priority_display || requisition.priority || '—'}</dd></div>
+                    <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Product / Service</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{requisition.product_service || requisition.description_reason || '—'}</dd></div>
+                  </dl>
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <h2 className="mb-5 text-base font-semibold text-slate-900">Financial Details</h2>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net Amount</p><p className="mt-2 text-lg font-bold text-slate-950">{formatCurrency(netPrice, requisition.currency)}</p></div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">VAT / Tax</p><p className="mt-2 text-lg font-bold text-slate-950">{formatCurrency(taxAmount, requisition.currency)}</p></div>
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Total Price</p><p className="mt-2 text-xl font-bold text-emerald-700">{formatCurrency(totalPrice, requisition.currency)}</p></div>
+                  </div>
+                </section>
+
+                <div className="grid gap-6 md:grid-cols-2">
+                  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h2 className="mb-4 flex items-center text-base font-semibold text-slate-900"><UserCircleIcon className="mr-2 h-5 w-5 text-purple-600" /> Vendor Details</h2>
+                    <dl className="space-y-3"><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vendor Name</dt><dd className="mt-1 text-sm font-semibold text-slate-950">{vendorName}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact</dt><dd className="mt-1 text-sm text-slate-900">{vendorContact}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</dt><dd className="mt-1 break-all text-sm text-indigo-700">{vendorEmail}</dd></div></dl>
+                  </section>
+                  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h2 className="mb-4 flex items-center text-base font-semibold text-slate-900"><ClockIcon className="mr-2 h-5 w-5 text-indigo-600" /> Timeline</h2>
+                    <div className="space-y-4"><div className="flex gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-indigo-100"><CheckCircleIcon className="h-5 w-5 text-indigo-600" /></span><div><p className="text-sm font-semibold text-slate-900">Recommendation Created</p><p className="text-xs text-slate-500">{formatTimestamp(requisition.created_at)}</p></div></div><div className="flex gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-amber-100"><PencilSquareIcon className="h-5 w-5 text-amber-600" /></span><div><p className="text-sm font-semibold text-slate-900">Last Updated</p><p className="text-xs text-slate-500">{formatTimestamp(requisition.updated_at)}</p></div></div></div>
+                  </section>
+                </div>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <h2 className="text-base font-semibold text-slate-900">Purchase Recommendation</h2>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{requisition.purchase_recommendation || requisition.description_reason || 'No recommendation notes recorded.'}</p>
+                </section>
                 <div className="hidden">
                 <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -560,7 +825,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       <p className="font-medium text-gray-900">{requisition.po_applicable ? 'Yes' : 'No'}</p>
                       {requisition.po_applicable && requisition.po_number_reference && (
                         requisition.linked_po_id
-                          ? <a href={`/procurement/orders/${requisition.linked_po_id}`} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline">{requisition.po_number_reference} ┬╖ View completed PO</a>
+                          ? <button type="button" onClick={() => setActivePreview('po')} className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><LinkIcon className="h-4 w-4" />{requisition.po_number_reference} · View in preview</button>
                           : <p className="font-semibold text-gray-900">{requisition.po_number_reference}</p>
                       )}
                     </div>
@@ -580,16 +845,59 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                 </div>
               </div>
               {/* Right Column - Dynamic Approval History & Action Controls */}
-              <div className="space-y-6">
+              <aside className="space-y-6 xl:col-span-2">
+                <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Procurement document preview">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2.5">
+                    <div className="inline-flex min-w-0 rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Available documents">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activePreview === 'pr'}
+                        aria-controls="procurement-document-preview"
+                        onClick={() => setActivePreview('pr')}
+                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activePreview === 'pr' ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
+                      >
+                        <DocumentTextIcon className="h-4 w-4 shrink-0" />
+                        <span>PR Preview</span>
+                      </button>
+                      {requisition.linked_po_id && (
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={activePreview === 'po'}
+                          aria-controls="procurement-document-preview"
+                          onClick={() => setActivePreview('po')}
+                          className={`inline-flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activePreview === 'po' ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
+                          title={linkedOrder?.po_number || requisition.po_number_reference || 'Linked Purchase Order'}
+                        >
+                          <LinkIcon className="h-4 w-4 shrink-0" />
+                          <span className="min-w-0 text-left">
+                            <span className="block">Linked PO</span>
+                            <span className="block max-w-32 truncate text-[10px] font-medium text-slate-500">{linkedOrder?.po_number || requisition.po_number_reference || 'Purchase Order'}</span>
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={downloadPdf}
+                      disabled={!activePdfUrl}
+                      aria-label={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`}
+                      title={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`}
+                      className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"
+                    >
+                      <ArrowDownTrayIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div id="procurement-document-preview" className="grid h-[800px] place-items-center bg-slate-800" role="tabpanel">
+                    {activePdfLoading && <div className="text-center text-white"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-500 border-t-white" /><p className="mt-3 text-sm">{showingLinkedPo ? 'Loading linked Purchase Order…' : 'Creating PDF from the live preview…'}</p></div>}
+                    {!activePdfLoading && activePdfError && <div className="max-w-sm px-6 text-center text-white"><ExclamationTriangleIcon className="mx-auto h-9 w-9 text-amber-300" /><p className="mt-3 text-sm">{activePdfError}</p><button type="button" onClick={() => showingLinkedPo ? setLinkedPoPreviewRetryKey((key) => key + 1) : setPdfPreviewRetryKey((key) => key + 1)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800"><ArrowPathIcon className="h-4 w-4" /> Retry preview</button></div>}
+                    {!activePdfLoading && activePdfUrl && <iframe key={`${activePreview}-${activePdfUrl}`} ref={pdfFrameRef} src={`${activePdfUrl}#page=1&zoom=page-width&view=FitH&toolbar=0&navpanes=0&scrollbar=1`} title={`${activePdfFilename || (showingLinkedPo ? 'Linked Purchase Order' : 'Purchase Recommendation')} preview`} className="h-full w-full bg-white" />}
+                  </div>
+                </section>
                 
-                {/* Dynamic Approval History List */}
-                <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <ClockIcon className="h-5 w-5 mr-2 text-indigo-600" />
-                    Approval History
-                  </h3>
-
-                  <div className="space-y-4">
+                {(hasMissingApprovalEvidence || isEvidenceRecoveryActive || (isRejected && requisition.rejection_reason) || (isRejected && (isCurrentUserIssuer || isSuperAdmin))) && (
+                <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-label="Approval notices">
                     {hasMissingApprovalEvidence && (
                       <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs text-slate-700">
                         <p>
@@ -611,50 +919,14 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                         Approval recovery is active. The current approver has been notified and can record a decision from the Approvals tab.
                       </div>
                     )}
-                    {approvalHierarchy.length > 0 ? (
-                      approvalHierarchy.map((stage, index) => {
-                        return (
-                          <div key={index} className="pb-3 border-b border-gray-100 last:border-0 last:pb-0">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm font-semibold text-gray-800">
-                                {stage.role || stage.stage || `Stage ${index + 1}`}
-                              </span>
-                              <span className={`px-2.5 py-0.5 rounded text-xs font-semibold border ${getStatusColor(stage)}`}>
-                                {approvalStatusLabel(stage)}
-                              </span>
-                            </div>
-                            {stage.user_name && (
-                              <div className="flex items-center space-x-1.5 text-xs text-gray-600 mt-1">
-                                <UserCircleIcon className="h-4 w-4 text-gray-400" />
-                                <span>{stage.user_name}</span>
-                              </div>
-                            )}
-                            {stage.approved_at && (
-                              <p className="text-xs text-gray-500 mt-0.5">
-                                {formatDate(stage.approved_at)} at {new Date(stage.approved_at).toLocaleTimeString()}
-                              </p>
-                            )}
-                            {stage.rejected_at && (
-                              <p className="text-xs text-red-500 mt-0.5">
-                                Rejected on {formatDate(stage.rejected_at)}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-xs text-gray-500">No workflow steps found.</p>
-                    )}
-                  </div>
-
                   {isRejected && requisition.rejection_reason && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3">
                       <p className="text-sm font-medium text-red-800 mb-1">Rejection Reason:</p>
                       <p className="text-sm text-red-700">{requisition.rejection_reason}</p>
                     </div>
                   )}
                   {isRejected && (isCurrentUserIssuer || isSuperAdmin) && (
-                    <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
                       <p className="text-sm font-semibold text-indigo-900">Discussion / Resolution Referral</p>
                       {requisition.resolution_referral?.status === 'open' ? (
                         <div className="mt-2 text-xs text-indigo-800">
@@ -673,7 +945,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       )}
                     </div>
                   )}
-                </div>
+                </section>
+                )}
 
                 {/* Interactive Action Controls */}
                 {isDraft && currentStage && (
@@ -792,12 +1065,12 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                   </div>
                 )}
 
-              </div>
+              </aside>
             </div>
-          </div>
+          </main>
 
           {/* Modal Footer */}
-          <div className="bg-gray-50 px-8 py-4 rounded-b-xl border-t border-gray-200 flex items-center justify-between">
+          {!pageMode && <div className="mt-6 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
             <p className="text-xs text-gray-500">
               Form Reference: {requisition.form_reference || 'RAD-OM-PRC-0001'}
             </p>
@@ -807,7 +1080,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
             >
               Close
             </button>
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -874,6 +1147,15 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       )}
     </>
   );
+};
+
+PurchaseRequisitionApproval.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  requisition: PropTypes.object,
+  currentUser: PropTypes.object,
+  onApprovalComplete: PropTypes.func,
+  pageMode: PropTypes.bool,
 };
 
 export default PurchaseRequisitionApproval;

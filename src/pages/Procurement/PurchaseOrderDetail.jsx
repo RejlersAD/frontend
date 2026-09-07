@@ -749,14 +749,13 @@ const PurchaseOrderDetail = () => {
               <button
                 onClick={() => navigate('/procurement/orders')}
                   aria-label="Back to purchase orders"
-                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                  title="Back to purchase orders"
+                  className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
               >
-                <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                Back
+                <ArrowLeftIcon className="h-4 w-4" />
               </button>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600">Procurement · Purchase Order</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
                       {order.po_number || `PO-${order.id}`}
                     </h1>
@@ -774,7 +773,6 @@ const PurchaseOrderDetail = () => {
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 truncate text-sm text-slate-500">{order.title || 'Purchase Order Details'}</p>
                 </div>
               </div>
 
@@ -783,20 +781,22 @@ const PurchaseOrderDetail = () => {
                 type="button"
                 onClick={handlePrintPurchaseOrder}
                 disabled={printPreviewLoading}
-                  className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
+                  aria-label={printPreviewLoading ? 'Preparing print preview' : 'Print preview'}
+                  title={printPreviewLoading ? 'Preparing print preview' : 'Print preview'}
+                  className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
               >
-                <PrinterIcon className="h-4 w-4 mr-2" />
-                {printPreviewLoading ? 'Preparing Preview...' : 'Print Preview'}
+                <PrinterIcon className={`h-4 w-4 ${printPreviewLoading ? 'animate-pulse' : ''}`} />
               </button>
 
               <button
                 type="button"
                 onClick={() => handleExportPurchaseOrder('word')}
                 disabled={Boolean(exportLoading)}
-                  className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
+                  aria-label={exportLoading === 'word' ? 'Preparing Word document' : 'Export Word document'}
+                  title={exportLoading === 'word' ? 'Preparing Word document' : 'Export Word document'}
+                  className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
               >
-                <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
-                {exportLoading === 'word' ? 'Preparing Word...' : 'Export Word'}
+                <ArrowDownTrayIcon className={`h-4 w-4 ${exportLoading === 'word' ? 'animate-pulse' : ''}`} />
               </button>
               
               {order.status === 'draft' && (
@@ -1037,9 +1037,11 @@ const PurchaseOrderDetail = () => {
                     <a
                       href={pdfPreviewUrl}
                       download={pdfPreviewFilename}
-                      className="inline-flex shrink-0 items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700"
+                      aria-label="Download Purchase Order PDF"
+                      title="Download Purchase Order PDF"
+                      className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-md border border-gray-300 bg-white text-gray-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                     >
-                      <ArrowDownTrayIcon className="mr-1.5 h-4 w-4" /> Download
+                      <ArrowDownTrayIcon className="h-4 w-4" />
                     </a>
                   )}
                 </header>

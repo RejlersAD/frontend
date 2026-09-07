@@ -45,7 +45,7 @@ const workflowRoleLabel = (stage, index) => {
   return stage?.role || `L${stage?.level || index + 1}`;
 };
 
-const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
+const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documentOnly = false }) => {
   const metadata = requisition.price_remarks_data || {};
   const negotiationRemarks = requisition.price_remarks || metadata.negotiation_remarks;
   const signedDocument = (requisition.attachments || []).find((item) => (
@@ -103,7 +103,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {!documentOnly && <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{live ? 'Live Purchase Recommendation Preview' : 'Captured PR Detail Preview'}</p>
           <p className="mt-1 text-xs text-gray-500">{live ? 'Updates as you complete the form' : 'Aligned with company form'} {requisition.form_reference || 'RAD-OM-PRC-0001 FRM -1 Rev 0'}</p>
@@ -113,7 +113,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
             <ArrowTopRightOnSquareIcon className="h-4 w-4" /> View Original Signed PDF
           </a>
         )}
-      </div>
+      </div>}
 
       <article className="overflow-hidden border-2 border-gray-700 bg-white text-[12px] leading-snug text-gray-900 shadow-sm">
         <div className="grid grid-cols-[2fr_1fr] border-b border-gray-700">
@@ -228,10 +228,10 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
         </section>
       </article>
 
-      <div className="flex justify-between px-2 text-[11px] text-gray-500">
+      {!documentOnly && <div className="flex justify-between px-2 text-[11px] text-gray-500">
         <span>{requisition.form_reference || 'RAD-OM-PRC-0001 FRM -1 Rev 0'}</span>
         <span>{requisition.page_number || 'Page 1 of 1'}</span>
-      </div>
+      </div>}
     </div>
   );
 };
@@ -239,6 +239,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false }) => {
 PurchaseRequisitionDocumentPreview.propTypes = {
   requisition: PropTypes.object.isRequired,
   live: PropTypes.bool,
+  documentOnly: PropTypes.bool,
 };
 
 export default PurchaseRequisitionDocumentPreview;

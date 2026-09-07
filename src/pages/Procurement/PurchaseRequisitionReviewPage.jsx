@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import apiClient from '../../services/api.service'
 import PurchaseRequisitionApproval from './PurchaseRequisitionApproval'
 
 const PurchaseRequisitionReviewPage = () => {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [requisition, setRequisition] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
   const [error, setError] = useState('')
@@ -32,9 +33,10 @@ const PurchaseRequisitionReviewPage = () => {
   return (
     <PurchaseRequisitionApproval
       isOpen
+      pageMode
       requisition={requisition}
       currentUser={currentUser}
-      onClose={() => navigate('/approvals')}
+      onClose={() => navigate(location.state?.from || '/procurement/requisitions')}
       onApprovalComplete={(updated) => setRequisition(updated)}
     />
   )
