@@ -15,11 +15,14 @@ export const IO_LIST_WORKFLOW_API = {
   config:         '/instrument-io-workflow/config/',
   documents:      '/instrument-io-workflow/documents/',
   documentById:   (id) => `/instrument-io-workflow/documents/${id}/`,
+  documentStatus: (id) => `/instrument-io-workflow/documents/${id}/status/`,
   reextract:      (id) => `/instrument-io-workflow/documents/${id}/re-extract/`,
   originalPdf:    (id) => `/instrument-io-workflow/documents/${id}/original-pdf/`,
   exportXlsx:     (id) => `/instrument-io-workflow/documents/${id}/export-xlsx/`,
   patchRow:       (docId, rowId) => `/instrument-io-workflow/documents/${docId}/rows/${rowId}/`,
   diff:           '/instrument-io-workflow/diff/',
+  visionTestKey:  '/instrument-io-workflow/vision/test-key/',
+  pdfPageCount:   '/instrument-io-workflow/pdf-page-count/',
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -33,7 +36,10 @@ export const IO_LIST_EDIT_CONFIG = {
    * Columns whose cells are read-only even in edit mode.
    * 'page_number' is a PDF-source reference and should not be manually changed.
    */
-  nonEditableColumns: ['page_number'],
+  // 'kind' is the extraction's own structural classification (which
+  // OTHER fields on this row are meaningful) — not free-text content a
+  // user should hand-edit, same reasoning as page_number.
+  nonEditableColumns: ['page_number', 'kind'],
   /** Milliseconds to keep the green 'saved' indicator before clearing it. */
   savedIndicatorMs: 2000,
 }
@@ -83,21 +89,65 @@ export const COMMENT_DISPLAY_COLUMNS = [
 
 // ─────────────────────────────────────────────────────────────────────
 // IO LIST PREVIEW COLUMNS (Excel export keeps all 40)
+//
+// BUG FIX: this used to be one fixed 16-column list shown for every
+// document regardless of how it was extracted. An io_list table document
+// never populates the 4 P&ID-only fields (equipment_tag/line_tag/
+// symbol_type/location — see pid_vision_extractor.py) and a pid_drawing
+// document never populates the 8 io_list-only fields (loop_number/pid_no/
+// hmi_description/io_type/system/signal_type/unit/alarm_priority) — so
+// roughly half the visible columns were guaranteed blank on every row of
+// any single document. Split into COMMON (populated by both extraction
+// paths) plus one group per document_type, and getIoPreviewColumns()
+// below picks the right set — see its call site in IOListWorkflowPage.jsx.
 // ─────────────────────────────────────────────────────────────────────
-export const IO_PREVIEW_COLUMNS = [
+const IO_PREVIEW_COMMON_COLUMNS = [
   { key: 'tag_number',          label: 'Tag No',          width: 140, sticky: true },
-  { key: 'loop_number',         label: 'Loop',            width: 100 },
-  { key: 'pid_no',              label: 'P&ID',            width: 110 },
   { key: 'instrument_type',     label: 'Type',            width: 90  },
   { key: 'service_description', label: 'Service',         width: 280 },
+  { key: 'page_number',         label: 'Page',            width: 70  },
+]
+
+const IO_PREVIEW_TABLE_ONLY_COLUMNS = [
+  { key: 'loop_number',         label: 'Loop',            width: 100 },
+  { key: 'pid_no',              label: 'P&ID',            width: 110 },
   { key: 'hmi_description',     label: 'HMI Description', width: 260 },
   { key: 'io_type',             label: 'I/O Type',        width: 90  },
   { key: 'system',              label: 'System',          width: 100 },
   { key: 'signal_type',         label: 'Signal',          width: 110 },
   { key: 'unit',                label: 'Unit',            width: 90  },
   { key: 'alarm_priority',      label: 'Priority',        width: 110 },
-  { key: 'page_number',         label: 'Page',            width: 70  },
 ]
+
+const IO_PREVIEW_PID_DRAWING_ONLY_COLUMNS = [
+  // Shown first in this group — explains why the OTHER P&ID columns are
+  // blank on any given row (a 'line' row has no instrument_type/
+  // symbol_type because a line callout genuinely doesn't carry either on
+  // the drawing, not because extraction missed something).
+  { key: 'kind',                label: 'Kind',            width: 100 },
+  { key: 'equipment_tag',       label: 'Equipment Tag',   width: 130 },
+  { key: 'line_tag',            label: 'Line Number',     width: 150 },
+  { key: 'symbol_type',         label: 'Symbol Type',     width: 180 },
+  { key: 'location',            label: 'Location',        width: 200 },
+]
+
+// Full 16-column union — kept for anything (e.g. Excel-export references,
+// the field-key allowlist in ioListWorkflowService.updateRow's JSDoc)
+// that genuinely wants the whole set regardless of document type.
+export const IO_PREVIEW_COLUMNS = [
+  ...IO_PREVIEW_COMMON_COLUMNS,
+  ...IO_PREVIEW_TABLE_ONLY_COLUMNS,
+  ...IO_PREVIEW_PID_DRAWING_ONLY_COLUMNS,
+]
+
+// documentType: 'pid_drawing' | 'io_list' | undefined (older documents
+// predating the document_type field — see migration 0055 — default to
+// the io_list set, matching their actual extraction path).
+export function getIoPreviewColumns(documentType) {
+  return documentType === 'pid_drawing'
+    ? [...IO_PREVIEW_COMMON_COLUMNS, ...IO_PREVIEW_PID_DRAWING_ONLY_COLUMNS]
+    : [...IO_PREVIEW_COMMON_COLUMNS, ...IO_PREVIEW_TABLE_ONLY_COLUMNS]
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // STATUS CODES (Comments Resolution Sheet)
@@ -128,12 +178,22 @@ export const DOC_STATUS_BADGE = {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// DOCUMENT TYPE (which extraction path produced this document's rows —
+// set by the backend during extraction, not chosen by the uploader)
+// ─────────────────────────────────────────────────────────────────────
+export const DOCUMENT_TYPE_BADGE = {
+  io_list:     { bg: 'bg-indigo-100',  fg: 'text-indigo-700',  dot: 'bg-indigo-500',  label: 'I/O List'    },
+  pid_drawing: { bg: 'bg-violet-100',  fg: 'text-violet-700',  dot: 'bg-violet-500',  label: 'P&ID Drawing' },
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // DETAIL TABS
 // ─────────────────────────────────────────────────────────────────────
 export const DETAIL_TABS = [
   { id: 'overview', label: 'Overview',                  icon: 'BarChart3' },
   { id: 'comments', label: 'Comments Resolution Sheet', icon: 'MessageSquare' },
   { id: 'iolist',   label: 'I/O List Table',            icon: 'Table2' },
+  { id: 'legend',   label: 'Legend Check',              icon: 'BookOpen' },
   { id: 'metadata', label: 'Metadata & Audit',          icon: 'Info' },
 ]
 
@@ -143,8 +203,10 @@ export const DETAIL_TABS = [
 export const UPLOAD_CONFIG = {
   acceptedTypes: '.pdf',
   maxSizeMB:     100,
+  // 'project_name' deliberately not in this list — inside a project it's
+  // auto-populated from the active project's name (see UploadCard in
+  // IOListWorkflowPage.jsx) instead of being a manually-typed field.
   fields: [
-    { key: 'project_name',    label: 'Project name',                placeholder: 'e.g. ADNOC Habshan MP Fuel Gas' },
     { key: 'document_number', label: 'Document number',             placeholder: 'e.g. NM-30201-50200-H0-113-13-15-25-001', required: true },
     { key: 'revision_label',  label: 'Revision',                    placeholder: 'e.g. 0, A, IFC',                          required: true },
     { key: 'plant',           label: 'Plant',                       placeholder: 'e.g. Habshan' },
@@ -152,10 +214,54 @@ export const UPLOAD_CONFIG = {
     { key: 'crs_chain_id',    label: 'CRS chain ID (optional)',     placeholder: 'Link this revision to a CRS chain' },
   ],
   hints: [
-    'PDF should contain a Comments Resolution Sheet section AND the structured I/O List table (DCS / ESD sheets).',
-    'Server-side extraction uses PyMuPDF native text + find_tables(). No AI is invoked unless explicitly enabled.',
-    'Identical PDFs (matched by SHA-256) reuse the previous extraction at zero cost.',
+    'Upload either an I/O List PDF (Comments Resolution Sheet + structured table) or a P&ID drawing PDF — the file type is auto-detected.',
+    'I/O List PDFs use PyMuPDF native text + table extraction — free, no AI involved.',
+    'P&ID drawings use AI Vision to read instrument tags, equipment tags, line tags and symbols — add your API key below for best accuracy, or leave it blank to use basic OCR.',
+    'Every upload always runs a genuinely fresh extraction — even re-uploading the same PDF creates a new document and re-processes it from scratch.',
   ],
+  title: 'Upload I/O List PDF or P&ID Drawing',
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// P&ID DRAWING — BYOK VISION OPTIONS (I/O List's own sessionStorage keys,
+// distinct from apps/pid_checker_v2's — kept isolated per this module's
+// standing rule of no cross-app coupling)
+// ─────────────────────────────────────────────────────────────────────
+export const PID_VISION_CONFIG = {
+  sessionStorageProviderKey: 'io_list_vision_provider',
+  sessionStorageApiKeyKey:   'io_list_vision_api_key',
+  sessionStorageThoroughKey: 'io_list_vision_thorough',
+  providers: [
+    { value: 'claude', label: 'Claude' },
+    { value: 'openai', label: 'OpenAI' },
+  ],
+  defaultProvider: 'claude',
+  hint: 'AI Vision recommended for P&ID drawings — your key is used for this request only and never stored on the server.',
+}
+
+// Quick Scan (default) vs Thorough Scan toggle — 2 Vision calls/page
+// (2 independent passes over the full page) vs a 2x2 tiled, 2-pass
+// ~8 calls/page pass (see pid_vision_extractor.py's own VISION_PASSES /
+// extract_pid_tags_from_page docstring for the backend side — both
+// modes run more than one pass per image now, to reduce run-to-run
+// variance in what Vision reports).
+export const SCAN_CALLS_PER_PAGE_QUICK = 2
+export const SCAN_CALLS_PER_PAGE_THOROUGH = 8
+
+// Pre-extraction ESTIMATE shown on the upload form, before anything has
+// actually run — deliberately a rough, clearly-labelled prediction, not
+// measured data (the real, live numbers come from GET .../status/ once
+// extraction is actually underway — see ProcessingBanner in
+// IOListWorkflowPage.jsx). Per-page multipliers reflect typical Vision
+// call latency/cost at SCAN_CALLS_PER_PAGE_QUICK/THOROUGH calls per page
+// (~1 min and ~2,000 tokens per call, rounded) — not derived from a
+// specific document, so any single real run can land above or below
+// this. Kept as its own config block (not computed from
+// SCAN_CALLS_PER_PAGE_*) so the estimate can be tuned independently of
+// the actual call-count constants if real-world timing/usage diverges.
+export const VISION_ESTIMATE = {
+  quick:    { minutesPerPage: 2, tokensPerPage: 4000 },
+  thorough: { minutesPerPage: 8, tokensPerPage: 16000 },
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -164,7 +270,15 @@ export const UPLOAD_CONFIG = {
 export const STATS_CARDS = [
   { key: 'total_pages',     label: 'Pages',          icon: 'FileText',       tone: 'indigo'  },
   { key: 'comment_pages',   label: 'Comment Pages',  icon: 'MessageSquare',  tone: 'sky'     },
-  { key: 'io_table_pages',  label: 'I/O Pages',      icon: 'Table2',         tone: 'violet'  },
+  // io_table_pages is always 0 for a P&ID drawing document — the page
+  // classifier never tags a drawing page 'io_table' (there is no
+  // structured table on it), so this card shows a different key/label for
+  // that document type: every page of a P&ID drawing PDF IS a P&ID page,
+  // so total_pages is the accurate count there instead of 0.
+  {
+    key: 'io_table_pages',  label: 'I/O Pages',      icon: 'Table2',         tone: 'violet',
+    pidDrawing: { key: 'total_pages', label: 'P&ID Pages' },
+  },
   { key: 'comments_found',  label: 'Comments',       icon: 'MessagesSquare', tone: 'amber'   },
   { key: 'io_rows_found',   label: 'I/O Rows',       icon: 'List',           tone: 'emerald' },
   { key: 'linked_comments', label: 'Linked',         icon: 'Link2',          tone: 'fuchsia', hint: 'comment ↔ tag' },
