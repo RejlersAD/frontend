@@ -7,6 +7,7 @@ import apiClient from './api.service';
 import { API_BASE_URL } from '../config/api.config';
 
 const API_BASE = '/finance';
+const invoicePreviewRequests = new Map();
 
 const financeService = {
   /**
@@ -143,10 +144,16 @@ const financeService = {
    * handle missing files without rendering the API error page in an iframe.
    */
   async getInvoicePreviewBlob(id) {
-    const response = await apiClient.get(`${API_BASE}/invoices/${id}/preview/`, {
-      responseType: 'blob',
-    });
-    return response.data;
+    if (!invoicePreviewRequests.has(id)) {
+      const request = apiClient.get(`${API_BASE}/invoices/${id}/preview/`, {
+        responseType: 'blob',
+        suppressErrorToast: true,
+      })
+        .then((response) => response.data)
+        .finally(() => invoicePreviewRequests.delete(id));
+      invoicePreviewRequests.set(id, request);
+    }
+    return invoicePreviewRequests.get(id);
   },
 
   /**

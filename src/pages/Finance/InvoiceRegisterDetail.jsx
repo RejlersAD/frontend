@@ -84,13 +84,23 @@ FinancialCard.propTypes = { label: PropTypes.string.isRequired, value: PropTypes
 
 const InvoicePdfPreview = ({ invoice }) => {
   const [previewUrl, setPreviewUrl] = useState('');
-  const [previewLoading, setPreviewLoading] = useState(true);
-  const [previewError, setPreviewError] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(invoice.source_file_available !== false);
+  const [previewError, setPreviewError] = useState(invoice.source_file_available === false
+    ? 'The invoice record exists, but its original PDF is missing from document storage.'
+    : '');
   const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let active = true;
     let objectUrl = '';
+
+    if (invoice.source_file_available === false && retryKey === 0) {
+      setPreviewLoading(false);
+      setPreviewError('The invoice record exists, but its original PDF is missing from document storage.');
+      setPreviewUrl('');
+      return () => { active = false; };
+    }
+
     setPreviewLoading(true);
     setPreviewError('');
     setPreviewUrl('');
@@ -113,7 +123,7 @@ const InvoicePdfPreview = ({ invoice }) => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [invoice.id, retryKey]);
+  }, [invoice.id, invoice.source_file_available, retryKey]);
 
   if (previewLoading) {
     return <div className="flex h-[720px] items-center justify-center gap-2 text-sm text-slate-500"><ArrowPathIcon className="h-5 w-5 animate-spin" /> Loading invoice PDF…</div>;

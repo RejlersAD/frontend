@@ -84,11 +84,14 @@ const PurchaseOrderDetail = () => {
         responseType: 'blob',
         timeout: 120000,
       });
-      const previewFilename = buildProcurementPdfFilename(
+      const fallbackPreviewFilename = buildProcurementPdfFilename(
         order?.po_number || 'Purchase_Order',
         'po',
         order?.po_date,
       );
+      const disposition = response.headers?.['content-disposition'] || '';
+      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+      const previewFilename = filenameMatch?.[1] || fallbackPreviewFilename;
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
 
@@ -109,7 +112,9 @@ const PurchaseOrderDetail = () => {
   <style>
     html, body { height: 100%; margin: 0; background: #0f172a; }
     .shell { height: 100%; display: flex; flex-direction: column; }
-    .bar { color: #e2e8f0; font: 600 13px/1.4 Arial, sans-serif; padding: 10px 14px; border-bottom: 1px solid #334155; background: #111827; }
+    .bar { color: #e2e8f0; font: 600 13px/1.4 Arial, sans-serif; padding: 10px 14px; border-bottom: 1px solid #334155; background: #111827; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .download { flex: none; border-radius: 6px; background: #0870aa; color: #fff; padding: 6px 10px; text-decoration: none; }
+    .download:hover { background: #0b82c4; }
     embed { flex: 1; width: 100%; border: 0; background: #fff; }
     .fallback { padding: 12px 14px; background: #0b1220; color: #cbd5e1; font: 500 12px/1.4 Arial, sans-serif; }
     .fallback a { color: #93c5fd; }
@@ -117,7 +122,7 @@ const PurchaseOrderDetail = () => {
 </head>
 <body>
   <div class="shell">
-    <div class="bar">${previewFilename}</div>
+    <div class="bar"><span>${previewFilename}</span><a class="download" href="${url}" download="${previewFilename}">Download PDF</a></div>
     <embed src="${url}#toolbar=1&navpanes=0&scrollbar=1" type="application/pdf" />
     <div class="fallback">If preview is not visible, <a href="${url}" target="_self">open the PDF directly</a>.</div>
   </div>
