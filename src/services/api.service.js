@@ -239,7 +239,9 @@ apiClient.interceptors.response.use(
     // silentTimeout: per-request opt-in (not URL-wide) — lets one caller of a
     // shared endpoint suppress the toast while another caller of that same
     // endpoint still surfaces errors normally.
-    const _silent = _isSilentTimeoutEndpoint(error.config?.url || '') || error.config?.silentTimeout === true
+    const _silent = _isSilentTimeoutEndpoint(error.config?.url || '') ||
+      error.config?.silentTimeout === true ||
+      error.config?.suppressErrorToast === true
     
     // Enhanced error logging for debugging — but stay quiet for background
     // pollers so DevTools doesn't drown in red on a slow worker.
@@ -380,7 +382,7 @@ apiClient.interceptors.response.use(
     // Enhanced error messages for different error types
     if (error.response?.status !== 401 || originalRequest._retry) {
       // Suppress toasts for background/polling endpoints — they should fail silently
-      const silent = _isSilentAuthEndpoint(originalRequest?.url || '')
+      const silent = _silent || _isSilentAuthEndpoint(originalRequest?.url || '')
       if (silent) {
         return Promise.reject(error)
       }
