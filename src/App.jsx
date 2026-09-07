@@ -107,7 +107,7 @@ import NotFound from './pages/NotFound'
 // import DesignIQNewProject from './pages/DesignIQ/DesignIQNewProject'
 // Procurement Components
 import ProcurementDashboard from './pages/Procurement/ProcurementDashboard'
-import VendorManagement from './pages/Procurement/VendorManagement'
+import VendorManagement from './pages/Procurement/SupplierManagementWorkspace'
 import OrderManagement from './pages/Procurement/OrderManagement'
 import PurchaseRequisitionPage from './pages/Procurement/PurchaseRequisitionPage'
 import PurchaseOrderDetail from './pages/Procurement/PurchaseOrderDetail'
