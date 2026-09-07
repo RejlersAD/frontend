@@ -6,16 +6,48 @@ import {
   ShieldCheckIcon,
   GlobeAltIcon,
   LightBulbIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  PhotoIcon,
+  ArrowUpTrayIcon
 } from '@heroicons/react/24/outline';
 import { PROCUREMENT_CONFIG, getCertificationsList, getQualityStandardsList } from '../../config/procurement.config';
 import apiClient from '../../services/api.service';
+
+const normalizeDateForApi = (value) => {
+  if (!value) return '';
+  const text = String(value).trim();
+  const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}`;
+  const dayFirst = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (dayFirst) return `${dayFirst[3]}-${dayFirst[2].padStart(2, '0')}-${dayFirst[1].padStart(2, '0')}`;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toISOString().slice(0, 10);
+};
+
+const normalizeDecimalForApi = (value) => {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  let normalized = String(value).trim().replace(/[^0-9,.-]/g, '');
+  if (normalized.includes('.') && normalized.includes(',')) normalized = normalized.replaceAll(',', '');
+  else if (normalized.includes(',')) normalized = normalized.replaceAll(',', '');
+  const number = Number(normalized);
+  return Number.isFinite(number) ? String(number) : null;
+};
+
+const VENDOR_FORM_SECTIONS = [
+  { id: 'basic', label: 'Basic Information' },
+  { id: 'financial', label: 'Financial & Legal' },
+  { id: 'certifications', label: 'Certifications' },
+  { id: 'icv', label: 'ICV & ADNOC' },
+  { id: 'payment', label: 'Payment Terms' },
+];
 
 const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, vendorData = null }) => {
   const [formData, setFormData] = useState({
     // Core Information
     name: '',
     vendor_code: '',
+    logo_url: '',
     contact_person: '',
     email: '',
     phone: '',
@@ -66,14 +98,20 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
   const [aiSuggestions, setAiSuggestions] = useState(null);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [activeAIFeature, setActiveAIFeature] = useState(null);
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState('');
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const [activeFormSection, setActiveFormSection] = useState('basic');
 
   // Populate form when editing existing vendor
   useEffect(() => {
+    if (isOpen) setActiveFormSection('basic');
     if (editMode && vendorData) {
       setFormData({
         // Core Information
         name: vendorData.name || '',
         vendor_code: vendorData.vendor_code || '',
+        logo_url: vendorData.logo_url || '',
         contact_person: vendorData.contact_person || '',
         email: vendorData.email || '',
         phone: vendorData.phone || '',
@@ -103,7 +141,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         // ICV
         icv_percentage: vendorData.icv_percentage || '',
         icv_certificate: vendorData.icv_certificate || '',
-        icv_expiry_date: vendorData.icv_expiry_date || '',
+        icv_expiry_date: normalizeDateForApi(vendorData.icv_expiry_date),
         icv_issuing_authority: vendorData.icv_issuing_authority || 'ADDED',
         is_icv_certified: vendorData.is_icv_certified || false,
         
@@ -120,10 +158,13 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         _ui_city: '',
         _ui_website: ''
       });
+      setLogoFile(null);
+      setLogoPreview(vendorData.logo_url || vendorData.logo || '');
+      setRemoveLogo(false);
     } else if (!isOpen) {
       // Reset form when modal closes
       setFormData({
-        name: '', vendor_code: '', contact_person: '', email: '', phone: '',
+        name: '', vendor_code: '', logo_url: '', contact_person: '', email: '', phone: '',
         address: '', country: '', tax_id: '', trade_license_number: '', vat_number: '',
         payment_terms: '', credit_limit: '', categories: [], certifications: [],
         quality_standards: [], approved_materials: [], inspection_authority: '',
@@ -132,8 +173,34 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         adnoc_approved: false, vendor_tenure_years: '', notes: '',
         _ui_business_type: '', _ui_specialization: '', _ui_city: '', _ui_website: ''
       });
+      setLogoFile(null);
+      setLogoPreview('');
+      setRemoveLogo(false);
     }
   }, [editMode, vendorData, isOpen]);
+
+  useEffect(() => () => {
+    if (logoPreview.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
+  }, [logoPreview]);
+
+  const handleLogoUpload = (event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Supplier logos must be 2 MB or smaller.');
+      event.target.value = '';
+      return;
+    }
+    setLogoFile(file);
+    setRemoveLogo(false);
+    setFormData((current) => ({ ...current, logo_url: '' }));
+    setLogoPreview(URL.createObjectURL(file));
+  };
 
   // Soft-coded business types for oil & gas industry
   const BUSINESS_TYPES = [
@@ -408,45 +475,45 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
     setTimeout(() => {
       // Soft-coded payment terms logic
       let terms = '';
-      let creditLimit = '';
-      const businessType = formData.business_type;
+      let creditLimit = 0;
+      const businessType = formData._ui_business_type;
       const hseRating = formData.hse_rating;
 
       // Base payment terms by business type
       if (businessType === 'manufacturer') {
         terms = '30% advance, 60% on delivery, 10% after commissioning';
-        creditLimit = '$500,000';
+        creditLimit = 500000;
       } else if (businessType === 'distributor') {
         terms = 'Net 30 days from invoice date';
-        creditLimit = '$250,000';
+        creditLimit = 250000;
       } else if (businessType === 'service_provider') {
         terms = '25% advance, 75% on completion';
-        creditLimit = '$200,000';
+        creditLimit = 200000;
       } else if (businessType === 'contractor') {
         terms = '20% advance, 70% milestone-based, 10% retention';
-        creditLimit = '$750,000';
+        creditLimit = 750000;
       } else {
         terms = 'Net 30 days from invoice date';
-        creditLimit = '$100,000';
+        creditLimit = 100000;
       }
 
       // Adjust based on HSE rating
       if (hseRating === 'excellent') {
-        creditLimit = (parseInt(creditLimit.replace(/[$,]/g, '')) * 1.5).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+        creditLimit *= 1.5;
       } else if (hseRating === 'needs_improvement') {
-        creditLimit = (parseInt(creditLimit.replace(/[$,]/g, '')) * 0.5).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+        creditLimit *= 0.5;
       }
 
       setFormData(prev => ({
         ...prev,
         payment_terms: terms,
-        credit_limit: creditLimit
+        credit_limit: String(creditLimit)
       }));
 
       setAiSuggestions({
         type: 'payment_terms',
         terms,
-        creditLimit,
+        creditLimit: Number(creditLimit).toLocaleString('en-US'),
         reasoning: `Payment terms optimized for ${businessType || 'general'} vendors${hseRating ? ` with ${hseRating} HSE rating` : ''}. Credit limit adjusted based on risk profile.`
       });
 
@@ -475,6 +542,21 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const requiredSection = !formData.name || !formData._ui_business_type || !formData.email || !formData.phone || !formData.country
+      ? 'basic'
+      : formData.categories.length === 0
+        ? 'financial'
+        : !formData.hse_rating
+          ? 'certifications'
+          : formData.is_icv_certified && (!formData.icv_percentage || !formData.icv_certificate || !formData.icv_expiry_date)
+            ? 'icv'
+            : null;
+    if (requiredSection) {
+      setActiveFormSection(requiredSection);
+      alert('Please complete the required fields in this section before creating the vendor.');
+      return;
+    }
     
     try {
       // Soft-coded: Filter out UI-only fields (prefixed with _ui_)
@@ -493,9 +575,20 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
       submitData.safety_certifications = submitData.safety_certifications || [];
       
       // Convert empty strings to null for numeric fields
-      if (submitData.credit_limit === '') submitData.credit_limit = null;
+      const normalizedCreditLimit = normalizeDecimalForApi(submitData.credit_limit);
+      if (submitData.credit_limit && normalizedCreditLimit === null) {
+        alert('Credit Limit must contain a valid number.');
+        return;
+      }
+      submitData.credit_limit = normalizedCreditLimit;
       if (submitData.icv_percentage === '') submitData.icv_percentage = null;
       if (submitData.vendor_tenure_years === '') submitData.vendor_tenure_years = null;
+      submitData.icv_expiry_date = normalizeDateForApi(submitData.icv_expiry_date) || null;
+      if (editMode) submitData.remove_logo = removeLogo;
+      submitData.business_type = formData._ui_business_type;
+      submitData.specialization = formData._ui_specialization;
+      submitData.website = formData._ui_website;
+      submitData.city = formData._ui_city;
       
       // Track empty optional fields for smart notification
       const emptyOptionalFields = [];
@@ -518,10 +611,20 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         console.log('ℹ️ Empty optional fields:', emptyOptionalFields.join(', '));
       }
       
+      let requestData = submitData;
+      if (logoFile) {
+        requestData = new FormData();
+        Object.entries(submitData).forEach(([key, value]) => {
+          if (value === undefined) return;
+          requestData.append(key, value === null ? '' : Array.isArray(value) ? JSON.stringify(value) : String(value));
+        });
+        requestData.append('logo', logoFile);
+      }
+
       // Use PUT for edit, POST for create
       const response = editMode
-        ? await apiClient.put(`/procurement/vendors/${vendorData.id}/`, submitData)
-        : await apiClient.post('/procurement/vendors/', submitData);
+        ? await apiClient.put(`/procurement/vendors/${vendorData.id}/`, requestData)
+        : await apiClient.post('/procurement/vendors/', requestData);
       const data = response.data;
       
       console.log(editMode ? '✅ Vendor updated successfully:' : '✅ Vendor created successfully:', data);
@@ -553,13 +656,13 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className="vendor-creator-modal fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose}></div>
+        <div className="vendor-creator-backdrop fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose}></div>
 
-        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
+        <div className="vendor-creator-dialog inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
           {/* Header */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
+          <div className="vendor-creator-header bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <SparklesIcon className="h-8 w-8 text-white" />
@@ -572,13 +675,28 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   </p>
                 </div>
               </div>
-              <button onClick={onClose} className="text-white hover:text-gray-200">
+              <button type="button" onClick={onClose} aria-label="Close vendor creator" className="vendor-creator-close text-white hover:text-gray-200">
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="px-6 py-6 max-h-[70vh] overflow-y-auto">
+          <nav className="vendor-creator-nav" aria-label="Vendor form sections" role="tablist">
+            {VENDOR_FORM_SECTIONS.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={activeFormSection === id}
+                className={activeFormSection === id ? 'is-active' : ''}
+                onClick={() => setActiveFormSection(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          <form onSubmit={handleSubmit} noValidate className="vendor-creator-form px-6 py-6 max-h-[70vh] overflow-y-auto">
             {/* AI Suggestions Panel */}
             {aiSuggestions && (
               <div className={`mb-6 rounded-lg border-2 p-4 ${
@@ -683,13 +801,55 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="vendor-creator-grid grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Basic Information */}
-              <div className="col-span-2">
+              {activeFormSection === 'basic' && <>
+              <div id="vendor-basic-information" className="vendor-form-section-heading col-span-2 scroll-mt-4">
                 <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <BuildingOfficeIcon className="h-5 w-5 mr-2 text-indigo-600" />
                   Basic Information
                 </h4>
+              </div>
+
+              <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-gray-200 bg-white text-xl font-semibold text-gray-500">
+                    {logoPreview ? (
+                      <img src={logoPreview} alt="Supplier logo preview" className="h-full w-full object-contain p-2" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                    ) : (
+                      <PhotoIcon className="h-8 w-8 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <label className="block text-sm font-medium text-gray-700">Supplier logo</label>
+                    <p className="mt-0.5 text-xs text-gray-500">Upload an image or paste a public image URL. Uploaded files must be 2 MB or smaller.</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[auto_1fr]">
+                      <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+                        <ArrowUpTrayIcon className="h-4 w-4" />
+                        Upload logo
+                        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleLogoUpload} className="sr-only" />
+                      </label>
+                      <div>
+                        <label htmlFor="supplier-logo-url" className="sr-only">Supplier logo URL</label>
+                        <input
+                          id="supplier-logo-url"
+                          type="url"
+                          value={formData.logo_url}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setLogoFile(null);
+                            setRemoveLogo(Boolean(value && vendorData?.logo));
+                            setFormData((current) => ({ ...current, logo_url: value }));
+                            setLogoPreview(value);
+                          }}
+                          className="block h-10 w-full rounded-md border border-gray-300 px-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                          placeholder="https://supplier.com/logo.png"
+                        />
+                      </div>
+                    </div>
+                    {(logoPreview || logoFile || formData.logo_url) && <button type="button" onClick={() => { setLogoFile(null); setLogoPreview(''); setRemoveLogo(true); setFormData((current) => ({ ...current, logo_url: '' })); }} className="mt-2 text-xs font-medium text-red-600 underline underline-offset-2">Remove logo</button>}
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -814,7 +974,6 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="https://www.vendor.com"
                 />
-                <p className="mt-1 text-xs text-gray-500">For reference only - not stored in database</p>
               </div>
 
               <div>
@@ -842,7 +1001,6 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="Dubai"
                 />
-                <p className="mt-1 text-xs text-gray-500">For reference only - not stored in database</p>
               </div>
 
               <div className="col-span-2">
@@ -857,9 +1015,11 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   placeholder="Full address"
                 />
               </div>
+              </>}
 
               {/* Financial & Legal Information */}
-              <div className="col-span-2 mt-6">
+              {activeFormSection === 'financial' && <>
+              <div id="vendor-financial-information" className="vendor-form-section-heading col-span-2 mt-6 scroll-mt-4">
                 <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <svg className="h-5 w-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -960,9 +1120,11 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 </label>
                 <p className="mt-1 text-xs text-gray-500 ml-6">Check if vendor is approved by ADNOC</p>
               </div>
+              </>}
 
               {/* Certifications & Compliance */}
-              <div className="col-span-2 mt-6">
+              {activeFormSection === 'certifications' && <>
+              <div id="vendor-certifications" className="vendor-form-section-heading col-span-2 mt-6 scroll-mt-4">
                 <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <ShieldCheckIcon className="h-5 w-5 mr-2 text-[#00a896]" />
                   Certifications & Compliance
@@ -994,7 +1156,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   <button
                     type="button"
                     onClick={suggestCertifications}
-                    disabled={generatingAI || !formData.business_type}
+                    disabled={generatingAI || !formData._ui_business_type}
                     className="text-sm text-purple-600 hover:text-purple-800 disabled:opacity-50 flex items-center space-x-1"
                   >
                     <SparklesIcon className={`h-4 w-4 ${generatingAI && activeAIFeature === 'certifications' ? 'animate-spin' : ''}`} />
@@ -1048,9 +1210,11 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   ))}
                 </select>
               </div>
+              </>}
 
               {/* ICV (In-Country Value) - Abu Dhabi Market */}
-              <div className="col-span-2 mt-6">
+              {activeFormSection === 'icv' && <>
+              <div id="vendor-icv-information" className="vendor-form-section-heading col-span-2 mt-6 scroll-mt-4">
                 <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <svg className="h-5 w-5 mr-2 text-red-600" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
@@ -1136,9 +1300,11 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 />
                 <p className="mt-1 text-xs text-gray-500">Default: ADDED</p>
               </div>
+              </>}
 
               {/* Payment Terms */}
-              <div className="col-span-2 mt-6">
+              {activeFormSection === 'payment' && <>
+              <div id="vendor-payment-terms" className="vendor-form-section-heading col-span-2 mt-6 scroll-mt-4">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-lg font-semibold text-gray-900 flex items-center">
                     <GlobeAltIcon className="h-5 w-5 mr-2 text-indigo-600" />
@@ -1147,7 +1313,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   <button
                     type="button"
                     onClick={suggestPaymentTerms}
-                    disabled={generatingAI || !formData.business_type}
+                    disabled={generatingAI || !formData._ui_business_type}
                     className="px-4 py-2 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 disabled:opacity-50 flex items-center space-x-2"
                   >
                     <SparklesIcon className={`h-4 w-4 ${generatingAI && activeAIFeature === 'payment_terms' ? 'animate-spin' : ''}`} />
@@ -1194,10 +1360,11 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   placeholder="Additional notes about the vendor..."
                 />
               </div>
+              </>}
             </div>
 
             {/* AI Risk Assessment Button */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
+            {activeFormSection === 'payment' && <div className="vendor-risk-action mt-6 pt-6 border-t border-gray-200">
               <button
                 type="button"
                 onClick={performRiskAssessment}
@@ -1207,10 +1374,10 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 <SparklesIcon className={`h-5 w-5 ${generatingAI && activeAIFeature === 'risk_assessment' ? 'animate-spin' : ''}`} />
                 <span>Run AI Risk Assessment</span>
               </button>
-            </div>
+            </div>}
 
             {/* Form Actions */}
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="vendor-form-actions mt-6 flex justify-end space-x-3">
               <button
                 type="button"
                 onClick={onClose}
@@ -1218,12 +1385,37 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                {editMode ? 'Update Vendor' : 'Create Vendor'}
-              </button>
+              {VENDOR_FORM_SECTIONS.findIndex((section) => section.id === activeFormSection) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const index = VENDOR_FORM_SECTIONS.findIndex((section) => section.id === activeFormSection);
+                    setActiveFormSection(VENDOR_FORM_SECTIONS[index - 1].id);
+                  }}
+                  className="px-6 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  Previous
+                </button>
+              )}
+              {activeFormSection === 'payment' ? (
+                <button
+                  type="submit"
+                  className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+                >
+                  {editMode ? 'Update Vendor' : 'Create Vendor'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const index = VENDOR_FORM_SECTIONS.findIndex((section) => section.id === activeFormSection);
+                    setActiveFormSection(VENDOR_FORM_SECTIONS[index + 1].id);
+                  }}
+                  className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+                >
+                  Next
+                </button>
+              )}
             </div>
           </form>
         </div>

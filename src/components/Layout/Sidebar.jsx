@@ -559,10 +559,10 @@ const Sidebar = ({
         },
         {
           id: "vendors",
-          title: "7.3 Vendors",
+          title: "7.3 Suppliers",
           icon: UsersIcon,
           path: "/procurement/vendors",
-          description: "Vendor management",
+          description: "Supplier governance and eligibility",
           moduleCode: "procurement_vendors", // granular: vendor management
         },
         {
@@ -907,16 +907,6 @@ const Sidebar = ({
         />
       )}
 
-      {/* Desktop flyout backdrop: expanded navigation overlays content. */}
-      {isOpen && !isCollapsed && (
-        <button
-          type="button"
-          aria-label="Collapse navigation menu"
-          className="fixed inset-0 z-20 hidden bg-slate-950/10 lg:block"
-          onClick={() => setIsCollapsed(true)}
-        />
-      )}
-
       {/* Sidebar */}
       <aside
         aria-label="Application navigation"
@@ -926,7 +916,7 @@ const Sidebar = ({
           fixed inset-y-0 left-0 z-50 h-dvh lg:relative lg:inset-auto lg:z-50
           ${isCollapsed ? SIDEBAR.collapsed.widthClass : SIDEBAR.expanded.widthClass} bg-white dark:bg-gray-800
           border-r border-slate-200 dark:border-slate-700
-          ${!isCollapsed ? "lg:-mr-52 lg:shadow-2xl" : ""}
+          flex-none ${!isCollapsed ? "lg:shadow-sm" : ""}
           transform transition-all duration-300 ease-in-out motion-reduce:transition-none
           ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
           flex flex-col

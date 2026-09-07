@@ -70,15 +70,15 @@ const Field = ({ label, value, mono = false, wide = false }) => (
 Field.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.node, mono: PropTypes.bool, wide: PropTypes.bool };
 
 const Section = ({ icon: Icon, title, children }) => (
-  <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <header className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3"><Icon className="h-5 w-5 text-indigo-600" /><h2 className="font-bold text-slate-800">{title}</h2></header>
+  <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <header className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2.5"><Icon className="h-4 w-4 text-blue-600" /><h2 className="text-sm font-semibold text-slate-900">{title}</h2></header>
     <div className="p-4">{children}</div>
   </section>
 );
 Section.propTypes = { icon: PropTypes.elementType.isRequired, title: PropTypes.string.isRequired, children: PropTypes.node.isRequired };
 
 const FinancialCard = ({ label, value, emphasis }) => (
-  <div className={`rounded-xl border p-4 ${emphasis ? 'border-indigo-200 bg-indigo-50' : 'border-slate-200 bg-white'}`}><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className={`mt-1 text-xl font-black ${emphasis ? 'text-indigo-800' : 'text-slate-900'}`}>{value}</p></div>
+  <div className={`rounded-xl border p-3.5 ${emphasis ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}><p className="text-xs font-medium text-slate-500">{label}</p><p className={`mt-1 text-lg font-semibold tabular-nums ${emphasis ? 'text-emerald-800' : 'text-slate-900'}`}>{value}</p></div>
 );
 FinancialCard.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string.isRequired, emphasis: PropTypes.bool };
 
@@ -172,13 +172,13 @@ const IncomingDetail = ({ invoice, onChanged = () => window.location.reload() })
     finally { setWorking(false); }
   };
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(420px,0.9fr)_minmax(600px,1.1fr)]">
-      <div className="space-y-4">
-        <div className="sticky top-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
+    <div className="grid gap-4 xl:grid-cols-[minmax(560px,1.1fr)_minmax(480px,0.9fr)]">
+      <div className="space-y-4 xl:order-2">
+        <div className="sticky top-4 overflow-hidden rounded-xl border border-slate-300 bg-slate-100 shadow-sm">
           <InvoicePdfPreview invoice={invoice} />
         </div>
       </div>
-      <div className="space-y-4">
+      <div className="space-y-4 xl:order-1">
         <div className="grid gap-3 sm:grid-cols-3"><FinancialCard label="Net amount" value={money(invoice.amount, invoice.currency)} /><FinancialCard label="Tax" value={money(invoice.tax_amount, invoice.currency)} /><FinancialCard label="Invoice total" value={money(invoice.total_amount, invoice.currency)} emphasis /></div>
         <Section icon={DocumentTextIcon} title="Invoice information"><dl className="grid gap-4 sm:grid-cols-2"><Field label="Vendor master" value={invoice.vendor_master_name || invoice.vendor_name} /><Field label="Captured vendor" value={invoice.vendor_name} /><Field label="Invoice date" value={date(invoice.invoice_date)} /><Field label="Received date" value={date(invoice.received_date)} /><Field label="Due date" value={date(invoice.due_date)} /><Field label="Payment terms" value={invoice.payment_terms} /><Field label="VAT / TRN" value={invoice.vat_registration_number} /><Field label="VAT percentage" value={invoice.vat_percentage ? `${invoice.vat_percentage}%` : '—'} /><Field label="Captured PO reference" value={invoice.po_reference_text} mono /><Field label="Original file" value={invoice.original_filename} /></dl></Section>
         <Section icon={LinkIcon} title="PO and receipt matching">
@@ -259,8 +259,27 @@ const InvoiceRegisterDetail = ({ direction }) => {
   useEffect(() => { load(); }, [load]);
   const headerStatuses = useMemo(() => incoming ? [invoice?.procurement_status, invoice?.match_status, invoice?.payment_status] : [invoice?.category, invoice?.payment_status], [incoming, invoice]);
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-800 bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 px-4 py-6 text-white lg:px-8"><div className="mx-auto flex max-w-[1600px] flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><button onClick={() => navigate(listPath)} className="mb-3 inline-flex items-center gap-1 text-xs font-semibold text-indigo-200 hover:text-white"><ArrowLeftIcon className="h-4 w-4" /> Back to {incoming ? 'Incoming' : 'Outgoing'} Invoice Register</button><p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-300">{incoming ? 'Vendor Invoice · Accounts Payable' : 'Customer Invoice · Accounts Receivable'}</p><h1 className="mt-1 text-2xl font-black">{invoice?.invoice_number || 'Invoice Register Detail'}</h1><p className="mt-1 text-xs text-slate-400">{incoming ? invoice?.tracking_id : invoice?.account || invoice?.company}</p></div><div className="flex flex-wrap items-center gap-2">{headerStatuses.filter(Boolean).map((status) => <Badge key={status} value={status} />)}<button onClick={load} disabled={loading} className="ml-1 rounded-lg border border-white/20 bg-white/10 p-2 hover:bg-white/15"><ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button></div></div></header>
+    <div className="invoice-detail-shell min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white px-4 py-3 text-slate-900 lg:px-8">
+        <div className="mx-auto flex max-w-[1700px] flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(listPath)}
+              aria-label={`Back to ${incoming ? 'incoming' : 'outgoing'} invoice register`}
+              title={`Back to ${incoming ? 'Incoming' : 'Outgoing'} Invoice Register`}
+              className="inline-grid h-9 w-9 flex-none place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            >
+              <ArrowLeftIcon className="h-4 w-4" />
+            </button>
+            <h1 className="truncate text-xl font-semibold tracking-tight text-slate-950">{invoice?.invoice_number || 'Invoice Register Detail'}</h1>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {headerStatuses.filter(Boolean).map((status) => <Badge key={status} value={status} />)}
+            <button type="button" onClick={load} disabled={loading} aria-label="Refresh invoice" title="Refresh invoice" className="ml-1 inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"><ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button>
+          </div>
+        </div>
+      </header>
       <main className="mx-auto max-w-[1600px] p-4 lg:p-7">{loading && !invoice ? <div className="flex h-72 items-center justify-center text-sm text-slate-500"><ArrowPathIcon className="mr-2 h-5 w-5 animate-spin" /> Loading complete invoice record…</div> : error ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-700"><p className="font-bold">Invoice could not be opened</p><p className="mt-1 text-sm">{error}</p><button onClick={() => navigate(listPath)} className="mt-4 rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white">Return to register</button></div> : incoming ? <IncomingDetail invoice={invoice} /> : <OutgoingDetail invoice={invoice} onChanged={load} />}</main>
     </div>
   );

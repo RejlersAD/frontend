@@ -36,10 +36,10 @@ import {
   PaperClipIcon,
   PlusIcon,
   SparklesIcon,
-  Squares2X2Icon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import invoiceTrackerService from '../../services/invoiceTracker.service'
+import InvoiceContextPanel from '../../components/Finance/InvoiceContextPanel'
 import {
   TRACKER_API_CONFIG,
   INVOICE_CATEGORIES,
@@ -52,12 +52,10 @@ import {
 // ─── Visual config (soft-coded) ─────────────────────────────────────────────
 const HERO = {
   eyebrow: 'Finance · 3.2 · Accounts Receivable',
-  title: 'Invoice Tracker',
+  title: ' Outgoing Invoices',
   subtitle:
     'Live command centre for customer invoices — External & Internal — with Excel sync and S3 attachments.',
 }
-
-const PIPELINE_SEGMENTS = PAYMENT_STATUSES.filter((s) => s.key)
 
 const AVATAR_PALETTE = [
   'from-indigo-500 to-purple-600',
@@ -91,7 +89,7 @@ const LiveDot = () => (
 )
 
 const KpiCard = ({ icon: Icon, label, value, sub, gradient }) => (
-  <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-md p-5 hover:bg-white/15 transition-colors">
+  <div className="outgoing-invoice-kpi relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow">
     <div className={`absolute -right-8 -top-8 h-32 w-32 rounded-full opacity-25 bg-gradient-to-br ${gradient} blur-xl`} />
     <div className="relative flex items-start justify-between">
       <div>
@@ -105,58 +103,6 @@ const KpiCard = ({ icon: Icon, label, value, sub, gradient }) => (
     </div>
   </div>
 )
-
-const PipelineBar = ({ stats, total, activeStatus, onSelect }) => {
-  if (!total) {
-    return (
-      <div className="h-3 w-full rounded-full bg-gray-100 overflow-hidden">
-        <div className="h-full w-full bg-gradient-to-r from-gray-100 to-gray-200 animate-pulse" />
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-3">
-      <div className="h-3 w-full rounded-full bg-gray-100 overflow-hidden flex">
-        {PIPELINE_SEGMENTS.map((s) => {
-          const count = stats?.[s.key] ?? 0
-          if (count === 0) return null
-          const pct = (count / total) * 100
-          const dim = activeStatus && activeStatus !== s.key
-          return (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => onSelect(activeStatus === s.key ? '' : s.key)}
-              title={`${s.label}: ${count} (${pct.toFixed(1)}%)`}
-              style={{ width: `${pct}%` }}
-              className={`h-full bg-gradient-to-r ${s.tile} transition-all duration-300 hover:opacity-90 ${dim ? 'opacity-30' : ''}`}
-            />
-          )
-        })}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {PIPELINE_SEGMENTS.map((s) => {
-          const count = stats?.[s.key] ?? 0
-          const active = activeStatus === s.key
-          return (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => onSelect(active ? '' : s.key)}
-              className={`group inline-flex items-center gap-2 text-xs transition-all ${
-                active ? 'font-bold text-gray-900' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-br ${s.tile} ${active ? 'ring-2 ring-offset-1 ring-gray-300' : ''}`} />
-              <span>{s.label}</span>
-              <span className={`tabular-nums ${active ? 'text-indigo-600' : 'text-gray-400'}`}>{count}</span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
 
 const StatusPill = ({ statusKey }) => {
   const s = PAYMENT_STATUSES.find((x) => x.key === statusKey)
@@ -684,9 +630,9 @@ const InvoiceTracker = () => {
 
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [importOpen, setImportOpen]     = useState(false)
-  const [lastFetched, setLastFetched]   = useState(null)
   const [page, setPage]                 = useState(1)
   const [pageInfo, setPageInfo]         = useState({ count: 0, next: null, previous: null })
+  const [selectedInvoice, setSelectedInvoice] = useState(null)
 
   const buildFilters = useCallback(() => {
     const f = {}
@@ -717,7 +663,6 @@ const InvoiceTracker = () => {
         ? { count: list.length, next: null, previous: null }
         : { count: list?.count || 0, next: list?.next || null, previous: list?.previous || null })
       if (s) setStats(s)
-      setLastFetched(new Date())
     } catch (err) {
       console.error('[InvoiceTracker] fetch failed', err)
       setError(err?.response?.data?.detail || err?.message || 'Failed to load invoices')
@@ -744,9 +689,10 @@ const InvoiceTracker = () => {
     const overdue = stats?.overdue_count ?? invoices.filter((i) => i.days_overdue > 0).length
     const paid = stats?.by_status?.paid ?? invoices.filter((i) => i.payment_status === 'paid').length
     const pending = stats?.by_status?.pending ?? invoices.filter((i) => i.payment_status === 'pending').length
+    const partial = stats?.by_status?.partial ?? invoices.filter((i) => i.payment_status === 'partial').length
     const totalAed = stats?.total_aed ?? 0
     const health = total > 0 ? Math.round(((total - overdue) / total) * 100) : 100
-    return { total, overdue, paid, pending, totalAed, health }
+    return { total, overdue, paid, pending, partial, totalAed, health }
   }, [stats, invoices])
 
   const activeFilters = useMemo(() => {
@@ -769,9 +715,9 @@ const InvoiceTracker = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="outgoing-invoice-workspace min-h-screen bg-slate-50">
       {/* ── HERO ────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-900 to-violet-900 text-white pb-20">
+      <div className="outgoing-invoice-header relative overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-900 to-violet-900 text-white pb-20">
         <div className="absolute inset-0 opacity-30">
           <div className="absolute -top-24 -left-16 h-72 w-72 rounded-full bg-fuchsia-500 blur-3xl" />
           <div className="absolute top-10 right-20 h-72 w-72 rounded-full bg-indigo-500 blur-3xl" />
@@ -816,150 +762,73 @@ const InvoiceTracker = () => {
           </div>
 
           {/* KPI cards inside the hero */}
-          <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <KpiCard icon={BanknotesIcon}             label="Total Outstanding"  value={formatMoney(kpi.totalAed, 'AED')} sub={`${kpi.total} invoices tracked`}                                  gradient="from-indigo-500 to-violet-600" />
             <KpiCard icon={ExclamationTriangleIcon}   label="Overdue"            value={kpi.overdue}                       sub={kpi.total ? `${((kpi.overdue / kpi.total) * 100).toFixed(0)}% of register` : '—'} gradient="from-rose-500 to-orange-600" />
+            <KpiCard icon={ClockIcon}                 label="Pending"            value={kpi.pending}                       sub="Awaiting collection" gradient="from-amber-500 to-orange-600" />
+            <KpiCard icon={CalculatorIcon}            label="Partially paid"     value={kpi.partial}                       sub="Balance remains" gradient="from-blue-500 to-indigo-600" />
             <KpiCard icon={CheckCircleIcon}           label="Settled"            value={kpi.paid}                          sub={kpi.total ? `${((kpi.paid / kpi.total) * 100).toFixed(0)}% of register` : '—'}    gradient="from-emerald-500 to-teal-600" />
             <KpiCard icon={ArrowTrendingUpIcon}       label="Collection Health"  value={`${kpi.health}%`}                  sub={kpi.pending > 0 ? `${kpi.pending} pending` : 'All current'}                       gradient="from-sky-500 to-blue-600" />
           </div>
         </div>
       </div>
 
-      {/* ── PIPELINE BAR (overlaps hero) ────────────────────────── */}
-      <div className="relative w-full px-3 -mt-12 sm:px-4">
-        <div className="rounded-2xl bg-white border border-gray-100 shadow-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Squares2X2Icon className="w-4 h-4 text-indigo-600" />
-              <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Payment Pipeline</p>
-            </div>
-            {lastFetched && (
-              <p className="text-[10px] text-gray-400 flex items-center gap-1.5">
-                <ClockIcon className="w-3 h-3" />
-                Updated {lastFetched.toLocaleTimeString()}
-              </p>
-            )}
-          </div>
-          <PipelineBar stats={stats?.by_status} total={kpi.total} activeStatus={statusFilter} onSelect={setStatusFilter} />
-        </div>
-      </div>
-
-      {/* ── FILTERS ─────────────────────────────────────────────── */}
-      <div className="w-full px-3 mt-4 sm:px-4">
-        <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4 space-y-3">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-            <div className="relative flex-1">
-              <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search invoice #, account, project, customer reference…"
-                className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-              />
-            </div>
-            <div className="inline-flex rounded-xl border border-gray-200 p-0.5 bg-gray-50">
-              {INVOICE_CATEGORIES.map((c) => (
-                <button
-                  key={c.value || 'all'}
-                  type="button"
-                  onClick={() => setCategoryFilter(c.value)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                    categoryFilter === c.value ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowAdvanced((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl border transition-all ${
-                showAdvanced ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <AdjustmentsHorizontalIcon className="w-4 h-4" />
-              Advanced
-            </button>
-          </div>
-
-          {activeFilters.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-gray-100">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mr-1">Active</span>
-              {activeFilters.map((f) => (
-                <button
-                  key={f.k}
-                  onClick={f.clear}
-                  className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700"
-                >
-                  {f.label}
-                  <XMarkIcon className="w-3 h-3 opacity-50 group-hover:opacity-100" />
-                </button>
-              ))}
-              <button onClick={clearAll} className="ml-1 text-[11px] text-gray-500 hover:text-gray-800 underline underline-offset-2">
-                Clear all
-              </button>
-            </div>
-          )}
-
-          {showAdvanced && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-gray-100 animate-[fadeIn_0.2s_ease-out]">
-              <input
-                type="text"
-                value={accountFilter}
-                onChange={(e) => setAccountFilter(e.target.value)}
-                placeholder="Filter by account…"
-                className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-              <input
-                type="text"
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-                placeholder="Filter by project / RAD #…"
-                className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-              <select
-                value={currencyFilter}
-                onChange={(e) => setCurrencyFilter(e.target.value)}
-                className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              >
-                {CURRENCIES.map((o) => (
-                  <option key={o.value || 'all'} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <div className="flex items-center gap-1">
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                />
-                <span className="text-gray-300 text-xs">→</span>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* ── TABLE ───────────────────────────────────────────────── */}
-      <div className="w-full px-3 py-6 sm:px-4">
+      <div className="outgoing-invoice-register invoice-split-workspace w-full px-3 py-4 sm:px-4">
+        <div className="invoice-split-grid grid min-w-0 items-start gap-4">
+        <div className="min-w-0">
         <div className="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center gap-2">
+          <div className="outgoing-register-toolbar grid gap-3 border-b border-gray-200 bg-gray-50/70 px-4 py-3 lg:grid-cols-[auto_minmax(220px,1fr)] lg:items-center">
+            <div className="flex items-center gap-2 whitespace-nowrap">
               <h3 className="font-bold text-gray-900">Invoice Register</h3>
               <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold tabular-nums">
                 {invoices.length}
               </span>
             </div>
-            <p className="text-[11px] text-gray-400">Sorted by invoice date · newest first</p>
+            <div className="relative min-w-0">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} aria-label="Search outgoing invoices" placeholder="Search invoice, account, project or reference" className="h-9 w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+            </div>
+            <div className="outgoing-register-toolbar-controls flex min-w-0 flex-wrap items-center gap-2 lg:col-span-2 lg:justify-end">
+              <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-gray-200 bg-white p-0.5" aria-label="Invoice category filter">
+                {INVOICE_CATEGORIES.map((category) => (
+                  <button key={category.value || 'all'} type="button" onClick={() => setCategoryFilter(category.value)} aria-pressed={categoryFilter === category.value} className={`h-8 flex-none rounded-md px-2.5 text-xs font-semibold transition ${categoryFilter === category.value ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    {category.label}
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={() => setShowAdvanced((value) => !value)} aria-expanded={showAdvanced} className={`inline-flex h-9 flex-none items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${showAdvanced ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+                <AdjustmentsHorizontalIcon className="h-4 w-4" /> Advanced
+              </button>
+            </div>
           </div>
+
+          {(showAdvanced || activeFilters.length > 0) && (
+            <div className="border-b border-gray-200 bg-white px-4 py-3">
+              {showAdvanced && (
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4 animate-[fadeIn_0.2s_ease-out]">
+                  <input type="text" value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)} placeholder="Account" aria-label="Filter by account" className="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                  <input type="text" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} placeholder="Project / RAD number" aria-label="Filter by project" className="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                  <select value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)} aria-label="Filter by currency" className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100">
+                    {CURRENCIES.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <div className="flex items-center gap-1">
+                    <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Invoice date from" className="h-9 min-w-0 flex-1 rounded-lg border border-gray-300 px-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                    <span className="text-xs text-gray-400">to</span>
+                    <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Invoice date to" className="h-9 min-w-0 flex-1 rounded-lg border border-gray-300 px-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                  </div>
+                </div>
+              )}
+              {activeFilters.length > 0 && (
+                <div className={`flex flex-wrap items-center gap-1.5 ${showAdvanced ? 'mt-2 border-t border-gray-100 pt-2' : ''}`}>
+                  <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Active filters</span>
+                  {activeFilters.map((filter) => <button key={filter.k} type="button" onClick={filter.clear} className="group inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700">{filter.label}<XMarkIcon className="h-3 w-3 opacity-60" /></button>)}
+                  <button type="button" onClick={clearAll} className="ml-1 text-xs font-semibold text-blue-700 underline underline-offset-2">Clear all</button>
+                </div>
+              )}
+            </div>
+          )}
 
           {error ? (
             <div className="p-12 text-center">
@@ -995,7 +864,7 @@ const InvoiceTracker = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-[860px] text-sm">
                 <thead className="bg-gray-50/50 border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Invoice</th>
@@ -1013,7 +882,7 @@ const InvoiceTracker = () => {
                     const paid  = Number(inv.actual_payment_received ?? 0)
                     const isOverdue = inv.days_overdue > 0
                     return (
-                      <tr key={inv.id} className="group border-b border-gray-50 hover:bg-indigo-50/30 transition-colors">
+                      <tr key={inv.id} aria-selected={selectedInvoice?.id === inv.id} onClick={() => setSelectedInvoice(inv)} onDoubleClick={() => navigate(`/finance/outgoing-invoices/${inv.id}`)} className={`group cursor-pointer border-b border-gray-100 transition-colors ${selectedInvoice?.id === inv.id ? 'invoice-row-selected bg-blue-50' : 'hover:bg-blue-50/60'}`}>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <CategoryChip category={inv.category} />
@@ -1060,7 +929,7 @@ const InvoiceTracker = () => {
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex items-center gap-1">
                             <button
-                              onClick={() => navigate(`/finance/outgoing-invoices/${inv.id}`)}
+                              onClick={(event) => { event.stopPropagation(); navigate(`/finance/outgoing-invoices/${inv.id}`) }}
                               className="opacity-60 group-hover:opacity-100 transition-opacity p-1 rounded-md text-gray-500 hover:bg-indigo-50 hover:text-indigo-700"
                               title="View all 28 columns + auto-calc breakdown"
                             >
@@ -1089,6 +958,9 @@ const InvoiceTracker = () => {
               </div>
             </div>
           )}
+        </div>
+        </div>
+        <InvoiceContextPanel direction="outgoing" invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
         </div>
       </div>
 
