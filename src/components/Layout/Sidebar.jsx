@@ -559,10 +559,10 @@ const Sidebar = ({
         },
         {
           id: "vendors",
-          title: "7.3 Suppliers",
+          title: "7.3 Vendors",
           icon: UsersIcon,
           path: "/procurement/vendors",
-          description: "Supplier governance and eligibility",
+          description: "Vendor governance and eligibility",
           moduleCode: "procurement_vendors", // granular: vendor management
         },
         {

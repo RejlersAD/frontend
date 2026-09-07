@@ -192,7 +192,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      alert('Supplier logos must be 2 MB or smaller.');
+      alert('Vendor logos must be 2 MB or smaller.');
       event.target.value = '';
       return;
     }
@@ -815,13 +815,13 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                   <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-gray-200 bg-white text-xl font-semibold text-gray-500">
                     {logoPreview ? (
-                      <img src={logoPreview} alt="Supplier logo preview" className="h-full w-full object-contain p-2" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                      <img src={logoPreview} alt="Vendor logo preview" className="h-full w-full object-contain p-2" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
                     ) : (
                       <PhotoIcon className="h-8 w-8 text-gray-400" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <label className="block text-sm font-medium text-gray-700">Supplier logo</label>
+                    <label className="block text-sm font-medium text-gray-700">Vendor logo</label>
                     <p className="mt-0.5 text-xs text-gray-500">Upload an image or paste a public image URL. Uploaded files must be 2 MB or smaller.</p>
                     <div className="mt-3 grid gap-3 md:grid-cols-[auto_1fr]">
                       <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
@@ -830,7 +830,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                         <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleLogoUpload} className="sr-only" />
                       </label>
                       <div>
-                        <label htmlFor="supplier-logo-url" className="sr-only">Supplier logo URL</label>
+                        <label htmlFor="supplier-logo-url" className="sr-only">Vendor logo URL</label>
                         <input
                           id="supplier-logo-url"
                           type="url"
@@ -843,7 +843,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                             setLogoPreview(value);
                           }}
                           className="block h-10 w-full rounded-md border border-gray-300 px-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                          placeholder="https://supplier.com/logo.png"
+                          placeholder="https://vendor.com/logo.png"
                         />
                       </div>
                     </div>
@@ -1222,7 +1222,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   ICV (In-Country Value) - Abu Dhabi Market
                 </h4>
                 <p className="text-sm text-gray-600 mb-4">
-                  ICV certification is mandatory for suppliers operating in Abu Dhabi. Higher ICV percentage improves procurement eligibility.
+                  ICV certification is mandatory for vendors operating in Abu Dhabi. Higher ICV percentage improves procurement eligibility.
                 </p>
               </div>
 

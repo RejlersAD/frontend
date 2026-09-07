@@ -542,7 +542,7 @@ const ProcurementInvoiceTracker = () => {
 
   return (
     <div className="min-h-full bg-slate-50 px-4 py-4 lg:px-6">
-      <div className="incoming-invoice-layout invoice-split-workspace mx-auto max-w-[1700px]">
+      <div className="incoming-invoice-layout invoice-split-workspace w-full">
         <div className="incoming-invoice-header relative overflow-hidden border-b border-slate-200 bg-transparent pb-4 text-slate-900">
           <div className="hidden" aria-hidden="true"><div /><div /></div>
           <div className="incoming-invoice-titlebar relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">

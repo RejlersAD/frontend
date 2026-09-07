@@ -47,7 +47,7 @@ const date = (value) => {
 const Definition = ({ label, children }) => <div className="grid grid-cols-[minmax(105px,0.75fr)_minmax(0,1.25fr)] gap-3 py-1.5"><dt className="text-xs font-medium text-slate-500">{label}</dt><dd className="min-w-0 break-words text-sm font-medium text-slate-800">{children || '—'}</dd></div>;
 Definition.propTypes = { label: PropTypes.string.isRequired, children: PropTypes.node };
 
-const EmptyPanel = ({ direction }) => <aside className="invoice-context-panel invoice-context-panel-empty flex items-center justify-center rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm"><div><span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-blue-50 text-blue-600"><DocumentTextIcon className="h-6 w-6" /></span><h2 className="mt-4 text-base font-semibold text-slate-900">Select an invoice</h2><p className="mx-auto mt-1 max-w-[30ch] text-sm leading-5 text-slate-500">Review {direction === 'incoming' ? 'supplier invoice and matching' : 'customer invoice and collection'} details without leaving the register.</p></div></aside>;
+const EmptyPanel = ({ direction }) => <aside className="invoice-context-panel invoice-context-panel-empty flex items-center justify-center rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm"><div><span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-blue-50 text-blue-600"><DocumentTextIcon className="h-6 w-6" /></span><h2 className="mt-4 text-base font-semibold text-slate-900">Select an invoice</h2><p className="mx-auto mt-1 max-w-[30ch] text-sm leading-5 text-slate-500">Review {direction === 'incoming' ? 'vendor invoice and matching' : 'customer invoice and collection'} details without leaving the register.</p></div></aside>;
 EmptyPanel.propTypes = { direction: PropTypes.oneOf(['incoming', 'outgoing']).isRequired };
 
 const InvoiceContextPanel = ({ direction, invoice, onClose }) => {
@@ -69,7 +69,7 @@ const InvoiceContextPanel = ({ direction, invoice, onClose }) => {
   const view = useMemo(() => {
     if (!data) return null;
     if (direction === 'incoming') return {
-      partyLabel: 'Supplier', party: data.vendor_master_name || data.vendor_name || 'Not recorded', subtitle: data.tracking_id,
+      partyLabel: 'Vendor', party: data.vendor_master_name || data.vendor_name || 'Not recorded', subtitle: data.tracking_id,
       total: data.total_amount, secondaryLabel: 'Net amount', secondary: data.amount, balanceLabel: 'Tax', balance: data.tax_amount,
       referenceLabel: 'PO reference', reference: data.po_allocations?.[0]?.purchase_order_number || data.po_reference_text,
       issued: data.invoice_date, due: data.due_date, status: data.procurement_status, match: data.match_status, payment: data.payment_status,
