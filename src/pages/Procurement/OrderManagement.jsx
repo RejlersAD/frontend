@@ -380,17 +380,11 @@ const OrderManagement = () => {
     }
   };
 
-  const handleOpenApproval = async (requisition) => {
-    try {
-      const response = await apiClient.get(`/procurement/requisitions/${requisition.id}/`, {
-        params: { _fresh: Date.now() },
-      });
-      setSelectedRequisition(response.data);
-    } catch (approvalLoadError) {
-      console.error('Failed to refresh requisition review details:', approvalLoadError);
-      setSelectedRequisition(requisition);
-    }
-    setShowApprovalModal(true);
+  const handleOpenApproval = (requisition) => {
+    if (!requisition?.id) return;
+    navigate(`/procurement/requisitions/${requisition.id}`, {
+      state: { from: '/procurement/requisitions' },
+    });
   };
 
   const handleApprovalComplete = (updatedRequisition) => {
