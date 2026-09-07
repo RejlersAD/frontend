@@ -12,8 +12,8 @@
 // ── Sidebar widths (Tailwind class names must match the rem values) ─────────
 export const SIDEBAR = {
   expanded: {
-    widthClass:  'w-72',       // 18rem  → 288px
-    marginClass: 'lg:ml-72',   // match on lg+ screens
+    widthClass:  'w-[250px]',       // exact expanded desktop width
+    marginClass: 'lg:ml-[250px]',   // match on lg+ screens
   },
   collapsed: {
     widthClass:  'w-20',       // 5rem   → 80px

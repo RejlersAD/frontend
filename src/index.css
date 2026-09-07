@@ -639,6 +639,327 @@ body {
   font-variant-emoji: emoji;
 }
 
+/* Accounts-payable work queue: compact, action-led enterprise hierarchy. */
+.incoming-invoice-header .relative > div > p:first-child {
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+.incoming-invoice-header h1 {
+  margin-top: 0.25rem;
+  color: #0f172a;
+  font-size: 1.875rem;
+  line-height: 2.375rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.incoming-invoice-header .relative > div > p:last-child {
+  margin-top: 0.25rem;
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.incoming-invoice-titlebar > div > p {
+  display: none;
+}
+
+.incoming-invoice-titlebar {
+  min-height: 2.75rem;
+  gap: 1rem;
+}
+
+.invoice-detail-shell > header {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+
+.invoice-detail-shell > header > div {
+  max-width: 1700px;
+}
+
+.invoice-detail-shell > header > div > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.invoice-detail-shell > header > div > div:first-child > button {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #334155;
+}
+
+.invoice-detail-shell > header > div > div:first-child > button:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.invoice-detail-shell > header > div > div:first-child > button svg {
+  color: #334155;
+}
+
+.invoice-detail-shell > header h1 {
+  min-width: 0;
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.invoice-detail-shell > header > div > div:last-child > button {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+}
+
+.invoice-detail-shell > main {
+  max-width: 1700px;
+  padding-top: 1rem;
+}
+
+@media (min-width: 1280px) {
+  .invoice-detail-shell main .sticky iframe {
+    height: calc(100vh - 9.5rem);
+    min-height: 620px;
+  }
+}
+
+.incoming-invoice-queue table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.incoming-invoice-queue thead {
+  color: #475569;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.incoming-invoice-queue th {
+  border-bottom: 1px solid #cbd5e1;
+  white-space: nowrap;
+}
+
+.incoming-invoice-queue tbody tr {
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.incoming-invoice-queue tbody tr:hover {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.incoming-invoice-queue tbody td {
+  min-height: 3.5rem;
+  border-bottom-color: #e2e8f0;
+  vertical-align: middle;
+}
+
+.incoming-invoice-queue tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Accounts-receivable register aligned with the compact AP workspace. */
+.outgoing-invoice-header {
+  border-bottom: 1px solid #e2e8f0;
+  background: transparent !important;
+  padding-bottom: 0;
+  color: #0f172a;
+}
+
+.outgoing-invoice-header > .absolute {
+  display: none;
+}
+
+.outgoing-invoice-header > .relative {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.outgoing-invoice-header > .relative > .flex > div:first-child > div:first-child,
+.outgoing-invoice-header h1 + p {
+  display: none;
+}
+
+.outgoing-invoice-header h1 {
+  color: #0f172a;
+  font-size: 1.875rem;
+  line-height: 2.375rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.outgoing-invoice-header > .relative > .flex button:first-of-type {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+
+.outgoing-invoice-header > .relative > .flex button:last-of-type {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 8%);
+}
+
+.outgoing-invoice-header .grid {
+  margin-top: 1.25rem;
+}
+
+.incoming-invoice-header .grid > button,
+.outgoing-invoice-kpi {
+  min-height: 4.875rem;
+}
+
+.incoming-invoice-filters,
+.outgoing-invoice-filters > div {
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+
+.outgoing-invoice-kpi > .absolute {
+  display: none;
+}
+
+.outgoing-invoice-kpi p:first-child {
+  margin-bottom: 0;
+  color: #475569;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.outgoing-invoice-kpi p:nth-child(2) {
+  color: #0f172a;
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+}
+
+.outgoing-invoice-kpi p:nth-child(3) {
+  color: #64748b;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.outgoing-invoice-kpi .shadow-lg {
+  box-shadow: none;
+}
+
+.outgoing-invoice-filters > div,
+.outgoing-invoice-register > div > div:first-child > div {
+  border-color: #e2e8f0;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+
+.outgoing-invoice-register thead {
+  color: #475569;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.outgoing-invoice-register th {
+  border-bottom: 1px solid #cbd5e1;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.outgoing-invoice-register tbody tr {
+  border-bottom-color: #e2e8f0;
+}
+
+.outgoing-invoice-register tbody tr:hover {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.incoming-invoice-queue tbody tr.invoice-row-selected td:first-child,
+.outgoing-invoice-register tbody tr.invoice-row-selected td:first-child {
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.invoice-split-workspace {
+  container-name: invoiceWorkspace;
+  container-type: inline-size;
+}
+
+.invoice-context-panel {
+  min-width: 0;
+  position: static;
+}
+
+.invoice-context-panel-empty {
+  min-height: 280px;
+}
+
+.invoice-context-panel-body {
+  max-height: none;
+  overflow: visible;
+}
+
+@container invoiceWorkspace (min-width: 1280px) {
+  .invoice-split-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(360px, 0.74fr);
+  }
+
+  .invoice-context-panel {
+    position: sticky;
+    top: 1rem;
+  }
+
+  .invoice-context-panel-empty {
+    min-height: 520px;
+  }
+
+  .invoice-context-panel-body {
+    max-height: calc(100vh - 14rem);
+    overflow-y: auto;
+  }
+}
+
+@container invoiceWorkspace (min-width: 1450px) {
+  .outgoing-register-toolbar {
+    grid-template-columns: auto minmax(220px, 1fr) auto;
+  }
+
+  .outgoing-register-toolbar-controls {
+    grid-column: auto;
+  }
+}
+
+.outgoing-invoice-register > div > div:first-child > div > div:first-child > p,
+.outgoing-invoice-register table + div > span:last-child {
+  display: none;
+}
+
 #root {
   width: 100%;
   min-height: 100vh;

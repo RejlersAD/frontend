@@ -22,6 +22,7 @@ import {
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import financeService from '../../services/finance.service';
+import InvoiceContextPanel from '../../components/Finance/InvoiceContextPanel';
 
 const PAGE_SIZE = 15;
 const CURRENCIES = ['AED', 'USD', 'EUR', 'GBP', 'SAR', 'QAR', 'OMR', 'KWD', 'BHD'];
@@ -494,8 +495,10 @@ const ProcurementInvoiceTracker = () => {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [matchFilter, setMatchFilter] = useState('');
+  const [queueFilter, setQueueFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [importOpen, setImportOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -515,46 +518,57 @@ const ProcurementInvoiceTracker = () => {
   const filtered = useMemo(() => invoices.filter((invoice) => {
     const query = search.trim().toLowerCase();
     const matchesText = !query || [invoice.invoice_number, invoice.vendor_name, invoice.vendor_master_name, invoice.po_reference_text, invoice.tracking_id].some((value) => String(value || '').toLowerCase().includes(query));
-    return matchesText && (!matchFilter || invoice.match_status === matchFilter);
-  }), [invoices, search, matchFilter]);
+    const matchesQueue = queueFilter === 'all'
+      || (queueFilter === 'review' && ['ocr_review', 'procurement_review', 'finance_review', 'ready_for_matching'].includes(invoice.procurement_status))
+      || (queueFilter === 'exceptions' && (invoice.match_status === 'exception' || invoice.procurement_status === 'rejected' || invoice.payment_status === 'on_hold'))
+      || (queueFilter === 'ready' && ['manual_matched', 'auto_matched', 'verified'].includes(invoice.match_status))
+      || (queueFilter === 'unmatched' && invoice.match_status === 'unmatched')
+      || (queueFilter === 'payment_ready' && invoice.procurement_status === 'approved_for_payment');
+    return matchesText && matchesQueue && (!matchFilter || invoice.match_status === matchFilter);
+  }), [invoices, search, matchFilter, queueFilter]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  useEffect(() => { setPage(1); }, [search, matchFilter]);
+  useEffect(() => { setPage(1); }, [search, matchFilter, queueFilter]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
   const stats = useMemo(() => ({
     total: invoices.length,
     review: invoices.filter((invoice) => ['ocr_review', 'procurement_review', 'finance_review'].includes(invoice.procurement_status)).length,
-    exceptions: invoices.filter((invoice) => invoice.match_status === 'exception').length,
-    ready: invoices.filter((invoice) => ['manual_matched', 'verified'].includes(invoice.match_status)).length,
+    exceptions: invoices.filter((invoice) => invoice.match_status === 'exception' || invoice.procurement_status === 'rejected' || invoice.payment_status === 'on_hold').length,
+    ready: invoices.filter((invoice) => ['manual_matched', 'auto_matched', 'verified'].includes(invoice.match_status)).length,
+    unmatched: invoices.filter((invoice) => invoice.match_status === 'unmatched').length,
+    paymentReady: invoices.filter((invoice) => invoice.procurement_status === 'approved_for_payment').length,
   }), [invoices]);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 lg:p-7">
-      <div className="mx-auto max-w-[1600px]">
-        <div className="relative overflow-hidden rounded-2xl border border-blue-500/30 bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 p-6 text-white shadow-xl shadow-blue-950/10">
-          <div className="pointer-events-none absolute inset-0"><div className="absolute -left-24 -top-32 h-72 w-72 rounded-full bg-white/20 blur-3xl" /><div className="absolute -right-20 top-4 h-64 w-64 rounded-full bg-cyan-100/25 blur-3xl" /></div>
-          <div className="relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
-            <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-100">Finance + Procurement · Accounts Payable</p><h1 className="mt-2 text-3xl font-extrabold">Procurement Invoice Tracker</h1><p className="mt-2 max-w-2xl text-sm text-white/85">Capture signed vendor invoices, validate OCR against company master data, and reconcile PO and receipt evidence before payment.</p></div>
-            <button onClick={() => setImportOpen(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-bold text-indigo-800 shadow-lg hover:bg-indigo-50"><ArrowUpTrayIcon className="h-5 w-5" /> Import Invoice PDF</button>
+    <div className="min-h-full bg-slate-50 px-4 py-4 lg:px-6">
+      <div className="incoming-invoice-layout invoice-split-workspace mx-auto max-w-[1700px]">
+        <div className="incoming-invoice-header relative overflow-hidden border-b border-slate-200 bg-transparent pb-4 text-slate-900">
+          <div className="hidden" aria-hidden="true"><div /><div /></div>
+          <div className="incoming-invoice-titlebar relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+            <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-100">Finance + Procurement · Accounts Payable</p><h1 className="mt-2 text-3xl font-extrabold">Incoming Invoice</h1><p className="mt-2 max-w-2xl text-sm text-white/85">Capture signed vendor invoices, validate OCR against company master data, and reconcile PO and receipt evidence before payment.</p></div>
+            <button onClick={() => setImportOpen(true)} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"><ArrowUpTrayIcon className="h-4 w-4" /> Import invoice</button>
           </div>
-          <div className="relative mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[[BanknotesIcon, 'Total invoices', stats.total], [DocumentMagnifyingGlassIcon, 'In review', stats.review], [ExclamationTriangleIcon, 'Match exceptions', stats.exceptions], [CheckCircleIcon, 'Matched / verified', stats.ready]].map(([Icon, label, value]) => <div key={label} className="rounded-xl border border-white/15 bg-white/10 p-4 shadow-sm backdrop-blur"><Icon className="h-5 w-5 text-cyan-100" /><p className="mt-2 text-2xl font-bold">{value}</p><p className="text-xs text-white/75">{label}</p></div>)}
+          <div className="relative mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {[[BanknotesIcon, 'Total invoices', stats.total, 'all'], [DocumentMagnifyingGlassIcon, 'Needs review', stats.review, 'review'], [ExclamationTriangleIcon, 'Exceptions', stats.exceptions, 'exceptions'], [CheckCircleIcon, 'Ready to progress', stats.ready, 'ready'], [LinkIcon, 'Unmatched', stats.unmatched, 'unmatched'], [ShieldCheckIcon, 'Payment ready', stats.paymentReady, 'payment_ready']].map(([Icon, label, value, id]) => <button type="button" key={label} onClick={() => { setMatchFilter(''); setQueueFilter(id); }} aria-pressed={queueFilter === id} className={`flex min-h-20 items-center gap-3 rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow ${queueFilter === id ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'}`}><span className={`grid h-10 w-10 place-items-center rounded-lg ${id === 'exceptions' ? 'bg-rose-50 text-rose-600' : id === 'review' || id === 'unmatched' ? 'bg-amber-50 text-amber-600' : id === 'ready' || id === 'payment_ready' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}><Icon className="h-5 w-5" /></span><span><span className="block text-xs font-medium text-slate-600">{label}</span><span className="mt-0.5 block text-2xl font-semibold tabular-nums text-slate-950">{value}</span></span></button>)}
           </div>
         </div>
 
-        <div className="mt-5 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
-          <div className="relative flex-1"><MagnifyingGlassIcon className="absolute left-3 top-2.5 h-5 w-5 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search invoice, vendor, PO, or tracking ID" className={`${inputClass} pl-10`} /></div>
-          <select value={matchFilter} onChange={(e) => setMatchFilter(e.target.value)} className={`${inputClass} sm:w-52`}><option value="">All match statuses</option><option value="unmatched">Unmatched</option><option value="manual_matched">Manually matched</option><option value="exception">Exception</option><option value="verified">Verified</option></select>
+        <div className="incoming-invoice-filters mt-5 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center">
+          <div className="relative flex-1"><MagnifyingGlassIcon className="absolute left-3 top-2.5 h-5 w-5 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search invoices" placeholder="Search invoice, supplier, PO, or tracking ID" className={`${inputClass} pl-10`} /></div>
+          <select value={matchFilter} onChange={(e) => setMatchFilter(e.target.value)} aria-label="Filter by matching status" className={`${inputClass} lg:w-52`}><option value="">All matching states</option><option value="unmatched">Unmatched</option><option value="auto_matched">Automatically matched</option><option value="manual_matched">Manually matched</option><option value="exception">Exception</option><option value="verified">Verified</option></select>
           <button onClick={load} disabled={loading} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700"><ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh</button>
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="invoice-split-grid mt-4 grid min-w-0 items-start gap-4">
+        <div className="incoming-invoice-queue min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           {error && <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Failed to load procurement invoices: {error}</div>}
           {loading ? <div className="flex h-64 items-center justify-center gap-2 text-sm text-slate-500"><ArrowPathIcon className="h-5 w-5 animate-spin" /> Loading invoices…</div> : visible.length === 0 ? <div className="flex h-64 flex-col items-center justify-center text-slate-500"><DocumentTextIcon className="h-12 w-12 text-slate-300" /><p className="mt-3 font-semibold">No procurement invoices found</p><button onClick={() => setImportOpen(true)} className="mt-3 text-sm font-semibold text-indigo-600">Import the first invoice PDF</button></div> : (
-            <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 text-left">Invoice</th><th className="px-4 py-3 text-left">Vendor</th><th className="px-4 py-3 text-left">PO reference</th><th className="px-4 py-3 text-left">Invoice date</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3 text-left">Procurement</th><th className="px-4 py-3 text-left">Matching</th><th className="px-4 py-3 text-left">Payment</th><th className="px-4 py-3 text-right">View</th></tr></thead><tbody className="divide-y divide-slate-100">{visible.map((invoice) => <tr key={invoice.id} className="cursor-pointer hover:bg-indigo-50/30" onDoubleClick={() => navigate(`/finance/incoming-invoices/${invoice.id}`)}><td className="px-4 py-3"><p className="font-semibold text-slate-900">{invoice.invoice_number}</p><p className="text-[11px] text-slate-400">{invoice.tracking_id}</p></td><td className="max-w-[260px] px-4 py-3"><p className="truncate font-medium text-slate-800">{invoice.vendor_master_name || invoice.vendor_name || '—'}</p></td><td className="px-4 py-3 font-mono text-xs text-slate-600">{invoice.po_reference_text || '—'}</td><td className="px-4 py-3 text-slate-600">{dateLabel(invoice.invoice_date)}</td><td className="px-4 py-3 text-right font-semibold text-slate-800">{money(invoice.total_amount, invoice.currency)}</td><td className="px-4 py-3"><StatusBadge value={invoice.procurement_status} /></td><td className="px-4 py-3"><StatusBadge value={invoice.match_status} /></td><td className="px-4 py-3"><StatusBadge value={invoice.payment_status} /></td><td className="px-4 py-3 text-right"><button onClick={() => navigate(`/finance/incoming-invoices/${invoice.id}`)} className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-100" title="Open complete invoice register detail"><EyeIcon className="h-5 w-5" /></button></td></tr>)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="min-w-[1040px] text-sm"><thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 text-left">Invoice</th><th className="px-4 py-3 text-left">Vendor</th><th className="px-4 py-3 text-left">PO reference</th><th className="px-4 py-3 text-left">Invoice date</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3 text-left">Procurement</th><th className="px-4 py-3 text-left">Matching</th><th className="px-4 py-3 text-left">Payment</th><th className="px-4 py-3 text-right">View</th></tr></thead><tbody className="divide-y divide-slate-100">{visible.map((invoice) => <tr key={invoice.id} aria-selected={selectedInvoice?.id === invoice.id} className={`cursor-pointer transition-colors ${selectedInvoice?.id === invoice.id ? 'invoice-row-selected bg-blue-50' : 'hover:bg-blue-50/60'}`} onClick={() => setSelectedInvoice(invoice)} onDoubleClick={() => navigate(`/finance/incoming-invoices/${invoice.id}`)}><td className="px-4 py-3"><p className="font-semibold text-slate-900">{invoice.invoice_number}</p><p className="text-[11px] text-slate-400">{invoice.tracking_id}</p></td><td className="max-w-[260px] px-4 py-3"><p className="truncate font-medium text-slate-800">{invoice.vendor_master_name || invoice.vendor_name || '—'}</p></td><td className="px-4 py-3 font-mono text-xs text-slate-600">{invoice.po_reference_text || '—'}</td><td className="px-4 py-3 text-slate-600">{dateLabel(invoice.invoice_date)}</td><td className="px-4 py-3 text-right font-semibold text-slate-800">{money(invoice.total_amount, invoice.currency)}</td><td className="px-4 py-3"><StatusBadge value={invoice.procurement_status} /></td><td className="px-4 py-3"><StatusBadge value={invoice.match_status} /></td><td className="px-4 py-3"><StatusBadge value={invoice.payment_status} /></td><td className="px-4 py-3 text-right"><button onClick={(event) => { event.stopPropagation(); navigate(`/finance/incoming-invoices/${invoice.id}`); }} className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-100" title="Open complete invoice register detail" aria-label={`Open invoice ${invoice.invoice_number}`}><EyeIcon className="h-5 w-5" /></button></td></tr>)}</tbody></table></div>
           )}
           <footer className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500"><span>Showing {visible.length ? (page - 1) * PAGE_SIZE + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}</span><div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded-md border border-slate-300 bg-white p-1.5 disabled:opacity-40"><ChevronLeftIcon className="h-4 w-4" /></button><span>Page {page} of {pages}</span><button disabled={page >= pages} onClick={() => setPage((value) => value + 1)} className="rounded-md border border-slate-300 bg-white p-1.5 disabled:opacity-40"><ChevronRightIcon className="h-4 w-4" /></button></div></footer>
+        </div>
+        <InvoiceContextPanel direction="incoming" invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
         </div>
       </div>
       <InvoiceImportModal open={importOpen} onClose={() => setImportOpen(false)} onRecorded={load} />
