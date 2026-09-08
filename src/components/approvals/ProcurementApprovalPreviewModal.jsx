@@ -3,7 +3,9 @@ import PropTypes from 'prop-types'
 import {
   ArrowPathIcon,
   CheckCircleIcon,
+  DocumentTextIcon,
   ExclamationTriangleIcon,
+  LinkIcon,
   XCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
@@ -12,21 +14,43 @@ import PurchaseOrderLivePreview from '../../pages/Procurement/PurchaseOrderLiveP
 import PurchaseRequisitionDocumentPreview from '../../pages/Procurement/PurchaseRequisitionDocumentPreview'
 
 const emptyDecision = { loading: false, mode: null, reason: '', message: '', error: '' }
+const emptyPdfPreview = { loading: false, url: '', error: '' }
+
+const linkedPurchaseOrderPdfRequests = new Map()
+
+const requestLinkedPurchaseOrderPdf = (id) => {
+  if (!linkedPurchaseOrderPdfRequests.has(id)) {
+    const request = apiClient.get(`/procurement/orders/${id}/export-pdf/`, {
+      responseType: 'blob',
+      timeout: 120000,
+      suppressErrorToast: true,
+    }).finally(() => linkedPurchaseOrderPdfRequests.delete(id))
+    linkedPurchaseOrderPdfRequests.set(id, request)
+  }
+  return linkedPurchaseOrderPdfRequests.get(id)
+}
 
 const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDecision }) => {
   const [record, setRecord] = useState({ loading: false, data: null, error: '' })
   const [decision, setDecision] = useState(emptyDecision)
+  const [activePreview, setActivePreview] = useState('document')
+  const [linkedPoPdf, setLinkedPoPdf] = useState(emptyPdfPreview)
+  const [linkedPoRetryKey, setLinkedPoRetryKey] = useState(0)
 
   useEffect(() => {
     if (!isOpen || !['po', 'pr'].includes(type) || !recordId) {
       setRecord({ loading: false, data: null, error: '' })
       setDecision(emptyDecision)
+      setActivePreview('document')
+      setLinkedPoPdf(emptyPdfPreview)
       return undefined
     }
 
     let cancelled = false
     setRecord({ loading: true, data: null, error: '' })
     setDecision(emptyDecision)
+    setActivePreview('document')
+    setLinkedPoPdf(emptyPdfPreview)
     const endpoint = type === 'po'
       ? `/procurement/orders/${recordId}/`
       : `/procurement/requisitions/${recordId}/`
@@ -47,6 +71,41 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
 
     return () => { cancelled = true }
   }, [isOpen, recordId, type])
+
+  const linkedPoId = type === 'pr' ? record.data?.linked_po_id : null
+
+  useEffect(() => {
+    if (!isOpen || activePreview !== 'attached-po' || !linkedPoId) return undefined
+
+    let active = true
+    let objectUrl = ''
+    setLinkedPoPdf({ loading: true, url: '', error: '' })
+
+    requestLinkedPurchaseOrderPdf(linkedPoId)
+      .then((response) => {
+        if (!active) return
+        objectUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+        setLinkedPoPdf({ loading: false, url: objectUrl, error: '' })
+      })
+      .catch(async (requestError) => {
+        if (!active) return
+        let message = requestError.response?.data?.detail || requestError.response?.data?.error
+        if (requestError.response?.data instanceof Blob) {
+          try {
+            const payload = JSON.parse(await requestError.response.data.text())
+            message = payload.detail || payload.error
+          } catch {
+            // The server did not return a JSON error body; use the safe fallback below.
+          }
+        }
+        setLinkedPoPdf({ loading: false, url: '', error: message || 'The attached Purchase Order PDF could not be loaded.' })
+      })
+
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [activePreview, isOpen, linkedPoId, linkedPoRetryKey])
 
   useEffect(() => {
     if (!isOpen) return undefined
@@ -110,23 +169,56 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-2 backdrop-blur-sm sm:p-5" role="presentation" onMouseDown={() => { if (!decision.loading) onClose() }}>
       <section role="dialog" aria-modal="true" aria-labelledby="approval-record-preview-title" className="flex max-h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600">Notification preview</p>
-            <h2 id="approval-record-preview-title" className="mt-1 truncate text-lg font-black text-slate-950 sm:text-xl">
+        <header className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <div className="min-w-0 flex-1">
+            <h2 id="approval-record-preview-title" className="truncate text-lg font-black text-slate-950 sm:text-xl">
               {type === 'po' ? 'Purchase Order' : 'Purchase Recommendation'} · {record.data?.po_number || record.data?.pr_number || recordId}
             </h2>
           </div>
+          {type === 'pr' && (
+            <div className="inline-flex rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Approval documents">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activePreview === 'document'}
+                aria-controls="approval-document-preview"
+                onClick={() => setActivePreview('document')}
+                className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activePreview === 'document' ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
+              >
+                <DocumentTextIcon className="h-4 w-4" />
+                Purchase Requisition
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activePreview === 'attached-po'}
+                aria-controls="approval-document-preview"
+                onClick={() => setActivePreview('attached-po')}
+                disabled={!linkedPoId || record.loading}
+                title={linkedPoId ? (record.data?.po_number_reference || 'View attached Purchase Order') : 'No Purchase Order is attached'}
+                className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-45 ${activePreview === 'attached-po' ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
+              >
+                <LinkIcon className="h-4 w-4" />
+                Attached PO
+              </button>
+            </div>
+          )}
           <button type="button" onClick={onClose} disabled={decision.loading} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40" aria-label="Close preview">
             <XMarkIcon className="h-5 w-5" />
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-3 sm:p-5">
+        <div id="approval-document-preview" role="tabpanel" className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-3 sm:p-5">
           {record.loading ? (
             <div className="flex min-h-[420px] items-center justify-center"><div className="text-center"><ArrowPathIcon className="mx-auto h-9 w-9 animate-spin text-indigo-600" /><p className="mt-3 text-sm font-semibold text-slate-600">Loading preview...</p></div></div>
           ) : record.error ? (
             <div className="mx-auto mt-12 max-w-lg rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center"><ExclamationTriangleIcon className="mx-auto h-9 w-9 text-rose-500" /><p className="mt-3 text-sm font-bold text-rose-800">{record.error}</p></div>
+          ) : record.data && activePreview === 'attached-po' ? (
+            <div className="grid min-h-[65vh] place-items-center overflow-hidden rounded-xl bg-slate-800">
+              {linkedPoPdf.loading && <div className="text-center text-white"><ArrowPathIcon className="mx-auto h-9 w-9 animate-spin" /><p className="mt-3 text-sm font-semibold">Loading attached Purchase Order...</p></div>}
+              {!linkedPoPdf.loading && linkedPoPdf.error && <div className="max-w-md px-6 text-center text-white"><ExclamationTriangleIcon className="mx-auto h-9 w-9 text-amber-300" /><p className="mt-3 text-sm">{linkedPoPdf.error}</p><button type="button" onClick={() => setLinkedPoRetryKey((key) => key + 1)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800"><ArrowPathIcon className="h-4 w-4" />Retry preview</button></div>}
+              {!linkedPoPdf.loading && linkedPoPdf.url && <iframe src={`${linkedPoPdf.url}#page=1&zoom=page-width&view=FitH&toolbar=0&navpanes=0&scrollbar=1`} title={`${record.data.po_number_reference || 'Attached Purchase Order'} PDF preview`} className="h-[65vh] min-h-[520px] w-full bg-white" />}
+            </div>
           ) : record.data && type === 'po' ? (
             <PurchaseOrderLivePreview
               formData={record.data}
@@ -137,7 +229,7 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
               ))}
             />
           ) : record.data ? (
-            <PurchaseRequisitionDocumentPreview requisition={record.data} />
+            <PurchaseRequisitionDocumentPreview requisition={record.data} documentOnly />
           ) : null}
         </div>
 

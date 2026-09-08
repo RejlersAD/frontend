@@ -2858,6 +2858,9 @@ const DetailDrawer = ({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoUploadMessage, setPhotoUploadMessage] = useState(null);
+  const photoInputRef = useRef(null);
   const [profileDocuments, setProfileDocuments] = useState([]);
   const [profileDocumentsLoading, setProfileDocumentsLoading] = useState(false);
   const [profileDocumentsError, setProfileDocumentsError] = useState("");
@@ -3469,6 +3472,47 @@ const DetailDrawer = ({
   const teamsCallUrl = microsoftTeamsAudioCallUrl(employeeEmail);
   const employeeCallUrl = teamsCallUrl || (emp.phone ? `tel:${emp.phone}` : null);
 
+  const handlePhotoUpload = async (file) => {
+    setPhotoUploadMessage(null);
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setPhotoUploadMessage({ type: "error", text: "Choose a JPEG, PNG, or WebP picture." });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoUploadMessage({ type: "error", text: "The picture must be 5 MB or smaller." });
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const response = await rbacService.uploadUserPhoto(emp.id, file);
+      const payload = response?.data ?? response;
+      const updated = normalizeEmployee(payload?.profile || { ...emp, profile_photo: payload?.photo_url });
+      onUpdate?.(updated);
+      setPhotoUploadMessage({ type: "success", text: "Profile picture updated." });
+    } catch (error) {
+      const responseData = error?.response?.data;
+      const isHtmlErrorPage = typeof responseData === "string"
+        && /<(?:!doctype|html|head|body)\b/i.test(responseData);
+      const serviceMessage = typeof responseData === "string"
+        ? (isHtmlErrorPage ? null : responseData)
+        : responseData?.error || responseData?.detail || responseData?.message;
+      setPhotoUploadMessage({
+        type: "error",
+        text: serviceMessage
+          || (error?.response?.status === 404
+            ? "The profile-picture service is unavailable. Refresh the page and try again."
+            : error?.code === "ECONNABORTED"
+              ? "The profile picture upload timed out. Please try again."
+              : "The profile picture could not be uploaded."),
+      });
+    } finally {
+      setUploadingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex lg:p-3" role="dialog" aria-modal="true" aria-label={`${fullName(emp)} employee profile`}>
       <button
@@ -3492,7 +3536,30 @@ const DetailDrawer = ({
           </button>
           <div className="flex items-start gap-5 pr-10">
             <div className="relative shrink-0">
-              <Avatar emp={emp} size="xl" />
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(event) => handlePhotoUpload(event.target.files?.[0])}
+              />
+              <button
+                type="button"
+                disabled={!canEdit || uploadingPhoto}
+                onClick={() => photoInputRef.current?.click()}
+                aria-label={uploadingPhoto ? "Uploading profile picture" : `Change ${fullName(emp)} profile picture`}
+                title={canEdit ? "Change profile picture" : undefined}
+                className="group relative block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-default"
+              >
+                <Avatar emp={emp} size="xl" />
+                {canEdit && (
+                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-950/0 text-white transition group-hover:bg-slate-950/45 group-focus-visible:bg-slate-950/45">
+                    {uploadingPhoto
+                      ? <HeroIcons.ArrowPathIcon className="h-7 w-7 animate-spin drop-shadow" />
+                      : <HeroIcons.CameraIcon className="h-7 w-7 opacity-0 drop-shadow transition group-hover:opacity-100 group-focus-visible:opacity-100" />}
+                  </span>
+                )}
+              </button>
               <span className={`absolute bottom-1 right-0 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-white ${emp.status === "active" ? "bg-emerald-500" : "bg-slate-400"}`} title={emp.status === "active" ? "Active" : "Unavailable"}>
                 <HeroIcons.CheckIcon className="h-4 w-4 text-white" />
               </span>
@@ -3536,6 +3603,12 @@ const DetailDrawer = ({
               Loading full profile…
             </div>
           )}
+          {photoUploadMessage && (
+            <div className={`ml-[7.25rem] mt-2 flex items-center gap-1.5 text-xs font-medium ${photoUploadMessage.type === "error" ? "text-rose-600" : "text-emerald-600"}`} role="status">
+              {photoUploadMessage.type === "error" ? <HeroIcons.ExclamationTriangleIcon className="h-4 w-4" /> : <HeroIcons.CheckCircleIcon className="h-4 w-4" />}
+              {photoUploadMessage.text}
+            </div>
+          )}
           {isEditing && (
             <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               <HeroIcons.PencilIcon className="w-3 h-3" />
@@ -3559,25 +3632,41 @@ const DetailDrawer = ({
         {/* Tabs */}
         <div className="border-b border-slate-200 bg-white px-4 sm:px-6">
           <div
-            className="grid grid-cols-2 sm:grid-cols-6 xl:grid-cols-12"
+            className="flex items-stretch overflow-x-auto sm:grid sm:grid-cols-12 sm:overflow-visible"
             role="tablist"
             aria-label="Employee profile sections"
           >
-            {HR_DETAIL_TABS.map((t) => (
+            {HR_DETAIL_TABS.map((t, index) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setTab(t.id)}
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`flex min-h-12 min-w-0 items-center justify-center gap-1.5 border-b-2 px-2 py-2 text-center text-[11px] font-semibold transition ${
+                aria-label={t.label}
+                className={`group relative flex h-14 min-w-14 items-center justify-center border-b-2 px-2 transition-all duration-200 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-w-0 ${
                   tab === t.id
-                    ? "border-b-blue-600 text-blue-700"
-                    : "border-b-transparent text-slate-500 hover:text-slate-900"
+                    ? "border-b-blue-600 bg-blue-50/70 text-blue-700"
+                    : "border-b-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                 }`}
               >
-                <Icon name={t.icon} className="h-4 w-4 shrink-0" />
-                <span className="min-w-0">{t.label}</span>
+                <Icon
+                  name={t.icon}
+                  className={`h-[22px] w-[22px] shrink-0 transition-transform duration-200 group-hover:scale-110 ${tab === t.id ? "stroke-[1.8]" : "stroke-[1.6]"}`}
+                />
+                <span className="sr-only">{t.label}</span>
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute top-full z-30 mt-2 w-max max-w-44 rounded-lg bg-slate-950 px-2.5 py-1.5 text-center text-[11px] font-semibold leading-4 text-white opacity-0 shadow-lg transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 ${
+                    index === 0
+                      ? "left-0 translate-y-1"
+                      : index === HR_DETAIL_TABS.length - 1
+                        ? "right-0 translate-y-1"
+                        : "left-1/2 -translate-x-1/2 translate-y-1"
+                  }`}
+                >
+                  {t.label}
+                </span>
               </button>
             ))}
           </div>

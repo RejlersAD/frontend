@@ -63,6 +63,14 @@ class RBACService {
     return apiService.patch(`${RBAC_BASE_URL}/users/${id}/`, data);
   }
 
+  async uploadUserPhoto(id, photo) {
+    const formData = new FormData();
+    formData.append('photo', photo);
+    // Let the browser supply the multipart boundary. Use the upload client so
+    // a slow remote object-store response does not fail as a generic timeout.
+    return apiClientLongTimeout.post(`${RBAC_BASE_URL}/users/${id}/profile-photo/`, formData);
+  }
+
   async deleteUser(id) {
     return apiService.delete(`${RBAC_BASE_URL}/users/${id}/`);
   }
