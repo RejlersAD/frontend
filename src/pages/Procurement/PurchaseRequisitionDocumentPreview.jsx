@@ -214,7 +214,11 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
                 <div className="px-2 py-2 font-semibold">{role}</div>
                 <div className="border-x border-gray-700 px-2 py-2">{valueOrDash(name)}</div>
                 <div className="flex items-center justify-center border-r border-gray-700 px-2 py-2">
-                  {signature || approved ? <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckBadgeIcon className="h-4 w-4" /> Signed</span> : <span className="text-gray-400">{notRecorded ? 'Not recorded' : 'Pending'}</span>}
+                  {signature && /^(data:image\/|https?:\/\/|\/)/i.test(signature)
+                    ? <img src={signature} alt={`${role} signature`} className="max-h-8 max-w-full object-contain" />
+                    : signature || approved
+                      ? <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckBadgeIcon className="h-4 w-4" /> Signed</span>
+                      : <span className="text-gray-400">{notRecorded ? 'Not recorded' : 'Pending'}</span>}
                 </div>
                 <div className="border-r border-gray-700 px-2 py-2">{approved ? 'Approved' : notRecorded ? 'Not recorded' : valueOrDash(status)}</div>
                 <div className="px-2 py-2 text-[10px]">{approved ? timestampForDocument(approvedAt) : '—'}</div>
