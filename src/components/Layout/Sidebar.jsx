@@ -36,7 +36,6 @@ import {
   ShoppingCartIcon,
   IdentificationIcon,
   EnvelopeIcon,
-  CubeIcon,
 } from "@heroicons/react/24/outline";
 
 /**
@@ -517,20 +516,11 @@ const Sidebar = ({
       children: [
         {
           id: "projectManagement",
-          title: "6.1 Projects",
+          title: "Portfolio",
           icon: FolderIcon,
           path: "/projects",
-          description: "Manage and track projects",
+          description: "Open and manage projects",
           moduleCode: "project_control",
-        },
-        {
-          id: "planningPackage",
-          title: "6.2 Planning Package",
-          icon: CubeIcon,
-          path: "/planning-packages",
-          description: "Work package planning and tracking",
-          moduleCode: "project_control",
-          badge: "NEW",
         },
       ],
     },
@@ -551,10 +541,10 @@ const Sidebar = ({
         },
         {
           id: "projects",
-          title: "7.2 Projects",
+          title: "7.2 Project Links",
           icon: FolderIcon,
-          path: "/procurement/projects",
-          description: "Project portfolio management",
+          path: "/procurement/projects/reconciliation",
+          description: "Link procurement records to enterprise projects",
           moduleCode: "procurement", // project-based procurement
         },
         {

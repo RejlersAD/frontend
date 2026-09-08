@@ -53,7 +53,14 @@ export default function ProjectHeaderStrip({ project }) {
                 <span>Progress</span>
                 <span>{project.progress}%</span>
               </div>
-              <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden"
+                role="progressbar"
+                aria-label="Overall project progress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={Math.max(0, Math.min(100, project.progress))}
+              >
                 <div
                   className="h-full bg-indigo-500 transition-all"
                   style={{ width: `${Math.max(0, Math.min(100, project.progress))}%` }}

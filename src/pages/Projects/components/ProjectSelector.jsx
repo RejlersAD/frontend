@@ -1,11 +1,12 @@
+/* eslint-disable react/prop-types */
 import React from 'react'
 import { PROJECT_COPY } from '../../../config/projectControl.config'
 
-export default function ProjectSelector({ projects, value, onChange, loading, error }) {
+export default function ProjectSelector({ projects, value, onChange, loading, error, label = 'Active Project' }) {
   return (
     <label className="block">
       <span className="block text-xs font-medium text-slate-500 mb-1.5 uppercase tracking-wider">
-        Active Project
+        {label}
       </span>
       <select
         value={value || ''}

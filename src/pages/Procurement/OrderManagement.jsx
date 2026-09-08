@@ -270,7 +270,12 @@ const OrderManagement = () => {
       setLoading(true);
       setError(null);
       
-      const response = await apiClient.get('/procurement/orders/?page_size=10000');
+      const urlFilters = new URLSearchParams(window.location.search);
+      const response = await apiClient.get('/procurement/orders/', { params: {
+        page_size: 10000,
+        enterprise_project: urlFilters.get('enterprise_project') || undefined,
+        legacy_project: urlFilters.get('legacy_project') || undefined,
+      } });
       
       // Soft-coded data normalization - ensure array
       let normalizedData = [];

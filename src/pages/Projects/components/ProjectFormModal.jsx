@@ -5,6 +5,7 @@ import {
   PROJECT_FORM_API_FIELDS,
   PROJECT_COPY,
 } from '../../../config/projectControl.config'
+import useModalAccessibility from '../../../hooks/useModalAccessibility'
 
 const buildInitial = (project) => {
   const base = {}
@@ -43,6 +44,7 @@ export default function ProjectFormModal({
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
+  const dialogRef = useModalAccessibility(open, onClose, submitting)
 
   useEffect(() => {
     if (open) {
@@ -100,9 +102,9 @@ export default function ProjectFormModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div ref={dialogRef} tabIndex="-1" role="dialog" aria-modal="true" aria-labelledby="project-form-title" className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900">
+          <h2 id="project-form-title" className="text-lg font-semibold text-slate-900">
             {mode === 'edit' ? PROJECT_COPY.editTitle : PROJECT_COPY.createTitle}
           </h2>
           <button
@@ -118,7 +120,7 @@ export default function ProjectFormModal({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
           <div className="px-6 py-5 space-y-6">
             {serverError && (
-              <div className="rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">
+              <div role="alert" className="rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">
                 {serverError}
               </div>
             )}
@@ -135,12 +137,20 @@ export default function ProjectFormModal({
                       <label className="block text-xs font-medium text-slate-600 mb-1">
                         {f.label} {f.required && <span className="text-rose-500">*</span>}
                       </label>
-                      <FieldInput field={f} value={values[f.name]} onChange={(v) => setField(f.name, v)} />
+                      <FieldInput
+                        field={f}
+                        value={values[f.name]}
+                        onChange={(v) => setField(f.name, v)}
+                        aria-label={f.label}
+                        aria-required={f.required || undefined}
+                        aria-invalid={Boolean(fieldErrors[f.name])}
+                        aria-describedby={(f.help || fieldErrors[f.name]) ? `project-field-${f.name}-description` : undefined}
+                      />
                       {f.help && !fieldErrors[f.name] && (
-                        <p className="mt-1 text-[11px] text-slate-400">{f.help}</p>
+                        <p id={`project-field-${f.name}-description`} className="mt-1 text-xs text-slate-500">{f.help}</p>
                       )}
                       {fieldErrors[f.name] && (
-                        <p className="mt-1 text-[11px] text-rose-600">{fieldErrors[f.name]}</p>
+                        <p id={`project-field-${f.name}-description`} className="mt-1 text-xs text-rose-700">{fieldErrors[f.name]}</p>
                       )}
                     </div>
                   ))}
@@ -172,13 +182,14 @@ export default function ProjectFormModal({
   )
 }
 
-function FieldInput({ field, value, onChange }) {
+function FieldInput({ field, value, onChange, ...accessibilityProps }) {
   const common = 'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500'
   const v = value ?? ''
   switch (field.type) {
     case 'textarea':
       return (
         <textarea
+          {...accessibilityProps}
           className={common}
           rows={field.rows || 3}
           placeholder={field.placeholder || ''}
@@ -188,7 +199,7 @@ function FieldInput({ field, value, onChange }) {
       )
     case 'select':
       return (
-        <select className={common} value={v} onChange={(e) => onChange(e.target.value)}>
+        <select {...accessibilityProps} className={common} value={v} onChange={(e) => onChange(e.target.value)}>
           <option value="">— select —</option>
           {field.options?.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -198,6 +209,7 @@ function FieldInput({ field, value, onChange }) {
     case 'date':
       return (
         <input
+          {...accessibilityProps}
           type="date"
           className={common}
           value={v}
@@ -207,6 +219,7 @@ function FieldInput({ field, value, onChange }) {
     case 'number':
       return (
         <input
+          {...accessibilityProps}
           type="number"
           className={common}
           min={field.min}
@@ -219,6 +232,7 @@ function FieldInput({ field, value, onChange }) {
     case 'currency':
       return (
         <input
+          {...accessibilityProps}
           type="number"
           className={common}
           min={0}
@@ -231,6 +245,7 @@ function FieldInput({ field, value, onChange }) {
     default:
       return (
         <input
+          {...accessibilityProps}
           type="text"
           className={common}
           placeholder={field.placeholder || ''}

@@ -19,15 +19,41 @@ export const createProject    = (payload)   => unwrap(apiClient.post(EP.projects
 export const updateProject    = (id, body)  => unwrap(apiClient.patch(`${EP.projects}${id}/`, body))
 export const deleteProject    = (id)        => unwrap(apiClient.delete(`${EP.projects}${id}/`))
 export const getProjectStats  = ()          => unwrap(apiClient.get(EP.projectStats))
+export const listProjectTasks = (projectId, params = {}) =>
+  unwrap(apiClient.get(EP.projectTasks, { params: { project_id: projectId, ...params } }))
+export const listProjectMilestones = (projectId, params = {}) =>
+  unwrap(apiClient.get(EP.projectMilestones, { params: { project_id: projectId, ...params } }))
 
 // ─── Analytics (Phase 1 live) ────────────────────────────────────────────────
 export const getCostKpis        = (projectId)       => unwrap(apiClient.get(EP.costKpis,    { params: { project: projectId } }))
 export const getCommercialDashboard = (projectId) => unwrap(apiClient.get(EP.commercialDashboard, { params: { project: projectId } }))
+export const getPortfolioExceptions = (params = {}) => unwrap(apiClient.get(EP.portfolioExceptions, { params }))
 export const getEstimateVariance = (projectId, opts = {}) =>
   unwrap(apiClient.get(EP.variance, { params: { project: projectId, ...opts } }))
 export const runFinanceSync     = (projectId)       => unwrap(apiClient.post(EP.financeSync, { project: projectId }))
 export const listWbsNodes       = (projectId)       => unwrap(apiClient.get(EP.wbsNodes, { params: { project: projectId } }))
 export const createWbsNode      = (payload)         => unwrap(apiClient.post(EP.wbsNodes, payload))
+export const listControlAccounts = (projectId, params = {}) => unwrap(apiClient.get(EP.controlAccounts, { params: { project: projectId, ...params } }))
+export const createControlAccount = (payload) => unwrap(apiClient.post(EP.controlAccounts, payload))
+export const updateControlAccount = (id, payload) => unwrap(apiClient.patch(`${EP.controlAccounts}${id}/`, payload))
+export const submitControlAccount = (id) => unwrap(apiClient.post(`${EP.controlAccounts}${id}/submit/`))
+export const approveControlAccount = (id) => unwrap(apiClient.post(`${EP.controlAccounts}${id}/approve/`))
+export const closeControlAccount = (id) => unwrap(apiClient.post(`${EP.controlAccounts}${id}/close/`))
+export const listReportingPeriods = (projectId, params = {}) => unwrap(apiClient.get(EP.reportingPeriods, { params: { project: projectId, ...params } }))
+export const createReportingPeriod = (payload) => unwrap(apiClient.post(EP.reportingPeriods, payload))
+export const updateReportingPeriod = (id, payload) => unwrap(apiClient.patch(`${EP.reportingPeriods}${id}/`, payload))
+export const submitReportingPeriod = (id) => unwrap(apiClient.post(`${EP.reportingPeriods}${id}/submit/`))
+export const lockReportingPeriod = (id) => unwrap(apiClient.post(`${EP.reportingPeriods}${id}/lock/`))
+export const reopenReportingPeriod = (id, reason) => unwrap(apiClient.post(`${EP.reportingPeriods}${id}/reopen/`, { reason }))
+export const getReportingPeriodHistory = (id) => unwrap(apiClient.get(`${EP.reportingPeriods}${id}/history/`))
+export const reconcileReportingPeriod = (id) => unwrap(apiClient.post(`${EP.reportingPeriods}${id}/reconcile/`))
+export const listReconciliations = (id) => unwrap(apiClient.get(`${EP.reportingPeriods}${id}/reconciliations/`))
+export const listApprovedHours = (projectId) => unwrap(apiClient.get(EP.approvedHours, { params: { project: projectId } }))
+export const createApprovedHour = (payload) => unwrap(apiClient.post(EP.approvedHours, payload))
+export const submitApprovedHour = (id) => unwrap(apiClient.post(`${EP.approvedHours}${id}/submit/`))
+export const approveApprovedHour = (id) => unwrap(apiClient.post(`${EP.approvedHours}${id}/approve/`))
+export const reverseApprovedHour = (id, reason) => unwrap(apiClient.post(`${EP.approvedHours}${id}/reverse/`, { reason }))
+export const listIntegratedSnapshots = (projectId) => unwrap(apiClient.get(EP.integratedSnapshots, { params: { project: projectId } }))
 export const listBudgetAllocations = (projectId)    => unwrap(apiClient.get(EP.budgetAllocations, { params: { project: projectId } }))
 export const createBudgetAllocation = (payload)     => unwrap(apiClient.post(EP.budgetAllocations, payload))
 export const approveBudgetAllocation = (id)         => unwrap(apiClient.post(`${EP.budgetAllocations}${id}/approve/`))
@@ -85,6 +111,8 @@ export const getEvm          = (projectId) => unwrap(apiClient.get(EP.evm,      
 export const getCashflow     = (projectId) => unwrap(apiClient.get(EP.cashflow,    { params: { project: projectId } }))
 export const getRiskAnalytics = (projectId) => unwrap(apiClient.get(EP.risk,       { params: { project: projectId } }))
 export const runChangeDetection = (docId)  => unwrap(apiClient.post(EP.changeDetect, { document: docId }))
+export const listChangeEvents = (projectId, params = {}) =>
+  unwrap(apiClient.get(EP.changes, { params: { project: projectId, ...params } }))
 
 // ─── QHSE smart import ───────────────────────────────────────────────────────
 // Fetches /api/v1/qhse/projects/ then maps each row to a Project payload via
@@ -204,13 +232,18 @@ export const importQhseRows = async (qhseRows, existingProjects, onProgress) => 
 export default {
   getPhaseFlags,
   listProjects, getProject, createProject, updateProject, deleteProject, getProjectStats,
-  getCostKpis, getCommercialDashboard, getEstimateVariance, runFinanceSync,
+  listProjectTasks, listProjectMilestones,
+  getCostKpis, getCommercialDashboard, getPortfolioExceptions, getEstimateVariance, runFinanceSync,
   listWbsNodes, createWbsNode,
+  listControlAccounts, createControlAccount, updateControlAccount, submitControlAccount, approveControlAccount, closeControlAccount,
+  listReportingPeriods, createReportingPeriod, updateReportingPeriod, submitReportingPeriod, lockReportingPeriod, reopenReportingPeriod,
+  getReportingPeriodHistory, reconcileReportingPeriod, listReconciliations,
+  listApprovedHours, createApprovedHour, submitApprovedHour, approveApprovedHour, reverseApprovedHour, listIntegratedSnapshots,
   listBudgetAllocations, createBudgetAllocation, approveBudgetAllocation,
   listCostAllocations, createCostAllocation, approveCostAllocation, listCostLedger,
   listEstimates, getEstimate, createEstimate, updateEstimate, approveEstimate, supersedeEstimate,
   importBoqExcel,
   listDocuments, uploadDocument, presignDocumentDownload, deleteDocument,
-  runAiTakeoff, getEvm, getCashflow, getRiskAnalytics, runChangeDetection,
+  runAiTakeoff, getEvm, getCashflow, getRiskAnalytics, runChangeDetection, listChangeEvents,
   listQhseProjects, mapQhseRowToProjectPayload, importQhseRows,
 }

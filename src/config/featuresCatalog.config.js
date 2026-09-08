@@ -369,54 +369,46 @@ export const FEATURES_CATALOG = {
     name: 'Project Control',
     icon: '📊',
     color: 'indigo',
-    description: 'Project management and tracking',
+    description: 'Plan, measure, forecast, and govern project delivery',
     order: 4,
     features: [
       {
         id: 'project-management',
-        name: 'Project Management',
-        shortName: 'Projects',
-        description: 'Comprehensive project tracking and management',
-        longDescription: 'End-to-end project management with timelines, milestones, resource allocation, and progress tracking.',
+        name: 'Project Portfolio',
+        shortName: 'Portfolio',
+        description: 'Open and manage authorised projects',
+        longDescription: 'Project-level controls for overview, cost and commercial performance, estimates, documents, and governed analytics.',
         path: '/projects',
         moduleCode: 'project_control',
         status: FEATURE_STATUS.ACTIVE,
         badges: [FEATURE_BADGES.POPULAR, FEATURE_BADGES.ADVANCED],
         capabilities: [
-          'Project planning',
-          'Milestone tracking',
-          'Resource management',
-          'Progress reporting',
-          'Risk assessment'
+          'Project overview',
+          'Cost and commercial controls',
+          'Estimate management',
+          'Document controls',
+          'Governed analytics'
         ],
         metrics: {
-          activeProjects: 47,
-          completedProjects: 189,
-          onTimeDelivery: '94%'
-        },
-        usageStats: {
-          monthlyUses: 3456,
-          totalUses: 28790,
-          avgRating: 4.7
+          source: 'Live project data'
         }
       },
       {
         id: 'planning-package',
-        name: 'Planning Package',
-        shortName: 'Planning',
-        description: 'Work package planning and tracking',
-        longDescription: 'Break down projects into manageable work packages with budgets, timelines, deliverables, and progress tracking for enhanced project control.',
+        name: 'Plan & Baseline',
+        shortName: 'Plan & Baseline',
+        description: 'Prepare and publish a controlled delivery plan',
+        longDescription: 'Collect project inputs, develop the WBS and schedule, validate planning quality, approve the result, and publish a controlled baseline.',
         path: '/planning-packages',
         moduleCode: 'project_control',
         status: FEATURE_STATUS.ACTIVE,
         badges: [FEATURE_BADGES.NEW],
         capabilities: [
-          'Package creation & management',
-          'Budget allocation & tracking',
-          'Schedule planning',
-          'Progress monitoring',
-          'WBS integration',
-          'Deliverable tracking'
+          'Reference document intake',
+          'WBS and schedule development',
+          'Logic and resource planning',
+          'Schedule assurance',
+          'Baseline publication'
         ],
         metrics: {
           totalPackages: 0,

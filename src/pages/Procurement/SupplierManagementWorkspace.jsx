@@ -227,6 +227,16 @@ const SupplierManagementWorkspace = () => {
 
   useEffect(() => { fetchSuppliers(); }, [fetchSuppliers]);
 
+  useEffect(() => {
+    const requestedId = new URLSearchParams(window.location.search).get('vendor');
+    if (!requestedId || !suppliers.length || selected) return;
+    const requestedSupplier = suppliers.find((supplier) => String(supplier.id) === requestedId);
+    if (requestedSupplier) {
+      setSelected(requestedSupplier);
+      setProfileTab('overview');
+    }
+  }, [selected, suppliers]);
+
   const duplicateIds = useMemo(() => {
     const groups = new Map();
     suppliers.forEach((supplier) => {
