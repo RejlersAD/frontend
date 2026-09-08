@@ -49,10 +49,13 @@
     "yup": "^1.3.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1",
     "@vitejs/plugin-react": "^4.2.1",
     "eslint": "^8.56.0",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
+    "playwright-core": "^1.62.1",
     "vite": "^5.0.8",
     "vite-plugin-pwa": "^1.3.0",
     "workbox-window": "^7.4.1"
@@ -63,6 +66,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext js,jsx",
+    "test:a11y": "playwright test --config=playwright.config.js",
+    "test:a11y:headed": "playwright test --config=playwright.config.js --headed",
+    "test:a11y:report": "playwright show-report playwright-report",
     "format": "prettier --write \"src/**/*.{js,jsx,json,css}\""
   },
   "browserslist": {

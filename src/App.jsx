@@ -47,7 +47,6 @@ import CRSMultiRevisionSmart from './pages/CRSMultiRevisionSmart'
 const CRSMultipleRevision = FEATURE_FLAGS.crsMultiRevisionVersion === 'classic' ? CRSMultipleRevisionClassic : CRSMultiRevisionSmart
 import ProjectControl from './pages/ProjectControl'
 import ProjectsPage from './pages/Projects/ProjectsPage'
-import PlanningPackagePage from './pages/PlanningPackagePage'
 import PlannerWorkspacePage from './pages/PlannerWorkspacePage'
 import ProposalWorkspacePage from './pages/ProposalWorkspacePage'
 import GeneralQHSE from './pages/QHSE/GeneralQHSE'
@@ -1397,12 +1396,12 @@ function App() {
           }
         />
 
-        {/* SOFT-CODED: Planning Package (Feature 6.2 under Project Control) */}
+        {/* Legacy Planning Package URL now enters the integrated project tab. */}
         <Route
           path="planning-packages"
           element={
             <ModuleProtectedRoute moduleCode="project_control">
-              <PlanningPackagePage />
+              <Navigate to="/projects?view=plan-baseline" replace />
             </ModuleProtectedRoute>
           }
         />

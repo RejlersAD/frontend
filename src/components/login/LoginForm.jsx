@@ -96,7 +96,7 @@ const LoginForm = ({ loginSchema, isLoading, onSubmit, loginGate, onDismissGate 
                   className={`w-full border py-3 pl-11 pr-12 text-sm text-slate-800 outline-none transition focus:border-[#0b477c] focus:ring-2 focus:ring-blue-100 ${errors.password && touched.password ? 'border-red-400 bg-red-50' : 'border-slate-300 bg-slate-100'}`}
                 />
                 {INTERACTIONS.passwordToggle.enabled && (
-                  <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 px-4 text-xs font-semibold text-slate-500 hover:text-[#0b477c]" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                  <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 px-4 text-xs font-semibold text-slate-700 hover:text-[#0b477c]" aria-label={showPassword ? 'Hide password' : 'Show password'}>
                     {showPassword ? 'Hide' : 'Show'}
                   </button>
                 )}
@@ -123,7 +123,7 @@ const LoginForm = ({ loginSchema, isLoading, onSubmit, loginGate, onDismissGate 
         )}
       </Formik>
 
-      <footer className="mt-7 flex items-center justify-center gap-2 border-t border-slate-200 pt-4 text-[11px] text-slate-400">
+      <footer className="mt-7 flex items-center justify-center gap-2 border-t border-slate-200 pt-4 text-[11px] text-slate-600">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
         <span>Secure encrypted connection</span>
       </footer>

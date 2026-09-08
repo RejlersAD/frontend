@@ -18,6 +18,12 @@ const awaitJob = async (initialJob, timeoutMs = 15 * 60 * 1000) => {
 export const planningIntelligenceService = {
   listProjects: async () => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.projects)),
   getProject: async (projectId) => (await apiClient.get(PLANNING_ENDPOINTS.project(projectId))).data,
+  getEnterpriseContract: async projectId => (
+    await apiClient.get(PLANNING_ENDPOINTS.enterpriseContract(projectId))
+  ).data,
+  syncFromEnterprise: async (projectId, payload = {}) => (
+    await apiClient.post(PLANNING_ENDPOINTS.syncFromEnterprise(projectId), payload)
+  ).data,
   listFiles: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.files, { params: { project: projectId } })),
   listGenerations: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.generations, { params: { project: projectId } })),
   getGeneration: async (generationId) => (await apiClient.get(PLANNING_ENDPOINTS.generation(generationId))).data,

@@ -440,6 +440,13 @@ const ReceiptManagement = () => {
     }
   };
 
+  useEffect(() => {
+    const requestedId = new URLSearchParams(window.location.search).get('receipt');
+    if (!requestedId || !receipts.length || selectedReceipt) return;
+    const requestedReceipt = receipts.find((receipt) => String(receipt.id) === requestedId);
+    if (requestedReceipt) openReceiptDetails(requestedReceipt);
+  }, [receipts, selectedReceipt]);
+
   const acceptReceipt = async (receipt) => {
     setAcceptingId(receipt.id);
     try {

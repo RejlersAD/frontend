@@ -8,6 +8,8 @@
 export const PLANNING_ENDPOINTS = {
   projects: '/planning-intelligence/projects/',
   project: (id) => `/planning-intelligence/projects/${id}/`,
+  enterpriseContract: (id) => `/planning-intelligence/projects/${id}/enterprise-contract/`,
+  syncFromEnterprise: (id) => `/planning-intelligence/projects/${id}/sync-from-enterprise/`,
   analyze: (id) => `/planning-intelligence/projects/${id}/analyze/`,
   generate: (id) => `/planning-intelligence/projects/${id}/generate/`,
   generationPreview: (id) => `/planning-intelligence/projects/${id}/generation-preview/`,
@@ -169,39 +171,21 @@ export const PLANNING_WORKFLOW_STEPS = [
   { id: 'proposal',     label: 'Final Project Proposal', icon: '📑', description: 'Sales · enterprise technical proposal', accent: 'from-indigo-600 to-violet-700', requiresGeneration: true },
 ]
 
+// Primary lifecycle navigation. Detailed tools remain available as secondary
+// tasks inside one of these five stages.
+export const PLANNING_WORKFLOW_STAGES = [
+  { id: 'setup', label: 'Setup', description: 'Create the planning record and add source files', stepIds: ['upload'] },
+  { id: 'inputs', label: 'Collect Inputs', description: 'Review extracted requirements and assumptions', stepIds: ['intelligence'] },
+  { id: 'build', label: 'Build Plan', description: 'Develop WBS, schedule, deliverables, and resources', stepIds: ['wbs', 'schedule', 'eddr', 'manhours'] },
+  { id: 'validate', label: 'Validate & Approve', description: 'Check quality and resolve planning exceptions', stepIds: ['validation'] },
+  { id: 'publish', label: 'Publish Baseline', description: 'Prepare controlled outputs and publish the plan', stepIds: ['narrative', 'presentation', 'export', 'proposal'] },
+]
+
 // Soft-coded layout tokens so the page's "canvas" sizing / hero styling can be
 // tuned in one place without touching JSX.
 export const PLANNING_UI = {
   heroIcon: '🧭',
   heroGradient: 'from-violet-600 via-indigo-600 to-blue-600',
-}
-
-// Canvas width modes — user-toggleable between a comfortable reading width
-// ("original") and a near edge-to-edge working width ("full"). Persisted in
-// localStorage so the preference survives reloads/navigation.
-export const CANVAS_MODES = {
-  ORIGINAL: 'original',
-  FULL: 'full',
-}
-
-export const CANVAS_MODE_STORAGE_KEY = 'planningPackages.canvasMode'
-
-export const CANVAS_MODE_OPTIONS = [
-  { value: CANVAS_MODES.ORIGINAL, label: 'Original', icon: '🗗' },
-  { value: CANVAS_MODES.FULL, label: 'Full Screen', icon: '🖥️' },
-]
-
-// Tailwind classes per canvas mode — widened "original" width and a near-full
-// "full" width, each paired with matching outer page padding.
-export const CANVAS_MODE_STYLES = {
-  [CANVAS_MODES.ORIGINAL]: {
-    container: 'max-w-[1800px]',
-    pagePadding: 'px-4 sm:px-6 lg:px-10',
-  },
-  [CANVAS_MODES.FULL]: {
-    container: 'max-w-none',
-    pagePadding: 'px-2 sm:px-3 lg:px-5',
-  },
 }
 
 export const PARSE_STATUS_STYLES = {
