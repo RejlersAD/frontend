@@ -8,6 +8,7 @@ import {
   QHSE_IMPORT_CONFIG, PROJECT_COPY,
 } from '../../../config/projectControl.config'
 import * as PC from '../../../services/projectControl.service'
+import useModalAccessibility from '../../../hooks/useModalAccessibility'
 
 const { previewColumns, joinKey, sources, defaultSourceId } = QHSE_IMPORT_CONFIG
 
@@ -33,6 +34,7 @@ export default function QhseImportModal({
   const [selected, setSelected] = useState(() => new Set())
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState({ done: 0, total: 0 })
+  const dialogRef = useModalAccessibility(open, onClose, running)
   const [summary, setSummary] = useState(null)
 
   const source = useMemo(
@@ -142,6 +144,11 @@ export default function QhseImportModal({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        tabIndex="-1"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="qhse-import-title"
         className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -153,7 +160,7 @@ export default function QhseImportModal({
                 <SparklesIcon className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-slate-900">{PROJECT_COPY.importQhseTitle}</h2>
+                <h2 id="qhse-import-title" className="text-lg font-semibold text-slate-900">{PROJECT_COPY.importQhseTitle}</h2>
                 <p className="text-xs text-slate-500 mt-0.5">{PROJECT_COPY.importQhseSubtitle}</p>
               </div>
             </div>
@@ -215,7 +222,7 @@ export default function QhseImportModal({
               {PROJECT_COPY.importQhseLoading}
             </div>
           ) : error ? (
-            <div className="py-16 text-center text-rose-600 max-w-xl mx-auto">
+            <div role="alert" className="py-16 text-center text-rose-600 max-w-xl mx-auto">
               <ExclamationTriangleIcon className="h-6 w-6 mx-auto mb-2" />
               <p>{error}</p>
               <div className="mt-3">
@@ -242,6 +249,7 @@ export default function QhseImportModal({
                   <th className="px-2 py-2 w-10">
                     <input
                       type="checkbox"
+                      aria-label="Select all import rows"
                       checked={selected.size === rows.length}
                       onChange={toggleAll}
                       className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -266,6 +274,7 @@ export default function QhseImportModal({
                       <td className="px-2 py-2">
                         <input
                           type="checkbox"
+                          aria-label={`Select ${row.name || row.projectName || key} for import`}
                           checked={checked}
                           onChange={() => toggleRow(key)}
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"

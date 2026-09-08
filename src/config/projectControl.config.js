@@ -13,6 +13,8 @@ export const PROJECT_CONTROL_ENDPOINTS = {
   // Projects (existing apps.core.project_views — read mostly)
   projects:        '/projects/',
   projectStats:    '/projects/statistics/',
+  projectTasks:    '/projects/tasks/',
+  projectMilestones: '/projects/milestones/',
 
   // Project-control rollout flags + thresholds
   phaseFlags:      '/project-control/phase-flags/',
@@ -28,6 +30,10 @@ export const PROJECT_CONTROL_ENDPOINTS = {
 
   // WBS
   wbsNodes:        '/project-control/wbs-nodes/',
+  controlAccounts: '/project-control/control-accounts/',
+  reportingPeriods: '/project-control/reporting-periods/',
+  approvedHours:   '/project-control/approved-hours/',
+  integratedSnapshots: '/project-control/integrated-snapshots/',
   budgetAllocations: '/project-control/budget-allocations/',
   costAllocations: '/project-control/cost-allocations/',
   costLedger:      '/project-control/cost-ledger/',
@@ -43,6 +49,7 @@ export const PROJECT_CONTROL_ENDPOINTS = {
   // Analytics
   costKpis:        '/project-control/analytics/cost-kpis/',
   commercialDashboard: '/project-control/analytics/commercial-dashboard/',
+  portfolioExceptions: '/project-control/analytics/portfolio-exceptions/',
   variance:        '/project-control/analytics/estimate-variance/',
   financeSync:     '/project-control/analytics/finance-sync/',
   aiTakeoff:       '/project-control/analytics/ai-takeoff/',
@@ -58,9 +65,12 @@ export const PROJECT_CONTROL_ENDPOINTS = {
 // ───────────────────────────────────────────────────────────────────────────
 export const PROJECT_VIEW_MODES = [
   // Project Dashboard — first tab; shows key commercial & scheduling facts.
-  { key: 'project-dashboard', label: 'Project Dashboard', phaseFlag: 'phase_1_project_dashboard', icon: 'squares' },
-  { key: 'commercial-dashboard', label: 'Commercial', phaseFlag: 'phase_1_cost_dashboard', icon: 'banknotes' },
-  { key: 'cost-dashboard',    label: 'Cost Dashboard',    phaseFlag: 'phase_1_cost_dashboard',    icon: 'chart' },
+  { key: 'project-dashboard', label: 'Overview', phaseFlag: 'phase_1_project_dashboard', icon: 'squares' },
+  { key: 'portfolio-exceptions', label: 'Portfolio Exceptions', icon: 'alert' },
+  { key: 'plan-baseline', label: 'Plan & Baseline', icon: 'calendar' },
+  { key: 'controls-periods', label: 'Controls & Periods', icon: 'shield' },
+  { key: 'commercial-dashboard', label: 'Cost & Commercial', phaseFlag: 'phase_1_cost_dashboard', icon: 'banknotes' },
+  { key: 'cost-dashboard',    label: 'Cost Detail',    phaseFlag: 'phase_1_cost_dashboard',    icon: 'chart' },
   { key: 'estimates',         label: 'Estimates',         phaseFlag: 'phase_1_estimate_variance', icon: 'document' },
   { key: 'documents',         label: 'Documents',         phaseFlag: 'phase_1_documents',         icon: 'folder' },
   { key: 'ai-takeoff',        label: 'AI Take-Off',       phaseFlag: 'phase_2_ai_takeoff',        icon: 'sparkles', phaseLabel: 'Phase 2' },
@@ -85,9 +95,9 @@ export const PROJECT_CONTROL_SUBFEATURES = [
   {
     id: 'project-management',
     number: '6.1',
-    name: 'Projects',
-    fullName: 'Project Management',
-    description: 'Create and manage engineering projects with cost tracking and milestones',
+    name: 'Portfolio',
+    fullName: 'Project Portfolio',
+    description: 'Open and manage the projects you are authorised to access',
     icon: '📊',
     route: '/projects',
     color: 'indigo',
@@ -101,11 +111,11 @@ export const PROJECT_CONTROL_SUBFEATURES = [
   {
     id: 'planning-package',
     number: '6.2',
-    name: 'Planning Packages',
-    fullName: 'Planning Package',
-    description: 'Work package planning with budgets, schedules, and deliverables',
+    name: 'Plan & Baseline',
+    fullName: 'Plan & Baseline',
+    description: 'Prepare, validate, approve, and publish the project plan',
     icon: '📦',
-    route: '/planning-packages',
+    route: '/projects?view=plan-baseline',
     color: 'violet',
     bgColor: 'bg-violet-50',
     textColor: 'text-violet-700',
@@ -136,7 +146,7 @@ export const PROJECT_CONTROL_FEATURES = [
     name: 'Planning Package',
     description: 'Work package planning with budgets, schedules, and deliverables',
     icon: '📦',
-    route: '/planning-packages',
+    route: '/projects?view=plan-baseline',
     color: 'violet',
     isActive: true,
     isNew: true,

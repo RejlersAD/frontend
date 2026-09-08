@@ -21,6 +21,15 @@
   --text-caption-line: 1rem;
   --text-micro-size: 0.6875rem;
   --text-micro-line: 0.875rem;
+  --app-primary: #3730a3;
+  --app-primary-hover: #312e81;
+  --app-surface: #ffffff;
+  --app-surface-subtle: #f8fafc;
+  --app-border: #cbd5e1;
+  --app-text: #0f172a;
+  --app-text-muted: #475569;
+  --app-radius-control: 0.5rem;
+  --app-radius-panel: 0.75rem;
 
   font-family: var(--font-sans);
   line-height: var(--text-body-line);
@@ -41,6 +50,15 @@
      text selection everywhere without touching individual components. */
   --app-selection-bg: rgba(79, 70, 229, 0.16);
   --app-selection-text: #0f172a;
+}
+
+.dark {
+  color-scheme: dark;
+  --app-surface: #0f172a;
+  --app-surface-subtle: #1e293b;
+  --app-border: #475569;
+  --app-text: #f8fafc;
+  --app-text-muted: #cbd5e1;
 }
 
 html {
@@ -75,6 +93,38 @@ body {
   line-height: var(--text-body-line);
   font-weight: var(--font-regular);
   color: #242424;
+}
+
+:focus-visible {
+  outline: 2px solid #0F6CBD;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Scoped bridge for legacy Project Control panels while they migrate to the
+   shared semantic colour tokens. */
+.dark .project-control-workspace .bg-white {
+  background-color: var(--app-surface);
+}
+
+.dark .project-control-workspace :is(.text-slate-900, .text-slate-800, .text-slate-700) {
+  color: var(--app-text);
+}
+
+.dark .project-control-workspace :is(.text-slate-600, .text-slate-500, .text-slate-400) {
+  color: var(--app-text-muted);
+}
+
+.dark .project-control-workspace :is(.border-slate-100, .border-slate-200, .border-slate-300) {
+  border-color: var(--app-border);
 }
 
 .page-title {

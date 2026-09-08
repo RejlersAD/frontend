@@ -1,5 +1,6 @@
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import PropTypes from 'prop-types'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle, ArrowLeft, Baseline, CalendarDays, Check, ChevronLeft, ClipboardList, Database, Download,
@@ -54,8 +55,9 @@ const StatusBadge = ({ status }) => {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${styles[status] || styles.draft}`}>{status}</span>
 }
 
-const PlannerWorkspacePage = () => {
-  const { projectId } = useParams()
+const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBack, onOpenGenerationWizard }) => {
+  const { projectId: routeProjectId } = useParams()
+  const projectId = planningProjectId || routeProjectId
   const navigate = useNavigate()
   const [project, setProject] = useState(null)
   const [schedules, setSchedules] = useState([])
@@ -88,6 +90,16 @@ const PlannerWorkspacePage = () => {
   const { activeJob: scheduleJob, runJob: runScheduleJob } = usePlanningJob({
     storageKey: `radai-schedule-job-${projectId}`,
   })
+
+  const handleBack = () => {
+    if (embedded && onBack) onBack()
+    else navigate('/projects?view=plan-baseline')
+  }
+
+  const handleOpenGenerationWizard = () => {
+    if (embedded && onOpenGenerationWizard) onOpenGenerationWizard()
+    else navigate('/projects?view=plan-baseline')
+  }
 
   useEffect(() => {
     if (!scheduleJob || !['calculate', 'assurance'].includes(scheduleJob.job_type)) return
@@ -444,32 +456,32 @@ const PlannerWorkspacePage = () => {
   }
 
   if (loading && !workspace) {
-    return <div className="min-h-[70vh] flex items-center justify-center bg-slate-50 p-6"><div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" role="status" aria-live="polite"><div className="flex items-center gap-3"><Loader2 className="h-6 w-6 animate-spin text-violet-600" /><div><p className="font-bold text-slate-800">Loading Planner Workspace</p><p className="text-sm text-slate-500">Checking schedules, generated versions, and project-level approvals…</p></div></div><div className="mt-5 h-2 overflow-hidden rounded-full bg-violet-100"><div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-violet-600 via-indigo-500 to-violet-600" /></div></div></div>
+    return <div className={`${embedded ? 'min-h-96' : 'min-h-[70vh]'} flex items-center justify-center bg-slate-50 p-6`}><div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" role="status" aria-live="polite"><div className="flex items-center gap-3"><Loader2 className="h-6 w-6 animate-spin text-violet-600" /><div><p className="font-bold text-slate-800">Loading Planner Workspace</p><p className="text-sm text-slate-500">Checking schedules, generated versions, and project-level approvals…</p></div></div><div className="mt-5 h-2 overflow-hidden rounded-full bg-violet-100"><div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-violet-600 via-indigo-500 to-violet-600" /></div></div></div>
   }
 
   if (!schedules.length) {
     const hasLegacyGeneration = generations.length > 0
     const pendingDefaultProposal = defaultProposals.find(row => row.status === 'proposed')
     if (pendingDefaultProposal) {
-      return <div className="min-h-screen bg-slate-100/70 p-4 sm:p-6">
+      return <div className={`${embedded ? 'rounded-xl' : 'min-h-screen'} bg-slate-100/70 p-4 sm:p-6`}>
         <div className="mx-auto max-w-6xl space-y-5">
-          <div className="flex flex-wrap items-center gap-3"><button onClick={() => navigate('/planning-packages')} className="inline-flex items-center gap-2 text-sm font-semibold text-violet-700"><ArrowLeft className="h-4 w-4" /> Back to planning package</button><span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">Project-level governance</span></div>
+          <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={handleBack} className="inline-flex items-center gap-2 text-sm font-semibold text-violet-700"><ArrowLeft className="h-4 w-4" /> Back to Plan &amp; Baseline</button><span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">Project-level governance</span></div>
           <section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-amber-700">Final approval required before generation</p><h1 className="mt-1 text-2xl font-bold text-slate-900">{project?.name} — Scheduling Default Approval</h1><p className="mt-2 text-sm text-slate-600">Proposal #{pendingDefaultProposal.id} is governed at project level because no schedule version exists yet. Approve it below, then return to the Generation Wizard to create the first relational schedule.</p></section>
           {notice && <div className={`rounded-xl border px-4 py-3 text-sm ${notice.type === 'error' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{notice.message}</div>}
           <SchedulingDefaultsApprovalPanel projectId={projectId} onNotice={showControlsNotice} onChanged={async () => setDefaultProposals(await planningIntelligenceService.listScheduleDefaultProposals(projectId))} />
-          <div className="flex justify-end"><button type="button" onClick={() => navigate('/planning-packages', { state: { openGenerationWizardFor: Number(projectId) } })} className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow hover:bg-violet-700">Return to Generation Wizard →</button></div>
+          <div className="flex justify-end"><button type="button" onClick={handleOpenGenerationWizard} className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow hover:bg-violet-700">Return to Generation Wizard →</button></div>
         </div>
       </div>
     }
     return (
-      <div className="p-6 max-w-3xl mx-auto">
-        <button onClick={() => navigate('/planning-packages')} className="inline-flex items-center gap-2 text-sm text-violet-700"><ArrowLeft className="w-4 h-4" /> Back to planning packages</button>
+      <div className={`${embedded ? 'rounded-xl bg-slate-100/70' : ''} p-6 max-w-3xl mx-auto`}>
+        <button type="button" onClick={handleBack} className="inline-flex items-center gap-2 text-sm text-violet-700"><ArrowLeft className="w-4 h-4" /> Back to Plan &amp; Baseline</button>
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <CalendarDays className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <h1 className="text-xl font-bold text-slate-800">{hasLegacyGeneration ? 'Legacy generation ready to upgrade' : 'No schedule has been generated yet'}</h1>
           <p className="text-sm text-slate-500 mt-2">{hasLegacyGeneration ? `Generation v${generations[0].version} can be upgraded into the relational planner to unlock CPM, controls, governance, integrations, and enterprise tools.` : 'Complete the Schedule Generation Wizard first. It will validate the five-stage workflow and Process logic, then create the relational planner workspace automatically.'}</p>
           {notice && <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${notice.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>{notice.message}</div>}
-          {hasLegacyGeneration ? <button type="button" onClick={upgradeLatestGeneration} disabled={upgradingLegacy} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50">{upgradingLegacy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}{upgradingLegacy ? 'Upgrading schedule…' : `Upgrade Generation v${generations[0].version}`}</button> : <button type="button" onClick={() => navigate('/planning-packages', { state: { openGenerationWizardFor: Number(projectId) } })} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-violet-700"><PlusCircle className="h-4 w-4" />Open Schedule Generation Wizard</button>}
+          {hasLegacyGeneration ? <button type="button" onClick={upgradeLatestGeneration} disabled={upgradingLegacy} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50">{upgradingLegacy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}{upgradingLegacy ? 'Upgrading schedule…' : `Upgrade Generation v${generations[0].version}`}</button> : <button type="button" onClick={handleOpenGenerationWizard} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-violet-700"><PlusCircle className="h-4 w-4" />Open Schedule Generation Wizard</button>}
           {upgradingLegacy && <div className="mx-auto mt-5 max-w-md" role="status"><div className="mb-1 flex justify-between text-xs font-semibold text-violet-700"><span>Materializing activities and CPM logic…</span><span>In progress</span></div><div className="h-2 overflow-hidden rounded-full bg-violet-100"><div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-violet-600 via-indigo-500 to-violet-600" /></div></div>}
         </div>
       </div>
@@ -481,10 +493,10 @@ const PlannerWorkspacePage = () => {
     || (workspace?.generation_validation || []).some(item => item.severity === 'critical')
     || workspace?.schedule_assurance?.status !== 'approved'
   return (
-    <div className="min-h-screen bg-slate-100/70">
-      <header className="bg-slate-950 text-white border-b border-slate-800 sticky top-0 z-30">
+    <div className={`project-control-workspace bg-slate-100/70 dark:bg-slate-950 ${embedded ? 'overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700' : 'min-h-screen'}`}>
+      <header className={`border-b border-slate-800 bg-slate-950 text-white ${embedded ? '' : 'sticky top-0 z-30'}`}>
         <div className="px-4 lg:px-6 py-3 flex flex-wrap items-center gap-3">
-          <button onClick={() => navigate('/planning-packages')} className="p-2 rounded-lg hover:bg-white/10" title="Back"><ArrowLeft className="w-5 h-5" /></button>
+          <button type="button" onClick={handleBack} className="min-h-11 min-w-11 rounded-lg p-2 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400" title="Back to Plan & Baseline" aria-label="Back to Plan & Baseline"><ArrowLeft className="w-5 h-5" /></button>
           <div className="min-w-0 mr-auto">
             <div className="text-xs uppercase tracking-widest text-violet-300">Planner Workspace</div>
             <h1 className="font-semibold truncate">{workspace?.project?.name || project?.name}</h1>
@@ -539,15 +551,15 @@ const PlannerWorkspacePage = () => {
             </div>
             <div className="rounded-xl bg-white/80 px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Process network</p><p className="mt-1 text-sm font-bold text-slate-800">{workspace.scheduling_configuration.dependency_template || 'Not selected'}</p><p className="text-xs text-slate-500">{workspace.scheduling_configuration.confirmed_dependency_rule_count} / {workspace.scheduling_configuration.dependency_rule_count} gates confirmed</p></div>
             <div className="rounded-xl bg-white/80 px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Date authority</p><p className="mt-1 text-sm font-bold uppercase text-blue-700">Relational CPM</p><p className="text-xs text-slate-500">Configuration v{workspace.scheduling_configuration.configuration_version}</p></div>
-            <button type="button" onClick={() => navigate('/planning-packages', { state: { openGenerationWizardFor: Number(projectId) } })} className="rounded-xl border border-indigo-200 bg-white px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50">Generation Wizard</button>
+            <button type="button" onClick={handleOpenGenerationWizard} className="rounded-xl border border-indigo-200 bg-white px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50">Generation Wizard</button>
           </section>
         )}
 
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="border-b border-slate-200 flex flex-wrap items-center gap-1 px-3 pt-2">
+          <div role="navigation" aria-label="Planning workspace areas" className="border-b border-slate-200 flex flex-wrap items-center gap-1 px-3 pt-2">
             {TABS.map(item => {
               const Icon = item.icon
-              return <button key={item.id} onClick={() => setTab(item.id)} className={`inline-flex items-center gap-2 px-3 py-2.5 text-sm font-semibold border-b-2 ${tab === item.id ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Icon className="w-4 h-4" />{item.label}</button>
+              return <button type="button" key={item.id} aria-current={tab === item.id ? 'page' : undefined} onClick={() => setTab(item.id)} className={`inline-flex min-h-11 items-center gap-2 px-3 py-2.5 text-sm font-semibold border-b-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-600 ${tab === item.id ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Icon aria-hidden="true" className="w-4 h-4" />{item.label}</button>
             })}
             <div className="ml-auto flex items-center gap-2 pb-2">
               {dirtyIds.size > 0 && <span className="text-xs text-amber-600">{dirtyIds.size} unsaved</span>}
@@ -584,17 +596,17 @@ const PlannerWorkspacePage = () => {
           {tab === 'activities' && (
             <div>
               <div className="p-3 border-b border-slate-200 flex flex-wrap gap-2 items-center">
-                <div className="relative min-w-[240px] flex-1 max-w-md"><Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search ID or activity name" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm" /></div>
-                <select value={discipline} onChange={event => setDiscipline(event.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm"><option value="all">All disciplines</option>{disciplines.map(value => <option key={value}>{value}</option>)}</select>
+                <div className="relative min-w-[240px] flex-1 max-w-md"><Search aria-hidden="true" className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><label htmlFor="activity-search" className="sr-only">Search activities</label><input id="activity-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search ID or activity name" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm" /></div>
+                <label htmlFor="discipline-filter" className="sr-only">Filter by discipline</label><select id="discipline-filter" value={discipline} onChange={event => setDiscipline(event.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm"><option value="all">All disciplines</option>{disciplines.map(value => <option key={value}>{value}</option>)}</select>
                 <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5"><button type="button" onClick={() => setActivityView('deliverables')} className={`rounded-md px-3 py-1.5 text-xs font-bold ${activityView === 'deliverables' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Deliverables</button><button type="button" onClick={() => setActivityView('activities')} className={`rounded-md px-3 py-1.5 text-xs font-bold ${activityView === 'activities' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Flat activities</button></div>
                 <label className="inline-flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={criticalOnly} onChange={event => setCriticalOnly(event.target.checked)} className="accent-rose-600" /> Critical only</label>
                 <button onClick={() => setShowNewActivity(value => !value)} disabled={immutable} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-violet-200 text-violet-700 text-sm font-semibold disabled:opacity-40"><PlusCircle className="w-4 h-4" /> Add Activity</button>
               </div>
               {showNewActivity && (
                 <form onSubmit={createActivity} className="p-3 bg-violet-50/60 border-b border-violet-100 flex flex-wrap gap-2">
-                  <input required value={newActivity.external_id} onChange={event => setNewActivity(value => ({ ...value, external_id: event.target.value }))} placeholder="Activity ID" className="border rounded-lg px-3 py-2 text-sm w-36" />
-                  <input required value={newActivity.name} onChange={event => setNewActivity(value => ({ ...value, name: event.target.value }))} placeholder="Activity name" className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[240px]" />
-                  <input type="number" min="0" step="0.25" value={newActivity.duration_days} onChange={event => setNewActivity(value => ({ ...value, duration_days: event.target.value }))} className="border rounded-lg px-3 py-2 text-sm w-28" />
+                  <input aria-label="Activity ID" required value={newActivity.external_id} onChange={event => setNewActivity(value => ({ ...value, external_id: event.target.value }))} placeholder="Activity ID" className="border rounded-lg px-3 py-2 text-sm w-36" />
+                  <input aria-label="Activity name" required value={newActivity.name} onChange={event => setNewActivity(value => ({ ...value, name: event.target.value }))} placeholder="Activity name" className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[240px]" />
+                  <input aria-label="Duration in days" type="number" min="0" step="0.25" value={newActivity.duration_days} onChange={event => setNewActivity(value => ({ ...value, duration_days: event.target.value }))} className="border rounded-lg px-3 py-2 text-sm w-28" />
                   <button className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-semibold">Create</button>
                 </form>
               )}
@@ -617,19 +629,19 @@ const PlannerWorkspacePage = () => {
                   calculatedFinish={workspace?.version?.calculated_finish}
                 />
               ) : <>
-              <div className="grid grid-cols-1 xl:grid-cols-[minmax(760px,1.3fr)_minmax(520px,1fr)] overflow-auto max-h-[64vh]">
+              <div role="region" aria-label="Editable activity table and Gantt chart" tabIndex="0" className="grid grid-cols-1 xl:grid-cols-[minmax(760px,1.3fr)_minmax(520px,1fr)] overflow-auto max-h-[64vh]">
                 <table className="min-w-[920px] text-xs border-r border-slate-200">
                   <thead className="sticky top-0 z-10 bg-slate-100 text-slate-500"><tr>{['ID', 'Activity Name', 'Type', 'Duration', 'Start', 'Finish', 'Float', 'Role', ''].map(label => <th key={label} className="text-left px-2 py-2 font-semibold">{label}</th>)}</tr></thead>
                   <tbody>{pageRows.map(row => (
                     <tr key={row.id} className={`border-t border-slate-100 h-10 ${row.is_critical ? 'bg-rose-50/60' : dirtyIds.has(row.id) ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
                       <td className="px-2 font-mono font-semibold text-slate-700">{row.external_id}</td>
-                      <td className="px-2"><input disabled={immutable} value={row.name} onChange={event => updateDraft(row.id, 'name', event.target.value)} className="w-full min-w-[230px] bg-transparent border-0 focus:ring-1 focus:ring-violet-400 rounded px-1 py-1 disabled:text-slate-700" /></td>
-                      <td className="px-2"><select disabled={immutable} value={row.activity_type} onChange={event => updateDraft(row.id, 'activity_type', event.target.value)} className="bg-transparent"><option value="task">Task</option><option value="start_milestone">Start MS</option><option value="finish_milestone">Finish MS</option><option value="level_of_effort">LOE</option></select></td>
-                      <td className="px-2"><input disabled={immutable} type="number" min="0" step="0.25" value={row.duration_days} onChange={event => updateDraft(row.id, 'duration_days', event.target.value)} className="w-16 bg-transparent rounded px-1" /></td>
+                      <td className="px-2"><input aria-label={`${row.external_id} activity name`} disabled={immutable} value={row.name} onChange={event => updateDraft(row.id, 'name', event.target.value)} className="w-full min-w-[230px] bg-transparent border-0 focus:ring-1 focus:ring-violet-400 rounded px-1 py-1 disabled:text-slate-700" /></td>
+                      <td className="px-2"><select aria-label={`${row.external_id} activity type`} disabled={immutable} value={row.activity_type} onChange={event => updateDraft(row.id, 'activity_type', event.target.value)} className="bg-transparent"><option value="task">Task</option><option value="start_milestone">Start MS</option><option value="finish_milestone">Finish MS</option><option value="level_of_effort">LOE</option></select></td>
+                      <td className="px-2"><input aria-label={`${row.external_id} duration in days`} disabled={immutable} type="number" min="0" step="0.25" value={row.duration_days} onChange={event => updateDraft(row.id, 'duration_days', event.target.value)} className="w-16 bg-transparent rounded px-1" /></td>
                       <td className="px-2 whitespace-nowrap">{row.planned_start || '-'}</td><td className="px-2 whitespace-nowrap">{row.planned_finish || '-'}</td>
                       <td className={`px-2 font-semibold ${Number(row.total_float_days) <= 0 ? 'text-rose-600' : 'text-slate-500'}`}>{row.total_float_days ?? '-'}</td>
-                      <td className="px-2"><input disabled={immutable} value={row.responsible_role || ''} onChange={event => updateDraft(row.id, 'responsible_role', event.target.value)} className="w-32 bg-transparent rounded px-1" /></td>
-                      <td className="px-2"><button disabled={immutable} onClick={() => deleteActivity(row)} className="text-slate-300 hover:text-rose-600 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button></td>
+                      <td className="px-2"><input aria-label={`${row.external_id} responsible role`} disabled={immutable} value={row.responsible_role || ''} onChange={event => updateDraft(row.id, 'responsible_role', event.target.value)} className="w-32 bg-transparent rounded px-1" /></td>
+                      <td className="px-2"><button type="button" aria-label={`Delete ${row.external_id}`} disabled={immutable} onClick={() => deleteActivity(row)} className="min-h-10 min-w-10 text-slate-400 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 disabled:opacity-30"><Trash2 aria-hidden="true" className="mx-auto w-4 h-4" /></button></td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -643,7 +655,7 @@ const PlannerWorkspacePage = () => {
                   })}
                 </div>
               </div>
-              <div className="p-3 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500"><span>{filteredActivities.length} activities</span><div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => setPage(value => value - 1)}><ChevronLeft className="w-4 h-4" /></button><span>Page {page} of {pageCount}</span><button disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}><ChevronRight className="w-4 h-4" /></button></div></div>
+              <div className="p-3 border-t border-slate-200 flex items-center justify-between text-sm text-slate-500"><span>{filteredActivities.length} activities</span><div className="flex items-center gap-2"><button type="button" aria-label="Previous activity page" className="min-h-10 min-w-10 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-600" disabled={page <= 1} onClick={() => setPage(value => value - 1)}><ChevronLeft aria-hidden="true" className="mx-auto w-4 h-4" /></button><span>Page {page} of {pageCount}</span><button type="button" aria-label="Next activity page" className="min-h-10 min-w-10 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-600" disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}><ChevronRight aria-hidden="true" className="mx-auto w-4 h-4" /></button></div></div>
               </>}
             </div>
           )}
@@ -683,6 +695,13 @@ const PlannerWorkspacePage = () => {
       </main>
     </div>
   )
+}
+
+PlannerWorkspacePage.propTypes = {
+  embedded: PropTypes.bool,
+  planningProjectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  onBack: PropTypes.func,
+  onOpenGenerationWizard: PropTypes.func,
 }
 
 export default PlannerWorkspacePage
