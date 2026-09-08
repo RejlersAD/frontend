@@ -67,6 +67,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionError, setRejectionError] = useState('');
   const [signature, setSignature] = useState('');
+  const [signatureLoading, setSignatureLoading] = useState(false);
+  const [signatureError, setSignatureError] = useState('');
   const [referralTarget, setReferralTarget] = useState('moe');
   const [referralRemarks, setReferralRemarks] = useState('');
   const [referralError, setReferralError] = useState('');
@@ -84,6 +86,24 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const [linkedPoPreviewRetryKey, setLinkedPoPreviewRetryKey] = useState(0);
   const pdfFrameRef = useRef(null);
   const pdfSourceRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let active = true;
+    setSignatureLoading(true);
+    setSignatureError('');
+    apiClient.get('/users/employees/my-signature/', { suppressErrorToast: true })
+      .then(({ data }) => {
+        if (!active) return;
+        setSignature(data?.signature || '');
+        if (!data?.signature) setSignatureError('Add a signature in Profile > My Signature before approving.');
+      })
+      .catch(() => {
+        if (active) setSignatureError('Your saved signature could not be loaded.');
+      })
+      .finally(() => { if (active) setSignatureLoading(false); });
+    return () => { active = false; };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !requisition?.linked_po_id) {
@@ -468,12 +488,16 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       alert(`Action Locked: Awaiting review by ${currentStageLabel}`);
       return;
     }
+    if (!signature) {
+      alert('Add your signature in Profile > My Signature before approving.');
+      return;
+    }
 
     setLoading(true);
     try {
       const response = await apiClient.post(
         `/procurement/requisitions/${requisition.id}/${config.approveEndpoint}/`,
-        { signature: signature || '' }
+        { signature: '' }
       );
 
       alert(`Requisition approved by ${config.label}!`);
@@ -995,16 +1019,14 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                     </h3>
 
                     <div className="mb-4">
-                      <label className="block text-xs font-medium text-gray-700 mb-2">
-                        Digital Signature (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={signature}
-                        onChange={(e) => setSignature(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Enter your name or signature"
-                      />
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <label className="block text-xs font-medium text-gray-700">Saved Signature</label>
+                        <button type="button" onClick={() => navigate('/profile?tab=signature')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Manage signature</button>
+                      </div>
+                      <div className={`flex min-h-20 items-center justify-center rounded-lg border p-3 ${signatureError ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+                        {signatureLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin text-indigo-600" /> : signature ? <img src={signature} alt="Saved signature" className="max-h-16 max-w-[220px] object-contain" /> : <p className="text-center text-xs font-medium text-amber-700">{signatureError}</p>}
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-500">This image will be copied into the approval record.</p>
                     </div>
 
                     <div className="space-y-3">

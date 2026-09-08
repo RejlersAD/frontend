@@ -40,6 +40,7 @@ import EmployeeWorkforceSchedulePanel from '../../components/HR/EmployeeWorkforc
 import UnifiedHRWorkspacePanel from '../../components/HR/UnifiedHRWorkspacePanel'
 import HRAssistantPanel from '../../components/HR/HRAssistantPanel'
 import EmployeeTabLoading from '../../components/HR/EmployeeTabLoading'
+import MySignaturePanel from '../../components/HR/MySignaturePanel'
 import Profile from '../Profile'
 import apiClient from '../../services/api.service'
 import { updateUser } from '../../store/slices/authSlice'
@@ -54,6 +55,7 @@ import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR,
 const ESS_TABS = [
   { id: 'overview',    label: 'Overview',        icon: 'HomeIcon' },
   { id: 'career',      label: 'Career Profile',  icon: 'AcademicCapIcon' },
+  { id: 'signature',   label: 'My Signature',    icon: 'PencilSquareIcon' },
   { id: 'workspace',   label: 'My Work',         icon: 'Squares2X2Icon' },
   { id: 'leave',       label: 'Leave',           icon: 'CalendarDaysIcon' },
   { id: 'attendance',  label: 'Attendance',      icon: 'ClipboardDocumentCheckIcon' },
@@ -4019,6 +4021,9 @@ export default function EmployeeSelfService() {
 
       case 'career':
         return <Profile embedded />
+
+      case 'signature':
+        return <MySignaturePanel />
 
       case 'leave':
         return (
