@@ -209,13 +209,6 @@ const NAV_BUTTONS_CONFIG = [
     hoverShadowColor: 'rgba(236,72,153,0.6)',
     description: 'Extract line tags from P&ID drawings'
   },
-  // SOFT-CODED: A second, disabled "Try V2 Beta" entry used to sit here,
-  // pointing at /engineering/process/pid-verification (PIDVerificationV2.jsx
-  // — a *different* "V2", the verification-flow rewrite, not this Line List
-  // Extractor). It was never enabled and its own comment already called it
-  // stale/redirecting. Removed 2026-08-27 to leave a single, unambiguous
-  // recommendation button — re-add a properly labeled entry here if that
-  // verification-flow V2 is ever ready to be surfaced again.
 ];
 
 // BUTTON STYLING
@@ -476,6 +469,7 @@ const CATEGORY_LABELS = {
   line_designation: 'Line Designation',
   equipment:        'Equipment',
   notes:            'Notes / HOLDs',
+  legend:           'Legend & Symbol Match',
 };
 
 // Soft-coded: categories excluded from the view, overlay, and PDF export.
@@ -1160,10 +1154,22 @@ const PIDVerification = () => {
   const [polling,      setPolling]      = useState(false);
   const [documentId,   setDocumentId]   = useState(null);
   const [docStatus,    setDocStatus]    = useState(null);
-  // docCacheInfo — S3 (or local) results-cache status for the active document,
-  // used to label the Re-check button and flash "loaded from cache" messages.
-  // { cache_available, cache_timestamp, cache_matches_current_file } | null
-  const [docCacheInfo, setDocCacheInfo] = useState(null);
+  // 2026-09-08 REMOVED docCacheInfo (and the "Results loaded from cache" /
+  // "Re-check (use cache)" UI it drove). It was computed from get_status()'s
+  // cache_matches_current_file, which is ALWAYS true immediately after ANY
+  // completed analysis — fresh or not — because a fresh run's own
+  // completion is exactly what WRITES the matching cache entry
+  // (results_cache.py, saved unconditionally at the end of every pipeline
+  // run for fast future VIEWING only). So this badge/label fired on every
+  // single fresh "Start AI Analysis"/"Re-check" the instant it finished,
+  // falsely implying the just-completed run had been skipped in favour of
+  // a stale cached result — confirmed via a live document where the
+  // cache's analysis_timestamp landed 33ms after the document's own
+  // updated_at, i.e. written by that exact fresh run. reprocess_document()
+  // and upload_pid() never skip analysis (see their BUG FIX comments in
+  // views.py) — there is no longer any code path where "loaded from
+  // cache" is an accurate description of what happened, so the indicator
+  // is removed rather than relabeled.
   const [results,      setResults]      = useState(null);
   const [error,        setError]        = useState('');
   const [activeDrawing,setActiveDrawing]= useState(null);
@@ -1191,6 +1197,10 @@ const PIDVerification = () => {
   // recheckingDocId: tracks which history-list document is currently being re-queued.
   // null means no recheck in flight.  Set to document_id while the POST is in progress.
   const [recheckingDocId, setRecheckingDocId] = useState(null);
+  // viewingPreviousId: tracks which history-list document's saved results are
+  // currently being loaded via "View Previous Results" (instant DB read, no
+  // re-analysis — distinct from recheckingDocId, which re-runs the pipeline).
+  const [viewingPreviousId, setViewingPreviousId] = useState(null);
   const [lineTagsExpanded, setLineTagsExpanded] = useState(false);
   // qcPanelOpen: collapses the dark-header + nav-cards above the drawing canvas so
   // the full drawing is visible by default.  Toggle with the strip at the top.
@@ -1471,10 +1481,16 @@ const PIDVerification = () => {
   
   // ── Extraction Mode — OCR (Offline) vs AI Vision (BYOK) ───────────────────
   // SOFT-CODED: Extraction mode constants from pid-checker-v2 API
-  const SS_KEY_PROVIDER = 'radai_pidv1_byok_provider';
-  const SS_KEY_APIKEY   = 'radai_pidv1_byok_apikey';
-  const SS_KEY_REMEMBER = 'radai_pidv1_byok_remember';
-  const SS_KEY_CLAUDE_MODEL = 'radai_pidv1_byok_claude_model';
+  // BUG FIX: these were GLOBAL keys for the whole tab, so a key entered
+  // for one project leaked into every other project (including a
+  // brand-new one that had never seen a key) and showed up pre-filled
+  // before the user typed anything. Scoped by project id (I/O List's own
+  // AddToLegendModal/UploadCard hit and fixed the exact same issue this
+  // way — see IOListWorkflowPage.jsx) — a genuinely new project reads
+  // nothing and starts clean.
+  const SS_KEY_PROVIDER = `radai_pidv1_byok_provider::${selectedProject?.project_id || 'none'}`;
+  const SS_KEY_APIKEY   = `radai_pidv1_byok_apikey::${selectedProject?.project_id || 'none'}`;
+  const SS_KEY_CLAUDE_MODEL = `radai_pidv1_byok_claude_model::${selectedProject?.project_id || 'none'}`;
   const [extractionMode, setExtractionMode] = useState(MODE_OCR);
   const [visionProvider, setVisionProvider] = useState(
     () => sessionStorage.getItem(SS_KEY_PROVIDER) || VISION_PROVIDERS[0].id
@@ -1489,9 +1505,48 @@ const PIDVerification = () => {
     () => sessionStorage.getItem(SS_KEY_APIKEY) || ''
   );
   const [showApiKey, setShowApiKey] = useState(false);
-  const [rememberKey, setRememberKey] = useState(
-    () => sessionStorage.getItem(SS_KEY_REMEMBER) === '1'
-  );
+  // 2026-09-08: "Remember Key" checkbox removed — a successfully-tested
+  // key is now ALWAYS auto-saved per project (see handleTestConnection
+  // below), no manual opt-in step needed. SS_KEY_REMEMBER/rememberKey
+  // retired along with it; SS_KEY_APIKEY alone (still project-scoped) is
+  // now the single source of truth for "is a key saved for this project."
+  //
+  // The useState initializers above only run once, at mount — they can't
+  // react to selectedProject changing later within the same mounted page,
+  // so re-sync explicitly whenever the active project changes (belt and
+  // suspenders alongside the key scoping itself: correct even if this
+  // page never remounts on project switch).
+  //
+  // BUG FIX (2026-09-08): this used to unconditionally overwrite
+  // visionApiKey with `sessionStorage.getItem(SS_KEY_APIKEY) || ''` on
+  // every project switch. sessionStorage keys are scoped per-project
+  // (SS_KEY_APIKEY includes project_id), so a key is only ever present
+  // there for a project with a previously auto-saved key. Confirmed real
+  // symptom: type + successfully Test Connection a valid key, then
+  // create/switch to a (new) project — this effect fires on that
+  // project_id change, finds nothing saved for the NEW project's scoped
+  // key, and silently wipes visionApiKey back to '' — even though the
+  // key is still sitting right there in the field on screen and was just
+  // verified working seconds earlier. The next "Start AI Analysis" then
+  // sends analysis_mode='standard' with no key attached (handleUpload's
+  // own BUG FIX above only helps if visionApiKey is actually non-empty
+  // at submit time), and — Tesseract not being installed — fails with
+  // "Please install Tesseract OR add a Claude API key", which reads as
+  // "my valid key was ignored" because it effectively was.
+  // Fix: only ever ADOPT a stored value for the new project (a genuine
+  // "auto-saved key for a project I've used AI Vision on before" case);
+  // never CLEAR the in-memory value just because this project has none
+  // saved yet — an unsaved, just-typed/untested key must survive a
+  // project switch within the same page session.
+  useEffect(() => {
+    const storedProvider = sessionStorage.getItem(SS_KEY_PROVIDER);
+    if (storedProvider) setVisionProvider(storedProvider);
+    const storedModel = sessionStorage.getItem(SS_KEY_CLAUDE_MODEL);
+    if (storedModel) setVisionClaudeModel(storedModel);
+    const storedKey = sessionStorage.getItem(SS_KEY_APIKEY);
+    if (storedKey) setVisionApiKey(storedKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject?.project_id]);
   // "Test Connection" — quick BYOK key ping, independent of the main analysis.
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState(null); // { valid, message } | null
@@ -1501,6 +1556,14 @@ const PIDVerification = () => {
     try {
       const res = await testApiKey(visionProvider, visionApiKey.trim());
       setConnectionTestResult(res);
+      // Auto-save: a key that just PASSED Test Connection is saved for
+      // this project immediately, no "Remember Key" checkbox needed —
+      // next time this project is opened, SS_KEY_APIKEY restores it (see
+      // the project-switch effect above). An untested or failed key is
+      // never persisted — only ever a confirmed-working one.
+      if (res?.valid) {
+        sessionStorage.setItem(SS_KEY_APIKEY, visionApiKey.trim());
+      }
     } catch (err) {
       setConnectionTestResult({ valid: false, message: err?.response?.data?.message || 'Connection test failed. Please try again.' });
     } finally {
@@ -1515,6 +1578,23 @@ const PIDVerification = () => {
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => { fetchProjects(); }, []);
+
+  // "Go to V2"/"Go to V1" cross-navigation: when arriving via
+  // ?fromProject=<name> (see NAV_BUTTONS_CONFIG's preserveProject click
+  // handler below), auto-select the project with a matching name once the
+  // project list has loaded — V1 and V2 are separate apps with their own
+  // PIDVProject rows (no shared ID), so name is the only practical link.
+  // fromProjectAppliedRef guards this to run only once per page load, so
+  // it doesn't fight a user's later manual project switch.
+  const fromProjectAppliedRef = useRef(false);
+  useEffect(() => {
+    if (fromProjectAppliedRef.current || projects.length === 0) return;
+    const fromProjectName = new URLSearchParams(window.location.search).get('fromProject');
+    if (!fromProjectName) { fromProjectAppliedRef.current = true; return; }
+    fromProjectAppliedRef.current = true;
+    const match = projects.find(p => p.project_name?.toLowerCase() === fromProjectName.toLowerCase());
+    if (match) handleSelectProject(match);
+  }, [projects]);
   
   // ── Refresh Active Legend (V2 System) ─────────────────────────────────────
   const refreshActiveLegend = useCallback(async () => {
@@ -1540,20 +1620,16 @@ const PIDVerification = () => {
   // Load active legend on mount
   useEffect(() => { refreshActiveLegend(); }, [refreshActiveLegend]);
   
-  // ── Persist Vision BYOK settings to sessionStorage ────────────────────────
+  // ── Persist Vision BYOK provider/model choice to sessionStorage ───────────
+  // The API key itself is no longer saved here — see handleTestConnection's
+  // auto-save-on-successful-test, above (2026-09-08, replaces the old
+  // "Remember Key" checkbox flow that used to live in this same effect).
   useEffect(() => {
     if (extractionMode === MODE_VISION) {
       sessionStorage.setItem(SS_KEY_PROVIDER, visionProvider);
       sessionStorage.setItem(SS_KEY_CLAUDE_MODEL, visionClaudeModel);
-      if (rememberKey && visionApiKey) {
-        sessionStorage.setItem(SS_KEY_APIKEY, visionApiKey);
-        sessionStorage.setItem(SS_KEY_REMEMBER, '1');
-      } else {
-        sessionStorage.removeItem(SS_KEY_APIKEY);
-        sessionStorage.removeItem(SS_KEY_REMEMBER);
-      }
     }
-  }, [extractionMode, visionProvider, visionClaudeModel, visionApiKey, rememberKey]);
+  }, [extractionMode, visionProvider, visionClaudeModel]);
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2300,11 +2376,21 @@ const PIDVerification = () => {
     //   - claude_api_key: User's Claude key (for deep_claude mode)
     // ══════════════════════════════════════════════════════════════════════
     
-    if (extractionMode === MODE_OCR) {
-      // Standard OCR mode - no AI enhancement
-      fd.append('analysis_mode', 'standard');
-    } else if (extractionMode === MODE_VISION) {
-      // AI Vision mode - map provider to analysis mode
+    // BUG FIX: this used to gate sending the API key on
+    // `extractionMode === MODE_VISION` alone — a SEPARATE toggle from the
+    // API key field itself, defaulting to MODE_OCR. A real, confirmed
+    // symptom: a user pastes and successfully tests a valid key, clicks
+    // "Start AI Analysis" without also clicking the separate Vision-mode
+    // toggle, extractionMode is still MODE_OCR, the key is silently never
+    // attached, the request goes out as analysis_mode='standard' (OCR-
+    // only), and — since Tesseract isn't installed — it fails with
+    // "Please install Tesseract OR add a Claude API key", even though a
+    // perfectly valid key was right there in the form the whole time.
+    // Now: a present, non-empty key is used whenever it exists, regardless
+    // of which mode toggle is selected — "I typed a working key" is a
+    // clearer signal of intent than a separate, easy-to-miss toggle click.
+    // extractionMode still governs the true OCR-only case: no key entered.
+    if (visionApiKey.trim()) {
       if (visionProvider === 'openai') {
         fd.append('analysis_mode', 'enhanced_openai');
         fd.append('openai_api_key', visionApiKey.trim());
@@ -2312,19 +2398,33 @@ const PIDVerification = () => {
         fd.append('analysis_mode', 'deep_claude');
         fd.append('claude_api_key', visionApiKey.trim());
       }
+    } else {
+      // No key provided — standard OCR mode, no AI enhancement.
+      fd.append('analysis_mode', 'standard');
     }
-    
+
     // ══════════════════════════════════════════════════════════════════════
 
     try {
+      // BUG FIX: 120000ms (2 min) was too short for a real analysis run.
+      // Confirmed live (2026-09-08): a genuinely successful upload took
+      // 140s end-to-end in local dev (Celery EAGER mode blocks the HTTP
+      // response until the whole pipeline — Vision extraction, thinking,
+      // comparison engine, Excel/PDF export — finishes synchronously), so
+      // axios aborted the request as a timeout right as the backend was
+      // about to succeed. The frontend then showed the generic "Upload
+      // failed. Please try again." (no err.response on a client-side
+      // timeout) even though the analysis itself had completed. 40 minutes
+      // matches the backend Celery task's own hard time_limit (see
+      // TASK_CONFIG/soft_time_limit in tasks.py) plus headroom — large,
+      // dense P&IDs with thinking enabled can legitimately need it.
       const res = await axios.post(`${API_PREFIX}/upload-pid/`, fd, {
         headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
+        timeout: 2400000,
       });
       const { document_id, status: s } = res.data;
       setDocumentId(document_id);
       setDocStatus(s);
-      setDocCacheInfo(null);  // fresh upload — no cache can exist for a brand-new document yet
 
       // FIX: Always refresh history after successful upload to ensure UI reflects latest state
       // This fixes the issue where cached/immediate completions don't update the history
@@ -2418,13 +2518,13 @@ const PIDVerification = () => {
         consecutiveErrors = 0;  // reset error streak on any successful response
         const s = res.data.status;
         setDocStatus(s);
+        // Keep the History row's badge/Re-check-button gating in sync on
+        // every tick, not just at the end — see recheckDocument's
+        // postmortem comment for why a stale row status is what let a
+        // still-processing document's Re-check get clicked again (409).
+        updateHistoryStatus(docId, s);
         if (s === 'completed') {
           stopAll();
-          setDocCacheInfo({
-            cache_available: res.data.cache_available,
-            cache_timestamp: res.data.cache_timestamp,
-            cache_matches_current_file: res.data.cache_matches_current_file,
-          });
           await fetchResults(docId);
           if (selectedProject) fetchHistory(selectedProject.project_id);
         } else if (s === 'failed') {
@@ -2465,7 +2565,6 @@ const PIDVerification = () => {
     setElapsedSec(0);
     setOverrides({}); setOverridesSaved(false);
     setComparison(null);
-    setDocCacheInfo(null);
   };
 
   // recheckDocument — re-run the full P&ID quality check on an already-uploaded
@@ -2473,56 +2572,126 @@ const PIDVerification = () => {
   //
   // docId    : document_id (UUID string) of the document to re-check
   // fileName : display name used in flash messages only
+  // 2026-08-28 postmortem: recheckDocument only disabled its button for the
+  // ~1s round-trip of the POST /reprocess/ call itself (recheckingDocId
+  // resets in `finally`, right after that response lands) — NOT for the
+  // up-to-30-minute duration the actual re-check runs on the server. The
+  // History list's status badge for this row was also never updated after
+  // firing a re-check (no fetchHistory() call, and the poll loop below only
+  // ever updated the single currently-viewed document's docStatus, never
+  // the matching row in `history`). So for the entire real processing
+  // window, the row kept showing its OLD 'completed'/'failed' badge with a
+  // fully clickable Re-check button — an impatient click during that window
+  // hit reprocess_document while the document was still genuinely
+  // 'processing' server-side, and the backend correctly (by design) 409'd.
+  // Keeping the History row's status in sync — both right after firing and
+  // on every subsequent poll tick — closes that window.
+  const updateHistoryStatus = (docId, newStatus) => {
+    setHistory(prev => prev.map(h => h.document_id === docId ? { ...h, status: newStatus } : h));
+  };
+
   const recheckDocument = async (docId, fileName) => {
     if (recheckingDocId) return;          // prevent double-click
     setRecheckingDocId(docId);
     try {
-      // 1. Tell the backend to reset and re-queue — or, if the file is
-      //    unchanged since the last analysis, it returns the cached result
-      //    immediately (cache_status: "cache") without touching doc.status.
-      const res = await axios.post(
-        `${API_PREFIX}/reprocess/${docId}/`,
-        {},
-        { headers: authHeader(), timeout: 20000 },
-      );
-
-      if (res.data.cache_status === 'cache') {
-        // File unchanged — serve the already-completed results straight away,
-        // no polling needed (the backend never left the "completed" state).
-        const ts = res.data.analysis_timestamp
-          ? new Date(res.data.analysis_timestamp).toLocaleString()
-          : 'earlier';
-        flash('success', `Results loaded from cache (${ts}) — "${fileName}" is unchanged.`);
-        setDocCacheInfo({ cache_available: true, cache_timestamp: res.data.analysis_timestamp, cache_matches_current_file: true });
-        setDocumentId(docId);
-        setDocStatus(res.data.status);
-        setActiveDrawing(null);
-        setOverrides({});
-        setOverridesSaved(false);
-        setComparison(null);
-        await fetchResults(docId);
-        return;
+      // 0. Same analysis_mode/BYOK-key mapping handleUpload() uses — this
+      //    used to be an empty POST body, so the backend always ran with
+      //    no BYOK context at all: claude_api_key was always None, and the
+      //    Anthropic SDK silently fell back to its own (unset) environment
+      //    variable instead of the user's key on screen, producing a 401
+      //    on every Re-check in AI Vision mode. See _parse_byok_context()
+      //    in views.py for the backend half of this fix.
+      // BUG FIX: same fix as handleUpload() above — gating on
+      // `extractionMode === MODE_VISION` alone let a present, tested,
+      // valid key get silently dropped whenever the separate mode toggle
+      // was still on MODE_OCR, producing the exact same "Please install
+      // Tesseract OR add a Claude API key" failure on Re-check as on a
+      // fresh upload. A present key is used regardless of that toggle.
+      const reprocessBody = {};
+      if (visionApiKey.trim()) {
+        if (visionProvider === 'openai') {
+          reprocessBody.analysis_mode = 'enhanced_openai';
+          reprocessBody.openai_api_key = visionApiKey.trim();
+        } else if (visionProvider === 'claude') {
+          reprocessBody.analysis_mode = 'deep_claude';
+          reprocessBody.claude_api_key = visionApiKey.trim();
+        }
+      } else {
+        reprocessBody.analysis_mode = 'standard';
       }
 
-      flash('success', `File changed since last analysis — fresh analysis started for "${fileName}".`);
+      // 1. Tell the backend to reset and re-queue. reprocess_document()
+      //    ALWAYS runs a fresh pipeline now (see its BUG FIX comment in
+      //    views.py) — it never serves a stale cached result here instead,
+      //    so there's nothing to branch on in the response; it always
+      //    proceeds to polling below.
+      // BUG FIX: 20000ms (20s) was even more undersized than handleUpload()'s
+      // old 120000ms — in local dev (Celery EAGER mode), this POST blocks for
+      // the entire pipeline duration too, not just an enqueue round-trip.
+      // Matches handleUpload()'s 40-minute timeout for the same reason.
+      await axios.post(
+        `${API_PREFIX}/reprocess/${docId}/`,
+        reprocessBody,
+        { headers: authHeader(), timeout: 2400000 },
+      );
+
+      flash('success', `Fresh analysis started for "${fileName}".`);
 
       // 2. Load this document as the active one so the user sees live progress
       setResults(null);
       setDocumentId(docId);
       setDocStatus('uploaded');
-      setDocCacheInfo(null);
       setActiveDrawing(null);
       setOverrides({});
       setOverridesSaved(false);
       setComparison(null);
+      // Reflect the new non-terminal status in the History row immediately —
+      // see postmortem above — so its Re-check button hides/disables right
+      // away instead of staying clickable for the whole processing window.
+      updateHistoryStatus(docId, 'uploaded');
 
       // 3. Start the same polling loop used after a fresh upload
       startPolling(docId);
     } catch (e) {
-      const msg = e?.response?.data?.error || 'Re-check failed — please try again.';
-      flash('error', msg);
+      if (e?.response?.status === 409) {
+        // Not a real failure — the document is already being (re)processed,
+        // most likely from an earlier click during this same run. Say so
+        // plainly instead of the generic "failed, try again" (which reads
+        // as an error and invites yet another click/409 loop).
+        flash('info', e?.response?.data?.error || 'Already processing — please wait for it to finish before re-checking again.');
+      } else {
+        const msg = e?.response?.data?.error || 'Re-check failed — please try again.';
+        flash('error', msg);
+      }
     } finally {
       setRecheckingDocId(null);
+    }
+  };
+
+  // viewPreviousResults — backs the "Re-check (use cache)" button. Loads a
+  // document's already-saved findings straight from the DB/S3 cache (see
+  // results_cache.py's module docstring) via the existing /results/
+  // endpoint. No pipeline run, no polling, no reprocess call, no API key
+  // used — this is the instant companion to "Re-check (run fresh)"
+  // (recheckDocument, below), which always ignores the cache and re-runs.
+  const viewPreviousResults = async (docId, fileName) => {
+    if (viewingPreviousId || recheckingDocId) return;
+    setViewingPreviousId(docId);
+    try {
+      setResults(null);
+      setDocumentId(docId);
+      setDocStatus('completed');
+      setActiveDrawing(null);
+      setOverrides({});
+      setOverridesSaved(false);
+      setComparison(null);
+      setError('');
+      await fetchResults(docId);
+      flash('success', `Loaded previous results for "${fileName}".`);
+    } catch (e) {
+      flash('error', 'Failed to load previous results.');
+    } finally {
+      setViewingPreviousId(null);
     }
   };
 
@@ -2929,8 +3098,37 @@ const PIDVerification = () => {
       }
     }
 
+    // BUG FIX (2026-09-08): FH (Fallback Hash) markers are a deterministic
+    // pseudo-position — a hash of the finding's identity, not derived from
+    // the drawing at all — meant as "a few uncertain dots among mostly-real
+    // ones." Root cause of a real, confirmed, reproducible symptom: any
+    // document with NO tag_positions data whatsoever (e.g. a scanned/
+    // image-only PDF processed without Tesseract, real key confirmed live)
+    // has literally zero real positions for every single finding, so 100%
+    // of markers fell into the FH branch — the whole canvas covered in
+    // hash-scattered dots with no relationship to the actual drawing,
+    // which reads as broken/misleading rather than "a few unsure ones."
+    // Fix: only fabricate an FH position when at least one OTHER finding on
+    // THIS drawing resolved a real (or engineer-corrected) position — i.e.
+    // only when "mostly real, a few uncertain" is actually true. When zero
+    // real positions exist anywhere on the drawing, skip FH entirely and
+    // return no nodes — findings are never lost (they still render in the
+    // Findings table below, via anchoringFailedEntirely's fallback), just
+    // not spatially misplaced on an image where the position is fabricated
+    // for literally every marker. Applies generically to any document that
+    // hits this condition, not one specific file.
+    const groupEntries = [...grouped];
+    let anyRealPosition = false;
+    for (const [nk, x] of groupEntries) {
+      const corrKey = `${activeDrawing || 'drawing'}:${x.finding.id}`;
+      if (calibCorrections[corrKey] || resolveReal(nk, x.rawKey)) {
+        anyRealPosition = true;
+        break;
+      }
+    }
+
     const nodes = [];
-    for (const [nk, x] of grouped) {
+    for (const [nk, x] of groupEntries) {
       const real = resolveReal(nk, x.rawKey);
 
       // Apply any stored engineer correction for this finding — always wins over
@@ -2950,8 +3148,10 @@ const PIDVerification = () => {
         const yp = real.y_pct ?? real.all?.[0]?.y_pct;
         const pos = applyCalib(xp, yp);
         nodes.push({ ...x, ...pos, anchored: true, tier: real.tier || 'P?' });
-      } else {
-        // Deterministic pseudo-position from FNV-1a hash (dashed marker).
+      } else if (anyRealPosition) {
+        // Deterministic pseudo-position from FNV-1a hash (dashed marker) —
+        // only shown when at least one other finding on this drawing has a
+        // real position (see anyRealPosition's own comment above).
         const seed = `${activeDrawing || 'drawing'}:${nk}`;
         nodes.push({
           ...x,
@@ -2961,6 +3161,8 @@ const PIDVerification = () => {
           tier: 'FH',
         });
       }
+      // else: no real position for this finding AND none anywhere on this
+      // drawing — skip entirely rather than fabricate one (see above).
     }
     return nodes;
   };
@@ -3155,14 +3357,22 @@ const PIDVerification = () => {
                 {/* Navigation Buttons - Soft-coded from NAV_BUTTONS_CONFIG */}
                 {NAV_BUTTONS_CONFIG.filter(btn => btn.enabled).map((btnConfig, idx) => {
                   // Icon mapping
-                  const IconComponent = btnConfig.icon === 'Sparkles' ? Sparkles 
-                    : btnConfig.icon === 'Search' ? Search 
+                  const IconComponent = btnConfig.icon === 'Sparkles' ? Sparkles
+                    : btnConfig.icon === 'Search' ? Search
+                    : btnConfig.icon === 'GitBranch' ? GitBranch
                     : Sparkles;
-                  
+
+                  // preserveProject: carry the currently selected project's
+                  // name across to the other version via a query param, so
+                  // it can try to auto-select the same-named project.
+                  const targetRoute = (btnConfig.preserveProject && selectedProject?.project_name)
+                    ? `${btnConfig.route}?fromProject=${encodeURIComponent(selectedProject.project_name)}`
+                    : btnConfig.route;
+
                   return (
                     <button
                       key={idx}
-                      onClick={() => navigate(btnConfig.route)}
+                      onClick={() => navigate(targetRoute)}
                       title={btnConfig.description}
                       style={{
                         display: 'flex',
@@ -5804,21 +6014,12 @@ const PIDVerification = () => {
                             </p>
                           )}
 
-                          {/* Remember Key Checkbox */}
-                          <label className="flex items-center gap-2 mt-2 cursor-pointer group">
-                            <input
-                              type="checkbox"
-                              checked={rememberKey}
-                              onChange={(e) => setRememberKey(e.target.checked)}
-                              className="w-4 h-4 text-purple-600 border-purple-300 rounded focus:ring-2 focus:ring-purple-500 cursor-pointer"
-                            />
-                            <span className="text-xs text-slate-600 group-hover:text-slate-800 transition-colors">
-                              Remember key for this session
-                            </span>
-                          </label>
-                          
-                          <p className="text-xs text-purple-600 mt-1.5 flex items-center gap-1">
-                            <Shield className="w-3 h-3" /> Stored securely in session (auto-cleared on browser close)
+                          {/* 2026-09-08: "Remember Key" checkbox removed — a
+                              successfully-tested key is now auto-saved for
+                              this project automatically (handleTestConnection),
+                              no manual opt-in needed. */}
+                          <p className="text-xs text-purple-600 mt-2 flex items-center gap-1">
+                            <Shield className="w-3 h-3" /> A verified key is saved automatically for this project — cleared when the tab closes
                           </p>
                         </div>
 
@@ -6545,10 +6746,9 @@ const PIDVerification = () => {
                     <div className="min-w-0">
                       <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Active File</p>
                       <p className="text-sm font-bold text-slate-800 truncate max-w-[220px]" title={results.file_name}>{results.file_name}</p>
-                      {docCacheInfo?.cache_matches_current_file && (
-                        <p className="text-[10px] text-violet-500 font-medium mt-0.5">
-                          Results loaded from cache
-                          {docCacheInfo.cache_timestamp && ` (${new Date(docCacheInfo.cache_timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })})`}
+                      {results.updated_at && (
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                          Last analyzed {new Date(results.updated_at).toLocaleString()}
                         </p>
                       )}
                     </div>
@@ -6571,16 +6771,35 @@ const PIDVerification = () => {
                   ))}
                   {/* Spacer + action buttons */}
                   <div className="ml-auto flex items-center gap-2 flex-wrap">
-                    {/* Re-check: re-run the quality check on the same file — no re-upload needed.
-                        Label reflects docCacheInfo (from the last /status/ poll or reprocess
-                        response) — "use cache" when the file is unchanged since last analysis,
-                        "run fresh" when it changed, plain "Re-check" when cache status is unknown. */}
+                    {/* Two explicit, separately-labeled Re-check actions — deliberately
+                        NOT one ambiguous "Re-check" button:
+                        - "Re-check (use cache)" → GET /results/ only. No pipeline run,
+                          no API key used, instant. Same call as viewPreviousResults().
+                        - "Re-check (run fresh)" → POST /reprocess/, which clears the
+                          document's cache server-side (see reprocess_document()'s
+                          explicit cache clear in views.py) and always runs a brand-new
+                          analysis, using the configured API key. */}
+                    <button
+                      onClick={() => viewPreviousResults(documentId, results.file_name)}
+                      disabled={!!viewingPreviousId || !!recheckingDocId || polling}
+                      title="Load the last completed results from cache — instant, no API calls"
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px disabled:opacity-50"
+                      style={{
+                        background: '#ecfdf5',
+                        border: '1.5px solid #86efac',
+                        color: '#059669',
+                        boxShadow: '0 2px 8px rgba(16,185,129,0.12)',
+                      }}
+                    >
+                      {viewingPreviousId === documentId
+                        ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Loading…</>
+                        : <><Eye className="w-3.5 h-3.5" /> Re-check (use cache)</>
+                      }
+                    </button>
                     <button
                       onClick={() => recheckDocument(documentId, results.file_name)}
-                      disabled={!!recheckingDocId || polling}
-                      title={docCacheInfo?.cache_matches_current_file
-                        ? 'File unchanged — will load the cached result instantly'
-                        : 'Re-run quality check without re-uploading the file'}
+                      disabled={!!recheckingDocId || !!viewingPreviousId || polling}
+                      title="Ignore cache completely and run a brand-new analysis — uses the API key"
                       className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px disabled:opacity-50"
                       style={{
                         background: '#f5f3ff',
@@ -6591,11 +6810,7 @@ const PIDVerification = () => {
                     >
                       {recheckingDocId === documentId
                         ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Queuing…</>
-                        : docCacheInfo?.cache_matches_current_file
-                        ? <><RefreshCw className="w-3.5 h-3.5" /> Re-check (use cache)</>
-                        : docCacheInfo?.cache_available
-                        ? <><RefreshCw className="w-3.5 h-3.5" /> Re-check (run fresh)</>
-                        : <><RefreshCw className="w-3.5 h-3.5" /> Re-check</>
+                        : <><RefreshCw className="w-3.5 h-3.5" /> Re-check (run fresh)</>
                       }
                     </button>
                     <button onClick={downloadExcel} disabled={downloadingXlsx}
@@ -6625,6 +6840,181 @@ const PIDVerification = () => {
                   </div>
                 </div>
               </div>
+
+              {/* ── No-text-extracted warning (document-wide) ─────────────
+                  2026-08-28: a document can finish status='completed' with
+                  almost no findings when Tesseract isn't installed AND
+                  every page's AI Vision call failed (confirmed live: an
+                  out-of-credits Anthropic key produced a 400 on every page,
+                  _run_vision_ocr() swallows that per-page and returns empty
+                  text rather than failing the document, so it "completes"
+                  with raw_text_length=0 on every page and no indication
+                  why). Surfaces that specific state clearly instead of
+                  leaving the user staring at a near-empty completed report.
+                  Wording doesn't list "low PDF quality" as a shrug-worthy
+                  excuse — the Vision low-yield retry (vision_extractor.py)
+                  already gives genuinely faint scans a second, stronger-
+                  preprocessed pass before this banner's condition can even
+                  be reached, so by the time every page truly has zero text,
+                  credits/key are the far more likely real cause. */}
+              {results.drawings?.length > 0 &&
+                results.drawings.every(d => d.metadata?.extraction_summary?.no_text_detected) && (
+                <div className="rounded-2xl p-4 border" style={{ background: '#fffbeb', borderColor: '#fde68a' }}>
+                  <p className="text-sm font-semibold text-amber-800">
+                    ⚠️ No text extracted. Check API key credits or try OCR mode.
+                  </p>
+                </div>
+              )}
+
+              {/* 2026-09-08: "Legend & Symbol Matches" section removed per
+                  explicit request — user doesn't want it shown. It read
+                  from allIssues.filter(f => f.category === 'legend') (V1's
+                  bridge findings, rule_id LGN-004/005/006 — see tasks.py's
+                  _bridge_xref_to_rule_findings); the backend still computes
+                  and persists these findings exactly as before, this was a
+                  display-only removal. Its "+ Add to Legend" action was the
+                  only thing that ever opened AddToLegendModal in this file,
+                  so that state/import were removed alongside it rather than
+                  left as dead code. */}
+
+              {/* ── Cross-Reference (multi-page tags + continuation markers) ──
+                  2026-08-28: populated by the backend's run_cross_reference()
+                  (apps.pid_verification.tasks, called once per document from
+                  _finalize_document, after every page's PIDVTagIndex/
+                  continuation_refs data exists) — persisted as regular
+                  PIDVFinding rows (category='cross_reference'), so it's
+                  already inside `allIssues` with no separate fetch.
+                  rule_id discriminates the two finding kinds:
+                    XREF-001            → same tag found on 2+ pages
+                    XREF-002/003/004    → continuation marker confirmed/
+                                           missing/unresolvable
+                  Mirrors PIDVerificationV2.jsx's identical panel. */}
+              {(() => {
+                const xrefFindings = allIssues.filter(f => f.category === 'cross_reference');
+                if (xrefFindings.length === 0) return null;
+
+                const multiPageTags = xrefFindings
+                  .filter(f => f.rule_id === 'XREF-001')
+                  .map(f => {
+                    const m = f.issue_observed.match(/^Tag (.+) found on pages (.+)$/);
+                    const typeMatch = f.evidence.match(/type=(\w+)/);
+                    return {
+                      key: f.id,
+                      tag: m ? m[1] : f.issue_observed,
+                      pages: m ? m[2] : '—',
+                      type: typeMatch ? typeMatch[1] : '—',
+                    };
+                  });
+
+                const continuations = xrefFindings
+                  .filter(f => ['XREF-002', 'XREF-003', 'XREF-004'].includes(f.rule_id))
+                  .map(f => {
+                    const m = f.issue_observed.match(/on page (\d+) .+ sheet (.+)$/);
+                    const status = f.rule_id === 'XREF-002' ? 'confirmed' : f.rule_id === 'XREF-003' ? 'missing' : 'unresolvable';
+                    return {
+                      key: f.id,
+                      fromPage: m ? m[1] : '—',
+                      toPage: m ? m[2] : '—',
+                      status,
+                      text: f.issue_observed,
+                    };
+                  });
+
+                const confirmedCount = continuations.filter(c => c.status === 'confirmed').length;
+                const missingCount = continuations.filter(c => c.status === 'missing').length;
+
+                const STATUS_META = {
+                  confirmed:    { label: 'Confirmed ✅',    color: '#16a34a', bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.25)' },
+                  missing:      { label: 'Missing ❌',      color: '#dc2626', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)' },
+                  unresolvable: { label: 'Unresolvable ⚠️', color: '#b45309', bg: 'rgba(217,119,6,0.08)',  border: 'rgba(217,119,6,0.25)' },
+                };
+
+                return (
+                  <div className="rounded-2xl p-4" style={{ ...T.panel, animation: 'fadeUp 0.45s ease-out 0.1s both' }}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Link className="w-4 h-4" style={{ color: '#0ea5e9' }} />
+                      <h3 className="text-sm font-bold text-slate-800">Cross-Reference (Multi-Page Analysis)</h3>
+                    </div>
+
+                    <div className="flex gap-2 flex-wrap mb-3">
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+                        Total cross-referenced tags: {multiPageTags.length}
+                      </span>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a' }}>
+                        Confirmed continuations: {confirmedCount} ✅
+                      </span>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626' }}>
+                        Missing continuations: {missingCount} ❌
+                      </span>
+                    </div>
+
+                    {multiPageTags.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Multi-Page Tags</p>
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 text-slate-500">
+                                <th className="text-left px-3 py-1.5 font-semibold">Tag</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">Pages</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">Type</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {multiPageTags.map(row => (
+                                <tr key={row.key} className="border-t border-slate-100">
+                                  <td className="px-3 py-1.5 font-medium text-slate-700">{row.tag}</td>
+                                  <td className="px-3 py-1.5 text-slate-600">{row.pages}</td>
+                                  <td className="px-3 py-1.5 text-slate-500 capitalize">{row.type}</td>
+                                  <td className="px-3 py-1.5">
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>
+                                      Cross-Referenced
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {continuations.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Continuations (Off-Page Connectors)</p>
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 text-slate-500">
+                                <th className="text-left px-3 py-1.5 font-semibold">From Page</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">To Page</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {continuations.map(row => {
+                                const meta = STATUS_META[row.status];
+                                return (
+                                  <tr key={row.key} className="border-t border-slate-100" title={row.text}>
+                                    <td className="px-3 py-1.5 font-medium text-slate-700">{row.fromPage}</td>
+                                    <td className="px-3 py-1.5 text-slate-600">{row.toPage}</td>
+                                    <td className="px-3 py-1.5">
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
+                                        {meta.label}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* ── Drawing tabs (always visible when multiple drawings) ── */}
               {results.drawings?.length > 1 && (
@@ -7170,6 +7560,18 @@ const PIDVerification = () => {
                           onClick={() => setCorrectionMode(false)}
                           className="ml-auto text-amber-500 hover:text-amber-700 font-bold text-sm leading-none flex-shrink-0"
                         >✕</button>
+                      </div>
+                    )}
+
+                    {/* No real position data anywhere on this drawing (see
+                        buildOverlayNodes's anyRealPosition — fabricated
+                        Fallback-Hash markers are skipped entirely in this
+                        case rather than scattered over the whole canvas).
+                        Findings are never lost — they're in the table below. */}
+                    {!drawingImageLoading && overlayNodes.length === 0 && (activeDrawingData?.issues?.length ?? 0) > 0 && (
+                      <div className="mb-2 flex items-center gap-2 px-3 py-3 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-xs text-slate-500">
+                        <MapPin className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        No position data available for this drawing. View findings in the table below.
                       </div>
                     )}
 
@@ -7745,14 +8147,33 @@ const PIDVerification = () => {
                     {/* ── Filter bar ── */}
                     {/* ── Filter bar ── */}
                     {(() => {
+                      // BUG FIX (2026-09-08): FINDINGS_TABLE_ANCHORED_ONLY hides any
+                      // finding whose evidence key isn't in anchoredEvidenceKeys — by
+                      // design, to keep the table restricted to findings with a real,
+                      // visible canvas marker. Confirmed real, live symptom: a scanned/
+                      // image-only P&ID processed via Vision (Tesseract not installed)
+                      // has NO tag_positions at all — _extract_tag_positions()'s own
+                      // scanned-PDF fallback path requires Tesseract's image_to_data(),
+                      // unavailable here — so anchoredEvidenceKeys ends up a genuinely
+                      // EMPTY Set, not just a small one. Before this fix that was
+                      // indistinguishable from "every one of these findings individually
+                      // has no anchor": a document with 89 real, valid findings (visible
+                      // in the stats bar, confirmed non-empty in activeDrawingData.issues)
+                      // showed "0 of 0" and an empty table. An empty anchor set for the
+                      // WHOLE drawing means anchoring itself failed, not that the
+                      // findings should be hidden — fall back to showing everything in
+                      // that case. The anchored-only filter still applies normally
+                      // whenever it actually has at least one anchor to work with.
+                      const anchoringFailedEntirely = !!anchoredEvidenceKeys && anchoredEvidenceKeys.size === 0;
                       const visibleIssues = activeDrawingData.issues.filter(f =>
                         !isFindingNoisy(f) &&
                         !HIDDEN_CATEGORIES.has(f.category) &&
                         !HIDDEN_SEVERITIES.has((f.severity || '').toLowerCase()) &&
                         // Only include findings whose evidence key maps to a confirmed
                         // anchored drawing marker (tiers P1–P5 / CX); FH-only findings
-                        // have no real canvas position and are hidden when the filter is on.
-                        (!anchoredEvidenceKeys || anchoredEvidenceKeys.has(_normEvKey(inferEvidenceKey(f))))
+                        // have no real canvas position and are hidden when the filter is
+                        // on — unless anchoring failed for the whole drawing (see above).
+                        (!anchoredEvidenceKeys || anchoringFailedEntirely || anchoredEvidenceKeys.has(_normEvKey(inferEvidenceKey(f))))
                       );
                       const availableCategories = [...new Set(visibleIssues.map(f => f.category))];
                       const filteredIssues = visibleIssues.filter(f => {
@@ -7802,7 +8223,7 @@ const PIDVerification = () => {
                             </select>
 
                             <span className="text-xs text-slate-400 ml-auto">
-                              {filteredIssues.length} of {visibleIssues.length} {FINDINGS_TABLE_ANCHORED_ONLY ? 'on-drawing ' : ''}finding{visibleIssues.length !== 1 ? 's' : ''}
+                              {filteredIssues.length} of {visibleIssues.length} {FINDINGS_TABLE_ANCHORED_ONLY && !anchoringFailedEntirely ? 'on-drawing ' : ''}finding{visibleIssues.length !== 1 ? 's' : ''}
                               {activeFilterCount > 0 && (
                                 <button
                                   onClick={() => { setFilterSeverity('all'); setFilterCategory('all'); setFilterStatus('all'); }}
@@ -7812,6 +8233,16 @@ const PIDVerification = () => {
                               )}
                             </span>
                           </div>
+
+                          {/* Heads-up when the anchored-only filter fell back to
+                              showing everything (see anchoringFailedEntirely above) —
+                              findings are real and complete, but won't have position
+                              markers on the drawing canvas since none could be resolved. */}
+                          {anchoringFailedEntirely && visibleIssues.length > 0 && (
+                            <div className="mx-5 mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                              Position data was not available for this drawing (common for a scanned page without OCR), so findings are not shown as markers on the canvas — the list below is complete.
+                            </div>
+                          )}
 
                           {/* ── Duplicate Line Summary Banner ── */}
                           {(() => {
@@ -16164,7 +16595,7 @@ const PIDVerification = () => {
                       </div>
                     </div>
                     <p className="text-[11px] text-purple-600 flex items-center gap-1">
-                      <Shield className="w-3 h-3" /> Stored securely in session (auto-cleared on browser close)
+                      <Shield className="w-3 h-3" /> A verified key is saved automatically for this project — cleared when the tab closes
                     </p>
                   </div>
 
@@ -17418,12 +17849,37 @@ const PIDVerification = () => {
                       <a href={d.pdf_s3_url} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-red-600 hover:underline flex-shrink-0">PDF</a>
                     )}
-                    {/* Re-check button — available for completed, failed and legend_pending docs */}
+                    {/* Re-check (use cache) — instant load of already-saved findings from
+                        the database/S3 cache, no re-analysis, no API calls (see
+                        viewPreviousResults). Companion to Re-check (run fresh) below,
+                        which always ignores the cache and re-runs the pipeline. */}
+                    {d.status === 'completed' && (
+                      <button
+                        onClick={() => viewPreviousResults(d.document_id, d.file_name)}
+                        disabled={viewingPreviousId === d.document_id || recheckingDocId === d.document_id}
+                        title={`Load the results from ${new Date(d.updated_at).toLocaleString()} from cache — instant, no API calls`}
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all hover:-translate-y-px disabled:opacity-50 flex-shrink-0"
+                        style={{
+                          background: viewingPreviousId === d.document_id ? '#f1f5f9' : '#ecfdf5',
+                          border: '1px solid #86efac',
+                          color: '#059669',
+                        }}
+                      >
+                        {viewingPreviousId === d.document_id
+                          ? <><Loader className="w-3 h-3 animate-spin" /> Loading…</>
+                          : <><Eye className="w-3 h-3" /> Re-check (use cache)</>
+                        }
+                      </button>
+                    )}
+                    {/* Re-check (run fresh) — ignores cache completely, clears it
+                        server-side, and always runs a brand-new analysis with the
+                        configured API key. Available for completed, failed and
+                        legend_pending docs. */}
                     {['completed', 'failed', 'legend_pending'].includes(d.status) && (
                       <button
                         onClick={() => recheckDocument(d.document_id, d.file_name)}
-                        disabled={recheckingDocId === d.document_id}
-                        title="Re-run quality check without re-uploading"
+                        disabled={recheckingDocId === d.document_id || viewingPreviousId === d.document_id}
+                        title="Ignore cache completely and run a brand-new analysis — uses the API key"
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all hover:-translate-y-px disabled:opacity-50 flex-shrink-0"
                         style={{
                           background: recheckingDocId === d.document_id ? '#f1f5f9' : '#f5f3ff',
@@ -17433,7 +17889,7 @@ const PIDVerification = () => {
                       >
                         {recheckingDocId === d.document_id
                           ? <><Loader className="w-3 h-3 animate-spin" /> Queuing…</>
-                          : <><RefreshCw className="w-3 h-3" /> Re-check</>
+                          : <><RefreshCw className="w-3 h-3" /> Re-check (run fresh)</>
                         }
                       </button>
                     )}

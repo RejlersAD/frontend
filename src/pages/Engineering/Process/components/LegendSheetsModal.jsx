@@ -2,14 +2,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'react-toastify'
 import * as XLSX from 'xlsx'
-import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff } from 'lucide-react'
+import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff, Pencil } from 'lucide-react'
 
 import {
   listLegends, createLegend, updateLegend, deleteLegend,
   activateLegend, getLegendDefaultTemplate, getSymbolImages,
   getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
-  LEGEND_SECTIONS,
+  deleteLegendLookupEntry, LEGEND_SECTIONS,
 } from '../../../../services/pidCheckerV2API'
+import AddToLegendModal from './AddToLegendModal'
 import { emitLegendSync, subscribeLegendSync, LEGEND_SYNC_ACTIONS, LEGEND_SYNC_POLL_MS } from '../../../../config/legendSheetsRules'
 import { parseLegendFile, IMPORT_ACCEPT } from '../../../../config/legendSheetsImport'
 
@@ -740,6 +741,15 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                   onError={setJsonError}
                   jsonError={jsonError}
                   activeSection={activeSection}
+                  // BUG FIX: 'activeSection' flips synchronously on tab
+                  // click, but 'selected'/'draftDefinition' (what's
+                  // actually rendered as fields) only update once that
+                  // section's legends finish (re)loading — confirmed live
+                  // as a real, clickable-through gap. 'selected.section'
+                  // updates in the same render as the displayed fields,
+                  // so it can never disagree with what's on screen — see
+                  // its use in AddToLegendModal's initialSection below.
+                  selectedSection={selected?.section}
                   symbolImages={symbolImages}
                   projectId={projectId}
                   onImagesChanged={refreshSymbolImages}
@@ -860,10 +870,33 @@ function tabBtnStyle(active) {
 // Source-of-truth is a JSON string on the parent; on every change we
 // re-emit the entire definition object.
 // ═════════════════════════════════════════════════════════════════════
-function FormEditor({ definition, onChange, onError, jsonError, activeSection, symbolImages, projectId, onImagesChanged }) {
+function FormEditor({ definition, onChange, onError, jsonError, activeSection, selectedSection, symbolImages, projectId, onImagesChanged }) {
   // Tracks which symbol keys ("section::NAME") currently have an upload in
   // flight, so each cell can show its own small spinner independently.
   const [uploadingKeys, setUploadingKeys] = useState({})
+
+  // Quick lookup-row editor — instant-save (add-lookup/edit-lookup/
+  // delete-lookup), separate from this form's own bulk textarea + Save
+  // button above. { idx, mode: 'add'|'edit', code? } or null.
+  const [lookupRowEditor, setLookupRowEditor] = useState(null)
+  const [deletingLookupKey, setDeletingLookupKey] = useState('')
+
+  const handleDeleteLookupRow = async (idx, field, code) => {
+    if (!window.confirm(`Remove "${code}" from this legend?`)) return
+    const rowKey = `${idx}::${code}`
+    setDeletingLookupKey(rowKey)
+    try {
+      await deleteLegendLookupEntry({ section: activeSection, code })
+      const nextLookup = { ...field.lookup }
+      delete nextLookup[code]
+      updateField(idx, { lookup: nextLookup })
+      toast.success(`"${code}" removed from the legend.`)
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.message || 'Failed to remove.')
+    } finally {
+      setDeletingLookupKey('')
+    }
+  }
 
   // Shared default pictures (repo static files, no DB) for whichever of the
   // active section's lookup names this project hasn't uploaded its own
@@ -1123,6 +1156,77 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
             />
           </label>
 
+          {/* Quick row editor — instant-save (add-lookup/edit-lookup/
+              delete-lookup endpoints), separate from the bulk textarea
+              above: each Add/Edit/Delete here writes straight to the
+              database immediately, no need to also click this form's own
+              Save button.
+              BUG FIX: this rendered unconditionally for every field,
+              including format-only fields with no 'lookup' key at all.
+              Clicking "+ Add Row" there opened AddToLegendModal locked
+              onto a section with no lookup field to write to, which the
+              backend correctly rejects with "no lookup table to add to"
+              — the fix belongs here (never show the button), not in that
+              modal's dropdown (which is disabled/locked in this flow
+              anyway). Gated on 'f.lookup' being a real object (even {}
+              counts, matching the backend's own isinstance(..., dict)
+              check in _get_active_legend_and_lookup_field). */}
+          {f.lookup && typeof f.lookup === 'object' && (
+            <div style={fieldLabel()}>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Quick edit <span style={{ color: THEME_MUTED, fontWeight: 400 }}>(saves instantly)</span></span>
+                <button
+                  type="button"
+                  onClick={() => setLookupRowEditor({ idx, mode: 'add' })}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600,
+                    padding: '4px 10px', borderRadius: 8, border: `1px solid ${THEME_PRIMARY}55`,
+                    background: `${THEME_PRIMARY}11`, color: THEME_PRIMARY, cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={12} /> Add Row
+                </button>
+              </span>
+              {Object.keys(f.lookup).length > 0 && (
+                <div style={{
+                  border: `1px solid ${THEME_BORDER}`, borderRadius: 8, overflow: 'hidden', marginTop: 6,
+                }}>
+                  {Object.entries(f.lookup).map(([code, desc]) => (
+                    <div
+                      key={code}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                        borderTop: `1px solid ${THEME_BORDER}`, fontSize: 12,
+                      }}
+                    >
+                      <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, flexShrink: 0 }}>{code}</span>
+                      <span style={{ color: THEME_MUTED, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        = {desc}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setLookupRowEditor({ idx, mode: 'edit', code, description: desc })}
+                        title="Edit"
+                        style={{ flexShrink: 0, padding: 4, borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: THEME_MUTED }}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteLookupRow(idx, f, code)}
+                        disabled={deletingLookupKey === `${idx}::${code}`}
+                        title="Delete"
+                        style={{ flexShrink: 0, padding: 4, borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc2626', opacity: deletingLookupKey === `${idx}::${code}` ? 0.4 : 1 }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Reference pictures — uploaded manually, one per symbol (see
               LegendSymbolImage). Placeholder + Upload shown where none exists yet. */}
           {f.lookup && Object.keys(f.lookup).length > 0 && (
@@ -1296,6 +1400,30 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
       <div style={{ fontSize: 11, color: THEME_MUTED }}>
         The form saves back to the same JSON structure. Switch to the <b>JSON</b> tab any time to see or hand-edit the result.
       </div>
+
+      <AddToLegendModal
+        isOpen={!!lookupRowEditor}
+        onClose={() => setLookupRowEditor(null)}
+        mode={lookupRowEditor?.mode || 'add'}
+        // BUG FIX: see FormEditor's own selectedSection comment above —
+        // this closes the race where the section could switch before the
+        // displayed field data caught up. Falls back to activeSection
+        // only when nothing is selected yet (a brand new legend being
+        // created for the current tab, no race there).
+        initialSection={selectedSection || activeSection}
+        initialCode={lookupRowEditor?.code || ''}
+        initialDescription={lookupRowEditor?.description || ''}
+        lockSection
+        lockCode={lookupRowEditor?.mode === 'edit'}
+        onSaved={(_result, payload) => {
+          if (lookupRowEditor) {
+            const currentLookup = model.fields[lookupRowEditor.idx]?.lookup || {}
+            updateField(lookupRowEditor.idx, {
+              lookup: { ...currentLookup, [payload.code]: payload.description },
+            })
+          }
+        }}
+      />
     </div>
   )
 }
