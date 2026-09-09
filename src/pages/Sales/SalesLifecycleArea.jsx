@@ -428,6 +428,40 @@ const money = (value, currency = "AED") =>
         maximumFractionDigits: 0,
       }).format(Number(value || 0));
 
+const auditEventLabel = (value) =>
+  ({
+    opportunity_created: "Opportunity created",
+    opportunity_created_from_email: "Opportunity created from incoming email",
+    qualification_submitted: "Qualification submitted",
+    bid_decision: "Bid decision recorded",
+    proposal_revision_created: "Proposal revision created",
+    proposal_revision_approved: "Proposal revision approved",
+    proposal_revision_issued: "Proposal revision issued to client",
+    negotiation_entered: "Negotiation started",
+    award_submitted: "Award submitted for approval",
+    award_approved: "Award approved",
+    award_rejected: "Award rejected",
+    handover_submitted: "Project handover submitted",
+    handover_accepted: "Project handover accepted",
+    handover_returned: "Project handover returned",
+    project_converted: "Converted to project",
+    opportunity_closed: "Opportunity closed",
+  })[value] || label(value);
+
+const auditTimestamp = (value) =>
+  value
+    ? new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZone: "Asia/Dubai",
+        timeZoneName: "short",
+      }).format(new Date(value))
+    : "Time unavailable";
+
 function Metric({ label: metricLabel, value, tone = "blue" }) {
   const tones =
     tone === "amber"
@@ -736,6 +770,58 @@ function RecordDrawer({
               </div>
             </section>
           )}
+          {!editing &&
+            config.title === "Opportunity" &&
+            record?.stage_history?.length > 0 && (
+              <section className="mt-4 rounded-md border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-[#102a47]">
+                  Action history
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Incoming source and lifecycle actions · newest first
+                </p>
+                <ol className="mt-4 space-y-4 border-l-2 border-blue-100 pl-4">
+                  {record.stage_history.map((event) => (
+                    <li key={event.id} className="relative">
+                      <span className="absolute -left-[1.31rem] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-blue-600" />
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {auditEventLabel(event.event_type)}
+                        </p>
+                        <time className="text-xs font-medium text-slate-500">
+                          {auditTimestamp(event.occurred_at)}
+                        </time>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        By {event.actor_name || "System"}
+                        {event.from_stage || event.to_stage
+                          ? ` · ${event.from_stage ? label(event.from_stage) : "Created"} → ${event.to_stage ? label(event.to_stage) : "No stage change"}`
+                          : ""}
+                      </p>
+                      {event.reason && (
+                        <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">
+                          {event.reason}
+                        </p>
+                      )}
+                      {event.data && Object.keys(event.data).length > 0 && (
+                        <dl className="mt-2 grid gap-x-3 gap-y-1 rounded bg-slate-50 p-2 text-xs sm:grid-cols-[9rem_1fr]">
+                          {Object.entries(event.data).map(([key, value]) => (
+                            <div key={key} className="contents">
+                              <dt className="font-semibold text-slate-500">
+                                {fieldLabel(key)}
+                              </dt>
+                              <dd className="break-all text-slate-700">
+                                {displayValue(value)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
           {!editing && locked && (
             <div className="mt-4 flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <LockClosedIcon className="h-5 w-5 shrink-0" />
