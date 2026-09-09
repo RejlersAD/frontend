@@ -791,6 +791,12 @@ class SalesService {
     ).data;
   }
 
+  async connectMyOutlook() {
+    return (
+      await apiClient.post(`${BASE_URL}/mailbox-connections/connect-my-outlook/`)
+    ).data;
+  }
+
   async disconnectOutlook(connectionId) {
     return (
       await apiClient.post(
