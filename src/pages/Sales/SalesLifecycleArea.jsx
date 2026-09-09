@@ -101,7 +101,7 @@ const AREAS = {
     controls: [
       "Only approved versions can be submitted",
       "Submitted versions are immutable",
-      "Commercial changes can require reapproval",
+      "Proposal owners can review and approve their own revisions",
     ],
     load: () => salesService.getQuotes({ page_size: 500 }),
     loadCount: () => salesService.getQuotes({ page_size: 1 }),
@@ -1522,7 +1522,8 @@ export default function SalesLifecycleArea() {
       return showAction({
         title: "Review and approve proposal",
         submitLabel: "Approve proposal",
-        description: "The proposal preparer cannot approve their own version.",
+        description:
+          "Confirm the proposal content is complete and ready for client submission.",
         fields: [
           {
             name: "comment",
