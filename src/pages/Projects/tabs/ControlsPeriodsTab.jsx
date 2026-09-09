@@ -234,10 +234,10 @@ export default function ControlsPeriodsTab({ project }) {
   return (
     <div className="space-y-5">
       <section className="grid gap-3 md:grid-cols-4" aria-label="Control governance summary">
-        <Summary label="Control Accounts" value={accounts.length} detail={`${accounts.filter((row) => row.status === 'active').length} active`} />
-        <Summary label="Approved control budget" value={`${accounts.reduce((sum, row) => sum + Number(row.approved_budget || 0), 0).toLocaleString()} ${project.currency || 'AED'}`} detail="Derived from approved WBS budgets" />
-        <Summary label="Current entry window" value={periods.find((period) => period.is_entry_allowed)?.name || 'None'} detail={hasEntryWindow ? 'Progress and actuals may be entered' : 'Data entry is blocked'} />
-        <Summary label="Locked periods" value={periods.filter((row) => row.status === 'locked').length} detail="Immutable reporting history" />
+        <Summary label="Control Accounts" value={accounts.length} detail={`${accounts.filter((row) => row.status === 'active').length} active`} tone="blue" />
+        <Summary label="Approved control budget" value={`${accounts.reduce((sum, row) => sum + Number(row.approved_budget || 0), 0).toLocaleString()} ${project.currency || 'AED'}`} detail="Derived from approved WBS budgets" tone="indigo" />
+        <Summary label="Current entry window" value={periods.find((period) => period.is_entry_allowed)?.name || 'None'} detail={hasEntryWindow ? 'Progress and actuals may be entered' : 'Data entry is blocked'} tone={hasEntryWindow ? 'green' : 'amber'} />
+        <Summary label="Locked periods" value={periods.filter((row) => row.status === 'locked').length} detail="Immutable reporting history" tone="violet" />
       </section>
 
       {message && (
@@ -308,6 +308,13 @@ function Field({ label, children }) {
   return <label className="block flex-1 text-xs font-semibold text-slate-700">{label}{children}</label>
 }
 
-function Summary({ label, value, detail }) {
-  return <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-2 truncate text-lg font-semibold text-slate-950" title={String(value)}>{value}</p><p className="mt-1 text-xs text-slate-500">{detail}</p></div>
+function Summary({ label, value, detail, tone = 'blue' }) {
+  const tones = {
+    blue: 'border-blue-200 bg-gradient-to-br from-white to-blue-50/70 text-blue-800',
+    indigo: 'border-indigo-200 bg-gradient-to-br from-white to-indigo-50/70 text-indigo-800',
+    green: 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/70 text-emerald-800',
+    amber: 'border-amber-200 bg-gradient-to-br from-white to-amber-50/80 text-amber-800',
+    violet: 'border-violet-200 bg-gradient-to-br from-white to-violet-50/70 text-violet-800',
+  }
+  return <div className={`rounded-xl border p-4 ${tones[tone] || tones.blue}`}><p className="text-xs font-semibold uppercase tracking-wide opacity-75">{label}</p><p className="mt-2 truncate text-lg font-semibold" title={String(value)}>{value}</p><p className="mt-1 text-xs opacity-75">{detail}</p></div>
 }

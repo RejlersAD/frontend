@@ -4,12 +4,19 @@ import { ArrowPathIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroic
 import * as PC from '../../../services/projectControl.service'
 
 const KPI = [
-  ['contract_value', 'Contract Value', 'bg-indigo-50 text-indigo-800'],
-  ['budget', 'Approved Budget', 'bg-sky-50 text-sky-800'],
-  ['committed', 'PO Commitments', 'bg-violet-50 text-violet-800'],
-  ['actual', 'Verified Actual', 'bg-amber-50 text-amber-800'],
-  ['paid', 'Supplier Paid', 'bg-emerald-50 text-emerald-800'],
-  ['unpaid_actual', 'Approved / Unpaid', 'bg-rose-50 text-rose-800'],
+  ['contract_value', 'Contract Value', 'border-indigo-200 bg-gradient-to-br from-white to-indigo-50/70 text-indigo-800'],
+  ['budget', 'Approved Budget', 'border-sky-200 bg-gradient-to-br from-white to-sky-50/70 text-sky-800'],
+  ['committed', 'PO Commitments', 'border-violet-200 bg-gradient-to-br from-white to-violet-50/70 text-violet-800'],
+  ['actual', 'Verified Actual', 'border-amber-200 bg-gradient-to-br from-white to-amber-50/80 text-amber-800'],
+  ['paid', 'Supplier Paid', 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/70 text-emerald-800'],
+  ['unpaid_actual', 'Approved / Unpaid', 'border-rose-200 bg-gradient-to-br from-white to-rose-50/80 text-rose-800'],
+]
+
+const COUNT_TONES = [
+  'border-indigo-200 bg-gradient-to-br from-white to-indigo-50/60 text-indigo-800',
+  'border-sky-200 bg-gradient-to-br from-white to-sky-50/60 text-sky-800',
+  'border-amber-200 bg-gradient-to-br from-white to-amber-50/70 text-amber-800',
+  'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60 text-emerald-800',
 ]
 
 const money = (value, currency) => Number(value || 0).toLocaleString(undefined, {
@@ -38,7 +45,7 @@ export default function CommercialDashboardTab({ project }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-gradient-to-r from-white via-white to-indigo-50/60 px-5 py-4">
         <div>
           <h2 className="text-base font-semibold text-slate-900">Project Commercial Control</h2>
           <p className="mt-1 text-xs text-slate-500">Shared facts from Project Control, Procurement and Finance. Amounts use posted ledger entries.</p>
@@ -50,7 +57,7 @@ export default function CommercialDashboardTab({ project }) {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         {KPI.map(([key, label, tone]) => (
-          <div key={key} className={`rounded-xl p-4 ${tone}`}>
+          <div key={key} className={`rounded-xl border p-4 ${tone}`}>
             <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
             <p className="mt-2 text-xl font-bold">{money(data[key], data.currency)}</p>
           </div>
@@ -63,9 +70,9 @@ export default function CommercialDashboardTab({ project }) {
           ['Accepted Receipts', data.counts.accepted_receipts],
           ['Verified Invoices', data.counts.verified_invoices],
           ['Payment Events', data.counts.payments],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+        ].map(([label, value], index) => (
+          <div key={label} className={`rounded-xl border p-4 ${COUNT_TONES[index]}`}>
+            <p className="text-xs opacity-75">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p>
           </div>
         ))}
       </div>

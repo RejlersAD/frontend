@@ -70,7 +70,8 @@ import OnboardingOffboarding from './pages/HR/OnboardingOffboarding'
 import SiteVisits from './pages/HR/SiteVisits'
 // import InvoiceDetail from './pages/Finance/InvoiceDetail'
 import InvoiceApproval from './pages/Finance/InvoiceApproval'
-import InternalSalesDashboard from './pages/InternalSalesDashboard'
+import InternalSalesDashboard from './pages/Sales/EnterpriseSalesWorkspace'
+import SalesLifecycleArea from './pages/Sales/SalesLifecycleArea'
 import AdminDashboard from './pages/AdminDashboard'
 import UserManagement from './pages/UserManagement'
 import UserDetail from './pages/UserDetail'
@@ -784,17 +785,25 @@ function App() {
         <Route
           path="finance/sales"
           element={
-            <ProtectedRoute>
+            <ModuleProtectedRoute moduleCode="sales">
               <InternalSalesDashboard />
-            </ProtectedRoute>
+            </ModuleProtectedRoute>
           }
         />
         <Route
           path="sales"
           element={
-            <ProtectedRoute>
+            <ModuleProtectedRoute moduleCode="sales">
               <InternalSalesDashboard />
-            </ProtectedRoute>
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="sales/:area"
+          element={
+            <ModuleProtectedRoute moduleCode="sales">
+              <SalesLifecycleArea />
+            </ModuleProtectedRoute>
           }
         />
 

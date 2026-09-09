@@ -204,7 +204,7 @@ export default function CostDashboardTab({ project }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4">
+      <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-gradient-to-r from-white via-white to-blue-50/60 px-5 py-4">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">
             WBS Cost Control
@@ -239,7 +239,7 @@ export default function CostDashboardTab({ project }) {
 
       {/* Chart + forecast */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5">
+        <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/30 p-5 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-slate-800">
               Cost Breakdown
@@ -293,7 +293,7 @@ export default function CostDashboardTab({ project }) {
           )}
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5">
+        <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-white to-violet-50/40 p-5">
           <h3 className="text-sm font-semibold text-slate-800 mb-3">
             Forecast (EVM)
           </h3>

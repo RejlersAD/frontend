@@ -6,6 +6,8 @@ import Footer from './Footer'
 import Sidebar from './Sidebar'
 import ProcurementApprovalReminder from '../ProcurementApprovalReminder'
 import apiClient from '../../services/api.service'
+import { HelpContextProvider } from '../help/HelpContext'
+import ContextualHelpDrawer from '../help/ContextualHelpDrawer'
 
 /**
  * Layout Component
@@ -108,7 +110,7 @@ const Layout = () => {
   // Hide the shared footer on public pages that render their own or are auth flow pages.
   const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isViewportWorkspace && !isFlushWorkspace
 
-  return (
+  const application = (
     <div className={`${isApplicationShell ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex bg-gray-50 dark:bg-gray-900`}>
       {showSidebar && (
         <Sidebar
@@ -136,8 +138,13 @@ const Layout = () => {
       </div>
 
       {showHeader && <ProcurementApprovalReminder />}
+      {showHeader && <ContextualHelpDrawer />}
     </div>
   )
+
+  return isApplicationShell
+    ? <HelpContextProvider>{application}</HelpContextProvider>
+    : application
 }
 
 export default Layout

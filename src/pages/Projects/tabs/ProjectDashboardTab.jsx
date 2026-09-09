@@ -85,11 +85,19 @@ const Fact = ({ icon: Icon, label, value, missing = false, children }) => (
 )
 
 const Metric = ({ label, value, detail, source, tone = 'default', progress }) => {
-  const tones = { default: 'text-slate-950 dark:text-white', warning: 'text-amber-700 dark:text-amber-300' }
+  const tones = {
+    default: { surface: 'bg-gradient-to-br from-white to-slate-50/80 dark:from-slate-900 dark:to-slate-800/40', value: 'text-slate-950 dark:text-white' },
+    blue: { surface: 'bg-gradient-to-br from-white to-blue-50/70 dark:from-slate-900 dark:to-blue-950/30', value: 'text-blue-800 dark:text-blue-200' },
+    indigo: { surface: 'bg-gradient-to-br from-white to-indigo-50/70 dark:from-slate-900 dark:to-indigo-950/30', value: 'text-indigo-800 dark:text-indigo-200' },
+    violet: { surface: 'bg-gradient-to-br from-white to-violet-50/70 dark:from-slate-900 dark:to-violet-950/30', value: 'text-violet-800 dark:text-violet-200' },
+    green: { surface: 'bg-gradient-to-br from-white to-emerald-50/70 dark:from-slate-900 dark:to-emerald-950/30', value: 'text-emerald-800 dark:text-emerald-200' },
+    warning: { surface: 'bg-gradient-to-br from-white to-amber-50/80 dark:from-slate-900 dark:to-amber-950/30', value: 'text-amber-700 dark:text-amber-300' },
+  }
+  const style = tones[tone] || tones.default
   return (
-    <div className="min-w-0 border-b border-slate-200 p-4 last:border-0 dark:border-slate-700 md:border-b-0 md:border-r">
+    <div className={`min-w-0 border-b border-slate-200 p-4 last:border-0 dark:border-slate-700 md:border-b-0 md:border-r ${style.surface}`}>
       <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{label}</p>
-      <p className={`mt-1 truncate text-xl font-semibold tracking-tight ${tones[tone]}`}>{value}</p>
+      <p className={`mt-1 truncate text-xl font-semibold tracking-tight ${style.value}`}>{value}</p>
       {progress !== undefined && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" role="progressbar" aria-label={label} aria-valuemin="0" aria-valuemax="100" aria-valuenow={clamp(progress)}><div className="h-full rounded-full bg-indigo-600" style={{ width: `${clamp(progress)}%` }} /></div>}
       {detail && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{detail}</p>}
       {source && <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">Source: {source}</p>}
@@ -212,7 +220,7 @@ export default function ProjectDashboardTab({ project, phaseFlags, onSelectView,
           <button type="button" onClick={() => setReloadToken(value => value + 1)} className="min-h-9 shrink-0 rounded-lg border border-amber-400 bg-white px-3 text-xs font-semibold text-amber-950 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 dark:bg-amber-900 dark:text-amber-50">Retry data</button>
         </section>
       )}
-      <section aria-label="Project facts" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <section aria-label="Project facts" className="overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-r from-white via-white to-blue-50/60 dark:border-blue-900 dark:from-slate-900 dark:via-slate-900 dark:to-blue-950/20">
         <div className="grid lg:grid-cols-7">
           <Fact icon={BuildingOffice2Icon} label="Client" value={project.client_name || 'Not provided'} missing={!project.client_name} />
           <Fact icon={UserCircleIcon} label="Project manager" value={model.manager} missing={model.manager === 'Not assigned'} />
@@ -231,14 +239,14 @@ export default function ProjectDashboardTab({ project, phaseFlags, onSelectView,
         </div>
       </section>}
 
-      <section aria-label="Performance indicators" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <section aria-label="Performance indicators" className="overflow-hidden rounded-xl border border-indigo-200 bg-white dark:border-indigo-900 dark:bg-slate-900">
         <div className="grid md:grid-cols-3 xl:grid-cols-6">
-          <Metric label="Physical progress" value={`${progress}%`} detail={`As of ${formatDate(model.dataDate, 'current record')}`} source="Project" progress={progress} />
-          <Metric label="Schedule performance index (SPI)" value={spi === null ? 'Not available' : spi.toFixed(2)} detail={spi === null ? 'No approved EVM snapshot' : spi < 1 ? 'Behind plan' : 'On or ahead of plan'} source="EVM" tone={spi !== null && spi < 1 ? 'warning' : 'default'} />
-          <Metric label="Cost performance index (CPI)" value={cpi === null ? 'Not available' : cpi.toFixed(2)} detail={cpi === null ? 'Control budget not established' : cpi < 1 ? 'Cost efficiency below plan' : 'Cost efficiency on plan'} source="EVM" tone={cpi !== null && cpi < 1 ? 'warning' : 'default'} />
-          <Metric label="Control budget" value={formatMoney(model.budget, model.currency)} detail={model.budget ? 'Posted baseline cost control' : 'Set baseline to enable controls'} source="Cost Control" tone={model.budget ? 'default' : 'warning'} />
-          <Metric label="Actual cost (AC)" value={formatMoney(model.actual, model.currency, `${model.currency} 0`)} detail={dashboard.kpis?.ledger_entry_count ? `${dashboard.kpis.ledger_entry_count} posted ledger entries` : 'No ledger postings'} source="Finance" />
-          <Metric label="Forecast finish" value={formatDate(model.finish)} detail={project.end_date ? 'Based on current project plan' : 'No approved schedule finish'} source="Schedule" tone={!model.finish ? 'warning' : 'default'} />
+          <Metric label="Physical progress" value={`${progress}%`} detail={`As of ${formatDate(model.dataDate, 'current record')}`} source="Project" progress={progress} tone="violet" />
+          <Metric label="Schedule performance index (SPI)" value={spi === null ? 'Not available' : spi.toFixed(2)} detail={spi === null ? 'No approved EVM snapshot' : spi < 1 ? 'Behind plan' : 'On or ahead of plan'} source="EVM" tone={spi !== null && spi < 1 ? 'warning' : 'blue'} />
+          <Metric label="Cost performance index (CPI)" value={cpi === null ? 'Not available' : cpi.toFixed(2)} detail={cpi === null ? 'Control budget not established' : cpi < 1 ? 'Cost efficiency below plan' : 'Cost efficiency on plan'} source="EVM" tone={cpi !== null && cpi < 1 ? 'warning' : 'indigo'} />
+          <Metric label="Control budget" value={formatMoney(model.budget, model.currency)} detail={model.budget ? 'Posted baseline cost control' : 'Set baseline to enable controls'} source="Cost Control" tone={model.budget ? 'blue' : 'warning'} />
+          <Metric label="Actual cost (AC)" value={formatMoney(model.actual, model.currency, `${model.currency} 0`)} detail={dashboard.kpis?.ledger_entry_count ? `${dashboard.kpis.ledger_entry_count} posted ledger entries` : 'No ledger postings'} source="Finance" tone="green" />
+          <Metric label="Forecast finish" value={formatDate(model.finish)} detail={project.end_date ? 'Based on current project plan' : 'No approved schedule finish'} source="Schedule" tone={!model.finish ? 'warning' : 'violet'} />
         </div>
       </section>
 

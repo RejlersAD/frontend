@@ -42,7 +42,7 @@ export default function ProjectsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [projects, setProjects] = useState([])
-  const [selectedProjectId, setSelectedProjectId] = useState(null)
+  const [selectedProjectId, setSelectedProjectId] = useState(() => searchParams.get('project'))
   const [phaseFlags, setPhaseFlags] = useState({})
   const [view, setView] = useState(PROJECT_DEFAULT_VIEW)
   const [loadingProjects, setLoadingProjects] = useState(true)
