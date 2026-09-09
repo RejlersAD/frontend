@@ -11,12 +11,14 @@ import {
   CheckCircleIcon,
   ChevronRightIcon,
   ClockIcon,
+  EnvelopeIcon,
   ExclamationTriangleIcon,
   PlusIcon,
   TrophyIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import salesService from "../../services/sales.service";
+import SalesMailboxConnectionDialog from "./SalesMailboxConnectionDialog";
 
 const PIPELINE = [
   ["qualified", "Qualified", "from-sky-200 to-sky-300 text-slate-900"],
@@ -140,6 +142,9 @@ export default function EnterpriseSalesWorkspace() {
   const [modal, setModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [mailboxDialogOpen, setMailboxDialogOpen] = useState(() =>
+    new URLSearchParams(window.location.search).has("outlook"),
+  );
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -402,6 +407,14 @@ export default function EnterpriseSalesWorkspace() {
               </p>
             </div>
             <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMailboxDialogOpen(true)}
+                className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              >
+                <EnvelopeIcon className="h-4 w-4" />
+                Connect Outlook
+              </button>
               <button
                 onClick={load}
                 className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold"
@@ -829,6 +842,10 @@ export default function EnterpriseSalesWorkspace() {
           </form>
         </Modal>
       )}
+      <SalesMailboxConnectionDialog
+        open={mailboxDialogOpen}
+        onClose={() => setMailboxDialogOpen(false)}
+      />
     </div>
   );
 }
