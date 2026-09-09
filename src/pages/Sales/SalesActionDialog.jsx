@@ -114,6 +114,9 @@ export default function SalesActionDialog({
                           <option
                             key={optionValue(option)}
                             value={optionValue(option)}
+                            disabled={
+                              typeof option === "object" && option.disabled
+                            }
                           >
                             {optionLabel(option)}
                           </option>

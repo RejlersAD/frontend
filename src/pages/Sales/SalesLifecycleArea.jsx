@@ -180,6 +180,7 @@ const AREAS = {
       "client_tier",
       "status",
       "verification_status",
+      "new_proposals_permitted",
       "country",
       "health_score",
       "churn_risk",
@@ -548,7 +549,11 @@ const todayInput = () => new Date().toISOString().slice(0, 10);
 const apiError = (requestError, fallback) => {
   const response = requestError?.response?.data;
   if (!response) return fallback;
-  if (typeof response === "string") return response;
+  if (typeof response === "string") {
+    const text = response.trim();
+    if (/^(?:<!doctype\s+html|<html)/i.test(text)) return fallback;
+    return text;
+  }
   if (response.detail) return response.detail;
   return Object.entries(response)
     .map(
@@ -570,20 +575,24 @@ function RecordDrawer({
   onCancelEdit,
   onChange,
   onSave,
+  error,
   actions,
   onAction,
 }) {
   const locked = record ? config.locked(record) : false;
   useEffect(() => {
-    const closeOnEscape = (event) => event.key === "Escape" && onClose();
+    const closeOnEscape = (event) =>
+      event.key === "Escape" && !editing && onClose();
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+  }, [editing, onClose]);
 
   return (
     <div
       className="fixed inset-0 z-[80] flex justify-end bg-slate-950/30"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      onMouseDown={(event) =>
+        event.target === event.currentTarget && !editing && onClose()
+      }
     >
       <aside
         role="dialog"
@@ -611,6 +620,11 @@ function RecordDrawer({
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">
+          {error && (
+            <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+              {error}
+            </div>
+          )}
           {loading ? (
             <p className="py-12 text-center text-sm text-slate-500">
               Loading record...
@@ -875,6 +889,7 @@ export default function SalesLifecycleArea() {
   }, [setSearchParams]);
 
   const beginEdit = () => {
+    setError("");
     setDraft(
       Object.fromEntries(
         config.editFields.map(([key]) => [key, record?.[key] ?? ""]),
@@ -893,12 +908,7 @@ export default function SalesLifecycleArea() {
       setEditing(false);
       await load();
     } catch (requestError) {
-      const response = requestError?.response?.data;
-      setError(
-        typeof response === "string"
-          ? response
-          : JSON.stringify(response || `${config.title} could not be updated.`),
-      );
+      setError(apiError(requestError, `${config.title} could not be updated.`));
     } finally {
       setSaving(false);
     }
@@ -1165,8 +1175,13 @@ export default function SalesLifecycleArea() {
       }
 
       if (area === "proposals") {
-        const deals = list(
-          await salesService.getDeals({ stage: "proposal", page_size: 500 }),
+        const [dealResponse, clientResponse] = await Promise.all([
+          salesService.getDeals({ stage: "proposal", page_size: 500 }),
+          salesService.getClients({ page_size: 500 }),
+        ]);
+        const deals = list(dealResponse);
+        const clientsById = new Map(
+          list(clientResponse).map((client) => [String(client.id), client]),
         );
         showAction(
           {
@@ -1182,8 +1197,22 @@ export default function SalesLifecycleArea() {
                 required: true,
                 options: deals.map((deal) => ({
                   value: deal.id,
-                  label: `${deal.deal_code} - ${deal.deal_name}`,
+                  label: (() => {
+                    const client = clientsById.get(String(deal.client));
+                    const eligible =
+                      client?.status === "active" &&
+                      client?.new_proposals_permitted;
+                    return `${deal.deal_code} - ${deal.deal_name} · ${deal.client_name || client?.company_name || "Unknown client"}${eligible ? "" : " (client not eligible)"}`;
+                  })(),
+                  disabled: (() => {
+                    const client = clientsById.get(String(deal.client));
+                    return !(
+                      client?.status === "active" &&
+                      client?.new_proposals_permitted
+                    );
+                  })(),
                 })),
+                help: "Only opportunities whose inherited client is active and permitted for new proposals can be selected.",
               },
               {
                 name: "quote_number",
@@ -1864,6 +1893,7 @@ export default function SalesLifecycleArea() {
             setDraft((current) => ({ ...current, [key]: value }))
           }
           onSave={saveRecord}
+          error={error}
           actions={lifecycleActions(area, record)}
           onAction={openLifecycleAction}
         />
@@ -1909,6 +1939,7 @@ RecordDrawer.propTypes = {
   onCancelEdit: PropTypes.func.isRequired,
   onChange: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
+  error: PropTypes.string,
   actions: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string.isRequired,
@@ -1918,3 +1949,4 @@ RecordDrawer.propTypes = {
   ).isRequired,
   onAction: PropTypes.func.isRequired,
 };
+RecordDrawer.defaultProps = { error: "" };
