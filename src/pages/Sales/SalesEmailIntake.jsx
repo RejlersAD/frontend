@@ -132,6 +132,7 @@ export default function SalesEmailIntake() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(null);
+  const [clientMode, setClientMode] = useState("existing");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -186,9 +187,22 @@ export default function SalesEmailIntake() {
     });
   }, [records, search, statusFilter]);
   const selected = records.find((row) => row.id === selectedId) ?? null;
+  const extracted = selected?.extracted_information ?? {};
+  const matchedClient = clients.find(
+    (client) =>
+      extracted.company_name &&
+      client.company_name.trim().toLowerCase() ===
+        extracted.company_name.trim().toLowerCase(),
+  );
   const unresolved = records.filter((row) =>
     ["received", "under_review"].includes(row.status),
   ).length;
+
+  useEffect(() => {
+    if (dialog === "convert") {
+      setClientMode(matchedClient ? "existing" : "new");
+    }
+  }, [dialog, matchedClient]);
 
   const updateRecord = (record) => {
     setRecords((current) =>
@@ -245,13 +259,27 @@ export default function SalesEmailIntake() {
     setError("");
     try {
       const result = await salesService.convertEmailIntake(selected.id, {
-        client: form.get("client"),
+        client: clientMode === "existing" ? form.get("client") : undefined,
+        new_client:
+          clientMode === "new"
+            ? {
+                company_name: form.get("new_client_company_name"),
+                industry_type: form.get("new_client_industry_type"),
+                email: form.get("new_client_email"),
+                phone: form.get("new_client_phone"),
+                website: form.get("new_client_website"),
+                country: form.get("new_client_country"),
+                contact_name: form.get("new_client_contact_name"),
+                contact_email: form.get("new_client_email"),
+              }
+            : undefined,
         deal_name: form.get("deal_name"),
         estimated_value: form.get("estimated_value"),
         currency: form.get("currency"),
         expected_close_date: form.get("expected_close_date"),
         submission_due_date: form.get("submission_due_date") || null,
         scope_type: form.get("scope_type"),
+        location: form.get("location"),
         client_reference: form.get("client_reference"),
         description: form.get("description"),
       });
@@ -592,26 +620,72 @@ export default function SalesEmailIntake() {
               Opportunity name
               <input name="deal_name" required defaultValue={selected.subject} maxLength="300" className={fieldClass} />
             </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Client
-              <select name="client" required className={fieldClass}>
-                <option value="">Select client</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>{client.company_name}</option>
-                ))}
-              </select>
-            </label>
+            <div className="sm:col-span-2">
+              <p className="text-sm font-semibold text-slate-700">Client</p>
+              <div className="mt-1.5 inline-flex rounded-md border border-slate-300 bg-slate-50 p-1">
+                <button type="button" onClick={() => setClientMode("existing")} className={`rounded px-3 py-1.5 text-xs font-semibold ${clientMode === "existing" ? "bg-white text-blue-800 shadow-sm" : "text-slate-600"}`}>Existing client</button>
+                <button type="button" onClick={() => setClientMode("new")} className={`rounded px-3 py-1.5 text-xs font-semibold ${clientMode === "new" ? "bg-white text-blue-800 shadow-sm" : "text-slate-600"}`}>Create from email</button>
+              </div>
+            </div>
+            {clientMode === "existing" ? (
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+                Select client
+                <select name="client" required defaultValue={matchedClient?.id || ""} className={fieldClass}>
+                  <option value="">Select client</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>{client.company_name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <div className="grid gap-4 rounded-lg border border-blue-200 bg-blue-50/50 p-4 sm:col-span-2 sm:grid-cols-2">
+                <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+                  New client name
+                  <input name="new_client_company_name" required defaultValue={extracted.company_name} className={fieldClass} />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  Contact name
+                  <input name="new_client_contact_name" defaultValue={extracted.contact_name} className={fieldClass} />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  Contact email
+                  <input name="new_client_email" type="email" defaultValue={extracted.contact_email} className={fieldClass} />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  Contact phone
+                  <input name="new_client_phone" defaultValue={extracted.contact_phone} className={fieldClass} />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  Industry
+                  <select name="new_client_industry_type" defaultValue={extracted.industry_type || "other"} className={fieldClass}>
+                    <option value="power_generation">Power &amp; Utilities</option>
+                    <option value="oil_gas">Oil &amp; Gas</option>
+                    <option value="water_treatment">Water &amp; Wastewater</option>
+                    <option value="construction">Construction &amp; EPC</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  Website
+                  <input name="new_client_website" type="url" defaultValue={extracted.declared_client_domain ? `https://${extracted.declared_client_domain}` : ""} className={fieldClass} />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  Country
+                  <input name="new_client_country" defaultValue={extracted.location?.split(",").at(-1)?.trim() || ""} className={fieldClass} />
+                </label>
+              </div>
+            )}
             <label className="text-sm font-semibold text-slate-700">
               Client reference
-              <input name="client_reference" className={fieldClass} />
+              <input name="client_reference" defaultValue={extracted.tender_reference} className={fieldClass} />
             </label>
             <label className="text-sm font-semibold text-slate-700">
               Estimated value
-              <input name="estimated_value" type="number" min="0" step="0.01" required className={fieldClass} />
+              <input name="estimated_value" type="number" min="0" step="0.01" required defaultValue={extracted.estimated_value} className={fieldClass} />
             </label>
             <label className="text-sm font-semibold text-slate-700">
               Currency
-              <select name="currency" defaultValue="AED" className={fieldClass}>
+              <select name="currency" defaultValue={extracted.currency || "AED"} className={fieldClass}>
                 {["AED", "USD", "EUR", "GBP", "SAR", "QAR"].map((value) => <option key={value}>{value}</option>)}
               </select>
             </label>
@@ -621,15 +695,19 @@ export default function SalesEmailIntake() {
             </label>
             <label className="text-sm font-semibold text-slate-700">
               Proposal deadline
-              <input name="submission_due_date" type="date" className={fieldClass} />
+              <input name="submission_due_date" type="date" defaultValue={extracted.deadline_date} className={fieldClass} />
             </label>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               Scope type
-              <select name="scope_type" defaultValue="other" className={fieldClass}>
+              <select name="scope_type" defaultValue={extracted.scope_type || "other"} className={fieldClass}>
                 {["conceptual", "pre_feed", "feed", "basic_engineering", "detailed_engineering", "epcm", "epc", "pmc", "owner_engineer", "feasibility", "other"].map((value) => (
                   <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
                 ))}
               </select>
+            </label>
+            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+              Project location
+              <input name="location" defaultValue={extracted.location} className={fieldClass} />
             </label>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               Scope summary
@@ -637,7 +715,7 @@ export default function SalesEmailIntake() {
             </label>
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 sm:col-span-2">
               <button type="button" onClick={() => setDialog(null)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-              <button disabled={saving || !clients.length} className="rounded-md bg-[#f04b2f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Creating…" : "Create opportunity"}</button>
+              <button disabled={saving} className="rounded-md bg-[#f04b2f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Creating…" : clientMode === "new" ? "Create client & opportunity" : "Create opportunity"}</button>
             </div>
           </form>
         </Modal>
