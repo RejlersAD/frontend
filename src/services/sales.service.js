@@ -798,6 +798,46 @@ class SalesService {
       )
     ).data;
   }
+
+  async getEmailIntakes(params = {}) {
+    return (await apiClient.get(`${BASE_URL}/email-intakes/`, { params })).data;
+  }
+
+  async getEmailIntake(intakeId) {
+    return (await apiClient.get(`${BASE_URL}/email-intakes/${intakeId}/`)).data;
+  }
+
+  async startEmailIntakeReview(intakeId) {
+    return (
+      await apiClient.post(`${BASE_URL}/email-intakes/${intakeId}/start-review/`)
+    ).data;
+  }
+
+  async rejectEmailIntake(intakeId, reason) {
+    return (
+      await apiClient.post(`${BASE_URL}/email-intakes/${intakeId}/reject/`, {
+        reason,
+      })
+    ).data;
+  }
+
+  async markEmailIntakeDuplicate(intakeId, payload = {}) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/email-intakes/${intakeId}/mark-duplicate/`,
+        payload,
+      )
+    ).data;
+  }
+
+  async convertEmailIntake(intakeId, payload) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/email-intakes/${intakeId}/convert-to-opportunity/`,
+        payload,
+      )
+    ).data;
+  }
 }
 
 export default new SalesService();

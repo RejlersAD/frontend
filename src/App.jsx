@@ -72,6 +72,7 @@ import SiteVisits from './pages/HR/SiteVisits'
 import InvoiceApproval from './pages/Finance/InvoiceApproval'
 import InternalSalesDashboard from './pages/Sales/EnterpriseSalesWorkspace'
 import SalesLifecycleArea from './pages/Sales/SalesLifecycleArea'
+import SalesEmailIntake from './pages/Sales/SalesEmailIntake'
 import AdminDashboard from './pages/AdminDashboard'
 import UserManagement from './pages/UserManagement'
 import UserDetail from './pages/UserDetail'
@@ -795,6 +796,14 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="sales">
               <InternalSalesDashboard />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="sales/email-intake"
+          element={
+            <ModuleProtectedRoute moduleCode="sales">
+              <SalesEmailIntake />
             </ModuleProtectedRoute>
           }
         />
