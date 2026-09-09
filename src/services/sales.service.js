@@ -755,6 +755,49 @@ class SalesService {
       )
     ).data;
   }
+
+  async getMailboxConnections(params = {}) {
+    return (await apiClient.get(`${BASE_URL}/mailbox-connections/`, { params }))
+      .data;
+  }
+
+  async createMailboxConnection(payload) {
+    return (await apiClient.post(`${BASE_URL}/mailbox-connections/`, payload))
+      .data;
+  }
+
+  async patchMailboxConnection(connectionId, payload) {
+    return (
+      await apiClient.patch(
+        `${BASE_URL}/mailbox-connections/${connectionId}/`,
+        payload,
+      )
+    ).data;
+  }
+
+  async testMailboxConnection(connectionId) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/mailbox-connections/${connectionId}/test-connection/`,
+      )
+    ).data;
+  }
+
+  async connectOutlook(connectionId) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/mailbox-connections/${connectionId}/connect-outlook/`,
+      )
+    ).data;
+  }
+
+  async disconnectOutlook(connectionId) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/mailbox-connections/${connectionId}/disconnect-outlook/`,
+      )
+    ).data;
+  }
 }
 
 export default new SalesService();
