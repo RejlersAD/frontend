@@ -409,6 +409,14 @@ export default function EnterpriseSalesWorkspace() {
             <div className="flex gap-2">
               <button
                 type="button"
+                onClick={() => navigate("/sales/email-intake")}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-[#102a47] hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              >
+                <EnvelopeIcon className="h-4 w-4 text-blue-700" />
+                Email intake
+              </button>
+              <button
+                type="button"
                 onClick={() => setMailboxDialogOpen(true)}
                 className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
               >
@@ -734,6 +742,7 @@ export default function EnterpriseSalesWorkspace() {
               ["Clients", "clients"],
               ["Framework agreements", "frameworks"],
               ["Forecasts", "forecasts"],
+              ["Email intake", "email-intake"],
             ].map(([label, id]) => (
               <button
                 key={id}
