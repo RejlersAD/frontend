@@ -54,6 +54,44 @@ const list = (data) => (Array.isArray(data) ? data : data?.results ?? []);
 const fieldClass =
   "mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
 
+const normalizeCompany = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/\b(limited|ltd|llc|incorporated|inc|company|co)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+const emailDomain = (value) =>
+  String(value || "").toLowerCase().split("@").at(-1)?.replace(/^www\./, "") || "";
+
+const websiteDomain = (value) => {
+  if (!value) return "";
+  try {
+    return new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`).hostname
+      .toLowerCase()
+      .replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+};
+
+const companyFromDomain = (value) => {
+  const domain = String(value || "").toLowerCase().replace(/^www\./, "");
+  const genericDomains = new Set([
+    "gmail.com",
+    "outlook.com",
+    "hotmail.com",
+    "yahoo.com",
+    "icloud.com",
+  ]);
+  if (!domain || genericDomains.has(domain)) return "";
+  return domain
+    .split(".")[0]
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
 const formatDate = (value, includeTime = false) => {
   if (!value) return "Not available";
   return new Intl.DateTimeFormat("en-GB", {
@@ -132,7 +170,7 @@ export default function SalesEmailIntake() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(null);
-  const [clientMode, setClientMode] = useState("existing");
+  const [clientChoice, setClientChoice] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -188,21 +226,40 @@ export default function SalesEmailIntake() {
   }, [records, search, statusFilter]);
   const selected = records.find((row) => row.id === selectedId) ?? null;
   const extracted = selected?.extracted_information ?? {};
-  const matchedClient = clients.find(
-    (client) =>
-      extracted.company_name &&
-      client.company_name.trim().toLowerCase() ===
-        extracted.company_name.trim().toLowerCase(),
-  );
+  const detectedDomain = (
+    extracted.declared_client_domain ||
+    extracted.client_domain ||
+    emailDomain(selected?.sender_email)
+  )
+    .toLowerCase()
+    .replace(/^www\./, "");
+  const detectedCompany = normalizeCompany(extracted.company_name);
+  const matchedClient = clients.find((client) => {
+    const clientNames = [client.company_name, client.legal_name, client.trading_name]
+      .map(normalizeCompany)
+      .filter(Boolean);
+    const nameMatches =
+      detectedCompany && clientNames.some((name) => name === detectedCompany);
+    const clientDomains = [
+      emailDomain(client.email),
+      websiteDomain(client.website),
+    ].filter(Boolean);
+    const domainMatches =
+      detectedDomain && clientDomains.some((domain) => domain === detectedDomain);
+    return nameMatches || domainMatches;
+  });
+  const suggestedClientName = String(
+    extracted.company_name || companyFromDomain(detectedDomain),
+  ).trim();
   const unresolved = records.filter((row) =>
     ["received", "under_review"].includes(row.status),
   ).length;
 
   useEffect(() => {
     if (dialog === "convert") {
-      setClientMode(matchedClient ? "existing" : "new");
+      setClientChoice(matchedClient?.id || (suggestedClientName ? "__new__" : ""));
     }
-  }, [dialog, matchedClient]);
+  }, [dialog, matchedClient?.id, suggestedClientName]);
 
   const updateRecord = (record) => {
     setRecords((current) =>
@@ -255,22 +312,29 @@ export default function SalesEmailIntake() {
     event.preventDefault();
     if (!selected) return;
     const form = new FormData(event.currentTarget);
+    const createClient = clientChoice === "__new__";
+    if (createClient && !suggestedClientName) {
+      setError("A client name could not be detected from this email.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
       const result = await salesService.convertEmailIntake(selected.id, {
-        client: clientMode === "existing" ? form.get("client") : undefined,
+        client: createClient ? undefined : clientChoice,
         new_client:
-          clientMode === "new"
+          createClient
             ? {
-                company_name: form.get("new_client_company_name"),
-                industry_type: form.get("new_client_industry_type"),
-                email: form.get("new_client_email"),
-                phone: form.get("new_client_phone"),
-                website: form.get("new_client_website"),
-                country: form.get("new_client_country"),
-                contact_name: form.get("new_client_contact_name"),
-                contact_email: form.get("new_client_email"),
+                company_name: suggestedClientName,
+                industry_type: extracted.industry_type || "other",
+                email: extracted.contact_email || "",
+                phone: extracted.contact_phone || "",
+                website: extracted.declared_client_domain
+                  ? `https://${extracted.declared_client_domain}`
+                  : "",
+                country: extracted.location?.split(",").at(-1)?.trim() || "",
+                contact_name: extracted.contact_name || "",
+                contact_email: extracted.contact_email || "",
               }
             : undefined,
         deal_name: form.get("deal_name"),
@@ -313,9 +377,6 @@ export default function SalesEmailIntake() {
               <ArrowLeftIcon className="h-5 w-5" />
             </button>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-700">
-                Sales workspace
-              </p>
               <h1 className="text-3xl font-bold tracking-tight text-[#102a47]">
                 Email Intake
               </h1>
@@ -620,61 +681,35 @@ export default function SalesEmailIntake() {
               Opportunity name
               <input name="deal_name" required defaultValue={selected.subject} maxLength="300" className={fieldClass} />
             </label>
-            <div className="sm:col-span-2">
-              <p className="text-sm font-semibold text-slate-700">Client</p>
-              <div className="mt-1.5 inline-flex rounded-md border border-slate-300 bg-slate-50 p-1">
-                <button type="button" onClick={() => setClientMode("existing")} className={`rounded px-3 py-1.5 text-xs font-semibold ${clientMode === "existing" ? "bg-white text-blue-800 shadow-sm" : "text-slate-600"}`}>Existing client</button>
-                <button type="button" onClick={() => setClientMode("new")} className={`rounded px-3 py-1.5 text-xs font-semibold ${clientMode === "new" ? "bg-white text-blue-800 shadow-sm" : "text-slate-600"}`}>Create from email</button>
-              </div>
-            </div>
-            {clientMode === "existing" ? (
-              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-                Select client
-                <select name="client" required defaultValue={matchedClient?.id || ""} className={fieldClass}>
-                  <option value="">Select client</option>
-                  {clients.map((client) => (
+            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+              Client
+              <select
+                name="client_choice"
+                required
+                value={clientChoice}
+                onChange={(event) => setClientChoice(event.target.value)}
+                className={fieldClass}
+              >
+                <option value="">Select client</option>
+                {matchedClient && (
+                  <option value={matchedClient.id}>Matched: {matchedClient.company_name}</option>
+                )}
+                {!matchedClient && suggestedClientName && (
+                  <option value="__new__">Add new client: {suggestedClientName}</option>
+                )}
+                {clients
+                  .filter((client) => client.id !== matchedClient?.id)
+                  .map((client) => (
                     <option key={client.id} value={client.id}>{client.company_name}</option>
                   ))}
-                </select>
-              </label>
-            ) : (
-              <div className="grid gap-4 rounded-lg border border-blue-200 bg-blue-50/50 p-4 sm:col-span-2 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-                  New client name
-                  <input name="new_client_company_name" required defaultValue={extracted.company_name} className={fieldClass} />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  Contact name
-                  <input name="new_client_contact_name" defaultValue={extracted.contact_name} className={fieldClass} />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  Contact email
-                  <input name="new_client_email" type="email" defaultValue={extracted.contact_email} className={fieldClass} />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  Contact phone
-                  <input name="new_client_phone" defaultValue={extracted.contact_phone} className={fieldClass} />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  Industry
-                  <select name="new_client_industry_type" defaultValue={extracted.industry_type || "other"} className={fieldClass}>
-                    <option value="power_generation">Power &amp; Utilities</option>
-                    <option value="oil_gas">Oil &amp; Gas</option>
-                    <option value="water_treatment">Water &amp; Wastewater</option>
-                    <option value="construction">Construction &amp; EPC</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  Website
-                  <input name="new_client_website" type="url" defaultValue={extracted.declared_client_domain ? `https://${extracted.declared_client_domain}` : ""} className={fieldClass} />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  Country
-                  <input name="new_client_country" defaultValue={extracted.location?.split(",").at(-1)?.trim() || ""} className={fieldClass} />
-                </label>
-              </div>
-            )}
+              </select>
+              {clientChoice === "__new__" && (
+                <span className="mt-2 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+                  <CheckCircleIcon className="h-4 w-4 shrink-0" />
+                  {suggestedClientName} will be added automatically from the email.
+                </span>
+              )}
+            </label>
             <label className="text-sm font-semibold text-slate-700">
               Client reference
               <input name="client_reference" defaultValue={extracted.tender_reference} className={fieldClass} />
@@ -691,7 +726,7 @@ export default function SalesEmailIntake() {
             </label>
             <label className="text-sm font-semibold text-slate-700">
               Expected award date
-              <input name="expected_close_date" type="date" required className={fieldClass} />
+              <input name="expected_close_date" type="date" required defaultValue={extracted.expected_award_date} className={fieldClass} />
             </label>
             <label className="text-sm font-semibold text-slate-700">
               Proposal deadline
@@ -711,11 +746,11 @@ export default function SalesEmailIntake() {
             </label>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               Scope summary
-              <textarea name="description" rows="4" defaultValue={selected.body_preview} className={fieldClass} />
+              <textarea name="description" rows="4" defaultValue={extracted.scope_summary || selected.body_preview} className={fieldClass} />
             </label>
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 sm:col-span-2">
               <button type="button" onClick={() => setDialog(null)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-              <button disabled={saving} className="rounded-md bg-[#f04b2f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Creating…" : clientMode === "new" ? "Create client & opportunity" : "Create opportunity"}</button>
+              <button disabled={saving} className="rounded-md bg-[#f04b2f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Creating…" : "Create opportunity"}</button>
             </div>
           </form>
         </Modal>

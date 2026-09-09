@@ -23,6 +23,7 @@ import hrCoreService from "../../services/hrCore.service";
 import timesheetService from "../../services/timesheet.service";
 import payrollService from "../../services/payroll.service";
 import apiClient from "../../services/api.service";
+import HRCommandCenterView from "./HRCommandCenterView";
 import {
   fmtCurrency,
   PAYROLL_WORKFLOW_STAGES,
@@ -1638,6 +1639,47 @@ export default function HRDashboard() {
     currentUser?.first_name ||
     (currentUser?.full_name ? currentUser.full_name.split(/\s+/)[0] : "") ||
     "there";
+
+  if (HR_DASHBOARD_SECTIONS.commandCenterLayout) {
+    return (
+      <>
+        <HRCommandCenterView
+          workforce={workforce}
+          live={live}
+          daily={daily}
+          monthly={monthly}
+          lifecycleRequests={lifecycleRequests}
+          pending={pending}
+          joiners={joiners}
+          punctuality={punctuality}
+          monthRollup={monthRollup}
+          totalPending={totalPending}
+          autoRefresh={autoRefresh}
+          setAutoRefresh={setAutoRefresh}
+          now={now}
+          loading={loadingWorkforce || loadingLive || loadingPayroll}
+          workforceError={workforceError}
+          timesheetError={timesheetError}
+          onRetryWorkforce={loadWorkforce}
+          onRefresh={() => {
+            loadWorkforce();
+            loadTimesheets();
+            loadPayrollData();
+            loadLifecycleRequests();
+          }}
+          onOpenReport={setReportKpiId}
+          navigate={navigate}
+        />
+        {reportKpiId && (
+          <KpiReportModal
+            reportId={reportKpiId}
+            ctx={ctx}
+            onClose={() => setReportKpiId(null)}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-full w-full bg-[#f5f6f8] px-3 py-2 sm:px-4 lg:px-5 xl:px-6">
