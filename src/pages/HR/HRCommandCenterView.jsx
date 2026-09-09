@@ -13,6 +13,25 @@ const percent = (value, total) =>
     ? Math.min(100, Math.round((number(value) / number(total)) * 100))
     : 0;
 
+const normalizeIdentity = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const scoreOutOf100 = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.min(100, parsed <= 5 ? parsed * 20 : parsed));
+};
+
+const reviewPriority = {
+  calibration: 2,
+  manager: 2,
+  peer: 2,
+  direct_report: 2,
+  self: 1,
+};
+
 const KPI_TONES = {
   blue: {
     card: "border-blue-200 bg-gradient-to-br from-white to-blue-50/70",
@@ -232,6 +251,8 @@ export default function HRCommandCenterView({
   workforce = [],
   live,
   daily,
+  monthly,
+  performanceReviews = [],
   lifecycleRequests = [],
   pending,
   punctuality,
@@ -377,6 +398,89 @@ export default function HRCommandCenterView({
     .filter(Boolean)
     .filter((row) => dayKey(row.effectiveDate) <= dayKey(todayStart))
     .sort((a, b) => dayKey(b.effectiveDate).localeCompare(dayKey(a.effectiveDate)))
+    .slice(0, 5);
+
+  const monthlyRows = Array.isArray(monthly?.rows) ? monthly.rows : [];
+  const maximumDaysPresent = Math.max(
+    1,
+    ...monthlyRows.map((row) => number(row.days_present)),
+  );
+  const attendanceByIdentity = new Map();
+  monthlyRows.forEach((row) => {
+    [row.employee_code, row.email].forEach((identity) => {
+      const key = normalizeIdentity(identity);
+      if (key) attendanceByIdentity.set(key, row);
+    });
+  });
+  const reviewByEmployee = new Map();
+  performanceReviews.forEach((review) => {
+    if (scoreOutOf100(review.overall_score) === null) return;
+    const key = normalizeIdentity(review.employee);
+    if (!key) return;
+    const current = reviewByEmployee.get(key);
+    const priority = reviewPriority[review.review_type] || 0;
+    const currentPriority = reviewPriority[current?.review_type] || 0;
+    const reviewDate = new Date(
+      review.submitted_at || review.updated_at || review.created_at || 0,
+    ).getTime();
+    const currentDateValue = new Date(
+      current?.submitted_at || current?.updated_at || current?.created_at || 0,
+    ).getTime();
+    if (
+      !current ||
+      priority > currentPriority ||
+      (priority === currentPriority && reviewDate > currentDateValue)
+    ) {
+      reviewByEmployee.set(key, review);
+    }
+  });
+  const employeesOfMonth = workforce
+    .map((employee) => {
+      const review = reviewByEmployee.get(normalizeIdentity(employee.id));
+      const attendance = [
+        employee.employee_number,
+        employee.employee_code,
+        employee.emp_code,
+        employee.email,
+      ]
+        .map((identity) =>
+          attendanceByIdentity.get(normalizeIdentity(identity)),
+        )
+        .find(Boolean);
+      if (!review || !attendance) return null;
+      const performanceScore = scoreOutOf100(review.overall_score);
+      const commitmentScore = scoreOutOf100(
+        review.ratings?.job_commitment ??
+          review.ratings?.jobCommitment ??
+          review.ratings?.commitment ??
+          review.competency_score,
+      );
+      if (performanceScore === null || commitmentScore === null) return null;
+      const daysPresent = number(attendance.days_present);
+      if (daysPresent <= 0) return null;
+      const attendanceScore = Math.max(
+        0,
+        Math.min(
+          100,
+          (daysPresent / maximumDaysPresent) * 50 +
+            ((daysPresent - number(attendance.late_arrivals)) / daysPresent) *
+              30 +
+            (number(attendance.full_days) / daysPresent) * 20,
+        ),
+      );
+      return {
+        ...employee,
+        performanceScore,
+        attendanceScore,
+        commitmentScore,
+        overallScore:
+          performanceScore * 0.5 +
+          attendanceScore * 0.3 +
+          commitmentScore * 0.2,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.overallScore - a.overallScore)
     .slice(0, 5);
 
   const currentDate = compactDate(now || new Date());
@@ -766,60 +870,61 @@ export default function HRCommandCenterView({
 
         <div className="grid gap-3 xl:grid-cols-2">
           <Panel
-            title="Month to date"
-            subtitle={`${compactDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1))} – ${currentDate} · ${monthRollup.employees} employees`}
-            icon="ChartBarIcon"
+            title="Employees of the Month"
+            subtitle="50% performance · 30% attendance · 20% job commitment"
+            icon="TrophyIcon"
           >
             <div className="overflow-x-auto px-3 pb-3">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 text-slate-500">
                   <tr>
-                    <th className="py-2">Metric</th>
-                    <th>This month</th>
-                    <th>Operational view</th>
+                    <th className="w-12 py-2 text-center">Rank</th>
+                    <th>Employee</th>
+                    <th className="text-center">Performance</th>
+                    <th className="text-center">Attendance</th>
+                    <th className="text-center">Job commitment</th>
+                    <th className="text-right">Score</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {[
-                    [
-                      "Total hours",
-                      monthRollup.totalHours.toLocaleString(),
-                      "Recorded",
-                    ],
-                    [
-                      "Average hours per employee",
-                      monthRollup.avgHoursPerEmployee,
-                      "Current average",
-                    ],
-                    [
-                      "Full days",
-                      monthRollup.totalFull.toLocaleString(),
-                      "Completed",
-                    ],
-                    [
-                      "Late arrivals",
-                      monthRollup.totalLate.toLocaleString(),
-                      monthRollup.totalLate > 0
-                        ? "Needs attention"
-                        : "On track",
-                    ],
-                  ].map(([metric, value, status]) => (
-                    <tr key={metric}>
-                      <td className="py-1.5 font-medium text-slate-700">
-                        {metric}
-                      </td>
-                      <td className="font-semibold text-slate-900">{value}</td>
-                      <td
-                        className={
-                          status === "Needs attention"
-                            ? "font-semibold text-rose-600"
-                            : "text-emerald-600"
-                        }
-                      >
-                        {status}
-                      </td>
-                    </tr>
-                  ))}
+                  {employeesOfMonth.length === 0 ? (
+                    <EmptyRow colSpan={6}>
+                      No eligible ranking yet. Employees need both a submitted
+                      performance review and current-month attendance records.
+                    </EmptyRow>
+                  ) : (
+                    employeesOfMonth.map((employee, index) => (
+                      <tr key={employee.id || employee.employee_number}>
+                        <td className="py-2 text-center">
+                          <span
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-full font-bold ${index === 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}
+                          >
+                            {index + 1}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="block font-semibold text-slate-900">
+                            {employeeName(employee)}
+                          </span>
+                          <span className="block text-xs text-slate-500">
+                            {employee.department || "Department not recorded"}
+                          </span>
+                        </td>
+                        <td className="text-center tabular-nums">
+                          {Math.round(employee.performanceScore)}%
+                        </td>
+                        <td className="text-center tabular-nums">
+                          {Math.round(employee.attendanceScore)}%
+                        </td>
+                        <td className="text-center tabular-nums">
+                          {Math.round(employee.commitmentScore)}%
+                        </td>
+                        <td className="text-right font-bold tabular-nums text-indigo-700">
+                          {employee.overallScore.toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
