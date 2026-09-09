@@ -1,6 +1,6 @@
 /**
  * WorkbookCanvas
- * ──────────────
+ * G��G��G��G��G��G��G��G��G��G��G��G��G��G��
  * Cross-check & edit the SPEC and CAT workbooks before download.
  *
  * - Renders the data exactly as it will appear in the SmartPlant 3D template
@@ -9,13 +9,16 @@
  *   and are baked into the downloaded xlsx by the backend exporter.
  *
  * All UX knobs (debounce, highlight colours, density) live in `CANVAS_CONFIG`
- * — adjust there, never inline.
+ * G�� adjust there, never inline.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
+  ChatBubbleLeftRightIcon,
+  ClipboardDocumentIcon,
+  PaperAirplaneIcon,
   PencilSquareIcon,
   PencilIcon,
   ArrowUturnLeftIcon,
@@ -39,7 +42,7 @@ import {
 
 import specCustomizationAPI from '../../../../services/specCustomizationAPI';
 
-// ─── Soft-coded UI / behaviour knobs ────────────────────────────────────────
+// G��G��G�� Soft-coded UI / behaviour knobs G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 const CANVAS_CONFIG = {
   defaultWorkbook: 'spec',
   workbooks: [
@@ -58,26 +61,29 @@ const CANVAS_CONFIG = {
     edited:   'bg-amber-50 ring-1 ring-amber-300',
     saving:   'bg-blue-50 ring-1 ring-blue-300',
     saved:    'bg-emerald-50 ring-1 ring-emerald-300',
+    chatbot:  'bg-cyan-50 ring-1 ring-cyan-300',
     error:    'bg-rose-50 ring-1 ring-rose-300',
   },
-  emptySheetMessage: 'No rows for this sheet yet — adjust extraction or add overrides.',
-  // ── CAT "unrouted components" banner ──────────────────────────────────
+  emptySheetMessage: 'No rows for this sheet yet - adjust extraction or add overrides.',
+  // G��G�� CAT "unrouted components" banner G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   // Components extracted for a Piping Class but with no matching sheet in
   // the standard CAT template (e.g. a valve sub-type with no dedicated
   // sheet) are excluded from the CAT workbook rather than silently dropped
-  // with zero visibility — this banner surfaces that gap in the canvas.
+  // with zero visibility G�� this banner surfaces that gap in the canvas.
   unroutedBanner: {
     enabled: true,
     maxGroupsShown: 6,
     title: 'Some components have no matching CAT sheet',
-    helpText: 'These components remain in the Piping Class data and only affect the CAT catalog view — they are not written to any CAT sheet because the standard template has no dedicated category for them.',
+    helpText: 'These components remain in the Piping Class data and only affect the CAT catalog view - they are not written to any CAT sheet because the standard template has no dedicated category for them.',
   },
-  // ── Row operations ────────────────────────────────────────────────────
+  // G��G�� Row operations G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   rowOperations: {
     enableEdit: true,
-    enableDelete: true,
-    enableBulkDelete: true,
-    enableBulkSelect: true,         // Enable checkbox selection
+    // Extracted rows are source data.  Until record-level change sets exist,
+    // the canvas must never pretend that removing overrides deletes a row.
+    enableDelete: false,
+    enableBulkDelete: false,
+    enableBulkSelect: false,
     confirmDelete: true,
     showRowActions: 'always',       // 'always' | 'hover' | 'never'
     maxBulkSelectRows: 500,         // Safety limit for bulk operations
@@ -86,16 +92,16 @@ const CANVAS_CONFIG = {
     actionsColumnWidth: 140,        // Width in pixels
     actionsColumnLabel: 'Actions',  // Column header text
     enableRowEdit: true,            // Show Edit button (highlights row for editing)
-    enableRowDelete: true,          // Show Delete button in actions column
+    enableRowDelete: false,         // Source records cannot be deleted here
   },
-  // ── Auto-save configuration ───────────────────────────────────────────
+  // G��G�� Auto-save configuration G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   autoSave: {
     enabled: true,
     indicator: true,                // Show save status indicator
     batchThreshold: 50,             // Batch save if >= 50 pending edits
     batchDelayMs: 2000,             // Wait 2s after last edit before batch save
   },
-  // ── Undo/Restore functionality ────────────────────────────────────────
+  // G��G�� Undo/Restore functionality G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   undo: {
     enabled: true,                  // Enable undo/restore
     maxHistorySize: 50,             // Keep last 50 actions
@@ -103,15 +109,17 @@ const CANVAS_CONFIG = {
     redoKeyBinding: 'Ctrl+Y',       // Keyboard shortcut
     showUndoButton: true,           // Show undo button in toolbar
   },
-  // ── S3 Snapshot Management ────────────────────────────────────────────
+  // G��G�� S3 Snapshot Management G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   s3Snapshots: {
-    enabled: true,                  // Enable S3 snapshot features
+    // The server currently has no snapshot listing or restore API.  Hide this
+    // unfinished workflow rather than presenting mock recovery data.
+    enabled: false,
     showSnapshotList: true,         // Show list of snapshots
     allowRestore: true,             // Allow restoring from snapshots
     maxSnapshotsToShow: 10,         // Show last 10 snapshots
     autoSnapshotInterval: 100,      // Auto-snapshot every 100 edits
   },
-  // ── Fullscreen behaviour ──────────────────────────────────────────────
+  // G��G�� Fullscreen behaviour G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   // 'native' first tries the browser Fullscreen API and falls back to a
   // CSS-fixed overlay when blocked (e.g. inside an iframe); 'overlay'
   // forces the CSS overlay; 'off' disables the toggle entirely.
@@ -126,12 +134,69 @@ const CANVAS_CONFIG = {
     gridMaxHeightFS: 'calc(100vh - 180px)', // fullscreen mode
     overlayZIndex:   60,
   },
+  chatbot: {
+    enabled: true,
+    maxHistory: 6,
+    instructionPlaceholder: 'set MaterialGrade to from uploaded document where Description contains PIPE page 12',
+    sendHint: 'Enter = Preview | approval is required before apply',
+    scopes: [
+      { value: 'auto', label: 'Auto' },
+      { value: 'spec', label: 'SPEC only' },
+      { value: 'cat', label: 'CAT only' },
+      { value: 'both', label: 'Both workbooks' },
+    ],
+    taskTemplates: [
+      {
+        key: 'material',
+        label: 'Material Standardization',
+        prompt: 'set MaterialGrade to from uploaded document where Description contains PIPE page 12',
+      },
+      {
+        key: 'rating',
+        label: 'Pressure Rating Alignment',
+        prompt: 'update PressureRating = from uploaded document where Description contains FLANGE page 21',
+      },
+      {
+        key: 'commodity',
+        label: 'Commodity Code Cleanup',
+        prompt: 'set CommodityCode to from uploaded document in sheet PipingCommodityFilter page 16',
+      },
+      {
+        key: 'end_connection',
+        label: 'End Connection Normalization',
+        prompt: 'set EndConnection to as per uploaded document for class A1 in sheet PipingComponentData page 18',
+      },
+    ],
+    examples: [
+      'set MaterialGrade to ASTM A106 Gr.B where Description contains PIPE',
+      'set EndConnection to as per uploaded document for class A1 in sheet PipingComponentData page 18',
+      'update PressureRating = from uploaded document where Description contains FLANGE page 21',
+      'update Notes = REVIEWED for class A1 in sheet PipingMaterialsClassData',
+      'set CommodityCode to VLV-001 in sheet PipingCommodityFilter',
+    ],
+  },
+  sheetNavigator: {
+    defaultMode: 'compact', // compact | detailed
+    storageKey: 'specCustomization.sheetNavigator.mode',
+  },
+  userExperience: {
+    showQuickGuide: true,
+    showGridSearch: true,
+    labels: {
+      activeSheetFallback: '-',
+      activeSheetEmpty: 'No sheet selected',
+      searchPlaceholder: 'Search rows...',
+      rowsAndSheetsSep: ' | ',
+      loadingWorkbook: 'Loading workbook...',
+      showMoreSuffix: 'more...',
+    },
+  },
 };
 
-// `value` may be null/number/string — normalise to string for the input.
+// `value` may be null/number/string G�� normalise to string for the input.
 const toInputValue = (v) => (v === null || v === undefined ? '' : String(v));
 
-// ─────────────────────────────────────────────────────────────────────────────
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 const WorkbookCanvas = ({ job }) => {
   const jobId = job?.id;
 
@@ -146,32 +211,53 @@ const WorkbookCanvas = ({ job }) => {
   const [edits, setEdits] = useState({});
   const debounceTimers   = useRef({});
 
-  // ── Edit mode and Auto-save toggles ──────────────────────────────────────
+  // G��G�� Edit mode and Auto-save toggles G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const [editModeEnabled, setEditModeEnabled] = useState(true);   // Edit mode toggle
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);   // Auto-save toggle
 
-  // ── Bulk row selection ───────────────────────────────────────────────────
+  // G��G�� Bulk row selection G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const [selectedRows, setSelectedRows] = useState(new Set());     // Set of selected row_keys
   const [selectAllChecked, setSelectAllChecked] = useState(false); // Select all checkbox state
 
-  // ── Undo/Redo history ────────────────────────────────────────────────────
+  // G��G�� Undo/Redo history G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const [undoHistory, setUndoHistory] = useState([]);              // Array of past actions
   const [redoHistory, setRedoHistory] = useState([]);              // Array of undone actions
   const editCountRef = useRef(0);                                  // Track edits for auto-snapshot
 
-  // ── S3 Snapshot Management ───────────────────────────────────────────────
+  // G��G�� S3 Snapshot Management G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const [s3SnapshotsList, setS3SnapshotsList] = useState([]);      // List of S3 snapshots
   const [showSnapshotPanel, setShowSnapshotPanel] = useState(false); // Show/hide snapshot panel
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
 
-  // ── Row operations state ─────────────────────────────────────────────────
+  // G��G�� Row operations state G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const [deleteConfirm, setDeleteConfirm] = useState(null);  // {sheet, rowKey, rowIndex}
   const [deleting, setDeleting] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState(null); // 'saving' | 'saved' | 'error'
   const batchSaveTimer = useRef(null);
   const [editingRowKey, setEditingRowKey] = useState(null);  // Currently highlighted row for editing
 
-  // ── Fullscreen state (soft-coded fallback to CSS overlay) ───────────────
+  // Chatbot state
+  const [chatInstruction, setChatInstruction] = useState('');
+  const [chatScope, setChatScope] = useState('auto');
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [copiedMessageTs, setCopiedMessageTs] = useState(null);
+  const [chatTouchedKeys, setChatTouchedKeys] = useState(new Set());
+  const [chatPreview, setChatPreview] = useState(null);
+  const chatEndRef = useRef(null);
+  const [sheetNavMode, setSheetNavMode] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return CANVAS_CONFIG.sheetNavigator.defaultMode;
+      const raw = window.localStorage.getItem(CANVAS_CONFIG.sheetNavigator.storageKey);
+      return raw === 'compact' || raw === 'detailed'
+        ? raw
+        : CANVAS_CONFIG.sheetNavigator.defaultMode;
+    } catch {
+      return CANVAS_CONFIG.sheetNavigator.defaultMode;
+    }
+  });
+
+  // G��G�� Fullscreen state (soft-coded fallback to CSS overlay) G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const rootRef                 = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -181,7 +267,7 @@ const WorkbookCanvas = ({ job }) => {
     const el = rootRef.current;
     if (!el) return;
 
-    // Currently fullscreen → exit.
+    // Currently fullscreen G�� exit.
     if (isFullscreen) {
       if (document.fullscreenElement) {
         try { await document.exitFullscreen(); } catch { /* noop */ }
@@ -222,7 +308,7 @@ const WorkbookCanvas = ({ job }) => {
     };
   }, [isFullscreen]);
 
-  // ── Fetch preview ────────────────────────────────────────────────────────
+  // G��G�� Fetch preview G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const fetchPreview = useCallback(async () => {
     if (!jobId) return;
     setLoading(true);
@@ -242,7 +328,7 @@ const WorkbookCanvas = ({ job }) => {
 
   useEffect(() => { fetchPreview(); }, [fetchPreview]);
 
-  // ── Save / clear helpers ────────────────────────────────────────────────
+  // G��G�� Save / clear helpers G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const editKey = (sheet, rowKey, col) => `${sheet}::${rowKey}::${col}`;
 
   const queueSave = useCallback((sheet, rowKey, col, value) => {
@@ -453,7 +539,7 @@ const WorkbookCanvas = ({ job }) => {
     }
   }, [edits, jobId, workbook]);
 
-  // ── Derived data for the active sheet ───────────────────────────────────
+  // G��G�� Derived data for the active sheet G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const activeSheetData = useMemo(() => {
     if (!data || !activeSheet) return null;
     return data.sheets.find((s) => s.name === activeSheet) || null;
@@ -476,9 +562,9 @@ const WorkbookCanvas = ({ job }) => {
   const totalRows  = data?.sheets?.reduce((acc, s) => acc + (s.row_count || 0), 0) || 0;
   const editedKeys = Object.keys(edits).filter((k) => edits[k]?.status === 'saved');
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   // BULK ROW SELECTION
-  // ═══════════════════════════════════════════════════════════════════════════
+  // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   
   const toggleRowSelection = useCallback((rowKey) => {
     setSelectedRows((prev) => {
@@ -557,9 +643,9 @@ const WorkbookCanvas = ({ job }) => {
     }
   }, [selectedRows, jobId, workbook, activeSheet, fetchPreview]);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   // UNDO/REDO FUNCTIONALITY
-  // ═══════════════════════════════════════════════════════════════════════════
+  // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 
   const addToHistory = useCallback((action) => {
     if (!CANVAS_CONFIG.undo.enabled) return;
@@ -666,9 +752,9 @@ const WorkbookCanvas = ({ job }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [performUndo, performRedo]);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   // S3 SNAPSHOT MANAGEMENT
-  // ═══════════════════════════════════════════════════════════════════════════
+  // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 
   const fetchS3Snapshots = useCallback(async () => {
     if (!CANVAS_CONFIG.s3Snapshots.enabled) return;
@@ -733,6 +819,220 @@ const WorkbookCanvas = ({ job }) => {
     }
   }, [edits, jobId, workbook, fetchS3Snapshots]);
 
+  const applyChatInstruction = useCallback(async (mode = 'preview', instructionOverride = '', approvalToken = '') => {
+    const instruction = (instructionOverride || chatInstruction).trim();
+    if (!instruction) {
+      alert('Please enter an instruction first.');
+      return;
+    }
+
+    setChatBusy(true);
+    try {
+      const result = await specCustomizationAPI.chatbotEditWorkbook(jobId, {
+        instruction,
+        workbook_scope: chatScope,
+        active_workbook: workbook,
+        preview_only: mode === 'preview',
+        ...(mode === 'apply' ? { approval_token: approvalToken } : {}),
+      });
+
+      if (mode === 'preview') {
+        const updates = (result?.workbook_results || []).flatMap((wbResult) =>
+          (wbResult?.planned_updates || []).map((update) => ({
+            ...update,
+            workbook: wbResult?.workbook || update.workbook || workbook,
+          }))
+        );
+        setChatPreview(result?.approval_token ? {
+          instruction,
+          approvalToken: result.approval_token,
+          expiresIn: result.approval_expires_in || 0,
+          plannedCount: result.planned_count || updates.length,
+          updates,
+        } : null);
+      }
+
+      if (mode !== 'preview') {
+        const touched = new Set();
+        (result?.workbook_results || []).forEach((wbResult) => {
+          (wbResult?.planned_updates || []).forEach((u) => {
+            touched.add(`${u.sheet_name}::${u.row_key}::${u.column_name}`);
+          });
+        });
+        setChatTouchedKeys(touched);
+        setTimeout(() => setChatTouchedKeys(new Set()), 6000);
+      }
+
+      setChatMessages((prev) => {
+        const runtime = result?.runtime || {};
+        const docCtx = result?.document_context || {};
+        const evidence = result?.document_evidence || [];
+        const autoValue = result?.auto_value || {};
+        const confidence = result?.confidence || {};
+        const rag = runtime?.rag || {};
+        const cag = runtime?.cag || {};
+        const sourceLabel = docCtx?.source === 's3' ? 'S3 document context' : 'Document context';
+        const evidenceTop = evidence.slice(0, 2).map((e) => `P${e.page}: ${e.snippet}`).join(' || ');
+        const next = [
+          ...prev,
+          {
+            ts: Date.now(),
+            mode,
+            instruction,
+            status: result?.warning ? 'warning' : 'ok',
+            text: mode === 'preview'
+              ? `Preview ready: ${result.planned_count || 0} planned cell updates across ${(result.workbooks || []).join(', ') || workbook}.`
+              : `Applied ${result.applied_count || 0} cell updates across ${(result.workbooks || []).join(', ') || workbook}.`,
+            meta: `${sourceLabel}: ${docCtx?.filename || 'n/a'}${docCtx?.page_count ? ` (${docCtx.page_count} pages)` : ''} | RAG rows top-k: ${rag?.top_k ?? '-'} | Doc chunks: ${rag?.document_evidence_count ?? evidence.length} | CAG: ${cag?.result_cache_hit ? 'cache hit' : 'cache miss'}${autoValue?.used ? ` | Auto value: ${autoValue?.resolved || '-'}` : ''}${confidence?.label ? ` | Confidence: ${confidence.label} (${confidence.score})` : ''}`,
+            evidence: evidenceTop,
+            warning: result?.warning || '',
+            suggestion: result?.suggestions?.tip || '',
+          },
+        ];
+        return next.slice(-CANVAS_CONFIG.chatbot.maxHistory);
+      });
+
+      if (mode !== 'preview') {
+        setChatInstruction('');
+        setChatPreview(null);
+        await fetchPreview();
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Instruction failed';
+      setChatMessages((prev) => {
+        const runtime = err?.response?.data?.runtime || {};
+        const docCtx = err?.response?.data?.document_context || {};
+        const evidence = err?.response?.data?.document_evidence || [];
+        const autoValue = err?.response?.data?.auto_value || {};
+        const rag = runtime?.rag || {};
+        const cag = runtime?.cag || {};
+        const sourceLabel = docCtx?.source === 's3' ? 'S3 document context' : 'Document context';
+        const evidenceTop = evidence.slice(0, 2).map((e) => `P${e.page}: ${e.snippet}`).join(' || ');
+        const next = [
+          ...prev,
+          {
+            ts: Date.now(),
+            mode,
+            instruction,
+            status: 'error',
+            text: msg,
+            meta: `${sourceLabel}: ${docCtx?.filename || 'n/a'} | RAG rows top-k: ${rag?.top_k ?? '-'} | Doc chunks: ${rag?.document_evidence_count ?? evidence.length} | CAG: ${cag?.result_cache_hit ? 'cache hit' : 'cache miss'}${autoValue?.used ? ` | Auto value: ${autoValue?.resolved || '-'}` : ''}`,
+            evidence: evidenceTop,
+          },
+        ];
+        return next.slice(-CANVAS_CONFIG.chatbot.maxHistory);
+      });
+    } finally {
+      setChatBusy(false);
+    }
+  }, [chatInstruction, chatScope, fetchPreview, jobId, workbook]);
+
+  const runWorkbookValidation = useCallback(async () => {
+    if (!jobId) return;
+    setChatBusy(true);
+    try {
+      const result = await specCustomizationAPI.validateWorkbook(jobId, {
+        workbook_scope: chatScope,
+        active_workbook: workbook,
+      });
+
+      const sev = result?.severity_counts || {};
+      const status = result?.status || 'warn';
+      const statusLabel = status === 'pass' ? 'Validation passed' : status === 'fail' ? 'Validation found critical issues' : 'Validation found warnings';
+      const topIssues = (result?.issues || [])
+        .slice(0, 2)
+        .map((i) => `${i.sheet_name}/${i.column_name}: ${i.message}`)
+        .join(' || ');
+
+      setChatMessages((prev) => {
+        const next = [
+          ...prev,
+          {
+            ts: Date.now(),
+            mode: 'validate',
+            instruction: 'Validate extracted workbook data',
+            status: status === 'pass' ? 'ok' : (status === 'fail' ? 'error' : 'warning'),
+            text: `${statusLabel}. Checked ${result?.checked_rows || 0} rows in ${result?.checked_sheets || 0} sheets.`,
+            meta: `Issues: ${result?.issues_total || 0} | High: ${sev.high || 0} | Medium: ${sev.medium || 0} | Low: ${sev.low || 0}`,
+            evidence: topIssues,
+          },
+        ];
+        return next.slice(-CANVAS_CONFIG.chatbot.maxHistory);
+      });
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Validation failed';
+      setChatMessages((prev) => {
+        const next = [
+          ...prev,
+          {
+            ts: Date.now(),
+            mode: 'validate',
+            instruction: 'Validate extracted workbook data',
+            status: 'error',
+            text: msg,
+            meta: 'Validation request failed',
+          },
+        ];
+        return next.slice(-CANVAS_CONFIG.chatbot.maxHistory);
+      });
+    } finally {
+      setChatBusy(false);
+    }
+  }, [jobId, chatScope, workbook]);
+
+  const handleChatComposerKeyDown = useCallback((e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    applyChatInstruction('preview');
+  }, [applyChatInstruction]);
+
+  const applyApprovedChatPreview = useCallback(() => {
+    if (!chatPreview?.approvalToken) return;
+    applyChatInstruction('apply', chatPreview.instruction, chatPreview.approvalToken);
+  }, [applyChatInstruction, chatPreview]);
+
+  const clearChatHistory = useCallback(() => {
+    setChatMessages([]);
+    setCopiedMessageTs(null);
+    setChatTouchedKeys(new Set());
+    setChatPreview(null);
+  }, []);
+
+  const copyAssistantMessage = useCallback(async (msg) => {
+    const payload = [msg.text, msg.warning, msg.meta, msg.evidence ? `Evidence: ${msg.evidence}` : '']
+      .filter(Boolean)
+      .join('\n');
+    if (!payload) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload);
+        setCopiedMessageTs(msg.ts);
+        setTimeout(() => setCopiedMessageTs(null), 1400);
+        return;
+      }
+      // Fallback for older browsers.
+      const ta = document.createElement('textarea');
+      ta.value = payload;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedMessageTs(msg.ts);
+      setTimeout(() => setCopiedMessageTs(null), 1400);
+    } catch {
+      // Swallow copy failures to avoid interrupting user flow.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [chatMessages, chatBusy]);
+
   const restoreFromSnapshot = useCallback(async (snapshot) => {
     const confirmMsg = `Restore from snapshot created at ${new Date(snapshot.timestamp).toLocaleString()}?\nThis will overwrite current edits.`;
     if (!confirm(confirmMsg)) return;
@@ -765,7 +1065,17 @@ const WorkbookCanvas = ({ job }) => {
     }
   }, [showSnapshotPanel, fetchS3Snapshots]);
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(CANVAS_CONFIG.sheetNavigator.storageKey, sheetNavMode);
+      }
+    } catch {
+      // Ignore storage failures (private mode, quota, policy).
+    }
+  }, [sheetNavMode]);
+
+  // G��G�� Render G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   if (!jobId) {
     return (
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 text-sm text-slate-500 dark:text-slate-400">
@@ -790,7 +1100,7 @@ const WorkbookCanvas = ({ job }) => {
 
   return (
     <div ref={rootRef} className={rootClass} style={rootStyle}>
-      {/* ── Header bar — workbook toggle + reload + stats ────────────────── */}
+      {/* G��G�� Header bar G�� workbook toggle + reload + stats G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-sm">
         <div className="flex gap-1 rounded-lg bg-slate-100 dark:bg-slate-900 p-1">
           {CANVAS_CONFIG.workbooks.map((wb) => (
@@ -917,7 +1227,7 @@ const WorkbookCanvas = ({ job }) => {
         <div className="ml-auto flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
           <span className="hidden sm:inline">
             <strong className="text-slate-700 dark:text-slate-200">{totalRows}</strong> rows
-            {data?.sheets ? ` · ${data.sheets.length} sheets` : ''}
+            {data?.sheets ? `${CANVAS_CONFIG.userExperience.labels.rowsAndSheetsSep}${data.sheets.length} sheets` : ''}
           </span>
           {CANVAS_CONFIG.autoSave.indicator && autoSaveStatus && (
             <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${
@@ -992,35 +1302,81 @@ const WorkbookCanvas = ({ job }) => {
             {data.unrouted_components.slice(0, CANVAS_CONFIG.unroutedBanner.maxGroupsShown).map((g) => (
               <li key={`${g.component_type}::${g.sub_type}`}>
                 <span className="font-medium">{g.sub_type || g.component_type}</span>
-                {' × '}
+                {' x '}
                 {g.count}
               </li>
             ))}
             {data.unrouted_components.length > CANVAS_CONFIG.unroutedBanner.maxGroupsShown && (
               <li className="italic opacity-75">
-                +{data.unrouted_components.length - CANVAS_CONFIG.unroutedBanner.maxGroupsShown} more…
+                +{data.unrouted_components.length - CANVAS_CONFIG.unroutedBanner.maxGroupsShown} {CANVAS_CONFIG.userExperience.labels.showMoreSuffix}
               </li>
             )}
           </ul>
         </div>
       )}
 
-      {/* ── Main split: sheet sidebar + grid ─────────────────────────────── */}
+      {CANVAS_CONFIG.userExperience.showQuickGuide && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50/70 dark:bg-sky-900/20 dark:border-sky-900/40 px-3 py-2.5">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">Quick Guide</div>
+          <div className="mt-1 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-sky-900 dark:text-sky-100">
+            <div><span className="font-semibold">1.</span> Pick a sheet and review rows.</div>
+            <div><span className="font-semibold">2.</span> Ask chatbot to apply targeted edits.</div>
+            <div><span className="font-semibold">3.</span> Verify highlights, then export SPEC/CAT.</div>
+          </div>
+        </div>
+      )}
+
+      {/* G��G�� Main split: sheet sidebar + grid G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */}
       {!loadError && data && (
-        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-3">
+        <div className="grid grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_340px] 2xl:grid-cols-[280px_minmax(0,1fr)_360px] gap-3 items-start">
           {/* Sheet list */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 h-fit lg:sticky lg:top-2">
-            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Sheets
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 h-fit xl:sticky xl:top-3 xl:max-h-[calc(100vh-210px)] xl:flex xl:flex-col">
+            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span>Sheets</span>
+                <span className="text-[10px] font-medium normal-case text-slate-400">
+                  {data.sheets.length} total
+                </span>
+              </div>
+              <div className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <button
+                  onClick={() => setSheetNavMode('compact')}
+                  className={`px-2 py-1 text-[10px] font-semibold normal-case transition ${
+                    sheetNavMode === 'compact'
+                      ? 'bg-slate-700 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-white text-slate-500 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                  title="Compact chip view"
+                >
+                  Compact
+                </button>
+                <button
+                  onClick={() => setSheetNavMode('detailed')}
+                  className={`px-2 py-1 text-[10px] font-semibold normal-case transition ${
+                    sheetNavMode === 'detailed'
+                      ? 'bg-slate-700 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-white text-slate-500 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                  title="Detailed list view"
+                >
+                  Detailed
+                </button>
+              </div>
             </div>
-            <div className="flex flex-col gap-0.5 max-h-[60vh] overflow-auto">
+            <div className={`${
+              sheetNavMode === 'compact'
+                ? 'flex flex-wrap gap-1.5 max-h-[34vh] xl:max-h-[calc(100vh-280px)] overflow-auto px-1 pb-1'
+                : 'flex flex-col gap-0.5 max-h-[52vh] xl:max-h-[calc(100vh-280px)] overflow-auto px-1 pb-1'
+            }`}>
               {data.sheets.map((s) => {
                 const active = s.name === activeSheet;
                 return (
                   <button
                     key={s.name}
                     onClick={() => setActiveSheet(s.name)}
-                    className={`flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs rounded-md transition ${
+                    className={`inline-flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs rounded-md transition ${
+                      sheetNavMode === 'compact' ? 'min-w-[170px] max-w-[240px]' : 'w-full'
+                    } ${
                       active
                         ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow'
                         : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900'
@@ -1037,6 +1393,8 @@ const WorkbookCanvas = ({ job }) => {
             </div>
           </div>
 
+          <div className={`space-y-3 min-w-0 ${CANVAS_CONFIG.chatbot.enabled ? '' : 'xl:col-span-2'}`}>
+
           {/* Edit Mode Disabled Banner */}
           {!editModeEnabled && (
             <div className="rounded-xl border-2 border-amber-300 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-center gap-3">
@@ -1046,7 +1404,7 @@ const WorkbookCanvas = ({ job }) => {
                   Edit Mode is Disabled
                 </p>
                 <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-                  Click the "Edit Mode OFF" button above to enable cell editing and row deletion.
+                  Click the &quot;Edit Mode OFF&quot; button above to enable cell editing.
                 </p>
               </div>
               <button
@@ -1068,7 +1426,7 @@ const WorkbookCanvas = ({ job }) => {
                   Auto-Save is Disabled
                 </p>
                 <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
-                  Your changes are tracked locally. Click "Save All" button to persist them, or enable Auto-Save.
+                  Your changes are tracked locally. Click &quot;Save All&quot; to persist them, or enable Auto-Save.
                 </p>
               </div>
               <button
@@ -1086,28 +1444,30 @@ const WorkbookCanvas = ({ job }) => {
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden flex flex-col">
             <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 px-3 py-2">
               <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
-                {activeSheet || '—'}
+                {activeSheet || CANVAS_CONFIG.userExperience.labels.activeSheetFallback}
               </div>
               {activeSheetData && (
                 <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
                   {filteredRows.length} / {activeSheetData.row_count} rows
                 </span>
               )}
-              <div className="ml-auto relative">
-                <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search rows…"
-                  className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-300"
-                />
-              </div>
+              {CANVAS_CONFIG.userExperience.showGridSearch && (
+                <div className="ml-auto relative">
+                  <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={CANVAS_CONFIG.userExperience.labels.searchPlaceholder}
+                    className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-300"
+                  />
+                </div>
+              )}
             </div>
 
             {loading ? (
               <div className="p-6 text-sm text-slate-500 flex items-center gap-2">
-                <ArrowPathIcon className="w-4 h-4 animate-spin" /> Loading workbook…
+                <ArrowPathIcon className="w-4 h-4 animate-spin" /> {CANVAS_CONFIG.userExperience.labels.loadingWorkbook}
               </div>
             ) : !activeSheetData || activeSheetData.rows.length === 0 ? (
               <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -1216,7 +1576,7 @@ const WorkbookCanvas = ({ job }) => {
                           style={{ minWidth: CANVAS_CONFIG.rowHeaderMinWidthPx }}
                         >
                           <div className="font-semibold text-slate-700 dark:text-slate-200 truncate">
-                            {row.source?.class_code || '—'}
+                            {row.source?.class_code || 'G��'}
                           </div>
                           <div className="text-[10px] text-slate-400 truncate" title={row.row_key}>
                             {row.row_key}
@@ -1236,6 +1596,7 @@ const WorkbookCanvas = ({ job }) => {
                             : status === 'saved' ? CANVAS_CONFIG.highlight.saved
                             : status === 'error' ? CANVAS_CONFIG.highlight.error
                             : status === 'editing' ? CANVAS_CONFIG.highlight.edited
+                            : chatTouchedKeys.has(k) ? CANVAS_CONFIG.highlight.chatbot
                             : wasOverridden ? CANVAS_CONFIG.highlight.edited
                             : '';
                           return (
@@ -1277,7 +1638,7 @@ const WorkbookCanvas = ({ job }) => {
                                   <CheckCircleIcon className="w-3 h-3 text-emerald-500" title="Saved" />
                                 )}
                                 {status === 'saving' && (
-                                  <ArrowPathIcon className="w-3 h-3 animate-spin text-blue-500" title="Saving…" />
+                                  <ArrowPathIcon className="w-3 h-3 animate-spin text-blue-500" title="SavingGǪ" />
                                 )}
                               </div>
                             </td>
@@ -1336,6 +1697,171 @@ const WorkbookCanvas = ({ job }) => {
               </div>
             )}
           </div>
+          </div>
+
+          {CANVAS_CONFIG.chatbot.enabled && (
+            <aside className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm xl:sticky xl:top-3 xl:h-[calc(100vh-220px)] flex flex-col overflow-hidden">
+              <div className="px-3 py-2.5 border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 flex items-center gap-2">
+                <ChatBubbleLeftRightIcon className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Workbook Chatbot</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">Document-aware assistant for workbook edits</p>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-3 py-3 bg-slate-50 dark:bg-slate-900/30 space-y-3">
+                {chatMessages.length === 0 ? (
+                  <div className="text-xs text-slate-500 dark:text-slate-400 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-3">
+                    Start a chat and describe the workbook change you need.
+                  </div>
+                ) : (
+                  chatMessages.slice().reverse().map((m) => (
+                    <div key={m.ts} className="space-y-1.5">
+                      <div className="flex justify-end">
+                        <div className="max-w-[92%] flex items-end gap-2">
+                          <div className="rounded-full w-6 h-6 text-[10px] font-bold bg-cyan-700 text-white flex items-center justify-center shadow-sm">U</div>
+                          <div className="rounded-2xl rounded-br-md bg-cyan-600 text-white px-3 py-2 text-xs leading-relaxed shadow-sm">
+                            <div className="text-[10px] opacity-90 mb-0.5">You • {new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                            {m.instruction}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex justify-start">
+                        <div className="max-w-[92%] flex items-end gap-2">
+                          <div className="rounded-full w-6 h-6 text-[10px] font-bold bg-slate-700 text-white flex items-center justify-center shadow-sm">AI</div>
+                          <div className={`rounded-2xl rounded-bl-md px-3 py-2 text-xs border shadow-sm ${
+                            m.status === 'ok'
+                              ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                              : m.status === 'warning'
+                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200'
+                              : 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-200'
+                          }`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[10px] opacity-70">Assistant</div>
+                              <button
+                                onClick={() => copyAssistantMessage(m)}
+                                className="inline-flex items-center gap-1 text-[10px] opacity-80 hover:opacity-100"
+                                title="Copy assistant message"
+                              >
+                                <ClipboardDocumentIcon className="w-3.5 h-3.5" />
+                                {copiedMessageTs === m.ts ? 'Copied' : 'Copy'}
+                              </button>
+                            </div>
+                            <div className="font-semibold">{m.text}</div>
+                            {m.warning && <div className="mt-1">{m.warning}</div>}
+                            {m.suggestion && <div className="mt-1 opacity-80">Suggestion: {m.suggestion}</div>}
+                            {m.meta && <div className="mt-1 opacity-80">{m.meta}</div>}
+                            {m.evidence && <div className="mt-1 opacity-75">Evidence: {m.evidence}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {chatBusy && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[70%] flex items-end gap-2">
+                      <div className="rounded-full w-6 h-6 text-[10px] font-bold bg-slate-700 text-white flex items-center justify-center shadow-sm">AI</div>
+                      <div className="rounded-2xl rounded-bl-md px-3 py-2 text-xs border shadow-sm bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                        <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
+                        Assistant is analyzing your workbook and uploaded document...
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 space-y-2">
+                <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+                  <div className="w-full px-2.5 py-2 text-xs bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-md text-slate-500 dark:text-slate-400">
+                    Workbook assistant
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={runWorkbookValidation}
+                      disabled={chatBusy}
+                      className="px-2.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 border border-slate-300 rounded-md disabled:opacity-50"
+                      title="Validate extracted data"
+                    >
+                      Validate
+                    </button>
+                    <button
+                      onClick={clearChatHistory}
+                      className="px-2.5 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-300 rounded-md"
+                      title="Clear chat"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <select
+                  value={chatScope}
+                  onChange={(e) => setChatScope(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md"
+                >
+                  {CANVAS_CONFIG.chatbot.scopes.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+
+                <textarea
+                  value={chatInstruction}
+                  onChange={(e) => setChatInstruction(e.target.value)}
+                  onKeyDown={handleChatComposerKeyDown}
+                  placeholder={CANVAS_CONFIG.chatbot.instructionPlaceholder}
+                  rows={3}
+                  className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                />
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">Enter to preview | Shift+Enter for a new line</div>
+
+                <button
+                  onClick={() => applyChatInstruction('preview')}
+                  disabled={chatBusy || !chatInstruction.trim()}
+                  className="w-full px-3 py-2 text-xs font-semibold bg-cyan-600 hover:bg-cyan-700 text-white rounded-md disabled:opacity-50 flex items-center justify-center gap-1"
+                >
+                  {chatBusy ? (
+                    <>
+                      <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                      Applying...
+                    </>
+                  ) : (
+                    <>
+                      <PaperAirplaneIcon className="w-4 h-4" />
+                      Preview proposed changes
+                    </>
+                  )}
+                </button>
+
+                {chatPreview && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 space-y-2">
+                    <div className="font-semibold">
+                      Review required: {chatPreview.plannedCount} proposed cell change{chatPreview.plannedCount === 1 ? '' : 's'}
+                    </div>
+                    <div className="max-h-28 overflow-y-auto space-y-1 font-mono text-[10px]">
+                      {chatPreview.updates.slice(0, 5).map((update, index) => (
+                        <div key={`${update.sheet_name}-${update.row_key}-${update.column_name}-${index}`}>
+                          {update.sheet_name}/{update.column_name}: {String(update.previous_value ?? '') || '(empty)'} → {update.value}
+                        </div>
+                      ))}
+                      {chatPreview.updates.length > 5 && (
+                        <div>…and {chatPreview.updates.length - 5} more changes</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={applyApprovedChatPreview}
+                      disabled={chatBusy}
+                      className="w-full px-3 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-md disabled:opacity-50"
+                    >
+                      Apply approved changes
+                    </button>
+                  </div>
+                )}
+              </div>
+            </aside>
+          )}
         </div>
       )}
 
@@ -1443,9 +1969,9 @@ const WorkbookCanvas = ({ job }) => {
                 <div className="text-sm text-blue-800 dark:text-blue-200">
                   <p className="font-semibold mb-1">Automatic Snapshots</p>
                   <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
-                    <li>• Created automatically when cell count exceeds 5000</li>
-                    <li>• Created when JSON size exceeds 10MB</li>
-                    <li>• Every {CANVAS_CONFIG.s3Snapshots.autoSnapshotInterval} edits (when enabled)</li>
+                    <li>- Created automatically when cell count exceeds 5000</li>
+                    <li>- Created when JSON size exceeds 10MB</li>
+                    <li>- Every {CANVAS_CONFIG.s3Snapshots.autoSnapshotInterval} edits (when enabled)</li>
                   </ul>
                 </div>
               </div>

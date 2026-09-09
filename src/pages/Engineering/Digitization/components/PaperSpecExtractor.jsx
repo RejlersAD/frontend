@@ -1,7 +1,7 @@
-/**
+﻿/**
  * PaperSpecExtractor
- * ──────────────────
- * Self-contained extractor panel: upload PDF → poll job → display
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * Self-contained extractor panel: upload PDF â†’ poll job â†’ display
  * extracted Piping Classes + components. All knobs in `PANEL_CONFIG`.
  *
  * No core logic of any other feature is touched.
@@ -31,7 +31,7 @@ import specCustomizationAPI, { SPEC_API_CONFIG } from '../../../../services/spec
 import WorkbookCanvas from './WorkbookCanvas';
 import WrenchAiDocAssist from '../../../../components/Engineering/WrenchAiDocAssist';
 
-// ─── Soft-coded helpers (file format detection) ──────────────────────────────
+// â”€â”€â”€ Soft-coded helpers (file format detection) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Per-group icon (kept local because heroicons are JSX components and cannot
 // live inside the plain-data API config module).
 const GROUP_ICONS = {
@@ -49,47 +49,47 @@ const detectFormat = (filename) => {
   return { ext, group, meta };
 };
 
-// ─── Soft-coded class-summary panel (stats + filters) ────────────────────────
+// â”€â”€â”€ Soft-coded class-summary panel (stats + filters) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each stat card declares its metric, label, icon, gradient and value-formatter.
 // Adding a new metric = adding one row here; the renderer is generic.
 const CLASS_SUMMARY_CONFIG = {
-  // ── Headline AI insight banner ─────────────────────────────────────
+  // â”€â”€ Headline AI insight banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   aiBanner: {
-    eyebrow:    'RAD AI · Spec Intelligence',
+    eyebrow:    'RAD AI Â· Spec Intelligence',
     title:      'AI extracted your Piping Material Specification',
     // Returns an array of inline tokens for the headline insight sentence.
     insight: (a) => ([
       { text: 'Analysed ' },
-      { text: a.totalClasses.toLocaleString(),     tone: 'pink'    },
+      { text: a.totalClasses.toLocaleString(),     tone: 'blue'    },
       { text: ' Piping Classes containing ' },
       { text: a.totalComponents.toLocaleString(),  tone: 'violet'  },
       { text: ' component rows across ' },
       { text: a.uniqueMaterials.toLocaleString(),  tone: 'sky'     },
       { text: ' unique materials and ' },
       { text: a.uniqueRatings.toLocaleString(),    tone: 'amber'   },
-      { text: ' pressure ratings — overall confidence ' },
-      { text: a.avgConfidence == null ? '—' : `${Math.round(a.avgConfidence * 100)}%`, tone: 'emerald' },
+      { text: ' pressure ratings â€” overall confidence ' },
+      { text: a.avgConfidence == null ? 'â€”' : `${Math.round(a.avgConfidence * 100)}%`, tone: 'emerald' },
       { text: '.' },
     ]),
   },
   // Inline-token highlight tones used by the banner sentence above.
   highlightTones: {
-    pink:    'text-pink-200 font-bold',
+    blue:    'text-blue-200 font-bold',
     violet:  'text-violet-200 font-bold',
     sky:     'text-sky-200 font-bold',
     amber:   'text-amber-200 font-bold',
     emerald: 'text-emerald-200 font-bold',
   },
-  // ── KPI cards ──────────────────────────────────────────────────────
+  // â”€â”€ KPI cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   stats: [
     {
       key: 'classes',
       label: 'Piping Classes',
       sublabel: 'distinct specs',
       icon: RectangleStackIcon,
-      tone: 'from-pink-500 via-rose-500 to-fuchsia-600',
-      ring: 'ring-pink-300/40',
-      glow: 'shadow-pink-500/30',
+      tone: 'from-blue-500 via-rose-500 to-indigo-600',
+      ring: 'ring-blue-300/40',
+      glow: 'shadow-blue-500/30',
       compute: (a) => a.totalClasses,
       format: (v) => v.toLocaleString(),
       barPct: () => 100,
@@ -139,12 +139,12 @@ const CLASS_SUMMARY_CONFIG = {
       ring: 'ring-emerald-300/40',
       glow: 'shadow-emerald-500/30',
       compute: (a) => a.avgConfidence,
-      format: (v) => (v == null ? '—' : `${Math.round(v * 100)}%`),
+      format: (v) => (v == null ? 'â€”' : `${Math.round(v * 100)}%`),
       barPct: (a) => a.avgConfidence == null ? 0 : a.avgConfidence * 100,
       pulse: true,
     },
   ],
-  // Quick-filter chips (rating) — populated from the data, capped at this many.
+  // Quick-filter chips (rating) â€” populated from the data, capped at this many.
   maxRatingChips: 10,
   // Confidence colour bands (left-edge accent bar + label).
   confidenceBands: [
@@ -161,8 +161,8 @@ const CLASS_SUMMARY_CONFIG = {
                  + 'or try uploading a higher-quality scan / digital-text PDF with clearly labelled Piping Spec sections.',
 };
 
-// ─── Soft-coded component-type colour map (used by detail panel chips) ───────
-// Add a new type → add a row. Falls back to slate for unknowns.
+// â”€â”€â”€ Soft-coded component-type colour map (used by detail panel chips) â”€â”€â”€â”€â”€â”€â”€
+// Add a new type â†’ add a row. Falls back to slate for unknowns.
 const COMPONENT_TYPE_TONES = {
   pipe:        'bg-sky-100 text-sky-800 border-sky-200',
   flange:      'bg-violet-100 text-violet-800 border-violet-200',
@@ -171,13 +171,13 @@ const COMPONENT_TYPE_TONES = {
   gasket:      'bg-amber-100 text-amber-800 border-amber-200',
   bolt:        'bg-stone-100 text-stone-800 border-stone-200',
   branch:      'bg-emerald-100 text-emerald-800 border-emerald-200',
-  instrument:  'bg-pink-100 text-pink-800 border-pink-200',
+  instrument:  'bg-blue-100 text-blue-800 border-blue-200',
   default:     'bg-slate-100 text-slate-700 border-slate-200',
 };
 const componentTone = (t) =>
   COMPONENT_TYPE_TONES[(t || '').toLowerCase()] || COMPONENT_TYPE_TONES.default;
 
-// ─── Soft-coded detail-panel section configuration ───────────────────────────
+// â”€â”€â”€ Soft-coded detail-panel section configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each section is rendered only if `visible(cls)` returns true.
 const DETAIL_CONFIG = {
   sections: [
@@ -185,7 +185,7 @@ const DETAIL_CONFIG = {
       key: 'services',
       title: 'Services',
       icon: SparklesIcon,
-      accent: 'from-pink-500 to-rose-500',
+      accent: 'from-blue-500 to-rose-500',
       visible: (c) => (c.service_list || []).length > 0,
     },
     {
@@ -214,7 +214,7 @@ const DETAIL_CONFIG = {
   componentColumns: [
     { key: 'component_type',     header: 'Type',     align: 'left',  render: (c) => (
         <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded border ${componentTone(c.component_type)}`}>
-          {c.component_type || '—'}
+          {c.component_type || 'â€”'}
         </span>
       ) },
     { key: 'sub_type',           header: 'Sub-type',  align: 'left' },
@@ -227,33 +227,33 @@ const DETAIL_CONFIG = {
   ],
 };
 
-// ─── Soft-coded panel configuration ──────────────────────────────────────────
+// â”€â”€â”€ Soft-coded panel configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PANEL_CONFIG = {
   title:               'Paper Spec Extraction',
-  subtitle:            'Upload a scanned or digital Piping Material Specification (PDF). RAD AI extracts every Piping Class, P/T rating, and component table — using a smart Gemini → OpenAI engine waterfall with cost-aware page skipping.',
+  subtitle:            'Upload a scanned or digital Piping Material Specification (PDF). RAD AI extracts every Piping Class, P/T rating, and component table â€” using a smart Gemini â†’ OpenAI engine waterfall with cost-aware page skipping.',
   acceptStr:           '.pdf',
   maxFileSizeMB:       SPEC_API_CONFIG.maxFileSizeMB,
   pollIntervalMs:      SPEC_API_CONFIG.pollIntervalMs,
   helperPoints:        [
     'Chunked extraction (20 pages / chunk) so even 2,000+ page specs stay responsive.',
-    'Native text-layer used first; AI vision only called when the page has no text — keeps cost down.',
+    'Native text-layer used first; AI vision only called when the page has no text â€” keeps cost down.',
     'Identical PDFs are auto-deduped by SHA-256; you instantly see the previous extraction.',
     'Export to Excel (one sheet per Piping Class) or JSON for downstream tools.',
   ],
 };
 
-// ─── AI Document Assist (Wrench) — soft-coded panel config ─────────────────
+// â”€â”€â”€ AI Document Assist (Wrench) â€” soft-coded panel config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Mirrors the panel already used on PID Verification / Non-TEFF Metadata /
 // PMS / Instrument Index / CLL / PFD Quality Checker / Line List / Equipment
 // List. Flip `enabled: false` to hide without touching JSX.
-// Spec Customization currently ingests Paper Spec PDFs only — accepted
+// Spec Customization currently ingests Paper Spec PDFs only â€” accepted
 // extensions mirror that. When the upstream extractor learns to consume
 // other formats, extend `acceptedExts` here in one place.
 const SPEC_AI_ASSIST_CONFIG = {
   enabled:         true,
   title:           'AI Document Assist',
-  subtitleTag:     '(Wrench · optional)',
-  subtitle:        'Let RAD AI pick & recommend the right Piping Material Specification document for this project from Wrench DMS — drop it straight into the extractor below.',
+  subtitleTag:     '(Wrench Â· optional)',
+  subtitle:        'Let RAD AI pick & recommend the right Piping Material Specification document for this project from Wrench DMS â€” drop it straight into the extractor below.',
   defaultHint:     'piping material specification',
   hintPlaceholder: 'e.g. PMS, piping spec, valve list',
   topN:            6,
@@ -262,27 +262,27 @@ const SPEC_AI_ASSIST_CONFIG = {
   acceptedExts:    ['pdf'],
 };
 
-// ─── Soft-coded upload UX (animated console + rotating AI tips) ──────────────
+// â”€â”€â”€ Soft-coded upload UX (animated console + rotating AI tips) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Tweak any of the below to change the live-upload experience without touching
 // rendering logic. `tips` rotates one-per-tipRotateMs while uploading; `phases`
 // label progress thresholds; `routes` describes the dispatch path that ended
-// up being used (presigned-S3 vs legacy multipart) — purely cosmetic.
+// up being used (presigned-S3 vs legacy multipart) â€” purely cosmetic.
 const UPLOAD_UX_CONFIG = {
   tipRotateMs: 4200,
   // Animated tooltips shown one at a time during upload. Add/edit freely.
   tips: [
-    { icon: SparklesIcon,         tone: 'from-pink-500 to-rose-500',
-      title: 'Tip · clean scans win',
-      text:  'Higher-quality scans (300 dpi+) help the AI catch every component row — even small footnotes.' },
-    { icon: BeakerIcon,           tone: 'from-fuchsia-500 to-purple-500',
+    { icon: SparklesIcon,         tone: 'from-blue-500 to-rose-500',
+      title: 'Tip Â· clean scans win',
+      text:  'Higher-quality scans (300 dpi+) help the AI catch every component row â€” even small footnotes.' },
+    { icon: BeakerIcon,           tone: 'from-indigo-500 to-purple-500',
       title: 'Did you know?',
-      text:  'RAD AI runs Gemini first, then OpenAI as a fallback — you get speed AND accuracy without overpaying.' },
+      text:  'RAD AI runs Gemini first, then OpenAI as a fallback â€” you get speed AND accuracy without overpaying.' },
     { icon: TableCellsIcon,       tone: 'from-sky-500 to-cyan-500',
-      title: 'Soon as it lands…',
-      text:  'We split your spec into 20-page chunks and process them in parallel — even 2,000-page specs stay fluid.' },
+      title: 'Soon as it landsâ€¦',
+      text:  'We split your spec into 20-page chunks and process them in parallel â€” even 2,000-page specs stay fluid.' },
     { icon: ShieldCheckIcon,      tone: 'from-emerald-500 to-teal-500',
       title: 'Safe by design',
-      text:  'Your file is encrypted in-transit. Identical re-uploads are deduped by SHA-256 — no double-charging.' },
+      text:  'Your file is encrypted in-transit. Identical re-uploads are deduped by SHA-256 â€” no double-charging.' },
     { icon: CircleStackIcon,      tone: 'from-violet-500 to-indigo-500',
       title: 'Auto-export ready',
       text:  'Once extracted you can ship straight to SmartPlant 3D (SPEC + CAT workbooks) or plain Excel/JSON.' },
@@ -292,22 +292,22 @@ const UPLOAD_UX_CONFIG = {
   ],
   // Phase label by progress percent (inclusive lower bound).
   phases: [
-    { pct: 0,   label: 'Preparing secure transfer…',   icon: ShieldCheckIcon },
-    { pct: 8,   label: 'Streaming bytes to the cloud…', icon: CloudArrowUpIcon },
-    { pct: 60,  label: 'Almost there — finalising…',    icon: ArrowPathIcon },
-    { pct: 96,  label: 'Handing off to RAD AI…',        icon: SparklesIcon },
+    { pct: 0,   label: 'Preparing secure transferâ€¦',   icon: ShieldCheckIcon },
+    { pct: 8,   label: 'Streaming bytes to the cloudâ€¦', icon: CloudArrowUpIcon },
+    { pct: 60,  label: 'Almost there â€” finalisingâ€¦',    icon: ArrowPathIcon },
+    { pct: 96,  label: 'Handing off to RAD AIâ€¦',        icon: SparklesIcon },
   ],
   // Cosmetic badge describing which dispatch path was used.
   routes: {
     presigned: {
-      label:   'Direct-to-S3 · Turbo',
+      label:   'Direct-to-S3 Â· Turbo',
       sublabel:'Bypassing the API edge for max throughput',
       badge:   'bg-emerald-100 text-emerald-700 border-emerald-300',
       glow:    'shadow-emerald-300/50',
     },
     legacy: {
       label:   'API Multipart',
-      sublabel:'Standard upload — best for smaller files',
+      sublabel:'Standard upload â€” best for smaller files',
       badge:   'bg-sky-100 text-sky-700 border-sky-300',
       glow:    'shadow-sky-300/50',
     },
@@ -316,56 +316,56 @@ const UPLOAD_UX_CONFIG = {
   speedSmoothing: 0.25,
 };
 
-// ─── Soft-coded AI-processing experience (post-upload) ──────────────────────
+// â”€â”€â”€ Soft-coded AI-processing experience (post-upload) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Drives the ProcessingConsole shown while the Celery job is running. Tips
 // rotate one-per-tipRotateMs; `phases` map progress thresholds to copy &
-// icons. Pure data — add/edit a tip without touching rendering logic.
+// icons. Pure data â€” add/edit a tip without touching rendering logic.
 const PROCESSING_UX_CONFIG = {
   tipRotateMs: 4500,
   tips: [
     { icon: MagnifyingGlassIcon, tone: 'from-indigo-500 to-purple-500',
       title:    'Smart page scan',
       text:     'Indexing every page, skipping blanks and TOCs so the AI budget targets real spec content.' },
-    { icon: SparklesIcon,        tone: 'from-pink-500 to-rose-500',
-      title:    'Gemini × OpenAI waterfall',
-      text:     'Gemini handles the bulk; OpenAI is reserved for hard pages — fast AND accurate.' },
+    { icon: SparklesIcon,        tone: 'from-blue-500 to-rose-500',
+      title:    'Gemini Ã— OpenAI waterfall',
+      text:     'Gemini handles the bulk; OpenAI is reserved for hard pages â€” fast AND accurate.' },
     { icon: BeakerIcon,          tone: 'from-emerald-500 to-teal-500',
       title:    'Material recognition',
-      text:     'A106-B, F316L, Duplex — your spec\'s metallurgy is being parsed grade-by-grade.' },
+      text:     'A106-B, F316L, Duplex â€” your spec\'s metallurgy is being parsed grade-by-grade.' },
     { icon: TableCellsIcon,      tone: 'from-amber-500 to-orange-500',
       title:    'Component tables',
-      text:     'Pipe, flanges, fittings, valves, gaskets — every row is being matched to its size band.' },
+      text:     'Pipe, flanges, fittings, valves, gaskets â€” every row is being matched to its size band.' },
     { icon: ShieldCheckIcon,     tone: 'from-sky-500 to-cyan-500',
       title:    'Confidence scoring',
       text:     'Each extracted class gets a per-field confidence score so you know what to double-check.' },
-    { icon: CircleStackIcon,     tone: 'from-fuchsia-500 to-purple-500',
+    { icon: CircleStackIcon,     tone: 'from-indigo-500 to-purple-500',
       title:    'SmartPlant ready',
-      text:     'On completion you\'ll get the 25-sheet SPEC and 23-sheet CAT workbooks — drop-in for SP3D.' },
+      text:     'On completion you\'ll get the 25-sheet SPEC and 23-sheet CAT workbooks â€” drop-in for SP3D.' },
     { icon: RectangleStackIcon,  tone: 'from-violet-500 to-indigo-500',
       title:    'Cross-class dedup',
       text:     'Identical component rows are de-duplicated across classes so your catalog stays clean.' },
-    { icon: DocumentTextIcon,    tone: 'from-rose-500 to-pink-500',
+    { icon: DocumentTextIcon,    tone: 'from-rose-500 to-blue-500',
       title:    'Footnote-aware',
-      text:     'Asterisks, notes and overrides aren\'t lost — the AI reads them and applies them per row.' },
+      text:     'Asterisks, notes and overrides aren\'t lost â€” the AI reads them and applies them per row.' },
   ],
   // Phase label keyed by progress percent (inclusive lower bound).
   phases: [
-    { pct: 0,   label: 'Queued — waiting for an AI worker',     icon: ArrowPathIcon },
+    { pct: 0,   label: 'Queued â€” waiting for an AI worker',     icon: ArrowPathIcon },
     { pct: 1,   label: 'Splitting document into chunks',         icon: RectangleStackIcon },
     { pct: 15,  label: 'Extracting Piping Classes',              icon: SparklesIcon },
     { pct: 45,  label: 'Parsing component tables',               icon: TableCellsIcon },
     { pct: 75,  label: 'Scoring confidence & finalising',        icon: ShieldCheckIcon },
-    { pct: 95,  label: 'Almost done — packaging results',        icon: CheckCircleIcon },
+    { pct: 95,  label: 'Almost done â€” packaging results',        icon: CheckCircleIcon },
   ],
-  // Soft-coded "live insights" — these pop in as numbers grow.
+  // Soft-coded "live insights" â€” these pop in as numbers grow.
   insightThresholds: {
-    classesUnlocked:    1,    // show "First class extracted!" at ≥1
-    classesMomentum:    5,    // show "5+ classes — gathering steam"
-    classesPower:       15,   // show "15+ — major spec detected"
+    classesUnlocked:    1,    // show "First class extracted!" at â‰¥1
+    classesMomentum:    5,    // show "5+ classes â€” gathering steam"
+    classesPower:       15,   // show "15+ â€” major spec detected"
   },
 };
 
-// Map status → tailwind/heroicon
+// Map status â†’ tailwind/heroicon
 const STATUS_META = {
   queued:     { color: 'bg-slate-100 text-slate-700 border-slate-300',     label: 'Queued' },
   processing: { color: 'bg-blue-50 text-blue-700 border-blue-300',         label: 'Processing' },
@@ -393,11 +393,11 @@ const downloadBlob = (blob, filename) => {
   URL.revokeObjectURL(url);
 };
 
-// ─── Animated upload console ────────────────────────────────────────────────
+// â”€â”€â”€ Animated upload console â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Pure presentational component driven by props. All styling tokens / copy
 // come from `UPLOAD_UX_CONFIG`, so changing the experience is config-only.
 const UploadConsole = ({ file, progress, speedBps, etaSec, route, tipIndex }) => {
-  // Find the latest phase whose threshold ≤ current progress.
+  // Find the latest phase whose threshold â‰¤ current progress.
   const phase = UPLOAD_UX_CONFIG.phases
     .slice()
     .reverse()
@@ -410,7 +410,7 @@ const UploadConsole = ({ file, progress, speedBps, etaSec, route, tipIndex }) =>
   const routeMeta = route ? UPLOAD_UX_CONFIG.routes[route] : null;
 
   const speedHuman = (() => {
-    if (!speedBps || speedBps <= 0) return '—';
+    if (!speedBps || speedBps <= 0) return 'â€”';
     const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
     let v = speedBps, i = 0;
     while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
@@ -418,7 +418,7 @@ const UploadConsole = ({ file, progress, speedBps, etaSec, route, tipIndex }) =>
   })();
 
   const etaHuman = (() => {
-    if (etaSec == null || !isFinite(etaSec) || etaSec < 0) return '—';
+    if (etaSec == null || !isFinite(etaSec) || etaSec < 0) return 'â€”';
     if (etaSec < 60)  return `${etaSec}s`;
     const m = Math.floor(etaSec / 60);
     const s = etaSec % 60;
@@ -427,14 +427,14 @@ const UploadConsole = ({ file, progress, speedBps, etaSec, route, tipIndex }) =>
 
   return (
     <div className="w-full max-w-2xl mx-auto mt-2 space-y-3">
-      {/* Header row — phase + route badge */}
+      {/* Header row â€” phase + route badge */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-200 font-semibold">
           <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-pink-500" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
           </span>
-          <PhaseIcon className="w-4 h-4 text-pink-600 animate-pulse" />
+          <PhaseIcon className="w-4 h-4 text-blue-600 animate-pulse" />
           <span>{phase.label}</span>
         </div>
         {routeMeta && (
@@ -449,9 +449,9 @@ const UploadConsole = ({ file, progress, speedBps, etaSec, route, tipIndex }) =>
       </div>
 
       {/* Shimmering progress bar */}
-      <div className="relative w-full h-3.5 rounded-full bg-pink-100 dark:bg-pink-900/30 overflow-hidden ring-1 ring-pink-200/60 dark:ring-pink-700/40">
+      <div className="relative w-full h-3.5 rounded-full bg-blue-100 dark:bg-blue-900/30 overflow-hidden ring-1 ring-blue-200/60 dark:ring-blue-700/40">
         <div
-          className="absolute inset-y-0 left-0 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-rose-500 transition-all duration-500 ease-out"
+          className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 via-indigo-500 to-rose-500 transition-all duration-500 ease-out"
           style={{ width: `${progress}%` }}
         />
         {/* Moving sheen */}
@@ -481,12 +481,12 @@ const UploadConsole = ({ file, progress, speedBps, etaSec, route, tipIndex }) =>
         <div className="rounded-lg bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2 truncate">
           <div className="text-[10px] uppercase tracking-wide text-slate-500">File</div>
           <div className="font-bold text-slate-800 dark:text-slate-100 truncate" title={file?.name}>
-            {file?.name || '—'}
+            {file?.name || 'â€”'}
           </div>
         </div>
       </div>
 
-      {/* Rotating AI tip card — cross-fades softly */}
+      {/* Rotating AI tip card â€” cross-fades softly */}
       <div
         key={tipIndex}
         className={`relative overflow-hidden rounded-xl p-3 text-white shadow-lg bg-gradient-to-br ${tip.tone} animate-[fadeInUp_500ms_ease-out]`}
@@ -508,7 +508,7 @@ const UploadConsole = ({ file, progress, speedBps, etaSec, route, tipIndex }) =>
         </div>
       </div>
 
-      {/* Inline keyframes — local to component to avoid touching global CSS */}
+      {/* Inline keyframes â€” local to component to avoid touching global CSS */}
       <style>{`
         @keyframes shimmer {
           0%   { transform: translateX(-100%); }
@@ -523,13 +523,13 @@ const UploadConsole = ({ file, progress, speedBps, etaSec, route, tipIndex }) =>
   );
 };
 
-// ─── Animated AI-processing console ─────────────────────────────────────────
+// â”€â”€â”€ Animated AI-processing console â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Renders while the Celery job is running. All copy / colors / thresholds
 // come from `PROCESSING_UX_CONFIG`. Pure presentational; no API calls.
 const ProcessingConsole = ({ job, partialCount, tipIndex }) => {
   const pct = job?.progress_percent ?? 0;
 
-  // Latest phase whose threshold ≤ current progress.
+  // Latest phase whose threshold â‰¤ current progress.
   const phase = PROCESSING_UX_CONFIG.phases
     .slice()
     .reverse()
@@ -544,16 +544,16 @@ const ProcessingConsole = ({ job, partialCount, tipIndex }) => {
   const T = PROCESSING_UX_CONFIG.insightThresholds;
   if (partialCount >= T.classesPower) {
     insights.push({ icon: SparklesIcon, tone: 'bg-violet-100 text-violet-700 border-violet-200',
-      text: `${partialCount} classes detected — major spec` });
+      text: `${partialCount} classes detected â€” major spec` });
   } else if (partialCount >= T.classesMomentum) {
     insights.push({ icon: ArrowPathIcon, tone: 'bg-sky-100 text-sky-700 border-sky-200',
-      text: `${partialCount} classes — gathering steam` });
+      text: `${partialCount} classes â€” gathering steam` });
   } else if (partialCount >= T.classesUnlocked) {
     insights.push({ icon: CheckCircleIcon, tone: 'bg-emerald-100 text-emerald-700 border-emerald-200',
       text: `First class extracted` });
   }
   if (job?.pages_processed > 0) {
-    insights.push({ icon: DocumentTextIcon, tone: 'bg-pink-100 text-pink-700 border-pink-200',
+    insights.push({ icon: DocumentTextIcon, tone: 'bg-blue-100 text-blue-700 border-blue-200',
       text: `${job.pages_processed} pages analysed` });
   }
   if (job?.chunks_done > 0 && job?.chunks_total > 0) {
@@ -562,22 +562,22 @@ const ProcessingConsole = ({ job, partialCount, tipIndex }) => {
   }
 
   return (
-    <div className="mt-5 rounded-xl border border-fuchsia-100 dark:border-fuchsia-900/40 bg-gradient-to-br from-pink-50/60 via-white to-fuchsia-50/40 dark:from-fuchsia-900/10 dark:via-slate-900/40 dark:to-pink-900/10 p-4 space-y-3 animate-[fadeInUp_400ms_ease-out]">
+    <div className="mt-5 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-blue-50/60 via-white to-indigo-50/40 dark:from-indigo-900/10 dark:via-slate-900/40 dark:to-blue-900/10 p-4 space-y-3 animate-[fadeInUp_400ms_ease-out]">
       {/* Phase header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-fuchsia-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-fuchsia-500" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500" />
           </span>
-          <PhaseIcon className="w-4 h-4 text-fuchsia-600 animate-spin-slow" style={{ animation: 'spin 6s linear infinite' }} />
+          <PhaseIcon className="w-4 h-4 text-indigo-600 animate-spin-slow" style={{ animation: 'spin 6s linear infinite' }} />
           <span className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
             {phase.label}
           </span>
         </div>
-        <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-fuchsia-700 dark:text-fuchsia-300 bg-fuchsia-100/70 dark:bg-fuchsia-900/30 px-2.5 py-1 rounded-full">
+        <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-100/70 dark:bg-indigo-900/30 px-2.5 py-1 rounded-full">
           <SparklesIcon className="w-3.5 h-3.5 animate-pulse" />
-          RAD AI · live
+          RAD AI Â· live
         </div>
       </div>
 
@@ -631,12 +631,12 @@ const ProcessingConsole = ({ job, partialCount, tipIndex }) => {
   );
 };
 
-const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
+const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null } = {}) => {
   const [file, setFile]                     = useState(null);
   const [uploading, setUploading]           = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError]       = useState('');
-  // Live upload telemetry — soft-coded UX (speed/ETA/route/tip rotation).
+  // Live upload telemetry â€” soft-coded UX (speed/ETA/route/tip rotation).
   const [uploadSpeedBps, setUploadSpeedBps] = useState(0);
   const [uploadEtaSec, setUploadEtaSec]     = useState(null);
   const [uploadRoute, setUploadRoute]       = useState(null);    // 'presigned' | 'legacy' | null
@@ -645,7 +645,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
   const uploadStartRef                      = useRef(0);
   const lastTickRef                         = useRef({ t: 0, loaded: 0 });
 
-  // BYOK (Bring Your Own Key) — optional user-supplied fields for attribution and custom AI usage.
+  // BYOK (Bring Your Own Key) â€” optional user-supplied fields for attribution and custom AI usage.
   const [documentName, setDocumentName]     = useState('');
   const [engineerName, setEngineerName]     = useState('');
   const [aiProvider, setAiProvider]         = useState(() => {
@@ -704,8 +704,8 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
   const [classSearch, setClassSearch]       = useState('');
   const [ratingFilter, setRatingFilter]     = useState(null);
   // Top-level view tab inside the results section.
-  // 'classes'  → original piping-class cards
-  // 'canvas'   → editable SPEC/CAT workbook canvas (cross-check + edit)
+  // 'classes'  â†’ original piping-class cards
+  // 'canvas'   â†’ editable SPEC/CAT workbook canvas (cross-check + edit)
   const [activeView, setActiveView]         = useState('classes');
   const pollRef = useRef(null);
 
@@ -759,12 +759,29 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
     return () => { cancelled = true; };
   }, [jobId]);
 
+  // Project-level BYOK defaults: when a project has BYOK configured, preselect
+  // its provider/model in the UI so uploads align to that project automatically.
+  useEffect(() => {
+    if (!projectByok?.enabled || !projectByok?.provider) return;
+    const provider = String(projectByok.provider || '').trim();
+    const model = String(projectByok.model || '').trim();
+    if (!provider) return;
+
+    setAiProvider(provider);
+    if (model) setAiModel(model);
+
+    try {
+      sessionStorage.setItem('radai_spec_ai_provider', provider);
+      if (model) sessionStorage.setItem('radai_spec_ai_model', model);
+    } catch (_) { /* ignore */ }
+  }, [projectByok?.enabled, projectByok?.provider, projectByok?.model]);
+
   const isTerminal = useMemo(() => {
     if (!job) return false;
     return ['completed', 'failed', 'cancelled'].includes(job.status);
   }, [job]);
 
-  // ── Polling ──────────────────────────────────────────────────────────
+  // â”€â”€ Polling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!job || isTerminal) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -812,7 +829,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
     return () => clearInterval(id);
   }, [job]);
 
-  // Build the effective accept list — prefer server config if present.
+  // Build the effective accept list â€” prefer server config if present.
   const acceptedExts = useMemo(() => {
     return config?.accepted_extensions || SPEC_API_CONFIG.acceptedExts;
   }, [config]);
@@ -837,7 +854,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
     return '';
   }, [acceptedExts]);
 
-  // ── Handlers ───────────────────────────────────────
+  // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleFilePick = (e) => {
     const f = e.target.files?.[0];
     setUploadError('');
@@ -869,7 +886,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
   const handleUpload = useCallback(async () => {
     if (!file) return;
     setUploading(true);
-    // Soft-coded global busy flag — pollers (NotificationBell, etc.) skip
+    // Soft-coded global busy flag â€” pollers (NotificationBell, etc.) skip
     // their ticks while this is true so the backend worker stays free.
     if (typeof window !== 'undefined') window.__RADAI_HEAVY_OP = true;
     setUploadError('');
@@ -884,7 +901,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
     setExpandedClassId(null);
     try {
       // Mirror the dispatcher's decision so the UI can show the actual route
-      // — purely cosmetic; the service layer remains the source of truth.
+      // â€” purely cosmetic; the service layer remains the source of truth.
       const willPresign =
         SPEC_API_CONFIG.presignedUpload?.enabled &&
         file.size >= (SPEC_API_CONFIG.presignedUpload?.minSizeBytes || 0);
@@ -920,7 +937,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
       setDocument(resp.document);
       setJob(resp.job);
       if (resp.deduped) {
-        // Already completed — load classes immediately.
+        // Already completed â€” load classes immediately.
         const list = await specCustomizationAPI.getJobClasses(resp.job.id);
         setClasses(list);
       }
@@ -996,20 +1013,20 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
     } catch (e) { /* ignore */ }
   };
 
-  // ── Derived UI bits ──────────────────────────────────────────────────
+  // â”€â”€ Derived UI bits â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const statusMeta = job ? (STATUS_META[job.status] || STATUS_META.queued) : null;
   const progressPct = job?.progress_percent ?? 0;
   const livePhase   = job?.current_phase || job?.live_progress?.status || '';
   const partialCount = job?.live_progress?.classes_found ?? classes.length;
 
-  // ── Class aggregates (soft-coded; powers the stats strip) ────────────
+  // â”€â”€ Class aggregates (soft-coded; powers the stats strip) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const classAggregates = useMemo(() => {
     if (!classes.length) {
       return { totalClasses: 0, totalComponents: 0, uniqueMaterials: 0,
                uniqueRatings: 0, avgConfidence: null, ratingCounts: [] };
     }
     const materials = new Set();
-    const ratings   = new Map();   // rating → count
+    const ratings   = new Map();   // rating â†’ count
     let totalComponents = 0;
     let confSum = 0;
     let confN   = 0;
@@ -1034,7 +1051,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
     };
   }, [classes]);
 
-  // Filtered class list — search text + active rating chip.
+  // Filtered class list â€” search text + active rating chip.
   const filteredClasses = useMemo(() => {
     const q = classSearch.trim().toLowerCase();
     if (!q && !ratingFilter) return classes;
@@ -1059,22 +1076,22 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
   }, []);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-pink-100 dark:border-pink-900/40 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-blue-100 dark:border-blue-900/40 overflow-hidden">
       {/* Header strip */}
-      <div className="bg-gradient-to-r from-pink-500 via-fuchsia-500 to-rose-500 px-6 py-4 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-blue-500 via-indigo-500 to-rose-500 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-white/20 rounded-lg">
             <SparklesIcon className="w-6 h-6 text-white" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-white">{PANEL_CONFIG.title}</h2>
-            <p className="text-pink-50 text-sm">AI-powered Piping Spec extraction</p>
+            <p className="text-blue-50 text-sm">AI-powered Piping Spec extraction</p>
           </div>
         </div>
         {config && (
           <div className="hidden md:flex items-center gap-2 text-white/90 text-xs bg-white/10 px-3 py-1.5 rounded-lg">
             <Cog6ToothIcon className="w-4 h-4" />
-            <span>chunk={config.chunk_size_pages}p · AI cap={config.max_ai_pages_per_job}p</span>
+            <span>chunk={config.chunk_size_pages}p Â· AI cap={config.max_ai_pages_per_job}p</span>
           </div>
         )}
       </div>
@@ -1087,7 +1104,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
           {PANEL_CONFIG.helperPoints.map((p) => <li key={p}>{p}</li>)}
         </ul>
 
-        {/* ── AI Document Assist (Wrench) — soft-coded, optional ─────── */}
+        {/* â”€â”€ AI Document Assist (Wrench) â€” soft-coded, optional â”€â”€â”€â”€â”€â”€â”€ */}
         {SPEC_AI_ASSIST_CONFIG.enabled && !job && (
           <WrenchAiDocAssist
             title={SPEC_AI_ASSIST_CONFIG.title}
@@ -1110,7 +1127,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
           />
         )}
 
-        {/* ── Upload zone ─────────────────────────────────────────────── */}
+        {/* â”€â”€ Upload zone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {!job && (
           <div
             onDragOver={handleDragOver}
@@ -1119,14 +1136,14 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
             onDrop={handleDrop}
             className={`relative group border-2 border-dashed rounded-xl p-8 transition-all duration-300 ${
               isDragging
-                ? 'border-pink-500 bg-pink-100/70 dark:bg-pink-900/30 scale-[1.01] shadow-lg shadow-pink-300/40'
-                : 'border-pink-300 dark:border-pink-700 bg-pink-50/40 dark:bg-pink-900/10 hover:border-pink-400 hover:bg-pink-50/70'
+                ? 'border-blue-500 bg-blue-100/70 dark:bg-blue-900/30 scale-[1.01] shadow-lg shadow-blue-300/40'
+                : 'border-blue-300 dark:border-blue-700 bg-blue-50/40 dark:bg-blue-900/10 hover:border-blue-400 hover:bg-blue-50/70'
             }`}
           >
             <div className="flex flex-col items-center text-center gap-3">
               {(() => {
                 const Icon = fileFormat?.group ? (GROUP_ICONS[fileFormat.group] || CloudArrowUpIcon) : CloudArrowUpIcon;
-                return <Icon className="w-12 h-12 text-pink-500" />;
+                return <Icon className="w-12 h-12 text-blue-500" />;
               })()}
               <div>
                 <p className="font-semibold text-slate-800 dark:text-slate-100">
@@ -1135,12 +1152,12 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   {file
                     ? fmtBytes(file.size)
-                    : `Max ${PANEL_CONFIG.maxFileSizeMB} MB · ${acceptedExts.length} formats supported`}
+                    : `Max ${PANEL_CONFIG.maxFileSizeMB} MB Â· ${acceptedExts.length} formats supported`}
                 </p>
                 {file && fileFormat?.meta && (
                   <div className="mt-2 inline-flex items-center gap-2 text-xs">
                     <span className={`px-2 py-0.5 rounded font-semibold ${fileFormat.meta.badge}`}>
-                      {fileFormat.meta.label} · .{fileFormat.ext}
+                      {fileFormat.meta.label} Â· .{fileFormat.ext}
                     </span>
                     <span className="text-slate-500">{fileFormat.meta.hint}</span>
                   </div>
@@ -1154,42 +1171,48 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                 className="hidden"
               />
 
-              {/* BYOK (Bring Your Own Key) — optional attribution & custom API key fields */}
+              {/* BYOK (Bring Your Own Key) â€” optional attribution & custom API key fields */}
               {file && (
                 <div className="mt-4 p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50 space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Document Name <span className="text-slate-400 font-normal">(optional — helps identify this spec in history)</span>
+                      Document Name <span className="text-slate-400 font-normal">(optional â€” helps identify this spec in history)</span>
                     </label>
                     <input
                       type="text"
                       value={documentName}
                       onChange={(e) => setDocumentName(e.target.value)}
                       placeholder="e.g. Q4 2026 Piping Spec Rev A"
-                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm bg-white dark:bg-slate-800 dark:text-white"
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white dark:bg-slate-800 dark:text-white"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Spec Engineer <span className="text-slate-400 font-normal">(optional — for attribution)</span>
+                      Spec Engineer <span className="text-slate-400 font-normal">(optional â€” for attribution)</span>
                     </label>
                     <input
                       type="text"
                       value={engineerName}
                       onChange={(e) => setEngineerName(e.target.value)}
                       placeholder="e.g. John Smith, Lead Piping Engineer"
-                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm bg-white dark:bg-slate-800 dark:text-white"
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white dark:bg-slate-800 dark:text-white"
                     />
                   </div>
                   
                   {/* BYOK: AI Provider & Model Selection */}
                   {byokConfig.enabled && (
-                    <div className="space-y-3 p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                    <div className="space-y-3 p-4 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-slate-900/20 dark:to-blue-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
                       <div className="flex items-center gap-2 text-sm font-semibold text-purple-900 dark:text-purple-200">
                         <SparklesIcon className="w-4 h-4" />
                         <span>Bring Your Own AI Key (BYOK)</span>
-                        <span className="text-xs font-normal text-purple-600 dark:text-purple-400">(Optional — use your own API)</span>
+                        <span className="text-xs font-normal text-purple-600 dark:text-purple-400">(Optional â€” use your own API)</span>
                       </div>
+
+                      {projectByok?.enabled && projectByok?.keyConfigured && (
+                        <div className="text-xs rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-2.5 py-2 text-emerald-700 dark:text-emerald-300">
+                          Project BYOK is active ({projectByok.provider || 'provider'} Â· {projectByok.model || 'default model'}). You can leave API key empty to use the saved project key.
+                        </div>
+                      )}
                       
                       {/* AI Provider Selection */}
                       <div>
@@ -1262,7 +1285,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                           >
                             {(aiProvider === 'openai' ? byokConfig.openai_models : byokConfig.claude_models).map((model) => (
                               <option key={model.id} value={model.id}>
-                                {model.label} {model.recommended ? '⭐' : ''} - {model.description}
+                                {model.label} {model.recommended ? 'â­' : ''} - {model.description}
                               </option>
                             ))}
                           </select>
@@ -1320,7 +1343,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
 
                       {!aiProvider && (
                         <p className="text-xs text-slate-600 dark:text-slate-400 italic">
-                          👆 Select a provider above to use your own API key, or leave empty to use the platform's key.
+                          ðŸ‘† Select a provider above to use your own API key, or leave empty to use the platform's key.
                         </p>
                       )}
                     </div>
@@ -1331,7 +1354,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
               <div className="flex gap-2 flex-wrap justify-center">
                 <label
                   htmlFor="paper-spec-file"
-                  className="px-4 py-2 bg-white border border-pink-300 text-pink-700 rounded-lg text-sm font-medium hover:bg-pink-50 cursor-pointer"
+                  className="px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-50 cursor-pointer"
                 >
                   Choose File
                 </label>
@@ -1346,10 +1369,10 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                 <button
                   onClick={handleUpload}
                   disabled={!file || uploading}
-                  className="px-4 py-2 bg-gradient-to-r from-pink-600 to-rose-600 text-white rounded-lg text-sm font-semibold shadow hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 inline-flex items-center gap-1.5"
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-rose-600 text-white rounded-lg text-sm font-semibold shadow hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 inline-flex items-center gap-1.5"
                 >
                   <SparklesIcon className={`w-4 h-4 ${uploading ? 'animate-spin' : 'group-hover:animate-pulse'}`} />
-                  {uploading ? 'Uploading…' : 'Extract with AI'}
+                  {uploading ? 'Uploadingâ€¦' : 'Extract with AI'}
                 </button>
               </div>
 
@@ -1385,7 +1408,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
           </div>
         )}
 
-        {/* ── Job status ──────────────────────────────────────────────── */}
+        {/* â”€â”€ Job status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {job && (
           <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-5 bg-slate-50/60 dark:bg-slate-900/30">
             <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -1398,7 +1421,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                     {document?.original_filename || 'Document'}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {document?.total_pages || 0} pages · {fmtBytes(document?.file_size_bytes)}
+                    {document?.total_pages || 0} pages Â· {fmtBytes(document?.file_size_bytes)}
                   </p>
                 </div>
               </div>
@@ -1407,15 +1430,15 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                   <>
                     <button
                       onClick={handleExportSmartplantSpec}
-                      title="SmartPlant 3D — Piping Spec Rules workbook (25 sheets)"
-                      className="px-3 py-1.5 text-xs font-semibold bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 rounded-lg hover:bg-fuchsia-100 inline-flex items-center gap-1"
+                      title="SmartPlant 3D â€” Piping Spec Rules workbook (25 sheets)"
+                      className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 inline-flex items-center gap-1"
                     >
                       <DocumentArrowDownIcon className="w-4 h-4" /> SPEC.xlsx
                     </button>
                     <button
                       onClick={handleExportSmartplantCat}
-                      title="SmartPlant 3D — Component Catalog workbook (23 sheets)"
-                      className="px-3 py-1.5 text-xs font-semibold bg-pink-50 text-pink-700 border border-pink-200 rounded-lg hover:bg-pink-100 inline-flex items-center gap-1"
+                      title="SmartPlant 3D â€” Component Catalog workbook (23 sheets)"
+                      className="px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 inline-flex items-center gap-1"
                     >
                       <DocumentArrowDownIcon className="w-4 h-4" /> CAT.xlsx
                     </button>
@@ -1455,7 +1478,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
             {/* Progress bar */}
             <div className="mt-4">
               <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
-                <span>{livePhase || (isTerminal ? statusMeta.label : 'Starting…')}</span>
+                <span>{livePhase || (isTerminal ? statusMeta.label : 'Startingâ€¦')}</span>
                 <span>{progressPct}%</span>
               </div>
               <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
@@ -1464,7 +1487,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                     job.status === 'failed'    ? 'bg-rose-500' :
                     job.status === 'cancelled' ? 'bg-amber-500' :
                     job.status === 'completed' ? 'bg-emerald-500' :
-                    'bg-gradient-to-r from-pink-500 to-rose-500 animate-pulse'
+                    'bg-gradient-to-r from-blue-500 to-rose-500 animate-pulse'
                   }`}
                   style={{ width: `${progressPct}%` }}
                 />
@@ -1493,10 +1516,10 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
           </div>
         )}
 
-        {/* ── Extracted classes / Workbook Canvas ────────────────────── */}
+        {/* â”€â”€ Extracted classes / Workbook Canvas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {job?.status === 'completed' && (
           <div className="space-y-4">
-            {/* ── View tabs (Piping Classes ⇄ Workbook Canvas) ────── */}
+            {/* â”€â”€ View tabs (Piping Classes â‡„ Workbook Canvas) â”€â”€â”€â”€â”€â”€ */}
             <div className="flex flex-wrap items-center gap-2">
               {[
                 { key: 'classes', label: 'Piping Classes',  hint: 'Extracted spec cards' },
@@ -1507,8 +1530,8 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                   onClick={() => setActiveView(tab.key)}
                   className={`px-3.5 py-1.5 text-xs font-semibold rounded-full border transition ${
                     activeView === tab.key
-                      ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white border-transparent shadow'
-                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-pink-300 hover:text-pink-600'
+                      ? 'bg-gradient-to-r from-blue-500 to-rose-500 text-white border-transparent shadow'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-300 hover:text-blue-600'
                   }`}
                   title={tab.hint}
                 >
@@ -1517,7 +1540,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
               ))}
               {activeView === 'canvas' && (
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                  Edit any cell — changes autosave and are baked into the downloaded xlsx.
+                  Edit any cell â€” changes autosave and are baked into the downloaded xlsx.
                 </span>
               )}
             </div>
@@ -1538,10 +1561,10 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
             </div>
             ) : (
             <>
-            {/* ── 1. AI Insight Banner ──────────────────────────────── */}
+            {/* â”€â”€ 1. AI Insight Banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-5 shadow-xl">
               {/* Animated glow blobs */}
-              <div className="absolute -top-16 -left-16 w-64 h-64 bg-pink-500/20 rounded-full blur-3xl animate-pulse" />
+              <div className="absolute -top-16 -left-16 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
               <div className="absolute -bottom-16 -right-16 w-64 h-64 bg-violet-500/20 rounded-full blur-3xl animate-pulse"
                    style={{ animationDelay: '1.5s' }} />
               {/* Grid pattern overlay */}
@@ -1558,12 +1581,12 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                     <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
                   </span>
-                  <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-pink-300">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-blue-300">
                     {CLASS_SUMMARY_CONFIG.aiBanner.eyebrow}
                   </span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
-                  <SparklesIcon className="w-5 h-5 text-pink-300" />
+                  <SparklesIcon className="w-5 h-5 text-blue-300" />
                   {CLASS_SUMMARY_CONFIG.aiBanner.title}
                 </h3>
                 <p className="text-sm text-slate-200 leading-relaxed max-w-3xl">
@@ -1576,7 +1599,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
               </div>
             </div>
 
-            {/* ── 2. KPI Card Strip (soft-coded) ────────────────────── */}
+            {/* â”€â”€ 2. KPI Card Strip (soft-coded) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {CLASS_SUMMARY_CONFIG.stats.map((stat) => {
                 const Icon  = stat.icon;
@@ -1623,7 +1646,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
               })}
             </div>
 
-            {/* ── 3. Filter / search bar ────────────────────────────── */}
+            {/* â”€â”€ 3. Filter / search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
@@ -1632,8 +1655,8 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                     type="text"
                     value={classSearch}
                     onChange={(e) => setClassSearch(e.target.value)}
-                    placeholder="Search by class code, material grade, rating, flange facing…"
-                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-300 focus:border-pink-400"
+                    placeholder="Search by class code, material grade, rating, flange facingâ€¦"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400"
                   />
                 </div>
                 <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
@@ -1651,8 +1674,8 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                     onClick={() => setRatingFilter(null)}
                     className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border transition ${
                       !ratingFilter
-                        ? 'bg-pink-600 text-white border-pink-600'
-                        : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-pink-50'
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-blue-50'
                     }`}
                   >
                     All
@@ -1665,18 +1688,18 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                         onClick={() => setRatingFilter(ratingFilter === rating ? null : rating)}
                         className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border transition ${
                           ratingFilter === rating
-                            ? 'bg-pink-600 text-white border-pink-600'
-                            : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-pink-50'
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-blue-50'
                         }`}
                       >
-                        {rating} <span className="opacity-70">· {count}</span>
+                        {rating} <span className="opacity-70">Â· {count}</span>
                       </button>
                     ))}
                 </div>
               )}
             </div>
 
-            {/* ── 4. Class cards ─────────────────────────────────────── */}
+            {/* â”€â”€ 4. Class cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             {filteredClasses.length === 0 ? (
               <div className="border border-dashed border-slate-300 rounded-xl px-4 py-8 text-sm text-slate-500 dark:text-slate-400 text-center">
                 {CLASS_SUMMARY_CONFIG.emptyFilterMessage}
@@ -1693,7 +1716,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                       key={cls.id}
                       className={`group relative overflow-hidden rounded-xl border bg-white dark:bg-slate-800 transition-all duration-300 hover:shadow-lg ${
                         expanded
-                          ? 'md:col-span-2 border-pink-300 shadow-lg ring-1 ring-pink-200'
+                          ? 'md:col-span-2 border-blue-300 shadow-lg ring-1 ring-blue-200'
                           : 'border-slate-200 dark:border-slate-700 hover:-translate-y-0.5'
                       }`}
                     >
@@ -1705,14 +1728,14 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                       >
                         <div className="flex items-start gap-3">
                           {/* Class code monogram */}
-                          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600 text-white font-mono font-extrabold flex items-center justify-center shadow-md text-base">
+                          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-rose-600 text-white font-mono font-extrabold flex items-center justify-center shadow-md text-base">
                             {cls.class_code}
                           </div>
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-                                {cls.class_full_code || cls.material_grade || '—'}
+                                {cls.class_full_code || cls.material_grade || 'â€”'}
                               </p>
                               {score !== null && (
                                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -1752,7 +1775,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                               )}
                               {cls.source_pages?.length === 2 && (
                                 <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-slate-50 text-slate-600 border border-slate-200 rounded">
-                                  p.{cls.source_pages[0]}–{cls.source_pages[1]}
+                                  p.{cls.source_pages[0]}â€“{cls.source_pages[1]}
                                 </span>
                               )}
                               <span className={`px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded ${band.bg} ${band.text}`}>
@@ -1769,11 +1792,11 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
                                   rows
                                 </span>
                                 <span className="inline-flex items-center gap-1">
-                                  <SparklesIcon className="w-3.5 h-3.5 text-pink-500" />
+                                  <SparklesIcon className="w-3.5 h-3.5 text-blue-500" />
                                   {cls.extraction_engine || 'AI'}
                                 </span>
                               </div>
-                              <span className="text-[10px] font-semibold text-pink-600 dark:text-pink-300 group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5">
+                              <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-300 group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5">
                                 {expanded ? 'Collapse' : 'Open detail'}
                                 {expanded ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
                               </span>
@@ -1784,11 +1807,11 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
 
                       {/* Expanded detail */}
                       {expanded && (
-                        <div className="border-t border-pink-200 bg-gradient-to-b from-pink-50/40 to-white dark:from-slate-900/40 dark:to-slate-800 px-4 py-3">
+                        <div className="border-t border-blue-200 bg-gradient-to-b from-blue-50/40 to-white dark:from-slate-900/40 dark:to-slate-800 px-4 py-3">
                           {!detail ? (
                             <div className="flex items-center gap-2 text-xs text-slate-500 italic">
                               <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
-                              Loading detail…
+                              Loading detailâ€¦
                             </div>
                           ) : (
                             <ClassDetailPanel cls={detail} />
@@ -1809,7 +1832,7 @@ const PaperSpecExtractor = ({ projectId = null, jobId = null } = {}) => {
   );
 };
 
-// ─── Subcomponent: per-class detail (soft-coded sections) ────────────────────
+// â”€â”€â”€ Subcomponent: per-class detail (soft-coded sections) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SectionHeader = ({ icon: Icon, title, accent, count }) => (
   <div className="flex items-center gap-2 mb-2">
     <span className={`inline-flex items-center justify-center w-6 h-6 rounded-md bg-gradient-to-br ${accent} text-white shadow-sm`}>
@@ -1844,7 +1867,7 @@ const ClassDetailPanel = ({ cls }) => {
           {(cls.service_list || []).map((s, i) => (
             <span
               key={`${s}-${i}`}
-              className="px-2 py-1 text-xs font-medium bg-gradient-to-r from-pink-50 to-rose-50 text-pink-700 border border-pink-200 rounded-full shadow-sm"
+              className="px-2 py-1 text-xs font-medium bg-gradient-to-r from-blue-50 to-slate-50 text-blue-700 border border-blue-200 rounded-full shadow-sm"
             >
               {s}
             </span>
@@ -1860,15 +1883,15 @@ const ClassDetailPanel = ({ cls }) => {
             <thead>
               <tr className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-slate-700 dark:to-slate-700">
                 <th className="px-3 py-2 text-left font-bold text-emerald-800 dark:text-emerald-200">Pressure (bar-g)</th>
-                <th className="px-3 py-2 text-left font-bold text-emerald-800 dark:text-emerald-200">Temperature (°C)</th>
+                <th className="px-3 py-2 text-left font-bold text-emerald-800 dark:text-emerald-200">Temperature (Â°C)</th>
                 <th className="px-3 py-2 text-left font-bold text-emerald-800 dark:text-emerald-200">Notes</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i} className="odd:bg-white even:bg-slate-50/40 dark:odd:bg-slate-800 dark:even:bg-slate-900/30">
-                  <td className="px-3 py-1.5 font-mono tabular-nums">{r.pressure_bar_g ?? '—'}</td>
-                  <td className="px-3 py-1.5 font-mono tabular-nums">{r.temperature_c ?? '—'}</td>
+                  <td className="px-3 py-1.5 font-mono tabular-nums">{r.pressure_bar_g ?? 'â€”'}</td>
+                  <td className="px-3 py-1.5 font-mono tabular-nums">{r.temperature_c ?? 'â€”'}</td>
                   <td className="px-3 py-1.5 text-slate-600 dark:text-slate-300">{r.notes || ''}</td>
                 </tr>
               ))}
@@ -1899,7 +1922,7 @@ const ClassDetailPanel = ({ cls }) => {
               {rows.map((c) => (
                 <tr
                   key={c.id}
-                  className="odd:bg-white even:bg-slate-50/40 dark:odd:bg-slate-800 dark:even:bg-slate-900/30 hover:bg-pink-50/30 dark:hover:bg-pink-900/10 transition-colors"
+                  className="odd:bg-white even:bg-slate-50/40 dark:odd:bg-slate-800 dark:even:bg-slate-900/30 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors"
                 >
                   {cols.map((col) => (
                     <td
@@ -1949,3 +1972,4 @@ const ClassDetailPanel = ({ cls }) => {
 };
 
 export default PaperSpecExtractor;
+

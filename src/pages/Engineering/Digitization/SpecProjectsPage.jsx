@@ -1,589 +1,162 @@
-/**
- * Spec Customization — Projects
- * Route:  /engineering/digitization/spec-customization/projects
- *
- * Lightweight, RBAC-aware project organiser for the Paper Spec PDF
- * Extractor. Mirrors the Non-TEFF projects page but stays self-contained
- * and uses a pink / rose theme to match the existing Spec Customization
- * landing page badges. No business-logic dependency on the extractor.
- *
- * All API endpoint paths and visual tokens are soft-coded in PROJECT_PAGE_CFG.
- */
-
+/** Controlled project register for Spec Customization. */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  FolderPlusIcon,
-  FolderIcon,
-  ArrowLeftIcon,
-  MagnifyingGlassIcon,
-  PencilSquareIcon,
-  TrashIcon,
-  XMarkIcon,
-  CheckIcon,
-  ArrowRightIcon,
-  ChartBarIcon,
+  ArrowLeftIcon, ArrowPathIcon, ArrowRightIcon, BuildingOffice2Icon, ChartBarIcon,
+  CheckIcon, CpuChipIcon, FolderIcon, FolderPlusIcon, KeyIcon, MagnifyingGlassIcon,
+  PencilSquareIcon, TrashIcon, XMarkIcon, ArrowsUpDownIcon, ListBulletIcon,
+  Squares2X2Icon, WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
+import specCustomizationAPI from '../../../services/specCustomizationAPI';
 
-// ---------------------------------------------------------------------------
-// Soft-coded configuration
-// ---------------------------------------------------------------------------
-const PROJECT_PAGE_CFG = {
-  api: {
-    list:   '/spec-customization/projects/',
-    detail: (id) => `/spec-customization/projects/${id}/`,
-    items:  (id) => `/spec-customization/projects/${id}/items/`,
-  },
-  routes: {
-    extractorPage: '/engineering/digitization/spec-customization',
-  },
+const CFG = {
+  list: '/spec-customization/projects/',
+  detail: (id) => `/spec-customization/projects/${id}/`,
+  route: '/engineering/digitization/spec-customization',
   storageKey: 'specCustomActiveProject',
   statuses: [
-    { value: 'active',    label: 'Active',    color: '#be185d', bg: 'rgba(190,24,93,0.10)'   },
-    { value: 'on_hold',   label: 'On hold',   color: '#b45309', bg: 'rgba(180,83,9,0.10)'    },
-    { value: 'completed', label: 'Completed', color: '#1d4ed8', bg: 'rgba(29,78,216,0.10)'   },
-    { value: 'archived',  label: 'Archived',  color: '#6b7280', bg: 'rgba(107,114,128,0.10)' },
+    { value: 'active', label: 'Active', bg: 'rgba(16,185,129,.12)', color: '#047857' },
+    { value: 'on_hold', label: 'On hold', bg: 'rgba(245,158,11,.15)', color: '#b45309' },
+    { value: 'completed', label: 'Completed', bg: 'rgba(37,99,235,.12)', color: '#1d4ed8' },
+    { value: 'archived', label: 'Archived', bg: 'rgba(100,116,139,.12)', color: '#64748b' },
   ],
-  theme: {
-    accent:        '#db2777',                  // pink-600
-    accentAlt:     '#9333ea',                  // violet-600 (gradient pair)
-    accentSoft:    'rgba(219,39,119,0.08)',
-    accentBorder:  'rgba(219,39,119,0.22)',
-    cardBg:        '#ffffff',
-    pageBg:        '#fdf2f8',                  // pink-50
-    text:          '#0f172a',
-    muted:         '#64748b',
-  },
 };
+const getStatus = (value) => CFG.statuses.find((item) => item.value === value) || CFG.statuses[0];
 
-const statusMeta = (value) =>
-  PROJECT_PAGE_CFG.statuses.find((s) => s.value === value) || PROJECT_PAGE_CFG.statuses[0];
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 const SpecProjectsPage = () => {
   const navigate = useNavigate();
-  const T = PROJECT_PAGE_CFG.theme;
-
   const [projects, setProjects] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState('');
-  const [query, setQuery]       = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
-  const [editing, setEditing]   = useState(null);
-  const [busy, setBusy]         = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('');
+  const [sortBy, setSortBy] = useState('recent');
+  const [viewMode, setViewMode] = useState('cards');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [aiProject, setAiProject] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [keyConfigured, setKeyConfigured] = useState(false);
+  const [encryptionConfigured, setEncryptionConfigured] = useState(true);
+  const [modelChoices, setModelChoices] = useState({ openai: [], claude: [] });
+  const [aiForm, setAiForm] = useState({ enabled: false, provider: 'openai', model: 'gpt-4o', api_key: '' });
 
-  const loadProjects = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
-      if (query)        params.q       = query;
-      if (statusFilter) params.status  = statusFilter;
-      const res = await apiClient.get(PROJECT_PAGE_CFG.api.list, { params });
-      setProjects(res.data.items || []);
+      if (query) params.q = query;
+      if (status) params.status = status;
+      const response = await apiClient.get(CFG.list, { params });
+      setProjects(response.data.items || []);
       setError('');
     } catch (err) {
       setError(err?.response?.data?.error || 'Could not load projects.');
-    } finally {
-      setLoading(false);
-    }
-  }, [query, statusFilter]);
+    } finally { setLoading(false); }
+  }, [query, status]);
+  useEffect(() => { load(); }, [load]);
 
-  useEffect(() => { loadProjects(); }, [loadProjects]);
+  const stats = useMemo(() => ({
+    total: projects.length,
+    active: projects.filter((project) => project.status === 'active').length,
+    ai: projects.filter((project) => project.ai_enabled && project.ai_key_configured).length,
+    records: projects.reduce((sum, project) => sum + Number(project.job_count || 0) + Number(project.document_count || 0), 0),
+  }), [projects]);
+  const visibleProjects = useMemo(() => [...projects].sort((left, right) => {
+    if (sortBy === 'name') return String(left.name || '').localeCompare(String(right.name || ''));
+    if (sortBy === 'activity') return (Number(right.job_count || 0) + Number(right.document_count || 0)) - (Number(left.job_count || 0) + Number(left.document_count || 0));
+    return String(right.updated_at || right.created_at || '').localeCompare(String(left.updated_at || left.created_at || ''));
+  }), [projects, sortBy]);
 
-  const visibleProjects = useMemo(() => projects, [projects]);
-
-  // -------------------------------------------------------------------------
-  // Mutations
-  // -------------------------------------------------------------------------
-  const handleCreate = async (payload) => {
+  const saveProject = async (payload) => {
     setBusy(true);
     try {
-      await apiClient.post(PROJECT_PAGE_CFG.api.list, payload);
-      setShowCreate(false);
-      await loadProjects();
-    } catch (err) {
-      alert(err?.response?.data?.error || 'Could not create project.');
-    } finally {
-      setBusy(false);
-    }
+      if (editing) await apiClient.patch(CFG.detail(editing.project_id), payload);
+      else await apiClient.post(CFG.list, payload);
+      setCreateOpen(false); setEditing(null); await load();
+    } catch (err) { alert(err?.response?.data?.error || 'Could not save project.'); }
+    finally { setBusy(false); }
   };
-
-  const handleUpdate = async (id, payload) => {
+  const deleteProject = async (project) => {
+    if (!window.confirm(`Delete project "${project.name}"?\nAssociated extractions remain but become unassigned.`)) return;
     setBusy(true);
+    try { await apiClient.delete(CFG.detail(project.project_id)); await load(); }
+    catch (err) { alert(err?.response?.data?.error || 'Could not delete project.'); }
+    finally { setBusy(false); }
+  };
+  const openProject = (project, stage = 'extract') => {
+    try { localStorage.setItem(CFG.storageKey, JSON.stringify({
+      project_id: project.project_id, name: project.name, code: project.code,
+      plant: project.plant, client: project.client, discipline: project.discipline,
+      ai_enabled: project.ai_enabled, ai_provider: project.ai_provider,
+      ai_model: project.ai_model, ai_key_configured: project.ai_key_configured,
+    })); } catch (_) { /* optional browser persistence */ }
+    navigate(`${CFG.route}?stage=${stage}`);
+  };
+  const openAi = async (project) => {
+    setAiProject(project); setAiBusy(true); setAiError(''); setShowKey(false);
     try {
-      await apiClient.patch(PROJECT_PAGE_CFG.api.detail(id), payload);
-      setEditing(null);
-      await loadProjects();
-    } catch (err) {
-      alert(err?.response?.data?.error || 'Could not update project.');
-    } finally {
-      setBusy(false);
-    }
+      const data = await specCustomizationAPI.getProjectAISettings(project.project_id);
+      const choices = data?.model_choices || { openai: [], claude: [] };
+      const provider = data?.provider || 'openai';
+      setModelChoices(choices); setKeyConfigured(Boolean(data?.key_configured));
+      setEncryptionConfigured(Boolean(data?.encryption_configured));
+      setAiForm({ enabled: Boolean(data?.enabled), provider, model: data?.model || choices?.[provider]?.[0]?.id || '', api_key: '' });
+    } catch (err) { setAiError(err?.response?.data?.error || 'Could not load AI settings.'); }
+    finally { setAiBusy(false); }
+  };
+  const saveAi = async () => {
+    if (!aiProject) return;
+    setAiBusy(true); setAiError('');
+    try {
+      const payload = { enabled: aiForm.enabled, provider: aiForm.provider, model: aiForm.model };
+      if (aiForm.api_key.trim()) payload.api_key = aiForm.api_key.trim();
+      await specCustomizationAPI.saveProjectAISettings(aiProject.project_id, payload);
+      setAiProject(null); await load();
+    } catch (err) { setAiError(err?.response?.data?.error || 'Could not save AI settings.'); }
+    finally { setAiBusy(false); }
+  };
+  const clearAi = async () => {
+    if (!aiProject) return;
+    setAiBusy(true); setAiError('');
+    try { await specCustomizationAPI.clearProjectAISettings(aiProject.project_id); setAiProject(null); await load(); }
+    catch (err) { setAiError(err?.response?.data?.error || 'Could not clear AI settings.'); }
+    finally { setAiBusy(false); }
   };
 
-  const handleDelete = async (p) => {
-    if (!window.confirm(
-      `Delete project "${p.name}"?\nAssociated extractions stay in the system but become unassigned.`
-    )) return;
-    setBusy(true);
-    try {
-      await apiClient.delete(PROJECT_PAGE_CFG.api.detail(p.project_id));
-      await loadProjects();
-    } catch (err) {
-      alert(err?.response?.data?.error || 'Could not delete project.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleOpen = (p) => {
-    // Persist the active project so the extractor page can pick it up.
-    try {
-      localStorage.setItem(PROJECT_PAGE_CFG.storageKey, JSON.stringify({
-        project_id: p.project_id,
-        name:       p.name,
-        code:       p.code,
-        plant:      p.plant,
-        client:     p.client,
-        discipline: p.discipline,
-      }));
-    } catch (_) { /* ignore */ }
-    navigate(PROJECT_PAGE_CFG.routes.extractorPage);
-  };
-
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
-  return (
-    <div style={{ minHeight: '100vh', background: T.pageBg, padding: '24px 32px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <button
-            onClick={() => navigate(PROJECT_PAGE_CFG.routes.extractorPage)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: 'transparent', border: `1px solid ${T.accentBorder}`,
-              color: T.accent, padding: '8px 12px', borderRadius: 8,
-              fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            <ArrowLeftIcon width={16} /> Back to Extractor
-          </button>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: T.text, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <FolderIcon width={26} style={{ color: T.accent }} />
-              Spec Customization Projects
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: T.muted }}>
-              Organise paper-spec extractions by engineering project. Role-based — you see what you create; admins see all.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            background: `linear-gradient(135deg, ${T.accent}, ${T.accentAlt})`,
-            color: '#fff', border: 'none', padding: '10px 18px',
-            borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(219,39,119,0.30)',
-          }}
-        >
-          <FolderPlusIcon width={18} /> New Project
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div style={{
-        display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16,
-        background: T.cardBg, padding: 12, borderRadius: 10,
-        border: `1px solid ${T.accentBorder}`,
-      }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8,
-                      background: T.accentSoft, borderRadius: 8, padding: '8px 12px' }}>
-          <MagnifyingGlassIcon width={16} style={{ color: T.accent }} />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, code, client, or plant…"
-            style={{
-              flex: 1, border: 'none', background: 'transparent',
-              fontSize: 13, color: T.text, outline: 'none',
-            }}
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{
-            padding: '8px 12px', borderRadius: 8, fontSize: 13,
-            border: `1px solid ${T.accentBorder}`, background: '#fff',
-            color: T.text, cursor: 'pointer',
-          }}
-        >
-          <option value="">All statuses</option>
-          {PROJECT_PAGE_CFG.statuses.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Status / Errors */}
-      {error && (
-        <div style={{ background: '#fee2e2', color: '#991b1b', padding: 12,
-                      borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ padding: 60, textAlign: 'center', color: T.muted }}>Loading projects…</div>
-      ) : visibleProjects.length === 0 ? (
-        <EmptyState onCreate={() => setShowCreate(true)} theme={T} />
-      ) : (
-        <div style={{
-          display: 'grid', gap: 14,
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        }}>
-          {visibleProjects.map((p) => (
-            <ProjectCard
-              key={p.project_id}
-              project={p}
-              theme={T}
-              onOpen={() => handleOpen(p)}
-              onEdit={() => setEditing(p)}
-              onDelete={() => handleDelete(p)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Create / Edit modal */}
-      {(showCreate || editing) && (
-        <ProjectFormModal
-          theme={T}
-          initial={editing}
-          busy={busy}
-          onClose={() => { setShowCreate(false); setEditing(null); }}
-          onSubmit={(payload) =>
-            editing ? handleUpdate(editing.project_id, payload) : handleCreate(payload)
-          }
-        />
-      )}
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// Project card
-// ---------------------------------------------------------------------------
-const ProjectCard = ({ project, theme, onOpen, onEdit, onDelete }) => {
-  const meta = statusMeta(project.status);
-  const totalExtractions = (project.job_count || 0) + (project.document_count || 0);
-  return (
-    <div
-      style={{
-        background: theme.cardBg, border: `1px solid ${theme.accentBorder}`,
-        borderRadius: 12, padding: 16, position: 'relative',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-        transition: 'transform 0.15s, box-shadow 0.15s',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(219,39,119,0.12)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)';    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: theme.text,
-                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {project.name}
-          </h3>
-          {project.code && (
-            <div style={{ fontSize: 11, color: theme.muted, marginTop: 2 }}>
-              {project.code}
-            </div>
-          )}
-        </div>
-        <span style={{
-          background: meta.bg, color: meta.color, fontSize: 11, fontWeight: 600,
-          padding: '3px 8px', borderRadius: 20, whiteSpace: 'nowrap',
-        }}>{meta.label}</span>
-      </div>
-
-      <div style={{ fontSize: 12, color: theme.muted, marginBottom: 12,
-                    minHeight: 30, lineHeight: 1.5 }}>
-        {project.description?.slice(0, 110) || <em>No description.</em>}
-        {project.description?.length > 110 && '…'}
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, fontSize: 11, color: theme.muted, marginBottom: 12, flexWrap: 'wrap' }}>
-        {project.plant      && <Tag label="Plant"      value={project.plant}      theme={theme} />}
-        {project.client     && <Tag label="Client"     value={project.client}     theme={theme} />}
-        {project.discipline && <Tag label="Discipline" value={project.discipline} theme={theme} />}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    borderTop: `1px solid ${theme.accentBorder}`, paddingTop: 10 }}>
-        <div style={{ fontSize: 11, color: theme.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <ChartBarIcon width={13} />
-          {totalExtractions} extraction{totalExtractions === 1 ? '' : 's'}
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <IconBtn title="Edit"   onClick={onEdit}   theme={theme}><PencilSquareIcon width={14} /></IconBtn>
-          <IconBtn title="Delete" onClick={onDelete} theme={theme} danger><TrashIcon width={14} /></IconBtn>
-          <button onClick={onOpen} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            background: theme.accent, color: '#fff', border: 'none',
-            padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          }}>
-            Open <ArrowRightIcon width={12} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const Tag = ({ label, value, theme }) => (
-  <span style={{
-    background: theme.accentSoft, color: theme.accent,
-    padding: '2px 8px', borderRadius: 4, fontWeight: 600,
-  }}>{label}: {value}</span>
-);
-
-const IconBtn = ({ children, theme, danger, ...rest }) => (
-  <button {...rest} style={{
-    background: 'transparent',
-    border: `1px solid ${danger ? '#fca5a5' : theme.accentBorder}`,
-    color: danger ? '#b91c1c' : theme.accent,
-    padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
-    display: 'inline-flex', alignItems: 'center',
-  }}>{children}</button>
-);
-
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
-const EmptyState = ({ onCreate, theme }) => (
-  <div style={{
-    background: theme.cardBg, padding: 50, textAlign: 'center',
-    borderRadius: 12, border: `1px dashed ${theme.accentBorder}`,
-  }}>
-    <FolderIcon width={48} style={{ color: theme.accent, opacity: 0.5, margin: '0 auto 12px' }} />
-    <h2 style={{ margin: 0, fontSize: 18, color: theme.text }}>No projects yet</h2>
-    <p style={{ margin: '6px 0 18px', fontSize: 13, color: theme.muted }}>
-      Create a project to group related paper-spec PDF extractions and piping classes.
-    </p>
-    <button onClick={onCreate} style={{
-      background: theme.accent, color: '#fff', border: 'none',
-      padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    }}>
-      <FolderPlusIcon width={16} style={{ verticalAlign: -3, marginRight: 6 }} />
-      Create your first project
-    </button>
+  return <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 px-3 py-5 sm:px-5 sm:py-7 dark:from-gray-950 dark:via-slate-950 dark:to-indigo-950"><div className="mx-auto max-w-7xl">
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5 dark:border-slate-800">
+      <div className="flex min-w-0 items-center gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-900/20"><FolderIcon className="h-6 w-6" /></div><div className="min-w-0"><div className="text-[11px] font-bold uppercase tracking-[.16em] text-blue-700 dark:text-blue-300">Digitization workspace</div><h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Spec Customization Projects</h1><p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Define the controlled workspace for source specifications, reference workbooks and validated exports.</p></div></div>
+      <div className="flex shrink-0 gap-2"><button onClick={() => navigate(CFG.route)} className="hidden items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:bg-blue-50 sm:inline-flex dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><ArrowLeftIcon className="h-4 w-4" /> Workspace</button><button onClick={load} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh</button></div>
+    </header>
+    <section className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4"><Stat label="Projects" value={stats.total} tone="blue" /><Stat label="Active" value={stats.active} tone="emerald" /><Stat label="AI enabled" value={stats.ai} tone="violet" /><Stat label="Documents & jobs" value={stats.records} tone="amber" /></section>
+    <section className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-base font-bold text-slate-900 dark:text-white">Project register</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Set the target workbook set before opening the extraction workspace.</p></div><button onClick={() => setCreateOpen(true)} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-2.5 text-sm font-bold text-white shadow-sm hover:from-blue-700 hover:to-indigo-700"><FolderPlusIcon className="h-4 w-4" /> Create project</button></section>
+    <section className="mb-6 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"><MagnifyingGlassIcon className="h-4 w-4 shrink-0 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by project, code, client or plant..." className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" /></div><div className="mt-3 flex flex-wrap items-center gap-2"><div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-0.5"><Filter label="All" active={!status} onClick={() => setStatus('')} />{CFG.statuses.map((item) => <Filter key={item.value} label={item.label} active={status === item.value} onClick={() => setStatus(item.value)} />)}</div><div className="flex items-center gap-1.5"><ArrowsUpDownIcon className="h-4 w-4 text-slate-400" /><select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"><option value="recent">Recently updated</option><option value="activity">Most active</option><option value="name">Project name</option></select><button title="Card view" onClick={() => setViewMode('cards')} className={`rounded-lg p-1.5 ${viewMode === 'cards' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><Squares2X2Icon className="h-4 w-4" /></button><button title="Compact view" onClick={() => setViewMode('compact')} className={`rounded-lg p-1.5 ${viewMode === 'compact' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}><ListBulletIcon className="h-4 w-4" /></button></div>{(query || status) && <button onClick={() => { setQuery(''); setStatus(''); }} className="whitespace-nowrap px-2 text-xs font-semibold text-slate-500 hover:text-blue-700 dark:text-slate-400">Reset</button>}</div></section>
+    {error && <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">{error}</div>}
+    {loading ? <Loading /> : visibleProjects.length === 0 ? <Empty onCreate={() => setCreateOpen(true)} /> : <section className={viewMode === 'cards' ? 'grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3' : 'grid grid-cols-1 gap-2'}>{visibleProjects.map((project) => <ProjectCard key={project.project_id} compact={viewMode === 'compact'} project={project} onOpen={() => openProject(project)} onReferences={() => openProject(project, 'reference')} onEdit={() => setEditing(project)} onAi={() => openAi(project)} onDelete={() => deleteProject(project)} />)}</section>}
   </div>
-);
-
-// ---------------------------------------------------------------------------
-// Create / Edit modal
-// ---------------------------------------------------------------------------
-const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme }) => {
-  const [form, setForm] = useState(() => ({
-    name:        initial?.name        || '',
-    code:        initial?.code        || '',
-    client:      initial?.client      || '',
-    plant:       initial?.plant       || '',
-    discipline:  initial?.discipline  || '',
-    description: initial?.description || '',
-    status:      initial?.status      || 'active',
-  }));
-  const [showAdvanced, setShowAdvanced] = useState(
-    Boolean(initial && (initial.code || initial.client || initial.plant || initial.discipline))
-  );
-  const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const canSubmit = form.name.trim().length > 0 && !busy;
-  const handleSubmit = (e) => { e?.preventDefault?.(); if (canSubmit) onSubmit(form); };
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
-    }}>
-      <form onSubmit={handleSubmit} style={{
-        background: '#fff', borderRadius: 14, padding: 0, width: 'min(520px, 92vw)',
-        maxHeight: '90vh', overflow: 'hidden', boxShadow: '0 18px 50px rgba(0,0,0,0.25)',
-        display: 'flex', flexDirection: 'column',
-      }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '18px 22px',
-          background: `linear-gradient(135deg, ${theme.accentSoft}, rgba(147,51,234,0.05))`,
-          borderBottom: `1px solid ${theme.accentBorder}`,
-        }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: theme.cardBg, border: `1px solid ${theme.accentBorder}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <FolderPlusIcon width={18} style={{ color: theme.accent }} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: theme.text }}>
-              {initial ? 'Edit project' : 'Create new project'}
-            </h2>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: theme.muted }}>
-              {initial ? 'Update the project details.' : 'Group your paper-spec extractions under one project.'}
-            </p>
-          </div>
-          <button type="button" onClick={onClose} style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-          }}>
-            <XMarkIcon width={20} style={{ color: theme.muted }} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: '20px 22px', overflow: 'auto', display: 'grid', gap: 14 }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700,
-                            color: theme.text, textTransform: 'uppercase',
-                            letterSpacing: 0.5, marginBottom: 6 }}>
-              Project Name *
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              autoFocus
-              required
-              onChange={(e) => update('name', e.target.value)}
-              placeholder="e.g., ADNOC LNG Train-3 PMS"
-              style={{
-                width: '100%', padding: '10px 12px', borderRadius: 8,
-                border: `1px solid ${theme.accentBorder}`, fontSize: 14,
-                outline: 'none', transition: 'border-color 0.15s, box-shadow 0.15s',
-              }}
-              onFocus={(e) => { e.target.style.borderColor = theme.accent;
-                                e.target.style.boxShadow = `0 0 0 3px ${theme.accentSoft}`; }}
-              onBlur={(e) => { e.target.style.borderColor = theme.accentBorder;
-                               e.target.style.boxShadow = 'none'; }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700,
-                            color: theme.text, textTransform: 'uppercase',
-                            letterSpacing: 0.5, marginBottom: 6 }}>
-              Description <span style={{ color: theme.muted, fontWeight: 400, textTransform: 'none' }}>(optional)</span>
-            </label>
-            <textarea
-              value={form.description}
-              onChange={(e) => update('description', e.target.value)}
-              rows={3}
-              placeholder="Brief project description…"
-              style={{
-                width: '100%', padding: '10px 12px', borderRadius: 8,
-                border: `1px solid ${theme.accentBorder}`, fontSize: 13,
-                resize: 'vertical', fontFamily: 'inherit', outline: 'none',
-              }}
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowAdvanced((v) => !v)}
-            style={{
-              background: 'transparent', border: 'none', color: theme.accent,
-              fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
-              padding: 0,
-            }}
-          >
-            {showAdvanced ? '− Hide advanced fields' : '+ Add code, client, plant, discipline, status'}
-          </button>
-
-          {showAdvanced && (
-            <div style={{ display: 'grid', gap: 12, padding: 14,
-                          background: theme.accentSoft, borderRadius: 8 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Field label="Code"        value={form.code}        onChange={(v) => update('code', v)} theme={theme} />
-                <Field label="Client"      value={form.client}      onChange={(v) => update('client', v)} theme={theme} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Field label="Plant"       value={form.plant}       onChange={(v) => update('plant', v)} theme={theme} />
-                <Field label="Discipline"  value={form.discipline}  onChange={(v) => update('discipline', v)} theme={theme} />
-              </div>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: theme.muted,
-                                textTransform: 'uppercase', letterSpacing: 0.4 }}>Status</label>
-                <select
-                  value={form.status}
-                  onChange={(e) => update('status', e.target.value)}
-                  style={{
-                    width: '100%', padding: '8px 10px', borderRadius: 6,
-                    border: `1px solid ${theme.accentBorder}`, fontSize: 13, marginTop: 4,
-                    background: '#fff',
-                  }}
-                >
-                  {PROJECT_PAGE_CFG.statuses.map((s) =>
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  )}
-                </select>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div style={{
-          display: 'flex', justifyContent: 'flex-end', gap: 10,
-          padding: '14px 22px', borderTop: `1px solid ${theme.accentBorder}`,
-          background: '#fafafa',
-        }}>
-          <button type="button" onClick={onClose} style={{
-            background: 'transparent', border: `1px solid ${theme.accentBorder}`,
-            color: theme.muted, padding: '9px 16px', borderRadius: 8,
-            fontSize: 13, fontWeight: 500, cursor: 'pointer',
-          }}>Cancel</button>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            style={{
-              background: canSubmit
-                ? `linear-gradient(135deg, ${theme.accent}, ${theme.accentAlt})`
-                : '#cbd5e1',
-              color: '#fff', border: 'none',
-              padding: '9px 20px', borderRadius: 8, fontSize: 13, fontWeight: 700,
-              cursor: canSubmit ? 'pointer' : 'not-allowed',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              boxShadow: canSubmit ? '0 4px 14px rgba(219,39,119,0.30)' : 'none',
-            }}
-          >
-            <CheckIcon width={14} /> {busy ? 'Saving…' : (initial ? 'Save changes' : 'Create project')}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
+  {(createOpen || editing) && <ProjectModal initial={editing} busy={busy} onClose={() => { setCreateOpen(false); setEditing(null); }} onSave={saveProject} />}
+  {aiProject && <AiModal project={aiProject} busy={aiBusy} error={aiError} form={aiForm} choices={modelChoices} keyConfigured={keyConfigured} encryptionConfigured={encryptionConfigured} showKey={showKey} onToggleKey={() => setShowKey((value) => !value)} onChange={(patch) => setAiForm((value) => ({ ...value, ...patch }))} onClose={() => setAiProject(null)} onSave={saveAi} onClear={clearAi} />}
+  </div>;
 };
 
-const Field = ({ label, value, onChange, theme, required }) => (
-  <div>
-    <label style={{ fontSize: 12, fontWeight: 600, color: theme.muted }}>{label}</label>
-    <input
-      type="text"
-      value={value}
-      required={required}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: '100%', padding: '8px 10px', borderRadius: 6,
-        border: `1px solid ${theme.accentBorder}`, fontSize: 13, marginTop: 4,
-      }}
-    />
-  </div>
-);
+const Stat = ({ label, value, tone }) => { const map = { blue: ['rgba(37,99,235,.1)', '#1d4ed8'], emerald: ['rgba(16,185,129,.12)', '#047857'], violet: ['rgba(124,58,237,.12)', '#6d28d9'], amber: ['rgba(245,158,11,.16)', '#b45309'] }; const [background, color] = map[tone] || map.blue; return <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"><div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div><div className="mt-2 inline-flex rounded-full px-2.5 py-1 text-lg font-extrabold tabular-nums" style={{ background, color }}>{value}</div></div>; };
+const Filter = ({ label, active, onClick }) => <button onClick={onClick} className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${active ? 'border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'}`}>{label}</button>;
+const Loading = () => <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-64 animate-pulse rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><div className="h-4 w-2/3 rounded bg-slate-200 dark:bg-slate-800" /><div className="mt-5 h-10 rounded bg-slate-100 dark:bg-slate-800" /><div className="mt-6 h-9 rounded bg-slate-100 dark:bg-slate-800" /></div>)}</div>;
+const Empty = ({ onCreate }) => <div className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-16 text-center dark:border-slate-700 dark:bg-slate-900"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300"><FolderIcon className="h-7 w-7" /></div><h2 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">No projects yet</h2><p className="mx-auto mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">Create a project to group related paper-spec extractions and piping classes.</p><button onClick={onCreate} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"><FolderPlusIcon className="h-4 w-4" /> Create your first project</button></div>;
+const ProjectTag = ({ label, value, icon: Icon }) => value ? <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{Icon && <Icon className="h-3 w-3" />}{label}: {value}</span> : null;
+const Action = ({ children, danger, ...props }) => <button {...props} className={`inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors ${danger ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}>{children}</button>;
+const ProjectCard = ({ project, compact, onOpen, onReferences, onEdit, onAi, onDelete }) => { const status = getStatus(project.status); const count = Number(project.job_count || 0) + Number(project.document_count || 0); const aiReady = Boolean(project.ai_enabled && project.ai_key_configured); if (compact) return <article className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-colors hover:border-blue-300 dark:border-slate-800 dark:bg-slate-900"><div className="min-w-[12rem] flex-1"><div className="flex items-center gap-2"><h3 className="truncate text-sm font-bold text-slate-900 dark:text-white">{project.name}</h3><span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: status.bg, color: status.color }}>{status.label}</span></div><p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{project.code || project.client || project.plant || 'No delivery context'}</p></div><div className="text-xs text-slate-500 dark:text-slate-400">{count} records</div><div className="flex gap-2"><Action onClick={onReferences}><WrenchScrewdriverIcon className="h-3.5 w-3.5" /> References</Action><Action onClick={onOpen}><ArrowRightIcon className="h-3.5 w-3.5" /> Extract</Action><Action onClick={onEdit}><PencilSquareIcon className="h-3.5 w-3.5" /> Edit</Action></div></article>; return <article className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-800"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600 opacity-0 transition-opacity group-hover:opacity-100" /><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-base font-bold text-slate-900 dark:text-white">{project.name}</h3><div className="mt-1 flex flex-wrap items-center gap-2">{project.code && <span className="font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400">{project.code}</span>}{aiReady && <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"><CpuChipIcon className="h-3 w-3" /> {project.ai_provider || 'AI'} ready</span>}</div></div><span className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: status.bg, color: status.color }}>{status.label}</span></div><p className="mt-4 min-h-10 text-sm leading-5 text-slate-600 dark:text-slate-400">{project.description?.slice(0, 110) || <em>No description.</em>}{project.description?.length > 110 && '...'}</p><div className="mt-3 flex min-h-6 flex-wrap gap-1.5"><ProjectTag label="Plant" value={project.plant} icon={BuildingOffice2Icon} /><ProjectTag label="Client" value={project.client} /><ProjectTag label="Discipline" value={project.discipline} /></div><div className="mt-4 flex items-center gap-1.5 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400"><ChartBarIcon className="h-3.5 w-3.5" />{count} document / job record{count === 1 ? '' : 's'}</div><div className="mt-4 grid gap-2"><div className="grid grid-cols-2 gap-2"><button onClick={onReferences} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm font-bold text-violet-700 hover:bg-violet-100 dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-300"><WrenchScrewdriverIcon className="h-4 w-4" /> References</button><button onClick={onOpen} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-bold text-white hover:bg-blue-700">Extract <ArrowRightIcon className="h-4 w-4" /></button></div><div className="grid grid-cols-3 gap-2"><Action onClick={onAi} title="AI settings"><KeyIcon className="h-3.5 w-3.5" /> AI</Action><Action onClick={onEdit}><PencilSquareIcon className="h-3.5 w-3.5" /> Edit</Action><Action onClick={onDelete} danger><TrashIcon className="h-3.5 w-3.5" /> Delete</Action></div></div></article>; };
+
+const Modal = ({ title, subtitle, icon: Icon, onClose, children }) => <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"><div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"><div className="flex items-start gap-3 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50 px-5 py-4 dark:border-slate-800 dark:from-blue-950/40 dark:to-indigo-950/40"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white"><Icon className="h-5 w-5" /></div><div className="min-w-0 flex-1"><h2 className="text-base font-bold text-slate-900 dark:text-white">{title}</h2><p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{subtitle}</p></div><button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"><XMarkIcon className="h-5 w-5" /></button></div>{children}</div></div>;
+const Field = ({ label, value, onChange, required, placeholder }) => <label className="block"><span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{label}{required && ' *'}</span><input value={value} required={required} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>;
+const Footer = ({ onClose, busy, disabled, label, onSave }) => <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-950/40"><button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Cancel</button><button type={onSave ? 'button' : 'submit'} onClick={onSave} disabled={disabled} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><CheckIcon className="h-4 w-4" />{busy ? 'Saving...' : label}</button></div>;
+const ProjectModal = ({ initial, busy, onClose, onSave }) => { const [form, setForm] = useState({ name: initial?.name || '', code: initial?.code || '', client: initial?.client || '', plant: initial?.plant || '', discipline: initial?.discipline || '', description: initial?.description || '', status: initial?.status || 'active' }); const [advanced, setAdvanced] = useState(Boolean(initial && (initial.code || initial.client || initial.plant || initial.discipline))); const set = (key, value) => setForm((current) => ({ ...current, [key]: value })); const valid = form.name.trim() && !busy; return <Modal title={initial ? 'Edit project' : 'Create project'} subtitle={initial ? 'Update the project context and delivery state.' : 'Start with the project identity and delivery context.'} icon={FolderPlusIcon} onClose={onClose}><form onSubmit={(event) => { event.preventDefault(); if (valid) onSave(form); }} className="flex max-h-[86vh] flex-col"><div className="space-y-4 overflow-y-auto px-5 py-5"><Field label="Project name" value={form.name} required placeholder="e.g. ADNOC LNG Train-3 PMS" onChange={(value) => set('name', value)} /><label className="block"><span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Description <span className="font-normal normal-case text-slate-400">(optional)</span></span><textarea rows={3} value={form.description} onChange={(event) => set('description', event.target.value)} placeholder="Scope, source document or target deliverable..." className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label><button type="button" onClick={() => setAdvanced((value) => !value)} className="text-xs font-bold text-blue-700 hover:text-blue-900 dark:text-blue-300">{advanced ? 'Hide delivery details' : 'Add code, client, plant, discipline and status'}</button>{advanced && <div className="grid grid-cols-1 gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-3 sm:grid-cols-2 dark:border-blue-900/50 dark:bg-blue-950/20"><Field label="Code" value={form.code} onChange={(value) => set('code', value)} /><Field label="Client" value={form.client} onChange={(value) => set('client', value)} /><Field label="Plant" value={form.plant} onChange={(value) => set('plant', value)} /><Field label="Discipline" value={form.discipline} onChange={(value) => set('discipline', value)} /><label className="block sm:col-span-2"><span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Status</span><select value={form.status} onChange={(event) => set('status', event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{CFG.statuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label></div>}</div><Footer onClose={onClose} busy={busy} disabled={!valid} label={initial ? 'Save changes' : 'Create project'} /></form></Modal>; };
+const AiModal = ({ project, busy, error, form, choices, keyConfigured, encryptionConfigured, showKey, onToggleKey, onChange, onClose, onSave, onClear }) => { const models = Array.isArray(choices?.[form.provider]) ? choices[form.provider] : []; const disabled = busy || !encryptionConfigured || (form.enabled && !keyConfigured && !form.api_key.trim()); return <Modal title="Project AI settings" subtitle={`${project.name} - configure a project-scoped provider and model.`} icon={KeyIcon} onClose={onClose}><div className="space-y-4 px-5 py-5">{error && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">{error}</div>}<label className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"><input type="checkbox" checked={Boolean(form.enabled)} disabled={busy} onChange={(event) => onChange({ enabled: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-blue-600" />Enable project AI key</label><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><Select label="Provider" value={form.provider} disabled={busy} onChange={(provider) => onChange({ provider, model: choices?.[provider]?.[0]?.id || '' })}><option value="openai">OpenAI</option><option value="claude">Claude</option></Select><Select label="Model" value={form.model} disabled={busy} onChange={(model) => onChange({ model })}>{models.map((model) => <option key={model.id} value={model.id}>{model.label || model.id}</option>)}</Select></div><label className="block"><span className="mb-1.5 flex justify-between text-[11px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">API key <button type="button" onClick={onToggleKey} className="normal-case text-blue-700 hover:underline dark:text-blue-300">{showKey ? 'Hide' : 'Show'}</button></span><input type={showKey ? 'text' : 'password'} value={form.api_key} disabled={busy} onChange={(event) => onChange({ api_key: event.target.value })} placeholder={keyConfigured ? 'Leave empty to retain the current key' : 'Paste API key'} autoComplete="off" spellCheck={false} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label><p className={`text-xs ${encryptionConfigured ? 'text-slate-500 dark:text-slate-400' : 'font-semibold text-amber-700 dark:text-amber-300'}`}>{keyConfigured ? 'A project key is configured. Leave this field blank to retain it.' : 'No project key is stored.'}{!encryptionConfigured && ' Server-side key encryption is not configured, so saving is unavailable.'}</p></div><div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-950/40"><button onClick={onClear} disabled={busy || (!keyConfigured && !form.enabled)} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-900/60 dark:bg-slate-900 dark:text-rose-300">Clear AI key</button><div className="flex gap-2"><button onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Cancel</button><button onClick={onSave} disabled={disabled} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Saving...' : 'Save AI settings'}</button></div></div></Modal>; };
+const Select = ({ label, value, onChange, disabled, children }) => <label className="block"><span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{label}</span><select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{children}</select></label>;
 
 export default SpecProjectsPage;

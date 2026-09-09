@@ -38,6 +38,8 @@ export const VALVE_STANDARDS_CONFIG = {
   b165DrillingTemplatesPath: '/b16-5/drilling-templates/',
   b165FlangeDimensionsPath: '/b16-5/flange-dimensions/',
   b165FlangeBoltingRecommendationsPath: '/b16-5/flange-bolting-recommendations/',
+  b165PipeClassConversationPath: '/b16-5/pipe-class-conversation/',
+  b165PipeClassConversationUploadPath: '/b16-5/pipe-class-conversation/upload/',
 };
 
 const path = (p) => `${VALVE_STANDARDS_CONFIG.prefix}${p}`;
@@ -162,6 +164,30 @@ const valveStandardsAPI = {
 
   async listB165FlangeBoltingRecommendations() {
     const { data } = await apiClient.get(path(VALVE_STANDARDS_CONFIG.b165FlangeBoltingRecommendationsPath));
+    return data;
+  },
+
+  async listB165PipeClassConversation(params = {}) {
+    const { data } = await apiClient.get(path(VALVE_STANDARDS_CONFIG.b165PipeClassConversationPath), { params });
+    return data;
+  },
+
+  async uploadB165PipeClassConversation(file, options = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', options.mode || 'replace');
+    formData.append('dry_run', options.dryRun ? 'true' : 'false');
+    const { data } = await apiClient.post(
+      path(VALVE_STANDARDS_CONFIG.b165PipeClassConversationUploadPath),
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return data;
+  },
+
+  async fetchCustomRows(customPath, params = {}) {
+    const normalized = customPath.startsWith('/') ? customPath : `/${customPath}`;
+    const { data } = await apiClient.get(path(normalized), { params });
     return data;
   },
 };

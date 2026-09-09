@@ -61,6 +61,8 @@ export const SPEC_API_CONFIG = {
   // Workbook canvas — cross-check & edit SPEC/CAT data before download.
   jobWorkbookPath:     (id) => `/paper-spec/jobs/${id}/workbook/`,
   jobWorkbookCellPath: (id) => `/paper-spec/jobs/${id}/workbook/cell/`,
+  jobWorkbookChatbotPath: (id) => `/paper-spec/jobs/${id}/workbook/chatbot-edit/`,
+  jobWorkbookValidatePath: (id) => `/paper-spec/jobs/${id}/workbook/validate/`,
   jobWorkbookBatchSavePath: (id) => `/paper-spec/jobs/${id}/workbook/batch-save/`,
   jobWorkbookDeleteRowPath: (id) => `/paper-spec/jobs/${id}/workbook/delete-row/`,
   jobWorkbookBulkDeletePath: (id) => `/paper-spec/jobs/${id}/workbook/bulk-delete/`,
@@ -303,6 +305,29 @@ const specCustomizationAPI = {
   },
 
   /**
+   * Chatbot-assisted workbook editing.
+   *
+   * @param {string} jobId
+    * @param {object} payload - {instruction, workbook_scope, active_workbook, preview_only?}
+   */
+  async chatbotEditWorkbook(jobId, payload) {
+    const { data } = await apiClient.post(
+      path(SPEC_API_CONFIG.jobWorkbookChatbotPath(jobId)),
+      payload,
+    );
+    return data;
+  },
+
+  /** Validate already-extracted workbook rows using backend rule checks. */
+  async validateWorkbook(jobId, payload = {}) {
+    const { data } = await apiClient.post(
+      path(SPEC_API_CONFIG.jobWorkbookValidatePath(jobId)),
+      payload,
+    );
+    return data;
+  },
+
+  /**
    * Batch save multiple cell overrides at once.
    * 
    * @param {string} jobId - Job ID
@@ -359,6 +384,22 @@ const specCustomizationAPI = {
     const { data } = await apiClient.get(`/spec-customization/projects/${projectId}/jobs/`, {
       params,
     });
+    return data;
+  },
+
+  /** Project-level BYOK settings (encrypted key stored on backend). */
+  async getProjectAISettings(projectId) {
+    const { data } = await apiClient.get(`/spec-customization/projects/${projectId}/ai-settings/`);
+    return data;
+  },
+
+  async saveProjectAISettings(projectId, payload) {
+    const { data } = await apiClient.post(`/spec-customization/projects/${projectId}/ai-settings/`, payload);
+    return data;
+  },
+
+  async clearProjectAISettings(projectId) {
+    const { data } = await apiClient.delete(`/spec-customization/projects/${projectId}/ai-settings/`);
     return data;
   },
 

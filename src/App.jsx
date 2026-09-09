@@ -135,6 +135,8 @@ import PIDCheckerV2 from './pages/Engineering/Process/PIDCheckerV2'
 import PIDCheckerV2Docs from './pages/Engineering/Process/PIDCheckerV2Docs'
 import LegendSheetsCanvas from './pages/Engineering/Process/LegendSheetsCanvas'
 import PFDQualityChecker from './pages/Engineering/Process/PFDQualityChecker'
+import HMBExtractor from './pages/Engineering/Process/HMBExtractor'
+import ManageProjectsPage from './pages/ProjectOrganizer/ManageProjectsPage'
 import CriticalLineList from './pages/Engineering/Piping/CriticalLineList'
 // Electrical Datasheet Components
 import ElectricalDocumentsHub from './pages/Engineering/Electrical/ElectricalDocumentsHub'
@@ -491,6 +493,15 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        {/* Shared Project Organizer — standalone management page for cross-tool projects */}
+        <Route
+          path="project-organizer/projects"
+          element={
+            <ProtectedRoute>
+              <ManageProjectsPage />
             </ProtectedRoute>
           }
         />
@@ -1095,6 +1106,15 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="pid_analysis">
               <EquipmentList />
+            </ModuleProtectedRoute>
+          }
+        />
+        {/* HMB Extractor - Standalone Heat & Material Balance stream extraction */}
+        <Route
+          path="engineering/process/hmb-extractor"
+          element={
+            <ModuleProtectedRoute moduleCode="process_datasheet">
+              <HMBExtractor />
             </ModuleProtectedRoute>
           }
         />

@@ -106,6 +106,16 @@ export const ENGINEERING_DISCIPLINES = {
         description: 'Process equipment datasheets',
         moduleCode: 'process_datasheet',
         badge: 'New'
+      },
+      {
+        id: 'hmbExtractor',
+        name: 'HMB Extractor',
+        fullName: 'Heat & Material Balance Extractor',
+        icon: DocumentMagnifyingGlassIcon,
+        path: ROUTES.HMB_EXTRACTOR,
+        description: 'Extract stream data from Heat & Material Balance documents',
+        moduleCode: 'process_datasheet',
+        badge: 'New'
       }
     ,      {        id: 'lineList',
         name: 'Line List',

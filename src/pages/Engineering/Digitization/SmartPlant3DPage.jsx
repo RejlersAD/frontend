@@ -27,6 +27,7 @@ import {
   TableCellsIcon,
   CubeTransparentIcon,
   BookOpenIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import { getApiBaseUrl } from '../../../config/environment.config';
@@ -35,6 +36,14 @@ import { getApiBaseUrl } from '../../../config/environment.config';
 // Feature Cards Configuration
 // ---------------------------------------------------------------------------
 const FEATURE_CARDS = [
+  {
+    id: 'document-validation',
+    title: 'Document Validation',
+    description: 'Validate engineering documents with AI-assisted checks for tags, structure, and consistency',
+    icon: ShieldCheckIcon,
+    path: ROUTES.DOCUMENT_VALIDATION,
+    badge: 'Live',
+  },
   {
     id: 'valve-standards-reference',
     title: 'Valve Standards Reference',

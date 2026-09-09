@@ -240,6 +240,8 @@ const DatasheetGeneratorTemplate = ({ config }) => {
       setUploadProgress(100);
       setAnalysisStage('Complete!');
       setUploading(false);
+      // Optional hook — no-op unless a consuming page sets it (e.g. project activity logging)
+      if (typeof config.onSyncSuccess === 'function') config.onSyncSuccess(normalised, resp.data);
     } catch (err) {
       console.error('[DatasheetGenerator] upload error:', err);
       setError(err.response?.data?.error || err.response?.data?.message || err.message || 'Upload failed.');
