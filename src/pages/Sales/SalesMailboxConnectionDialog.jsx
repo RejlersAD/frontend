@@ -5,7 +5,6 @@ import {
   EnvelopeIcon,
   ExclamationCircleIcon,
   LinkIcon,
-  LockClosedIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import salesService from "../../services/sales.service";
@@ -172,12 +171,9 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
               <EnvelopeIcon className="h-6 w-6" aria-hidden="true" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">
-                Sales email intake
-              </p>
               <h2
                 id="sales-mailbox-dialog-title"
-                className="mt-0.5 text-xl font-bold text-slate-950"
+                className="text-xl font-bold text-slate-950"
               >
                 Connect Outlook
               </h2>
@@ -237,20 +233,6 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
                       Last verified {new Date(connection.last_health_check_at).toLocaleString()}
                     </p>
                   )}
-                </div>
-              </div>
-
-              <div className="flex gap-3 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3">
-                <LockClosedIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    Your password stays with Microsoft
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">
-                    RADAI never sees or stores your Microsoft password. You can
-                    review the requested mailbox permission before accepting and
-                    disconnect at any time.
-                  </p>
                 </div>
               </div>
 
