@@ -227,6 +227,7 @@ export const HR_DASHBOARD_KPIS = [
 //    without touching the page component.
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_DASHBOARD_SECTIONS = {
+  commandCenterLayout: true,
   liveFeed: true,
   workforceComposition: false,  // SOFT-CODED: Disabled to hide "Workforce composition" and "Engineering disciplines" sections
   todayPunctuality: true,
