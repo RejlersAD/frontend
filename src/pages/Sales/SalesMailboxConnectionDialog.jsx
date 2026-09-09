@@ -4,23 +4,11 @@ import {
   CheckCircleIcon,
   EnvelopeIcon,
   ExclamationCircleIcon,
-  KeyIcon,
   LinkIcon,
+  LockClosedIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import salesService from "../../services/sales.service";
-
-const emptyForm = {
-  name: "Sales Outlook intake",
-  tenant_id: "",
-  client_id: "",
-  mailbox_address: "",
-  auth_mode: "delegated",
-  enabled: true,
-};
-
-const inputClass =
-  "mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
 
 const rows = (payload) =>
   Array.isArray(payload) ? payload : (payload?.results ?? []);
@@ -35,9 +23,7 @@ const errorMessage = (error, fallback) => {
 
 export default function SalesMailboxConnectionDialog({ open, onClose }) {
   const [connection, setConnection] = useState(null);
-  const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -50,6 +36,7 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
     setLoading(true);
     setError("");
     setNotice("");
+
     const query = new URLSearchParams(window.location.search);
     const outlookResult = query.get("outlook");
     const outlookReason = query.get("reason");
@@ -68,37 +55,26 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
         `${window.location.pathname}${suffix ? `?${suffix}` : ""}`,
       );
     }
+
     salesService
       .getMailboxConnections({ mine: true })
       .then((payload) => {
-        if (!active) return;
-        const existing = rows(payload)[0] || null;
-        setConnection(existing);
-        setForm(
-          existing
-            ? {
-                name: existing.name,
-                tenant_id: existing.tenant_id,
-                client_id: existing.client_id,
-                mailbox_address: existing.mailbox_address,
-                auth_mode: "delegated",
-                enabled: existing.enabled,
-              }
-            : emptyForm,
-        );
+        if (active) setConnection(rows(payload)[0] || null);
       })
       .catch((requestError) => {
-        if (active)
+        if (active) {
           setError(
             errorMessage(
               requestError,
-              "Mailbox configuration could not be loaded.",
+              "Mailbox connection status could not be loaded.",
             ),
           );
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
       });
+
     return () => {
       active = false;
     };
@@ -115,40 +91,28 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
 
   if (!open) return null;
 
-  const persist = async () => {
-    setSaving(true);
+  const connectOutlook = async () => {
+    setConnecting(true);
     setError("");
     setNotice("");
     try {
-      const saved = connection
-        ? await salesService.patchMailboxConnection(connection.id, form)
-        : await salesService.createMailboxConnection(form);
-      setConnection(saved);
-      setNotice("Mailbox configuration saved.");
-      return saved;
+      const result = await salesService.connectMyOutlook();
+      window.location.assign(result.authorization_url);
     } catch (requestError) {
       setError(
-        errorMessage(requestError, "Mailbox configuration could not be saved."),
+        errorMessage(requestError, "Microsoft sign-in could not be started."),
       );
-      return null;
-    } finally {
-      setSaving(false);
+      setConnecting(false);
     }
   };
 
-  const submit = async (event) => {
-    event.preventDefault();
-    await persist();
-  };
-
   const testConnection = async () => {
-    const saved = await persist();
-    if (!saved) return;
+    if (!connection) return;
     setTesting(true);
     setError("");
     setNotice("");
     try {
-      const result = await salesService.testMailboxConnection(saved.id);
+      const result = await salesService.testMailboxConnection(connection.id);
       setConnection((current) => ({
         ...current,
         last_status: "connected",
@@ -157,7 +121,7 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
         ...result,
       }));
       setNotice(
-        `Connected to ${result.mailbox_address}. Inbox contains ${result.total_item_count ?? 0} messages (${result.unread_item_count ?? 0} unread).`,
+        `Connection verified. Inbox contains ${result.total_item_count ?? 0} messages (${result.unread_item_count ?? 0} unread).`,
       );
     } catch (requestError) {
       const message = errorMessage(
@@ -175,22 +139,6 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
     }
   };
 
-  const connectOutlook = async () => {
-    const saved = await persist();
-    if (!saved) return;
-    setConnecting(true);
-    setError("");
-    try {
-      const result = await salesService.connectOutlook(saved.id);
-      window.location.assign(result.authorization_url);
-    } catch (requestError) {
-      setError(
-        errorMessage(requestError, "Microsoft sign-in could not be started."),
-      );
-      setConnecting(false);
-    }
-  };
-
   const disconnectOutlook = async () => {
     if (!connection) return;
     setDisconnecting(true);
@@ -201,16 +149,14 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
       setConnection(updated);
       setNotice("Your Outlook account has been disconnected from RADAI.");
     } catch (requestError) {
-      setError(
-        errorMessage(requestError, "Outlook could not be disconnected."),
-      );
+      setError(errorMessage(requestError, "Outlook could not be disconnected."));
     } finally {
       setDisconnecting(false);
     }
   };
 
-  const connected = connection?.last_status === "connected";
-  const tested = Boolean(connection?.last_health_check_at);
+  const connected = Boolean(connection?.delegated_connected);
+  const busy = loading || testing || connecting || disconnecting;
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-4">
@@ -218,7 +164,7 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="sales-mailbox-dialog-title"
-        className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
       >
         <header className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
           <div className="flex gap-3">
@@ -227,16 +173,16 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
             </span>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">
-                Sales administration
+                Sales email intake
               </p>
               <h2
                 id="sales-mailbox-dialog-title"
                 className="mt-0.5 text-xl font-bold text-slate-950"
               >
-                Outlook mailbox connection
+                Connect Outlook
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                Connect your Rejlers mailbox using Microsoft sign-in.
+                Link your own Rejlers mailbox securely with Microsoft.
               </p>
             </div>
           </div>
@@ -250,15 +196,15 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
           </button>
         </header>
 
-        <form onSubmit={submit} className="space-y-5 p-6">
+        <div className="space-y-5 p-6">
           {loading ? (
             <p className="py-10 text-center text-sm text-slate-500">
-              Loading mailbox configuration…
+              Loading Outlook connection…
             </p>
           ) : (
             <>
               <div
-                className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${
+                className={`flex items-start gap-3 rounded-lg border px-4 py-4 ${
                   connected
                     ? "border-emerald-200 bg-emerald-50/70"
                     : connection?.last_status === "error"
@@ -267,130 +213,46 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
                 }`}
               >
                 {connected ? (
-                  <CheckCircleIcon className="mt-0.5 h-5 w-5 text-emerald-600" />
+                  <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                 ) : connection?.last_status === "error" ? (
-                  <ExclamationCircleIcon className="mt-0.5 h-5 w-5 text-rose-600" />
+                  <ExclamationCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
                 ) : (
-                  <EnvelopeIcon className="mt-0.5 h-5 w-5 text-slate-500" />
+                  <EnvelopeIcon className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
                 )}
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
                     {connected
-                      ? "Connection verified"
+                      ? "Outlook connected"
                       : connection?.last_status === "error"
                         ? "Connection requires attention"
-                        : "Connection not tested"}
+                        : "Outlook is not connected"}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-600">
-                    {tested
-                      ? `Last tested ${new Date(connection.last_health_check_at).toLocaleString()}`
-                      : "Save the Microsoft application details, then sign in."}
+                  <p className="mt-1 text-sm text-slate-600">
+                    {connected
+                      ? `${connection.delegated_account_name || "Microsoft account"} · ${connection.mailbox_address}`
+                      : "Sign in with the Microsoft account whose inbox you want RADAI to process."}
                   </p>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-                  Connection name
-                  <input
-                    value={form.name}
-                    onChange={(event) =>
-                      setForm({ ...form, name: event.target.value })
-                    }
-                    required
-                    className={inputClass}
-                  />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  Microsoft Entra tenant ID
-                  <input
-                    value={form.tenant_id}
-                    onChange={(event) =>
-                      setForm({ ...form, tenant_id: event.target.value })
-                    }
-                    required
-                    autoComplete="off"
-                    placeholder="00000000-0000-0000-0000-000000000000"
-                    className={inputClass}
-                  />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  Application / client ID
-                  <input
-                    value={form.client_id}
-                    onChange={(event) =>
-                      setForm({ ...form, client_id: event.target.value })
-                    }
-                    required
-                    autoComplete="off"
-                    placeholder="00000000-0000-0000-0000-000000000000"
-                    className={inputClass}
-                  />
-                </label>
-                <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-                  Your Outlook email
-                  <input
-                    type="email"
-                    value={form.mailbox_address}
-                    onChange={(event) =>
-                      setForm({ ...form, mailbox_address: event.target.value })
-                    }
-                    required
-                    placeholder="your.name@rejlers.ae"
-                    className={inputClass}
-                  />
-                </label>
-              </div>
-
-              <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3">
-                <div className="flex gap-3">
-                  <KeyIcon className="mt-0.5 h-5 w-5 text-amber-700" />
-                  <div>
-                    <p className="text-sm font-semibold text-amber-950">
-                      Runtime credential
+                  {connection?.last_health_check_at && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Last verified {new Date(connection.last_health_check_at).toLocaleString()}
                     </p>
-                    <p className="mt-1 text-xs leading-5 text-amber-900">
-                      Application credential:{" "}
-                      <strong>
-                        {connection?.secret_configured
-                          ? "configured"
-                          : "not configured"}
-                      </strong>
-                      . Token encryption:{" "}
-                      <strong>
-                        {connection?.token_encryption_configured
-                          ? "configured"
-                          : "not configured"}
-                      </strong>
-                      . These protected values are never displayed here.
-                    </p>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {connection?.delegated_connected && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3">
-                  <p className="text-sm font-semibold text-blue-950">
-                    {connection.delegated_account_name || "Microsoft account"}
+              <div className="flex gap-3 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3">
+                <LockClosedIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    Your password stays with Microsoft
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-blue-800">
-                    Connected as {connection.mailbox_address}. RADAI can read
-                    only mailbox content permitted for your Microsoft account.
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    RADAI never sees or stores your Microsoft password. You can
+                    review the requested mailbox permission before accepting and
+                    disconnect at any time.
                   </p>
                 </div>
-              )}
-
-              <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={form.enabled}
-                  onChange={(event) =>
-                    setForm({ ...form, enabled: event.target.checked })
-                  }
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                Enable this mailbox for Sales intake
-              </label>
+              </div>
 
               {notice && (
                 <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -413,58 +275,38 @@ export default function SalesMailboxConnectionDialog({ open, onClose }) {
             >
               Close
             </button>
-            <button
-              type="submit"
-              disabled={
-                loading || saving || testing || connecting || disconnecting
-              }
-              className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
-            >
-              {saving && !testing ? "Saving…" : "Save configuration"}
-            </button>
-            <button
-              type="button"
-              onClick={testConnection}
-              disabled={
-                loading ||
-                saving ||
-                testing ||
-                connecting ||
-                disconnecting ||
-                !connection?.delegated_connected
-              }
-              className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
-            >
-              {testing ? "Testing connection…" : "Save & test connection"}
-            </button>
-            {connection?.delegated_connected ? (
+            {connected && (
+              <button
+                type="button"
+                onClick={testConnection}
+                disabled={busy}
+                className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+              >
+                {testing ? "Testing…" : "Test connection"}
+              </button>
+            )}
+            {connected ? (
               <button
                 type="button"
                 onClick={disconnectOutlook}
-                disabled={
-                  loading || saving || testing || connecting || disconnecting
-                }
+                disabled={busy}
                 className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50"
               >
-                {disconnecting ? "Disconnectingâ€¦" : "Disconnect Outlook"}
+                {disconnecting ? "Disconnecting…" : "Disconnect Outlook"}
               </button>
             ) : (
               <button
                 type="button"
                 onClick={connectOutlook}
-                disabled={
-                  loading || saving || testing || connecting || disconnecting
-                }
+                disabled={busy}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
               >
                 <LinkIcon className="h-4 w-4" aria-hidden="true" />
-                {connecting
-                  ? "Opening Microsoftâ€¦"
-                  : "Connect my Outlook account"}
+                {connecting ? "Opening Microsoft…" : "Continue with Microsoft"}
               </button>
             )}
           </footer>
-        </form>
+        </div>
       </section>
     </div>
   );
