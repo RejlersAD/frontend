@@ -31,8 +31,11 @@ import {
   BuildingOffice2Icon,
   WrenchScrewdriverIcon,
   RectangleGroupIcon,
+  RectangleStackIcon,
   PresentationChartLineIcon,
   ClipboardDocumentListIcon,
+  ArrowRightStartOnRectangleIcon,
+  LightBulbIcon,
   ShoppingCartIcon,
   IdentificationIcon,
   EnvelopeIcon,
@@ -62,6 +65,7 @@ const TOP_LEVEL_ACCORDION_IDS = [
   "crs",
   "finance",
   "human_resource",
+  "sales",
   "projectControl",
   "procurement",
   "qhse",
@@ -299,6 +303,7 @@ const Sidebar = ({
 
   // Check if route is active
   const isActiveRoute = (path) => {
+    if (path === "/sales") return location.pathname === path;
     return (
       location.pathname === path || location.pathname.startsWith(path + "/")
     );
@@ -500,12 +505,69 @@ const Sidebar = ({
       id: "sales",
       title: getSectionTitle("sales"),
       icon: PresentationChartLineIcon,
-      type: "single",
+      type: "section",
       path: "/sales",
-      moduleCode: "sales",
-      badge: "AI",
-      description: "Internal Platform Usage Analytics",
+      expanded: expandedSections.sales,
+      description: "Opportunity-to-project commercial lifecycle",
       enabled: true,
+      children: [
+        {
+          id: "salesOverview",
+          title: "5.0 Overview",
+          icon: HomeIcon,
+          path: "/sales",
+          description: "Sales and proposals decision dashboard",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesOpportunities",
+          title: "5.1 Opportunity",
+          icon: LightBulbIcon,
+          path: "/sales/opportunities",
+          description: "Qualify and govern the opportunity pipeline",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesProposals",
+          title: "5.2 Proposal",
+          icon: DocumentTextIcon,
+          path: "/sales/proposals",
+          description: "Prepare and control client proposals",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesClients",
+          title: "5.3 Client",
+          icon: BuildingOffice2Icon,
+          path: "/sales/clients",
+          description: "Manage governed client accounts",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesFrameworks",
+          title: "5.4 Framework",
+          icon: RectangleStackIcon,
+          path: "/sales/frameworks",
+          description: "Manage framework agreements",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesForecasts",
+          title: "5.5 Forecast",
+          icon: PresentationChartLineIcon,
+          path: "/sales/forecasts",
+          description: "Review weighted revenue forecasts",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesHandovers",
+          title: "5.6 Project Handover",
+          icon: ArrowRightStartOnRectangleIcon,
+          path: "/sales/project-handovers",
+          description: "Convert approved awards into controlled projects",
+          moduleCode: "sales",
+        },
+      ],
     },
     {
       id: "projectControl",
@@ -834,6 +896,11 @@ const Sidebar = ({
 
     for (const item of filteredMenu) {
       if (item.type !== "section") continue;
+
+      if (item.path && location.pathname === item.path) {
+        activeTopLevel = item.id;
+        break;
+      }
 
       for (const child of item.children || []) {
         if (child.type === "subsection") {

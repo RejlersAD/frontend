@@ -16,6 +16,7 @@ import { LOGO_CONFIG, getLogoPath } from '../../config/logo.config'
 import NotificationBell from '../notifications/NotificationBell'
 import PWAHeaderInstall from '../PWAHeaderInstall'
 import GlobalSearch from './GlobalSearch'
+import ContextualHelpButton from '../help/ContextualHelpButton'
 import { USER_DISPLAY_CONFIG } from '../../config/userDisplay.config'
 import {
   getAuthenticatedNavItems,
@@ -158,7 +159,10 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
         </div>
 
         <div className="flex min-w-0 justify-center">
-          <GlobalSearch user={user} rbacData={rbacData} />
+          <div className="flex w-full max-w-4xl min-w-0 items-center gap-2">
+            <GlobalSearch user={user} rbacData={rbacData} />
+            {isAuthenticated && <ContextualHelpButton />}
+          </div>
         </div>
 
         <div className="flex min-w-0 flex-none items-center justify-end gap-1">

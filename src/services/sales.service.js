@@ -3,9 +3,9 @@
  * Handles all Sales/CRM API calls including AI-powered features
  */
 
-import apiClient from './api.service';
+import apiClient from "./api.service";
 
-const BASE_URL = '/sales';
+const BASE_URL = "/sales";
 
 class SalesService {
   // ============================================================================
@@ -45,7 +45,10 @@ class SalesService {
    * @param {Object} clientData - Updated client information
    */
   async updateClient(clientId, clientData) {
-    const response = await apiClient.put(`${BASE_URL}/clients/${clientId}/`, clientData);
+    const response = await apiClient.put(
+      `${BASE_URL}/clients/${clientId}/`,
+      clientData,
+    );
     return response.data;
   }
 
@@ -55,7 +58,10 @@ class SalesService {
    * @param {Object} clientData - Partial client data
    */
   async patchClient(clientId, clientData) {
-    const response = await apiClient.patch(`${BASE_URL}/clients/${clientId}/`, clientData);
+    const response = await apiClient.patch(
+      `${BASE_URL}/clients/${clientId}/`,
+      clientData,
+    );
     return response.data;
   }
 
@@ -73,7 +79,9 @@ class SalesService {
    * @param {string} clientId - Client UUID
    */
   async calculateHealthScore(clientId) {
-    const response = await apiClient.post(`${BASE_URL}/clients/${clientId}/calculate_health_score/`);
+    const response = await apiClient.post(
+      `${BASE_URL}/clients/${clientId}/calculate_health_score/`,
+    );
     return response.data;
   }
 
@@ -82,7 +90,9 @@ class SalesService {
    * @param {string} clientId - Client UUID
    */
   async predictChurn(clientId) {
-    const response = await apiClient.get(`${BASE_URL}/clients/${clientId}/churn_prediction/`);
+    const response = await apiClient.get(
+      `${BASE_URL}/clients/${clientId}/churn_prediction/`,
+    );
     return response.data;
   }
 
@@ -91,7 +101,9 @@ class SalesService {
    * @param {string} clientId - Client UUID
    */
   async getClientInsights(clientId) {
-    const response = await apiClient.get(`${BASE_URL}/clients/${clientId}/insights/`);
+    const response = await apiClient.get(
+      `${BASE_URL}/clients/${clientId}/insights/`,
+    );
     return response.data;
   }
 
@@ -99,7 +111,7 @@ class SalesService {
    * Get at-risk clients (high churn probability)
    */
   async getAtRiskClients() {
-    const response = await apiClient.get(`${BASE_URL}/analytics/clients/`, { params: { mode: 'at_risk' } });
+    const response = await apiClient.get(`${BASE_URL}/clients/at_risk/`);
     return response.data;
   }
 
@@ -108,7 +120,9 @@ class SalesService {
    * @param {Object} params - limit, orderBy (revenue | health_score)
    */
   async getTopClients(params = {}) {
-    const response = await apiClient.get(`${BASE_URL}/analytics/clients/`, { params: { mode: 'top', ...params } });
+    const response = await apiClient.get(`${BASE_URL}/clients/top_clients/`, {
+      params,
+    });
     return response.data;
   }
 
@@ -130,8 +144,8 @@ class SalesService {
    * @param {string} clientId - Client UUID
    */
   async getContactsByClient(clientId) {
-    const response = await apiClient.get(`${BASE_URL}/contacts/by_client/`, { 
-      params: { client_id: clientId } 
+    const response = await apiClient.get(`${BASE_URL}/contacts/by_client/`, {
+      params: { client_id: clientId },
     });
     return response.data;
   }
@@ -160,7 +174,10 @@ class SalesService {
    * @param {Object} contactData - Updated contact information
    */
   async updateContact(contactId, contactData) {
-    const response = await apiClient.put(`${BASE_URL}/contacts/${contactId}/`, contactData);
+    const response = await apiClient.put(
+      `${BASE_URL}/contacts/${contactId}/`,
+      contactData,
+    );
     return response.data;
   }
 
@@ -169,7 +186,9 @@ class SalesService {
    * @param {string} contactId - Contact UUID
    */
   async deleteContact(contactId) {
-    const response = await apiClient.delete(`${BASE_URL}/contacts/${contactId}/`);
+    const response = await apiClient.delete(
+      `${BASE_URL}/contacts/${contactId}/`,
+    );
     return response.data;
   }
 
@@ -210,7 +229,10 @@ class SalesService {
    * @param {Object} dealData - Updated deal information
    */
   async updateDeal(dealId, dealData) {
-    const response = await apiClient.put(`${BASE_URL}/deals/${dealId}/`, dealData);
+    const response = await apiClient.put(
+      `${BASE_URL}/deals/${dealId}/`,
+      dealData,
+    );
     return response.data;
   }
 
@@ -220,7 +242,10 @@ class SalesService {
    * @param {Object} dealData - Partial deal data
    */
   async patchDeal(dealId, dealData) {
-    const response = await apiClient.patch(`${BASE_URL}/deals/${dealId}/`, dealData);
+    const response = await apiClient.patch(
+      `${BASE_URL}/deals/${dealId}/`,
+      dealData,
+    );
     return response.data;
   }
 
@@ -238,7 +263,9 @@ class SalesService {
    * @param {string} dealId - Deal UUID
    */
   async calculateWinProbability(dealId) {
-    const response = await apiClient.get(`${BASE_URL}/deals/${dealId}/calculate_win_probability/`);
+    const response = await apiClient.post(
+      `${BASE_URL}/deals/${dealId}/calculate_win_probability/`,
+    );
     return response.data;
   }
 
@@ -247,7 +274,9 @@ class SalesService {
    * @param {string} dealId - Deal UUID
    */
   async scoreLead(dealId) {
-    const response = await apiClient.post(`${BASE_URL}/deals/${dealId}/score_lead/`);
+    const response = await apiClient.post(
+      `${BASE_URL}/deals/${dealId}/score_lead/`,
+    );
     return response.data;
   }
 
@@ -256,7 +285,9 @@ class SalesService {
    * @param {string} dealId - Deal UUID
    */
   async getNextAction(dealId) {
-    const response = await apiClient.get(`${BASE_URL}/deals/${dealId}/next_action/`);
+    const response = await apiClient.get(
+      `${BASE_URL}/deals/${dealId}/next_action/`,
+    );
     return response.data;
   }
 
@@ -264,8 +295,51 @@ class SalesService {
    * Get pipeline summary statistics
    */
   async getPipelineSummary() {
-    const response = await apiClient.get(`${BASE_URL}/analytics/pipeline/`);
-    return response.data;
+    const [dealResponse, dashboardResponse] = await Promise.all([
+      apiClient.get(`${BASE_URL}/deals/`, { params: { page_size: 500 } }),
+      apiClient.get(`${BASE_URL}/dashboard/summary/`),
+    ]);
+    const deals = Array.isArray(dealResponse.data)
+      ? dealResponse.data
+      : (dealResponse.data?.results ?? []);
+    const dashboard = dashboardResponse.data?.dashboard ?? {};
+    const stageKeys = [
+      "lead",
+      "qualified",
+      "proposal",
+      "negotiation",
+      "award_pending",
+      "awarded",
+      "converted",
+    ];
+    const byStage = stageKeys.map((stage) => {
+      const rows = deals.filter((deal) => deal.stage === stage);
+      return {
+        stage,
+        stage_label: rows[0]?.stage_display ?? stage.replaceAll("_", " "),
+        deal_count: rows.length,
+        total_value: rows.reduce(
+          (sum, deal) => sum + Number(deal.estimated_value || 0),
+          0,
+        ),
+      };
+    });
+    return {
+      total_deals: deals.length,
+      total_pipeline_value: Number(dashboard.pipeline_value || 0),
+      won_value: Number(dashboard.won_value_mtd || 0),
+      win_rate: Number(dashboard.win_rate || 0),
+      avg_deal_days: Number(dashboard.avg_sales_cycle_days || 0),
+      currency: deals[0]?.currency ?? "AED",
+      currency_locale: "en-AE",
+      by_stage: byStage,
+      deals: deals.map((deal) => ({
+        ...deal,
+        title: deal.deal_name,
+        value: deal.estimated_value,
+        win_probability: deal.ai_win_probability ?? deal.probability,
+      })),
+    };
   }
 
   /**
@@ -274,8 +348,9 @@ class SalesService {
    * @param {string} newStage - New stage key (lead, qualified, proposal, negotiation, closed_won, closed_lost)
    */
   async moveDealStage(dealId, newStage) {
-    const response = await apiClient.post(`${BASE_URL}/deals/${dealId}/move_stage/`, {
-      new_stage: newStage
+    const response = await apiClient.post(`${BASE_URL}/deals/move_stage/`, {
+      deal_id: dealId,
+      stage: newStage,
     });
     return response.data;
   }
@@ -317,7 +392,18 @@ class SalesService {
    * @param {Object} quoteData - Updated quote information
    */
   async updateQuote(quoteId, quoteData) {
-    const response = await apiClient.put(`${BASE_URL}/quotes/${quoteId}/`, quoteData);
+    const response = await apiClient.put(
+      `${BASE_URL}/quotes/${quoteId}/`,
+      quoteData,
+    );
+    return response.data;
+  }
+
+  async patchQuote(quoteId, quoteData) {
+    const response = await apiClient.patch(
+      `${BASE_URL}/quotes/${quoteId}/`,
+      quoteData,
+    );
     return response.data;
   }
 
@@ -335,7 +421,9 @@ class SalesService {
    * @param {string} quoteId - Quote UUID
    */
   async sendQuote(quoteId) {
-    const response = await apiClient.post(`${BASE_URL}/quotes/${quoteId}/send_to_client/`);
+    const response = await apiClient.post(
+      `${BASE_URL}/quotes/${quoteId}/send_to_client/`,
+    );
     return response.data;
   }
 
@@ -344,7 +432,9 @@ class SalesService {
    * @param {string} quoteId - Quote UUID
    */
   async markQuoteViewed(quoteId) {
-    const response = await apiClient.post(`${BASE_URL}/quotes/${quoteId}/mark_viewed/`);
+    const response = await apiClient.post(
+      `${BASE_URL}/quotes/${quoteId}/mark_viewed/`,
+    );
     return response.data;
   }
 
@@ -365,7 +455,9 @@ class SalesService {
    * Get my activities (current user's activities)
    */
   async getMyActivities() {
-    const response = await apiClient.get(`${BASE_URL}/activities/my_activities/`);
+    const response = await apiClient.get(
+      `${BASE_URL}/activities/my_activities/`,
+    );
     return response.data;
   }
 
@@ -374,8 +466,8 @@ class SalesService {
    * @param {number} days - Number of days to look ahead (default: 7)
    */
   async getUpcomingActivities(days = 7) {
-    const response = await apiClient.get(`${BASE_URL}/analytics/activities/`, {
-      params: { days }
+    const response = await apiClient.get(`${BASE_URL}/activities/upcoming/`, {
+      params: { days },
     });
     return response.data;
   }
@@ -385,7 +477,9 @@ class SalesService {
    * @param {string} activityId - Activity UUID
    */
   async getActivity(activityId) {
-    const response = await apiClient.get(`${BASE_URL}/activities/${activityId}/`);
+    const response = await apiClient.get(
+      `${BASE_URL}/activities/${activityId}/`,
+    );
     return response.data;
   }
 
@@ -394,7 +488,10 @@ class SalesService {
    * @param {Object} activityData - Activity information
    */
   async createActivity(activityData) {
-    const response = await apiClient.post(`${BASE_URL}/activities/`, activityData);
+    const response = await apiClient.post(
+      `${BASE_URL}/activities/`,
+      activityData,
+    );
     return response.data;
   }
 
@@ -404,7 +501,10 @@ class SalesService {
    * @param {Object} activityData - Updated activity information
    */
   async updateActivity(activityId, activityData) {
-    const response = await apiClient.put(`${BASE_URL}/activities/${activityId}/`, activityData);
+    const response = await apiClient.put(
+      `${BASE_URL}/activities/${activityId}/`,
+      activityData,
+    );
     return response.data;
   }
 
@@ -413,7 +513,9 @@ class SalesService {
    * @param {string} activityId - Activity UUID
    */
   async deleteActivity(activityId) {
-    const response = await apiClient.delete(`${BASE_URL}/activities/${activityId}/`);
+    const response = await apiClient.delete(
+      `${BASE_URL}/activities/${activityId}/`,
+    );
     return response.data;
   }
 
@@ -435,8 +537,22 @@ class SalesService {
    * @param {string} forecastId - Forecast UUID
    */
   async getForecast(forecastId) {
-    const response = await apiClient.get(`${BASE_URL}/forecasts/${forecastId}/`);
+    const response = await apiClient.get(
+      `${BASE_URL}/forecasts/${forecastId}/`,
+    );
     return response.data;
+  }
+
+  async patchForecast(forecastId, payload) {
+    return (
+      await apiClient.patch(`${BASE_URL}/forecasts/${forecastId}/`, payload)
+    ).data;
+  }
+
+  async approveForecast(forecastId) {
+    return (
+      await apiClient.post(`${BASE_URL}/forecasts/${forecastId}/approve/`)
+    ).data;
   }
 
   /**
@@ -444,7 +560,10 @@ class SalesService {
    * @param {Object} forecastParams - { period_start, period_end, include_pipeline }
    */
   async generateForecast(forecastParams) {
-    const response = await apiClient.post(`${BASE_URL}/forecasts/generate_forecast/`, forecastParams);
+    const response = await apiClient.post(
+      `${BASE_URL}/forecasts/generate_forecast/`,
+      forecastParams,
+    );
     return response.data;
   }
 
@@ -454,9 +573,12 @@ class SalesService {
    * @param {number} actualRevenue - Actual revenue achieved
    */
   async updateForecastActual(forecastId, actualRevenue) {
-    const response = await apiClient.post(`${BASE_URL}/forecasts/${forecastId}/update_actual/`, {
-      actual_revenue: actualRevenue
-    });
+    const response = await apiClient.post(
+      `${BASE_URL}/forecasts/${forecastId}/update_actual/`,
+      {
+        actual_revenue: actualRevenue,
+      },
+    );
     return response.data;
   }
 
@@ -476,8 +598,162 @@ class SalesService {
    * Get real-time AI insights and recommendations
    */
   async getAIInsights() {
-    const response = await apiClient.get(`${BASE_URL}/analytics/insights/`);
+    const response = await apiClient.get(`${BASE_URL}/dashboard/ai_insights/`);
     return response.data;
+  }
+
+  async submitQualification(dealId) {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/submit-qualification/`)
+    ).data;
+  }
+
+  async recordBidDecision(dealId, decision, reason = "") {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/bid-decision/`, {
+        decision,
+        reason,
+      })
+    ).data;
+  }
+
+  async closeOpportunity(dealId, outcome, reason) {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/close/`, {
+        outcome,
+        reason,
+      })
+    ).data;
+  }
+
+  async enterNegotiation(dealId, reason = "") {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/enter-negotiation/`, {
+        reason,
+      })
+    ).data;
+  }
+
+  async submitAward(dealId, payload) {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/submit-award/`, payload)
+    ).data;
+  }
+
+  async approveAward(dealId, reason = "") {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/approve-award/`, {
+        reason,
+      })
+    ).data;
+  }
+
+  async rejectAward(dealId, reason) {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/reject-award/`, {
+        reason,
+      })
+    ).data;
+  }
+
+  async convertToProject(dealId, payload) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/deals/${dealId}/convert-to-project/`,
+        payload,
+      )
+    ).data;
+  }
+
+  async getOpportunityAudit(dealId) {
+    return (await apiClient.get(`${BASE_URL}/deals/${dealId}/audit-events/`))
+      .data;
+  }
+
+  async getFrameworks(params = {}) {
+    return (await apiClient.get(`${BASE_URL}/frameworks/`, { params })).data;
+  }
+
+  async getFramework(frameworkId) {
+    return (await apiClient.get(`${BASE_URL}/frameworks/${frameworkId}/`)).data;
+  }
+
+  async patchFramework(frameworkId, payload) {
+    return (
+      await apiClient.patch(`${BASE_URL}/frameworks/${frameworkId}/`, payload)
+    ).data;
+  }
+
+  async createFramework(payload) {
+    return (await apiClient.post(`${BASE_URL}/frameworks/`, payload)).data;
+  }
+
+  async activateFramework(frameworkId) {
+    return (
+      await apiClient.post(`${BASE_URL}/frameworks/${frameworkId}/activate/`)
+    ).data;
+  }
+
+  async approveProposal(proposalId, comment = "") {
+    return (
+      await apiClient.post(`${BASE_URL}/quotes/${proposalId}/approve/`, {
+        comment,
+      })
+    ).data;
+  }
+
+  async submitProposal(proposalId, payload) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/quotes/${proposalId}/send_to_client/`,
+        payload,
+      )
+    ).data;
+  }
+
+  async getProjectHandovers(params = {}) {
+    return (await apiClient.get(`${BASE_URL}/project-handovers/`, { params }))
+      .data;
+  }
+
+  async getProjectHandover(handoverId) {
+    return (await apiClient.get(`${BASE_URL}/project-handovers/${handoverId}/`))
+      .data;
+  }
+
+  async updateProjectHandover(handoverId, payload) {
+    return (
+      await apiClient.patch(
+        `${BASE_URL}/project-handovers/${handoverId}/`,
+        payload,
+      )
+    ).data;
+  }
+
+  async submitProjectHandover(handoverId) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/project-handovers/${handoverId}/submit-for-acceptance/`,
+      )
+    ).data;
+  }
+
+  async acceptProjectHandover(handoverId, comment = "") {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/project-handovers/${handoverId}/accept/`,
+        { comment },
+      )
+    ).data;
+  }
+
+  async returnProjectHandover(handoverId, reason) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/project-handovers/${handoverId}/return_for_correction/`,
+        { reason },
+      )
+    ).data;
   }
 }
 
