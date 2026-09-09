@@ -20,6 +20,7 @@ import { useSelector } from "react-redux";
 import * as HeroIcons from "@heroicons/react/24/outline";
 
 import hrCoreService from "../../services/hrCore.service";
+import hrFoundationService from "../../services/hrFoundation.service";
 import timesheetService from "../../services/timesheet.service";
 import payrollService from "../../services/payroll.service";
 import apiClient from "../../services/api.service";
@@ -1255,11 +1256,13 @@ export default function HRDashboard() {
   const lifecycleRequestRef = useRef(false);
   const timesheetRequestRef = useRef(false);
   const payrollRequestRef = useRef(false);
+  const performanceRequestRef = useRef(false);
 
   const [workforce, setWorkforce] = useState([]);
   const [live, setLive] = useState(null);
   const [daily, setDaily] = useState(null);
   const [monthly, setMonthly] = useState(null);
+  const [performanceReviews, setPerformanceReviews] = useState([]);
   const [lifecycleRequests, setLifecycleRequests] = useState([]);
 
   // KPI drill-down report — id of the tile that was clicked (null = closed)
@@ -1410,6 +1413,23 @@ export default function HRDashboard() {
     }
   }, []);
 
+  const loadPerformanceReviews = useCallback(async () => {
+    if (performanceRequestRef.current) return;
+    performanceRequestRef.current = true;
+    try {
+      const [submitted, acknowledged] = await Promise.all([
+        hrFoundationService.getReviews({ status: "submitted", page_size: 500 }),
+        hrFoundationService.getReviews({ status: "acknowledged", page_size: 500 }),
+      ]);
+      setPerformanceReviews([...submitted, ...acknowledged]);
+    } catch (error) {
+      console.warn("[HRDashboard] performance reviews load failed", error);
+      setPerformanceReviews([]);
+    } finally {
+      performanceRequestRef.current = false;
+    }
+  }, []);
+
   // ── Fetch pending actions from 4.2 Payroll + 4.3 Leave/Salary (polled)
   const loadPayrollData = useCallback(async () => {
     if (
@@ -1551,12 +1571,14 @@ export default function HRDashboard() {
     loadWorkforce();
     loadLifecycleRequests();
     loadTimesheets();
+    loadPerformanceReviews();
     loadPayrollData();
     loadAllLeaveRecords(); // Load consolidated leave records
   }, [
     loadWorkforce,
     loadLifecycleRequests,
     loadTimesheets,
+    loadPerformanceReviews,
     loadPayrollData,
     loadAllLeaveRecords,
   ]);
@@ -1648,6 +1670,7 @@ export default function HRDashboard() {
           live={live}
           daily={daily}
           monthly={monthly}
+          performanceReviews={performanceReviews}
           lifecycleRequests={lifecycleRequests}
           pending={pending}
           joiners={joiners}
@@ -1664,6 +1687,7 @@ export default function HRDashboard() {
           onRefresh={() => {
             loadWorkforce();
             loadTimesheets();
+            loadPerformanceReviews();
             loadPayrollData();
             loadLifecycleRequests();
           }}
