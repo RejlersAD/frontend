@@ -8,6 +8,10 @@ const EXTRACT_ENDPOINT = `${BASE_PATH}/extract-line-tags/`
 const EXTRACTIONS_ENDPOINT = `${BASE_PATH}/extractions/`
 const LEGENDS_ENDPOINT = `${BASE_PATH}/legends/`
 const LEGENDS_DEFAULT_TEMPLATE_ENDPOINT = `${BASE_PATH}/legends/default-template/`
+const LEGENDS_LOOKUP_ADD_ENDPOINT = `${BASE_PATH}/legends/add-lookup/`
+const LEGENDS_LOOKUP_EDIT_ENDPOINT = `${BASE_PATH}/legends/edit-lookup/`
+const LEGENDS_LOOKUP_DELETE_ENDPOINT = `${BASE_PATH}/legends/delete-lookup/`
+const LEGENDS_LOOKUP_SECTIONS_ENDPOINT = `${BASE_PATH}/legends/lookup-sections/`
 const SYMBOL_IMAGES_ENDPOINT = `${BASE_PATH}/symbol-images/`
 const DEFAULT_SYMBOL_IMAGES_ENDPOINT = `${BASE_PATH}/default-symbol-images/`
 const SYMBOL_IMAGE_UPLOAD_ENDPOINT = `${BASE_PATH}/symbol-image/upload/`
@@ -27,7 +31,11 @@ const USAGE_LIST_ENDPOINT = `${BASE_PATH}/usage/`
 const USAGE_SUMMARY_ENDPOINT = `${BASE_PATH}/usage/summary/`
 const USAGE_REPORT_ENDPOINT = `${BASE_PATH}/usage/report/`
 const UPLOAD_FIELD = 'file'
-const REQUEST_TIMEOUT_MS = 15 * 60 * 1000   // OCR can take a few minutes
+// UPDATED: 15 -> 40 min. Vision calls now run with extended thinking
+// enabled and a much larger max_tokens ceiling (see pid_checker_v2's
+// vision_extractor.py), so a synchronous call through this timeout can
+// legitimately take longer than the old 15-minute ceiling allowed.
+const REQUEST_TIMEOUT_MS = 40 * 60 * 1000   // 2400000ms
 // Instrument extraction now runs async — polling budget for the client.
 const INSTRUMENT_ASYNC_POLL_INTERVAL_MS = 3000
 const INSTRUMENT_ASYNC_MAX_WAIT_MS = 60 * 60 * 1000   // 60 min ceiling
@@ -177,6 +185,35 @@ export async function getLegendDefaultTemplate(section) {
   return res.data
 }
 
+// Add/edit/delete ONE lookup entry in the user's active legend for a
+// section, without resending the whole definition — backs the "+ Add to
+// Legend" quick-add button on an unrecognised finding, and the Manage
+// Legends modal's own lookup-table row editor.
+export async function addLegendLookupEntry({ section, code, description }) {
+  const res = await apiClient.post(LEGENDS_LOOKUP_ADD_ENDPOINT, { section, code, description })
+  return res.data
+}
+
+export async function editLegendLookupEntry({ section, code, description }) {
+  const res = await apiClient.put(LEGENDS_LOOKUP_EDIT_ENDPOINT, { section, code, description })
+  return res.data
+}
+
+export async function deleteLegendLookupEntry({ section, code }) {
+  await apiClient.delete(LEGENDS_LOOKUP_DELETE_ENDPOINT, { data: { section, code } })
+}
+
+// Which of the current user's active legends have a lookup table at all —
+// several sections are format/regex-only and have no lookup field, so
+// offering them in "Add to Legend"'s Section dropdown let a user pick one
+// and then fail on save with "no lookup table to add to" no matter what
+// they typed. Filters the dropdown down to only sections a code can
+// actually be added to. Shared by V1 and V2 (same backend).
+export async function listLookupSections() {
+  const res = await apiClient.get(LEGENDS_LOOKUP_SECTIONS_ENDPOINT)
+  return res.data?.sections || []
+}
+
 // Legend symbol pictures uploaded for this project — see SymbolImagesListView.
 export async function getSymbolImages(projectId) {
   const res = await apiClient.get(SYMBOL_IMAGES_ENDPOINT, { params: { project_id: projectId } })
@@ -249,9 +286,10 @@ export async function validateLineTags(payload) {
 // Master Line List (Excel) — upload + cross-check vs P&ID extraction
 // ═════════════════════════════════════════════════════════════════════
 
-export async function uploadLineList(file, { onProgress } = {}) {
+export async function uploadLineList(file, { onProgress, projectId } = {}) {
   const form = new FormData()
   form.append(UPLOAD_FIELD, file)
+  if (projectId) form.append('project_id', projectId)
   const res = await apiClient.post(LINE_LISTS_ENDPOINT, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: REQUEST_TIMEOUT_MS,
@@ -264,8 +302,8 @@ export async function uploadLineList(file, { onProgress } = {}) {
   return res.data
 }
 
-export async function listLineLists() {
-  const res = await apiClient.get(LINE_LISTS_ENDPOINT)
+export async function listLineLists(projectId) {
+  const res = await apiClient.get(LINE_LISTS_ENDPOINT, { params: projectId ? { project_id: projectId } : undefined })
   return res.data
 }
 
@@ -299,6 +337,7 @@ export async function crossCheck(payload) {
     use_ai: Boolean(payload.useAi),
   }
   if (payload.lineListId) body.line_list_id = payload.lineListId
+  if (payload.projectId) body.project_id = payload.projectId
   if (payload.useAi) {
     body.vision_provider = payload.provider
     body.vision_api_key = payload.apiKey
@@ -331,9 +370,10 @@ export function filterEquipmentTags(tokens) {
   return out
 }
 
-export async function uploadEquipmentList(file, { onProgress } = {}) {
+export async function uploadEquipmentList(file, { onProgress, projectId } = {}) {
   const form = new FormData()
   form.append(UPLOAD_FIELD, file)
+  if (projectId) form.append('project_id', projectId)
   const res = await apiClient.post(EQUIPMENT_LISTS_ENDPOINT, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: REQUEST_TIMEOUT_MS,
@@ -346,8 +386,8 @@ export async function uploadEquipmentList(file, { onProgress } = {}) {
   return res.data
 }
 
-export async function listEquipmentLists() {
-  const res = await apiClient.get(EQUIPMENT_LISTS_ENDPOINT)
+export async function listEquipmentLists(projectId) {
+  const res = await apiClient.get(EQUIPMENT_LISTS_ENDPOINT, { params: projectId ? { project_id: projectId } : undefined })
   return res.data
 }
 
@@ -381,6 +421,7 @@ export async function equipmentCrossCheck(payload) {
     use_ai: Boolean(payload.useAi),
   }
   if (payload.equipmentListId) body.equipment_list_id = payload.equipmentListId
+  if (payload.projectId) body.project_id = payload.projectId
   // Attribute-level cross-check requires BYOK credentials on backend, so
   // whenever equipmentAttributes are supplied we also forward provider/key.
   const hasAttrs = payload.equipmentAttributes
@@ -423,9 +464,10 @@ export function filterInstrumentTags(tokens) {
   return out
 }
 
-export async function uploadInstrumentIndex(file, { onProgress } = {}) {
+export async function uploadInstrumentIndex(file, { onProgress, projectId } = {}) {
   const form = new FormData()
   form.append(UPLOAD_FIELD, file)
+  if (projectId) form.append('project_id', projectId)
   const res = await apiClient.post(INSTRUMENT_INDEXES_ENDPOINT, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: REQUEST_TIMEOUT_MS,
@@ -438,8 +480,8 @@ export async function uploadInstrumentIndex(file, { onProgress } = {}) {
   return res.data
 }
 
-export async function listInstrumentIndexes() {
-  const res = await apiClient.get(INSTRUMENT_INDEXES_ENDPOINT)
+export async function listInstrumentIndexes(projectId) {
+  const res = await apiClient.get(INSTRUMENT_INDEXES_ENDPOINT, { params: projectId ? { project_id: projectId } : undefined })
   return res.data
 }
 
@@ -473,6 +515,7 @@ export async function instrumentCrossCheck(payload) {
     use_ai: Boolean(payload.useAi),
   }
   if (payload.instrumentIndexId) body.instrument_index_id = payload.instrumentIndexId
+  if (payload.projectId) body.project_id = payload.projectId
   const hasAttrs = payload.instrumentAttributes
     && typeof payload.instrumentAttributes === 'object'
     && Object.keys(payload.instrumentAttributes).length > 0
@@ -622,7 +665,9 @@ export async function downloadTokenReport({ format = 'xlsx', since, until } = {}
 export default {
   extractLineTags, listExtractions, getExtraction, deleteExtraction,
   listLegends, getLegend, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate, getSymbolImages,
+  activateLegend, getLegendDefaultTemplate,
+  addLegendLookupEntry, editLegendLookupEntry, deleteLegendLookupEntry, listLookupSections,
+  getSymbolImages,
   getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
   testApiKey,
   validateLineTags,

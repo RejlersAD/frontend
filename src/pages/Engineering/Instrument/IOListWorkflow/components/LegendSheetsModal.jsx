@@ -6,13 +6,32 @@ import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader
 
 import {
   listLegends, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate, getSymbolImages,
-  getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
-  deleteLegendLookupEntry, LEGEND_SECTIONS,
-} from '../../../../services/pidCheckerV2API'
+  activateLegend, getSymbolImages, uploadSymbolImage, deleteSymbolImage,
+  getDefaultSymbolImages, deleteLegendLookupEntry, LEGEND_SECTIONS,
+} from '../../../../../services/ioListLegendService'
 import AddToLegendModal from './AddToLegendModal'
-import { emitLegendSync, subscribeLegendSync, LEGEND_SYNC_ACTIONS, LEGEND_SYNC_POLL_MS } from '../../../../config/legendSheetsRules'
-import { parseLegendFile, IMPORT_ACCEPT } from '../../../../config/legendSheetsImport'
+import { parseLegendFile, IMPORT_ACCEPT } from '../../../../../config/legendSheetsImport'
+
+// ─────────────────────────────────────────────────────────────────────
+// This is a standalone copy of P&ID's LegendSheetsModal — same 21
+// sections, same Form-JSON editor/lookup-table UI, same per-symbol
+// reference pictures (including the default-picture library, its own
+// one-time-copied static files — see
+// apps/instrument_io_workflow/services/default_symbol_images.py), wired
+// to I/O List's own independent legend backend end-to-end: separate
+// table, separate storage, zero runtime calls into any P&ID app. P&ID's
+// Manage Legends keeps working for P&ID; this one only ever touches I/O
+// List's own data. One thing still excluded: the built-in
+// default-template picker — not needed, since the system ships
+// pre-seeded with a real legend per section already. Cross-tab/
+// cross-version sync is also gone (nothing to sync — this system isn't
+// shared with any P&ID page). The stub below keeps the rest of the
+// component unchanged rather than touching every call site.
+// ─────────────────────────────────────────────────────────────────────
+function emitLegendSync() { /* no-op — nothing to sync in a standalone system */ }
+function subscribeLegendSync() { return () => {} }
+const LEGEND_SYNC_ACTIONS = { CREATED: 'created', UPDATED: 'updated', DELETED: 'deleted', ACTIVATED: 'activated' }
+const LEGEND_SYNC_POLL_MS = 15000
 
 // ═════════════════════════════════════════════════════════════════════
 // Soft-coded theme (matches parent page)
@@ -26,7 +45,7 @@ const THEME_BG_SOFT = '#f8fafc'
 const THEME_TAB_BG = 'linear-gradient(180deg, #241f4f 0%, #4c2f8f 100%)'
 const THEME_GRADIENT = `linear-gradient(135deg, ${THEME_PRIMARY} 0%, ${THEME_ACCENT} 100%)`
 
-const DEFAULT_SECTION = LEGEND_SECTIONS[0]?.id || 'line_list'
+const DEFAULT_SECTION = LEGEND_SECTIONS[0]?.id || 'equipment_register'
 const JSON_INDENT = 2
 const EDITOR_MODE_FORM = 'form'
 const EDITOR_MODE_JSON = 'json'
@@ -131,9 +150,8 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
   // "section::NORMALISED NAME" so FormEditor can look one up per lookup entry.
   const [symbolImages, setSymbolImages] = useState({})
   const refreshSymbolImages = useCallback(async () => {
-    if (!projectId) { setSymbolImages({}); return }
     try {
-      const data = await getSymbolImages(projectId)
+      const data = await getSymbolImages()
       const map = {}
       for (const img of (data?.images || [])) {
         map[`${img.section}::${normaliseSymbolName(img.symbol_name)}`] = {
@@ -145,8 +163,8 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } catch {
       setSymbolImages({})
     }
-  }, [projectId])
-  useEffect(() => { if (open) refreshSymbolImages() }, [open, projectId, refreshSymbolImages])
+  }, [])
+  useEffect(() => { if (open) refreshSymbolImages() }, [open, refreshSymbolImages])
 
   // Re-sync internal section when the parent re-opens the modal with a new one.
   useEffect(() => { if (open) setActiveSection(section || DEFAULT_SECTION) }, [open, section])
@@ -260,21 +278,6 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     }))
     setEditorMode(EDITOR_MODE_FORM)
     setJsonError(null)
-  }, [activeSection])
-
-  const onLoadDefaultTemplate = useCallback(async () => {
-    try {
-      const tpl = await getLegendDefaultTemplate(activeSection)
-      setSelectedId(null)
-      setDraftName(tpl.name || `${activeSection} — default`)
-      setDraftDesc(tpl.description || '')
-      setDraftDefinition(prettyJson(tpl.definition || {}))
-      setEditorMode(EDITOR_MODE_FORM)
-      setJsonError(null)
-      toast.info('Default template loaded — edit and Save to create a new legend')
-    } catch (err) {
-      toast.error('Failed to load default template')
-    }
   }, [activeSection])
 
   const onSave = useCallback(async () => {
@@ -520,27 +523,6 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
           </button>
         </div>
 
-        {/* Sync Info Banner */}
-        <div style={{
-          padding: '10px 22px', background: 'linear-gradient(135deg, #eff6ff, #eef2ff)',
-          borderBottom: `1px solid ${THEME_BORDER}`, display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{ fontSize: 16 }}>🔄</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#1e40af', marginBottom: 2 }}>
-              Synchronized Across Versions
-            </div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
-              Legends are shared between V1 (P&ID Verification) and V2 (Line List Extractor). Create once, use everywhere.
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600 }}>
-            <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V1</span>
-            <span style={{ color: '#94a3b8' }}>↔</span>
-            <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V2</span>
-          </div>
-        </div>
-
         {/* Body: two columns */}
         <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', flex: 1, minHeight: 0 }}>
           {/* ── Left: list ──────────────────────────────────────── */}
@@ -595,13 +577,6 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
               >
                 <Plus size={14} /> New
               </button>
-              <button
-                onClick={onLoadDefaultTemplate}
-                style={btnGhost()}
-                title="Load the built-in default template as a starting point"
-              >
-                <Download size={14} /> Default
-              </button>
               <label style={{ ...btnGhost(), cursor: 'pointer', display: 'inline-flex' }} title="Import JSON, CSV, or Excel (.xlsx / .xls)">
                 <Upload size={14} /> Import
                 <input type="file" accept={IMPORT_ACCEPT} onChange={onImportJson} style={{ display: 'none' }} />
@@ -615,7 +590,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
             )}
             {!loading && legends.length === 0 && (
               <div style={{ color: THEME_MUTED, fontSize: 13, padding: '10px 4px' }}>
-                No legends yet — click <b>Default</b> to seed one from the built-in template.
+                No legends yet — click <b>New</b> to create one.
               </div>
             )}
             {legends.map(l => {
@@ -629,7 +604,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                     background: active ? '#faf5ff' : '#fff',
                   }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{
+                    <span title={l.name} style={{
                       fontWeight: 600, color: THEME_TEXT, fontSize: 13,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
                     }}>
@@ -646,7 +621,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                     )}
                   </div>
                   {l.description && (
-                    <div style={{
+                    <div title={l.description} style={{
                       fontSize: 11, color: THEME_MUTED, marginTop: 3,
                       overflow: 'hidden', textOverflow: 'ellipsis',
                       display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
@@ -741,14 +716,22 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                   onError={setJsonError}
                   jsonError={jsonError}
                   activeSection={activeSection}
-                  // BUG FIX: 'activeSection' flips synchronously on tab
-                  // click, but 'selected'/'draftDefinition' (what's
-                  // actually rendered as fields) only update once that
-                  // section's legends finish (re)loading — confirmed live
-                  // as a real, clickable-through gap. 'selected.section'
-                  // updates in the same render as the displayed fields,
-                  // so it can never disagree with what's on screen — see
-                  // its use in AddToLegendModal's initialSection below.
+                  // BUG FIX: 'selected' (the actual legend row whose fields
+                  // are rendered as draftDefinition) is what this section
+                  // switch to update after refreshing on tab click.
+                  // 'activeSection' flips synchronously the instant a tab
+                  // is clicked, but 'selected'/'draftDefinition' only
+                  // update once that section's legends have actually
+                  // finished fetching — a real gap wide enough to click
+                  // through, confirmed live: switch tabs, click "+ Add
+                  // Row" on the STILL-displayed previous section's field
+                  // before the fetch resolves, and the modal opens locked
+                  // onto the NEW section while the field you clicked
+                  // belongs to the OLD one — "no lookup table" even though
+                  // the field you were looking at has one. Passing the
+                  // selected legend's OWN section (which updates in the
+                  // same render as the fields themselves) instead of the
+                  // independently-racing activeSection closes that gap.
                   selectedSection={selected?.section}
                   symbolImages={symbolImages}
                   projectId={projectId}
@@ -877,7 +860,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
 
   // Quick lookup-row editor — instant-save (add-lookup/edit-lookup/
   // delete-lookup), separate from this form's own bulk textarea + Save
-  // button above. { idx, mode: 'add'|'edit', code? } or null.
+  // button below. { idx, mode: 'add'|'edit', code? } or null.
   const [lookupRowEditor, setLookupRowEditor] = useState(null)
   const [deletingLookupKey, setDeletingLookupKey] = useState('')
 
@@ -929,12 +912,13 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
   // on focus, leaving the native focus (and therefore paste) untouched.
   const pendingScrollLockRef = useRef(null)
 
+  // I/O List's symbol images are user-scoped, not project-scoped (matches
+  // IOListLegendSheet itself) — no projectId needed or accepted.
   const handleSymbolImageUpload = useCallback(async (symbolValue, file) => {
-    if (!projectId) { toast.warn('Select a project first — pictures are saved per project.'); return }
     const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
     setUploadingKeys(prev => ({ ...prev, [key]: true }))
     try {
-      await uploadSymbolImage(projectId, activeSection, symbolValue, file)
+      await uploadSymbolImage(activeSection, symbolValue, file)
       await onImagesChanged?.()
       toast.success(`Picture saved for "${symbolValue}"`)
     } catch (err) {
@@ -942,22 +926,21 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
     } finally {
       setUploadingKeys(prev => { const next = { ...prev }; delete next[key]; return next })
     }
-  }, [projectId, activeSection, onImagesChanged])
+  }, [activeSection, onImagesChanged])
 
   const handleSymbolImageDelete = useCallback(async (symbolValue) => {
-    if (!projectId) return
     if (!window.confirm(`Remove the picture for "${symbolValue}"?`)) return
     const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
     setUploadingKeys(prev => ({ ...prev, [key]: true }))
     try {
-      await deleteSymbolImage(projectId, activeSection, symbolValue)
+      await deleteSymbolImage(activeSection, symbolValue)
       await onImagesChanged?.()
     } catch {
       toast.error('Delete failed')
     } finally {
       setUploadingKeys(prev => { const next = { ...prev }; delete next[key]; return next })
     }
-  }, [projectId, activeSection, onImagesChanged])
+  }, [activeSection, onImagesChanged])
 
   // Paste-from-clipboard — click a symbol cell to focus it, then Ctrl+V a
   // picture copied from Excel/anywhere else. Same upload path as the file
@@ -1162,15 +1145,20 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
               database immediately, no need to also click this form's own
               Save button.
               BUG FIX: this rendered unconditionally for every field,
-              including format-only fields with no 'lookup' key at all.
-              Clicking "+ Add Row" there opened AddToLegendModal locked
-              onto a section with no lookup field to write to, which the
-              backend correctly rejects with "no lookup table to add to"
-              — the fix belongs here (never show the button), not in that
-              modal's dropdown (which is disabled/locked in this flow
-              anyway). Gated on 'f.lookup' being a real object (even {}
-              counts, matching the backend's own isinstance(..., dict)
-              check in _get_active_legend_and_lookup_field). */}
+              including fields with no 'lookup' key at all (e.g. every
+              field in a format-only section like equipment_register —
+              area_code, sequence_number, etc.). Clicking "+ Add Row"
+              there opened AddToLegendModal locked onto a section with no
+              lookup field to write to, which the backend correctly
+              rejects with "no lookup table to add to" — the fix belongs
+              here (never show the button), not in that modal's dropdown
+              (which is disabled/locked in this flow anyway, so filtering
+              its OPTIONS can't fix a button that shouldn't exist for
+              this field in the first place). Gated on 'f.lookup' being a
+              real object (even {} counts, matching the backend's own
+              isinstance(..., dict) check in
+              _get_active_legend_and_lookup_field) — undefined/missing
+              means this field was never meant to carry a lookup table. */}
           {f.lookup && typeof f.lookup === 'object' && (
             <div style={fieldLabel()}>
               <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1227,13 +1215,12 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
             </div>
           )}
 
-          {/* Reference pictures — uploaded manually, one per symbol (see
-              LegendSymbolImage). Placeholder + Upload shown where none exists yet. */}
+          {/* Reference pictures — uploaded manually, one per symbol. */}
           {f.lookup && Object.keys(f.lookup).length > 0 && (
             <div style={fieldLabel()}>
               <span>Reference pictures</span>
               <div style={{
-                display: 'flex', flexWrap: 'wrap', gap: 10,
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))', gap: 10,
                 maxHeight: 320, overflowY: 'auto', padding: 8, borderRadius: 8,
                 border: `1px solid ${THEME_BORDER}`, background: THEME_BG_SOFT,
               }}>
@@ -1289,7 +1276,9 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
                       title="Click here, then press Ctrl+V to paste a picture copied from Excel or anywhere else"
                       style={{
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                        width: 136, flex: '0 0 auto',
+                        // Fixed height (not just min) — every card lines up
+                        // identically regardless of how long its label text is.
+                        height: 210,
                         padding: 6, borderRadius: 8, background: '#fff', border: `1px solid ${THEME_BORDER}`,
                       }}>
                       {displayUrl ? (
@@ -1345,13 +1334,6 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
                             <input
                               type="file"
                               accept=".png,.jpg,.jpeg,.svg"
-                              // Visually hidden but NOT display:none — a display:none input
-                              // has no layout box, so the browser can't compute where to
-                              // scroll it into view when the label forwards a click to it,
-                              // and some browsers fall back to scrolling the page to the
-                              // very top (the "jumps up" bug). Keeping it in-layout (just
-                              // invisible + covering the label) makes the click land on the
-                              // real input directly, so no forwarding/scroll-jump happens.
                               style={{
                                 position: 'absolute', inset: 0, width: '100%', height: '100%',
                                 opacity: 0, cursor: 'pointer', margin: 0, padding: 0, border: 0,
@@ -1405,11 +1387,21 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
         isOpen={!!lookupRowEditor}
         onClose={() => setLookupRowEditor(null)}
         mode={lookupRowEditor?.mode || 'add'}
-        // BUG FIX: see FormEditor's own selectedSection comment above —
-        // this closes the race where the section could switch before the
-        // displayed field data caught up. Falls back to activeSection
-        // only when nothing is selected yet (a brand new legend being
-        // created for the current tab, no race there).
+        // BUG FIX: 'activeSection' flips the instant a section tab is
+        // clicked, but the fields actually rendered here (from
+        // 'definition') only update once that section's legend has
+        // finished (re)loading — a real gap wide enough to click through:
+        // switch tabs, click "+ Add Row" on the STILL-displayed previous
+        // section's field before the fetch resolves, and this modal used
+        // to open locked onto the NEW section while the field actually
+        // clicked belonged to the OLD one ("no lookup table" even though
+        // the field on screen has one). 'selectedSection' is the loaded
+        // legend's OWN section — it updates in the same render as
+        // 'definition' itself, so it can never disagree with what's
+        // actually on screen. Falls back to activeSection only when
+        // nothing is selected yet (e.g. mid-creation of a brand new
+        // legend for the current tab, which has no race — it's
+        // initialized synchronously from that same click).
         initialSection={selectedSection || activeSection}
         initialCode={lookupRowEditor?.code || ''}
         initialDescription={lookupRowEditor?.description || ''}
