@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../../services/radaiDialog'
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -204,7 +205,7 @@ export default function PIDVerificationV2Report() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert(`${kind === 'excel' ? 'Excel' : 'PDF'} export failed — ${e.response?.data?.error || e.message}`);
+      await radaiAlert(`${kind === 'excel' ? 'Excel' : 'PDF'} export failed — ${e.response?.data?.error || e.message}`);
     } finally {
       setDownloading(prev => ({ ...prev, [kind]: false }));
     }

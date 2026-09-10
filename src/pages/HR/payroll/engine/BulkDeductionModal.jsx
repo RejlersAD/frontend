@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 import React, { useMemo, useState } from 'react'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import payrollEngineService from '../../../../services/payrollEngine.service'
@@ -92,7 +93,7 @@ export default function BulkDeductionModal({ run, payslips = [], onClose, onAppl
   }
 
   const handleReverse = async () => {
-    if (!confirm('Remove ALL bulk percentage-deduction line items from this run?')) return
+    if (!(await radaiConfirm('Remove ALL bulk percentage-deduction line items from this run?'))) return
     setBusy(true); setError(null); setSuccess(null)
     try {
       const result = await payrollEngineService.reverseBulkDeduction(run.id)

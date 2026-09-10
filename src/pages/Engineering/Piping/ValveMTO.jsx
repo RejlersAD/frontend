@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiPrompt } from '../../../services/radaiDialog'
 /**
  * Valve MTO — Material Take-Off Workspace
  * =======================================
@@ -295,8 +296,8 @@ const ValveMTOPage = () => {
   const deleteRow = (id) =>
     setState((s) => ({ ...s, rows: s.rows.filter((r) => r.id !== id) }));
 
-  const clearAll = () => {
-    if (!window.confirm('Clear all valves? This cannot be undone (export first if needed).')) return;
+  const clearAll = async () => {
+    if (!(await radaiConfirm('Clear all valves? This cannot be undone (export first if needed).'))) return;
     setState({ project, rows: [] });
   };
 
@@ -501,12 +502,13 @@ const ValveMTOPage = () => {
   };
 
   // ─── History ───────────────────────────────────────────────────────────
-  const onSaveSnapshot = () => {
+  const onSaveSnapshot = async () => {
     if (!rows.length) {
       setImportMsg({ type: 'warn', text: 'Add or import valves first — nothing to snapshot yet.' });
       return;
     }
-    const label = window.prompt('Name this snapshot (leave blank to auto-name):', '');
+    const label = (await radaiPrompt('Name this snapshot (leave blank to auto-name):', ''));
+    if (label === null) return;
     const snap = saveHistoryEntry({
       source:  'manual',
       project, rows,
@@ -518,11 +520,11 @@ const ValveMTOPage = () => {
     }
   };
 
-  const onRestoreSnapshot = (entry) => {
+  const onRestoreSnapshot = async (entry) => {
     if (!entry) return;
-    const proceed = !rows.length || window.confirm(
+    const proceed = !rows.length || (await radaiConfirm(
       `Replace current ${rows.length} valve row(s) with snapshot “${entry.label}” (${entry.rowCount} row(s))?`,
-    );
+    ));
     if (!proceed) return;
     setState({
       project: { ...(entry.project || {}) },
@@ -532,22 +534,22 @@ const ValveMTOPage = () => {
     setImportMsg({ type: 'ok', text: `Restored snapshot “${entry.label}” (${entry.rowCount} row(s)).` });
   };
 
-  const onRenameSnapshot = (entry) => {
-    const next = window.prompt('Rename snapshot:', entry.label);
+  const onRenameSnapshot = async (entry) => {
+    const next = (await radaiPrompt('Rename snapshot:', entry.label));
     if (next == null) return;
     renameHistoryEntry(entry.id, next);
     setHistory(listHistory());
   };
 
-  const onDeleteSnapshot = (entry) => {
-    if (!window.confirm(`Delete snapshot “${entry.label}”? This cannot be undone.`)) return;
+  const onDeleteSnapshot = async (entry) => {
+    if (!(await radaiConfirm(`Delete snapshot “${entry.label}”? This cannot be undone.`))) return;
     deleteHistoryEntry(entry.id);
     setHistory(listHistory());
   };
 
-  const onClearHistory = () => {
+  const onClearHistory = async () => {
     if (!history.length) return;
-    if (!window.confirm(`Delete all ${history.length} snapshot(s)? This cannot be undone.`)) return;
+    if (!(await radaiConfirm(`Delete all ${history.length} snapshot(s)? This cannot be undone.`))) return;
     clearHistory();
     setHistory(listHistory());
   };

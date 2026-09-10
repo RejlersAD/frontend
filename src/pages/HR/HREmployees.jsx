@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
 /**
  * HR · Employee Management (`/hr/employees`)
  * -------------------------------------------
@@ -48,9 +49,7 @@ import {
   HR_PAGE_SIZES,
   HR_DEFAULT_PAGE_SIZE,
   HR_DATA_FETCH_PAGE_SIZE,
-  HR_EXPORT_FORMATS,
   HR_COPY,
-  HR_ADMIN_USERS_LIST_LINK,
   HR_DISCIPLINES,
   HR_TIMESHEET_RANGES,
   HR_TIMESHEET_DEFAULT_RANGE,
@@ -207,7 +206,7 @@ const hasUserAccessContext = (candidate) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: KPI Strip
 // ─────────────────────────────────────────────────────────────────────────────
-const KpiStrip = ({ employees, loading, controls, showMetrics = true }) => {
+const KpiStrip = ({ employees, loading, controls, selectedKpi, onSelectKpi, showMetrics = true }) => {
   // Show only the "essential" KPIs by default to keep the page calm. Users
   // can reveal the rest with a single click. The split is driven by
   // HR_UI.essentialKpiIds — edit the config to change what's prominent.
@@ -216,52 +215,33 @@ const KpiStrip = ({ employees, loading, controls, showMetrics = true }) => {
   const essentials = HR_KPIS.filter((k) => essentialIds.includes(k.id));
   const extras = HR_KPIS.filter((k) => !essentialIds.includes(k.id));
   const visible = showAll ? [...essentials, ...extras] : essentials;
-  const useCalm = HR_UI.calmKpis !== false;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-5 py-4 text-white xl:flex-row xl:items-center">
-        <div className="shrink-0 xl:w-72">
-          <div className="flex items-center gap-2 text-lg font-bold">
-            <HeroIcons.ChartBarSquareIcon className="h-5 w-5 text-cyan-300" />{" "}
-            Workforce Overview
-          </div>
-          <p className="mt-1 text-xs text-slate-300">
-            Live headcount, movement and contract-risk signals for faster HR
-            decisions.
-          </p>
+    <section aria-label="Workforce overview" className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+      <div className="border-b border-blue-100 bg-gradient-to-r from-white via-white to-blue-50/60 px-4 py-2.5 dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-blue-950/20">
+        <div className="flex items-center gap-2">
+          <HeroIcons.ChartBarSquareIcon className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Workforce overview</h1>
         </div>
-        {controls && <div className="min-w-0 flex-1">{controls}</div>}
       </div>
-      <div className={`space-y-3 p-4 ${showMetrics ? "" : "hidden"}`}>
-        <div
-          className={`grid gap-3 ${
-            showAll
-              ? "grid-cols-2 md:grid-cols-3 xl:grid-cols-5"
-              : "grid-cols-2 md:grid-cols-3 xl:grid-cols-6"
-          }`}
-        >
+      <div className={`space-y-2 p-3 ${showMetrics ? "" : "hidden"}`}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
           {visible.map((kpi) => (
-            <div
+            <button
               key={kpi.id}
-              className={
-                useCalm
-                  ? `rounded-xl border ${kpi.calmTone || "bg-slate-50 text-slate-700 border-slate-100"} p-4`
-                  : `relative overflow-hidden rounded-xl bg-gradient-to-br ${kpi.accent} text-white p-4 shadow-md`
-              }
+              type="button"
+              disabled={loading}
+              aria-pressed={selectedKpi === kpi.id}
+              onClick={() => onSelectKpi(kpi.id)}
+              className={`relative rounded-xl border px-3 py-2.5 text-left hover:border-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-wait ${kpi.calmTone} ${selectedKpi === kpi.id ? "outline outline-2 outline-indigo-600 dark:outline-indigo-400" : ""}`}
             >
-              <div className="flex items-center justify-between">
-                <Icon
-                  name={kpi.icon}
-                  className={
-                    useCalm ? "w-5 h-5 opacity-80" : "w-6 h-6 opacity-80"
-                  }
-                />
-                <span className="max-w-[9rem] text-right text-[10px] font-semibold uppercase leading-tight tracking-wider opacity-70">
+              <div className="flex items-start gap-2">
+                <Icon name={kpi.icon} className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="text-xs font-semibold uppercase leading-4 tracking-wide text-slate-600 dark:text-slate-300">
                   {kpi.label}
                 </span>
               </div>
-              <div className="mt-2 text-3xl font-bold leading-tight tabular-nums">
+              <div className="mt-1 text-2xl font-semibold leading-tight tabular-nums">
                 {loading ? (
                   ANIM ? (
                     <span className="inline-block w-10 h-7 bg-current opacity-20 animate-pulse rounded" />
@@ -274,10 +254,10 @@ const KpiStrip = ({ employees, loading, controls, showMetrics = true }) => {
                   kpi.compute(employees)
                 )}
               </div>
-              <div className="mt-1 text-[11px] opacity-70 line-clamp-1">
+              <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                 {kpi.sub}
               </div>
-            </div>
+            </button>
           ))}
         </div>
         {extras.length > 0 && (
@@ -285,7 +265,8 @@ const KpiStrip = ({ employees, loading, controls, showMetrics = true }) => {
             <button
               type="button"
               onClick={() => setShowAll((v) => !v)}
-              className="text-xs font-medium text-slate-500 hover:text-slate-800 inline-flex items-center gap-1"
+              aria-expanded={showAll}
+              className="rounded-md px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-800 inline-flex items-center gap-1"
             >
               {showAll ? (
                 <HeroIcons.ChevronUpIcon className="w-3.5 h-3.5" />
@@ -299,6 +280,11 @@ const KpiStrip = ({ employees, loading, controls, showMetrics = true }) => {
           </div>
         )}
       </div>
+      {controls && (
+        <div className="border-t border-slate-200 bg-slate-50/60 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900">
+          {controls}
+        </div>
+      )}
     </section>
   );
 };
@@ -400,7 +386,7 @@ const FiltersBar = ({
                   aria-label={HR_COPY.searchPlaceholder}
                   aria-busy={searching}
                   autoComplete="off"
-                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-10 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 [color-scheme:light] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-500 [color-scheme:light] focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                 />
                 {searchTerm && (
                   <button
@@ -433,6 +419,12 @@ const FiltersBar = ({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {viewMode === "timesheet" && (
+          <div className="flex min-h-[38px] flex-1 items-center text-sm text-slate-600">
+            Browse attendance using the Time Sheet controls below.
           </div>
         )}
 
@@ -469,7 +461,7 @@ const FiltersBar = ({
                 onClick={() => setViewMode(vm.id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${anim("transition")} ${
                   viewMode === vm.id
-                    ? "bg-white text-blue-700 shadow-sm"
+                    ? "bg-indigo-50 text-indigo-800 outline outline-1 outline-indigo-200 dark:bg-indigo-950 dark:text-indigo-200 dark:outline-indigo-800"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
                 aria-pressed={viewMode === vm.id}
@@ -2646,7 +2638,7 @@ const CompensationPanel = ({
       setPayrollProfile(created);
     } catch (err) {
       console.error("[HR] Failed to create payroll profile:", err);
-      alert("Failed to create payroll profile. Please try again.");
+      await radaiAlert("Failed to create payroll profile. Please try again.");
     } finally {
       setCreatingPayroll(false);
     }
@@ -3331,7 +3323,7 @@ const DetailDrawer = ({
   );
 
   // Handle cancel
-  const handleCancel = useCallback(() => {
+  const handleCancel = useCallback(async () => {
     const hasChanges =
       JSON.stringify(formData) !==
       JSON.stringify({
@@ -3353,7 +3345,7 @@ const DetailDrawer = ({
           (emp.engineer_profile || {}).experience_years || "",
       });
 
-    if (hasChanges && !window.confirm(HR_EDIT_COPY.confirmCancelMessage)) {
+    if (hasChanges && !(await radaiConfirm(HR_EDIT_COPY.confirmCancelMessage))) {
       return;
     }
 
@@ -4066,6 +4058,8 @@ export default function HREmployees() {
   const rbacCurrentUser = useSelector((state) => state.rbac?.currentUser);
   const [loadedCurrentUser, setLoadedCurrentUser] = useState(null);
   const [employees, setEmployees] = useState([]);
+  const [selectedKpi, setSelectedKpi] = useState(null);
+  const activeKpi = HR_KPIS.find(kpi => kpi.id === selectedKpi);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -4076,8 +4070,6 @@ export default function HREmployees() {
   const [selectedEmp, setSelectedEmp] = useState(null);
   const [selectedTab, setSelectedTab] = useState(null); // optional initial tab when opening drawer
   const [selectedEdit, setSelectedEdit] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
   const detailCacheRef = useRef(new Map());
   const deepLinkHandledRef = useRef("");
   const currentUser =
@@ -4174,9 +4166,9 @@ export default function HREmployees() {
       }
       if (action !== "deactivate") return;
       if (
-        !window.confirm(
+        !(await radaiConfirm(
           `Deactivate ${fullName(emp)}? They will lose access to the system.`,
-        )
+        ))
       )
         return;
       try {
@@ -4188,11 +4180,11 @@ export default function HREmployees() {
         await fetchEmployees();
       } catch (actionError) {
         console.error("[HR] Employee deactivation failed:", actionError);
-        window.alert(
+        (await radaiAlert(
           actionError?.response?.data?.error ||
             actionError?.response?.data?.detail ||
             "Employee could not be deactivated.",
-        );
+        ));
       }
     },
     [fetchEmployees, openEmp, selectedEmp?.id],
@@ -4244,6 +4236,7 @@ export default function HREmployees() {
   const filteredEmployees = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return employees.filter((emp) => {
+      if (activeKpi && !activeKpi.match(emp)) return false;
       // Filter chips
       for (const f of HR_FILTERS) {
         const v = filterValues[f.id] || "all";
@@ -4274,12 +4267,12 @@ export default function HREmployees() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [employees, filterValues, searchTerm]);
+  }, [employees, filterValues, searchTerm, activeKpi]);
 
   // ──────── Pagination (cards/table modes only) ────────
   useEffect(() => {
     setPageIndex(0);
-  }, [searchTerm, filterValues, viewMode, pageSize]);
+  }, [searchTerm, filterValues, viewMode, pageSize, selectedKpi]);
 
   const paginated = useMemo(() => {
     if (viewMode === "dept" || viewMode === "hierarchy")
@@ -4298,6 +4291,7 @@ export default function HREmployees() {
     setFilterValues((prev) => ({ ...prev, [id]: value }));
   }, []);
   const resetFilters = useCallback(() => {
+    setSelectedKpi(null);
     setFilterValues({});
     setSearchTerm("");
   }, []);
@@ -4373,119 +4367,16 @@ export default function HREmployees() {
     [employees, openEmp],
   );
 
-  // ──────── Export ────────
-  const handleExport = async (format) => {
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const resp = await rbacService.exportUsers(format);
-      const ext =
-        HR_EXPORT_FORMATS.find((f) => f.value === format)?.ext || format;
-      const filename = `employees_${new Date().toISOString().slice(0, 10)}.${ext}`;
-      const url = window.URL.createObjectURL(new Blob([resp.data]));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("[HR] Export failed:", err);
-      alert("Export failed. Please try again.");
-    } finally {
-      setExporting(false);
-    }
-  };
-
   // ──────── Render ────────
   return (
-    <div className="min-h-screen w-full min-w-0 bg-gradient-to-br from-slate-50 to-blue-50 p-4 lg:p-6">
+    <div className="min-h-screen w-full min-w-0 bg-slate-50 p-4 lg:p-6 dark:bg-slate-950">
       <div className="w-full min-w-0 max-w-none space-y-4">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-          <div>
-            <nav className="text-xs text-slate-500 mb-1">
-              <Link to="/dashboard" className="hover:text-slate-700">
-                Dashboard
-              </Link>
-              <span className="mx-1.5">/</span>
-              <span>Human Resources</span>
-              <span className="mx-1.5">/</span>
-              <span className="text-slate-700 font-medium">Employees</span>
-            </nav>
-            <h1 className="text-2xl lg:text-3xl font-bold text-slate-900 flex items-center gap-2">
-              <HeroIcons.UserGroupIcon className="w-7 h-7 text-blue-600" />
-              {HR_COPY.pageTitle}
-            </h1>
-            <p className="text-sm text-slate-600">{HR_COPY.pageSubtitle}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={fetchEmployees}
-              className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 inline-flex items-center gap-1.5"
-            >
-              {loading ? (
-                <Spinner className="w-4 h-4" />
-              ) : (
-                <HeroIcons.ArrowPathIcon className="w-4 h-4" />
-              )}{" "}
-              Refresh
-            </button>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setExportOpen((o) => !o)}
-                disabled={exporting || employees.length === 0}
-                className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 inline-flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <HeroIcons.ArrowDownTrayIcon className="w-4 h-4" />{" "}
-                {exporting ? "Exporting…" : "Export"}
-                <HeroIcons.ChevronDownIcon className="w-3 h-3" />
-              </button>
-              {exportOpen && (
-                <div className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-10 overflow-hidden">
-                  {HR_EXPORT_FORMATS.map((f) => (
-                    <button
-                      key={f.value}
-                      type="button"
-                      onClick={() => handleExport(f.value)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <Link
-              to="/profile"
-              className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 inline-flex items-center gap-1.5"
-            >
-              <HeroIcons.UserCircleIcon className="w-4 h-4" /> My Profile
-            </Link>
-            <Link
-              to="/hr/Employeprofile"
-              className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 inline-flex items-center gap-1.5"
-            >
-              <HeroIcons.SparklesIcon className="w-4 h-4" /> My Workspace
-            </Link>
-            <Link
-              to={HR_ADMIN_USERS_LIST_LINK}
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-1.5 shadow-sm"
-            >
-              <HeroIcons.UserPlusIcon className="w-4 h-4" /> Add / Manage in
-              Admin
-            </Link>
-          </div>
-        </div>
-
         {/* Workforce overview, directory search, filters and view navigation */}
         <KpiStrip
           employees={employees}
           loading={loading}
-          showMetrics={viewMode !== "timesheet"}
+          selectedKpi={selectedKpi}
+          onSelectKpi={(id) => setSelectedKpi(current => current === id ? null : id)}
           controls={(
             <FiltersBar
               employees={employees}
@@ -4524,17 +4415,18 @@ export default function HREmployees() {
           </div>
         )}
 
-        {/* Time Sheet view replaces the directory body entirely */}
-        {viewMode === "timesheet" && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <TimeSheetAnalytics />
-          </div>
-        )}
-
-        {viewMode !== "timesheet" && (
           <>
+            {viewMode !== "timesheet" && activeKpi && (
+              <div className="flex flex-wrap items-center gap-2 text-xs" role="status">
+                <span className="font-medium text-indigo-800 dark:text-indigo-200">
+                  Filter: {activeKpi.filterLabel || activeKpi.label}
+                </span>
+                <button type="button" onClick={() => setSelectedKpi(null)} className="rounded-md px-2 py-1 text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300">Clear metric filter</button>
+                <button type="button" onClick={resetFilters} className="rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300">Reset all filters</button>
+              </div>
+            )}
             {/* Result count */}
-            <div className="flex items-center justify-between text-xs text-slate-600">
+            {viewMode !== "timesheet" && <div className="flex min-h-[2rem] items-center justify-between text-xs text-slate-600">
               <div>
                 Showing{" "}
                 <span className="font-semibold text-slate-900">
@@ -4549,7 +4441,7 @@ export default function HREmployees() {
                   </span>
                 )}
               </div>
-              {viewMode !== "dept" && filteredEmployees.length > 0 && (
+              {!["dept", "timesheet"].includes(viewMode) && filteredEmployees.length > 0 && (
                 <div className="flex items-center gap-2">
                   <label className="text-slate-500">Page size:</label>
                   <select
@@ -4565,9 +4457,17 @@ export default function HREmployees() {
                   </select>
                 </div>
               )}
-            </div>
+            </div>}
 
-            {/* Body */}
+            {/* Time Sheet replaces the directory view in this same content slot. */}
+            {viewMode === "timesheet" ? (
+              <section aria-label="Time Sheet" className="min-w-0 rounded-xl border border-slate-200 bg-slate-50">
+                <div className="p-3">
+                  <TimeSheetAnalytics embedded />
+                </div>
+              </section>
+            ) : (
+              <>
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
                 <HeroIcons.ExclamationTriangleIcon className="w-8 h-8 text-red-500 mx-auto mb-2" />
@@ -4699,8 +4599,9 @@ export default function HREmployees() {
                 ))}
               </div>
             </div>
+              </>
+            )}
           </>
-        )}
       </div>
 
       {/* Detail drawer */}

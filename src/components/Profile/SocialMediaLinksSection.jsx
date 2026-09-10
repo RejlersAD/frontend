@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import {
@@ -126,7 +127,7 @@ const SocialMediaLinksSection = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this link?')) return;
+    if (!(await radaiConfirm('Delete this link?'))) return;
     
     setIsLoading(true);
     try {

@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../services/radaiDialog'
 /**
  * Attendance Dashboard — HR Manager Consolidated View
  * ====================================================
@@ -64,12 +65,12 @@ const StatusBadge = ({ status }) => {
 const KpiTile = ({ kpi }) => {
   const Icon = HeroIcons[kpi.icon] || HeroIcons.ChartBarIcon
   return (
-    <div className={`${kpi.bgLight} rounded-xl p-4 border border-white/80 shadow-sm`}>
+    <div className={`${kpi.bgLight} rounded-xl p-4 border border-slate-200 bg-gradient-to-br to-white`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-slate-600">{kpi.label}</span>
         <Icon className={`w-4 h-4 ${kpi.textColor}`} />
       </div>
-      <div className={`text-2xl font-bold ${kpi.textColor}`}>{kpi.value}</div>
+      <div className={`text-2xl font-semibold tabular-nums ${kpi.textColor}`}>{kpi.value}</div>
       <div className="text-xs text-slate-500 mt-0.5">{kpi.sub}</div>
     </div>
   )
@@ -251,7 +252,7 @@ function DownloadReportPanel({ year, month, tsService }) {
                       type="date"
                       value={params.date}
                       onChange={e => setParams(p => ({ ...p, date: e.target.value }))}
-                      className="border border-slate-300 rounded-lg text-xs px-2 py-1.5 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                      className="border border-slate-300 rounded-lg text-xs px-2 py-1.5 focus:ring-2 focus:ring-indigo-400 focus:outline-none"
                     />
                   </div>
                 )}
@@ -261,14 +262,14 @@ function DownloadReportPanel({ year, month, tsService }) {
                     <select
                       value={params.year}
                       onChange={e => setParams(p => ({ ...p, year: Number(e.target.value) }))}
-                      className="border border-slate-300 rounded-lg text-xs px-2 py-1.5 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                      className="border border-slate-300 rounded-lg text-xs px-2 py-1.5 focus:ring-2 focus:ring-indigo-400 focus:outline-none"
                     >
                       {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
                     <select
                       value={params.month}
                       onChange={e => setParams(p => ({ ...p, month: Number(e.target.value) }))}
-                      className="border border-slate-300 rounded-lg text-xs px-2 py-1.5 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                      className="border border-slate-300 rounded-lg text-xs px-2 py-1.5 focus:ring-2 focus:ring-indigo-400 focus:outline-none"
                     >
                       {MONTH_FULL.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
                     </select>
@@ -280,7 +281,7 @@ function DownloadReportPanel({ year, month, tsService }) {
                     <select
                       value={params.year}
                       onChange={e => setParams(p => ({ ...p, year: Number(e.target.value) }))}
-                      className="border border-slate-300 rounded-lg text-xs px-2 py-1.5 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                      className="border border-slate-300 rounded-lg text-xs px-2 py-1.5 focus:ring-2 focus:ring-indigo-400 focus:outline-none"
                     >
                       {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
@@ -410,11 +411,20 @@ function SummaryTab() {
       .finally(() => setBusy(false))
   }, [year, month])
 
-  // Fetch approved leave calendar — overlay on top of attendance
+  // Refresh leave overlays after decisions and when returning to the page.
   useEffect(() => {
-    payrollService.getLeaveCalendar(year, month)
-      .then(d => setLeaveCalendar(d?.calendar || {}))
-      .catch(() => setLeaveCalendar({}))
+    let active = true
+    const refresh = () => payrollService.getLeaveCalendar(year, month)
+      .then(d => { if (active) setLeaveCalendar(d?.calendar || {}) })
+      .catch(() => { if (active) setLeaveCalendar({}) })
+    refresh()
+    window.addEventListener('leave-approval-updated', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      active = false
+      window.removeEventListener('leave-approval-updated', refresh)
+      window.removeEventListener('focus', refresh)
+    }
   }, [year, month])
 
   // Fetch computed annual leave balance from the DB (per employee, YTD as of selected month)
@@ -549,7 +559,7 @@ function SummaryTab() {
   }
 
   const deactivateHoliday = async (h) => {
-    if (!window.confirm(ATT_EDIT_COPY.holidayDeleteConfirm(h.name))) return
+    if (!(await radaiConfirm(ATT_EDIT_COPY.holidayDeleteConfirm(h.name)))) return
     try {
       await payrollService.deactivatePublicHoliday(h.id)
       setHolidays(prev => prev.filter(x => x.id !== h.id))
@@ -640,7 +650,7 @@ function SummaryTab() {
         Object.entries(empLeave).forEach(([dateStr, lv]) => {
           const day = parseInt(dateStr.split('-')[2], 10)
           if (day > 0 && !dayMap[day]) {
-            dayMap[day] = { type: 'leave', code: lv.code, name: lv.name, badge_bg: lv.badge_bg, badge_text: lv.badge_text }
+            dayMap[day] = { type: 'leave', code: lv.code, name: `${lv.name}${lv.half_day ? ' (half day)' : ''}`, badge_bg: lv.badge_bg, badge_text: lv.badge_text }
           }
         })
         // Apply HR attendance overrides — replaces biometric value for the cell.
@@ -668,7 +678,7 @@ function SummaryTab() {
         // Counts approved leave days per type from the leave calendar
         const leaveDays = {}
         SUMMARY_LEAVE_TYPES.filter(lt => lt.enabled !== false).forEach(leaveType => {
-          leaveDays[leaveType.code] = Object.values(empLeave).filter(lv => lv.code === leaveType.code).length
+          leaveDays[leaveType.code] = Object.values(empLeave).filter(lv => lv.code === leaveType.code).reduce((total, lv) => total + (lv.half_day ? 0.5 : 1), 0)
         })
         
         return {
@@ -750,7 +760,7 @@ function SummaryTab() {
               <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Name or department…" autoComplete="off"
-                className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
             </div>
           </div>
           {/* Branch selector */}
@@ -787,7 +797,7 @@ function SummaryTab() {
             <div>
               <label className="block text-xs text-slate-500 mb-1">Month</label>
               <select value={month} onChange={e => setMonth(Number(e.target.value))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
                 {MONTH_FULL.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
               </select>
             </div>
@@ -795,7 +805,7 @@ function SummaryTab() {
             <div>
               <label className="block text-xs text-slate-500 mb-1">Year</label>
               <select value={year} onChange={e => setYear(Number(e.target.value))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
                 {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
@@ -1503,7 +1513,7 @@ function ReportsTab({ todayStr }) {
                   <label className="block text-xs text-slate-500 mb-1">Date</label>
                   <input type="date" value={dlDate} max={todayStr}
                     onChange={e => setDlDate(e.target.value)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
                 </div>
               )}
               {report.scope === 'month' && (
@@ -1511,7 +1521,7 @@ function ReportsTab({ todayStr }) {
                   <div>
                     <label className="block text-xs text-slate-500 mb-1">Month</label>
                     <select value={dlMonth} onChange={e => setDlMonth(Number(e.target.value))}
-                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
                       {MONTH_FULL.map((name, i) => (
                         <option key={i + 1} value={i + 1}>{name}</option>
                       ))}
@@ -1520,7 +1530,7 @@ function ReportsTab({ todayStr }) {
                   <div>
                     <label className="block text-xs text-slate-500 mb-1">Year</label>
                     <select value={dlYear} onChange={e => setDlYear(Number(e.target.value))}
-                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
                       {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
                   </div>
@@ -1530,7 +1540,7 @@ function ReportsTab({ todayStr }) {
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Year</label>
                   <select value={dlYear} onChange={e => setDlYear(Number(e.target.value))}
-                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
                     {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
@@ -1933,12 +1943,12 @@ export default function AttendanceDashboard() {
           <label className="block text-xs text-slate-500 mb-1">Date</label>
           <input type="date" value={selectedDate} max={TODAY_STR}
             onChange={e => setSelectedDate(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
         </div>
         <div className="min-w-44">
           <label className="block text-xs text-slate-500 mb-1">Department</label>
           <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
             <option value={ALL_DEPT}>All Departments</option>
             {departments.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
@@ -1949,7 +1959,7 @@ export default function AttendanceDashboard() {
             <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
               placeholder="Name, employee ID or department"
-              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
+              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-indigo-500" />
           </div>
         </div>
         {/* Status filter pills */}
@@ -1974,7 +1984,7 @@ export default function AttendanceDashboard() {
           const m = ATTENDANCE_STATUS[s]
           return (
             <div key={s} className={`${m.bg} rounded-xl p-4 border ${m.border} text-center`}>
-              <div className={`text-2xl font-bold ${m.text}`}>{dailyStatusCounts[s] ?? 0}</div>
+              <div className={`text-2xl font-semibold tabular-nums ${m.text}`}>{dailyStatusCounts[s] ?? 0}</div>
               <div className={`text-xs font-medium ${m.text} mt-1`}>{m.label}</div>
             </div>
           )
@@ -2077,14 +2087,14 @@ export default function AttendanceDashboard() {
           <div>
             <label className="block text-xs text-slate-500 mb-1">Month</label>
             <select value={selMonth} onChange={e => setSelMonth(Number(e.target.value))}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
               {MONTH_FULL.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Year</label>
             <select value={selYear} onChange={e => setSelYear(Number(e.target.value))}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
               {[selYear - 1, selYear, selYear + 1].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
@@ -2102,7 +2112,7 @@ export default function AttendanceDashboard() {
               <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
                 placeholder="Name, employee ID or department"
-                className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
+                className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-indigo-500" />
             </div>
           </div>
           <div className="ml-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-600">
@@ -2252,7 +2262,7 @@ export default function AttendanceDashboard() {
           <label className="block text-xs text-slate-500 mb-1">Year</label>
           <select value={selYear}
             onChange={e => { setSelYear(Number(e.target.value)); setYearlyData([]) }}
-            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
             {[selYear - 2, selYear - 1, selYear].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
@@ -2270,7 +2280,7 @@ export default function AttendanceDashboard() {
             <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
               placeholder="Name, employee ID or department"
-              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
+              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-indigo-500" />
           </div>
         </div>
         {loadingYearly && (
@@ -2381,7 +2391,7 @@ export default function AttendanceDashboard() {
   return (
     <div className="space-y-4">
       {/* View switcher tabs */}
-      <div className="bg-white rounded-xl border border-slate-200 px-4 py-2 flex gap-1 overflow-x-auto">
+      <div className="bg-white rounded-xl border border-slate-200 p-2 flex flex-wrap gap-1">
         {ATTENDANCE_VIEWS.map(v => {
           const Icon    = HeroIcons[v.icon] || HeroIcons.CalendarIcon
           const isActive = view === v.id
@@ -2389,7 +2399,7 @@ export default function AttendanceDashboard() {
             <button key={v.id} type="button" onClick={() => setView(v.id)} title={v.description}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 isActive
-                  ? 'bg-blue-50 text-blue-700 shadow-sm'
+                  ? 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}>
               <Icon className="w-4 h-4" />

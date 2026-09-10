@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiAlert } from '../../../../services/radaiDialog'
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
@@ -9,6 +10,7 @@ import {
 import StatusBadge from './StatusBadge'
 import PayslipDetailModal from './PayslipDetailModal'
 import BulkDeductionModal from './BulkDeductionModal'
+import PayrollApprovalDialog from './PayrollApprovalDialog'
 import ComparisonPanel from './ComparisonPanel'
 import ExternalUploadPanel from './ExternalUploadPanel'
 import './payrollTable.css'
@@ -66,6 +68,7 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
   const [search, setSearch] = useState('')
   const [selectedSlip, setSelectedSlip] = useState(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [approvalAction, setApprovalAction] = useState(null)
   const [showUploadPanel, setShowUploadPanel] = useState(false)
   const [deletingSlipId, setDeletingSlipId] = useState(null)
   const [compliance, setCompliance] = useState(null)
@@ -120,19 +123,14 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
     return () => container.removeEventListener('scroll', handleScroll)
   }, [payslips, canvasMode])
 
-  const handleTransition = async (apiFn) => {
-    setBusy(true); setError(null)
-    try {
-      const note = prompt('Optional note for this transition:') || ''
-      await payrollEngineService[apiFn](run.id, note)
-      await load()
-    } catch (e) {
-      setError(e?.response?.data?.error || e.message)
-    } finally { setBusy(false) }
+  const handleTransition = async (note) => {
+    await payrollEngineService[approvalAction.fn](run.id, note)
+    setApprovalAction(null)
+    await load()
   }
 
   const handleRevert = async () => {
-    if (!confirm('Revert this run back to Draft?')) return
+    if (!(await radaiConfirm('Revert this run back to Draft?'))) return
     setBusy(true); setError(null)
     try {
       await payrollEngineService.revertRun(run.id, 'Reverted by user')
@@ -160,18 +158,18 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
         + 'This rewrites each payslip’s Hours column with the live biometric total. '
         + 'Totals, gross and net are not recomputed (Hours is informational only).\n\n'
         + 'Proceed?'
-    if (!confirm(msg)) return
+    if (!(await radaiConfirm(msg))) return
     setBusy(true); setError(null)
     try {
       const result = await payrollEngineService.refreshRunHoursFromTimesheet(run.id, { force })
       await load()
       const missing = (result?.missing || []).length
-      alert(
+      ;(await radaiAlert(
         `Hours refreshed from Time Sheet${result?.forced ? ' (FORCED)' : ''}.\n\n`
         + `Updated: ${result?.updated ?? 0}\n`
         + `Unchanged: ${result?.unchanged ?? 0}\n`
         + (missing ? `Missing biometric data: ${missing} employee(s)` : 'All employees matched.')
-      )
+      ))
     } catch (e) {
       setError(e?.response?.data?.error || e.message)
     } finally { setBusy(false) }
@@ -220,7 +218,7 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
   const handleDeleteSlip = async (slip) => {
     const label = slip.snapshot_full_name || `payslip #${slip.id}`
     const msg = `Delete payslip for ${label}?\n\nUse this when an employee is terminated or no longer on payroll. This cannot be undone.`
-    if (!confirm(msg)) return
+    if (!(await radaiConfirm(msg))) return
     setDeletingSlipId(slip.id); setError(null)
     try {
       await payrollEngineService.deletePayslip(slip.id)
@@ -272,6 +270,24 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+        <IntegrationCard icon="ShieldCheckIcon" title="Payroll Compliance" subtitle="UAE identity, banking, net-pay and reconciliation controls">
+          {compliance && <ResultBadge tone={compliance.status === 'failed' ? 'red' : compliance.status === 'warning' ? 'amber' : 'green'}>{compliance.status} · {compliance.error_count} errors · {compliance.warning_count} warnings</ResultBadge>}
+          <button disabled={busy} onClick={runCompliance} className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Run compliance check</button>
+        </IntegrationCard>
+        {['wps', 'bank'].map((type) => (
+          <IntegrationCard key={type} icon={type === 'wps' ? 'CreditCardIcon' : 'BuildingLibraryIcon'} title={type === 'wps' ? 'WPS' : 'Banking'}>
+            {paymentBatch?.batch_type === type && <ResultBadge tone={paymentBatch.validation_errors?.length ? 'red' : 'green'}>{paymentBatch.record_count} records / {paymentBatch.status}</ResultBadge>}
+            <div className="mt-3 flex gap-2">
+              <button disabled={busy} onClick={() => generatePayment(type)} className="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Generate</button>
+              <button disabled={paymentBatch?.batch_type !== type || paymentBatch?.status === 'draft'} onClick={downloadPayment} className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold disabled:opacity-40">Export</button>
+            </div>
+          </IntegrationCard>
+        ))}
+        <IntegrationCard icon="CalculatorIcon" title="Accounting Journal" subtitle="Balanced payroll journal for Dynamics, SAP, Oracle or CSV">
+          {accountingExport && <ResultBadge tone={accountingExport.total_debit === accountingExport.total_credit ? 'green' : 'red'}>{accountingExport.reference} · {accountingExport.status}</ResultBadge>}
+          <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={busy} onClick={generateJournal} className="rounded-md bg-emerald-600 px-2 py-2 text-xs font-semibold text-white">Generate</button><button disabled={!accountingExport} onClick={downloadJournal} className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold disabled:opacity-40">Export CSV</button></div>
+        </IntegrationCard>
+
             {run.status === WORKFLOW_STATUS.DRAFT && (
               <button
                 onClick={() => setBulkOpen(true)}
@@ -298,7 +314,7 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
               <button
                 key={b.status}
                 disabled={busy}
-                onClick={() => handleTransition(b.fn)}
+                onClick={() => setApprovalAction(b)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${TONE_CLASS[b.tone]} disabled:opacity-50`}
               >
                 <HeroIcons.CheckCircleIcon className="w-4 h-4" />
@@ -354,35 +370,11 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
           </div>
         </div>
 
-        {/* KPI tiles */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-          <KpiTile label="Total Gross" value={formatCurrency(run.total_gross)} tone="blue" />
-          <KpiTile label="Total Deductions" value={formatCurrency(run.total_deductions)} tone="amber" />
-          <KpiTile label="Net Payable" value={formatCurrency(run.total_net)} tone="emerald" />
-          <KpiTile label="Employees" value={run.employee_count} tone="slate" />
-        </div>
-
         {error && (
           <div className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
             {error}
           </div>
         )}
-      </div>
-
-      {/* Compliance, salary payment, and accounting integration */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <IntegrationCard icon="ShieldCheckIcon" title="Payroll Compliance" subtitle="UAE identity, banking, net-pay and reconciliation controls">
-          {compliance && <ResultBadge tone={compliance.status === 'failed' ? 'red' : compliance.status === 'warning' ? 'amber' : 'green'}>{compliance.status} · {compliance.error_count} errors · {compliance.warning_count} warnings</ResultBadge>}
-          <button disabled={busy} onClick={runCompliance} className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Run compliance check</button>
-        </IntegrationCard>
-        <IntegrationCard icon="BuildingLibraryIcon" title="WPS & Banking" subtitle="Validated UAE WPS or bank-transfer payment files">
-          {paymentBatch && <ResultBadge tone={paymentBatch.validation_errors?.length ? 'red' : 'green'}>{paymentBatch.batch_type?.toUpperCase()} · {paymentBatch.record_count} records · {paymentBatch.status}</ResultBadge>}
-          <div className="mt-3 grid grid-cols-3 gap-2"><button disabled={busy} onClick={() => generatePayment('wps')} className="rounded-md bg-violet-600 px-2 py-2 text-xs font-semibold text-white">WPS</button><button disabled={busy} onClick={() => generatePayment('bank')} className="rounded-md bg-sky-600 px-2 py-2 text-xs font-semibold text-white">Bank</button><button disabled={!paymentBatch || paymentBatch.status === 'draft'} onClick={downloadPayment} className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold disabled:opacity-40">Export</button></div>
-        </IntegrationCard>
-        <IntegrationCard icon="CalculatorIcon" title="Accounting Journal" subtitle="Balanced payroll journal for Dynamics, SAP, Oracle or CSV">
-          {accountingExport && <ResultBadge tone={accountingExport.total_debit === accountingExport.total_credit ? 'green' : 'red'}>{accountingExport.reference} · {accountingExport.status}</ResultBadge>}
-          <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={busy} onClick={generateJournal} className="rounded-md bg-emerald-600 px-2 py-2 text-xs font-semibold text-white">Generate</button><button disabled={!accountingExport} onClick={downloadJournal} className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold disabled:opacity-40">Export CSV</button></div>
-        </IntegrationCard>
       </div>
 
       {/* Workflow log */}
@@ -600,6 +592,14 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
         />
       )}
 
+      {approvalAction && (
+        <PayrollApprovalDialog
+          action={approvalAction.label}
+          cycle={run.cycle_code}
+          onClose={() => setApprovalAction(null)}
+          onConfirm={handleTransition}
+        />
+      )}
       {bulkOpen && (
         <BulkDeductionModal
           run={run}
@@ -626,28 +626,31 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
   )
 }
 
-function KpiTile({ label, value, tone = 'slate' }) {
-  const tones = {
-    blue: 'bg-blue-50 border-blue-200 text-blue-800',
-    amber: 'bg-amber-50 border-amber-200 text-amber-800',
-    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-    slate: 'bg-slate-50 border-slate-200 text-slate-800',
-  }
-  return (
-    <div className={`border rounded-lg p-3 ${tones[tone] || tones.slate}`}>
-      <div className="text-[10px] uppercase font-medium opacity-70">{label}</div>
-      <div className="text-lg font-semibold tabular-nums mt-1">{value}</div>
-    </div>
-  )
-}
-
-function IntegrationCard({ icon, title, subtitle, children }) {
+function IntegrationCard({ icon, title, children }) {
   const Icon = HeroIcons[icon] || HeroIcons.Squares2X2Icon
+  const tone = {
+    ShieldCheckIcon: 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100',
+    CreditCardIcon: 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100',
+    BuildingLibraryIcon: 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100',
+    CalculatorIcon: 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+  }[icon] || 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start gap-3"><div className="rounded-lg bg-slate-100 p-2"><Icon className="h-5 w-5 text-slate-700" /></div><div><h3 className="text-sm font-semibold text-slate-900">{title}</h3><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div></div>
-      <div className="mt-3">{children}</div>
-    </section>
+    <details className="relative" onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
+    }} onKeyDown={(event) => {
+      if (event.key === 'Escape') {
+        event.currentTarget.open = false
+        event.currentTarget.querySelector('summary')?.focus()
+      }
+    }}>
+      <summary title={title} aria-label={title} className={`flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-md border transition-colors focus-visible:outline-indigo-500 [&::-webkit-details-marker]:hidden ${tone}`}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </summary>
+      <div className="absolute left-0 z-30 mt-2 w-60 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+        <h3 className="mb-2 text-sm font-semibold text-slate-900">{title}</h3>
+        {children}
+      </div>
+    </details>
   )
 }
 

@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 /**
  * Client Management (CRM) Page
  * Comprehensive client relationship management with AI-powered insights
@@ -109,7 +110,7 @@ const ClientManagement = () => {
   const handleCalculateHealth = async (clientId) => {
     try {
       const result = await salesService.calculateHealthScore(clientId);
-      alert(`Health Score: ${result.health_score}/100\nStatus: ${result.status}`);
+      await radaiAlert(`Health Score: ${result.health_score}/100\nStatus: ${result.status}`);
       fetchClients();
     } catch (error) {
       console.error('Failed to calculate health score:', error);

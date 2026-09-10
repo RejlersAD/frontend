@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../services/radaiDialog'
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { toast } from "react-toastify";
@@ -886,7 +887,7 @@ const Profile = ({ embedded = false }) => {
   };
   const removeProject = async (project, projectIndex) => {
     const projectLabel = project.name || project.project_id || "this project";
-    if (!window.confirm(`Delete ${projectLabel} from your project assignments?`)) {
+    if (!(await radaiConfirm(`Delete ${projectLabel} from your project assignments?`))) {
       return;
     }
 

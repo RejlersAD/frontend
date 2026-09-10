@@ -1,4 +1,5 @@
-﻿/**
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
+/**
  * Purchase Requisition Approval Component
  * Dynamic multi-tier approval workflow (PM -> Engineering Manager -> Manager of Projects -> VP Operations)
  * 
@@ -433,11 +434,11 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     setLoading(true);
     try {
       const response = await apiClient.post(`/procurement/requisitions/${requisition.id}/submit/`);
-      alert(`PR ${response.data.pr_number || requisition.pr_number} submitted for approval. The assigned Project Manager can now approve or reject it.`);
+      await radaiAlert(`PR ${response.data.pr_number || requisition.pr_number} submitted for approval. The assigned Project Manager can now approve or reject it.`);
       onApprovalComplete?.(response.data);
       onClose();
     } catch (error) {
-      alert(error.response?.data?.error || error.response?.data?.detail || 'Failed to submit requisition for approval.');
+      await radaiAlert(error.response?.data?.error || error.response?.data?.detail || 'Failed to submit requisition for approval.');
     } finally {
       setLoading(false);
     }
@@ -445,9 +446,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   const handleResendMissingApprovals = async () => {
     if (!isConverted) return;
-    const confirmed = window.confirm(
+    const confirmed = (await radaiConfirm(
       'Resend the missing approval requests? Approvers will be notified and must record their own decisions.'
-    );
+    ));
     if (!confirmed) return;
 
     setLoading(true);
@@ -455,14 +456,14 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       const response = await apiClient.post(
         `/procurement/requisitions/${requisition.id}/resend-missing-approvals/`
       );
-      alert(response.data?.message || 'Missing approval requests were resent.');
+      await radaiAlert(response.data?.message || 'Missing approval requests were resent.');
       onApprovalComplete?.(response.data);
     } catch (error) {
-      alert(
+      (await radaiAlert(
         error.response?.data?.error
         || error.response?.data?.detail
         || 'Failed to resend missing approval requests.'
-      );
+      ));
     } finally {
       setLoading(false);
     }
@@ -485,11 +486,11 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const handleApprove = async (approverType) => {
     const config = APPROVER_CONFIG[approverType];
     if (!config || !config.canApprove) {
-      alert(`Action Locked: Awaiting review by ${currentStageLabel}`);
+      await radaiAlert(`Action Locked: Awaiting review by ${currentStageLabel}`);
       return;
     }
     if (!signature) {
-      alert('Add your signature in Profile > My Signature before approving.');
+      await radaiAlert('Add your signature in Profile > My Signature before approving.');
       return;
     }
 
@@ -500,22 +501,22 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         { signature: '' }
       );
 
-      alert(`Requisition approved by ${config.label}!`);
+      await radaiAlert(`Requisition approved by ${config.label}!`);
       window.dispatchEvent(new Event('procurement-approval-updated'));
       if (onApprovalComplete) onApprovalComplete(response.data);
       onClose();
     } catch (error) {
       console.error('Approval error:', error);
-      alert(error.response?.data?.error || error.response?.data?.detail || 'Failed to approve requisition.');
+      await radaiAlert(error.response?.data?.error || error.response?.data?.detail || 'Failed to approve requisition.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRejectClick = (approverType) => {
+  const handleRejectClick = async (approverType) => {
     const config = APPROVER_CONFIG[approverType];
     if (!config?.canApprove) {
-      alert(`Action Locked: Awaiting review by ${currentStageLabel}`);
+      await radaiAlert(`Action Locked: Awaiting review by ${currentStageLabel}`);
       return;
     }
     setCurrentApproverType(approverType);
@@ -543,7 +544,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         { reason: rejectionReason.trim() }
       );
 
-      alert(`Requisition rejected by ${config.label}`);
+      await radaiAlert(`Requisition rejected by ${config.label}`);
       window.dispatchEvent(new Event('procurement-approval-updated'));
       if (onApprovalComplete) onApprovalComplete(response.data);
       onClose();
@@ -568,7 +569,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         `/procurement/requisitions/${requisition.id}/refer-rejection/`,
         { target: referralTarget, remarks: referralRemarks.trim() }
       );
-      alert(`Rejected PR referred to ${referralTarget === 'moe' ? 'Manager of Engineering' : 'Manager of Projects'} for discussion.`);
+      await radaiAlert(`Rejected PR referred to ${referralTarget === 'moe' ? 'Manager of Engineering' : 'Manager of Projects'} for discussion.`);
       onApprovalComplete?.(response.data);
     } catch (error) {
       setReferralError(error.response?.data?.error || error.response?.data?.remarks || 'Failed to create referral.');

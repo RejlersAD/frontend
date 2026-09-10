@@ -1,3 +1,4 @@
+import { radaiAlert, radaiPrompt } from '../../../services/radaiDialog'
 /**
  * P&ID Checker V2 — AI-Powered Multi-Document Validation Engine
  * 
@@ -111,7 +112,7 @@ const PIDCheckerV2 = () => {
   
   const handleUpload = async () => {
     if (selectedFiles.length === 0 || !projectName.trim()) {
-      alert('Please provide a project name and select at least one file.');
+      await radaiAlert('Please provide a project name and select at least one file.');
       return;
     }
     
@@ -145,7 +146,7 @@ const PIDCheckerV2 = () => {
       loadProjects();
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Upload failed. Please try again.');
+      await radaiAlert('Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -225,13 +226,13 @@ const PIDCheckerV2 = () => {
     setFilteredFindings(filtered);
   };
   
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files);
     
     // Validate file sizes
     const oversized = files.filter(f => f.size > MAX_FILE_SIZE_MB * 1024 * 1024);
     if (oversized.length > 0) {
-      alert(`Some files exceed ${MAX_FILE_SIZE_MB}MB limit and were not added.`);
+      await radaiAlert(`Some files exceed ${MAX_FILE_SIZE_MB}MB limit and were not added.`);
       return;
     }
     
@@ -610,8 +611,8 @@ const PIDCheckerV2 = () => {
                   
                   {selectedFinding.status !== 'resolved' && (
                     <button
-                      onClick={() => {
-                        const notes = prompt('Resolution notes:');
+                      onClick={async () => {
+                        const notes = (await radaiPrompt('Resolution notes:'));
                         if (notes) {
                           resolveFinding(selectedFinding.id, notes);
                           setSelectedFinding(null);

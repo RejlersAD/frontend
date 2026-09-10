@@ -1,3 +1,4 @@
+import { radaiPrompt } from '../../services/radaiDialog'
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -135,7 +136,7 @@ const GovernancePanel = ({ projectId, versionId, versionStatus, activities = [],
 
   const decide = async (review, decision) => {
     const promptText = decision === 'approved' ? 'Approval comment (optional)' : 'Decision comment (required)'
-    const decisionComment = window.prompt(promptText, '')
+    const decisionComment = (await radaiPrompt(promptText, ''))
     if (decisionComment === null || (decision !== 'approved' && !decisionComment.trim())) return
     await perform(`decision-${review.id}`, () => planningIntelligenceService.decideScheduleReview(versionId, {
       review_id: review.id, decision, comment: decisionComment,

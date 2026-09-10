@@ -1,3 +1,4 @@
+import { radaiAlert } from '../services/radaiDialog'
 import React, { useState, useEffect, useMemo } from 'react';
 import MULTI_ROLE_CONFIG from '../config/multiRoleConfig';
 import { CUSTOM_ROLE_PREFIX } from '../config/rbacAccess.config';
@@ -88,6 +89,10 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
 
   const handleRoleToggle = (roleId) => {
     console.log('[MultiRoleModal] Toggling role:', roleId);
+    if (!selectedRoles.includes(roleId) && MULTI_ROLE_CONFIG.validation.maxRoles && selectedRoles.length >= MULTI_ROLE_CONFIG.validation.maxRoles) {
+      void radaiAlert(`Maximum ${MULTI_ROLE_CONFIG.validation.maxRoles} roles allowed per user`);
+      return;
+    }
     setSelectedRoles(prev => {
       const isSelected = prev.includes(roleId);
       console.log('[MultiRoleModal] Role currently selected:', isSelected);
@@ -118,13 +123,6 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
           console.log('[MultiRoleModal] Auto-setting as primary role (first role)');
         }
         
-        // Check max roles validation
-        if (MULTI_ROLE_CONFIG.validation.maxRoles && newRoles.length > MULTI_ROLE_CONFIG.validation.maxRoles) {
-          console.warn('[MultiRoleModal] Max roles exceeded:', newRoles.length, 'Max:', MULTI_ROLE_CONFIG.validation.maxRoles);
-          alert(`Maximum ${MULTI_ROLE_CONFIG.validation.maxRoles} roles allowed per user`);
-          return prev;
-        }
-        
         return newRoles;
       }
     });
@@ -138,10 +136,10 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
     setPrimaryRoleId(roleId);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Validation
     if (MULTI_ROLE_CONFIG.validation.requirePrimary && !primaryRoleId && selectedRoles.length > 0) {
-      alert(MULTI_ROLE_CONFIG.primaryRoleConfig.requiredMessage);
+      await radaiAlert(MULTI_ROLE_CONFIG.primaryRoleConfig.requiredMessage);
       return;
     }
 

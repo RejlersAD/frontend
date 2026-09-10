@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import {
@@ -190,7 +191,7 @@ const DocumentUploadSection = () => {
   };
 
   const handleDelete = async (docId) => {
-    if (!window.confirm('Are you sure you want to delete this document?')) return;
+    if (!(await radaiConfirm('Are you sure you want to delete this document?'))) return;
 
     try {
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
@@ -242,10 +243,10 @@ const DocumentUploadSection = () => {
   };
 
   // ✅ SOFT-CODED: Handle Replace File action (requires new file)
-  const handleReplaceFile = (doc, type) => {
+  const handleReplaceFile = async (doc, type) => {
     const actions = DOCUMENT_UPLOAD_CONFIG.actions;
     if (actions.replace.requiresConfirmation && 
-        !window.confirm(actions.replace.confirmMessage)) {
+        !(await radaiConfirm(actions.replace.confirmMessage))) {
       return;
     }
     
@@ -466,9 +467,9 @@ const DocumentUploadSection = () => {
               {DOCUMENT_UPLOAD_CONFIG.actions.delete.enabled && 
                DOCUMENT_UPLOAD_CONFIG.actions.delete.showInCard && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (DOCUMENT_UPLOAD_CONFIG.actions.delete.requiresConfirmation) {
-                      if (window.confirm(DOCUMENT_UPLOAD_CONFIG.actions.delete.confirmMessage)) {
+                      if ((await radaiConfirm(DOCUMENT_UPLOAD_CONFIG.actions.delete.confirmMessage))) {
                         handleDelete(latestDoc.id);
                       }
                     } else {

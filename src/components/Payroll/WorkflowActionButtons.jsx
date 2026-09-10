@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 /**
  * Workflow Action Buttons — Smart action buttons for payroll workflow
  * 
@@ -142,7 +143,7 @@ function WorkflowActionButtons({ workflow, onAction, disabled = false }) {
       setActionNote('')
     } catch (error) {
       console.error('Workflow action failed:', error)
-      alert(error.message || WORKFLOW_ACTIONS[action.key]?.successMessage || 'Action failed')
+      await radaiAlert(error.message || WORKFLOW_ACTIONS[action.key]?.successMessage || 'Action failed')
     } finally {
       setProcessing(false)
     }

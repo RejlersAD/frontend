@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
+import { radaiConfirm, radaiAlert } from '../../services/radaiDialog'
+import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -609,9 +610,9 @@ const OrderManagement = () => {
 
   const approveSelectedRequisitions = async () => {
     if (!batchApprovableRequisitions.length || batchActionLoading) return;
-    const confirmed = window.confirm(
+    const confirmed = (await radaiConfirm(
       `Approve ${batchApprovableRequisitions.length} selected Purchase Recommendation${batchApprovableRequisitions.length === 1 ? '' : 's'} assigned to your active stage?`
-    );
+    ));
     if (!confirmed) return;
 
     setBatchActionLoading(true);
@@ -626,7 +627,7 @@ const OrderManagement = () => {
     setSelectedRequisitionIds(current => current.filter(id => !succeededIds.includes(id)));
     await fetchRequisitions();
     setBatchActionLoading(false);
-    alert(`${succeededIds.length} approved${failedCount ? `; ${failedCount} could not be approved and remain selected.` : '.'}`);
+    await radaiAlert(`${succeededIds.length} approved${failedCount ? `; ${failedCount} could not be approved and remain selected.` : '.'}`);
   };
 
   const handleOrderCreated = async (orderData) => {
@@ -656,9 +657,9 @@ const OrderManagement = () => {
 
     try {
       // Soft-coded confirmation dialog
-      const confirmed = window.confirm(
+      const confirmed = (await radaiConfirm(
         `Send Purchase Order ${order.po_number || order.id} to ${order.vendor_name || 'vendor'}?`
-      );
+      ));
       
       if (!confirmed) return;
 
@@ -686,13 +687,13 @@ const OrderManagement = () => {
    * Soft-coded handler: Edit Purchase Order
    * Opens PO form with existing data for editing
    */
-  const handleEditOrder = (order) => {
+  const handleEditOrder = async (order) => {
     if (!order) {
       console.error('Invalid order data');
       return;
     }
     if (order.status === 'completed') {
-      alert('Completed purchase orders are read-only and cannot be edited.');
+      await radaiAlert('Completed purchase orders are read-only and cannot be edited.');
       return;
     }
     
@@ -726,13 +727,13 @@ const OrderManagement = () => {
     }
 
     // Confirmation dialog with detailed information
-    const confirmed = window.confirm(
+    const confirmed = (await radaiConfirm(
       `Are you sure you want to delete this Purchase Order?\n\n` +
       `PO Number: ${order.po_number || 'N/A'}\n` +
       `Supplier: ${order.supplier_name || 'N/A'}\n` +
       `Total: ${order.currency || ''} ${order.total_amount?.toLocaleString() || '0'}\n\n` +
       `This action cannot be undone.`
-    );
+    ));
 
     if (!confirmed) {
       return;
@@ -745,13 +746,13 @@ const OrderManagement = () => {
       // Refresh orders list
       await fetchOrders();
       
-      alert(`Purchase Order ${order.po_number || order.id} deleted successfully.`);
+      await radaiAlert(`Purchase Order ${order.po_number || order.id} deleted successfully.`);
     } catch (error) {
       console.error('Error deleting order:', error);
       const errorMsg = error.response?.data?.detail || 
                        error.response?.data?.error || 
                        'Failed to delete purchase order. Please try again.';
-      alert(errorMsg);
+      await radaiAlert(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -769,13 +770,13 @@ const OrderManagement = () => {
     }
 
     // Confirmation dialog with detailed information
-    const confirmed = window.confirm(
+    const confirmed = (await radaiConfirm(
       `Are you sure you want to delete this Purchase Requisition?\n\n` +
       `PR Number: ${requisition.pr_number || 'N/A'}\n` +
       `Description: ${requisition.product_service || 'N/A'}\n` +
       `Status: ${requisition.status}\n\n` +
       `This action cannot be undone.`
-    );
+    ));
 
     if (!confirmed) {
       return;
@@ -788,13 +789,13 @@ const OrderManagement = () => {
       // Refresh requisitions list
       await fetchRequisitions();
       
-      alert(`Purchase Requisition ${requisition.pr_number || requisition.id} deleted successfully.`);
+      await radaiAlert(`Purchase Requisition ${requisition.pr_number || requisition.id} deleted successfully.`);
     } catch (error) {
       console.error('Error deleting requisition:', error);
       const errorMsg = error.response?.data?.detail || 
                        error.response?.data?.error || 
                        'Failed to delete purchase requisition. Please try again.';
-      alert(errorMsg);
+      await radaiAlert(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -812,9 +813,9 @@ const OrderManagement = () => {
 
     try {
       // Soft-coded confirmation
-      const confirmed = window.confirm(
+      const confirmed = (await radaiConfirm(
         `Convert Requisition ${requisition.pr_number || requisition.id} to Purchase Order?`
-      );
+      ));
       
       if (!confirmed) return;
 
@@ -828,7 +829,7 @@ const OrderManagement = () => {
       );
 
       // Soft-coded success notification
-      alert(`Γ£à Requisition ${requisition.pr_number || requisition.id} converted to ${createdPoNumber || 'a Purchase Order'} successfully!`);
+      await radaiAlert(`Γ£à Requisition ${requisition.pr_number || requisition.id} converted to ${createdPoNumber || 'a Purchase Order'} successfully!`);
       
       // Refresh data
       await fetchRequisitions();
@@ -836,7 +837,7 @@ const OrderManagement = () => {
     } catch (error) {
       console.error('Error converting requisition:', error);
       // Soft-coded error handling
-      alert(`Γ¥î Failed to convert: ${error.response?.data?.error || error.response?.data?.detail || error.message}`);
+      await radaiAlert(`Γ¥î Failed to convert: ${error.response?.data?.error || error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -880,7 +881,7 @@ const OrderManagement = () => {
         error.response?.data?.error ||
         error.response?.data?.detail ||
         'Failed to load requisition print preview.';
-      alert(errorMsg);
+      await radaiAlert(errorMsg);
     } finally {
       setPrPrintPreviewLoadingId(null);
     }

@@ -1,3 +1,4 @@
+import { radaiAlert } from '../services/radaiDialog'
 import React, { useState, useEffect } from 'react'
 import PWAInstallModal from './PWAInstallModal'
 
@@ -216,7 +217,7 @@ const PWAInstallPrompt = () => {
       instructions += '💡 For the best experience, we recommend Chrome or Edge!'
     }
     
-    alert(instructions)
+    await radaiAlert(instructions)
   }
 
   // Don't render if already installed

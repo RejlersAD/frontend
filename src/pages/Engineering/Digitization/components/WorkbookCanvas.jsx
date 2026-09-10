@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm } from '../../../../services/radaiDialog'
 /**
  * WorkbookCanvas
  * ──────────────
@@ -341,7 +342,7 @@ const WorkbookCanvas = ({ job }) => {
       console.log(`Deleted row ${rowKey}: ${result.deleted_count} cells removed`);
     } catch (err) {
       console.error('Failed to delete row:', err);
-      alert(`Failed to delete row: ${err?.response?.data?.error || err?.message}`);
+      await radaiAlert(`Failed to delete row: ${err?.response?.data?.error || err?.message}`);
     } finally {
       setDeleting(false);
       setDeleteConfirm(null);
@@ -419,7 +420,7 @@ const WorkbookCanvas = ({ job }) => {
       });
 
     if (pendingCells.length === 0) {
-      alert('No pending edits to save');
+      await radaiAlert('No pending edits to save');
       return;
     }
 
@@ -449,7 +450,7 @@ const WorkbookCanvas = ({ job }) => {
       console.error('Failed to save all edits:', err);
       setAutoSaveStatus('error');
       setTimeout(() => setAutoSaveStatus(null), 3000);
-      alert(`Failed to save: ${err?.response?.data?.error || err?.message}`);
+      await radaiAlert(`Failed to save: ${err?.response?.data?.error || err?.message}`);
     }
   }, [edits, jobId, workbook]);
 
@@ -481,22 +482,22 @@ const WorkbookCanvas = ({ job }) => {
   // ═══════════════════════════════════════════════════════════════════════════
   
   const toggleRowSelection = useCallback((rowKey) => {
+    if (!selectedRows.has(rowKey) && selectedRows.size >= CANVAS_CONFIG.rowOperations.maxBulkSelectRows) {
+      void radaiAlert(`Cannot select more than ${CANVAS_CONFIG.rowOperations.maxBulkSelectRows} rows at once`);
+      return;
+    }
     setSelectedRows((prev) => {
       const next = new Set(prev);
       if (next.has(rowKey)) {
         next.delete(rowKey);
       } else {
-        if (next.size >= CANVAS_CONFIG.rowOperations.maxBulkSelectRows) {
-          alert(`Cannot select more than ${CANVAS_CONFIG.rowOperations.maxBulkSelectRows} rows at once`);
-          return prev;
-        }
         next.add(rowKey);
       }
       return next;
     });
-  }, []);
+  }, [selectedRows]);
 
-  const toggleSelectAll = useCallback(() => {
+  const toggleSelectAll = useCallback(async () => {
     if (!activeSheetData) return;
     
     if (selectAllChecked) {
@@ -505,7 +506,7 @@ const WorkbookCanvas = ({ job }) => {
     } else {
       const visibleRowKeys = filteredRows.map(r => r.row_key);
       if (visibleRowKeys.length > CANVAS_CONFIG.rowOperations.maxBulkSelectRows) {
-        alert(`Cannot select more than ${CANVAS_CONFIG.rowOperations.maxBulkSelectRows} rows. Please use filters to reduce the count.`);
+        await radaiAlert(`Cannot select more than ${CANVAS_CONFIG.rowOperations.maxBulkSelectRows} rows. Please use filters to reduce the count.`);
         return;
       }
       setSelectedRows(new Set(visibleRowKeys));
@@ -515,12 +516,12 @@ const WorkbookCanvas = ({ job }) => {
 
   const bulkDeleteSelectedRows = useCallback(async () => {
     if (selectedRows.size === 0) {
-      alert('No rows selected');
+      await radaiAlert('No rows selected');
       return;
     }
 
     const confirmMsg = `Delete ${selectedRows.size} selected row${selectedRows.size === 1 ? '' : 's'}? This will remove all cell overrides for these rows.`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await radaiConfirm(confirmMsg))) return;
 
     setDeleting(true);
     try {
@@ -551,7 +552,7 @@ const WorkbookCanvas = ({ job }) => {
       console.log(`Bulk deleted ${result.deleted_rows} rows (${result.deleted_cells} cells)`);
     } catch (err) {
       console.error('Failed to bulk delete rows:', err);
-      alert(`Failed to delete rows: ${err?.response?.data?.error || err?.message}`);
+      await radaiAlert(`Failed to delete rows: ${err?.response?.data?.error || err?.message}`);
     } finally {
       setDeleting(false);
     }
@@ -576,7 +577,7 @@ const WorkbookCanvas = ({ job }) => {
 
   const performUndo = useCallback(async () => {
     if (undoHistory.length === 0) {
-      alert('Nothing to undo');
+      await radaiAlert('Nothing to undo');
       return;
     }
 
@@ -603,7 +604,7 @@ const WorkbookCanvas = ({ job }) => {
         }
       } else if (lastAction.type === 'delete_row') {
         // Cannot undo row deletion (would need to restore all cells)
-        alert('Cannot undo row deletion. Please restore from S3 snapshot.');
+        await radaiAlert('Cannot undo row deletion. Please restore from S3 snapshot.');
         return;
       }
 
@@ -614,13 +615,13 @@ const WorkbookCanvas = ({ job }) => {
       await fetchPreview();
     } catch (err) {
       console.error('Failed to undo:', err);
-      alert(`Undo failed: ${err?.response?.data?.error || err?.message}`);
+      await radaiAlert(`Undo failed: ${err?.response?.data?.error || err?.message}`);
     }
   }, [undoHistory, jobId, fetchPreview]);
 
   const performRedo = useCallback(async () => {
     if (redoHistory.length === 0) {
-      alert('Nothing to redo');
+      await radaiAlert('Nothing to redo');
       return;
     }
 
@@ -644,7 +645,7 @@ const WorkbookCanvas = ({ job }) => {
       await fetchPreview();
     } catch (err) {
       console.error('Failed to redo:', err);
-      alert(`Redo failed: ${err?.response?.data?.error || err?.message}`);
+      await radaiAlert(`Redo failed: ${err?.response?.data?.error || err?.message}`);
     }
   }, [redoHistory, jobId, fetchPreview]);
 
@@ -711,7 +712,7 @@ const WorkbookCanvas = ({ job }) => {
         });
 
       if (pendingCells.length === 0) {
-        alert('No data to snapshot. Please make some edits first.');
+        await radaiAlert('No data to snapshot. Please make some edits first.');
         return;
       }
 
@@ -720,34 +721,34 @@ const WorkbookCanvas = ({ job }) => {
       if (result.s3_snapshot) {
         setAutoSaveStatus('saved');
         setTimeout(() => setAutoSaveStatus(null), 2000);
-        alert(`Snapshot created: ${result.s3_snapshot.s3_key}\n${result.s3_snapshot.cell_count} cells (${result.s3_snapshot.size_mb} MB)`);
+        await radaiAlert(`Snapshot created: ${result.s3_snapshot.s3_key}\n${result.s3_snapshot.cell_count} cells (${result.s3_snapshot.size_mb} MB)`);
         fetchS3Snapshots(); // Refresh list
       } else {
-        alert('Snapshot not created. Cell count below threshold. Try editing more cells.');
+        await radaiAlert('Snapshot not created. Cell count below threshold. Try editing more cells.');
       }
     } catch (err) {
       console.error('Failed to create snapshot:', err);
       setAutoSaveStatus('error');
       setTimeout(() => setAutoSaveStatus(null), 3000);
-      alert(`Snapshot failed: ${err?.response?.data?.error || err?.message}`);
+      await radaiAlert(`Snapshot failed: ${err?.response?.data?.error || err?.message}`);
     }
   }, [edits, jobId, workbook, fetchS3Snapshots]);
 
   const restoreFromSnapshot = useCallback(async (snapshot) => {
     const confirmMsg = `Restore from snapshot created at ${new Date(snapshot.timestamp).toLocaleString()}?\nThis will overwrite current edits.`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await radaiConfirm(confirmMsg))) return;
 
     try {
       // Mock: In real implementation, call backend API to restore from S3
       // await specCustomizationAPI.restoreFromS3Snapshot(jobId, snapshot.s3_key, snapshot.version_id);
       
-      alert('Restore from S3 snapshot is not yet implemented in backend API.\nPlease implement the backend endpoint first.');
+      await radaiAlert('Restore from S3 snapshot is not yet implemented in backend API.\nPlease implement the backend endpoint first.');
       
       // await fetchPreview();
       // setShowSnapshotPanel(false);
     } catch (err) {
       console.error('Failed to restore snapshot:', err);
-      alert(`Restore failed: ${err?.response?.data?.error || err?.message}`);
+      await radaiAlert(`Restore failed: ${err?.response?.data?.error || err?.message}`);
     }
   }, [jobId, fetchPreview]);
 

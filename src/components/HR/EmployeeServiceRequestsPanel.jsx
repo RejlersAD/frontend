@@ -1,9 +1,13 @@
+import { useSearchParams } from 'react-router-dom'
+import OvertimeManagement from '../../pages/HR/OvertimeManagement'
+import { radaiPrompt } from '../../services/radaiDialog'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import hrFoundationService from '../../services/hrFoundation.service'
 import EmployeeTabLoading from './EmployeeTabLoading'
 
 const TYPES = [
+  ['overtime', 'Overtime', '', 'ClockIcon'],
   ['expense', 'Expense', 'Receipt, amount and business purpose', 'ReceiptPercentIcon'],
   ['travel', 'Travel', 'Business trip and travel authorization', 'PaperAirplaneIcon'],
   ['asset', 'Asset', 'Laptop, phone, software or other equipment', 'ComputerDesktopIcon'],
@@ -18,6 +22,8 @@ const statusTone = (status) => ({
 }[status] || 'bg-slate-100 text-slate-600')
 
 export default function EmployeeServiceRequestsPanel({ employeeIdentifier }) {
+  const [params, setParams] = useSearchParams()
+  const overtimeSelected = params.get('request_type') === 'overtime' || params.get('tab') === 'overtime'
   const [employee, setEmployee] = useState(null)
   const [requests, setRequests] = useState([])
   const [form, setForm] = useState(EMPTY)
@@ -57,15 +63,27 @@ export default function EmployeeServiceRequestsPanel({ employeeIdentifier }) {
   }
 
   const decide = async (item, decision) => {
-    const note = decision === 'reject' ? window.prompt('Enter the rejection reason') : ''
+    const note = decision === 'reject' ? (await radaiPrompt('Enter the rejection reason')) : ''
     if (decision === 'reject' && !note) return
     try { await hrFoundationService.decideServiceRequest(item.id, decision, note); await load() }
     catch (error) { setMessage(error?.response?.data?.detail || `Could not ${decision} request.`) }
   }
 
-  if (loading) return <EmployeeTabLoading message="Loading your service requests…" />
+  if (loading && !overtimeSelected) return <EmployeeTabLoading message="Loading your service requests…" />
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap gap-2">{TYPES.map(([id, label, , icon]) => {
+        const Icon = HeroIcons[icon]
+        const selected = overtimeSelected ? id === 'overtime' : form.request_type === id
+        return <button type="button" key={id} onClick={() => {
+          setForm({ ...EMPTY, request_type: id === 'overtime' ? 'expense' : id })
+          const next = new URLSearchParams(params)
+          next.set('tab', 'requests'); next.set('request_type', id); next.delete('request')
+          setParams(next, { replace: true })
+        }} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${selected ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}><Icon className="h-4 w-4" />{label}</button>
+      })}</div>
+      {overtimeSelected ? <OvertimeManagement /> : <>
+
       {message && <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{message}</div>}
       {approvals.length > 0 && (
         <section className="rounded-2xl border border-amber-200 bg-white shadow-sm">
@@ -76,7 +94,7 @@ export default function EmployeeServiceRequestsPanel({ employeeIdentifier }) {
       <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
         <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="font-semibold text-slate-900">Create a request</h3>
-          <div className="mt-4 grid grid-cols-2 gap-2">{TYPES.map(([id, label, , icon]) => { const Icon = HeroIcons[icon]; return <button type="button" key={id} onClick={() => setForm({ ...EMPTY, request_type: id })} className={`rounded-xl border p-3 text-left text-sm ${form.request_type === id ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-slate-200'}`}><Icon className="mb-2 h-5 w-5" />{label}</button> })}</div>
+
           <div className="mt-4 space-y-3">
             <input required placeholder="Request title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             <textarea required rows={3} placeholder="Business reason and details" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
@@ -91,6 +109,7 @@ export default function EmployeeServiceRequestsPanel({ employeeIdentifier }) {
           {requests.length ? <div className="divide-y divide-slate-100">{requests.map((item) => <RequestRow key={item.id} item={item} onDecide={decide} />)}</div> : <div className="p-10 text-center text-sm text-slate-500">No requests yet.</div>}
         </section>
       </div>
+      </>}
     </div>
   )
 }

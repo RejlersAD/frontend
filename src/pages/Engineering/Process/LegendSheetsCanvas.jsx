@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../services/radaiDialog'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -242,7 +243,7 @@ export default function LegendSheetsCanvas() {
   }, [loadAllCounts])
 
   const onDelete = useCallback(async (legendId) => {
-    if (!window.confirm('Delete this legend? This cannot be undone.')) return
+    if (!(await radaiConfirm('Delete this legend? This cannot be undone.'))) return
     try {
       const deletedSection = legends.find(l => l.legend_id === legendId)?.section
       await deleteLegend(legendId)

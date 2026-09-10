@@ -1,3 +1,5 @@
+import { OvertimeReviewPage } from './pages/HR/OvertimeManagement'
+import LeaveRequestReviewPage from './pages/HR/LeaveRequestReviewPage'
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
@@ -733,6 +735,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="hr/leave-requests/:requestId?" element={<ProtectedRoute><LeaveRequestReviewPage /></ProtectedRoute>} />
             <Route
               path="hr/employees"
               element={
@@ -757,7 +760,9 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="hr/leave" element={<Navigate to="/hr/Employeprofile" replace />} />
+            <Route path="hr/leave" element={<ProtectedRoute><Payroll module="leave" /></ProtectedRoute>} />
+            <Route path="hr/overtime" element={<ProtectedRoute><OvertimeReviewPage /></ProtectedRoute>} />
+            <Route path="hr/attendance" element={<ProtectedRoute><Payroll module="attendance" /></ProtectedRoute>} />
             <Route
               path="hr/onboarding"
               element={
