@@ -576,6 +576,18 @@ body {
   border-spacing: 0;
 }
 
+.supplier-workspace-content {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+@media (min-width: 1536px) {
+  .supplier-workspace-directory {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
 .supplier-directory-table thead,
 .supplier-directory-table tbody {
   display: block;

@@ -215,6 +215,74 @@ const PUBLIC_PATH_REDIRECTS = {
 // Back-compat alias (kept for any external reference to this constant)
 const REGISTER_REDIRECT_TARGET = PUBLIC_PATH_REDIRECTS.register
 
+const ModuleAccessContext = React.createContext(null)
+function ModuleProtectedRoute({ children, moduleCode }) {
+  const { isAuthenticated, user, modulesLoaded, userModules } = React.useContext(ModuleAccessContext)
+    const routeLocation = useLocation()
+    const requiredModule = resolveRouteModule(moduleCode, routeLocation.pathname, routeLocation.search)
+    if (!isAuthenticated) {
+      return <Navigate to="/login" replace />
+    }
+
+    // Smart admin check: Check nested user object AND roles array
+    const userData = user?.user || user
+    const hasAdminFlags = userData?.is_superuser === true
+    const hasSuperAdminRole = user?.roles?.some(role =>
+      role.code === 'super_admin' || role.name === 'Super Administrator'
+    )
+    const isAdmin = hasAdminFlags || hasSuperAdminRole
+
+    // Only super administrators bypass module grants; staff is a Django-admin flag.
+    if (isAdmin) {
+      console.log('✅ App: Admin access granted for module:', moduleCode)
+      return children
+    }
+
+    // Check if modules are loaded
+    if (!modulesLoaded) {
+      return (
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      )
+    }
+
+    // Check if user has access to the required module
+    if (canAccessRouteModule(userModules, requiredModule)) {
+      return children
+    }
+
+    if (routeLocation.pathname === '/finance' || routeLocation.pathname === '/sales') {
+      const firstService = BUSINESS_SERVICES.find(service => service.parent === moduleCode && canAccessRouteModule(userModules, service.code))
+      if (firstService) return <Navigate to={firstService.path} replace />
+    }
+
+    // Access denied
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
+          <div className="text-red-500 text-6xl mb-4">🚫</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
+          <p className="text-gray-600 mb-4">
+            You don&apos;t have permission to access this feature.
+          </p>
+          <p className="text-sm text-gray-500 mb-6">
+            Required module: <span className="font-semibold">{moduleCode}</span>
+          </p>
+          <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    )
+}
+
 function App() {
   // Mount AI Champion route-tracker (no-op when unauthenticated)
   useAIChampionTracker()
@@ -261,23 +329,23 @@ function App() {
             'Authorization': `Bearer ${token}`
           }
         })
-        
+
         if (!response.ok) {
           console.error('Failed to fetch modules, status:', response.status)
           setUserModules([])
           setModulesLoaded(true)
           return
         }
-        
+
         const data = await response.json()
         console.log('🔐 App: Full user data:', data)
-        
+
         // Check must_change_password flag — set unconditionally from the fresh
         // API value (both true and false) so a stale true from an earlier
         // session can't survive a fresh fetch that correctly returns false.
         console.log('🔐 App: must_change_password from fresh /rbac/users/me/ call:', data.must_change_password)
         setMustChangePassword(data.must_change_password === true)
-        
+
         if (data.modules && Array.isArray(data.modules)) {
           const moduleCodes = data.modules.map(m => m.code)
           setUserModules(previous => JSON.stringify(previous) === JSON.stringify(moduleCodes) ? previous : moduleCodes)
@@ -293,7 +361,7 @@ function App() {
         setModulesLoaded(true)
       }
     }
-    
+
     fetchUserModules()
     const interval = window.setInterval(fetchUserModules, 60000)
     window.addEventListener('focus', fetchUserModules)
@@ -312,80 +380,12 @@ function App() {
     return isAuthenticated ? children : <Navigate to="/login" replace />
   }, [isAuthenticated])
 
-  // Module Protected Route wrapper
-  // SOFT-CODED: stable reference via useCallback prevents remount loop
-  const ModuleProtectedRoute = useCallback(function ModuleGuard({ children, moduleCode }) {
-    const routeLocation = useLocation()
-    const requiredModule = resolveRouteModule(moduleCode, routeLocation.pathname, routeLocation.search)
-    if (!isAuthenticated) {
-      return <Navigate to="/login" replace />
-    }
-    
-    // Smart admin check: Check nested user object AND roles array
-    const userData = user?.user || user
-    const hasAdminFlags = userData?.is_superuser === true
-    const hasSuperAdminRole = user?.roles?.some(role => 
-      role.code === 'super_admin' || role.name === 'Super Administrator'
-    )
-    const isAdmin = hasAdminFlags || hasSuperAdminRole
-    
-    // Only super administrators bypass module grants; staff is a Django-admin flag.
-    if (isAdmin) {
-      console.log('✅ App: Admin access granted for module:', moduleCode)
-      return children
-    }
-    
-    // Check if modules are loaded
-    if (!modulesLoaded) {
-      return (
-        <div className="flex items-center justify-center h-screen">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading...</p>
-          </div>
-        </div>
-      )
-    }
-    
-    // Check if user has access to the required module
-    if (canAccessRouteModule(userModules, requiredModule)) {
-      return children
-    }
-    
-    if (routeLocation.pathname === '/finance' || routeLocation.pathname === '/sales') {
-      const firstService = BUSINESS_SERVICES.find(service => service.parent === moduleCode && canAccessRouteModule(userModules, service.code))
-      if (firstService) return <Navigate to={firstService.path} replace />
-    }
-
-    // Access denied
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
-          <div className="text-red-500 text-6xl mb-4">🚫</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
-          <p className="text-gray-600 mb-4">
-            You don&apos;t have permission to access this feature.
-          </p>
-          <p className="text-sm text-gray-500 mb-6">
-            Required module: <span className="font-semibold">{moduleCode}</span>
-          </p>
-          <button
-            onClick={() => window.location.href = '/dashboard'}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Go to Dashboard
-          </button>
-        </div>
-      </div>
-    )
-  }, [isAuthenticated, user, modulesLoaded, userModules])
-
   // Public Route wrapper (redirect if authenticated)
   // SOFT-CODED: stable reference via useCallback prevents remount loop
   const PublicRoute = useCallback(({ children }) => {
     return !isAuthenticated ? children : <Navigate to="/dashboard" replace />
   }, [isAuthenticated])
-  
+
   // Handle password change success
   const handlePasswordChangeSuccess = async () => {
     setMustChangePassword(false)
@@ -414,10 +414,10 @@ function App() {
   }
 
   return (
-    <>
+    <ModuleAccessContext.Provider value={{ isAuthenticated, user, modulesLoaded, userModules }}>
       {/* Password Expiry Banner - shown globally when password is expiring or expired */}
       {isAuthenticated && <PasswordExpiryBanner />}
-      
+
       {/* Password Change Modal - shown globally when required */}
       {isAuthenticated && mustChangePassword && (
         <ChangePasswordModal
@@ -428,21 +428,21 @@ function App() {
       )}
 
       {isAuthenticated && !mustChangePassword && <ProfileCompletionGuard />}
-      
+
       <FirstLoginCheck onPasswordChanged={handlePasswordChangeSuccess}>
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />
-            
+
             {/* Solutions Page */}
             <Route path="solutions" element={<Solutions />} />
-            
+
             {/* Public enquiry form. Keep the singular path for existing links. */}
             <Route path="enquiries" element={<Enquiry />} />
             <Route path="enquiry" element={<Enquiry />} />
             <Route path="enquiry/feedback/:token" element={<EnquiryFeedback />} />
             <Route path="enquiries/feedback/:token" element={<EnquiryFeedback />} />
-            
+
             {/* Services */}
           <Route path="services/consulting" element={<ConsultingService />} />
           <Route path="services/pfd-conversion" element={<PFDConversionService />} />
@@ -451,7 +451,7 @@ function App() {
           <Route path="data-governance" element={<DataGovernanceService />} />
           <Route path="security" element={<SecurityService />} />
           <Route path="about" element={<About />} />
-          
+
           {/* Public Routes */}
         <Route
           path="login"
@@ -483,29 +483,29 @@ function App() {
             </PublicRoute>
           }
         /> */}
-        
+
         {/* Password Reset Routes - Public */}
         <Route path="setup-password" element={<SetupPassword />} />
         <Route path="reset-password" element={<SetupPassword />} />
         <Route path="request-password-reset" element={<RequestPasswordReset />} />
         <Route path="forgot-password" element={<RequestPasswordReset />} />
-        
+
         {/* Change Password - Protected Route */}
-        <Route 
-          path="change-password" 
+        <Route
+          path="change-password"
           element={
             <ProtectedRoute>
               <ChangePassword />
             </ProtectedRoute>
-          } 
+          }
         />
-        
+
         {/* Finance Approval - Public Route */}
         <Route path="finance/approve/:token" element={<InvoiceApproval />} />
-        
+
         <Route path="terms-of-service" element={<TermsOfService />} />
         <Route path="privacy-policy" element={<PrivacyPolicy />} />
-        
+
         {/* Protected Routes */}
         <Route
           path="dashboard"
@@ -556,7 +556,7 @@ function App() {
             </ProtectedRoute>
           }
         />
-        
+
         {/* SOFT-CODED: /pid/upload disabled — replaced by /engineering/process/pid-verification */}
         {/* <Route
           path="pid/upload"
@@ -584,7 +584,7 @@ function App() {
             </ModuleProtectedRoute>
           }
         />
-        
+
         {/* Feature Routes - PFD Converter */}
         <Route
           path="pfd/upload"
@@ -642,7 +642,7 @@ function App() {
             </ModuleProtectedRoute>
           }
         />
-        
+
         {/* Feature Routes - Data Mining Platform */}
         <Route
           path="data-mining"
@@ -652,7 +652,7 @@ function App() {
             </ModuleProtectedRoute>
           }
         />
-        
+
         {/* Feature Routes - CRS Documents */}
         <Route
           path="crs/documents"
@@ -1217,7 +1217,7 @@ function App() {
             </ModuleProtectedRoute>
           }
         />
-        
+
         {/* Electrical Equipment Smart Datasheet Generator - SLD Upload & AI Detection */}
         <Route
           path="engineering/electrical/datasheet/smart"
@@ -1227,7 +1227,7 @@ function App() {
             </ModuleProtectedRoute>
           }
         />
-        
+
         {/* Transformer Datasheet Verification — served by ElectricalEquipmentDatasheet */}
         <Route
           path="engineering/electrical/transformer-verification"
@@ -1237,7 +1237,7 @@ function App() {
             </ModuleProtectedRoute>
           }
         />
-        
+
         {/* Unified Quality Checker - Universal AI-Powered Tool for ALL Equipment Types */}
         <Route
           path="engineering/electrical/datasheet/unified-checker"
@@ -1247,7 +1247,7 @@ function App() {
             </ModuleProtectedRoute>
           }
         />
-        
+
         {/* Excel Quality Checker - AI-Powered Quality Check Tool */}
         <Route
           path="engineering/electrical/datasheet/quality-checker/*"
@@ -1257,7 +1257,7 @@ function App() {
             </ModuleProtectedRoute>
           }
         />
-        
+
         {/* Legacy route - redirect to main hub */}
         <Route
           path="engineering/electrical"
@@ -1657,7 +1657,7 @@ function App() {
       </Route>
     </Routes>
     </FirstLoginCheck>
-    </>
+    </ModuleAccessContext.Provider>
   )
 }
 
