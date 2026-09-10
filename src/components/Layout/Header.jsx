@@ -12,7 +12,6 @@ import {
 } from '@heroicons/react/24/outline'
 import { logout } from '../../store/slices/authSlice'
 import { toggleTheme } from '../../store/slices/themeSlice'
-import { LOGO_CONFIG, getLogoPath } from '../../config/logo.config'
 import NotificationBell from '../notifications/NotificationBell'
 import PWAHeaderInstall from '../PWAHeaderInstall'
 import GlobalSearch from './GlobalSearch'
@@ -144,17 +143,13 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
             className="flex min-w-0 items-center gap-2 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             aria-label="Rejlers dashboard"
           >
-            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-md bg-white p-1 ring-1 ring-slate-200 dark:ring-slate-600">
-              <img
-                src={getLogoPath()}
-                alt={LOGO_CONFIG.primary.alt}
-                className="h-full w-full object-contain"
-                onError={(event) => { event.currentTarget.src = LOGO_CONFIG.fallback.image }}
-              />
-            </span>
-            <span className="hidden truncate text-xs font-extrabold tracking-[0.14em] text-slate-700 dark:text-slate-200 sm:block">
-              REJLERS
-            </span>
+            <img
+              src="/assets/rejlers-header-logo.png"
+              alt="Rejlers"
+              width={1737}
+              height={261}
+              className="block h-auto w-24 flex-none object-contain sm:w-40 lg:w-44 dark:rounded-sm dark:bg-white"
+            />
           </Link>
         </div>
 
