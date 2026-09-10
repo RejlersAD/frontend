@@ -1,3 +1,4 @@
+import { BUSINESS_SERVICES } from '../../config/serviceAccess.config';
 import { radaiConfirm } from '../../services/radaiDialog'
 /**
  * Role & Access Management — /admin/roles
@@ -118,21 +119,21 @@ const NON_ENGINEERING_GROUPS = [
     label: 'Finance',
     color: 'teal',
     description: 'Invoice tracking, billing and financial management',
-    moduleCodes: ['finance'],
+    moduleCodes: [...BUSINESS_SERVICES.filter(service => service.parent === 'finance').map(service => service.code)],
   },
   {
     id: 'sales',
     label: 'Sales',
     color: 'orange',
     description: 'Internal sales pipeline and business development',
-    moduleCodes: ['sales'],
+    moduleCodes: [...BUSINESS_SERVICES.filter(service => service.parent === 'sales').map(service => service.code)],
   },
   {
     id: 'project_control',
     label: 'Project Control',
     color: 'indigo',
     description: 'Project planning, tracking and schedule control',
-    moduleCodes: ['project_control'],
+    moduleCodes: ['project_control', 'planning_package'],
   },
   {
     id: 'procurement',
@@ -167,6 +168,7 @@ const NON_ENGINEERING_GROUPS = [
       'role_access_mgmt',      // 9.3 Role & Access Management
       'wrench_integration',    // 9.4 Wrench Integration
       'ai_champion',           // 9.5 AI Champion
+      'org_settings', 'audit_logs', 'file_storage', 'reports', 'api_access',
       'enquiry_management',    // 9.6 Enquiry Operations
     ],
   },
@@ -545,7 +547,7 @@ function RoleManagement() {
 
   useEffect(() => {
     (async () => {
-      try { setLoadingMods(true); setModules(toArray(await rbacService.getModules())); }
+      try { setLoadingMods(true); setModules(toArray(await rbacService.getModules()).filter(module => module.is_active && !['finance', 'sales'].includes(module.code))); }
       catch { notify('error', 'Failed to load modules.'); }
       finally { setLoadingMods(false); }
     })();
@@ -608,7 +610,8 @@ function RoleManagement() {
       const arr = await refreshRoles();
       const r   = arr.find((x) => x.id === selectedRole.id);
       if (r) setSelectedRole(r);
-      // SOFT-CODED: Notify admin that users with this role need to refresh/re-login for changes to take effect
+      window.dispatchEvent(new Event('radai:access-changed'));
+      // Refresh the current session after a role module change.
       notify('success', `Module ${checked ? 'added to' : 'removed from'} ${selectedRole.name}. Users with this role must refresh browser or re-login.`);
     } catch (err) { notify('error', err?.response?.data?.detail || 'Failed to update module.'); }
     finally { setSavingModule(false); }

@@ -1,7 +1,8 @@
+import { BUSINESS_SERVICES, resolveRouteModule, canAccessRouteModule } from './config/serviceAccess.config'
 import { OvertimeReviewPage } from './pages/HR/OvertimeManagement'
 import LeaveRequestReviewPage from './pages/HR/LeaveRequestReviewPage'
 import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useState, useEffect, useCallback } from 'react'
 import { API_BASE_URL, API_ENDPOINTS } from './config/api.config'
@@ -263,6 +264,7 @@ function App() {
         
         if (!response.ok) {
           console.error('Failed to fetch modules, status:', response.status)
+          setUserModules([])
           setModulesLoaded(true)
           return
         }
@@ -278,7 +280,7 @@ function App() {
         
         if (data.modules && Array.isArray(data.modules)) {
           const moduleCodes = data.modules.map(m => m.code)
-          setUserModules(moduleCodes)
+          setUserModules(previous => JSON.stringify(previous) === JSON.stringify(moduleCodes) ? previous : moduleCodes)
           console.log('🔐 App: User accessible modules:', moduleCodes)
         } else {
           console.warn('App: No modules found in response')
@@ -293,7 +295,15 @@ function App() {
     }
     
     fetchUserModules()
-  }, [isAuthenticated])
+    const interval = window.setInterval(fetchUserModules, 60000)
+    window.addEventListener('focus', fetchUserModules)
+    window.addEventListener('radai:access-changed', fetchUserModules)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', fetchUserModules)
+      window.removeEventListener('radai:access-changed', fetchUserModules)
+    }
+  }, [isAuthenticated, user?.id])
 
   // Protected Route wrapper
   // SOFT-CODED: useCallback ensures stable component identity across renders —
@@ -304,20 +314,22 @@ function App() {
 
   // Module Protected Route wrapper
   // SOFT-CODED: stable reference via useCallback prevents remount loop
-  const ModuleProtectedRoute = useCallback(({ children, moduleCode }) => {
+  const ModuleProtectedRoute = useCallback(function ModuleGuard({ children, moduleCode }) {
+    const routeLocation = useLocation()
+    const requiredModule = resolveRouteModule(moduleCode, routeLocation.pathname, routeLocation.search)
     if (!isAuthenticated) {
       return <Navigate to="/login" replace />
     }
     
     // Smart admin check: Check nested user object AND roles array
     const userData = user?.user || user
-    const hasAdminFlags = userData?.is_staff || userData?.is_superuser
+    const hasAdminFlags = userData?.is_superuser === true
     const hasSuperAdminRole = user?.roles?.some(role => 
       role.code === 'super_admin' || role.name === 'Super Administrator'
     )
     const isAdmin = hasAdminFlags || hasSuperAdminRole
     
-    // Super Administrators and Staff have access to all modules
+    // Only super administrators bypass module grants; staff is a Django-admin flag.
     if (isAdmin) {
       console.log('✅ App: Admin access granted for module:', moduleCode)
       return children
@@ -336,10 +348,15 @@ function App() {
     }
     
     // Check if user has access to the required module
-    if (userModules.includes(moduleCode)) {
+    if (canAccessRouteModule(userModules, requiredModule)) {
       return children
     }
     
+    if (routeLocation.pathname === '/finance' || routeLocation.pathname === '/sales') {
+      const firstService = BUSINESS_SERVICES.find(service => service.parent === moduleCode && canAccessRouteModule(userModules, service.code))
+      if (firstService) return <Navigate to={firstService.path} replace />
+    }
+
     // Access denied
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -1544,17 +1561,17 @@ function App() {
         <Route
           path="admin/enquiries"
           element={
-            <ProtectedRoute>
+            <ModuleProtectedRoute moduleCode="enquiry_management">
               <EnquiryManagement />
-            </ProtectedRoute>
+            </ModuleProtectedRoute>
           }
         />
         <Route
           path="admin/enquiries/:id"
           element={
-            <ProtectedRoute>
+            <ModuleProtectedRoute moduleCode="enquiry_management">
               <EnquiryDetail />
-            </ProtectedRoute>
+            </ModuleProtectedRoute>
           }
         />
         <Route
