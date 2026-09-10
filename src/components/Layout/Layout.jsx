@@ -106,6 +106,7 @@ const Layout = () => {
     || /^\/procurement\/requisitions\/[^/]+\/edit$/.test(location.pathname)
   )
   const isViewportWorkspace = ['/dashboard', '/approvals', '/notifications'].includes(location.pathname)
+  const isVendorWorkspace = location.pathname === '/procurement/vendors'
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
   // Hide the shared footer on public pages that render their own or are auth flow pages.
   const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isViewportWorkspace && !isFlushWorkspace
@@ -131,7 +132,7 @@ const Layout = () => {
             profilePhotoUrl={authenticatedProfilePhoto}
           />
         )}
-        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace ? 'pt-2 sm:pt-3' : ''}`}>
+        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace ? 'pt-2 sm:pt-3' : ''}`}>
           <Outlet />
         </main>
         {showFooter && <Footer />}
