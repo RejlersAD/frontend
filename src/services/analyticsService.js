@@ -11,9 +11,9 @@ const analyticsService = {
     return response.data;
   },
 
-  getRealTimeActivity: async (limit = 20) => {
+  getRealTimeActivity: async (limit = 20, hours = 24) => {
     const response = await apiClient.get('/rbac/analytics/dashboard/real_time_activity/', {
-      params: { limit }
+      params: { limit, hours }
     });
     return response.data;
   },
