@@ -1,3 +1,4 @@
+import { radaiPrompt } from '../../services/radaiDialog'
 /**
  * Purchase Order Form Component
  * Aligned with RAD-PRJ-PUR-0014 Template (7-page format)
@@ -164,8 +165,8 @@ const RichTextEditor = ({ value, onChange }) => {
     event.target.value = '';
   };
 
-  const insertLink = () => {
-    const url = window.prompt('Enter the link URL');
+  const insertLink = async () => {
+    const url = (await radaiPrompt('Enter the link URL'));
     if (url) runCommand('createLink', url);
   };
 

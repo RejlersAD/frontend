@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import {
   XMarkIcon,
@@ -183,16 +184,16 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
     if (logoPreview.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
   }, [logoPreview]);
 
-  const handleLogoUpload = (event) => {
+  const handleLogoUpload = async (event) => {
     const file = event.target.files?.[0] || null;
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image file.');
+      await radaiAlert('Please select a valid image file.');
       event.target.value = '';
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      alert('Vendor logos must be 2 MB or smaller.');
+      await radaiAlert('Vendor logos must be 2 MB or smaller.');
       event.target.value = '';
       return;
     }
@@ -554,7 +555,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
             : null;
     if (requiredSection) {
       setActiveFormSection(requiredSection);
-      alert('Please complete the required fields in this section before creating the vendor.');
+      await radaiAlert('Please complete the required fields in this section before creating the vendor.');
       return;
     }
     
@@ -577,7 +578,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
       // Convert empty strings to null for numeric fields
       const normalizedCreditLimit = normalizeDecimalForApi(submitData.credit_limit);
       if (submitData.credit_limit && normalizedCreditLimit === null) {
-        alert('Credit Limit must contain a valid number.');
+        await radaiAlert('Credit Limit must contain a valid number.');
         return;
       }
       submitData.credit_limit = normalizedCreditLimit;
@@ -640,7 +641,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         successMessage += '\n\n✨ All fields completed! Great work!';
       }
       
-      alert(successMessage);
+      await radaiAlert(successMessage);
       
       onVendorCreated(data);
       onClose();
@@ -649,7 +650,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
       const errorMsg = error.response?.data 
         ? JSON.stringify(error.response.data, null, 2)
         : error.message;
-      alert(`❌ Failed to ${editMode ? 'update' : 'create'} vendor:\n\n${errorMsg}\n\nPlease check console for details.`);
+      await radaiAlert(`❌ Failed to ${editMode ? 'update' : 'create'} vendor:\n\n${errorMsg}\n\nPlease check console for details.`);
     }
   };
 

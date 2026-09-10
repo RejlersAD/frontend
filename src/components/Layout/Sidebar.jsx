@@ -469,7 +469,7 @@ const Sidebar = ({
       children: [
         {
           id: "hrDashboard",
-          title: "4.0 HR Dashboard",
+          title: "4.0 Dashboard",
           icon: ChartBarIcon,
           path: "/hr",
           description: "Consolidated real-time HR command center",
@@ -477,7 +477,7 @@ const Sidebar = ({
         },
         {
           id: "hrEmployees",
-          title: "4.1 Employees",
+          title: "4.1 Employee",
           icon: UsersIcon,
           path: "/hr/employees",
           description: "Employee records and profiles",
@@ -485,15 +485,31 @@ const Sidebar = ({
         },
         {
           id: "hrPayroll",
-          title: "4.2 Payroll",
+          title: "4.2 Payroll Management",
           icon: CurrencyDollarIcon,
           path: "/hr/payroll",
           description: "Payroll processing and management",
           moduleCode: "payroll", // matches DB module code
         },
         {
+          id: "hrAttendance",
+          title: "4.3 Attendance Management",
+          icon: ChartBarIcon,
+          path: "/hr/attendance",
+          description: "Employee attendance and timesheets",
+          moduleCode: "payroll",
+        },
+        {
+          id: "hrLeave",
+          title: "4.4 Leave Management",
+          icon: IdentificationIcon,
+          path: "/hr/leave",
+          description: "Leave requests, approvals and balances",
+          moduleCode: "payroll",
+        },
+        {
           id: "hrOnboarding",
-          title: "4.3 Onboarding | Offboarding",
+          title: "4.5 Onboarding / Offboarding",
           icon: UsersIcon,
           path: "/hr/onboarding",
           description: "Employee lifecycle management",

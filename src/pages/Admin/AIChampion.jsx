@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -339,9 +340,9 @@ const AIChampion = () => {
     closeHofEditor();
   }, [closeHofEditor]);
 
-  const deleteHofEntry = useCallback((entry) => {
+  const deleteHofEntry = useCallback(async (entry) => {
     if (!entry) return;
-    if (!confirm(`Remove "${entry.name || entry.email}" from the Hall of Fame?`)) return;
+    if (!(await radaiConfirm(`Remove "${entry.name || entry.email}" from the Hall of Fame?`))) return;
     setHonoraryList((prev) => prev.filter((p) => p.id !== entry.id));
     setHofToast({ type: 'success', message: `Removed "${entry.name || entry.email}".` });
   }, []);
@@ -444,7 +445,7 @@ const AIChampion = () => {
     const now = new Date();
     const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
     const month = now.getMonth() === 0 ? 12 : now.getMonth(); // previous month
-    if (!confirm(`Recompute AI Champion for ${year}-${String(month).padStart(2, '0')}?`)) return;
+    if (!(await radaiConfirm(`Recompute AI Champion for ${year}-${String(month).padStart(2, '0')}?`))) return;
     try {
       await analyticsService.recomputeChampion(year, month);
       await load(false);

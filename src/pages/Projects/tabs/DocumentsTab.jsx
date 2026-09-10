@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../services/radaiDialog'
 import React, { useEffect, useRef, useState } from 'react'
 import { ArrowUpTrayIcon, ArrowDownTrayIcon, TrashIcon } from '@heroicons/react/24/outline'
 
@@ -59,7 +60,7 @@ export default function DocumentsTab({ project }) {
   }
 
   const onDelete = async (doc) => {
-    if (!window.confirm(`Delete ${doc.original_filename || doc.title}?`)) return
+    if (!(await radaiConfirm(`Delete ${doc.original_filename || doc.title}?`))) return
     try {
       await PC.deleteDocument(doc.id)
       reload()

@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import * as HeroIcons from "@heroicons/react/24/outline";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const Icon = ({ name, className = "h-4 w-4" }) => {
   const Component = HeroIcons[name] || HeroIcons.QuestionMarkCircleIcon;
@@ -340,7 +340,7 @@ export default function HRCommandCenterView({
       ...row,
       kind: "Leave begins",
       date: row.start_date,
-      route: "/hr/payroll?tab=leave",
+      route: row.id ? `/hr/leave-requests/${encodeURIComponent(row.id)}` : "/hr/leave-requests",
       action: "View",
     })),
   ]
@@ -370,7 +370,21 @@ export default function HRCommandCenterView({
       detail: "Leave · Upcoming and pending",
       icon: "CalendarDaysIcon",
       action: "View leave",
-      route: "/hr/payroll?tab=leave",
+      route: number(pending?.pendingLeaveCount) === 1 && pending?.pendingLeave?.[0]?.id
+        ? `/hr/leave-requests/${encodeURIComponent(pending.pendingLeave[0].id)}`
+        : "/hr/leave-requests",
+    },
+    {
+      count: number(pending?.pendingOvertimeCount),
+      label: "OT requests awaiting approval",
+      detail: "Overtime",
+      owner: "Manager / HR / Finance",
+      icon: "ClockIcon",
+      action: "View OT",
+      route: "/hr/leave?view=encashment" +
+        (number(pending?.pendingOvertimeCount) > 0 ? "&ot_status=pending" : "") +
+        (number(pending?.pendingOvertimeCount) === 1 && pending?.pendingOvertime?.[0]?.id
+          ? `&request=${encodeURIComponent(pending.pendingOvertime[0].id)}` : ""),
     },
     {
       count: late,
@@ -381,6 +395,24 @@ export default function HRCommandCenterView({
       route: "/hr/employees?tab=timesheet",
     },
   ].filter((item) => item.count > 0);
+
+  const [actionSlide, setActionSlide] = useState(0);
+  const [actionPaused, setActionPaused] = useState(false);
+  const [actionHovered, setActionHovered] = useState(false);
+  const [actionFocused, setActionFocused] = useState(false);
+  const actionSlideCount = Math.ceil(actionItems.length / 3);
+  const currentActionSlide = Math.min(actionSlide, Math.max(0, actionSlideCount - 1));
+  const visibleActions = actionItems.slice(currentActionSlide * 3, currentActionSlide * 3 + 3);
+
+  useEffect(() => {
+    setActionSlide(slide => Math.min(slide, Math.max(0, actionSlideCount - 1)));
+  }, [actionSlideCount]);
+
+  useEffect(() => {
+    if (actionSlideCount <= 1 || actionPaused || actionHovered || actionFocused) return;
+    const timer = setInterval(() => setActionSlide(slide => (slide + 1) % actionSlideCount), 8000);
+    return () => clearInterval(timer);
+  }, [actionSlideCount, actionPaused, actionHovered, actionFocused]);
 
   const recentChanges = workforce
     .flatMap((employee) => [
@@ -588,7 +620,9 @@ export default function HRCommandCenterView({
           />
         </section>
 
-        <section className="grid overflow-hidden rounded-lg border border-amber-300 bg-[#fffbef] shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:grid-cols-[270px_1fr]">
+        <section aria-label="Action required" onMouseEnter={() => setActionHovered(true)} onMouseLeave={() => setActionHovered(false)} onFocusCapture={() => setActionFocused(true)} onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setActionFocused(false);
+        }} className="grid overflow-hidden rounded-lg border border-amber-300 bg-[#fffbef] shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:grid-cols-[270px_1fr]">
           <div className="flex gap-3 border-b border-amber-200 px-4 py-3 lg:border-b-0 lg:border-r">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
               <Icon name="ExclamationTriangleIcon" className="h-6 w-6" />
@@ -600,16 +634,23 @@ export default function HRCommandCenterView({
               <p className="text-sm text-amber-700">
                 Items that need HR attention
               </p>
+              {actionSlideCount > 1 && <div className="mt-3 flex items-center gap-2">
+                <button type="button" aria-label="Previous actions" onClick={() => setActionSlide((currentActionSlide + actionSlideCount - 1) % actionSlideCount)} className="rounded-md border border-amber-200 bg-white p-1.5 text-amber-800 hover:bg-amber-50"><Icon name="ChevronLeftIcon" /></button>
+                <span className="text-xs text-amber-800">{currentActionSlide + 1} / {actionSlideCount}</span>
+                <button type="button" aria-label="Next actions" onClick={() => setActionSlide((currentActionSlide + 1) % actionSlideCount)} className="rounded-md border border-amber-200 bg-white p-1.5 text-amber-800 hover:bg-amber-50"><Icon name="ChevronRightIcon" /></button>
+                <button type="button" aria-label={actionPaused ? 'Resume action slideshow' : 'Pause action slideshow'} title={actionPaused ? 'Resume' : 'Pause'} onClick={() => setActionPaused(value => !value)} className="rounded-md border border-amber-200 bg-white p-1.5 text-amber-800 hover:bg-amber-50"><Icon name={actionPaused ? 'PlayIcon' : 'PauseIcon'} /></button>
+              </div>}
+
             </div>
           </div>
-          <div className="divide-y divide-amber-100 bg-white/70 px-4">
+          <div className={`divide-y divide-amber-100 bg-white/70 px-4 ${actionSlideCount > 1 ? "min-h-48" : ""}`} aria-live="off">
             {actionItems.length === 0 ? (
               <div className="flex h-full min-h-16 items-center gap-2 text-sm font-semibold text-emerald-700">
                 <Icon name="CheckCircleIcon" className="h-5 w-5" /> All HR
                 actions are up to date
               </div>
             ) : (
-              actionItems.map((item) => (
+              visibleActions.map((item) => (
                 <div
                   key={item.label}
                   className="grid min-h-16 items-center gap-3 py-2.5 sm:grid-cols-[1fr_150px_125px]"
@@ -629,7 +670,7 @@ export default function HRCommandCenterView({
                     </div>
                   </div>
                   <span className="text-sm font-medium text-slate-500">
-                    HR Team
+                    {item.owner || "HR Team"}
                   </span>
                   <Button onClick={() => navigate(item.route)}>
                     {item.action}

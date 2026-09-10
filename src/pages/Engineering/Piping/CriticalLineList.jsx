@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm } from '../../../services/radaiDialog'
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -1064,7 +1065,7 @@ const CriticalLineList = () => {
 
       console.error('Error downloading output:', error);
 
-      alert('Failed to download file');
+      await radaiAlert('Failed to download file');
 
     }
 
@@ -1158,7 +1159,7 @@ const CriticalLineList = () => {
 
     if (!editForm.pid_number || !String(editForm.pid_number).trim()) {
 
-      alert('P&ID Number is required');
+      await radaiAlert('P&ID Number is required');
 
       return;
 
@@ -1214,7 +1215,7 @@ const CriticalLineList = () => {
 
       console.error('Error updating output:', err);
 
-      alert(`Failed to modify: ${err.message || err}`);
+      await radaiAlert(`Failed to modify: ${err.message || err}`);
 
     } finally {
 
@@ -1230,7 +1231,7 @@ const CriticalLineList = () => {
 
     const confirmText = `Delete "${output.excel_filename || output.pid_number}"? This cannot be undone.`;
 
-    if (!window.confirm(confirmText)) return;
+    if (!(await radaiConfirm(confirmText))) return;
 
     setRowActionId(output.id);
 
@@ -1272,7 +1273,7 @@ const CriticalLineList = () => {
 
       console.error('Error deleting output:', err);
 
-      alert(`Failed to delete: ${err.message || err}`);
+      await radaiAlert(`Failed to delete: ${err.message || err}`);
 
     } finally {
 
@@ -5434,7 +5435,7 @@ const CriticalLineList = () => {
 
                   accept=".pdf"
 
-                  onChange={(e) => {
+                  onChange={async (e) => {
 
                     const file = e.target.files?.[0];
 
@@ -5446,7 +5447,7 @@ const CriticalLineList = () => {
 
                     } else {
 
-                      alert('Please select a valid PDF file.');
+                      await radaiAlert('Please select a valid PDF file.');
 
                     }
 
@@ -7780,7 +7781,7 @@ const CriticalLineList = () => {
 
               <button
 
-                onClick={() => {
+                onClick={async () => {
 
                   // Validate at least one component is enabled
 
@@ -7788,7 +7789,7 @@ const CriticalLineList = () => {
 
                   if (!hasEnabled) {
 
-                    alert('Please enable at least one component');
+                    await radaiAlert('Please enable at least one component');
 
                     return;
 

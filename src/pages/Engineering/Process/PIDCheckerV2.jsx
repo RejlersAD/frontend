@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../services/radaiDialog'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -393,12 +394,12 @@ export default function PIDCheckerV2() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [])
 
-  const onClearAll = useCallback(() => {
+  const onClearAll = useCallback(async () => {
     if (loading) {
       toast.info('Extraction is still running — please wait for it to finish.')
       return
     }
-    if (!window.confirm(CLEAR_CONFIRM_MSG)) return
+    if (!(await radaiConfirm(CLEAR_CONFIRM_MSG))) return
     onReset()
     toast.success('Inputs cleared — ready for a new upload')
   }, [loading, onReset])
@@ -425,7 +426,7 @@ export default function PIDCheckerV2() {
   }, [])
 
   const onDeleteHistory = useCallback(async (extractionId) => {
-    if (!window.confirm('Delete this saved extraction?')) return
+    if (!(await radaiConfirm('Delete this saved extraction?'))) return
     try {
       await deleteExtraction(extractionId)
       // if it was the currently displayed one, clear the results card

@@ -1,4 +1,5 @@
-﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { radaiConfirm } from '../../../services/radaiDialog'
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
@@ -1950,7 +1951,7 @@ const PIDVerificationV2 = () => {
   // ── History row: Delete — remove the document permanently (confirmed) ────
   const deleteHistoryDocument = async (d) => {
     if (deletingHistoryId) return;
-    if (!window.confirm(`Delete "${d.file_name}"? This permanently removes the document, its drawings and findings. This cannot be undone.`)) {
+    if (!(await radaiConfirm(`Delete "${d.file_name}"? This permanently removes the document, its drawings and findings. This cannot be undone.`))) {
       return;
     }
     setDeletingHistoryId(d.document_id);

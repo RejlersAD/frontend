@@ -1,3 +1,4 @@
+import { radaiAlert } from '../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../services/api.service';
@@ -202,7 +203,7 @@ const PFDConvert = () => {
     } catch (err) {
       console.error('Failed to download P&ID drawing:', err);
       const errorMsg = err.response?.data?.error || 'P&ID drawing not available or download failed';
-      alert(`Download Failed: ${errorMsg}\n\nThe P&ID drawing may not have been generated yet. This feature requires DALL-E API access.`);
+      await radaiAlert(`Download Failed: ${errorMsg}\n\nThe P&ID drawing may not have been generated yet. This feature requires DALL-E API access.`);
     }
   };
 
@@ -262,7 +263,7 @@ const PFDConvert = () => {
       const errorMsg = err.response?.data?.error || 'Failed to convert P&ID to canvas format';
       const detail = err.response?.data?.detail || 'The P&ID may not be available or the conversion service may be unavailable.';
       
-      alert(`Canvas Load Failed: ${errorMsg}\n\n${detail}\n\nThis feature uses GPT-4 Vision to extract elements from the P&ID drawing.`);
+      await radaiAlert(`Canvas Load Failed: ${errorMsg}\n\n${detail}\n\nThis feature uses GPT-4 Vision to extract elements from the P&ID drawing.`);
     }
   };
 

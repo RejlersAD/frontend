@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm } from '../../../services/radaiDialog'
 /**
  * Spec Customization — Projects
  * Route:  /engineering/digitization/spec-customization/projects
@@ -106,7 +107,7 @@ const SpecProjectsPage = () => {
       setShowCreate(false);
       await loadProjects();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Could not create project.');
+      await radaiAlert(err?.response?.data?.error || 'Could not create project.');
     } finally {
       setBusy(false);
     }
@@ -119,22 +120,22 @@ const SpecProjectsPage = () => {
       setEditing(null);
       await loadProjects();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Could not update project.');
+      await radaiAlert(err?.response?.data?.error || 'Could not update project.');
     } finally {
       setBusy(false);
     }
   };
 
   const handleDelete = async (p) => {
-    if (!window.confirm(
+    if (!(await radaiConfirm(
       `Delete project "${p.name}"?\nAssociated extractions stay in the system but become unassigned.`
-    )) return;
+    ))) return;
     setBusy(true);
     try {
       await apiClient.delete(PROJECT_PAGE_CFG.api.detail(p.project_id));
       await loadProjects();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Could not delete project.');
+      await radaiAlert(err?.response?.data?.error || 'Could not delete project.');
     } finally {
       setBusy(false);
     }

@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../services/radaiDialog'
 /**
  * 🗂️ INSTRUMENT PROJECT MANAGER — Phase 1
  *
@@ -1858,8 +1859,8 @@ export function ProjectManagerModal({
                                 ↺
                               </button>
                               <button
-                                onClick={() => {
-                                  if (window.confirm(`Permanently delete "${p.name}"? This cannot be undone.`)) {
+                                onClick={async () => {
+                                  if ((await radaiConfirm(`Permanently delete "${p.name}"? This cannot be undone.`))) {
                                     deleteProject(p.id);
                                   }
                                 }}

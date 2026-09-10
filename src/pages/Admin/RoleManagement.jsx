@@ -1,4 +1,5 @@
-﻿/**
+import { radaiConfirm } from '../../services/radaiDialog'
+/**
  * Role & Access Management — /admin/roles
  *
  * Unified control panel for the Super Administrator.
@@ -743,7 +744,7 @@ function RoleManagement() {
   }, [createForm, notify]);
 
   const handleDeleteRole = useCallback(async (role) => {
-    if (role.is_system_role || !window.confirm(`Delete "${role.name}"? This revokes it from all users.`)) return;
+    if (role.is_system_role || !(await radaiConfirm(`Delete "${role.name}"? This revokes it from all users.`))) return;
     try {
       await rbacService.deleteRole(role.id);
       setRoles((prev) => prev.filter((r) => r.id !== role.id));

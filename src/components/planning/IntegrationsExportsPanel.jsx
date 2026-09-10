@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -122,7 +123,7 @@ const IntegrationsExportsPanel = ({
   }
 
   const remove = async endpoint => {
-    if (!window.confirm(`Archive integration "${endpoint.name}"?`)) return
+    if (!(await radaiConfirm(`Archive integration "${endpoint.name}"?`))) return
     setBusy(`delete-${endpoint.id}`)
     try {
       await planningIntelligenceService.deleteIntegrationEndpoint(endpoint.id)

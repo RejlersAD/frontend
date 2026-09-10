@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm } from '../services/radaiDialog'
 /**
  * Generic Analysis History Component
  * Reusable history viewer for PID and PFD analyses
@@ -161,7 +162,7 @@ const AnalysisHistory = ({
       link.remove();
     } catch (err) {
       console.error('Error downloading file:', err);
-      alert('Failed to download file');
+      await radaiAlert('Failed to download file');
     }
   };
 
@@ -184,13 +185,13 @@ const AnalysisHistory = ({
       link.remove();
     } catch (err) {
       console.error('Error downloading report:', err);
-      alert('Failed to download report');
+      await radaiAlert('Failed to download report');
     }
   };
 
   // Delete file
   const deleteFile = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
+    if (!(await radaiConfirm('Are you sure you want to delete this file? This action cannot be undone.'))) {
       return;
     }
     
@@ -200,14 +201,14 @@ const AnalysisHistory = ({
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
-      alert('File deleted successfully');
+      await radaiAlert('File deleted successfully');
       // Refresh data based on active tab
       if (activeTab === 'overview') fetchHistoryOverview();
       else if (activeTab === 'uploads') fetchAllUploads();
       else if (activeTab === 'analyses') fetchAllAnalyses();
     } catch (err) {
       console.error('Error deleting file:', err);
-      alert(err.response?.data?.error || 'Failed to delete file');
+      await radaiAlert(err.response?.data?.error || 'Failed to delete file');
     }
   };
 

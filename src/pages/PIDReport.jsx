@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiAlert } from '../services/radaiDialog'
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../services/api.service';
@@ -629,7 +630,7 @@ const PIDReport = () => {
   };
 
   const handleReAnalyze = async () => {
-    if (!confirm('This will re-analyze the drawing and regenerate the report with the latest AI model. All manual changes (approvals, remarks) will be preserved. Continue?')) {
+    if (!(await radaiConfirm('This will re-analyze the drawing and regenerate the report with the latest AI model. All manual changes (approvals, remarks) will be preserved. Continue?'))) {
       return;
     }
 
@@ -660,14 +661,14 @@ const PIDReport = () => {
       }, 300000);
     } catch (err) {
       console.error('Failed to re-analyze:', err);
-      alert('Failed to trigger re-analysis. Please try again.');
+      await radaiAlert('Failed to trigger re-analysis. Please try again.');
       setLoading(false);
     }
   };
 
-    const handleExport = (format) => {
+    const handleExport = async (format) => {
     if (!report || !report.issues) {
-      alert('No report data available to export');
+      await radaiAlert('No report data available to export');
       return;
     }
 
@@ -743,7 +744,7 @@ const PIDReport = () => {
       XLSX.writeFile(wb, filename);
     } catch (error) {
       console.error('Export error:', error);
-      alert('Error generating Excel file: ' + error.message);
+      await radaiAlert('Error generating Excel file: ' + error.message);
     }
   };
 
@@ -1023,7 +1024,7 @@ const PIDReport = () => {
                     setTimeout(() => fetchReport(), 2000);
                   } catch (err) {
                     console.error('Failed to start analysis:', err);
-                    alert('Failed to start analysis. Please try again.');
+                    await radaiAlert('Failed to start analysis. Please try again.');
                     setLoading(false);
                   }
                 }}

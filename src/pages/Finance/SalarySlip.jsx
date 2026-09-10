@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 /**
  * Salary Slip Page - SOFT-CODED
  * Manage and generate employee salary slips
@@ -156,53 +157,53 @@ export default function SalarySlip() {
   const handleGeneratePDF = async (slipId) => {
     try {
       await financeService.generateSalarySlipPDF(slipId);
-      alert('PDF generated successfully!');
+      await radaiAlert('PDF generated successfully!');
       fetchSalarySlips();
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('Failed to generate PDF');
+      await radaiAlert('Failed to generate PDF');
     }
   };
 
   const handleSendEmail = async (slipId) => {
     try {
       await financeService.sendSalarySlipEmail(slipId);
-      alert('Email sent successfully!');
+      await radaiAlert('Email sent successfully!');
       fetchSalarySlips();
       fetchStats();
     } catch (error) {
       console.error('Error sending email:', error);
-      alert('Failed to send email');
+      await radaiAlert('Failed to send email');
     }
   };
 
   const handleBulkSendEmail = async () => {
     if (selectedSlips.length === 0) {
-      alert('Please select slips to send');
+      await radaiAlert('Please select slips to send');
       return;
     }
 
     try {
       const response = await financeService.bulkSendSalarySlipEmails(selectedSlips);
-      alert(`Emails sent: ${response.data.success_count} success, ${response.data.failed_count} failed`);
+      await radaiAlert(`Emails sent: ${response.data.success_count} success, ${response.data.failed_count} failed`);
       setSelectedSlips([]);
       fetchSalarySlips();
       fetchStats();
     } catch (error) {
       console.error('Error sending bulk emails:', error);
-      alert('Failed to send emails');
+      await radaiAlert('Failed to send emails');
     }
   };
 
   const handleApprove = async (slipId) => {
     try {
       await financeService.approveSalarySlip(slipId);
-      alert('Salary slip approved!');
+      await radaiAlert('Salary slip approved!');
       fetchSalarySlips();
       fetchStats();
     } catch (error) {
       console.error('Error approving slip:', error);
-      alert('Failed to approve');
+      await radaiAlert('Failed to approve');
     }
   };
 

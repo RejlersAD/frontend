@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiAlert, radaiPrompt } from '../../services/radaiDialog'
 /**
  * Onboarding & Offboarding Management
  * Employee lifecycle management — joining, exit, equipment, documents, access provisioning
@@ -751,7 +752,7 @@ const SmartButton = ({ config, stats, customCallback, className = '' }) => {
   const allClasses = `${baseClasses} ${variantStyle} ${sizeClass} ${disabledClasses} ${className}`
 
   // Handle click
-  const handleClick = (e) => {
+  const handleClick = async (e) => {
     if (isDisabled) return
 
     // Track analytics
@@ -761,7 +762,7 @@ const SmartButton = ({ config, stats, customCallback, className = '' }) => {
 
     // Show confirmation if required
     if (config.confirmBefore) {
-      const confirmed = window.confirm(config.confirmMessage || 'Are you sure?')
+      const confirmed = (await radaiConfirm(config.confirmMessage || 'Are you sure?'))
       if (!confirmed) return
     }
 
@@ -1552,7 +1553,7 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
     }
 
     const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || employee.email
-    if (!window.confirm(`Delete onboarding for ${employeeName}? This will remove it from the active onboarding list.`)) return
+    if (!(await radaiConfirm(`Delete onboarding for ${employeeName}? This will remove it from the active onboarding list.`))) return
 
     setDeletingRecordId(recordId)
     try {
@@ -2081,12 +2082,12 @@ function OnboardingFullDetailsModal({ employee, recordId = null, focusItChecklis
     .filter(Boolean)
     .join('_')
 
-  const handlePrintPreview = () => {
+  const handlePrintPreview = async () => {
     if (!printViewRef.current) return
 
     const printWindow = window.open('', '_blank', 'width=1100,height=800')
     if (!printWindow) {
-      window.alert('Print Preview was blocked. Please allow pop-ups for RADAI and try again.')
+      await radaiAlert('Print Preview was blocked. Please allow pop-ups for RADAI and try again.')
       return
     }
 
@@ -2240,10 +2241,10 @@ function OnboardingFullDetailsModal({ employee, recordId = null, focusItChecklis
     }, 750)
   }
 
-  const handleCompanyPrintPreview = () => {
+  const handleCompanyPrintPreview = async () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800')
     if (!printWindow) {
-      window.alert('Print Preview was blocked. Please allow pop-ups for RADAI and try again.')
+      await radaiAlert('Print Preview was blocked. Please allow pop-ups for RADAI and try again.')
       return
     }
 
@@ -2859,9 +2860,9 @@ const OFFBOARDING_LIST_ACTIONS = [
     variant: 'secondary',
     style: 'outline',
     size: 'md',
-    onClick: (records) => {
+    onClick: async (records) => {
       console.log('Export records:', records)
-      alert('Export feature - to be implemented')
+      await radaiAlert('Export feature - to be implemented')
     },
     visible: true,
     tooltip: 'Export offboarding list to Excel',
@@ -3151,9 +3152,9 @@ function OffboardingChecklistPanel({ recordId, onUpdated }) {
           : 'PoM not assigned'
         return `${project.name || project.code || 'Unnamed project'} — Project Manager: ${managers}`
       }).join('\n')
-      const confirmed = window.confirm(
+      const confirmed = (await radaiConfirm(
         `This employee is assigned to an ongoing project:\n\n${projectDetails}\n\nPlease confirm with the Project Manager and clear the project assignment first. Do you want to continue starting this offboarding checklist stage?`
-      )
+      ))
       if (!confirmed) return
     }
 
@@ -3203,10 +3204,10 @@ function OffboardingChecklistPanel({ recordId, onUpdated }) {
     .join('_')
   const ongoingProjects = record.ongoing_projects || []
 
-  const handleSignedOffPrint = () => {
+  const handleSignedOffPrint = async () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=850')
     if (!printWindow) {
-      window.alert('Print Preview was blocked. Please allow pop-ups and try again.')
+      await radaiAlert('Print Preview was blocked. Please allow pop-ups and try again.')
       return
     }
     const escapeHtml = (value) => {
@@ -3453,10 +3454,10 @@ function OffboardingListTab({ initialFilter, focusedRecordId } = {}) {
     const projectNames = (record.ongoing_projects || [])
       .map(project => `${project.code} - ${project.name}`)
       .join(', ')
-    const reason = window.prompt(
+    const reason = (await radaiPrompt(
       `Reject ${record.employee_name}'s offboarding request?\n\nActive project(s): ${projectNames}\n\nEnter the rejection reason:`,
       'Employee is assigned to an active project.',
-    )
+    ))
     if (reason === null) return
     setActionRecordId(record.id)
     try {
@@ -3472,7 +3473,7 @@ function OffboardingListTab({ initialFilter, focusedRecordId } = {}) {
   }
 
   const handleDeleteOffboarding = async (record) => {
-    if (!window.confirm(`Permanently delete the offboarding process for ${record.employee_name}? This cannot be undone.`)) return
+    if (!(await radaiConfirm(`Permanently delete the offboarding process for ${record.employee_name}? This cannot be undone.`))) return
     setActionRecordId(record.id)
     try {
       await apiClient.delete(`${API_BASE}/offboarding/${record.id}/`)
@@ -4356,9 +4357,9 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
                     'HR coordinators:', hrCoordRows.length, 
                     'HR approvers:', hrApproverRows.length)
       })
-      .catch((err) => {
+      .catch(async (err) => {
         console.error('Failed to load employees:', err)
-        alert('Failed to load employee data. Please refresh the page.')
+        await radaiAlert('Failed to load employee data. Please refresh the page.')
       })
       .finally(() => setLoading(false))
   }, [initialEmployeeId])
@@ -5295,7 +5296,7 @@ function CreateEmployeeTab() {
         `💡 The employee will receive login credentials via email.`
       ].filter(Boolean).join('\n')
       
-      alert(successDetails)
+      await radaiAlert(successDetails)
       
       // Reload the page to refresh the Overview tab
       setTimeout(() => {
@@ -5853,7 +5854,7 @@ function DocumentManagementSection({ employeeId, employeeEmail }) {
   }
 
   const handleDelete = async (documentId) => {
-    if (!confirm('Are you sure you want to delete this document?')) return
+    if (!(await radaiConfirm('Are you sure you want to delete this document?'))) return
 
     try {
       // ✅ UNIFIED API: Delete from ProfileDocument table

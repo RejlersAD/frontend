@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-toastify'
 import {
@@ -68,7 +69,7 @@ export default function InstrumentIndexHistoryPopover({ activeInstrumentIndex, o
   }
 
   const onDelete = async (id) => {
-    if (!window.confirm('Delete this uploaded Instrument Index?')) return
+    if (!(await radaiConfirm('Delete this uploaded Instrument Index?'))) return
     try {
       await deleteInstrumentIndex(id)
       await refresh()

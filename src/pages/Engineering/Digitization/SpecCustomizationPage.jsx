@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../../services/radaiDialog'
 /**
  * Spec Customization — Hub Page
  * Route: /engineering/digitization/spec-customization
@@ -153,7 +154,7 @@ const SpecCustomizationPage = () => {
       setActiveProject(created);
       setCreateOpen(false);
     } catch (err) {
-      alert(err?.response?.data?.error || 'Could not create project.');
+      await radaiAlert(err?.response?.data?.error || 'Could not create project.');
     } finally {
       setBusy(false);
     }

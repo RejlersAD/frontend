@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../../services/radaiDialog'
 /**
  * Electrical Check List Page
  * SOFT-CODED: Professional project-based checklist management
@@ -631,11 +632,11 @@ const ElectricalCheckList = () => {
   // Save checklist data
   const handleSaveChecklist = async () => {
     if (!selectedProject) {
-      alert('Please select a project first');
+      await radaiAlert('Please select a project first');
       return;
     }
     if (!jobId) {
-      alert('No extraction job to save yet — please extract data first');
+      await radaiAlert('No extraction job to save yet — please extract data first');
       return;
     }
 
@@ -654,14 +655,14 @@ const ElectricalCheckList = () => {
       );
 
       if (response.data.success) {
-        alert('Checklist saved successfully!');
+        await radaiAlert('Checklist saved successfully!');
         if (selectedProject) fetchProjectChecklists(selectedProject.id);
       } else {
-        alert(response.data.message || 'Failed to save checklist');
+        await radaiAlert(response.data.message || 'Failed to save checklist');
       }
     } catch (err) {
       console.error('Save error:', err);
-      alert(err.response?.data?.message || 'Failed to save checklist');
+      await radaiAlert(err.response?.data?.message || 'Failed to save checklist');
     } finally {
       setSaving(false);
     }

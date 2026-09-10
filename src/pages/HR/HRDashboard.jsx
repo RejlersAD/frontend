@@ -1272,6 +1272,8 @@ export default function HRDashboard() {
   const [pending, setPending] = useState({
     pendingLeave: [],
     pendingLeaveCount: 0,
+    pendingOvertime: [],
+    pendingOvertimeCount: 0,
     pendingAlerts: [],
     pendingAlertsCount: 0,
     pendingSalary: [],
@@ -1441,9 +1443,9 @@ export default function HRDashboard() {
     payrollRequestRef.current = true;
     setLoadingPayroll(true);
     try {
-      const [leaveRes, alertsRes, salaryRes, slipsRes, summaryRes] =
+      const [leaveRes, alertsRes, salaryRes, slipsRes, summaryRes, overtimeRes] =
         await Promise.allSettled([
-          payrollService.getLeaveRequests({ status: "PENDING", page_size: 10 }),
+          payrollService.getLeaveRequests({ status__in: "PENDING,RM_APPROVED", page_size: 10 }),
           payrollService.getAuditAlerts({ status: "open", page_size: 10 }),
           payrollService.getPendingSalaryStructures(),
           payrollService.getSalarySlips({
@@ -1451,6 +1453,7 @@ export default function HRDashboard() {
             page_size: 10,
           }),
           payrollService.getDashboardSummary(),
+          hrCoreService.getOvertimeRequests({ status: "pending" }),
         ]);
 
       const leaveList =
@@ -1474,7 +1477,10 @@ export default function HRDashboard() {
       const summary =
         summaryRes.status === "fulfilled" ? summaryRes.value : null;
 
+      const overtimeList = overtimeRes.status === "fulfilled" ? (overtimeRes.value?.results ?? []) : [];
       setPending({
+        pendingOvertime: overtimeList,
+        pendingOvertimeCount: overtimeRes.status === "fulfilled" ? (overtimeRes.value?.count ?? overtimeList.length) : 0,
         pendingLeave: Array.isArray(leaveList) ? leaveList : [],
         pendingLeaveCount:
           leaveRes.status === "fulfilled"
@@ -1863,7 +1869,7 @@ export default function HRDashboard() {
             monthRollup={monthRollup}
             leaveRecords={allLeaveRecords}
             loadingLeaveRecords={loadingLeaveRecords}
-            onOpenLeaveRecords={() => navigate("/hr/payroll?tab=leave")}
+            onOpenLeaveRecords={() => navigate("/hr/leave")}
           />
         )}
 

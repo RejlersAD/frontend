@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 /**
  * Comprehensive Pump Hydraulic Calculation Form
  * AI-Powered Data Entry with complete field coverage from actual pump data sheet
@@ -1018,7 +1019,7 @@ const ComprehensivePumpForm = () => {
         // Special handling for duplicate document_no
         if (error.response.status === 400 && error.response.data?.document_no) {
           console.warn('⚠️ Duplicate document_no detected. Try changing the Document No field or Submit first.');
-          alert('Document No already exists. Please:\n1. Change the Document No field, OR\n2. Click "Submit Calculations" first, then try Excel again');
+          await radaiAlert('Document No already exists. Please:\n1. Change the Document No field, OR\n2. Click "Submit Calculations" first, then try Excel again');
         }
       }
       setDatasheetStatus('error');
@@ -1126,7 +1127,7 @@ const ComprehensivePumpForm = () => {
         // Special handling for duplicate document_no
         if (error.response.status === 400 && error.response.data?.document_no) {
           console.warn('⚠️ Duplicate document_no detected. Try changing the Document No field or Submit first.');
-          alert('Document No already exists. Please:\n1. Change the Document No field, OR\n2. Click "Submit Calculations" first, then try PDF again');
+          await radaiAlert('Document No already exists. Please:\n1. Change the Document No field, OR\n2. Click "Submit Calculations" first, then try PDF again');
         }
       }
       setPdfStatus('error');

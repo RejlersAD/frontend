@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 import React, { useEffect, useState } from 'react'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import payrollEngineService, { downloadBlob } from '../../../../services/payrollEngine.service'
@@ -40,7 +41,7 @@ export default function PayslipDetailModal({ slip: initialSlip, runEditable, onC
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this line item?')) return
+    if (!(await radaiConfirm('Delete this line item?'))) return
     setBusy(true); setError(null)
     try {
       await payrollEngineService.deleteLineItem(id)

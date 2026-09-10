@@ -1,3 +1,4 @@
+import { radaiPrompt, radaiConfirm, radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import analyticsService from '../../services/analyticsService';
 
@@ -296,7 +297,8 @@ const SecurityAlertsTab = ({ alerts: initialAlerts, onRefresh }) => {
   const handleResolve = async (alertId) => {
     setResolving(true);
     try {
-      const notes = prompt('Resolution notes (optional):');
+      const notes = (await radaiPrompt('Resolution notes (optional):'));
+      if (notes === null) return;
       await analyticsService.resolveAlert(alertId, notes || '');
       setAlerts(alerts.filter(a => a.id !== alertId));
       setSelectedAlert(null);
@@ -322,10 +324,10 @@ const SecurityAlertsTab = ({ alerts: initialAlerts, onRefresh }) => {
     }
   };
 
-  const handleBlockIP = (alert) => {
-    if (confirm(`Block IP ${alert.ip_address}? This will prevent all access from this address.`)) {
+  const handleBlockIP = async (alert) => {
+    if ((await radaiConfirm(`Block IP ${alert.ip_address}? This will prevent all access from this address.`))) {
       console.log(`Blocking IP: ${alert.ip_address}`);
-      alert('IP blocked successfully (simulated)');
+      await radaiAlert('IP blocked successfully (simulated)');
     }
   };
 
