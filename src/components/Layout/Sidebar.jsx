@@ -1,4 +1,5 @@
-﻿import React, { useState } from "react";
+import { resolveRouteModule, canAccessRouteModule } from '../../config/serviceAccess.config';
+import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { updateUser } from "../../store/slices/authSlice";
@@ -239,7 +240,7 @@ const Sidebar = ({
 
         if (data.modules && Array.isArray(data.modules)) {
           const moduleCodes = data.modules.map((m) => m.code);
-          setUserModules(moduleCodes);
+          setUserModules(previous => JSON.stringify(previous) === JSON.stringify(moduleCodes) ? previous : moduleCodes);
           console.log("≡ƒöÉ User accessible modules:", moduleCodes);
         } else {
           console.warn("No modules found in response");
@@ -253,9 +254,16 @@ const Sidebar = ({
 
     // SOFT-CODED: depend on stable user ID so the effect only re-fires
     // when the authenticated user changes, not on every Redux object update
-    if (user) {
-      fetchUserModules();
-    }
+    if (!user) return undefined;
+    fetchUserModules();
+    const timer = window.setInterval(fetchUserModules, 60000);
+    window.addEventListener('focus', fetchUserModules);
+    window.addEventListener('radai:access-changed', fetchUserModules);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', fetchUserModules);
+      window.removeEventListener('radai:access-changed', fetchUserModules);
+    };
   }, [user?.id]);
 
   // Debug logging
@@ -576,6 +584,13 @@ const Sidebar = ({
           moduleCode: "sales",
         },
         {
+          id: "salesEmailIntake",
+          title: "Email Intake",
+          icon: EnvelopeIcon,
+          path: "/sales/email-intake",
+          moduleCode: "sales_email_intake",
+        },
+        {
           id: "salesHandovers",
           title: "5.6 Project Handover",
           icon: ArrowRightStartOnRectangleIcon,
@@ -599,6 +614,14 @@ const Sidebar = ({
           path: "/projects",
           description: "Open and manage projects",
           moduleCode: "project_control",
+        },
+        {
+          id: "planningPackage",
+          title: "Plan & Baseline",
+          icon: ClipboardDocumentListIcon,
+          path: "/projects?view=plan-baseline",
+          description: "Prepare and publish project plans",
+          moduleCode: "planning_package",
         },
       ],
     },
@@ -754,7 +777,7 @@ const Sidebar = ({
 
     // Check if user has the required module (soft-coded RBAC)
     if (item.moduleCode) {
-      return userModules.includes(item.moduleCode);
+      return canAccessRouteModule(userModules, resolveRouteModule(item.moduleCode, item.path?.split('?')[0] || '', item.path?.split('?')[1] || ''));
     }
 
     // Items without moduleCode are accessible by default
