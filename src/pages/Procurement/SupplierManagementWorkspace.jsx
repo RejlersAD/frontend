@@ -28,6 +28,7 @@ import {
 import apiClient from '../../services/api.service';
 import AIVendorCreator from './AIVendorCreator';
 import SupplierEditModal from './SupplierEditModal';
+import { readVendorDraft } from '../../services/vendorDraft';
 
 const cx = (...classes) => classes.filter(Boolean).join(' ');
 const DAY = 86400000;
@@ -205,7 +206,10 @@ const SupplierManagementWorkspace = () => {
   const [profileTab, setProfileTab] = useState('overview');
   const [checked, setChecked] = useState([]);
   const [page, setPage] = useState(1);
-  const [creator, setCreator] = useState({ open: false, edit: false, supplier: null });
+  const [creator, setCreator] = useState(() => {
+    const draft = readVendorDraft();
+    return { open: Boolean(draft && !draft.editMode), edit: false, supplier: null };
+  });
   const [enrichment, setEnrichment] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
@@ -331,7 +335,7 @@ const SupplierManagementWorkspace = () => {
 
   return (
     <div className="supplier-workspace min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto w-full max-w-[1800px] px-3 py-3 sm:px-4">
+      <div className="supplier-workspace-content w-full px-3 py-3 sm:px-4">
         <header className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
           <h1 className="page-title text-slate-950">Vendor management</h1>
           <div className="flex flex-wrap items-center gap-2">
@@ -357,7 +361,7 @@ const SupplierManagementWorkspace = () => {
 
         {error && <div className="mt-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setError('')} aria-label="Dismiss error"><XMarkIcon className="h-5 w-5" /></button></div>}
 
-        <div className="mt-2.5 grid gap-2.5 xl:grid-cols-[minmax(0,2fr)_minmax(340px,1fr)]">
+        <div className="supplier-workspace-directory mt-2.5 grid gap-2.5">
           <section className="min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-labelledby="directory-heading">
             <div className="border-b border-slate-300 px-3 py-2.5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

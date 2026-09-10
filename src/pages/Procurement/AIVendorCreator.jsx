@@ -1,5 +1,5 @@
 import { radaiAlert } from '../../services/radaiDialog'
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   XMarkIcon,
   SparklesIcon,
@@ -13,6 +13,9 @@ import {
 } from '@heroicons/react/24/outline';
 import { PROCUREMENT_CONFIG, getCertificationsList, getQualityStandardsList } from '../../config/procurement.config';
 import apiClient from '../../services/api.service';
+import './AIVendorCreator.css';
+import VendorMultiSelect from './VendorMultiSelect';
+import { readVendorDraft, writeVendorDraft, clearVendorDraft } from '../../services/vendorDraft';
 
 const normalizeDateForApi = (value) => {
   if (!value) return '';
@@ -54,41 +57,41 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
     phone: '',
     address: '',
     country: '',
-    
+
     // Financial & Legal (ADDED - were missing!)
     tax_id: '',
     trade_license_number: '',
     vat_number: '',
     payment_terms: '',
     credit_limit: '',
-    
+
     // Categories (CRITICAL - was missing!)
     categories: [],
-    
+
     // Oil & Gas Specific
     certifications: [],
     quality_standards: [],
     approved_materials: [],
     inspection_authority: '',
-    
+
     // HSE Compliance
     hse_rating: '',
     safety_certifications: [],
-    
+
     // ICV (In-Country Value) - Abu Dhabi Market
     icv_percentage: '',
     icv_certificate: '',
     icv_expiry_date: '',
     icv_issuing_authority: 'ADDED',
     is_icv_certified: false,
-    
+
     // ADNOC & Industry (ADDED - were missing!)
     adnoc_approved: false,
     vendor_tenure_years: '',
-    
+
     // Metadata
     notes: '',
-    
+
     // UI-only fields (not sent to backend)
     _ui_business_type: '',      // Soft-coded prefix for UI-only fields
     _ui_specialization: '',     // Helps with AI suggestions
@@ -103,9 +106,51 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
   const [logoPreview, setLogoPreview] = useState('');
   const [removeLogo, setRemoveLogo] = useState(false);
   const [activeFormSection, setActiveFormSection] = useState('basic');
+  const [submitError, setSubmitError] = useState('');
+  const [missingRequiredFields, setMissingRequiredFields] = useState([]);
+  const isMissingRequired = (key) => missingRequiredFields.includes(key)
+    && (Array.isArray(formData[key]) ? formData[key].length === 0 : formData[key] == null || String(formData[key]).trim() === '');
+  const formSession = useRef(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const draftFinished = useRef(false);
+  const [logoData, setLogoData] = useState(null);
+  const saveInFlight = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const cancelForm = () => {
+    if (saveInFlight.current) return;
+    draftFinished.current = true;
+    clearVendorDraft();
+    onClose();
+  };
 
   // Populate form when editing existing vendor
   useEffect(() => {
+    const session = isOpen ? (editMode ? `edit:${vendorData?.id}` : 'create') : null;
+    if (session && formSession.current === session) return;
+    formSession.current = session;
+    draftFinished.current = false;
+    const savedDraft = readVendorDraft();
+    if (isOpen && savedDraft?.session === session) {
+      setFormData(savedDraft.formData);
+      setActiveFormSection(savedDraft.activeFormSection || 'basic');
+      setSubmitError(savedDraft.submitError || '');
+      setMissingRequiredFields(savedDraft.missingRequiredFields || []);
+      setRemoveLogo(savedDraft.removeLogo || false);
+      setLogoData(savedDraft.logoData || null);
+      if (savedDraft.logoData) {
+        const { dataUrl, name, type } = savedDraft.logoData;
+        const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), char => char.charCodeAt(0));
+        setLogoFile(new File([bytes], name, { type }));
+        setLogoPreview(dataUrl);
+      } else {
+        setLogoPreview(savedDraft.formData.logo_url || '');
+      }
+      setDraftReady(true);
+      return;
+    }
+    setDraftReady(isOpen);
+    setSubmitError('');
+    setMissingRequiredFields([]);
     if (isOpen) setActiveFormSection('basic');
     if (editMode && vendorData) {
       setFormData({
@@ -118,46 +163,46 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         phone: vendorData.phone || '',
         address: vendorData.address || '',
         country: vendorData.country || '',
-        
+
         // Financial & Legal
         tax_id: vendorData.tax_id || '',
         trade_license_number: vendorData.trade_license_number || '',
         vat_number: vendorData.vat_number || '',
         payment_terms: vendorData.payment_terms || '',
         credit_limit: vendorData.credit_limit || '',
-        
+
         // Categories
         categories: vendorData.categories || [],
-        
+
         // Oil & Gas Specific
         certifications: vendorData.certifications || [],
         quality_standards: vendorData.quality_standards || [],
         approved_materials: vendorData.approved_materials || [],
         inspection_authority: vendorData.inspection_authority || '',
-        
+
         // HSE Compliance
         hse_rating: vendorData.hse_rating || '',
         safety_certifications: vendorData.safety_certifications || [],
-        
+
         // ICV
         icv_percentage: vendorData.icv_percentage || '',
         icv_certificate: vendorData.icv_certificate || '',
         icv_expiry_date: normalizeDateForApi(vendorData.icv_expiry_date),
         icv_issuing_authority: vendorData.icv_issuing_authority || 'ADDED',
         is_icv_certified: vendorData.is_icv_certified || false,
-        
+
         // ADNOC & Industry
         adnoc_approved: vendorData.adnoc_approved || false,
         vendor_tenure_years: vendorData.vendor_tenure_years || '',
-        
+
         // Metadata
         notes: vendorData.notes || '',
-        
-        // UI-only fields (empty in edit mode)
-        _ui_business_type: '',
-        _ui_specialization: '',
-        _ui_city: '',
-        _ui_website: ''
+
+        // Restore editable fields from the saved vendor only when opening it.
+        _ui_business_type: vendorData.business_type || '',
+        _ui_specialization: vendorData.specialization || '',
+        _ui_city: vendorData.city || '',
+        _ui_website: vendorData.website || ''
       });
       setLogoFile(null);
       setLogoPreview(vendorData.logo_url || vendorData.logo || '');
@@ -180,6 +225,12 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
     }
   }, [editMode, vendorData, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || !draftReady || draftFinished.current) return;
+    writeVendorDraft({session:formSession.current, editMode, vendorData, formData, activeFormSection,
+      submitError, missingRequiredFields, removeLogo, logoData: logoFile ? logoData : null});
+  }, [isOpen, draftReady, editMode, vendorData, formData, activeFormSection, submitError, missingRequiredFields, removeLogo, logoFile, logoData]);
+
   useEffect(() => () => {
     if (logoPreview.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
   }, [logoPreview]);
@@ -201,6 +252,9 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
     setRemoveLogo(false);
     setFormData((current) => ({ ...current, logo_url: '' }));
     setLogoPreview(URL.createObjectURL(file));
+    const reader = new FileReader();
+    reader.onload = () => setLogoData({dataUrl:reader.result, name:file.name, type:file.type});
+    reader.readAsDataURL(file);
   };
 
   // Soft-coded business types for oil & gas industry
@@ -235,11 +289,11 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         .map(word => word.charAt(0).toUpperCase())
         .slice(0, 3)
         .join('');
-      
+
       const typeCode = formData._ui_business_type
         ? formData._ui_business_type.substring(0, 3).toUpperCase()
         : 'GEN';
-      
+
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const generatedCode = `${namePrefix || 'VND'}-${typeCode}-${randomNum}`;
 
@@ -543,22 +597,40 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    if (saveInFlight.current || draftFinished.current) return;
+    setSubmitError('');
 
-    const requiredSection = !formData.name || !formData._ui_business_type || !formData.email || !formData.phone || !formData.country
-      ? 'basic'
-      : formData.categories.length === 0
-        ? 'financial'
-        : !formData.hse_rating
-          ? 'certifications'
-          : formData.is_icv_certified && (!formData.icv_percentage || !formData.icv_certificate || !formData.icv_expiry_date)
-            ? 'icv'
-            : null;
-    if (requiredSection) {
-      setActiveFormSection(requiredSection);
-      await radaiAlert('Please complete the required fields in this section before creating the vendor.');
+    const requiredFields = [
+      ['basic', 'name', 'Company Name'],
+      ['basic', '_ui_business_type', 'Business Type'],
+      ['basic', 'email', 'Email'],
+      ['basic', 'phone', 'Phone'],
+      ['basic', 'country', 'Country'],
+      ['financial', 'categories', 'Procurement Categories'],
+      ['certifications', 'hse_rating', 'HSE Rating'],
+      ...(formData.is_icv_certified ? [
+        ['icv', 'icv_percentage', 'ICV Percentage (%)'],
+        ['icv', 'icv_certificate', 'ICV Certificate Number'],
+        ['icv', 'icv_expiry_date', 'ICV Expiry Date'],
+      ] : []),
+    ];
+    const missingFields = requiredFields.filter(([, key]) => {
+      const value = formData[key];
+      return Array.isArray(value) ? value.length === 0 : value == null || String(value).trim() === '';
+    });
+    setMissingRequiredFields(missingFields.map(([, key]) => key));
+    if (missingFields.length) {
+      const details = VENDOR_FORM_SECTIONS.flatMap(({ id, label }) => {
+        const fields = missingFields.filter(([section]) => section === id).map(([, , name]) => name);
+        return fields.length ? [`${label}: ${fields.join(', ')}`] : [];
+      });
+      setSubmitError(`Please complete the following required fields before ${editMode ? 'saving' : 'creating'} the vendor:\n\n${details.join('\n')}`);
       return;
     }
-    
+
+    saveInFlight.current = true;
+    setSaving(true);
     try {
       // Soft-coded: Filter out UI-only fields (prefixed with _ui_)
       const submitData = Object.keys(formData).reduce((acc, key) => {
@@ -567,18 +639,20 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         }
         return acc;
       }, {});
-      
+      if (!submitData.vendor_code?.trim()) delete submitData.vendor_code;
+      else submitData.vendor_code = submitData.vendor_code.trim();
+
       // Ensure arrays are properly formatted
       submitData.certifications = submitData.certifications || [];
       submitData.quality_standards = submitData.quality_standards || [];
       submitData.categories = submitData.categories || [];
       submitData.approved_materials = submitData.approved_materials || [];
       submitData.safety_certifications = submitData.safety_certifications || [];
-      
+
       // Convert empty strings to null for numeric fields
       const normalizedCreditLimit = normalizeDecimalForApi(submitData.credit_limit);
       if (submitData.credit_limit && normalizedCreditLimit === null) {
-        await radaiAlert('Credit Limit must contain a valid number.');
+        setSubmitError('Credit Limit must contain a valid number.');
         return;
       }
       submitData.credit_limit = normalizedCreditLimit;
@@ -590,7 +664,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
       submitData.specialization = formData._ui_specialization;
       submitData.website = formData._ui_website;
       submitData.city = formData._ui_city;
-      
+
       // Track empty optional fields for smart notification
       const emptyOptionalFields = [];
       if (!submitData.tax_id) emptyOptionalFields.push('Tax ID (TRN)');
@@ -606,12 +680,12 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
       if (submitData.quality_standards.length === 0) emptyOptionalFields.push('Quality Standards');
       if (!submitData.icv_percentage && !submitData.is_icv_certified) emptyOptionalFields.push('ICV Information');
       if (!submitData.notes) emptyOptionalFields.push('Notes');
-      
+
       console.log('📤 Submitting vendor data:', submitData);
       if (emptyOptionalFields.length > 0) {
         console.log('ℹ️ Empty optional fields:', emptyOptionalFields.join(', '));
       }
-      
+
       let requestData = submitData;
       if (logoFile) {
         requestData = new FormData();
@@ -627,30 +701,37 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
         ? await apiClient.put(`/procurement/vendors/${vendorData.id}/`, requestData)
         : await apiClient.post('/procurement/vendors/', requestData);
       const data = response.data;
-      
+      setSubmitError('');
+      draftFinished.current = true;
+      clearVendorDraft();
+
       console.log(editMode ? '✅ Vendor updated successfully:' : '✅ Vendor created successfully:', data);
-      
+
       // Smart success notification with empty field summary
       let successMessage = editMode
         ? `✅ Vendor "${data.name}" updated successfully!\n\nVendor Code: ${data.vendor_code}`
         : `✅ Vendor "${data.name}" created successfully!\n\nVendor Code: ${data.vendor_code}`;
-      
+
       if (!editMode && emptyOptionalFields.length > 0) {
         successMessage += `\n\nℹ️ Empty Optional Fields (${emptyOptionalFields.length}):\nThese can be added later via Edit:\n\n• ${emptyOptionalFields.join('\n• ')}`;
       } else if (!editMode) {
         successMessage += '\n\n✨ All fields completed! Great work!';
       }
-      
+
       await radaiAlert(successMessage);
-      
+
       onVendorCreated(data);
       onClose();
     } catch (error) {
       console.error(editMode ? '❌ Error updating vendor:' : '❌ Error creating vendor:', error);
-      const errorMsg = error.response?.data 
-        ? JSON.stringify(error.response.data, null, 2)
+      const errors = error.response?.data;
+      const errorMsg = errors && typeof errors === 'object'
+        ? Object.entries(errors).map(([field, messages]) => `${field === 'vendor_code' ? 'Vendor Code' : field.replaceAll('_', ' ')}: ${Array.isArray(messages) ? messages.join(' ') : messages}`).join('\n')
         : error.message;
-      await radaiAlert(`❌ Failed to ${editMode ? 'update' : 'create'} vendor:\n\n${errorMsg}\n\nPlease check console for details.`);
+      if (!draftFinished.current) setSubmitError(`Failed to ${editMode ? 'update' : 'create'} vendor:\n\n${errorMsg}${errors?.vendor_code ? '\n\nChoose a different Vendor Code, or leave it blank to generate one automatically when creating a vendor.' : ''}`);
+    } finally {
+      saveInFlight.current = false;
+      setSaving(false);
     }
   };
 
@@ -659,7 +740,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
   return (
     <div className="vendor-creator-modal fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div className="vendor-creator-backdrop fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose}></div>
+        <div className="vendor-creator-backdrop fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
 
         <div className="vendor-creator-dialog inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
           {/* Header */}
@@ -676,7 +757,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={onClose} aria-label="Close vendor creator" className="vendor-creator-close text-white hover:text-gray-200">
+              <button type="button" onClick={cancelForm} aria-label="Close vendor creator" className="vendor-creator-close text-white hover:text-gray-200">
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
@@ -701,16 +782,16 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
             {/* AI Suggestions Panel */}
             {aiSuggestions && (
               <div className={`mb-6 rounded-lg border-2 p-4 ${
-                aiSuggestions.type === 'risk_assessment' 
-                  ? `border-${aiSuggestions.riskColor}-400 bg-${aiSuggestions.riskColor}-50` 
+                aiSuggestions.type === 'risk_assessment'
+                  ? `border-${aiSuggestions.riskColor}-400 bg-${aiSuggestions.riskColor}-50`
                   : 'border-purple-400 bg-purple-50'
               }`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-2">
                       <LightBulbIcon className={`h-5 w-5 ${
-                        aiSuggestions.type === 'risk_assessment' 
-                          ? `text-${aiSuggestions.riskColor}-600` 
+                        aiSuggestions.type === 'risk_assessment'
+                          ? `text-${aiSuggestions.riskColor}-600`
                           : 'text-purple-600'
                       }`} />
                       <h4 className="font-semibold text-gray-900">
@@ -861,6 +942,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   type="text"
                   required
                   value={formData.name}
+                  aria-invalid={isMissingRequired('name')}
+                  aria-describedby={isMissingRequired('name') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="Enter vendor company name"
@@ -877,7 +960,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                     value={formData.vendor_code}
                     onChange={(e) => setFormData({ ...formData, vendor_code: e.target.value })}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="AUTO-GEN-0000"
+                    placeholder={editMode ? 'Keep existing code' : 'Generated automatically when saved'}
                   />
                   <button
                     type="button"
@@ -898,6 +981,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 <select
                   required
                   value={formData._ui_business_type}
+                  aria-invalid={isMissingRequired('_ui_business_type')}
+                  aria-describedby={isMissingRequired('_ui_business_type') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, _ui_business_type: e.target.value })}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                 >
@@ -944,6 +1029,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   type="email"
                   required
                   value={formData.email}
+                  aria-invalid={isMissingRequired('email')}
+                  aria-describedby={isMissingRequired('email') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="vendor@company.com"
@@ -958,6 +1045,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   type="tel"
                   required
                   value={formData.phone}
+                  aria-invalid={isMissingRequired('phone')}
+                  aria-describedby={isMissingRequired('phone') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="+971 XX XXX XXXX"
@@ -985,6 +1074,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   type="text"
                   required
                   value={formData.country}
+                  aria-invalid={isMissingRequired('country')}
+                  aria-describedby={isMissingRequired('country') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, country: e.target.value })}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="United Arab Emirates"
@@ -1091,22 +1182,14 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Procurement Categories *
                 </label>
-                <select
-                  multiple
+                <VendorMultiSelect
+                  label="Procurement Categories"
                   value={formData.categories}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    categories: Array.from(e.target.selectedOptions, option => option.value)
-                  })}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 h-32"
-                >
-                  {Object.entries(PROCUREMENT_CONFIG.categories).map(([code, category]) => (
-                    <option key={code} value={code}>
-                      {category.name} - {category.description}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-gray-500">Hold Ctrl/Cmd to select multiple categories. Select at least one.</p>
+                  onChange={values => setFormData(current => ({ ...current, categories: values }))}
+                  options={Object.entries(PROCUREMENT_CONFIG.categories).map(([code, category]) => ({ value: code, label: category.name, description: category.description }))}
+                  invalid={isMissingRequired('categories')}
+                />
+                <p className="mt-1 text-xs text-gray-500">Select one or more categories.</p>
               </div>
 
               <div className="col-span-2">
@@ -1139,6 +1222,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 <select
                   required
                   value={formData.hse_rating}
+                  aria-invalid={isMissingRequired('hse_rating')}
+                  aria-describedby={isMissingRequired('hse_rating') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, hse_rating: e.target.value })}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                 >
@@ -1157,6 +1242,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   <button
                     type="button"
                     onClick={suggestCertifications}
+                    aria-label="Suggest certifications"
                     disabled={generatingAI || !formData._ui_business_type}
                     className="text-sm text-purple-600 hover:text-purple-800 disabled:opacity-50 flex items-center space-x-1"
                   >
@@ -1164,22 +1250,13 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                     <span>AI Suggest</span>
                   </button>
                 </label>
-                <select
-                  multiple
+                <VendorMultiSelect
+                  label="Certifications"
                   value={formData.certifications}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    certifications: Array.from(e.target.selectedOptions, option => option.value)
-                  })}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 h-32"
-                >
-                  {getCertificationsList().map(cert => (
-                    <option key={cert.code} value={cert.name}>
-                      {cert.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-gray-500">Hold Ctrl/Cmd to select multiple</p>
+                  onChange={values => setFormData(current => ({ ...current, certifications: values }))}
+                  options={getCertificationsList().map(cert => ({ value: cert.name, label: cert.name }))}
+                />
+
               </div>
 
               <div className="col-span-2">
@@ -1188,6 +1265,7 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   <button
                     type="button"
                     onClick={suggestQualityStandards}
+                    aria-label="Suggest quality standards"
                     disabled={generatingAI || !formData._ui_specialization}
                     className="text-sm text-purple-600 hover:text-purple-800 disabled:opacity-50 flex items-center space-x-1"
                   >
@@ -1195,21 +1273,12 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                     <span>AI Suggest</span>
                   </button>
                 </label>
-                <select
-                  multiple
+                <VendorMultiSelect
+                  label="Quality Standards"
                   value={formData.quality_standards}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    quality_standards: Array.from(e.target.selectedOptions, option => option.value)
-                  })}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 h-32"
-                >
-                  {getQualityStandardsList().map(std => (
-                    <option key={std.code} value={std.name}>
-                      {std.name} - {std.description}
-                    </option>
-                  ))}
-                </select>
+                  onChange={values => setFormData(current => ({ ...current, quality_standards: values }))}
+                  options={getQualityStandardsList().map(std => ({ value: std.name, label: std.name, description: std.description }))}
+                />
               </div>
               </>}
 
@@ -1249,6 +1318,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                   max="100"
                   step="0.01"
                   value={formData.icv_percentage}
+                  aria-invalid={isMissingRequired('icv_percentage')}
+                  aria-describedby={isMissingRequired('icv_percentage') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, icv_percentage: e.target.value })}
                   required={formData.is_icv_certified}
                   disabled={!formData.is_icv_certified}
@@ -1265,6 +1336,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 <input
                   type="text"
                   value={formData.icv_certificate}
+                  aria-invalid={isMissingRequired('icv_certificate')}
+                  aria-describedby={isMissingRequired('icv_certificate') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, icv_certificate: e.target.value })}
                   required={formData.is_icv_certified}
                   disabled={!formData.is_icv_certified}
@@ -1280,6 +1353,8 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
                 <input
                   type="date"
                   value={formData.icv_expiry_date}
+                  aria-invalid={isMissingRequired('icv_expiry_date')}
+                  aria-describedby={isMissingRequired('icv_expiry_date') ? 'vendor-validation-error' : undefined}
                   onChange={(e) => setFormData({ ...formData, icv_expiry_date: e.target.value })}
                   required={formData.is_icv_certified}
                   disabled={!formData.is_icv_certified}
@@ -1378,10 +1453,15 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
             </div>}
 
             {/* Form Actions */}
+            {submitError && (
+              <div id="vendor-validation-error" role="alert" className="mt-4 whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                {submitError}
+              </div>
+            )}
             <div className="vendor-form-actions mt-6 flex justify-end space-x-3">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={cancelForm}
                 className="px-6 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
               >
                 Cancel
@@ -1401,9 +1481,10 @@ const AIVendorCreator = ({ isOpen, onClose, onVendorCreated, editMode = false, v
               {activeFormSection === 'payment' ? (
                 <button
                   type="submit"
+                  disabled={saving}
                   className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
                 >
-                  {editMode ? 'Update Vendor' : 'Create Vendor'}
+                  {saving ? 'Saving…' : editMode ? 'Update Vendor' : 'Create Vendor'}
                 </button>
               ) : (
                 <button
