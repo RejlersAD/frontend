@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
+import { useSearchParams } from 'react-router-dom';
 import { Coins, Trophy, ShieldCheck, AlertTriangle, RefreshCw, Download, Search, ChevronLeft, ChevronRight, X, Info, ArrowRight, Server, CheckCircle2, FileCheck2, CalendarDays } from 'lucide-react';
 import analyticsService from '../../services/analyticsService';
 import './AIAdoptionDashboard.css';
@@ -40,7 +41,9 @@ Trend.propTypes = { rows: PropTypes.array.isRequired };
 
 export default function AIAdoptionDashboard() {
   const [outcomeWorkflow, setOutcomeWorkflow] = useState(null);
-  const [tab, setTab] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const tab = [...TABS.map(([key]) => key), 'costs'].includes(requestedTab) ? requestedTab : 'overview';
   const [days, setDays] = useState(30);
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(true);
@@ -74,7 +77,7 @@ export default function AIAdoptionDashboard() {
   useEffect(() => { const timer = setInterval(() => { if (!document.hidden) setRevision(value => value + 1); }, 60000); return () => clearInterval(timer); }, []);
   useEffect(() => { setPage(1); }, [tab, search, filter, costView, days]);
   useEffect(() => { setSelected(null); setData(null); }, [days]);
-  const chooseTab = next => { setTab(next); setSearch(''); setFilter('all'); setSelected(null); setExportMessage(''); };
+  const chooseTab = next => { setSearchParams(previous => { const params = new URLSearchParams(previous); params.set('tab', next); return params; }); setSearch(''); setFilter('all'); setSelected(null); setExportMessage(''); };
   const rows = useMemo(() => {
     const source = tab === 'champion' ? data?.leaderboard.results || [] : tab === 'costs' ? data?.[costView] || [] : data?.applications || [];
     const q = search.trim().toLowerCase();
