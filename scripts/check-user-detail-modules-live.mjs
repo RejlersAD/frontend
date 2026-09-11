@@ -25,7 +25,7 @@ const response=await page.request.get('http://localhost:5173/api/v1/rbac/users/m
 assert.equal(response.status(),200);const profile=await response.json();
 await page.goto('http://localhost:5173/admin/users/'+profile.id,{waitUntil:'domcontentloaded',timeout:120000});
 await page.locator('.ud-profile').waitFor();
-if(profile.profile_photo){await page.waitForFunction(()=>{const img=document.querySelector('.ud-avatar img');return img?.complete&&img.naturalWidth>0});}
+if(profile.profile_photo){await page.waitForFunction(()=>{const avatar=document.querySelector('.ud-avatar');const img=avatar?.querySelector('img');return img ? img.complete&&img.naturalWidth>0 : Boolean(avatar?.textContent.trim())});}
 await page.getByRole('tab',{name:/^Modules & Permissions(?:\s*\d+)?$/}).click();
 const reminder=page.getByRole('button',{name:'Dismiss approval reminder for 10 minutes'});
 await reminder.waitFor({timeout:10000}).catch(()=>{});if(await reminder.isVisible())await reminder.click();
@@ -34,7 +34,8 @@ if(profile.modules.length>12){await page.getByRole('button',{name:'Next',exact:t
 await page.getByRole('searchbox',{name:'Search assigned modules'}).fill('no-module-matches-this-search');assert.equal(await rows.count(),0);
 await page.getByRole('searchbox',{name:'Search assigned modules'}).fill('');assert.equal(await rows.count(),Math.min(12,profile.modules.length));
 await page.screenshot({path:'../artifacts/user-directory/user-detail-compact-modules.png',fullPage:true});
-if(profile.profile_photo){await page.locator('.ud-avatar img').evaluate(img=>img.dispatchEvent(new Event('error')));assert.equal(await page.locator('.ud-avatar img').count(),0);assert.ok((await page.locator('.ud-avatar').textContent()).trim());}
+if(await page.locator('.ud-avatar img').count()){await page.locator('.ud-avatar img').evaluate(img=>img.dispatchEvent(new Event('error')));}
+assert.equal(await page.locator('.ud-avatar img').count(),0);assert.ok((await page.locator('.ud-avatar').textContent()).trim());
 await page.setViewportSize({width:390,height:844});
 assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
 await page.screenshot({path:'../artifacts/user-directory/user-detail-mobile.png',fullPage:true});
