@@ -156,11 +156,12 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
         <div className="flex min-w-0 justify-center">
           <div className="flex w-full max-w-4xl min-w-0 items-center gap-2">
             <GlobalSearch user={user} rbacData={rbacData} />
-            {isAuthenticated && <ContextualHelpButton />}
+            {isAuthenticated && <div className="hidden sm:flex"><ContextualHelpButton /></div>}
           </div>
         </div>
 
         <div className="flex min-w-0 flex-none items-center justify-end gap-1">
+          {isAuthenticated && <div className="flex sm:hidden"><ContextualHelpButton /></div>}
           {isAuthenticated && <NotificationBell />}
           {isAuthenticated && <PWAHeaderInstall />}
 
