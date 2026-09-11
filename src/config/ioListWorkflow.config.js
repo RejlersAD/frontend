@@ -48,14 +48,14 @@ export const IO_LIST_EDIT_CONFIG = {
 // THEME — design tokens
 // ─────────────────────────────────────────────────────────────────────
 export const THEME = {
-  bannerFrom:    'from-slate-900',
-  bannerVia:     'via-indigo-900',
-  bannerTo:      'to-blue-900',
+  bannerFrom:    'from-cyan-600',
+  bannerVia:     'via-blue-600',
+  bannerTo:      'to-indigo-600',
   accent:        'indigo',
-  card:          'bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow',
-  cardHeader:    'px-5 py-3 border-b border-slate-200 bg-slate-50/60',
-  tableHead:     'bg-slate-50 text-slate-700 text-[11px] uppercase tracking-wider font-semibold',
-  tableRow:      'border-t border-slate-100 hover:bg-indigo-50/40 transition-colors',
+  card:          'bg-white/85 backdrop-blur-sm border border-slate-200 rounded-2xl shadow-[0_8px_24px_rgba(15,23,42,0.08)] hover:shadow-[0_14px_30px_rgba(15,23,42,0.12)] transition-all',
+  cardHeader:    'px-5 py-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-sky-50/70',
+  tableHead:     'bg-slate-50/95 text-slate-700 text-[11px] uppercase tracking-wider font-semibold',
+  tableRow:      'border-t border-slate-100 hover:bg-sky-50/50 transition-colors',
   badge:         'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold',
   iconBox:       'w-10 h-10 rounded-lg flex items-center justify-center',
 }

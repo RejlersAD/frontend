@@ -72,7 +72,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: ROUTES.PID_VERIFICATION, // SOFT-CODED: Using centralized route config
         description: 'AI-powered P&ID drawing verification and tag validation',
         moduleCode: 'pid_analysis',
-        badge: 'NEW'
+        badge: ''
       },
       // SOFT-CODED: PFD Quality Checker — deterministic rule engine
       // SOFT-CODED: display name changed from 'PFD Quality Checker' → 'PFD QC'
@@ -84,7 +84,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/pfd-quality-checker',
         description: 'Deterministic PFD quality checks — equipment tags, streams, title block & safety',
         moduleCode: 'pfd_quality',
-        badge: 'NEW'
+        badge: ''
       },
       // SOFT-CODED: PFD Verification disabled — source files preserved
       // {
@@ -105,7 +105,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/datasheet',
         description: 'Process equipment datasheets',
         moduleCode: 'process_datasheet',
-        badge: 'New'
+        badge: ''
       },
       {
         id: 'hmbExtractor',
@@ -115,7 +115,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: ROUTES.HMB_EXTRACTOR,
         description: 'Extract stream data from Heat & Material Balance documents',
         moduleCode: 'process_datasheet',
-        badge: 'New'
+        badge: ''
       }
     ,      {        id: 'lineList',
         name: 'Line List',
@@ -134,7 +134,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/equipment-list',
         description: 'Extract equipment tags (Vessels, Pumps, HE, Reactors…) from P&ID with type classification and line connections',
         moduleCode: 'pid_equipment_list',
-        badge: 'NEW'
+        badge: ''
       }
     ]
   },
@@ -157,7 +157,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/piping/critical-line-list',
         description: '5-document upload (P&ID+PFD+HMB+PMS+NACE) for full 35-column extraction with enrichment',
         moduleCode: 'piping_critical_line_list',
-        badge: 'FULL'
+        badge: ''
       },
       {
         id: 'pms',
@@ -167,7 +167,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/piping/pms',
         description: 'Valve material take-off list — quantities, specs and project rollup',
         moduleCode: 'piping_pms',
-        badge: 'New'
+        badge: ''
       },
       {
         id: 'pipingDataSheet',
@@ -199,7 +199,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/index',
         description: 'Comprehensive instrument index management',
         moduleCode: 'instrument_index',
-        badge: 'New'
+        badge: ''
       },
       // SOFT-CODED: IO List promoted from the Datasheets hub to a first-class
       // sub-feature under 1.3 Instrument (route unchanged — reuses existing
@@ -212,7 +212,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/datasheet/io-list',
         description: 'Generate a canonical Input/Output list from the instrument register, or run a deterministic QC on an existing list',
         moduleCode: 'instrument_io_list',
-        badge: 'Generator + QC'
+        badge: ''
       },
       {
         id: 'instrumentDataSheet',
@@ -222,7 +222,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/datasheet',
         description: 'Instrument specification datasheets',
         moduleCode: 'instrument_datasheet',
-        badge: 'New'
+        badge: ''
       }
     ]
   },
@@ -245,7 +245,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/sld',
         description: 'Single line diagram design and analysis',
         moduleCode: 'electrical_sld',
-        badge: 'New'
+        badge: ''
       },
       // SOFT-CODED: Electrical Check List - NEW FEATURE
       {
@@ -256,7 +256,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/checklist',
         description: 'Electrical engineering quality check lists and compliance verification',
         moduleCode: 'electrical_checklist',
-        badge: 'New'
+        badge: ''
       },
       // SOFT-CODED: Electrical Datasheet - RE-ENABLED
       {
@@ -267,7 +267,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/datasheet',
         description: '27 electrical engineering initiatives - Datasheets, diagrams, layouts, schedules',
         moduleCode: 'electrical_datasheet',
-        badge: 'New'
+        badge: ''
       }
     ]
   },
@@ -290,7 +290,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/civil/datasheet',
         description: 'Civil and structural datasheets',
         moduleCode: 'civil_datasheet',
-        badge: 'New'
+        badge: ''
       }
     ]
   },
@@ -313,7 +313,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/mechanical/datasheet',
         description: 'Mechanical equipment datasheets',
         moduleCode: 'mechanical_datasheet',
-        badge: 'New'
+        badge: ''
       }
     ]
   },
@@ -336,7 +336,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/digitization/spec-customization',
         description: 'AI-powered spec generation and customization',
         moduleCode: 'spec_customization',
-        badge: 'AI'
+        badge: ''
       },
       ...(ENABLE_DIGITIZATION_DATASHEET_FEATURE
         ? [{
@@ -347,7 +347,7 @@ export const ENGINEERING_DISCIPLINES = {
           path: '/engineering/digitization/datasheet',
           description: 'Digital transformation datasheets and documentation',
           moduleCode: 'digitization_datasheet',
-          badge: 'New'
+          badge: ''
         }]
         : []),
       {
@@ -358,7 +358,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/digitization/non-teff-metadata',
         description: 'Extract metadata from Non-TEFF documents (PDF, Excel, Word, AutoCAD)',
         moduleCode: 'non_teff_metadata',
-        badge: 'AI'
+        badge: ''
       },
       {
         id: 'smartPlant3D',
@@ -368,7 +368,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/digitization/smart-plant-3d',
         description: 'Extract and synchronize data from SmartPlant 3D models and databases',
         moduleCode: 'smart_plant_3d',
-        badge: 'New'
+        badge: ''
       }
       // SOFT-CODED: 'Valve Standards Reference' is NOT a separate sidebar entry —
       // it lives under Smart Plant 3D (opened via the card on SmartPlant3DPage,

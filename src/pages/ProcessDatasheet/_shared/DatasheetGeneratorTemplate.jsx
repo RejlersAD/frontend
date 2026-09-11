@@ -432,20 +432,24 @@ const DatasheetGeneratorTemplate = ({ config }) => {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => navigate(config.backRoute || '/engineering/process/datasheet')}
-            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Process Datasheets
-          </button>
+          {config.showBackButton !== false && (
+            <button
+              onClick={() => navigate(config.backRoute || '/engineering/process/datasheet')}
+              className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              Back to Process Datasheets
+            </button>
+          )}
 
-          <div className="flex items-center gap-3 mb-2">
-            {HeaderIcon && <HeaderIcon className={`w-8 h-8 ${accent.text}`} />}
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              {config.pageTitle}
-            </h1>
-          </div>
+          {config.showPageTitle !== false && (
+            <div className="flex items-center gap-3 mb-2">
+              {HeaderIcon && <HeaderIcon className={`w-8 h-8 ${accent.text}`} />}
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                {config.pageTitle}
+              </h1>
+            </div>
+          )}
           <p className="text-gray-600 dark:text-gray-400">{config.pageSubtitle}</p>
         </div>
 

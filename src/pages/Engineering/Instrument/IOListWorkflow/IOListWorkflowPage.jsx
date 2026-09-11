@@ -396,7 +396,7 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
       project_name: '',
       category: 'oil_gas',
       status: 'draft',
-      client_name: '',
+      client: '',
       location: '',
       project_code: '',
       tags: '',
@@ -458,6 +458,17 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
     const catLabel = IO_LIST_WORKFLOW_PROJECT_CATEGORIES.find(x => x.value === category)?.label || category
     const catIcon = IO_LIST_WORKFLOW_PROJECT_CATEGORIES.find(x => x.value === category)?.icon || '📦'
     return <RawBadge bg={c.bg} fg={c.fg}>{catIcon} {catLabel}</RawBadge>
+  }
+
+  const FIELD_ICONS = {
+    project_name: Folder,
+    category: List,
+    status: CheckCircle2,
+    client: BookOpen,
+    location: Calendar,
+    project_code: Hash,
+    tags: Tag,
+    description: Edit3,
   }
 
   return (
@@ -523,68 +534,88 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
       {/* Content area */}
       {showForm ? (
         /* Project form */
-        <div className={THEME.card}>
-          <form onSubmit={handleSave} className="max-w-3xl mx-auto space-y-4 p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">
-              {editingId ? IO_LIST_WORKFLOW_PROJECT_COPY.editModalTitle : IO_LIST_WORKFLOW_PROJECT_COPY.createModalTitle}
-            </h3>
-
-            {IO_LIST_WORKFLOW_PROJECT_FIELDS.map(field => (
-              <div key={field.key}>
-                <label className={`block ${IO_LIST_WORKFLOW_PROJECT_THEME.labelText} mb-1`}>
-                  {field.label} {field.required && <span className="text-red-500">*</span>}
-                </label>
-                {field.type === 'select' ? (
-                  <select
-                    value={formData[field.key] || ''}
-                    onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
-                    required={field.required}
-                    className={`w-full text-sm border ${IO_LIST_WORKFLOW_PROJECT_THEME.inputBorder} rounded-lg px-3 py-2 outline-none`}
-                  >
-                    {field.options.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                ) : field.type === 'textarea' ? (
-                  <textarea
-                    value={formData[field.key] || ''}
-                    onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
-                    placeholder={field.placeholder}
-                    rows={field.rows}
-                    maxLength={field.maxLength}
-                    required={field.required}
-                    className={`w-full text-sm border ${IO_LIST_WORKFLOW_PROJECT_THEME.inputBorder} rounded-lg px-3 py-2 outline-none`}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={formData[field.key] || ''}
-                    onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
-                    placeholder={field.placeholder}
-                    maxLength={field.maxLength}
-                    required={field.required}
-                    className={`w-full text-sm border ${IO_LIST_WORKFLOW_PROJECT_THEME.inputBorder} rounded-lg px-3 py-2 outline-none`}
-                  />
-                )}
-                {field.helpText && <p className="text-xs text-slate-500 mt-1">{field.helpText}</p>}
+        <div className={`${THEME.card} overflow-hidden`}>
+          <div className={`bg-gradient-to-r ${THEME.bannerFrom} ${THEME.bannerVia} ${THEME.bannerTo} px-6 py-4 text-white flex items-start justify-between gap-3`}>
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-white/85 mb-1">
+                <Folder className="w-3.5 h-3.5" /> Project Workspace
               </div>
-            ))}
+              <h3 className="text-lg font-bold truncate">
+                {editingId ? IO_LIST_WORKFLOW_PROJECT_COPY.editModalTitle : IO_LIST_WORKFLOW_PROJECT_COPY.createModalTitle}
+              </h3>
+              <p className="text-xs text-cyan-100 mt-0.5">Define identity, status, and context for this I/O List project.</p>
+            </div>
+            <Badge tone="sky">Structured Form</Badge>
+          </div>
 
-            <div className="flex gap-2 pt-4">
-              <button
-                type="submit"
-                disabled={saving}
-                className={`${IO_LIST_WORKFLOW_PROJECT_THEME.primaryBtn} flex items-center gap-2 disabled:opacity-50`}
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {editingId ? IO_LIST_WORKFLOW_PROJECT_COPY.updateBtn : IO_LIST_WORKFLOW_PROJECT_COPY.saveBtn}
-              </button>
+          <form onSubmit={handleSave} className="p-6 space-y-5">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {IO_LIST_WORKFLOW_PROJECT_FIELDS.map(field => {
+                const FieldIcon = FIELD_ICONS[field.key] || Edit3
+                return (
+                  <div key={field.key} className={field.type === 'textarea' ? 'xl:col-span-2' : ''}>
+                    <label className={`block ${IO_LIST_WORKFLOW_PROJECT_THEME.labelText} mb-1.5`}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <FieldIcon className="w-3.5 h-3.5 text-indigo-500" />
+                        {field.label}
+                      </span>
+                      {field.required && <span className="text-red-500"> *</span>}
+                    </label>
+
+                    {field.type === 'select' ? (
+                      <select
+                        value={formData[field.key] || ''}
+                        onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                        required={field.required}
+                        className={`w-full text-sm border ${IO_LIST_WORKFLOW_PROJECT_THEME.inputBorder} bg-white rounded-xl px-3 py-2.5 outline-none shadow-sm`}
+                      >
+                        {field.options.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : field.type === 'textarea' ? (
+                      <textarea
+                        value={formData[field.key] || ''}
+                        onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                        placeholder={field.placeholder}
+                        rows={field.rows}
+                        maxLength={field.maxLength}
+                        required={field.required}
+                        className={`w-full text-sm border ${IO_LIST_WORKFLOW_PROJECT_THEME.inputBorder} bg-white rounded-xl px-3 py-2.5 outline-none shadow-sm`}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={formData[field.key] || ''}
+                        onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                        placeholder={field.placeholder}
+                        maxLength={field.maxLength}
+                        required={field.required}
+                        className={`w-full text-sm border ${IO_LIST_WORKFLOW_PROJECT_THEME.inputBorder} bg-white rounded-xl px-3 py-2.5 outline-none shadow-sm`}
+                      />
+                    )}
+
+                    {field.helpText && <p className="text-xs text-slate-500 mt-1.5">{field.helpText}</p>}
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => { setShowForm(false); setFormData({}); setEditingId(null) }}
-                className={IO_LIST_WORKFLOW_PROJECT_THEME.secondaryBtn}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-300 bg-white hover:bg-slate-50"
               >
                 {IO_LIST_WORKFLOW_PROJECT_COPY.cancelBtn}
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-600 hover:from-indigo-700 hover:via-blue-700 hover:to-cyan-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {editingId ? IO_LIST_WORKFLOW_PROJECT_COPY.updateBtn : IO_LIST_WORKFLOW_PROJECT_COPY.saveBtn}
               </button>
             </div>
           </form>
@@ -639,9 +670,9 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
                 <ProjectCategoryBadge category={project.category} />
               </div>
 
-              {(project.client_name || project.location) && (
+              {(project.client || project.location) && (
                 <div className="text-xs text-slate-600 space-y-0.5">
-                  {project.client_name && <div>🏢 {project.client_name}</div>}
+                  {project.client && <div>🏢 {project.client}</div>}
                   {project.location && <div>📍 {project.location}</div>}
                 </div>
               )}
@@ -1368,7 +1399,7 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
           onClick={onBackToProjects}
           className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-300 rounded-lg px-3 py-2 bg-white hover:bg-slate-50 flex-shrink-0"
         >
-          <ArrowLeft className="w-4 h-4" /> Projects
+          <ArrowLeft className="w-4 h-4" /> Back to Projects
         </button>
         <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
           <Folder className="w-5 h-5 text-indigo-600" />
@@ -1380,7 +1411,7 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
 
       {/* Project Legend Sheets — I/O List's own, independent legend system */}
       <div className={THEME.card}>
-        <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-5 py-4 rounded-t-2xl flex items-center justify-between text-white">
+        <div className={`bg-gradient-to-r ${THEME.bannerFrom} ${THEME.bannerVia} ${THEME.bannerTo} px-5 py-4 rounded-t-2xl flex items-center justify-between text-white`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
               <BookOpen className="w-5 h-5" />
@@ -2191,7 +2222,7 @@ const MetadataPanel = ({ doc, onPreviewPdf }) => (
 // ─────────────────────────────────────────────────────────────────────
 // Detail View — tabbed
 // ─────────────────────────────────────────────────────────────────────
-const DetailView = ({ doc, onBack, onReExtract, onDownload, onDelete, busyAction, processingDoc, processingMeta }) => {
+const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onDownload, onDelete, busyAction, processingDoc, processingMeta }) => {
   const [activeTab, setActiveTab] = useState('overview')
   const [filterTag, setFilterTag] = useState('')
   // Lifted up from IOListPanel — see its own comment on this same state
@@ -2245,10 +2276,20 @@ const DetailView = ({ doc, onBack, onReExtract, onDownload, onDelete, busyAction
       {/* Header banner */}
       <div className={`bg-gradient-to-r ${THEME.bannerFrom} ${THEME.bannerVia} ${THEME.bannerTo} rounded-2xl shadow-lg overflow-hidden`}>
         <div className="px-6 py-5 text-white">
-          <button onClick={onBack}
-                  className="text-xs text-indigo-200 hover:text-white flex items-center gap-1 mb-2">
-            <ArrowLeft className="w-3.5 h-3.5" /> {PAGE_COPY.detailBack}
-          </button>
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <button onClick={onBack}
+                    className="text-xs text-indigo-200 hover:text-white flex items-center gap-1">
+              <ArrowLeft className="w-3.5 h-3.5" /> {PAGE_COPY.detailBack}
+            </button>
+            {onBackToProjects && (
+              <button
+                onClick={onBackToProjects}
+                className="text-xs text-indigo-200 hover:text-white/95 border border-white/25 rounded-md px-2 py-1 flex items-center gap-1"
+              >
+                <ArrowLeft className="w-3 h-3" /> Back to Projects
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -2673,35 +2714,43 @@ export default function IOListWorkflowPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-[1700px] mx-auto px-4 py-6 space-y-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-sky-50/55 to-indigo-50/60">
+      <div className="max-w-[1700px] mx-auto px-4 py-6 space-y-4 relative">
+        <div className="pointer-events-none absolute -top-10 -left-10 w-72 h-72 rounded-full bg-cyan-200/30 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute top-20 right-0 w-80 h-80 rounded-full bg-indigo-200/35 blur-3xl" aria-hidden />
 
         {/* Page banner (visible only on list view) */}
         {!activeDoc && (
-          <div className={`bg-gradient-to-r ${THEME.bannerFrom} ${THEME.bannerVia} ${THEME.bannerTo} rounded-2xl shadow-lg`}>
-            <div className="px-6 py-6 text-white flex flex-wrap items-center justify-between gap-4">
+          <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/85 backdrop-blur shadow-lg">
+            <div className="pointer-events-none absolute -left-20 -top-24 w-72 h-72 rounded-full bg-cyan-200/35 blur-3xl" aria-hidden />
+            <div className="pointer-events-none absolute -right-24 -bottom-20 w-80 h-80 rounded-full bg-indigo-200/30 blur-3xl" aria-hidden />
+            <div className="relative px-6 py-6 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-0">
-                <div className="w-14 h-14 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
                   <Table2 className="w-7 h-7" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-xs text-indigo-200 mb-0.5">
+                  <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-sky-200 bg-white/70 text-xs font-semibold text-sky-700 mb-1">
                     <Sparkles className="w-3 h-3" /> Engineering · Instrument
                   </div>
-                  <h1 className="text-2xl font-bold truncate">{PAGE_COPY.title}</h1>
-                  <p className="text-sm text-indigo-100 max-w-3xl mt-1">{PAGE_COPY.subtitle}</p>
+                  <h1 className="text-2xl font-bold truncate">
+                    <span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                      {PAGE_COPY.title}
+                    </span>
+                  </h1>
+                  <p className="text-sm text-slate-600 max-w-3xl mt-1">{PAGE_COPY.subtitle}</p>
                 </div>
               </div>
               <Link to={ROUTES.legacyGenerator}
                     title={PAGE_COPY.legacyHint}
-                    className="text-xs text-white/80 hover:text-white border border-white/30 rounded-lg px-3 py-2 flex items-center gap-1.5 whitespace-nowrap">
+                    className="text-xs text-slate-600 hover:text-slate-900 border border-slate-300 bg-white/80 rounded-lg px-3 py-2 flex items-center gap-1.5 whitespace-nowrap shadow-sm hover:bg-white">
                 <ExternalLink className="w-3.5 h-3.5" /> {PAGE_COPY.legacyLink}
               </Link>
             </div>
-            <div className="px-6 py-2 bg-black/20 text-[11px] text-indigo-100 flex items-center gap-1.5">
-              <CheckCircle2 className="w-3 h-3 text-emerald-300" /> {PAGE_COPY.costBanner}
+            <div className="relative px-6 py-2.5 border-t border-slate-200 bg-slate-50/80 text-[11px] text-slate-600 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3 h-3 text-emerald-500" /> {PAGE_COPY.costBanner}
             </div>
-          </div>
+          </section>
         )}
 
         {/* Inline error */}
@@ -2718,6 +2767,7 @@ export default function IOListWorkflowPage() {
           <DetailView
             doc={activeDoc}
             onBack={() => setActiveDoc(null)}
+            onBackToProjects={activeProjectFilter ? () => { setActiveDoc(null); setActiveProjectFilter(null) } : null}
             onReExtract={handleReExtract}
             onDownload={handleDownload}
             onDelete={handleDelete}

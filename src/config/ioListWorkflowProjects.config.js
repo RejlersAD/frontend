@@ -93,7 +93,7 @@ export const IO_LIST_WORKFLOW_PROJECT_FIELDS = [
     helpText:    'Current project stage',
   },
   {
-    key:         'client_name',
+    key:         'client',
     label:       'Client',
     type:        'text',
     placeholder: 'e.g. ADNOC Gas',
@@ -210,15 +210,15 @@ export const IO_LIST_WORKFLOW_PROJECT_THEME = {
   panelRounded:      'rounded-xl',
   
   // Header
-  headerBg:          'bg-gradient-to-r from-indigo-600 to-blue-600',
+  headerBg:          'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600',
   headerText:        'text-white',
   
   // Cards
-  card:              'bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow',
-  cardHover:         'hover:border-indigo-300',
+  card:              'bg-white/90 backdrop-blur-sm border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all',
+  cardHover:         'hover:border-sky-300',
   
   // Buttons
-  primaryBtn:        'bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors',
+  primaryBtn:        'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-700 hover:via-blue-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-all',
   secondaryBtn:      'bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors',
   dangerBtn:         'bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors',
   
@@ -227,7 +227,7 @@ export const IO_LIST_WORKFLOW_PROJECT_THEME = {
   tableRow:          'border-t border-slate-100 hover:bg-indigo-50/40 transition-colors',
   
   // Forms
-  inputBorder:       'border-slate-300 focus:border-indigo-500 focus:ring-indigo-500',
+  inputBorder:       'border-slate-300 focus:border-sky-500 focus:ring-sky-500',
   labelText:         'text-sm font-medium text-slate-700',
   
   // Badge

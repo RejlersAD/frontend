@@ -3,7 +3,7 @@
  * SpecProjectsPage.jsx's ProjectFormModal). Any tool adopting the Project
  * Organizer reuses this instead of building its own modal.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FolderPlusIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { PROJECT_ORGANIZER_CONFIG } from '../../config/projectOrganizer.config';
 
@@ -23,7 +23,7 @@ const Field = ({ label, value, onChange, theme, required }) => (
   </div>
 );
 
-const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme }) => {
+const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme, formError = '' }) => {
   const [form, setForm] = useState(() => ({
     name:        initial?.name        || '',
     code:        initial?.code        || '',
@@ -36,9 +36,37 @@ const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme }) => {
   const [showAdvanced, setShowAdvanced] = useState(
     Boolean(initial && (initial.code || initial.client || initial.plant || initial.discipline))
   );
+  const [nameTouched, setNameTouched] = useState(false);
+  const [codeTouched, setCodeTouched] = useState(Boolean(initial?.code));
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const canSubmit = form.name.trim().length > 0 && !busy;
-  const handleSubmit = (e) => { e?.preventDefault?.(); if (canSubmit) onSubmit(form); };
+  const trimmedName = form.name.trim();
+  const nameError = nameTouched && trimmedName.length === 0 ? 'Project name is required.' : '';
+  const canSubmit = trimmedName.length > 0 && !busy;
+
+  useEffect(() => {
+    if (initial || codeTouched) return;
+    const suggested = trimmedName
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24);
+    setForm((prev) => ({ ...prev, code: suggested }));
+  }, [trimmedName, codeTouched, initial]);
+
+  const handleSubmit = (e) => {
+    e?.preventDefault?.();
+    setNameTouched(true);
+    if (!canSubmit) return;
+    onSubmit({
+      ...form,
+      name: trimmedName,
+      code: form.code.trim(),
+      client: form.client.trim(),
+      plant: form.plant.trim(),
+      discipline: form.discipline.trim(),
+      description: form.description.trim(),
+    });
+  };
 
   return (
     <div style={{
@@ -76,6 +104,20 @@ const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme }) => {
         </div>
 
         <div style={{ padding: '20px 22px', overflow: 'auto', display: 'grid', gap: 14 }}>
+          {formError && (
+            <div style={{
+              border: '1px solid #fecaca',
+              background: '#fef2f2',
+              color: '#991b1b',
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 8,
+              padding: '10px 12px',
+            }}>
+              {formError}
+            </div>
+          )}
+
           <div>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: theme.text,
                             textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
@@ -88,12 +130,19 @@ const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme }) => {
               required
               maxLength={PROJECT_ORGANIZER_CONFIG.nameMaxLen}
               onChange={(e) => update('name', e.target.value)}
+              onBlur={() => setNameTouched(true)}
               placeholder="e.g., ADNOC LNG Train-3"
               style={{
                 width: '100%', padding: '10px 12px', borderRadius: 8,
-                border: `1px solid ${theme.accentBorder}`, fontSize: 14, outline: 'none',
+                border: nameError ? '1px solid #ef4444' : `1px solid ${theme.accentBorder}`,
+                fontSize: 14, outline: 'none',
               }}
             />
+            {nameError && (
+              <div style={{ marginTop: 6, fontSize: 12, color: '#b91c1c', fontWeight: 600 }}>
+                {nameError}
+              </div>
+            )}
           </div>
 
           <div>
@@ -127,7 +176,7 @@ const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme }) => {
           {showAdvanced && (
             <div style={{ display: 'grid', gap: 12, padding: 14, background: theme.accentSoft, borderRadius: 8 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Field label="Code"       value={form.code}       onChange={(v) => update('code', v)} theme={theme} />
+                <Field label="Code"       value={form.code}       onChange={(v) => { setCodeTouched(true); update('code', v); }} theme={theme} />
                 <Field label="Client"     value={form.client}     onChange={(v) => update('client', v)} theme={theme} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
