@@ -1,3 +1,4 @@
+import { useCurrentProfilePhoto } from '../../components/Layout/ProfilePhotoContext';
 import React, { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { createPortal } from 'react-dom';
@@ -14,11 +15,14 @@ const describeError = error => {
 };
 
 function ChampionPhoto({ user, photos, large = false }) {
-  const src = photos?.[user.id];
+  const sharedPhoto = useCurrentProfilePhoto();
+  const isCurrentUser = (user.id != null && sharedPhoto.userId != null && String(user.id) === String(sharedPhoto.userId))
+    || (user.email && user.email.toLowerCase() === String(sharedPhoto.email || '').toLowerCase());
+  const src = (isCurrentUser ? sharedPhoto.photo : null) || photos?.[user.id];
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
   return <span className={`mc-avatar${large ? ' mc-avatar-large' : ''}`}>
-    {src && !failed ? <img src={src} alt={`${user.name} profile`} onError={() => setFailed(true)} /> : <span aria-hidden="true">{(user.name || user.email || '?').trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span>}
+    {src && !failed ? <img key={src} src={src} alt={`${user.name} profile`} onError={() => setFailed(true)} /> : <span aria-hidden="true">{(user.name || user.email || '?').trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span>}
   </span>;
 }
 
