@@ -174,7 +174,7 @@ export default function UserDirectoryWorkspace({ users = [], roles = [], organiz
     { id: 'attention', label: 'Attention required', value: attention.length, hint: 'MFA or account issues', icon: AlertTriangle, color: 'amber' },
   ];
   return <div className="ua-workspace">
-    
+
     <header className="ua-page-heading"><div><h1>Users Management </h1><p>Manage identities, account status and assigned access.</p></div><div className="ua-actions"><button onClick={event => openMenu(event, null, 'export')} disabled={exporting}><Download />{exporting ? 'Exporting…' : 'Export users'}</button><button onClick={onImport} disabled={!canManage}><Upload />Import users</button><button className="ua-primary" onClick={onCreate} disabled={!canManage}><Plus />Add user</button></div></header>
     {message && <div className="ua-message" role="status">{message}<button className="ua-icon-button" aria-label="Dismiss message" onClick={() => setMessage('')}><X /></button></div>}
     <div className={`ua-grid${detail ? '' : ' ua-no-context'}`}><main className="ua-main">
