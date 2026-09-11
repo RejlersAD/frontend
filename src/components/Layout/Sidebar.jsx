@@ -1,4 +1,5 @@
-﻿import React, { useState } from "react";
+import { resolveRouteModule, canAccessRouteModule } from '../../config/serviceAccess.config';
+import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { updateUser } from "../../store/slices/authSlice";
@@ -31,8 +32,11 @@ import {
   BuildingOffice2Icon,
   WrenchScrewdriverIcon,
   RectangleGroupIcon,
+  RectangleStackIcon,
   PresentationChartLineIcon,
   ClipboardDocumentListIcon,
+  ArrowRightStartOnRectangleIcon,
+  LightBulbIcon,
   ShoppingCartIcon,
   IdentificationIcon,
   EnvelopeIcon,
@@ -62,6 +66,7 @@ const TOP_LEVEL_ACCORDION_IDS = [
   "crs",
   "finance",
   "human_resource",
+  "sales",
   "projectControl",
   "procurement",
   "qhse",
@@ -235,7 +240,7 @@ const Sidebar = ({
 
         if (data.modules && Array.isArray(data.modules)) {
           const moduleCodes = data.modules.map((m) => m.code);
-          setUserModules(moduleCodes);
+          setUserModules(previous => JSON.stringify(previous) === JSON.stringify(moduleCodes) ? previous : moduleCodes);
           console.log("≡ƒöÉ User accessible modules:", moduleCodes);
         } else {
           console.warn("No modules found in response");
@@ -249,9 +254,16 @@ const Sidebar = ({
 
     // SOFT-CODED: depend on stable user ID so the effect only re-fires
     // when the authenticated user changes, not on every Redux object update
-    if (user) {
-      fetchUserModules();
-    }
+    if (!user) return undefined;
+    fetchUserModules();
+    const timer = window.setInterval(fetchUserModules, 60000);
+    window.addEventListener('focus', fetchUserModules);
+    window.addEventListener('radai:access-changed', fetchUserModules);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', fetchUserModules);
+      window.removeEventListener('radai:access-changed', fetchUserModules);
+    };
   }, [user?.id]);
 
   // Debug logging
@@ -299,6 +311,7 @@ const Sidebar = ({
 
   // Check if route is active
   const isActiveRoute = (path) => {
+    if (path === "/sales") return location.pathname === path;
     return (
       location.pathname === path || location.pathname.startsWith(path + "/")
     );
@@ -464,7 +477,7 @@ const Sidebar = ({
       children: [
         {
           id: "hrDashboard",
-          title: "4.0 HR Dashboard",
+          title: "4.0 Dashboard",
           icon: ChartBarIcon,
           path: "/hr",
           description: "Consolidated real-time HR command center",
@@ -472,7 +485,7 @@ const Sidebar = ({
         },
         {
           id: "hrEmployees",
-          title: "4.1 Employees",
+          title: "4.1 Employee",
           icon: UsersIcon,
           path: "/hr/employees",
           description: "Employee records and profiles",
@@ -480,15 +493,31 @@ const Sidebar = ({
         },
         {
           id: "hrPayroll",
-          title: "4.2 Payroll",
+          title: "4.2 Payroll Management",
           icon: CurrencyDollarIcon,
           path: "/hr/payroll",
           description: "Payroll processing and management",
           moduleCode: "payroll", // matches DB module code
         },
         {
+          id: "hrAttendance",
+          title: "4.3 Attendance Management",
+          icon: ChartBarIcon,
+          path: "/hr/attendance",
+          description: "Employee attendance and timesheets",
+          moduleCode: "payroll",
+        },
+        {
+          id: "hrLeave",
+          title: "4.4 Leave Management",
+          icon: IdentificationIcon,
+          path: "/hr/leave",
+          description: "Leave requests, approvals and balances",
+          moduleCode: "payroll",
+        },
+        {
           id: "hrOnboarding",
-          title: "4.3 Onboarding | Offboarding",
+          title: "4.5 Onboarding / Offboarding",
           icon: UsersIcon,
           path: "/hr/onboarding",
           description: "Employee lifecycle management",
@@ -500,12 +529,76 @@ const Sidebar = ({
       id: "sales",
       title: getSectionTitle("sales"),
       icon: PresentationChartLineIcon,
-      type: "single",
+      type: "section",
       path: "/sales",
-      moduleCode: "sales",
-      badge: "AI",
-      description: "Internal Platform Usage Analytics",
+      expanded: expandedSections.sales,
+      description: "Opportunity-to-project commercial lifecycle",
       enabled: true,
+      children: [
+        {
+          id: "salesOverview",
+          title: "5.0 Overview",
+          icon: HomeIcon,
+          path: "/sales",
+          description: "Sales and proposals decision dashboard",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesOpportunities",
+          title: "5.1 Opportunity",
+          icon: LightBulbIcon,
+          path: "/sales/opportunities",
+          description: "Qualify and govern the opportunity pipeline",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesProposals",
+          title: "5.2 Proposal",
+          icon: DocumentTextIcon,
+          path: "/sales/proposals",
+          description: "Prepare and control client proposals",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesClients",
+          title: "5.3 Client",
+          icon: BuildingOffice2Icon,
+          path: "/sales/clients",
+          description: "Manage governed client accounts",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesFrameworks",
+          title: "5.4 Framework",
+          icon: RectangleStackIcon,
+          path: "/sales/frameworks",
+          description: "Manage framework agreements",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesForecasts",
+          title: "5.5 Forecast",
+          icon: PresentationChartLineIcon,
+          path: "/sales/forecasts",
+          description: "Review weighted revenue forecasts",
+          moduleCode: "sales",
+        },
+        {
+          id: "salesEmailIntake",
+          title: "Email Intake",
+          icon: EnvelopeIcon,
+          path: "/sales/email-intake",
+          moduleCode: "sales_email_intake",
+        },
+        {
+          id: "salesHandovers",
+          title: "5.6 Project Handover",
+          icon: ArrowRightStartOnRectangleIcon,
+          path: "/sales/project-handovers",
+          description: "Convert approved awards into controlled projects",
+          moduleCode: "sales",
+        },
+      ],
     },
     {
       id: "projectControl",
@@ -521,6 +614,14 @@ const Sidebar = ({
           path: "/projects",
           description: "Open and manage projects",
           moduleCode: "project_control",
+        },
+        {
+          id: "planningPackage",
+          title: "Plan & Baseline",
+          icon: ClipboardDocumentListIcon,
+          path: "/projects?view=plan-baseline",
+          description: "Prepare and publish project plans",
+          moduleCode: "planning_package",
         },
       ],
     },
@@ -676,7 +777,7 @@ const Sidebar = ({
 
     // Check if user has the required module (soft-coded RBAC)
     if (item.moduleCode) {
-      return userModules.includes(item.moduleCode);
+      return canAccessRouteModule(userModules, resolveRouteModule(item.moduleCode, item.path?.split('?')[0] || '', item.path?.split('?')[1] || ''));
     }
 
     // Items without moduleCode are accessible by default
@@ -834,6 +935,11 @@ const Sidebar = ({
 
     for (const item of filteredMenu) {
       if (item.type !== "section") continue;
+
+      if (item.path && location.pathname === item.path) {
+        activeTopLevel = item.id;
+        break;
+      }
 
       for (const child of item.children || []) {
         if (child.type === "subsection") {

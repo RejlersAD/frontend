@@ -1,4 +1,6 @@
-﻿/**
+import { useSearchParams } from 'react-router-dom'
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
+/**
  * Employee Self-Service (ESS) Portal
  * Route: /hr/Employeprofile
  * ============================================================
@@ -20,6 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { LeavePanel, ProfileLeaveSummary, ProfileLeaveRequests } from '../../components/HR/ProfileLeaveWorkspace'
 import { useDispatch, useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import {
@@ -754,200 +757,6 @@ const AIInsightsPanel = ({ insights, loading }) => (
 // Section: Leave Dashboard
 // -----------------------------------------------------------------------------
 
-const LeaveBalanceSection = ({ leaveRecord, requests, loading }) => {
-  const earned    = Number(leaveRecord?.total_earned)   || 0
-  const encashed  = Number(leaveRecord?.total_encashed) || 0
-  const balance   = Number(leaveRecord?.leave_balance)  || 0
-
-  // Calculate taken days per leave type from requests (approved only)
-  const approvedRequests = (requests || []).filter(r => r.status?.toUpperCase() === 'APPROVED')
-  
-  // Group approved requests by leave type and calculate total days taken
-  const leaveTypeUsage = approvedRequests.reduce((acc, req) => {
-    // Extract leave type name from API response
-    // API returns: leave_type (ID) and leave_type_detail (object with name, code, etc.)
-    let leaveTypeName = ''
-    if (req.leave_type_detail && req.leave_type_detail.name) {
-      leaveTypeName = req.leave_type_detail.name
-    } else if (req.leave_type_detail && req.leave_type_detail.code) {
-      leaveTypeName = req.leave_type_detail.code
-    } else if (typeof req.leave_type_display === 'string') {
-      leaveTypeName = req.leave_type_display
-    } else if (typeof req.leave_type === 'string') {
-      leaveTypeName = req.leave_type
-    } else {
-      leaveTypeName = 'annual'  // default fallback
-    }
-    
-    leaveTypeName = String(leaveTypeName).toLowerCase()
-    const days = Number(req.days_requested || req.duration_days || req.days || 0)
-    
-    // Match to config key (annual, sick, emergency, etc.)
-    let configKey = 'annual'  // default
-    if (leaveTypeName.includes('sick')) configKey = 'sick'
-    else if (leaveTypeName.includes('emergency')) configKey = 'emergency'
-    else if (leaveTypeName.includes('compassionate')) configKey = 'compassionate'
-    else if (leaveTypeName.includes('maternity')) configKey = 'maternity'
-    else if (leaveTypeName.includes('paternity')) configKey = 'paternity'
-    else if (leaveTypeName.includes('study')) configKey = 'study'
-    else if (leaveTypeName.includes('unpaid')) configKey = 'unpaid'
-    else if (leaveTypeName.includes('annual')) configKey = 'annual'
-    
-    acc[configKey] = (acc[configKey] || 0) + days
-    return acc
-  }, {})
-
-  // Days Taken = sum across all leave types, computed live from approved
-  // requests — not leaveRecord.total_taken, which is a static snapshot from
-  // the one-off HR Excel import and is never updated as leave gets approved
-  // through the app (it stays 0 while leaveTypeUsage correctly shows real usage).
-  const taken = Object.values(leaveTypeUsage).reduce((sum, d) => sum + d, 0)
-
-  // Filter to only show enabled leave types (soft-coded control)
-  const leaveTypes = Object.entries(LEAVE_TYPE_CONFIG)
-    .filter(([key, cfg]) => cfg.enabled !== false)  // Default to true if enabled flag not set
-    .map(([key, cfg]) => ({
-      ...cfg,
-      key,
-      balance: key === 'annual' ? balance : 0,
-      taken:   leaveTypeUsage[key] || 0,  // Use calculated usage from requests
-    }))
-
-  const pieData = [
-    { name: 'Taken',    value: taken,   fill: '#3b82f6' },
-    { name: 'Balance',  value: balance, fill: '#10b981' },
-    { name: 'Encashed', value: encashed, fill: '#f59e0b' },
-  ].filter(d => d.value > 0)
-
-  const pending  = (requests || []).filter(r => r.status?.toUpperCase() === 'PENDING')
-  const approved = (requests || []).filter(r => r.status?.toUpperCase() === 'APPROVED')
-  const upcoming = approved.filter(r => new Date(r.start_date) >= new Date())
-
-  // Check if we have leave data (for production data availability check)
-  const hasLeaveData = leaveRecord && (balance > 0 || taken > 0 || earned > 0 || encashed > 0)
-
-  return (
-    <div className="space-y-5">
-      {/* Leave Balance Snapshot */}
-      {ESS_FEATURES.showLeaveBalanceSnapshot && (
-        <>
-          {(!hasLeaveData && ESS_FEATURES.requireLeaveDataForSnapshot) ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
-              <div className="flex items-center gap-2">
-                <Icon name="ExclamationTriangleIcon" className="w-5 h-5 flex-shrink-0" />
-                <div>
-                  <div className="font-semibold">Leave data not available</div>
-                  <div className="text-xs text-amber-600 mt-1">
-                    Leave balance records will appear here once your HR administrator configures your leave entitlement.
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-              <KpiCard icon="CalendarDaysIcon" label="Annual Balance"  value={`${balance.toFixed(1)} d`}  sub={`${earned.toFixed(1)} earned`} tone="blue" />
-              <KpiCard icon="ClipboardDocumentCheckIcon" label="Days Taken" value={`${taken.toFixed(1)} d`} sub="This year" tone="green" />
-              <KpiCard icon="BanknotesIcon" label="Encashed" value={`${encashed.toFixed(1)} d`} sub="Leave encashment" tone="amber" />
-              <KpiCard icon="ClockIcon" label="Pending Requests" value={pending.length} sub="Awaiting approval" tone={pending.length > 0 ? 'rose' : 'slate'} />
-            </div>
-          )}
-        </>
-      )}
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        {/* Leave type cards */}
-        <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {leaveTypes.map((lt) => (
-            <div key={lt.key} className={`${lt.bg} border rounded-xl p-4`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className={`text-sm font-semibold ${lt.text}`}>{lt.label}</div>
-                {lt.entitlement > 0 && (
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-white/60 ${lt.text}`}>
-                    {lt.entitlement} d/yr
-                  </span>
-                )}
-              </div>
-              {lt.key === 'annual' ? (
-                <>
-                  <div className={`text-3xl font-bold ${lt.text}`}>{balance.toFixed(1)}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">days remaining</div>
-                  <div className="mt-3">
-                    <ProgressBar
-                      value={taken}
-                      max={lt.entitlement}
-                      color={lt.bar}
-                      label="Used"
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className={`text-3xl font-bold ${lt.text}`}>{lt.taken.toFixed(1)}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">days taken this year</div>
-                  {lt.entitlement > 0 && (
-                    <div className="mt-3">
-                      <ProgressBar
-                        value={lt.taken}
-                        max={lt.entitlement}
-                        color={lt.bar}
-                        label="Used"
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Pie chart */}
-        <SectionCard title="Leave Distribution" icon="ChartPieIcon">
-          {loading ? (
-            <SkeletonBox className="h-40 w-full" />
-          ) : pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={pieData} dataKey="value" cx="50%" cy="50%" outerRadius={65} innerRadius={35}>
-                  {pieData.map((entry, i) => (
-                    <Cell key={i} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} d`]} />
-                <Legend iconType="circle" iconSize={8} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyNotice icon="ChartPieIcon" message="No leave data" />
-          )}
-        </SectionCard>
-      </div>
-
-      {/* Upcoming approved leaves */}
-      {upcoming.length > 0 && (
-        <SectionCard title="Upcoming Approved Leave" icon="CalendarDaysIcon">
-          <div className="divide-y divide-slate-100">
-            {upcoming.slice(0, 5).map((r) => (
-              <div key={r.id} className="py-2.5 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-slate-800">{r.leave_type_display || r.leave_type || 'Leave'}</div>
-                  <div className="text-xs text-slate-400">{fmtDate(r.start_date)} â†’ {fmtDate(r.end_date)}</div>
-                </div>
-                <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full">
-                  {Number(r.days_requested ?? 0)} day{Number(r.days_requested ?? 0) !== 1 ? 's' : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------------
-// Section: Leave Request Form
-// -----------------------------------------------------------------------------
-
 const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitting, submitResult }) => {
   const [form, setForm] = useState({
     leave_type: '',
@@ -980,12 +789,12 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
       if (dow !== 0 && dow !== 6) days++
       d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
     }
-    if (form.half_day) days = Math.max(0.5, days - 0.5)
+    if (form.half_day && form.start_date === form.end_date && days === 1) days = 0.5
     setCalcDays(days)
 
     // Conflict detection against approved requests
     const hasConflict = (requests || []).some(r => {
-      if (!['approved', 'pending'].includes(r.status)) return false
+      if (!['APPROVED', 'PENDING', 'RM_APPROVED'].includes(r.status?.toUpperCase())) return false
       const rs = new Date(r.start_date)
       const re = new Date(r.end_date)
       return s <= re && e >= rs
@@ -1010,7 +819,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
   const types = leaveTypes?.length > 0 ? leaveTypes : defaultTypes
 
   return (
-    <SectionCard title="Apply for Leave" subtitle="Submit a new leave request" icon="PencilSquareIcon">
+    <LeavePanel title="Apply for leave" subtitle="Choose your dates. Your line manager reviews first, then HR.">
       {submitResult?.success && (
         <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl p-3 text-sm flex items-center gap-2">
           <Icon name="CheckCircleIcon" className="w-4 h-4 flex-shrink-0" />
@@ -1033,7 +842,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               value={form.leave_type}
               onChange={(e) => set('leave_type', e.target.value)}
               required
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
             >
               <option value="">Select leave type{ELLIPSIS_DISPLAY}</option>
               {types.map(t => (
@@ -1042,16 +851,10 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
             </select>
           </div>
 
-          {/* Half day toggle */}
           <div className="flex items-end">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <div
-                onClick={() => set('half_day', !form.half_day)}
-                className={`w-10 h-5 rounded-full transition-colors ${form.half_day ? 'bg-blue-500' : 'bg-slate-200'} relative`}
-              >
-                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${form.half_day ? 'translate-x-5' : 'translate-x-0.5'}`} />
-              </div>
-              <span className="text-sm text-slate-600">Half Day</span>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={form.half_day} onChange={event => set('half_day', event.target.checked)} />
+              Half day (one working day only)
             </label>
           </div>
 
@@ -1064,7 +867,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               onChange={(e) => set('start_date', e.target.value)}
               required
               min={todayStr()}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
 
@@ -1077,7 +880,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               onChange={(e) => set('end_date', e.target.value)}
               required
               min={form.start_date || todayStr()}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
         </div>
@@ -1090,7 +893,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
             onChange={(e) => set('reason', e.target.value)}
             rows={3}
             placeholder={"Briefly describe your reason for leave\u2026"}
-            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
           />
         </div>
         
@@ -1111,7 +914,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               onChange={(e) => set('contact_number', e.target.value)}
               required={ESS_LEAVE_FORM_FIELDS.contact_number.required}
               placeholder={ESS_LEAVE_FORM_FIELDS.contact_number.placeholder}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
         )}
@@ -1129,7 +932,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               onChange={(e) => set('substitute_name', e.target.value)}
               required={ESS_LEAVE_FORM_FIELDS.substitute_name.required}
               placeholder={ESS_LEAVE_FORM_FIELDS.substitute_name.placeholder}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
         )}
@@ -1146,17 +949,17 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
                 ref={fileInputRef}
                 type="file"
                 accept={ESS_LEAVE_FORM_FIELDS.attachment.accept}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (file && file.size > ESS_LEAVE_FORM_FIELDS.attachment.maxSize) {
-                    alert(`File size must be less than ${ESS_LEAVE_FORM_FIELDS.attachment.maxSize / 1048576}MB`)
+                    await radaiAlert(`File size must be less than ${ESS_LEAVE_FORM_FIELDS.attachment.maxSize / 1048576}MB`)
                     e.target.value = ''
                     return
                   }
                   set('attachment', file)
                 }}
                 required={ESS_LEAVE_FORM_FIELDS.attachment.required}
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />
               {form.attachment && (
                 <div className="mt-1 text-xs text-slate-600 flex items-center gap-2">
@@ -1194,21 +997,21 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex flex-col items-stretch gap-3 border-t border-slate-100 pt-4">
           <div className="text-xs text-slate-400">
-            Request will go to your manager for approval
+            Line manager review, then HR final approval
           </div>
           <button
             type="submit"
             disabled={submitting || insufficient || !form.leave_type || !form.start_date || !form.end_date}
-            className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-700 text-white text-sm font-medium rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? <Spinner size="sm" /> : <Icon name="PaperAirplaneIcon" className="w-4 h-4" />}
             Submit Request
           </button>
         </div>
       </form>
-    </SectionCard>
+    </LeavePanel>
   )
 }
 
@@ -2144,7 +1947,15 @@ const TeamCalendar = () => {
       .finally(() => setLoading(false))
   }, [viewMonth])
 
-  useEffect(() => { loadCalendar() }, [loadCalendar])
+  useEffect(() => {
+    loadCalendar()
+    window.addEventListener('leave-approval-updated', loadCalendar)
+    window.addEventListener('focus', loadCalendar)
+    return () => {
+      window.removeEventListener('leave-approval-updated', loadCalendar)
+      window.removeEventListener('focus', loadCalendar)
+    }
+  }, [loadCalendar])
 
   const prevMonth = () => setViewMonth(({ year, month }) =>
     month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 })
@@ -2168,7 +1979,7 @@ const TeamCalendar = () => {
     Object.entries(calendarData || {}).forEach(([employeeCode, dates]) => {
       Object.entries(dates || {}).forEach(([date, event]) => {
         if (!m[date]) m[date] = []
-        m[date].push(event?.employee_name || employeeCode || 'Employee')
+        m[date].push(`${event?.employee_name || employeeCode || 'Employee'}${event?.half_day ? ' (half day)' : ''}`)
       })
     })
     return m
@@ -2677,11 +2488,11 @@ function ActivityWizard({ initial, onSave, onClose, submitting, alreadyLoggedHou
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     const h = parseFloat(form.hours_spent)
     if (!form.task_title.trim() || isNaN(h) || h <= 0) return
-    if (h > cfg.maxHoursWarning && !window.confirm(`${h}h seems high. Continue?`)) return
+    if (h > cfg.maxHoursWarning && !(await radaiConfirm(`${h}h seems high. Continue?`))) return
     onSave({ ...form, hours_spent: h.toFixed(2) })
   }
 
@@ -3139,7 +2950,7 @@ function DailyTrackerTab({ currentUser }) {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this activity log?')) return
+    if (!(await radaiConfirm('Delete this activity log?'))) return
     try {
       await payrollService.deleteDailyLog(id)
       setLogs(p => p.filter(l => l.id !== id))
@@ -3562,10 +3373,16 @@ export default function EmployeeSelfService() {
   const { currentUser }    = useSelector((s) => s.rbac) || {}
   const authProfile = currentUser || authUser
 
+  const [profileParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab')
-    return ESS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
+    return requestedTab === 'overtime' ? 'requests' : ESS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
   })
+  useEffect(() => {
+    const tab = profileParams.get('tab')
+    if (tab === 'overtime') setActiveTab('requests')
+    else if (ESS_TABS.some(item => item.id === tab)) setActiveTab(tab)
+  }, [profileParams])
   const [salaryVisible, setSalaryVisible] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoUploadState, setPhotoUploadState] = useState(null)
@@ -3588,6 +3405,16 @@ export default function EmployeeSelfService() {
   const [loadingProfile,  setLoadingProfile]  = useState(true)
   const [loadingTs,       setLoadingTs]       = useState(true)
   const [loadingLeave,    setLoadingLeave]    = useState(true)
+  const [leaveRevision, setLeaveRevision] = useState(0)
+  useEffect(() => {
+    const refresh = () => setLeaveRevision(value => value + 1)
+    window.addEventListener('leave-approval-updated', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.removeEventListener('leave-approval-updated', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
   const [loadingPayroll,  setLoadingPayroll]  = useState(true)
   const [loadingNotifications, setLoadingNotifications] = useState(true)
 
@@ -3743,7 +3570,7 @@ export default function EmployeeSelfService() {
       // mine=true forces scoping to the current user's own requests even when
       // they hold an HR/Admin role (which otherwise gets unrestricted visibility
       // for the Leave Management / Approval Tracker views).
-      payrollService.getLeaveRequests({ mine: true, page_size: 50 }).catch(() => ({ results: [] })),
+      payrollService.getLeaveRequests({ mine: true, year: new Date().getFullYear(), page_size: 50 }).catch(() => ({ results: [] })),
       // 2026-08-31: this call had no `mine: true` (unlike its sibling right
       // above) — the comment below claimed the backend "auto-scopes... no
       // need to pass employee_code", but it never actually did that for an
@@ -3753,7 +3580,7 @@ export default function EmployeeSelfService() {
       // unfiltered list back and picked up an arbitrary employee's balance
       // instead of their own — confirmed live for a super_admin account.
       // mine=true forces self-scoping regardless of role, same as above.
-      payrollService.getLeaveRecords({ mine: true, page_size: 5 }).catch(() => ({ results: [] })),
+      payrollService.getLeaveRecords({ mine: true, year: new Date().getFullYear(), page_size: 5 }).catch(() => ({ results: [] })),
     ]).then(([types, reqRes, recRes]) => {
       // Filter leave types to only show enabled types from ESS_LEAVE_TYPE_CONFIG.
       // To enable/disable a type, change `enabled` in hrLeave.config.js — no code change needed.
@@ -3779,7 +3606,7 @@ export default function EmployeeSelfService() {
       const recs = Array.isArray(recRes) ? recRes : recRes?.results || []
       setLeaveRecord(recs.length > 0 ? recs[0] : null)
     }).finally(() => setLoadingLeave(false))
-  }, [profile])
+  }, [profile, leaveRevision])
 
   // -- Load payroll data -------------------------------------------------------
   useEffect(() => {
@@ -3910,7 +3737,8 @@ export default function EmployeeSelfService() {
         response = await payrollService.createLeaveRequest(payload)
       }
       
-      setSubmitResult({ success: true, message: 'Leave request submitted successfully! Awaiting manager approval.' })
+      window.dispatchEvent(new Event('leave-approval-updated'))
+      setSubmitResult({ success: true, message: `Leave request submitted. Awaiting ${response?.line_manager_name || 'line manager'} approval, followed by HR.` })
       // Reload requests — mine=true scopes to current user even for HR/Admin roles
       const reqRes = await payrollService.getLeaveRequests({ mine: true, page_size: 50 }).catch(() => ({ results: [] }))
       const reqs   = Array.isArray(reqRes) ? reqRes : reqRes?.results || []
@@ -3918,7 +3746,7 @@ export default function EmployeeSelfService() {
     } catch (err) {
       const msg = err?.response?.data?.detail ||
                   err?.response?.data?.non_field_errors?.[0] ||
-                  Object.values(err?.response?.data || {})?.[0]?.[0] ||
+                  Object.values(err?.response?.data || {}).flat().join(' ') ||
                   'Failed to submit leave request. Please try again.'
       setSubmitResult({ error: msg })
     } finally {
@@ -3927,7 +3755,7 @@ export default function EmployeeSelfService() {
   }, [profile])
 
   // -- Tab notification badges -------------------------------------------------
-  const pendingLeave   = leaveRequests.filter(r => r.status?.toUpperCase() === 'PENDING').length
+  const pendingLeave   = leaveRequests.filter(r => ['PENDING', 'RM_APPROVED'].includes(r.status?.toUpperCase())).length
   const unreadNotifs   = notifications.filter(n => !n.is_read).length
 
   // Days Taken — live sum from approved requests. Matches LeaveBalanceSection's
@@ -4045,12 +3873,13 @@ export default function EmployeeSelfService() {
               </div>
             )}
             
-            <LeaveBalanceSection
+            <ProfileLeaveSummary
+              typeConfig={LEAVE_TYPE_CONFIG}
               leaveRecord={leaveRecord}
               requests={leaveRequests}
               loading={loadingLeave}
             />
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.65fr)]">
               <LeaveRequestForm
                 leaveTypes={leaveTypes}
                 leaveRecord={leaveRecord}
@@ -4059,61 +3888,7 @@ export default function EmployeeSelfService() {
                 submitting={submitting}
                 submitResult={submitResult}
               />
-              <SectionCard title="My Leave Requests" subtitle="Recent requests" icon="ClipboardDocumentListIcon">
-                {loadingLeave ? (
-                  <div className="space-y-2">{[...Array(4)].map((_, i) => <SkeletonBox key={i} className="h-12" />)}</div>
-                ) : leaveRequests.length === 0 ? (
-                  <EmptyNotice icon="CalendarDaysIcon" message="No leave requests found" />
-                ) : (
-                  <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
-                    {leaveRequests.slice(0, 15).map(r => {
-                      const st = (r.status || '').toUpperCase()
-                      const sm = {
-                        PENDING:     'bg-amber-50 text-amber-700 border-amber-200',
-                        RM_APPROVED: 'bg-blue-50 text-blue-700 border-blue-200',
-                        RM_REJECTED: 'bg-orange-50 text-orange-700 border-orange-200',
-                        APPROVED:    'bg-emerald-50 text-emerald-700 border-emerald-200',
-                        REJECTED:    'bg-rose-50 text-rose-700 border-rose-200',
-                        CANCELLED:   'bg-slate-50 text-slate-500 border-slate-200',
-                      }[st] || 'bg-slate-50 text-slate-500 border-slate-200'
-                      const stLabel = r.status_display || {
-                        PENDING:     'Pending',
-                        RM_APPROVED: 'Awaiting HR',
-                        RM_REJECTED: 'Rejected by Manager',
-                        APPROVED:    'Approved',
-                        REJECTED:    'Rejected',
-                        CANCELLED:   'Cancelled',
-                      }[st] || st
-                      return (
-                        <div key={r.id} className="py-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <div className="text-sm font-medium text-slate-800">
-                                {r.leave_type_display || r.leave_type || 'Leave'}
-                              </div>
-                              <div className="text-xs text-slate-400">
-                                {fmtDate(r.start_date)} {EMPTY_DISPLAY} {fmtDate(r.end_date)}
-                                {r.duration_days ? ` ${BULLET_DISPLAY} ${r.duration_days}d` : ''}
-                              </div>
-                            </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${sm}`}>
-                              {stLabel}
-                            </span>
-                          </div>
-                          {r.reason && <div className="text-xs text-slate-400 mt-0.5 truncate">{r.reason}</div>}
-                          {/* Show RM reviewer when applicable */}
-                          {(st === 'RM_APPROVED' || st === 'APPROVED') && r.rm_reviewed_by_name && (
-                            <div className="text-xs text-blue-500 mt-0.5">
-                              Manager: {r.rm_reviewed_by_name}
-                              {r.rm_reviewed_at && ` · ${r.rm_reviewed_at.slice(0,10)}`}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </SectionCard>
+              <ProfileLeaveRequests requests={leaveRequests} loading={loadingLeave} />
             </div>
           </div>
         )

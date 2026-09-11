@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -1273,11 +1274,11 @@ const DesignIQLists = () => {
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   // Validate at least one component is enabled
                   const hasEnabled = lineNumberFormat.components.some(c => c.enabled);
                   if (!hasEnabled) {
-                    alert('Please enable at least one component');
+                    await radaiAlert('Please enable at least one component');
                     return;
                   }
                   setShowFormatConfigModal(false);

@@ -6,6 +6,8 @@ import Footer from './Footer'
 import Sidebar from './Sidebar'
 import ProcurementApprovalReminder from '../ProcurementApprovalReminder'
 import apiClient from '../../services/api.service'
+import { HelpContextProvider } from '../help/HelpContext'
+import ContextualHelpDrawer from '../help/ContextualHelpDrawer'
 
 /**
  * Layout Component
@@ -104,11 +106,12 @@ const Layout = () => {
     || /^\/procurement\/requisitions\/[^/]+\/edit$/.test(location.pathname)
   )
   const isViewportWorkspace = ['/dashboard', '/approvals', '/notifications'].includes(location.pathname)
+  const isVendorWorkspace = location.pathname === '/procurement/vendors'
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
   // Hide the shared footer on public pages that render their own or are auth flow pages.
   const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isViewportWorkspace && !isFlushWorkspace
 
-  return (
+  const application = (
     <div className={`${isApplicationShell ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex bg-gray-50 dark:bg-gray-900`}>
       {showSidebar && (
         <Sidebar
@@ -129,15 +132,20 @@ const Layout = () => {
             profilePhotoUrl={authenticatedProfilePhoto}
           />
         )}
-        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace ? 'pt-2 sm:pt-3' : ''}`}>
+        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace ? 'pt-2 sm:pt-3' : ''}`}>
           <Outlet />
         </main>
         {showFooter && <Footer />}
       </div>
 
       {showHeader && <ProcurementApprovalReminder />}
+      {showHeader && <ContextualHelpDrawer />}
     </div>
   )
+
+  return isApplicationShell
+    ? <HelpContextProvider>{application}</HelpContextProvider>
+    : application
 }
 
 export default Layout

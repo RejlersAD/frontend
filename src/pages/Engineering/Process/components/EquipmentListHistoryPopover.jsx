@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-toastify'
 import {
@@ -63,7 +64,7 @@ export default function EquipmentListHistoryPopover({ activeEquipmentList, onCha
   }
 
   const onDelete = async (id) => {
-    if (!window.confirm('Delete this uploaded Equipment List?')) return
+    if (!(await radaiConfirm('Delete this uploaded Equipment List?'))) return
     try {
       await deleteEquipmentList(id)
       await refresh()

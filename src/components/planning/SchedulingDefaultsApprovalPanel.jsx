@@ -1,3 +1,4 @@
+import { radaiPrompt } from '../../services/radaiDialog'
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Clock, Loader2, RefreshCw, ShieldCheck, XCircle } from 'lucide-react'
@@ -23,7 +24,7 @@ export default function SchedulingDefaultsApprovalPanel({ projectId, onNotice, o
   useEffect(() => { load() }, [load])
 
   const decide = async (proposal, decision) => {
-    const comment = window.prompt(decision === 'approved' ? 'Final approval comment (optional)' : 'Rejection reason (required)', '')
+    const comment = (await radaiPrompt(decision === 'approved' ? 'Final approval comment (optional)' : 'Rejection reason (required)', ''))
     if (comment === null || (decision === 'rejected' && !comment.trim())) return
     setBusy(`${proposal.id}-${decision}`)
     try {

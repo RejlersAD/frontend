@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiAlert } from '../services/radaiDialog'
 /**
  * User Detail Page
  * Comprehensive user profile and activity view
@@ -126,7 +127,7 @@ const UserDetail = () => {
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+    if (!(await radaiConfirm('Are you sure you want to delete this user? This action cannot be undone.'))) {
       return
     }
 
@@ -141,11 +142,11 @@ const UserDetail = () => {
 
       if (!response.ok) throw new Error('Failed to delete user')
 
-      alert('User deleted successfully')
+      await radaiAlert('User deleted successfully')
       navigate('/admin/users')
     } catch (err) {
       console.error('Error deleting user:', err)
-      alert('Failed to delete user')
+      await radaiAlert('Failed to delete user')
     }
   }
 
@@ -169,12 +170,12 @@ const UserDetail = () => {
       setUserData(normalizeUserProfile(updated))
     } catch (err) {
       console.error('Error updating status:', err)
-      alert('Failed to update user status')
+      await radaiAlert('Failed to update user status')
     }
   }
 
   const handleResetPassword = async () => {
-    if (!window.confirm('Send password reset email to this user?')) {
+    if (!(await radaiConfirm('Send password reset email to this user?'))) {
       return
     }
 
@@ -190,10 +191,10 @@ const UserDetail = () => {
 
       if (!response.ok) throw new Error('Failed to reset password')
 
-      alert('Password reset email sent successfully')
+      await radaiAlert('Password reset email sent successfully')
     } catch (err) {
       console.error('Error resetting password:', err)
-      alert('Failed to send password reset email')
+      await radaiAlert('Failed to send password reset email')
     }
   }
 

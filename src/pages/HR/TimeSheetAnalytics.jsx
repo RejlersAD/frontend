@@ -969,7 +969,7 @@ const Stat = ({ label, value, ok }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
-const TimeSheetAnalytics = () => {
+const TimeSheetAnalytics = ({ embedded = false }) => {
   const [activeTab, setActiveTab] = useState(TIMESHEET_DEFAULT_TAB)
   const [health, setHealth] = useState(null)
   const [healthError, setHealthError] = useState(null)
@@ -1004,7 +1004,7 @@ const TimeSheetAnalytics = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      {!embedded && <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <HeroIcons.ClockIcon className="w-6 h-6 text-blue-600" />
@@ -1020,7 +1020,7 @@ const TimeSheetAnalytics = () => {
           <HeroIcons.ArrowPathIcon className="w-4 h-4" />
           Refresh status
         </button>
-      </div>
+      </div>}
 
       {healthError && (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-lg text-sm">

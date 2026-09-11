@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../services/radaiDialog'
 import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -460,7 +461,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
   };
 
   const handleDeleteProject = async (project) => {
-    if (!window.confirm(`Delete planning project "${project.name}"? It will be removed from the dashboard immediately.`)) {
+    if (!(await radaiConfirm(`Delete planning project "${project.name}"? It will be removed from the dashboard immediately.`))) {
       return;
     }
     try {

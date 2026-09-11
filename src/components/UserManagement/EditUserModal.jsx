@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchDepartments, fetchJobTitles } from '../../store/slices/rbacSlice';
@@ -205,7 +206,7 @@ const EditUserModal = ({
     }
 
     if (EDIT_USER_CONFIG.behavior.confirmBeforeSave) {
-      if (!window.confirm(EDIT_USER_CONFIG.messages.confirmation.save)) {
+      if (!(await radaiConfirm(EDIT_USER_CONFIG.messages.confirmation.save))) {
         return;
       }
     }
@@ -235,9 +236,9 @@ const EditUserModal = ({
   };
 
   // Handle close with unsaved changes warning
-  const handleClose = () => {
+  const handleClose = async () => {
     if (hasUnsavedChanges && EDIT_USER_CONFIG.behavior.showUnsavedWarning) {
-      if (!window.confirm('You have unsaved changes. Are you sure you want to close?')) {
+      if (!(await radaiConfirm('You have unsaved changes. Are you sure you want to close?'))) {
         return;
       }
     }
@@ -417,9 +418,9 @@ const EditUserModal = ({
                 <input
                   type="checkbox"
                   checked={value || false}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     if (field.requireConfirmation) {
-                      if (window.confirm(field.confirmMessage)) {
+                      if ((await radaiConfirm(field.confirmMessage))) {
                         handleFieldChange(field.name, e.target.checked);
                       }
                     } else {

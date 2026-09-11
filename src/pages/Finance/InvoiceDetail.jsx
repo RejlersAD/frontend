@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 /**
  * Invoice Detail Page
  * View invoice details, PDF preview, and approval workflow
@@ -35,7 +36,7 @@ const InvoiceDetail = () => {
       await financeService.processInvoice(id);
       await fetchInvoice();
     } catch (error) {
-      alert('Failed to process invoice');
+      await radaiAlert('Failed to process invoice');
     } finally {
       setProcessing(false);
     }

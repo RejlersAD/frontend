@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../../services/radaiDialog'
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -171,9 +172,9 @@ const CriticalStressLineList = () => {
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!extractedData || !extractedData.lines || extractedData.lines.length === 0) {
-      alert('No data to export');
+      await radaiAlert('No data to export');
       return;
     }
 

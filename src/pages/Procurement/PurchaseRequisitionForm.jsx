@@ -1,4 +1,5 @@
-﻿/**
+import { radaiAlert } from '../../services/radaiDialog'
+/**
  * Purchase Requisition Form Component
  * Aligned with RAD-OM-PRC-0001 FRM -1 Rev 0 template
  * 
@@ -1376,7 +1377,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             ? `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), the Level 2 Vice President${formData.po_applicable ? '.' : ', and default Level 5 CEO.'}`
             : `Assign Procurement Level 0, exactly ${levelOneApproverCount} Level 1 approver(s), Level 3 (MoP), and default Level 4 (VP Delivery)${formData.po_applicable ? '. Level 2 (MoE) is optional.' : ', plus default Level 5 CEO. Level 2 (MoE) is optional.'}`
         }));
-        alert('Complete the required approval levels before submitting.');
+        await radaiAlert('Complete the required approval levels before submitting.');
         return;
       }
       
@@ -1454,9 +1455,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         setErrors(prev => ({ ...prev, ...apiErrors }));
       }
       const apiMessage = apiErrors.error || apiErrors.detail || firstApiError(apiErrors);
-      alert(apiMessage || error.message || (submitForApproval
+      (await radaiAlert(apiMessage || error.message || (submitForApproval
         ? 'Failed to submit requisition. Please check all required fields.'
-        : 'Failed to save draft. Please try again.'));
+        : 'Failed to save draft. Please try again.')));
     } finally {
       submissionInFlightRef.current = false;
       setSubmitLoading(false);

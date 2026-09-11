@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../../services/radaiDialog'
 /**
  * BulkMasterIndex — NONTEF Master Index bulk digitization (expert UX).
  *
@@ -1395,7 +1396,7 @@ const ReviewGrid = ({
       await openItemFileInNewTab(apiClient, bid, it.item_id);
     } catch (err) {
       // eslint-disable-next-line no-alert
-      window.alert(err?.message || 'Could not open the original file.');
+      await radaiAlert(err?.message || 'Could not open the original file.');
     }
   }, [batch]);
 

@@ -1,3 +1,4 @@
+import { radaiAlert } from '../services/radaiDialog'
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -79,7 +80,7 @@ const ProjectControl = () => {
     e.preventDefault();
     
     if (!formData.name || !formData.code) {
-      alert('Please fill in project name and code');
+      await radaiAlert('Please fill in project name and code');
       return;
     }
 
@@ -93,7 +94,7 @@ const ProjectControl = () => {
         }
       );
       
-      alert('Project created successfully!');
+      await radaiAlert('Project created successfully!');
       setShowCreateModal(false);
       fetchProjects();
       fetchStatistics();
@@ -111,7 +112,7 @@ const ProjectControl = () => {
       });
     } catch (error) {
       console.error('Failed to create project:', error);
-      alert(error.response?.data?.message || 'Failed to create project');
+      await radaiAlert(error.response?.data?.message || 'Failed to create project');
     }
   };
 

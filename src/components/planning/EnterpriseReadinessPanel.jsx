@@ -1,3 +1,4 @@
+import { radaiPrompt } from '../../services/radaiDialog'
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -69,7 +70,7 @@ const EnterpriseReadinessPanel = ({ projectId, projectName, canManage, onNotice 
   }
 
   const executeCleanup = async () => {
-    const confirmation = window.prompt(`Type the project name to archive eligible operational history:\n${projectName}`)
+    const confirmation = (await radaiPrompt(`Type the project name to archive eligible operational history:\n${projectName}`))
     if (confirmation !== projectName) {
       if (confirmation !== null) onNotice('error', 'Project-name confirmation did not match.')
       return

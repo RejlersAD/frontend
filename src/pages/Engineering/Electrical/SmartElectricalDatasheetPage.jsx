@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiPrompt, radaiAlert } from '../../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -696,7 +697,7 @@ const SmartElectricalDatasheetPage = () => {
   };
 
   const archiveFromHistory = async (item) => {
-    if (!window.confirm(`Archive "${item.title || item.id.slice(0, 8)}"?`)) return;
+    if (!(await radaiConfirm(`Archive "${item.title || item.id.slice(0, 8)}"?`))) return;
     try {
       await electricalDatasheetService.archiveGenerated(item.id);
       setHistoryItems(prev => prev.filter(h => h.id !== item.id));
@@ -775,13 +776,13 @@ const SmartElectricalDatasheetPage = () => {
 
   const handleSnapshot = async () => {
     if (!results?.datasheet_id) return;
-    const label = window.prompt('Revision label (e.g. Rev B for IFR):', 'B');
+    const label = (await radaiPrompt('Revision label (e.g. Rev B for IFR):', 'B'));
     if (!label) return;
     try {
       await electricalDatasheetService.createSnapshot(results.datasheet_id, label);
-      window.alert(`Snapshot "${label}" saved.`);
+      await radaiAlert(`Snapshot "${label}" saved.`);
     } catch (e) {
-      window.alert('Snapshot failed: ' + (e.response?.data?.error || e.message));
+      await radaiAlert('Snapshot failed: ' + (e.response?.data?.error || e.message));
     }
   };
 
@@ -793,7 +794,7 @@ const SmartElectricalDatasheetPage = () => {
       setShareLink(fullUrl);
       try { await navigator.clipboard.writeText(fullUrl); } catch { /* ignore */ }
     } catch (e) {
-      window.alert('Share failed: ' + (e.response?.data?.error || e.message));
+      await radaiAlert('Share failed: ' + (e.response?.data?.error || e.message));
     }
   };
 

@@ -111,7 +111,7 @@ export function canForcePayrollRun(authUser, rbacUser) {
 
 // Frontend sub-tabs inside the engine
 export const ENGINE_TABS = [
-  { key: 'runs',        label: 'Monthly Runs',  description: 'Generate, review and approve payroll runs' },
+  { key: 'runs',        label: 'Payroll runs',  description: 'Generate, review and approve payroll runs' },
   { key: 'employees',   label: 'Employees',     description: 'Master roster of all payroll-eligible staff' },
   { key: 'adjustments', label: 'Adjustments',   description: 'Pending earnings & deductions for upcoming runs' },
   { key: 'comparison',  label: 'Comparison',    description: 'Reconcile a run against external HR files (ValueFrame, Sympa, etc.)' },

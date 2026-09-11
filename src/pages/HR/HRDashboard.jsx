@@ -20,9 +20,11 @@ import { useSelector } from "react-redux";
 import * as HeroIcons from "@heroicons/react/24/outline";
 
 import hrCoreService from "../../services/hrCore.service";
+import hrFoundationService from "../../services/hrFoundation.service";
 import timesheetService from "../../services/timesheet.service";
 import payrollService from "../../services/payroll.service";
 import apiClient from "../../services/api.service";
+import HRCommandCenterView from "./HRCommandCenterView";
 import {
   fmtCurrency,
   PAYROLL_WORKFLOW_STAGES,
@@ -1254,11 +1256,13 @@ export default function HRDashboard() {
   const lifecycleRequestRef = useRef(false);
   const timesheetRequestRef = useRef(false);
   const payrollRequestRef = useRef(false);
+  const performanceRequestRef = useRef(false);
 
   const [workforce, setWorkforce] = useState([]);
   const [live, setLive] = useState(null);
   const [daily, setDaily] = useState(null);
   const [monthly, setMonthly] = useState(null);
+  const [performanceReviews, setPerformanceReviews] = useState([]);
   const [lifecycleRequests, setLifecycleRequests] = useState([]);
 
   // KPI drill-down report — id of the tile that was clicked (null = closed)
@@ -1268,6 +1272,8 @@ export default function HRDashboard() {
   const [pending, setPending] = useState({
     pendingLeave: [],
     pendingLeaveCount: 0,
+    pendingOvertime: [],
+    pendingOvertimeCount: 0,
     pendingAlerts: [],
     pendingAlertsCount: 0,
     pendingSalary: [],
@@ -1409,6 +1415,23 @@ export default function HRDashboard() {
     }
   }, []);
 
+  const loadPerformanceReviews = useCallback(async () => {
+    if (performanceRequestRef.current) return;
+    performanceRequestRef.current = true;
+    try {
+      const [submitted, acknowledged] = await Promise.all([
+        hrFoundationService.getReviews({ status: "submitted", page_size: 500 }),
+        hrFoundationService.getReviews({ status: "acknowledged", page_size: 500 }),
+      ]);
+      setPerformanceReviews([...submitted, ...acknowledged]);
+    } catch (error) {
+      console.warn("[HRDashboard] performance reviews load failed", error);
+      setPerformanceReviews([]);
+    } finally {
+      performanceRequestRef.current = false;
+    }
+  }, []);
+
   // ── Fetch pending actions from 4.2 Payroll + 4.3 Leave/Salary (polled)
   const loadPayrollData = useCallback(async () => {
     if (
@@ -1420,9 +1443,9 @@ export default function HRDashboard() {
     payrollRequestRef.current = true;
     setLoadingPayroll(true);
     try {
-      const [leaveRes, alertsRes, salaryRes, slipsRes, summaryRes] =
+      const [leaveRes, alertsRes, salaryRes, slipsRes, summaryRes, overtimeRes] =
         await Promise.allSettled([
-          payrollService.getLeaveRequests({ status: "PENDING", page_size: 10 }),
+          payrollService.getLeaveRequests({ status__in: "PENDING,RM_APPROVED", page_size: 10 }),
           payrollService.getAuditAlerts({ status: "open", page_size: 10 }),
           payrollService.getPendingSalaryStructures(),
           payrollService.getSalarySlips({
@@ -1430,6 +1453,7 @@ export default function HRDashboard() {
             page_size: 10,
           }),
           payrollService.getDashboardSummary(),
+          hrCoreService.getOvertimeRequests({ status: "pending" }),
         ]);
 
       const leaveList =
@@ -1453,7 +1477,10 @@ export default function HRDashboard() {
       const summary =
         summaryRes.status === "fulfilled" ? summaryRes.value : null;
 
+      const overtimeList = overtimeRes.status === "fulfilled" ? (overtimeRes.value?.results ?? []) : [];
       setPending({
+        pendingOvertime: overtimeList,
+        pendingOvertimeCount: overtimeRes.status === "fulfilled" ? (overtimeRes.value?.count ?? overtimeList.length) : 0,
         pendingLeave: Array.isArray(leaveList) ? leaveList : [],
         pendingLeaveCount:
           leaveRes.status === "fulfilled"
@@ -1550,12 +1577,14 @@ export default function HRDashboard() {
     loadWorkforce();
     loadLifecycleRequests();
     loadTimesheets();
+    loadPerformanceReviews();
     loadPayrollData();
     loadAllLeaveRecords(); // Load consolidated leave records
   }, [
     loadWorkforce,
     loadLifecycleRequests,
     loadTimesheets,
+    loadPerformanceReviews,
     loadPayrollData,
     loadAllLeaveRecords,
   ]);
@@ -1638,6 +1667,49 @@ export default function HRDashboard() {
     currentUser?.first_name ||
     (currentUser?.full_name ? currentUser.full_name.split(/\s+/)[0] : "") ||
     "there";
+
+  if (HR_DASHBOARD_SECTIONS.commandCenterLayout) {
+    return (
+      <>
+        <HRCommandCenterView
+          workforce={workforce}
+          live={live}
+          daily={daily}
+          monthly={monthly}
+          performanceReviews={performanceReviews}
+          lifecycleRequests={lifecycleRequests}
+          pending={pending}
+          joiners={joiners}
+          punctuality={punctuality}
+          monthRollup={monthRollup}
+          totalPending={totalPending}
+          autoRefresh={autoRefresh}
+          setAutoRefresh={setAutoRefresh}
+          now={now}
+          loading={loadingWorkforce || loadingLive || loadingPayroll}
+          workforceError={workforceError}
+          timesheetError={timesheetError}
+          onRetryWorkforce={loadWorkforce}
+          onRefresh={() => {
+            loadWorkforce();
+            loadTimesheets();
+            loadPerformanceReviews();
+            loadPayrollData();
+            loadLifecycleRequests();
+          }}
+          onOpenReport={setReportKpiId}
+          navigate={navigate}
+        />
+        {reportKpiId && (
+          <KpiReportModal
+            reportId={reportKpiId}
+            ctx={ctx}
+            onClose={() => setReportKpiId(null)}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-full w-full bg-[#f5f6f8] px-3 py-2 sm:px-4 lg:px-5 xl:px-6">
@@ -1797,7 +1869,7 @@ export default function HRDashboard() {
             monthRollup={monthRollup}
             leaveRecords={allLeaveRecords}
             loadingLeaveRecords={loadingLeaveRecords}
-            onOpenLeaveRecords={() => navigate("/hr/payroll?tab=leave")}
+            onOpenLeaveRecords={() => navigate("/hr/leave")}
           />
         )}
 

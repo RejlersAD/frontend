@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiPrompt } from '../../../../services/radaiDialog'
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
@@ -114,9 +115,9 @@ export default function RunsList({ onSelectRun }) {
       `all related line items, even though the run has already passed through approval.\n\n` +
       `A full audit row will be written to the workflow log.\n\n` +
       `Type OK in the next prompt to confirm.`
-    if (!confirm(force ? forceMsg : standardMsg)) return
+    if (!(await radaiConfirm(force ? forceMsg : standardMsg))) return
     if (force) {
-      const typed = prompt('Type FORCE DELETE to confirm:', '')
+      const typed = (await radaiPrompt('Type FORCE DELETE to confirm:', ''))
       if ((typed || '').trim().toUpperCase() !== 'FORCE DELETE') return
     }
     setDeletingId(run.id); setError(null)
@@ -136,7 +137,7 @@ export default function RunsList({ onSelectRun }) {
       `Force-revert run ${run.cycle_code} (currently "${run.status}") back to Draft?\n\n` +
       `Approval/release timestamps will be cleared so the workflow restarts.\n` +
       `The change will be audit-logged. Continue?`
-    if (!confirm(msg)) return
+    if (!(await radaiConfirm(msg))) return
     setRevertingId(run.id); setError(null)
     try {
       const updated = await payrollEngineService.forceRevertRun(run.id)

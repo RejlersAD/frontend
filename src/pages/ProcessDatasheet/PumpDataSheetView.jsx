@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../../services/api.service';
@@ -113,7 +114,7 @@ const PumpDataSheetView = () => {
       link.remove();
     } catch (err) {
       console.error('Error downloading Excel:', err);
-      alert('Failed to download Excel file');
+      await radaiAlert('Failed to download Excel file');
     }
   };
 
@@ -135,7 +136,7 @@ const PumpDataSheetView = () => {
       link.remove();
     } catch (err) {
       console.error('Error downloading PDF:', err);
-      alert('Failed to download PDF file');
+      await radaiAlert('Failed to download PDF file');
     }
   };
 

@@ -1,0 +1,48 @@
+.vendor-creator-form [aria-invalid="true"] {
+  border-color: #dc2626;
+  background-color: #fef2f2;
+  outline-color: #dc2626;
+}
+
+.vendor-creator-form div:has(> [aria-invalid="true"]) > label {
+  color: #b91c1c;
+}
+
+.dark .vendor-creator-form [aria-invalid="true"] {
+  border-color: #f87171;
+  background-color: #450a0a;
+  color: #fecaca;
+}
+
+.dark .vendor-creator-form div:has(> [aria-invalid="true"]) > label {
+  color: #fca5a5;
+}
+
+.vendor-multiselect { position:relative; }
+.vendor-multiselect-trigger { display:flex; justify-content:space-between; gap:12px; width:100%; padding:9px 12px; text-align:left; border:1px solid #d1d5db; border-radius:6px; background:white; color:#1f2937; }
+.vendor-multiselect-trigger > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vendor-multiselect-panel { box-sizing:border-box; z-index:10000; display:flex; flex-direction:column; padding:8px; border:1px solid #dbe2ef; border-radius:10px; box-shadow:0 12px 32px #0f172a26; background:white; color:#1f2937; font-size:13px; text-align:left; }
+.vendor-multiselect-search { width:100%; border:1px solid #cbd5e1; border-radius:4px; padding:8px; }
+.vendor-multiselect-options { max-height:240px; min-height:0; overflow:auto; margin-top:8px; overscroll-behavior:contain; }
+.vendor-multiselect-option { display:flex; align-items:flex-start; gap:8px; padding:8px; cursor:pointer; }
+.vendor-multiselect-option:hover { background:#eef2ff; }
+.vendor-multiselect-option.is-selected { background:#eef2ff; color:#3730a3; border-radius:6px; }
+.vendor-multiselect-option input { margin-top:4px; accent-color:#4f46e5; }
+.vendor-multiselect-option small { display:block; color:#64748b; }
+.vendor-multiselect-footer { display:flex; justify-content:space-between; align-items:center; padding:8px; border-top:1px solid #e2e8f0; font-size:13px; }
+.vendor-multiselect-footer button { color:#4338ca; font-weight:600; padding:4px 8px; }
+.vendor-creator-form div:has(> .vendor-multiselect[data-invalid="true"]) > label { color:#b91c1c; }
+.dark .vendor-multiselect-trigger, .dark .vendor-multiselect-panel, .dark .vendor-multiselect-search { background:#0f172a; color:#e2e8f0; border-color:#475569; }
+.dark .vendor-multiselect-option:hover { background:#1e293b; }
+.dark .vendor-multiselect-option.is-selected { background:#1e1b4b; color:#c7d2fe; }
+.dark .vendor-multiselect-option small { color:#94a3b8; }
+.dark .vendor-multiselect-footer button { color:#a5b4fc; }
+.dark .vendor-creator-form div:has(> .vendor-multiselect[data-invalid="true"]) > label { color:#fca5a5; }
+.dark .vendor-multiselect-trigger[aria-invalid="true"] { border-color:#f87171; background:#450a0a; color:#fecaca; }
+.vendor-multiselect-tags { display:flex; flex-wrap:wrap; gap:6px; list-style:none; margin:8px 0 0; padding:0; }
+.vendor-multiselect-tags li { display:flex; align-items:center; gap:6px; max-width:100%; padding:3px 8px; border:1px solid #c7d2fe; border-radius:6px; background:#eef2ff; color:#3730a3; font-size:12px; }
+.vendor-multiselect-tags li > span { overflow-wrap:anywhere; min-width:0; }
+.vendor-multiselect-tags button { flex-shrink:0; padding:2px 5px; font-size:17px; line-height:1; border-radius:3px; }
+.vendor-multiselect-tags button:hover { background:#c7d2fe; }
+.dark .vendor-multiselect-tags li { border-color:#4338ca; background:#1e1b4b; color:#c7d2fe; }
+.dark .vendor-multiselect-tags button:hover { background:#3730a3; }

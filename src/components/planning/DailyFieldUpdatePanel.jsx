@@ -1,3 +1,4 @@
+import { radaiPrompt } from '../../services/radaiDialog'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PropTypes from 'prop-types'
 import {
@@ -146,7 +147,7 @@ export default function DailyFieldUpdatePanel({
   }
 
   const approve = async update => {
-    const comment = window.prompt('Approval comment (optional)', '')
+    const comment = (await radaiPrompt('Approval comment (optional)', ''))
     if (comment === null) return
     setBusy(`approve-${update.id}`)
     try {
@@ -162,7 +163,7 @@ export default function DailyFieldUpdatePanel({
   }
 
   const reject = async update => {
-    const comment = window.prompt('Reason for rejection (required)', '')
+    const comment = (await radaiPrompt('Reason for rejection (required)', ''))
     if (!comment?.trim()) return
     setBusy(`reject-${update.id}`)
     try {

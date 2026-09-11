@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiPrompt } from '../services/radaiDialog'
 /* eslint-disable react/prop-types */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PropTypes from 'prop-types'
@@ -321,9 +322,9 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
   }
 
   const rebuildLogicAndCalculate = async () => {
-    if (!window.confirm(
+    if (!(await radaiConfirm(
       'Replace this draft revision’s predecessor network with the current generated logic, then recalculate CPM? Activity names and durations will be preserved.',
-    )) return
+    ))) return
     setBusy('rebuild-calculate')
     setCalculationProgress(5)
     setCalculationPhase('Rebuilding predecessor network')
@@ -358,7 +359,7 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
   }
 
   const createRevision = async () => {
-    const summary = window.prompt('Revision summary', 'Planner workspace revision')
+    const summary = (await radaiPrompt('Revision summary', 'Planner workspace revision'))
     if (summary === null) return
     setBusy('revision')
     try {
@@ -394,7 +395,7 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
   }
 
   const deleteActivity = async activity => {
-    if (!window.confirm(`Delete ${activity.external_id} - ${activity.name}?`)) return
+    if (!(await radaiConfirm(`Delete ${activity.external_id} - ${activity.name}?`))) return
     await runAction('delete', () => planningIntelligenceService.deleteActivity(activity.id), 'Activity removed.')
   }
 
@@ -567,8 +568,8 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
               <button onClick={saveAndCalculate} disabled={Boolean(busy) || immutable} className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-40">{busy === 'save-calculate' ? 'Calculating…' : dirtyIds.size ? 'Save & Calculate' : 'Recalculate CPM'}</button>
               <button type="button" onClick={rebuildLogicAndCalculate} disabled={Boolean(busy) || immutable || dirtyIds.size > 0} title={dirtyIds.size ? 'Save activity changes first.' : 'Replace all predecessors with the latest generated network, then calculate CPM. Use only when you want to discard manual logic edits.'} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-40"><GitBranch className="h-4 w-4" />{busy === 'rebuild-calculate' ? 'Resetting…' : 'Rest & Calculate'}</button>
               <button title={approvalBlocked ? 'Complete and approve Phase 3 assurance before schedule approval.' : 'Approve this calculated version'} onClick={() => runAction('approve', () => planningIntelligenceService.approveScheduleVersion(versionId), 'Schedule version approved.')} disabled={Boolean(busy) || workspace?.version?.status !== 'calculated' || approvalBlocked} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40">Approve</button>
-              <button onClick={() => {
-                const name = window.prompt('Baseline name', `Baseline ${workspace?.version?.version}`)
+              <button onClick={async () => {
+                const name = (await radaiPrompt('Baseline name', `Baseline ${workspace?.version?.version}`))
                 if (name) runAction('baseline', () => planningIntelligenceService.baselineScheduleVersion(versionId, name), 'Baseline created and locked.')
               }} disabled={Boolean(busy) || workspace?.version?.status !== 'approved' || workspace?.schedule_assurance?.status !== 'approved'} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold disabled:opacity-40"><Baseline className="w-4 h-4" /> Baseline</button>
             </div>

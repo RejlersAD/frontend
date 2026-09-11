@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../services/radaiDialog'
 /**
  * Comprehensive Employee Profile (Self-Service)
  * Aligned with HR Onboarding/Offboarding + Full Engineering Profile Features
@@ -398,7 +399,7 @@ export default function ProfileAlignedComprehensive() {
 
   // ── Delete Document ──────────────────────────────────────────────────────
   const handleDocumentDelete = async (documentId) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
+    if (!(await radaiConfirm('Are you sure you want to delete this document?'))) return;
 
     try {
       await apiClient.delete(`${API_ENDPOINTS.documents}/${documentId}/`);

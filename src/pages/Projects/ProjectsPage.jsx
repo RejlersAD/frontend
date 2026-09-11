@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { PlusIcon, SparklesIcon } from '@heroicons/react/24/outline'
 
@@ -42,7 +43,7 @@ export default function ProjectsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [projects, setProjects] = useState([])
-  const [selectedProjectId, setSelectedProjectId] = useState(null)
+  const [selectedProjectId, setSelectedProjectId] = useState(() => searchParams.get('project'))
   const [phaseFlags, setPhaseFlags] = useState({})
   const [view, setView] = useState(PROJECT_DEFAULT_VIEW)
   const [loadingProjects, setLoadingProjects] = useState(true)
@@ -153,7 +154,7 @@ export default function ProjectsPage() {
   }
   const handleDelete = async () => {
     if (!selectedProject) return
-    if (!window.confirm(PROJECT_COPY.deleteConfirm(selectedProject.name))) return
+    if (!(await radaiConfirm(PROJECT_COPY.deleteConfirm(selectedProject.name)))) return
     try {
       await PC.deleteProject(selectedProject.id)
       setToast({ type: 'success', message: `Deleted “${selectedProject.name}”.` })

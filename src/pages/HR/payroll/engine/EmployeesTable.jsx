@@ -1,3 +1,5 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
+import { createPortal } from 'react-dom'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
@@ -45,7 +47,7 @@ function AccountLinkModal({ employee, linkedEmployeesByUser, onClose, onLinked }
     const userId = profile.user?.id
     if (!userId) return
     let transfer = Boolean(knownOwner)
-    if (knownOwner && !window.confirm(`This RADAI account is linked to payroll employee #${knownOwner.employee_no} (${knownOwner.full_name}). Move the account link to #${employee.employee_no} (${employee.full_name})? Salary and payslip records remain on their existing payroll rows.`)) return
+    if (knownOwner && !(await radaiConfirm(`This RADAI account is linked to payroll employee #${knownOwner.employee_no} (${knownOwner.full_name}). Move the account link to #${employee.employee_no} (${employee.full_name})? Salary and payslip records remain on their existing payroll rows.`))) return
     setSavingId(userId); setError('')
     try {
       let result
@@ -54,7 +56,7 @@ function AccountLinkModal({ employee, linkedEmployeesByUser, onClose, onLinked }
       } catch (requestError) {
         const conflict = requestError?.response?.data?.linked_employee
         if (requestError?.response?.status !== 409 || !conflict) throw requestError
-        const confirmed = window.confirm(`This account is currently linked to #${conflict.employee_no} (${conflict.full_name}). Move the link to #${employee.employee_no} (${employee.full_name})?`)
+        const confirmed = (await radaiConfirm(`This account is currently linked to #${conflict.employee_no} (${conflict.full_name}). Move the link to #${employee.employee_no} (${employee.full_name})?`))
         if (!confirmed) { setError(`Account remains linked to #${conflict.employee_no} (${conflict.full_name}).`); return }
         transfer = true
         result = await payrollEngineService.linkRadaiAccount(employee.id, userId, { transfer: true })
@@ -70,14 +72,14 @@ function AccountLinkModal({ employee, linkedEmployeesByUser, onClose, onLinked }
       <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4"><div><h3 className="text-base font-bold text-slate-950">Link RADAI account</h3><p className="mt-1 text-xs text-slate-500">Payroll employee #{employee.employee_no} · {employee.full_name}</p></div><button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><HeroIcons.XMarkIcon className="h-5 w-5" /></button></div>
       <div className="p-5">
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><strong>Verify carefully:</strong> linking connects payroll, salary and payslip history to the selected employee account. Search by employee number or company email for the safest match.</div>
-        <div className="relative mt-4"><HeroIcons.MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Employee number, name or email" className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></div>
+        <div className="relative mt-4"><HeroIcons.MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Employee number, name or email" className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></div>
         {error && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</div>}
         <div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-slate-200">
           {loading ? <div className="p-8 text-center text-sm text-slate-500"><HeroIcons.ArrowPathIcon className="mx-auto mb-2 h-5 w-5 animate-spin text-blue-600" />Searching employee accounts…</div> : candidates.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">No active RADAI account matches this search.</div> : <div className="divide-y divide-slate-100">{candidates.map((profile) => {
             const userId = profile.user?.id
             const linkedOwner = linkedEmployeesByUser.get(String(userId))
             const candidateName = profile.full_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email
-            return <div key={profile.id} className="flex items-center gap-3 px-4 py-3"><EmployeeAvatar name={candidateName} src={profile.profile_photo} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900">{candidateName}</p><p className="truncate text-xs text-slate-500">#{profile.employee_id || 'No employee ID'} · {profile.email}</p><p className="truncate text-[11px] text-slate-400">{profile.job_title || 'No job title'} · {profile.department || 'No department'}</p>{linkedOwner && <p className="mt-1 text-[11px] font-semibold text-amber-700">Currently linked to payroll #{linkedOwner.employee_no} · {linkedOwner.full_name}</p>}</div><button type="button" onClick={() => linkAccount(profile, linkedOwner)} disabled={!userId || savingId === userId} className={`rounded-lg px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${linkedOwner ? 'border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{savingId === userId ? 'Saving…' : linkedOwner ? 'Move link here' : 'Link account'}</button></div>
+            return <div key={profile.id} className="flex items-center gap-3 px-4 py-3"><EmployeeAvatar name={candidateName} src={profile.profile_photo} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900">{candidateName}</p><p className="truncate text-xs text-slate-500">#{profile.employee_id || 'No employee ID'} · {profile.email}</p><p className="truncate text-[11px] text-slate-400">{profile.job_title || 'No job title'} · {profile.department || 'No department'}</p>{linkedOwner && <p className="mt-1 text-xs font-medium text-amber-700">Currently linked to payroll #{linkedOwner.employee_no} · {linkedOwner.full_name}</p>}</div><button type="button" onClick={() => linkAccount(profile, linkedOwner)} disabled={!userId || savingId === userId} className={`rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${linkedOwner ? 'border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'bg-indigo-700 text-white hover:bg-indigo-800'}`}>{savingId === userId ? 'Saving…' : linkedOwner ? 'Move link here' : 'Link account'}</button></div>
           })}</div>}
         </div>
       </div>
@@ -120,9 +122,9 @@ function PayrollEmployeeDrawer({ employee, canEdit, onClose, onEdit, onLink }) {
             <button type="button" onClick={onClose} className="rounded-lg p-2 text-blue-100 hover:bg-white/10 hover:text-white" aria-label="Close employee payroll"><HeroIcons.XMarkIcon className="h-5 w-5" /></button>
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
-            {detail.user ? <Link to={`/hr/employees?employee=${encodeURIComponent(detail.employee_no)}&tab=compensation`} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-bold text-blue-800 hover:bg-blue-50"><HeroIcons.UserCircleIcon className="h-4 w-4" /> Open employee profile</Link> : <span className="inline-flex items-center gap-2 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100"><HeroIcons.ExclamationTriangleIcon className="h-4 w-4" /> Payroll-only record</span>}
-            {!detail.user && canEdit && <button type="button" onClick={() => onLink(detail)} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-bold text-blue-800 hover:bg-blue-50"><HeroIcons.LinkIcon className="h-4 w-4" /> Link RADAI account</button>}
-            {canEdit && <button type="button" onClick={() => onEdit(detail)} className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/20"><HeroIcons.PencilSquareIcon className="h-4 w-4" /> Edit payroll profile</button>}
+            {detail.user ? <Link to={`/hr/employees?employee=${encodeURIComponent(detail.employee_no)}&tab=compensation`} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-50"><HeroIcons.UserCircleIcon className="h-4 w-4" /> Open employee profile</Link> : <span className="inline-flex items-center gap-2 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100"><HeroIcons.ExclamationTriangleIcon className="h-4 w-4" /> Payroll-only record</span>}
+            {!detail.user && canEdit && <button type="button" onClick={() => onLink(detail)} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-50"><HeroIcons.LinkIcon className="h-4 w-4" /> Link RADAI account</button>}
+            {canEdit && <button type="button" onClick={() => onEdit(detail)} className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"><HeroIcons.PencilSquareIcon className="h-4 w-4" /> Edit payroll profile</button>}
           </div>
         </header>
 
@@ -143,7 +145,7 @@ function PayrollEmployeeDrawer({ employee, canEdit, onClose, onEdit, onLink }) {
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white">
-              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h3 className="text-sm font-bold text-slate-900">Payslip history</h3><p className="mt-0.5 text-xs text-slate-500">Exact records from Payroll Engine</p></div><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{payslips.length}</span></div>
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h3 className="text-sm font-bold text-slate-900">Payslip history</h3></div><span className="rounded-full bg-blue-50 px-2.5 py-1 text-sm font-medium text-blue-700">{payslips.length}</span></div>
               {payslips.length === 0 ? <div className="px-5 py-10 text-center text-sm text-slate-500">No payroll runs have generated a payslip for this employee yet.</div> : <div className="divide-y divide-slate-100">{payslips.slice(0, 12).map((slip) => <div key={slip.id} className="grid grid-cols-[1fr_auto] items-center gap-4 px-5 py-3 hover:bg-slate-50"><div><p className="text-sm font-bold text-slate-900">{slip.run_cycle}</p><p className="mt-0.5 text-xs text-slate-500">Gross {money(slip.gross_earnings)} · Deductions {money(slip.total_deductions)}</p></div><div className="text-right"><p className="text-sm font-bold text-emerald-700">{money(slip.net_payable)}</p><p className="mt-0.5 text-[10px] font-semibold uppercase text-slate-400">{slip.status}</p></div></div>)}</div>}
             </section>
           </>}
@@ -153,7 +155,7 @@ function PayrollEmployeeDrawer({ employee, canEdit, onClose, onEdit, onLink }) {
   )
 }
 
-export default function EmployeesTable() {
+export default function EmployeesTable({ actionsTarget }) {
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -187,7 +189,7 @@ export default function EmployeesTable() {
     if (!query) return employees
     return employees.filter((employee) => [employee.full_name, employee.employee_no, employee.department, employee.designation, employee.employee_email].some((value) => String(value || '').toLowerCase().includes(query)))
   }, [employees, search])
-  const stats = useMemo(() => ({ active: employees.filter((e) => e.is_active).length, linked: employees.filter((e) => e.user).length, gross: employees.reduce((sum, e) => sum + Number(e.default_gross || 0), 0) }), [employees])
+
   const linkedEmployeesByUser = useMemo(() => new Map(employees.filter((employee) => employee.user).map((employee) => [String(employee.user), employee])), [employees])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const pageRows = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize])
@@ -207,16 +209,37 @@ export default function EmployeesTable() {
   }
 
   return <div className="space-y-4">
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-600">Employee salary directory</p><h2 className="mt-1 text-xl font-bold text-slate-950">Payroll employees</h2><p className="mt-1 text-sm text-slate-500">Select any employee to view salary structure, account linkage and payslip history.</p></div>
-        <div className="flex flex-wrap gap-2"><input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleUpload} /><button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><HeroIcons.ArrowUpTrayIcon className="h-4 w-4" />{uploading ? 'Importing…' : 'Import XLSX'}</button><button type="button" onClick={handleDownload} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"><HeroIcons.ArrowDownTrayIcon className="h-4 w-4" />Export roster</button></div>
-      </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">{[['Employees', employees.length, HeroIcons.UsersIcon, 'text-blue-700 bg-blue-50'], ['Active', stats.active, HeroIcons.CheckBadgeIcon, 'text-emerald-700 bg-emerald-50'], ['RADAI linked', stats.linked, HeroIcons.LinkIcon, 'text-violet-700 bg-violet-50'], ['Default gross', money(stats.gross), HeroIcons.BanknotesIcon, 'text-amber-700 bg-amber-50']].map(([label, value, Icon, tone]) => <div key={label} className="rounded-xl border border-slate-200 p-3"><div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></div><p className="text-lg font-bold text-slate-950">{value}</p><p className="text-[11px] font-semibold text-slate-500">{label}</p></div>)}</div>
-    </section>
+    <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleUpload} />
+    {actionsTarget && createPortal(
+      <details className="relative" onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
+      }} onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.currentTarget.open = false
+          event.currentTarget.querySelector('summary')?.focus()
+        }
+      }}>
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 [&::-webkit-details-marker]:hidden">
+          Import / Export <HeroIcons.ChevronDownIcon className="h-4 w-4" />
+        </summary>
+        <div className="absolute right-0 z-30 mt-2 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+          <button type="button" disabled={uploading} onClick={(event) => {
+            event.currentTarget.closest('details').open = false
+            fileInputRef.current?.click()
+          }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-indigo-50 disabled:opacity-50">
+            <HeroIcons.ArrowUpTrayIcon className="h-4 w-4" />{uploading ? 'Importing...' : 'Import XLSX'}
+          </button>
+          <button type="button" onClick={(event) => {
+            event.currentTarget.closest('details').open = false
+            handleDownload()
+          }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-indigo-50">
+            <HeroIcons.ArrowDownTrayIcon className="h-4 w-4" />Export roster
+          </button>
+        </div>
+      </details>, actionsTarget)}
 
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4"><div className="relative min-w-[240px] flex-1"><HeroIcons.MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search employee, number, department, designation or email" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></div><label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} className="rounded border-slate-300 text-blue-600" />Include inactive</label><label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">Rows<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700"><option value={12}>12</option><option value={24}>24</option><option value={48}>48</option></select></label><span className="text-xs font-semibold text-slate-500">{filtered.length} records</span></div>
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4"><div className="relative min-w-[240px] flex-1"><HeroIcons.MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search employee, number, department, designation or email" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" /></div><label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} className="rounded border-slate-300 text-blue-600" />Include inactive</label><label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">Rows<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700"><option value={12}>12</option><option value={24}>24</option><option value={48}>48</option></select></label><span className="text-xs font-semibold text-slate-500">{filtered.length} records</span></div>
       {uploadSummary && <div className="m-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800">Import complete: {uploadSummary.employees_created} created, {uploadSummary.employees_updated} updated.</div>}
       {error && <div className="m-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>}
       {loading ? <div className="p-14 text-center text-sm text-slate-500"><HeroIcons.ArrowPathIcon className="mx-auto mb-3 h-6 w-6 animate-spin text-blue-600" />Loading payroll employees…</div> : filtered.length === 0 ? <div className="p-14 text-center text-sm text-slate-500">No payroll employees match this search.</div> : <div className="divide-y divide-slate-100">{pageRows.map((employee) => <button key={employee.id} type="button" onClick={() => setSelected(employee)} className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-blue-50/50 sm:px-5 lg:grid-cols-[auto_minmax(220px,1.4fr)_minmax(160px,1fr)_130px_130px_auto]">
@@ -227,7 +250,7 @@ export default function EmployeesTable() {
         <span className="hidden text-right lg:block"><span className="block text-[10px] font-bold uppercase text-slate-400">Gross</span><span className="text-sm font-bold text-emerald-700">{money(employee.default_gross)}</span></span>
         <span className="flex items-center gap-2">{employee.is_active ? <span className="hidden rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 sm:inline">Active</span> : <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500 sm:inline">Inactive</span>}<HeroIcons.ChevronRightIcon className="h-4 w-4 text-slate-400" /></span>
       </button>)}</div>}
-      {!loading && filtered.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 sm:px-5"><p className="text-xs text-slate-500">Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} of {filtered.length}</p><div className="flex items-center gap-1"><button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous employee page"><HeroIcons.ChevronLeftIcon className="h-4 w-4" /></button><span className="min-w-24 px-2 text-center text-xs font-bold text-slate-700">Page {page} of {totalPages}</span><button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page === totalPages} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next employee page"><HeroIcons.ChevronRightIcon className="h-4 w-4" /></button></div></div>}
+      {!loading && filtered.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 sm:px-5"><p className="text-xs text-slate-500">Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} of {filtered.length}</p><div className="flex items-center gap-1"><button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous employee page"><HeroIcons.ChevronLeftIcon className="h-4 w-4" /></button><span className="min-w-24 px-2 text-center text-sm font-medium text-slate-700">Page {page} of {totalPages}</span><button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page === totalPages} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next employee page"><HeroIcons.ChevronRightIcon className="h-4 w-4" /></button></div></div>}
     </section>
 
     {selected && <PayrollEmployeeDrawer key={`${selected.id}:${selected.user || 'unlinked'}`} employee={selected} canEdit={canEdit} onClose={() => setSelected(null)} onEdit={(employee) => { setSelected(null); setEditing(employee) }} onLink={setLinking} />}

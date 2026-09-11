@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 /**
  * Instrument IO List Workflow — CRS-style multi-revision page.
  *
@@ -438,7 +439,7 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
   }
 
   const handleDelete = async (id, projectName) => {
-    if (!window.confirm(`Delete project "${projectName}"? Documents will be unlinked but not deleted.`)) return
+    if (!(await radaiConfirm(`Delete project "${projectName}"? Documents will be unlinked but not deleted.`))) return
     try {
       await ioListWorkflowProjectsService.deleteProject(id)
       setProjects(prev => prev.filter(p => p.id !== id))
@@ -2665,7 +2666,7 @@ export default function IOListWorkflowPage() {
 
   const handleDelete = async () => {
     if (!activeDoc) return
-    if (!window.confirm('Delete this document and all extracted rows? This action cannot be undone.')) return
+    if (!(await radaiConfirm('Delete this document and all extracted rows? This action cannot be undone.'))) return
     await ioListWorkflowService.deleteDocument(activeDoc.id)
     setActiveDoc(null)
     loadDocuments()

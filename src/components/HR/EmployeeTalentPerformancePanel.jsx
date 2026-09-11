@@ -1,3 +1,4 @@
+import { radaiPrompt } from '../../services/radaiDialog'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AcademicCapIcon, ChatBubbleLeftRightIcon, CheckCircleIcon,
@@ -50,7 +51,7 @@ const EmployeeTalentPerformancePanel = ({ employee }) => {
   }
 
   const addCheckIn = async (goal) => {
-    const raw = window.prompt('Enter progress percentage (0–100)', String(goal.progress || 0))
+    const raw = (await radaiPrompt('Enter progress percentage (0–100)', String(goal.progress || 0)))
     if (raw === null) return
     const progress = Number(raw)
     if (!Number.isFinite(progress) || progress < 0 || progress > 100) { setError('Progress must be between 0 and 100.'); return }

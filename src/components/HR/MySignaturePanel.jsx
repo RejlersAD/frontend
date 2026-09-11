@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import { useEffect, useRef, useState } from 'react'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import apiClient, { apiClientLongTimeout } from '../../services/api.service'
@@ -66,7 +67,7 @@ export default function MySignaturePanel() {
   }
 
   const remove = async () => {
-    if (!window.confirm('Remove your saved signature? You will not be able to approve documents until you add another one.')) return
+    if (!(await radaiConfirm('Remove your saved signature? You will not be able to approve documents until you add another one.'))) return
     setSaving(true)
     setNotice(null)
     try {

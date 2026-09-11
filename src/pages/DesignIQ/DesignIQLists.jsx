@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { radaiAlert } from '../../services/radaiDialog'
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -538,7 +539,7 @@ const DesignIQLists = () => {
 
       console.error('Error downloading output:', error);
 
-      alert('Failed to download file');
+      await radaiAlert('Failed to download file');
 
     }
 
@@ -1806,7 +1807,7 @@ const DesignIQLists = () => {
 
                   accept=".pdf"
 
-                  onChange={(e) => {
+                  onChange={async (e) => {
 
                     const file = e.target.files?.[0];
 
@@ -1818,7 +1819,7 @@ const DesignIQLists = () => {
 
                     } else {
 
-                      alert('Please select a valid PDF file.');
+                      await radaiAlert('Please select a valid PDF file.');
 
                     }
 
@@ -3976,7 +3977,7 @@ const DesignIQLists = () => {
 
               <button
 
-                onClick={() => {
+                onClick={async () => {
 
                   // Validate at least one component is enabled
 
@@ -3984,7 +3985,7 @@ const DesignIQLists = () => {
 
                   if (!hasEnabled) {
 
-                    alert('Please enable at least one component');
+                    await radaiAlert('Please enable at least one component');
 
                     return;
 

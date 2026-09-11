@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
@@ -82,7 +83,7 @@ export default function EnquiryDetail () {
       setNotes(data?.enquiry?.admin_notes || '')
       return true
     } catch (requestError) {
-      alert(requestError?.response?.data?.message || 'Update failed.')
+      await radaiAlert(requestError?.response?.data?.message || 'Update failed.')
       return false
     } finally { setSaving(false) }
   }
@@ -95,12 +96,12 @@ export default function EnquiryDetail () {
       setEnquiry(data?.enquiry)
       setReply('')
     } catch (requestError) {
-      alert(requestError?.response?.data?.detail || 'Response failed.')
+      await radaiAlert(requestError?.response?.data?.detail || 'Response failed.')
     } finally { setSaving(false) }
   }
 
   const remove = async () => {
-    if (!window.confirm(`Delete ${enquiry.reference}? This cannot be undone.`)) return
+    if (!(await radaiConfirm(`Delete ${enquiry.reference}? This cannot be undone.`))) return
     await apiService.delete(`/enquiry/${id}/`)
     navigate('/admin/enquiries')
   }
@@ -134,7 +135,7 @@ export default function EnquiryDetail () {
       const { data } = await apiService.post(`/enquiry/${id}/resolve/`, { summary: resolution })
       setEnquiry(data?.enquiry)
     } catch (requestError) {
-      alert(requestError?.response?.data?.detail || 'Could not propose resolution.')
+      await radaiAlert(requestError?.response?.data?.detail || 'Could not propose resolution.')
     } finally { setSaving(false) }
   }
 

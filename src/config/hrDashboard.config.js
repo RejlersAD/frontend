@@ -227,6 +227,7 @@ export const HR_DASHBOARD_KPIS = [
 //    without touching the page component.
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_DASHBOARD_SECTIONS = {
+  commandCenterLayout: true,
   liveFeed: true,
   workforceComposition: false,  // SOFT-CODED: Disabled to hide "Workforce composition" and "Engineering disciplines" sections
   todayPunctuality: true,
@@ -248,6 +249,18 @@ export const HR_DASHBOARD_SECTIONS = {
 //     `priority` controls sort order in the inbox (lower = more urgent).
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_DASHBOARD_PENDING_TYPES = [
+  {
+    id: 'overtime', label: 'Overtime Requests', icon: 'ClockIcon',
+    route: '/hr/leave?view=encashment&ot_status=pending', priority: 2,
+    bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700',
+    dot: 'bg-indigo-500', badge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    actionLabel: 'View OT', zeroMsg: 'No pending overtime requests',
+    singularMsg: 'OT request awaiting approval', pluralMsg: 'OT requests awaiting approval',
+    getItems: (d) => (d?.pendingOvertime || []).slice(0, 3),
+    getCount: (d) => Number(d?.pendingOvertimeCount ?? 0),
+    getRowLabel: (r) => r.employee_name || r.employee_code || 'Employee',
+    getRowSub: (r) => `${r.work_date} / ${Number(r.requested_hours)} hours`,
+  },
   {
     id:       'alerts',
     label:    'Audit Alerts',
@@ -272,7 +285,7 @@ export const HR_DASHBOARD_PENDING_TYPES = [
     id:       'leave',
     label:    'Leave Requests',
     icon:     'CalendarDaysIcon',
-    route:    '/hr/payroll?tab=leave',
+    route:    '/hr/leave',
     priority: 2,
     bg:    'bg-amber-50',
     border:'border-amber-200',

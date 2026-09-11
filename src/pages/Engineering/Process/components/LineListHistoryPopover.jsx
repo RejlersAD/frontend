@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-toastify'
 import {
@@ -64,7 +65,7 @@ export default function LineListHistoryPopover({ activeLineList, onChange }) {
   }
 
   const onDelete = async (id) => {
-    if (!window.confirm('Delete this uploaded Line List?')) return
+    if (!(await radaiConfirm('Delete this uploaded Line List?'))) return
     try {
       await deleteLineList(id)
       await refresh()

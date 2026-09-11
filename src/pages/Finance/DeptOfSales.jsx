@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 /**
  * Department of Sales Page - ADVANCED REDESIGN
  * Next-Gen Sales Intelligence Platform with AI-Powered CRM
@@ -93,33 +94,33 @@ const DeptOfSales = () => {
   }, []);
 
   // Sub-feature click handler (Smart routing and actions)
-  const handleSubFeatureClick = useCallback((subFeature) => {
+  const handleSubFeatureClick = useCallback(async (subFeature) => {
     console.log(`🎯 Sub-feature clicked:`, subFeature);
     
     // Smart action handling based on sub-feature configuration
     switch (subFeature.action) {
       case 'create':
         // Future: Open create modal or navigate to create page
-        alert(`Opening: ${subFeature.title}\nAction: Create new ${subFeature.title.replace('Add New ', '').replace('Create ', '')}`);
+        await radaiAlert(`Opening: ${subFeature.title}\nAction: Create new ${subFeature.title.replace('Add New ', '').replace('Create ', '')}`);
         break;
       case 'view':
       case 'browse':
         // Navigate to detailed view
-        alert(`Opening: ${subFeature.title}\nLoading ${subFeature.description}...`);
+        await radaiAlert(`Opening: ${subFeature.title}\nLoading ${subFeature.description}...`);
         break;
       case 'analyze':
       case 'forecast':
       case 'predict':
         // Open AI analysis view
-        alert(`🤖 AI Analysis: ${subFeature.title}\n${subFeature.description}`);
+        await radaiAlert(`🤖 AI Analysis: ${subFeature.title}\n${subFeature.description}`);
         break;
       case 'manage':
       case 'configure':
         // Open management interface
-        alert(`⚙️ Configuration: ${subFeature.title}\n${subFeature.description}`);
+        await radaiAlert(`⚙️ Configuration: ${subFeature.title}\n${subFeature.description}`);
         break;
       default:
-        alert(`Feature: ${subFeature.title}\nComing soon!`);
+        await radaiAlert(`Feature: ${subFeature.title}\nComing soon!`);
     }
   }, []);
 

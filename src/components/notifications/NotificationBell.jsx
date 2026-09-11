@@ -1,3 +1,4 @@
+import { radaiPrompt, radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect, useRef } from 'react'
 import { useSelector } from 'react-redux'
 import { BellIcon } from '@heroicons/react/24/outline'
@@ -292,13 +293,13 @@ const NotificationBell = () => {
 
     let note = ''
     if (decision === 'rejected') {
-      note = window.prompt('Enter the reason for rejecting this exit process:')
+      note = (await radaiPrompt('Enter the reason for rejecting this exit process:'))
       if (note === null) return
       if (!note.trim()) {
         setDecisionMessage('A rejection reason is required.')
         return
       }
-    } else if (!window.confirm('Approve this employee exit process?')) {
+    } else if (!(await radaiConfirm('Approve this employee exit process?'))) {
       return
     }
 

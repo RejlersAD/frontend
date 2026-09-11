@@ -1,3 +1,4 @@
+import { radaiAlert, radaiPrompt } from '../services/radaiDialog'
 /**
  * CRS Documents Page - Comment Resolution Sheet
  * Professional PDF comment extraction and Google Sheets integration
@@ -150,7 +151,7 @@ const CRSDocuments = ({ pageControls, refetch }) => {
       setStatistics(statsResponse);
     } catch (error) {
       console.error('Error loading CRS data:', error);
-      alert('Failed to load documents. Please try again.');
+      await radaiAlert('Failed to load documents. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -164,7 +165,7 @@ const CRSDocuments = ({ pageControls, refetch }) => {
   const handleUploadAndProcess = async (e) => {
     e.preventDefault();
     if (!uploadFile) {
-      alert('Please select a file to upload');
+      await radaiAlert('Please select a file to upload');
       return;
     }
     
@@ -255,7 +256,7 @@ const CRSDocuments = ({ pageControls, refetch }) => {
   // NEW: Generate and download Excel directly from preview data
   const handleDownload = async (format) => {
     if (!previewData || !previewData.comments || previewData.comments.length === 0) {
-      alert('No comment data available for download');
+      await radaiAlert('No comment data available for download');
       return;
     }
 
@@ -392,7 +393,7 @@ const CRSDocuments = ({ pageControls, refetch }) => {
       
     } catch (error) {
       console.error('Error generating download:', error);
-      alert('Failed to generate download: ' + error.message);
+      await radaiAlert('Failed to generate download: ' + error.message);
     } finally {
       setDownloadingFormat(null);
     }
@@ -412,7 +413,7 @@ const CRSDocuments = ({ pageControls, refetch }) => {
     loadData();
   };
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (file) {
       const validTypes = [
@@ -425,7 +426,7 @@ const CRSDocuments = ({ pageControls, refetch }) => {
         setUploadFile(file);
         setUploadResult(null);
       } else {
-        alert('Please select a valid PDF or Excel file');
+        await radaiAlert('Please select a valid PDF or Excel file');
         e.target.value = '';
       }
     }
@@ -447,7 +448,7 @@ const CRSDocuments = ({ pageControls, refetch }) => {
         debug: false
       });
       
-      alert(`✅ PDF uploaded and processed!\n\nExtracted ${extractResult.data.total_comments} comments:\n- 🔴 Red comments: ${extractResult.data.red_comments}\n- 🟡 Yellow boxes: ${extractResult.data.yellow_boxes}\n- 📌 Other: ${extractResult.data.other_annotations}`);
+      await radaiAlert(`✅ PDF uploaded and processed!\n\nExtracted ${extractResult.data.total_comments} comments:\n- 🔴 Red comments: ${extractResult.data.red_comments}\n- 🟡 Yellow boxes: ${extractResult.data.yellow_boxes}\n- 📌 Other: ${extractResult.data.other_annotations}`);
       
       setShowUploadModal(false);
       setPdfFile(null);
@@ -455,7 +456,7 @@ const CRSDocuments = ({ pageControls, refetch }) => {
       loadData();
     } catch (error) {
       console.error('Error uploading PDF:', error);
-      alert('Failed to upload PDF. Please try again.');
+      await radaiAlert('Failed to upload PDF. Please try again.');
     } finally {
       setProcessing(false);
     }
@@ -463,17 +464,17 @@ const CRSDocuments = ({ pageControls, refetch }) => {
 
   const handleExportToSheets = async (document) => {
     if (!document.google_sheet_id) {
-      const sheetId = prompt('Enter Google Sheet ID:');
+      const sheetId = (await radaiPrompt('Enter Google Sheet ID:'));
       if (!sheetId) return;
       
       try {
         setProcessing(true);
         await crsService.exportToGoogleSheets(document.id, { sheetId });
-        alert('✅ Exported to Google Sheets successfully!');
+        await radaiAlert('✅ Exported to Google Sheets successfully!');
         loadData();
       } catch (error) {
         console.error('Error exporting:', error);
-        alert('Failed to export. Please ensure Google Sheets API is configured.');
+        await radaiAlert('Failed to export. Please ensure Google Sheets API is configured.');
       } finally {
         setProcessing(false);
       }
@@ -481,11 +482,11 @@ const CRSDocuments = ({ pageControls, refetch }) => {
       try {
         setProcessing(true);
         await crsService.exportToGoogleSheets(document.id);
-        alert('✅ Exported to Google Sheets successfully!');
+        await radaiAlert('✅ Exported to Google Sheets successfully!');
         loadData();
       } catch (error) {
         console.error('Error exporting:', error);
-        alert('Failed to export. Please try again.');
+        await radaiAlert('Failed to export. Please try again.');
       } finally {
         setProcessing(false);
       }

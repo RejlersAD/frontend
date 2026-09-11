@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../services/radaiDialog'
 /**
  * CRS Multi-Revision Workflow - SMART VERSION
  * With Preview Table & HTML-to-Excel Export
@@ -260,9 +261,9 @@ const CRSMultiRevisionSmart = ({ pageControls }) => {
 
   // Smart Close Comment Handler (for Action button)
   const handleCloseComment = async (commentId, revisionLabel, commentText) => {
-    const confirmClose = window.confirm(
+    const confirmClose = (await radaiConfirm(
       `🔒 Close this comment?\n\nRevision: ${revisionLabel}\nComment: ${commentText?.substring(0, 100)}${commentText?.length > 100 ? '...' : ''}\n\nThis action will mark the comment as CLOSED.`
-    );
+    ));
 
     if (!confirmClose) return;
 

@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -91,9 +92,9 @@ const ReportGenerator = () => {
     setSelectedReport(reportType);
     
     // Simulate report generation
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsGenerating(false);
-      alert(`✅ Report "${REPORT_TYPES[reportType].name}" generated successfully!`);
+      await radaiAlert(`✅ Report "${REPORT_TYPES[reportType].name}" generated successfully!`);
       // In production, trigger actual report generation API
     }, 3000);
   };
@@ -249,19 +250,19 @@ const ReportGenerator = () => {
               <div className="flex items-center space-x-2 ml-4">
                 <button
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-semibold"
-                  onClick={() => alert('Viewing report...')}
+                  onClick={async () => (await radaiAlert('Viewing report...'))}
                 >
                   👁️ View
                 </button>
                 <button
                   className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
-                  onClick={() => alert('Downloading report...')}
+                  onClick={async () => (await radaiAlert('Downloading report...'))}
                 >
                   ⬇️ Download
                 </button>
                 <button
                   className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all text-sm font-semibold"
-                  onClick={() => alert('Sharing report...')}
+                  onClick={async () => (await radaiAlert('Sharing report...'))}
                 >
                   📤 Share
                 </button>
@@ -292,7 +293,7 @@ const ReportGenerator = () => {
               backgroundColor: REJLERS_COLORS.secondary.turbine.base,
               color: 'white'
             }}
-            onClick={() => alert('Create new schedule')}
+            onClick={async () => (await radaiAlert('Create new schedule'))}
           >
             ➕ New Schedule
           </button>
@@ -334,7 +335,7 @@ const ReportGenerator = () => {
                 </span>
                 <button
                   className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all text-sm"
-                  onClick={() => alert('Editing schedule...')}
+                  onClick={async () => (await radaiAlert('Editing schedule...'))}
                 >
                   ✏️ Edit
                 </button>

@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../services/radaiDialog'
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
@@ -1003,7 +1004,7 @@ const UserManagement = ({ pageControls }) => {
       ? 'Are you sure you want to deactivate this user?'
       : 'Are you sure you want to activate this user?';
     
-    if (!window.confirm(confirmMessage)) return;
+    if (!(await radaiConfirm(confirmMessage))) return;
     
     try {
       setActionLoading({ [`status_${userId}`]: true });
@@ -1036,7 +1037,7 @@ const UserManagement = ({ pageControls }) => {
   };
   
   const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+    if (!(await radaiConfirm('Are you sure you want to delete this user? This action cannot be undone.'))) {
       return;
     }
     
@@ -2176,10 +2177,10 @@ const UserManagement = ({ pageControls }) => {
                         <div className="relative inline-block min-w-[200px]">
                           <select
                             value={selectedRoleId || ''}
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const newRoleId = e.target.value; // Keep as string (UUID)
                               console.log('[Dropdown onChange] Selected value:', newRoleId, typeof newRoleId);
-                              if (newRoleId && window.confirm(ROLE_EDIT_CONFIG.confirmMessage)) {
+                              if (newRoleId && (await radaiConfirm(ROLE_EDIT_CONFIG.confirmMessage))) {
                                 handleRoleChange(user.id, newRoleId);
                               }
                             }}

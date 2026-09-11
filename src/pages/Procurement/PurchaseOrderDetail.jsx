@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -189,7 +190,7 @@ const PurchaseOrderDetail = () => {
       URL.revokeObjectURL(downloadUrl);
     } catch (exportError) {
       console.error(`Failed to export Purchase Order as ${format}:`, exportError);
-      alert(`Failed to export the Purchase Order as ${format === 'word' ? 'Word' : 'PDF'}.`);
+      await radaiAlert(`Failed to export the Purchase Order as ${format === 'word' ? 'Word' : 'PDF'}.`);
     } finally {
       setExportLoading('');
     }
@@ -274,7 +275,7 @@ const PurchaseOrderDetail = () => {
    * Soft-coded action handler: Send Order
    */
   const handleSendOrder = async () => {
-    const confirmed = window.confirm(`Send Purchase Order ${order.po_number} to vendor?`);
+    const confirmed = (await radaiConfirm(`Send Purchase Order ${order.po_number} to vendor?`));
     if (!confirmed) return;
 
     try {
@@ -296,7 +297,7 @@ const PurchaseOrderDetail = () => {
    * Soft-coded action handler: Mark as Completed
    */
   const handleMarkComplete = async () => {
-    const confirmed = window.confirm(`Mark Purchase Order ${order.po_number} as completed?`);
+    const confirmed = (await radaiConfirm(`Mark Purchase Order ${order.po_number} as completed?`));
     if (!confirmed) return;
 
     try {

@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'react-toastify'
@@ -336,7 +337,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
   }, [onActiveChange, section])
 
   const onDelete = useCallback(async (legendId) => {
-    if (!window.confirm('Delete this legend? This cannot be undone.')) return
+    if (!(await radaiConfirm('Delete this legend? This cannot be undone.'))) return
     try {
       await deleteLegend(legendId)
       const wasActive = legends.find(l => l.legend_id === legendId)?.is_active
@@ -882,7 +883,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
   const [deletingLookupKey, setDeletingLookupKey] = useState('')
 
   const handleDeleteLookupRow = async (idx, field, code) => {
-    if (!window.confirm(`Remove "${code}" from this legend?`)) return
+    if (!(await radaiConfirm(`Remove "${code}" from this legend?`))) return
     const rowKey = `${idx}::${code}`
     setDeletingLookupKey(rowKey)
     try {
@@ -946,7 +947,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
 
   const handleSymbolImageDelete = useCallback(async (symbolValue) => {
     if (!projectId) return
-    if (!window.confirm(`Remove the picture for "${symbolValue}"?`)) return
+    if (!(await radaiConfirm(`Remove the picture for "${symbolValue}"?`))) return
     const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
     setUploadingKeys(prev => ({ ...prev, [key]: true }))
     try {
@@ -1010,8 +1011,8 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
     emit({ ...model, fields })
   }
 
-  const removeField = (idx) => {
-    if (!window.confirm('Remove this field?')) return
+  const removeField = async (idx) => {
+    if (!(await radaiConfirm('Remove this field?'))) return
     const fields = model.fields.filter((_, i) => i !== idx)
     emit({ ...model, fields })
   }

@@ -697,13 +697,14 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, searchQue
       let endpoint = ''
 
       if (config.id === 'leave') {
+        if (!item.can_review) throw new Error('This request is not awaiting your approval.')
         // Leave requests use different endpoints based on current status
-        if (item.status === 'PENDING') {
+        if (item.status === 'PENDING' && item.review_stage !== 'hr_review') {
           // Stage 1: Reporting Manager approval
           endpoint = actionId === 'approve'
             ? `/payroll/leave-requests/${item.id}/rm-approve/`
             : `/payroll/leave-requests/${item.id}/rm-reject/`
-        } else if (item.status === 'RM_APPROVED') {
+        } else if (item.status === 'RM_APPROVED' || (item.status === 'PENDING' && item.review_stage === 'hr_review')) {
           // Stage 2: HR Manager approval
           endpoint = actionId === 'approve'
             ? `/payroll/leave-requests/${item.id}/approve/`
@@ -753,6 +754,7 @@ const DynamicApprovalCenter = ({ approvalTypes, user, rbacData, token, searchQue
         throw new Error(errorMsg)
       }
 
+      if (config.id === 'leave') window.dispatchEvent(new Event('leave-approval-updated'))
       const resultData = await response.json().catch(() => ({}))
       console.log(`✅ ${actionId} completed:`, resultData)
 
@@ -1121,7 +1123,7 @@ const ApprovalActionModal = ({ isOpen, mode, item, actionId, config, token, subm
           >
             {isViewMode ? 'Close' : 'Cancel'}
           </button>
-          {isViewMode && config.actions?.includes('reject') && (
+          {isViewMode && (config.id !== 'leave' || item.can_review) && config.actions?.includes('reject') && (
             <button
               onClick={() => onSelectAction('reject', item)}
               disabled={submitting}
@@ -1131,7 +1133,7 @@ const ApprovalActionModal = ({ isOpen, mode, item, actionId, config, token, subm
               Reject
             </button>
           )}
-          {isViewMode && config.actions?.includes('approve') && (
+          {isViewMode && (config.id !== 'leave' || item.can_review) && config.actions?.includes('approve') && (
             <button
               onClick={() => onSelectAction('approve', item)}
               disabled={submitting}

@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -235,7 +236,7 @@ const UnifiedElectricalQualityChecker = () => {
       await loadData(); // Refresh to show new scores
     } catch (err) {
       console.error('Quality check error:', err);
-      alert('Failed to run quality check. Please try again.');
+      await radaiAlert('Failed to run quality check. Please try again.');
     }
   };
 
@@ -254,7 +255,7 @@ const UnifiedElectricalQualityChecker = () => {
       setDatasheetToDelete(null);
     } catch (err) {
       console.error('Delete error:', err);
-      alert('Failed to delete datasheet. Please try again.');
+      await radaiAlert('Failed to delete datasheet. Please try again.');
     }
   };
 

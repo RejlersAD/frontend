@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheckIcon, 
@@ -218,7 +219,7 @@ const ProjectQualityDetails = () => {
     setPage(0);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     try {
       const exportData = filteredProjects.map(p => ({
         'Sr No': p.srNo,
@@ -248,7 +249,7 @@ const ProjectQualityDetails = () => {
       XLSX.writeFile(wb, `QHSE_Running_Projects_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err) {
       console.error('Export error:', err);
-      alert('Failed to export data');
+      await radaiAlert('Failed to export data');
     }
   };
 

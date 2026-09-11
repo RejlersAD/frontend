@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useMemo } from 'react';
 
 /**
@@ -50,9 +51,9 @@ const AccessToAllModal = ({
   };
 
   // Handle confirmation and assignment
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (selectedModules.length === 0) {
-      alert('Please select at least one app/module');
+      await radaiAlert('Please select at least one app/module');
       return;
     }
     setConfirmationStep(true);
