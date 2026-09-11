@@ -1,3 +1,5 @@
+import useAuthenticatedPhoto from '../../hooks/useAuthenticatedPhoto';
+import { useCurrentProfilePhoto } from '../../components/Layout/ProfilePhotoContext';
 import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
 /**
  * HR · Employee Management (`/hr/employees`)
@@ -543,7 +545,16 @@ const FiltersBar = ({
 // ─────────────────────────────────────────────────────────────────────────────
 const Avatar = ({ emp, size = "md" }) => {
   const [photoFailed, setPhotoFailed] = useState(false);
-  const photoUrl = String(emp.profile_photo || "").trim();
+  const sharedPhoto = useCurrentProfilePhoto();
+  const isCurrentUser = (emp.user?.id != null && String(emp.user.id) === String(sharedPhoto.userId))
+    || (getEmail(emp) && getEmail(emp).toLowerCase() === String(sharedPhoto.email || '').toLowerCase());
+  const [storageFailed, setStorageFailed] = useState(false);
+  useEffect(() => setStorageFailed(false), [emp.id, emp.profile_photo]);
+  const managedPhoto = useAuthenticatedPhoto(
+    !isCurrentUser && emp.id && (size === 'xl' || storageFailed) ? `/rbac/users/${emp.id}/profile-photo/` : null,
+    emp.profile_photo,
+  );
+  const photoUrl = (isCurrentUser ? sharedPhoto.photo : managedPhoto) || String(emp.profile_photo || "").trim();
   const sizes = {
     sm: "w-8 h-8 text-xs",
     md: "w-12 h-12 text-sm",
@@ -559,12 +570,13 @@ const Avatar = ({ emp, size = "md" }) => {
   if (photoUrl && !photoFailed) {
     return (
       <img
+        key={photoUrl}
         src={photoUrl}
         alt={fullName(emp)}
         loading="lazy"
         decoding="async"
         className={`${cls} shrink-0 rounded-full object-cover ring-2 ring-white shadow`}
-        onError={() => setPhotoFailed(true)}
+        onError={() => { setPhotoFailed(true); if (!managedPhoto) setStorageFailed(true); }}
       />
     );
   }
@@ -3482,6 +3494,7 @@ const DetailDrawer = ({
       const payload = response?.data ?? response;
       const updated = normalizeEmployee(payload?.profile || { ...emp, profile_photo: payload?.photo_url });
       onUpdate?.(updated);
+      window.dispatchEvent(new Event('radai:profile-photo-changed'));
       setPhotoUploadMessage({ type: "success", text: "Profile picture updated." });
     } catch (error) {
       const responseData = error?.response?.data;
