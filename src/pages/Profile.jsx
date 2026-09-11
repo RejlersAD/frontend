@@ -43,6 +43,7 @@ import SocialMediaLinksSection from "../components/Profile/SocialMediaLinksSecti
 import DocumentUploadSection from "../components/Profile/DocumentUploadSection";
 import { InitiateExitModal } from "./HR/OnboardingOffboarding";
 import EmployeeTabLoading from "../components/HR/EmployeeTabLoading";
+import ReportingManagerSelect from "../components/Profile/ReportingManagerSelect";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Soft-coded engineering constants
@@ -81,6 +82,7 @@ const DEPARTMENTS = [
   { value: "maintenance", label: "Maintenance" },
   { value: "quality", label: "Quality Assurance" },
   { value: "finance", label: "Finance" },
+  { value: "sales", label: "Sales" },
   { value: "hr", label: "Human Resources" },
   { value: "it", label: "Information Technology" },
   { value: "admin", label: "Administration" },
@@ -400,6 +402,8 @@ const Profile = ({ embedded = false }) => {
 
   // Managers list for the Reporting Manager dropdown
   const [managers, setManagers] = useState([]);
+  const [managersLoading, setManagersLoading] = useState(true);
+  const [managersError, setManagersError] = useState("");
 
   const PROFILE_EMPLOYEE_FIELDS = [
     { key: "branch", label: "Branch", type: "select" },
@@ -512,17 +516,21 @@ const Profile = ({ embedded = false }) => {
     const token =
       localStorage.getItem("radai_access_token") ||
       localStorage.getItem("access");
-    fetch(`${API_BASE_URL}/rbac/users/engineers/`, {
+    fetch(`${API_BASE_URL}/rbac/users/reporting-managers/`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => (r.ok ? r.json() : { engineers: [] }))
+      .then((r) => {
+        if (!r.ok) throw new Error("Unable to load employees. Reload the page to try again.");
+        return r.json();
+      })
       .then((d) => {
         const managerList = Array.isArray(d)
           ? d
           : (d?.engineers ?? d?.results ?? []);
         setManagers(managerList);
       })
-      .catch(() => setManagers([]));
+      .catch((error) => setManagersError(error.message))
+      .finally(() => setManagersLoading(false));
   }, []);
 
   useEffect(() => {
@@ -598,10 +606,6 @@ const Profile = ({ embedded = false }) => {
         localStorage.getItem("access");
       const fd = new FormData();
       Object.entries(formData).forEach(([k, v]) => {
-        if (k === "manager_id") {
-          if (v) fd.append(k, v);
-          return;
-        }
         if (v !== undefined) fd.append(k, v);
       });
       if (selectedFile) {
@@ -1275,39 +1279,15 @@ const Profile = ({ embedded = false }) => {
                     />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className={labelCls}>Reporting Manager</label>
-                    <select
-                      value={formData.manager_id || ""}
-                      onChange={(e) =>
-                        setFormData((p) => ({
-                          ...p,
-                          manager_id: e.target.value,
-                        }))
-                      }
-                      className={inputCls}
-                    >
-                      <option value="">No reporting manager assigned</option>
-                      {managers.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                          {m.job_title ? " - " + m.job_title : ""}
-                          {m.department ? " (" + m.department + ")" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    {managers.find((m) => m.id === formData.manager_id) && (
-                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                        <Check className="w-3 h-3" />
-                        Reporting to{" "}
-                        {
-                          managers.find((m) => m.id === formData.manager_id)
-                            ?.name
-                        }
-                        {managers.find((m) => m.id === formData.manager_id)
-                          ?.job_title &&
-                          ` (${managers.find((m) => m.id === formData.manager_id)?.job_title})`}
-                      </p>
-                    )}
+                    <ReportingManagerSelect
+                      employees={managers}
+                      value={formData.manager_id}
+                      selectedEmployee={profileData?.manager_detail}
+                      onChange={manager_id => setFormData(previous => ({ ...previous, manager_id }))}
+                      loading={managersLoading}
+                      error={managersError}
+                      inputClassName={inputCls}
+                    />
                   </div>
 
                   <div className="sm:col-span-2 pt-2 border-t border-gray-100">
