@@ -189,6 +189,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
                 <span className="relative flex h-9 w-9 flex-none items-center justify-center overflow-hidden rounded-full bg-blue-600 text-[11px] font-bold text-white ring-1 ring-slate-200 dark:ring-slate-600">
                   {profilePhoto && (
                     <img
+                      key={profilePhoto}
                       src={profilePhoto}
                       alt=""
                       className="absolute inset-0 z-10 h-full w-full object-cover"

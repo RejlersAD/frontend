@@ -38,6 +38,11 @@ assert.equal(await page.getByRole('button',{name:'Review monthly award',exact:tr
 await page.locator('.mc-winner .mc-avatar img').waitFor();
 assert.ok(await page.locator('.mc-winner .mc-avatar img').evaluate(img => img.complete && img.naturalWidth > 0));
 console.log('Current RADAI candidate activity:',await page.locator('.mc-winner-stats').innerText());
+await page.getByRole('button',{name:'Clear selection',exact:true}).click();
+await page.getByRole('heading',{name:'Select employees to rank',exact:true}).waitFor();
+await page.getByRole('checkbox',{name:/^Shortlist /}).first().check();
+await page.getByText('1 / 20 employees selected',{exact:true}).waitFor();
+await page.getByRole('button',{name:'Select top 20',exact:true}).click();
 await page.screenshot({path:'../artifacts/ai-adoption/radai-champion-current.png',fullPage:true});
 await page.locator('.ad-tabs').getByRole('button',{name:'Workforce adoption',exact:true}).click();
 await page.locator('.wa-kpis').waitFor();

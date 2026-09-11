@@ -1298,6 +1298,7 @@ const Sidebar = ({
               {/* Show profile photo when available, fall back to initials */}
               {profilePhotoUrl || user?.profile_photo ? (
                 <img
+                  key={profilePhotoUrl || user.profile_photo}
                   src={profilePhotoUrl || user.profile_photo}
                   alt="Profile"
                   className="absolute inset-0 w-full h-full object-cover z-10"
