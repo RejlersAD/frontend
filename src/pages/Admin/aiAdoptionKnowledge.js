@@ -1,0 +1,73 @@
+// Curated product guidance. Keep definitions aligned with the reporting services.
+export const adoptionKnowledge = [
+  {
+    id: 'overview', title: 'Overview', purpose: 'Monitor recent user signals and the overall state of AI reporting.',
+    steps: ['Use Live user activity to search every user in your reporting scope, including users with no recent observations.', 'Filter by AI processing, Recent activity, Check workflow or No recent signal. Open View activity for that user’s timeline.', 'Pause automatic updates when reviewing a row. Use the contribution register below for period-based request evidence.'],
+    metrics: ['The live list refreshes every 15 seconds while visible. Its rolling 24-hour window is independent of the report-period controls.', 'Recent activity means a signal in the last five minutes. AI processing means a server workflow is marked running and began within six hours. Older running jobs need checking.', 'AI calls count server-observed SDK operations linked to workflows. Submitted activity events are separate and may include browsing.'],
+    limits: ['No recent signal does not mean offline. This is not a presence, screen-monitoring or employee-performance tool.', 'Request success does not mean an output was accepted. No observations do not establish zero AI use.', 'The summary report refreshes every 60 seconds; the live list has its own timestamp and update status.'],
+    faq: ['Why can a user have activity but no AI calls? Browsing and manual work do not necessarily invoke an AI provider.', 'Why does a workflow need checking? A worker may have stopped before recording completion; inspect Workflow measurements before interpreting the result.'],
+  },
+  {
+    id: 'workforce', title: 'Workforce adoption', purpose: 'Understand eligible workforce participation by employee, department and manager team.',
+    steps: ['Choose the reporting week and inspect the eligibility and coverage notes.', 'Switch between employees, departments and manager teams. Use the cards and search to narrow the cohort.', 'Inspect engagement and the weekly trend before deciding where training or support is needed.'],
+    metrics: ['Weekly adoption = eligible employees with observed AI use in the week ÷ eligible employees × 100.', 'Eligibility requires an active account, active linked employee and AI module entitlement, subject to configured exclusions.', 'Engagement combines frequency (40%), feature breadth (30%) and consistency (30%) over 28 days. Frequency targets 20 active days; consistency covers four seven-day intervals.', 'Maturity levels 1–3 reflect usage patterns. Levels 4–5 require reviewed integration or automation evidence.'],
+    limits: ['Historical denominators use a preceding workforce snapshot no older than 36 hours. Missing snapshots are explicitly labeled current-cohort fallback.', 'Engagement, maturity and monthly award scores are different measures. Missing observations cannot establish maturity level zero.', 'Historical legacy request records are not fully attested server telemetry; consult Methodology.'],
+    faq: ['Why is the eligible count smaller than the user directory? Directory users may lack active employment, module access or a valid employee link.', 'Does a high engagement score prove time savings? No. Time savings require reviewed productivity evidence.'],
+  },
+  {
+    id: 'outcomes', title: 'Productivity outcomes', purpose: 'Record comparable before/after observations and review evidence of business benefit.',
+    steps: ['For Planning packages or P&ID analysis, open a completed workflow in Workflow measurements and select Record outcome; manual observations are also available.', 'Provide the task reference, comparable manual baseline, AI work time, review time, rework time, comparison context and HTTPS evidence link.', 'Identify measured versus self-reported evidence. A different administrator reviews quality and approves or rejects the observation.', 'Provide a currency and hourly rate only when estimating capacity value.'],
+    metrics: ['Net minutes saved = manual baseline − AI-assisted work − review − rework.', 'Approved measured and self-reported results are reported separately. Negative time savings are retained.', 'Estimated capacity value = reviewed net hours × supplied hourly rate. Totals remain separate by currency and evidence type.'],
+    limits: ['Do not invent a baseline or compare tasks of different scope or quality.', 'Estimated capacity value is not realized cash savings, revenue or ROI.', 'The submitter and the linked workflow’s operator cannot approve their own observation.'],
+    faq: ['Why is Record outcome unavailable on a workflow? It needs a completed persisted result, a successful server AI call, no existing observation and a supported productivity pilot.', 'How do I claim automation or workflow integration? Link a real workflow, select the contribution type and provide evidence for independent review.'],
+  },
+  {
+    id: 'measurements', title: 'Workflow measurements', purpose: 'Trace server-owned workflows, AI provider calls and their result references.',
+    steps: ['Choose a period and inspect integration coverage and snapshot freshness.', 'Filter the register by employee/reference, module or workflow status. Open the module coverage row to see the exact paths covered.', 'Check missing output links and uncosted calls. Export the current page if needed.', 'Record productivity evidence from eligible completed Planning or P&ID runs.'],
+    metrics: ['An AI workflow has at least one observed server SDK operation. Cached or deterministic processing alone is not new AI use.', 'Derived sessions group workflow activity for the same employee and organization using a 30-minute inactivity boundary.', 'Completed means a result reference was persisted; returned means a response was delivered without a persisted result reference.', 'Adapter coverage describes installed measurement paths, not a workforce reporting percentage.'],
+    limits: ['One SDK operation may contain internal retries. Fan-out calls are not individual employee prompts.', 'Streaming provider operations and unlisted extraction paths are outside the registered adapters.', 'PFD Quality currently uses PDF extraction, local OCR and rules; it does not emit generative-provider calls.', 'Missing token metadata or a supported price marks a call uncosted; this is not invoice reconciliation.'],
+    faq: ['Why are historical workflows missing? Historical request records are not converted into invented workflow sessions.', 'Why is a completed workflow not a verified outcome? Output quality and the baseline comparison require separate evidence review.'],
+  },
+  {
+    id: 'contributions', title: 'Contributions', purpose: 'Explore recorded AI requests by contributor and inspect their supporting request samples.',
+    steps: ['Select the reporting period, module, model and reporting-status filters.', 'Search the contribution register and select a contributor row.', 'Use the supporting-evidence panel to inspect request samples and reporting boundaries. Export the filtered register when needed.'],
+    metrics: ['Request totals and successful request flags come from usage logs; browsing is excluded from this register.', 'Recorded costs use stored request values. A configured price does not prove invoice reconciliation.', 'Recognition eligibility and verified outcomes are not inferred from request volume.'],
+    limits: ['Historical logs may have legacy or submitted provenance. Use Workflow measurements for server-linked operational counts.', 'A request sample is technical evidence of a request, not accepted output quality.', 'The register has a bounded source result limit; inspect any truncation notice before interpreting totals.'],
+    faq: ['Why does this differ from Live user activity? Contributions uses a selected historical period and usage logs; Live uses a rolling 24 hours and distinguishes server calls from submitted activity.'],
+  },
+  {
+    id: 'monthly', title: 'AI Champion', purpose: 'Review and publish AI Champion of the Month with a durable audit record.',
+    steps: ['Choose the UTC award month and inspect the candidates and scoring methodology.', 'Treat the open month as a provisional preview. Publication requires a completed month.', 'A Super Administrator reviews the proposed award, supplies a reason and confirms publication.', 'Inspect published snapshots without recalculating their original methodology.'],
+    metrics: ['Candidates need successful AI request evidence; browsing alone does not qualify.', 'Monthly ranking uses the methodology displayed for that month. It is separate from the workforce 40/30/30 engagement indicator.', 'Published results retain the reviewed period, score, reason and reviewer information.'],
+    limits: ['A leading candidate is not yet an awarded champion.', 'Request engagement is not employee performance or demonstrated business value.', 'Historical browser-only honorary entries are not verified monthly awards. The old URL redirects to this workspace.'],
+    faq: ['Why is publication disabled? The month may still be open, there may be no eligible candidates, the award may already be published, or your account may lack publishing permission.'],
+  },
+  {
+    id: 'adoption', title: 'Use cases', purpose: 'Inspect which applications have recorded use and where AI evidence is missing.',
+    steps: ['Choose a reporting period and search applications.', 'Filter applications with AI requests or activity only.', 'Select an application for its event counts, AI request counts and latest observation.'],
+    metrics: ['Page views, other activity and AI requests are separate signals.', 'Activity only can mean non-AI work or an instrumentation gap.', 'Request success is a technical result, not a business outcome.'],
+    limits: ['This view is an observed application inventory, not a verified business-use-case catalogue.', 'Applications with no records may be absent; absence does not prove non-use.'],
+    faq: ['How do I demonstrate a useful use case? Record comparable, accepted task evidence in Productivity outcomes.'],
+  },
+  {
+    id: 'champion', title: 'Enablement', purpose: 'Use engagement context and stored recognition history to inform support and training.',
+    steps: ['Inspect current candidates separately from stored monthly results.', 'Search the engagement leaderboard and open score details to see the component explanations.', 'Use Workforce adoption for department/team participation and AI Champion for reviewed awards.'],
+    metrics: ['The legacy engagement leaderboard includes recorded activity signals, which may include browsing.', 'Stored monthly results retain their original period and scoring method.'],
+    limits: ['This view does not enroll people in training or record course completion.', 'Its legacy leaderboard is distinct from workforce engagement and the current monthly award formula.', 'Do not use activity rankings as employee-performance ratings.'],
+    faq: ['Where should I identify teams needing help? Start with Workforce adoption, then inspect data coverage and discuss workflow barriers with the team.'],
+  },
+  {
+    id: 'quality', title: 'Methodology', purpose: 'Explain data sources, coverage gaps and what the dashboard can and cannot establish.',
+    steps: ['Read telemetry findings before interpreting missing values or request totals.', 'Expand the recorded activity trend and inspect daily values; this trend includes browsing.', 'Use Workflow measurements for the current adapter inventory, result reconciliation and snapshot freshness.', 'Use Productivity outcomes for independently reviewed business evidence.'],
+    metrics: ['Reporting coverage is not established merely by installing adapters.', 'Legacy, client-submitted and server-observed telemetry have different evidence strength.', 'UTC governs daily aggregation and award periods; displayed live timestamps use your browser’s local time.'],
+    limits: ['No recorded cost does not establish no spending.', 'No signal does not establish no usage or offline status.', 'Provider billing reconciliation is not connected.'],
+    faq: ['What should I check when data is missing? Check period and organization scope, adapter coverage, worker status, result links, timestamps and provider pricing.'],
+  },
+  {
+    id: 'administration', title: 'Administration', purpose: 'Access the governed recognition review and publication workflow.',
+    steps: ['Open Review monthly awards to select a completed month.', 'Inspect the proposed award and current scoring rules before supplying a publication reason.', 'Review productivity observations separately in Productivity outcomes.'],
+    metrics: ['Organization administrators see their reporting scope. Super Administrators can access the broader reporting scope.', 'Monthly publication is restricted to Super Administrators and produces a permanent snapshot.'],
+    limits: ['Opening an analytics page does not publish awards or change user permissions.', 'The knowledge base describes implemented features; it is curated product guidance, not an AI-generated answer service.'],
+    faq: ['Where did legacy recognition management go? Its links were retired. Old bookmarks redirect here; browser-local honorary data was not deleted or converted into verified awards.'],
+  },
+];

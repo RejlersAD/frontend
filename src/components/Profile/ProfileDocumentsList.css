@@ -1,0 +1,46 @@
+.profile-documents-list { list-style: none; padding: 0; margin: 0; border: 1px solid #dce4ef; border-radius: 8px; background: #fff; overflow: hidden; }
+.profile-documents-list .profile-document-row { display: grid; grid-template-columns: minmax(220px, .65fr) minmax(0, 1.35fr); gap: 16px; padding: 12px 14px; border-bottom: 1px solid #e5ebf3; align-items: start; }
+.profile-document-row:last-child { border-bottom: 0; }
+.profile-document-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.profile-document-heading h3 { font-size: 13px; }
+.profile-document-icon { padding: 6px; border-radius: 6px; flex-shrink: 0; }
+.profile-document-icon span { font-size: 18px; }
+.profile-document-content { min-width: 0; display: grid; gap: 6px; }
+.profile-document-content > div { min-width: 0; overflow-wrap: anywhere; }
+.profile-document-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.profile-documents-list .profile-document-actions button { flex: none; min-height: 30px; padding: 5px 8px; font-size: 12px; }
+.profile-document-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px dashed #c4d4e8; border-radius: 6px; cursor: pointer; background: #f8faff; }
+.profile-document-upload:hover { border-color: #075bff; background: #eff6ff; }
+.profile-document-upload > span:last-child { margin-left: auto; }
+@media (max-width: 900px) {
+ .profile-documents-list .profile-document-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+ .profile-document-upload > span:last-child { margin-left: 0; }
+}
+.document-table-scroll { overflow-x: auto; border: 1px solid #dce4ef; border-radius: 12px; background: #fff; }
+.profile-document-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+.profile-document-table th { padding: 12px 16px; background: #f7f9fc; color: #637795; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.profile-document-table td { padding: 12px 16px; border-top: 1px solid #edf1f7; color: #52647f; }
+.profile-document-table th:first-child { width: 48%; }
+.profile-document-table th:last-child, .profile-document-table td:last-child { text-align: right; }
+.document-table-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.document-table-icon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; background: #eff6ff; border-radius: 8px; font-size: 18px; }
+.document-table-name > div { min-width: 0; }
+.document-table-name strong { display: block; color: #172033; font-size: 13px; font-weight: 600; }
+.document-table-name div > span { display: block; margin-top: 2px; overflow-wrap: anywhere; font-size: 12px; color: #637795; }
+.career-profile-layout .document-open { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 12px; min-height: 30px; border: 1px solid #bdd2ff; border-radius: 6px; background: #fff; color: #075bff; white-space: nowrap; font-size: 12px; cursor: pointer; }
+.document-open:hover { background: #eff6ff; }
+.document-missing { font-size: 12px; color: #52647f; }
+.document-missing summary { cursor: pointer; color: #075bff; }
+.document-missing ul { list-style: none; padding: 0; margin-top: 8px; }
+.document-missing li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e5ebf3; }
+.document-missing label:focus-within { outline: 2px solid #075bff; outline-offset: 2px; }
+@media (max-width: 700px) { .profile-document-table { min-width: 580px; } }
+.profile-document-table th:first-child { width: 38%; }
+.profile-document-table .document-number { overflow-wrap: anywhere; }
+.document-table-actions { display: inline-flex; align-items: center; gap: 6px; }
+.career-profile-layout .document-table-actions button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; min-height: 30px; padding: 6px; border: 1px solid #d4e1f5; border-radius: 6px; background: #f8fbff; color: #075bff; }
+.career-profile-layout .document-table-actions button:hover { background: #eaf2ff; border-color: #9bbfff; }
+.career-profile-layout .document-table-actions .document-delete { color: #dc2626; background: #fff5f5; border-color: #fee2e2; }
+.career-profile-layout .document-table-actions .document-delete:hover { background: #fee2e2; }
+.document-table-actions button:focus-visible { outline: 2px solid #075bff; outline-offset: 2px; }
+@media (max-width: 700px) { .profile-document-table { min-width: 720px; } }

@@ -37,7 +37,7 @@ try {
   const reminder = page.getByRole('button', { name: 'Dismiss approval reminder for 10 minutes' });
   await reminder.waitFor({ timeout: 8000 }).catch(() => {});
   if (await reminder.isVisible()) await reminder.click();
-  assert.equal(await page.locator('.epw-primary-nav button').count(), 15);
+  assert.equal(await page.locator('.epw-primary-nav button').count(), 14);
   assert.equal(await page.locator('.epw-signal').count(), 4);
   assert.equal(await page.getByText('Basic Salary', { exact: true }).count(), 0);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
@@ -60,5 +60,5 @@ try {
   await page.waitForFunction(() => document.querySelector('option[value="sales"]') && [...document.querySelectorAll('select')].some(select => select.id && select.options.length > 1));
   assert.ok(await page.locator('option[value="sales"]').count() > 0);
   assert.deepEqual(errors, []);
-  console.log('PASS: live profile, all 15 destinations, four signals, salary privacy, direct signature navigation, mobile overflow, and preserved Sales/reporting-manager fields. Server writes blocked.');
+  console.log('PASS: live profile, all 14 destinations, four signals, salary privacy, direct signature navigation, mobile overflow, and preserved Sales/reporting-manager fields. Server writes blocked.');
 } finally { await browser.close(); }
