@@ -26,7 +26,7 @@ assert.equal(response.status(),200);const profile=await response.json();
 await page.goto('http://localhost:5173/admin/users/'+profile.id,{waitUntil:'domcontentloaded',timeout:120000});
 await page.locator('.ud-profile').waitFor();
 if(profile.profile_photo){await page.waitForFunction(()=>{const img=document.querySelector('.ud-avatar img');return img?.complete&&img.naturalWidth>0});}
-await page.getByRole('tab',{name:'Modules & Permissions',exact:true}).click();
+await page.getByRole('tab',{name:/^Modules & Permissions(?:\s*\d+)?$/}).click();
 const reminder=page.getByRole('button',{name:'Dismiss approval reminder for 10 minutes'});
 await reminder.waitFor({timeout:10000}).catch(()=>{});if(await reminder.isVisible())await reminder.click();
 const rows=page.locator('.ud-module-list li');assert.equal(await rows.count(),Math.min(12,profile.modules.length));

@@ -26,7 +26,7 @@ await page.locator('.ua-row-actions button').first().click();
 await page.getByRole('heading',{name:'User Details',exact:true}).waitFor();
 await page.locator('.ud-profile').waitFor();
 await page.screenshot({path:'../artifacts/user-directory/user-detail-desktop.png',fullPage:true});
-for(const name of ['Modules & Permissions','Roles','Activity Log','Overview']){await page.getByRole('tab',{name,exact:true}).click();}
+for(const name of ['Modules & Permissions','Roles','Activity Log','Overview']){await page.getByRole('tab',{name:new RegExp(`^${name}(?:\\s*\\d+)?$`)}).click();}
 await page.setViewportSize({width:390,height:844});
 assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
 await page.screenshot({path:'../artifacts/user-directory/user-detail-mobile.png',fullPage:true});
