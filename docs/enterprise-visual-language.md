@@ -78,6 +78,7 @@ restrained.
 
 ## Current reference implementations
 
+- `src/pages/Admin/AIAdoptionVisualLanguage.css` (shared adoption, workforce, outcomes and workflow cards)
 - `src/pages/Projects/tabs/PortfolioExceptionsTab.jsx`
 - `src/pages/Projects/tabs/ProjectDashboardTab.jsx`
 - `src/pages/Projects/tabs/ControlsPeriodsTab.jsx`

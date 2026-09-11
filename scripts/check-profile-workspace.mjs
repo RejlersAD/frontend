@@ -18,7 +18,7 @@ try {
   await page.addStyleTag({ content: await readFile('src/components/HR/ProfileOverviewWorkspace.css', 'utf8') });
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
   await page.getByRole('heading', { name: 'Organization', exact: true }).waitFor();
-  assert.equal(await page.locator('.epw-primary-nav button').count(), 15);
+  assert.equal(await page.locator('.epw-primary-nav button').count(), 14);
   assert.equal(await page.locator('.epw-signal').count(), 4);
   assert.ok((await page.locator('.epw-signals').textContent()).includes('32h 16m'));
   assert.ok(!(await page.locator('body').textContent()).includes('987654'));
@@ -37,7 +37,7 @@ try {
   assert.equal(await page.evaluate(() => window.downloaded), 'slip');
   const destinations = [
     ['Overview','overview'],['Career Profile','career'],['My Signature','signature'],['My Work','workspace'],
-    ['Leave','leave'],['Attendance','attendance'],['Timesheet','timesheet'],['Payroll','payroll'],
+    ['Leave','leave'],['Work & Attendance','attendance'],['Payroll','payroll'],
     ['My Requests','requests'],['Performance','performance'],['Schedule','schedule'],['Daily Tracker','daily_tracker'],
     ['Site Visits','site_visits'],['Digital Twin','twin'],['HR Assistant','assistant'],
   ];
@@ -60,8 +60,8 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   assert.ok(await navigation.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
-  assert.equal(await navigation.locator('button:visible').count(), 15);
+  assert.equal(await navigation.locator('button:visible').count(), 14);
   await page.screenshot({ path: '../artifacts/profile-workspace/fixture-mobile.png', fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('PASS: all 15 destinations, four signals, action navigation, private pay, organization filtering, download, missing data, empty documents, and mobile layout.');
+  console.log('PASS: all 14 destinations, four signals, action navigation, private pay, organization filtering, download, missing data, empty documents, and mobile layout.');
 } finally { await browser.close(); }

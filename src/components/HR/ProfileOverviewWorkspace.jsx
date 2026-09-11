@@ -10,8 +10,7 @@ const PROFILE_TABS = [
   ['signature', 'My Signature', PenLine],
   ['workspace', 'My Work', Boxes],
   ['leave', 'Leave', CalendarDays],
-  ['attendance', 'Attendance', Clock3],
-  ['timesheet', 'Timesheet', ClipboardList],
+  ['attendance', 'Work & Attendance', Clock3],
   ['payroll', 'Payroll', CreditCard],
   ['requests', 'My Requests', ClipboardList],
   ['performance', 'Performance', BarChart3],
@@ -72,7 +71,7 @@ export default function ProfileOverviewWorkspace({ profile, organizationEmployee
   ].sort((a, b) => String(b.updated || '').localeCompare(String(a.updated || ''))).slice(0, 3);
   const actions = [
     ...openRequests.slice(0, 2).map(item => ({ id: item.id, icon: CalendarDays, tone: 'amber', title: 'Leave request awaiting approval', detail: `Submitted ${date(item.created_at)}`, badge: item.status === 'RM_APPROVED' ? 'With HR' : 'Pending', action: 'View request', tab: 'leave' })),
-    ...(numeric(monthlyTs?.expected_hours) !== null && numeric(monthlyTs?.total_hours) !== null && Number(monthlyTs.total_hours) < Number(monthlyTs.expected_hours) ? [{ id: 'hours', icon: BarChart3, tone: 'amber', title: 'Monthly hours below expected', detail: `${hours(monthlyTs.total_hours)} recorded`, badge: 'Needs attention', action: 'Open timesheet', tab: 'timesheet' }] : []),
+    ...(numeric(monthlyTs?.expected_hours) !== null && numeric(monthlyTs?.total_hours) !== null && Number(monthlyTs.total_hours) < Number(monthlyTs.expected_hours) ? [{ id: 'hours', icon: BarChart3, tone: 'amber', title: 'Monthly hours below expected', detail: `${hours(monthlyTs.total_hours)} recorded`, badge: 'Needs attention', action: 'View work & attendance', tab: 'attendance' }] : []),
     ...(latestSlip ? [{ id: 'payslip', icon: FileText, tone: 'blue', title: `${slipName(latestSlip)} available`, detail: latestSlip.status || 'View your pay details privately', badge: 'Available', action: 'View payslip', tab: 'payroll' }] : []),
   ].slice(0, 3);
   const link = (title, tab) => <button className="epw-text-button" onClick={() => onNavigate(tab)}>{title}</button>;

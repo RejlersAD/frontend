@@ -80,7 +80,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import UserManagement from './pages/UserManagement'
 import UserDetail from './pages/UserDetail'
 import WrenchIntegration from './pages/WrenchIntegration'
-import AIChampion from './pages/Admin/AIChampion'
+import AIChampion from './pages/Admin/AIAdoptionDashboard'
 import EnquiryManagement from './pages/Admin/EnquiryManagement'
 import EnquiryDetail from './pages/Admin/EnquiryDetail'
 import MyEnquiries from './pages/MyEnquiries'
@@ -1544,6 +1544,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="admin/ai-adoption" element={<ProtectedRoute><AIChampion /></ProtectedRoute>} />
+        <Route path="admin/ai-champion/legacy" element={<ProtectedRoute><Navigate to="/admin/ai-champion" replace /></ProtectedRoute>} />
         <Route
           path="admin/enquiries"
           element={

@@ -1,0 +1,58 @@
+/* RADAI enterprise semantics, shared across the adoption workspace tabs. */
+.ai-adoption-workspace.ad-reference-workspace {
+  --ad-ink: #172033;
+  --ad-body: #526071;
+  --ad-muted: #718096;
+  --ad-surface: #fff;
+  --ad-border: #dce5f1;
+  background: #f4f7fc;
+}
+.ai-adoption-workspace.ad-reference-workspace .ad-header {
+  padding: 16px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  background: linear-gradient(100deg, var(--ad-surface), var(--ad-surface) 50%, #eef2ff);
+}
+.ai-adoption-workspace.ad-reference-workspace .ad-header h1 { font-weight: 600; color: var(--ad-ink); }
+.ai-adoption-workspace.ad-reference-workspace .ad-kpis { gap: 16px; margin-bottom: 16px; }
+.ai-adoption-workspace.ad-reference-workspace .ad-kpi {
+  background: linear-gradient(135deg, var(--ad-surface), var(--ad-tint));
+  border: 1px solid var(--ad-edge);
+  border-radius: 8px;
+  padding: 16px;
+  gap: 16px;
+  min-height: 104px;
+  box-shadow: none;
+}
+.ai-adoption-workspace.ad-reference-workspace button.ad-kpi:hover { border-color: var(--ad-tone); box-shadow: none; }
+.ai-adoption-workspace.ad-reference-workspace .ad-kpi-icon {
+  width: 42px; height: 42px; border-radius: 8px;
+  background: var(--ad-icon); color: var(--ad-tone);
+}
+.ai-adoption-workspace.ad-reference-workspace .ad-kpi-icon svg { width: 24px; height: 24px; stroke-width: 1.8; }
+.ai-adoption-workspace.ad-reference-workspace .ad-kpi strong { color: var(--ad-ink); font-size: 28px; line-height: 34px; font-weight: 650; }
+.ai-adoption-workspace.ad-reference-workspace .ad-kpi-label { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ad-body); }
+.ai-adoption-workspace.ad-reference-workspace .ad-kpi small { font-size: 12px; line-height: 16px; color: var(--ad-muted); }
+.ai-adoption-workspace.ad-reference-workspace :is(.ad-panel, .ad-context) { border-radius: 8px; box-shadow: none; }
+.ai-adoption-workspace.ad-reference-workspace .ad-panel-heading { padding: 16px; }
+.ai-adoption-workspace.ad-reference-workspace .ad-panel-heading h2 { color: var(--ad-ink); font-size: 18px; line-height: 24px; font-weight: 600; }
+.ai-adoption-workspace.ad-reference-workspace :is(.ad-contribution-layout, .ad-content) { gap: 16px; }
+.ai-adoption-workspace.ad-reference-workspace input:not([type=checkbox]),
+.ai-adoption-workspace.ad-reference-workspace select { min-height: 40px; height: 40px; border-radius: 6px; font-size: 14px; line-height: 20px; }
+.ai-adoption-workspace.ad-reference-workspace .ad-header-actions button { min-height: 36px; height: auto; border-radius: 6px; font-size: 14px; line-height: 20px; }
+.ai-adoption-workspace.ad-reference-workspace th { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ad-body); }
+.ai-adoption-workspace.ad-reference-workspace td { height: 50px; font-size: 13px; line-height: 18px; }
+.ai-adoption-workspace.ad-reference-workspace .ad-contribution-table .ad-row-link { font-size: 13px; line-height: 18px; }
+.ai-adoption-workspace.ad-reference-workspace :focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.dark .ai-adoption-workspace.ad-reference-workspace { --ad-ink: #e2e8f0; --ad-body: #cbd5e1; --ad-muted: #94a3b8; --ad-surface: #172033; --ad-border: #334155; background: #0f172a; }
+.dark .ai-adoption-workspace.ad-reference-workspace .ad-header { background: linear-gradient(100deg, #172033, #172033 50%, #202343); border-color: #312e81; }
+.dark .ai-adoption-workspace.ad-reference-workspace .ad-kpi[data-tone] .ad-kpi-icon { color: var(--ad-tone); }
+.dark .ai-adoption-workspace.ad-reference-workspace .ad-empty :is(p, h3, svg) { color: var(--ad-muted); }
+.dark .ai-adoption-workspace.ad-reference-workspace :is(.ad-tabs, .ad-register-tabs) button { background: transparent; }
+@media(max-width: 700px) {
+  .ai-adoption-workspace.ad-reference-workspace { padding: 12px; }
+  .ai-adoption-workspace.ad-reference-workspace .ad-kpis { gap: 8px; }
+  .ai-adoption-workspace.ad-reference-workspace .ad-kpi { gap: 8px; padding: 12px; flex-wrap: wrap; }
+  .ai-adoption-workspace.ad-reference-workspace .ad-kpi strong { font-size: 24px; line-height: 30px; }
+  .ai-adoption-workspace.ad-reference-workspace .ad-header-actions { width: 100%; }
+}

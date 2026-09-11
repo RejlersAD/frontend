@@ -1,3 +1,4 @@
+import ProfileTimesheetTables from '../../components/HR/ProfileTimesheetTables'
 import { useSearchParams } from 'react-router-dom'
 import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
 /**
@@ -68,8 +69,7 @@ const ESS_TABS = [
   { id: 'signature',   label: 'My Signature',    icon: 'PencilSquareIcon' },
   { id: 'workspace',   label: 'My Work',         icon: 'Squares2X2Icon' },
   { id: 'leave',       label: 'Leave',           icon: 'CalendarDaysIcon' },
-  { id: 'attendance',  label: 'Attendance',      icon: 'ClipboardDocumentCheckIcon' },
-  { id: 'timesheet',   label: 'Timesheet',       icon: 'ClockIcon' },
+  { id: 'attendance',  label: 'Work & Attendance', icon: 'ClipboardDocumentCheckIcon' },
   { id: 'payroll',     label: 'Payroll',         icon: 'BanknotesIcon' },
   { id: 'requests',    label: 'My Requests',     icon: 'InboxStackIcon' },
   { id: 'performance', label: 'Performance',     icon: 'ChartBarSquareIcon' },
@@ -3285,13 +3285,15 @@ export default function EmployeeSelfService() {
   const authProfile = currentUser || authUser
 
   const [profileParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState(() => {
+  const [activeTab, setActiveTabState] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab')
-    return requestedTab === 'overtime' ? 'requests' : ESS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
+    return requestedTab === 'timesheet' ? 'attendance' : requestedTab === 'overtime' ? 'requests' : ESS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
   })
+  const setActiveTab = tab => setActiveTabState(tab === 'timesheet' ? 'attendance' : tab)
   useEffect(() => {
     const tab = profileParams.get('tab')
-    if (tab === 'overtime') setActiveTab('requests')
+    if (tab === 'timesheet') setActiveTab('attendance')
+    else if (tab === 'overtime') setActiveTab('requests')
     else if (ESS_TABS.some(item => item.id === tab)) setActiveTab(tab)
   }, [profileParams])
   const [salaryVisible, setSalaryVisible] = useState(false)
@@ -3728,7 +3730,7 @@ export default function EmployeeSelfService() {
     const loadingByTab = {
       overview: loadingProfile || loadingTs || loadingLeave || loadingPayroll,
       leave: loadingProfile || loadingLeave,
-      attendance: loadingProfile || loadingTs,
+      attendance: loadingProfile,
       payroll: loadingProfile || loadingPayroll,
       twin: loadingProfile || loadingTs || loadingLeave || loadingPayroll,
       notifications: loadingNotifications,
@@ -3807,10 +3809,8 @@ export default function EmployeeSelfService() {
         )
 
       case 'attendance':
-        return <AttendanceAnalytics profile={profile} monthlyTs={monthlyTs} loading={loadingTs} />
-
       case 'timesheet':
-        return <ESSTimesheetView profile={profile} />
+        return <ProfileTimesheetTables profile={profile} />
 
       case 'payroll':
         return (

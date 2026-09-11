@@ -40,7 +40,7 @@ try {
   await mkdir('../artifacts/profile-tabs-audit', { recursive: true });
   for (const width of [1672, 390]) {
     await page.setViewportSize({ width, height: 941 });
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 14; i++) {
       if (process.env.PROFILE_AUDIT_TABS && !process.env.PROFILE_AUDIT_TABS.split(',').map(Number).includes(i)) continue;
       const button = page.locator('.epw-primary-nav button').nth(i);
       const name = await button.innerText();

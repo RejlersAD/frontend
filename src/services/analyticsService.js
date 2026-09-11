@@ -5,6 +5,29 @@
 import apiClient from './api.service';
 
 const analyticsService = {
+  getAILiveActivity: async (params = {}, config = {}) => (await apiClient.get('/rbac/ai-champion/live-activity/', { ...config, params })).data,
+  getAIMeasurements: async (params = {}, config = {}) => (await apiClient.get('/rbac/ai-champion/measurements/', { ...config, params })).data,
+  getAIOutcomes: async (page = 1, config = {}) => (await apiClient.get('/rbac/ai-champion/outcomes/', { ...config, params: { page } })).data,
+  submitAIOutcome: async data => (await apiClient.post('/rbac/ai-champion/outcomes/', data)).data,
+  reviewAIOutcome: async data => (await apiClient.patch('/rbac/ai-champion/outcomes/', data)).data,
+  getWorkforceAdoption: async (week, config = {}) => {
+    const response = await apiClient.get('/rbac/ai-champion/workforce-adoption/', { ...config, params: week ? { week } : {} });
+    return response.data;
+  },
+  getMonthlyChampion: async (year, month, config = {}) => {
+    const response = await apiClient.get('/rbac/ai-champion/monthly-award/', { ...config, params: { year, month } });
+    return response.data;
+  },
+  publishMonthlyChampion: async (data) => {
+    const response = await apiClient.post('/rbac/ai-champion/monthly-award/', data);
+    return response.data;
+  },
+  getAIAdoptionDashboard: async (days = 30, config = {}) => {
+    const response = await apiClient.get('/rbac/ai-champion/adoption-dashboard/', {
+      ...config, params: { days },
+    });
+    return response.data;
+  },
   // Dashboard Overview
   getDashboardOverview: async () => {
     const response = await apiClient.get('/rbac/analytics/dashboard/overview/');

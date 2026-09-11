@@ -1,0 +1,74 @@
+import { build } from 'esbuild';
+import { chromium } from 'playwright-core';
+import { readFile, mkdir } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+
+const fixture = `export default {getAILiveActivity:async p=>{
+window.liveCalls=(window.liveCalls||0)+1;window.lastLiveQuery=p;if(window.failLive)throw Error('offline');
+const rows=Array.from({length:12},(_,i)=>({id:String(i+1),name:'Person '+(i+1),email:'person'+(i+1)+'@example.test',account_enabled:true,state:i===0?'processing':i===1?'attention':i===2?'recent':'quiet',module:i<3?'planning_package':'',action:i<3?'generate':'',source:i<3?'Server workflow':'No observation',last_signal_at:i<3?'2026-09-11T12:00:00Z':null,ai_calls_24h:i<3?3:0,failed_ai_calls_24h:0,events_24h:0}));
+const filtered=rows.filter(r=>(!p.search||r.name.includes(p.search))&&(!p.state||r.state===p.state));
+return {generated_at:new Date().toISOString(),scope:'Your organization',summary:{total:12,processing:1,recent:1,attention:1},count:filtered.length,page:p.page,page_size:p.page_size,results:filtered.slice((p.page-1)*p.page_size,p.page*p.page_size),selected:p.user?{id:p.user,name:'Person '+p.user,email:'person'+p.user+'@example.test',limit:20,timeline:[{id:'job',timestamp:'2026-09-11T12:00:00Z',module:'planning_package',action:'generate',source:'Server workflow',status:'running'}]}:null};}}`;
+const bundle = await build({ stdin: { contents: `import React,{useState} from 'react';import{createRoot}from'react-dom/client';import Live from './src/pages/Admin/AILiveActivity';import Help from './src/pages/Admin/AIAdoptionKnowledgeBase';function App(){const[tab,setTab]=useState('overview');return <div className="ai-adoption-workspace ad-reference-workspace"><Help tab={tab} onNavigate={v=>{window.openedTab=v;setTab(v)}}/><Live/></div>}createRoot(document.getElementById('root')).render(<App/>);`, resolveDir: process.cwd(), loader: 'jsx' }, bundle: true, write: false, format: 'iife', loader: { '.css': 'empty' }, plugins: [{ name: 'fixture', setup(b) { b.onLoad({ filter: /services[\\/]analyticsService\.js$/ }, () => ({ loader: 'js', contents: fixture })); } }] });
+await mkdir('../artifacts/ai-adoption', { recursive: true });
+const browser = await chromium.launch({ channel: 'chrome', headless: true });
+try {
+  const page = await browser.newPage({ viewport: { width: 1672, height: 1000 } });
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.setContent('<div id="root"></div>');
+  await page.evaluate(() => { const schedule = window.setTimeout; window.setTimeout = (fn, delay, ...args) => schedule(fn, delay === 15000 ? 200 : delay, ...args); });
+  for (const name of ['AIAdoptionDashboard.css', 'AIAdoptionHelp.css', 'AIAdoptionVisualLanguage.css']) await page.addStyleTag({ content: await readFile(`src/pages/Admin/${name}`, 'utf8') });
+  await page.addScriptTag({ content: bundle.outputFiles[0].text });
+  await page.getByRole('button', { name: 'Activity details for Person 1', exact: true }).waitFor();
+  await page.waitForFunction(() => window.liveCalls >= 2);
+  await page.getByRole('button', { name: 'Pause live updates' }).click();
+  await page.waitForTimeout(400);
+  const paused = await page.evaluate(() => window.liveCalls);
+  await page.waitForTimeout(600); assert.equal(await page.evaluate(() => window.liveCalls), paused);
+  await page.getByRole('button', { name: 'Next users', exact: true }).click();
+  await page.getByRole('button', { name: 'Activity details for Person 12', exact: true }).waitFor();
+  await page.getByRole('textbox', { name: 'Search live users' }).fill('Person 12');
+  await page.waitForFunction(() => window.lastLiveQuery.search === 'Person 12' && window.lastLiveQuery.page === 1);
+  await page.getByRole('button', { name: 'Activity details for Person 12', exact: true }).click();
+  await page.getByRole('complementary', { name: 'User activity timeline' }).waitFor();
+  await page.getByRole('button', { name: 'Close user activity' }).click();
+  await page.getByRole('button', { name: 'Clear activity filters' }).click();
+  await page.getByRole('combobox', { name: 'Live activity state' }).selectOption('processing');
+  await page.waitForFunction(() => window.lastLiveQuery.state === 'processing');
+  await page.getByRole('button', { name: 'Activity details for Person 1', exact: true }).click();
+  await page.getByRole('complementary', { name: 'User activity timeline' }).waitFor();
+  await page.screenshot({ path: '../artifacts/ai-adoption/live-users-fixture.png', fullPage: true });
+  await page.getByRole('button', { name: 'Knowledge base', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'AI Adoption knowledge base' });
+  await dialog.waitFor();
+  const nav = dialog.getByRole('navigation', { name: 'Knowledge base topics' });
+  assert.equal(await nav.getByRole('button').count(), 10);
+  for (const name of ['Overview', 'Workforce adoption', 'Productivity outcomes', 'Workflow measurements', 'Contributions', 'AI Champion', 'Use cases', 'Enablement', 'Methodology', 'Administration']) {
+    await nav.getByRole('button', { name, exact: true }).click();
+    await dialog.getByRole('heading', { name, exact: true }).waitFor();
+    await dialog.getByRole('heading', { name: 'How to use this view', exact: true }).waitFor();
+  }
+  await dialog.getByRole('textbox', { name: 'Search knowledge base' }).fill('manual baseline');
+  await dialog.getByRole('heading', { name: 'Productivity outcomes', exact: true }).waitFor();
+  await page.screenshot({ path: '../artifacts/ai-adoption/knowledge-base.png', fullPage: true });
+  await dialog.getByRole('button', { name: 'Open Productivity outcomes', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.openedTab), 'outcomes');
+  await page.getByRole('button', { name: 'Knowledge base', exact: true }).click();
+  await dialog.getByRole('heading', { name: 'Productivity outcomes', exact: true }).waitFor();
+  await dialog.getByRole('textbox', { name: 'Search knowledge base' }).fill('zzzzzzzz');
+  await dialog.getByRole('status').waitFor();
+  await page.keyboard.press('Escape'); assert.equal(await dialog.isVisible(), false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.getByRole('button', { name: 'Knowledge base', exact: true }).click();
+  assert.ok(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth));
+  await page.screenshot({ path: '../artifacts/ai-adoption/knowledge-mobile.png', fullPage: true });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.failLive = true);
+  await page.getByRole('button', { name: 'Refresh live activity' }).click();
+  await page.getByRole('alert').waitFor();
+  await page.evaluate(() => { window.failLive = false; });
+  await page.getByRole('button', { name: 'Resume live updates' }).click();
+  await page.getByRole('complementary', { name: 'User activity timeline' }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log('PASS: live polling/pause, pagination, user/state search, timeline, failure/recovery; all ten knowledge topics, search, navigation, Escape and mobile layout.');
+} finally { await browser.close(); }

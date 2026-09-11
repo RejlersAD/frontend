@@ -43,6 +43,9 @@ import SocialMediaLinksSection from "../components/Profile/SocialMediaLinksSecti
 import DocumentUploadSection from "../components/Profile/DocumentUploadSection";
 import { InitiateExitModal } from "./HR/OnboardingOffboarding";
 import EmployeeTabLoading from "../components/HR/EmployeeTabLoading";
+import { CORPORATE_CAREER_LEVELS, CORPORATE_FUNCTIONS, CORPORATE_SKILLS, defaultCareerTrack } from "../config/careerProfile.config";
+import "../components/Profile/CareerExpertiseWorkspace.css";
+import CareerSelectionList from "../components/Profile/CareerSelectionList";
 import ReportingManagerSelect from "../components/Profile/ReportingManagerSelect";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,6 +129,7 @@ const EXPERTISE_LEVELS = [
     colorClass: "bg-orange-100 text-orange-700 border-orange-300",
     dotClass: "bg-orange-500",
   },
+  { value: "manager", label: "Engineering Manager", years: "People and discipline leadership", colorClass: "bg-blue-50 text-blue-700 border-blue-200" },
   {
     value: "fellow",
     label: "Engineering Fellow",
@@ -441,9 +445,6 @@ const Profile = ({ embedded = false }) => {
   const [showCertForm, setShowCertForm] = useState(false);
 
   // Skill entry
-  const [newDiscipline, setNewDiscipline] = useState("");
-  const [selectedSkill, setSelectedSkill] = useState("");
-  const [skillProficiency, setSkillProficiency] = useState(3);
 
   // Project assignment entry
   const [newProject, setNewProject] = useState(DEFAULT_PROJECT);
@@ -743,63 +744,6 @@ const Profile = ({ embedded = false }) => {
     reader.readAsDataURL(file);
   };
 
-  const addDiscipline = () => {
-    const entered = newDiscipline.trim().replace(/\s+/g, " ");
-    if (!entered) return;
-    if (entered.length > 100) {
-      toast.error("Discipline name must be 100 characters or fewer");
-      return;
-    }
-
-    const canonical =
-      ENGINEERING_DISCIPLINES.find(
-        (d) => d.toLowerCase() === entered.toLowerCase(),
-      ) || entered;
-    if (
-      ep.engineering_disciplines.some(
-        (d) => d.toLowerCase() === canonical.toLowerCase(),
-      )
-    ) {
-      toast.info("Discipline already selected");
-      return;
-    }
-    setEp((p) => ({
-      ...p,
-      engineering_disciplines: [...p.engineering_disciplines, canonical],
-    }));
-    setNewDiscipline("");
-  };
-
-  const addSkill = () => {
-    const entered = selectedSkill.trim().replace(/\s+/g, " ");
-    if (!entered) return;
-    if (entered.length > 100) {
-      toast.error("Skill name must be 100 characters or fewer");
-      return;
-    }
-
-    const canonical =
-      TECHNICAL_SKILLS_CATALOG.find(
-        (s) => s.toLowerCase() === entered.toLowerCase(),
-      ) || entered;
-    if (
-      ep.technical_skills.some(
-        (s) => String(s.name || "").toLowerCase() === canonical.toLowerCase(),
-      )
-    ) {
-      toast.info("Skill already added");
-      return;
-    }
-    setEp((p) => ({
-      ...p,
-      technical_skills: [
-        ...p.technical_skills,
-        { name: canonical, proficiency: skillProficiency },
-      ],
-    }));
-    setSelectedSkill("");
-    setSkillProficiency(3);
-  };
   const removeSkill = (name) =>
     setEp((p) => ({
       ...p,
@@ -923,17 +867,21 @@ const Profile = ({ embedded = false }) => {
     const l = formData.last_name || user?.last_name || "";
     return `${f.charAt(0)}${l.charAt(0)}`.toUpperCase() || "U";
   };
-  const currentExpertise = EXPERTISE_LEVELS.find(
+  const careerTrack = defaultCareerTrack(ep.expertise_level, formData.department);
+  const isCorporateCareer = careerTrack === "corporate";
+  const functionCatalog = isCorporateCareer ? CORPORATE_FUNCTIONS : ENGINEERING_DISCIPLINES;
+  const skillCatalog = isCorporateCareer ? CORPORATE_SKILLS : TECHNICAL_SKILLS_CATALOG;
+  const currentExpertise = [...EXPERTISE_LEVELS, ...CORPORATE_CAREER_LEVELS].find(
     (e) => e.value === ep.expertise_level,
   );
   const currentAvail = AVAILABILITY_STATUSES.find(
     (a) => a.value === ep.availability_status,
   );
   const disciplineOptions = [
-    ...ENGINEERING_DISCIPLINES,
+    ...functionCatalog,
     ...ep.engineering_disciplines.filter(
       (selected) =>
-        !ENGINEERING_DISCIPLINES.some(
+        !functionCatalog.some(
           (item) => item.toLowerCase() === selected.toLowerCase(),
         ),
     ),
@@ -957,7 +905,7 @@ const Profile = ({ embedded = false }) => {
 
   const TABS = [
     { id: "personal", label: "Personal", icon: User },
-    { id: "expertise", label: "Engineering", icon: Briefcase },
+    { id: "expertise", label: "Career & Expertise", icon: Briefcase },
     { id: "certifications", label: "Certifications", icon: Award },
     { id: "achievements", label: "Achievements", icon: Trophy },
     { id: "experience", label: "Experience", icon: TrendingUp },
@@ -965,7 +913,7 @@ const Profile = ({ embedded = false }) => {
     { id: "documents", label: "Documents", icon: FileText },
     { id: "availability", label: "Availability", icon: Calendar },
     { id: "projects", label: "Projects", icon: FolderOpen },
-    { id: "exit", label: "Exit", icon: LogOut },
+    { id: "exit", label: "Leave Rejlers", icon: LogOut, className: "text-red-600 hover:text-red-700" },
   ];
 
   if (isFetching) {
@@ -1055,7 +1003,7 @@ const Profile = ({ embedded = false }) => {
                     )}
                     {currentExpertise && (
                       <span
-                        className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${currentExpertise.colorClass}`}
+                        className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${currentExpertise.colorClass || "bg-blue-50 text-blue-700 border-blue-200"}`}
                       >
                         {currentExpertise.label}
                       </span>
@@ -1120,31 +1068,22 @@ const Profile = ({ embedded = false }) => {
           </div>}
 
           {/* ── Tabbed Card ── */}
-          <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-white shadow-lg">
-            <div className="flex max-w-full overflow-x-auto border-b border-gray-100 bg-gray-50/50">
-              {TABS.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setActiveTab(id)}
-                  className={`flex min-w-[112px] flex-none items-center justify-center gap-2 px-3 py-4 text-sm font-semibold transition-all ${
-                    activeTab === id
-                      ? "text-blue-600 border-b-2 border-blue-600 bg-white"
-                      : "text-gray-500 hover:text-gray-700 hover:bg-white/70"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span className="hidden sm:inline">{label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* ── Tab: Personal ── */}
+          <div className="career-profile-layout">
+            <aside className="career-profile-sidebar">
+              <nav aria-label="Career Profile sections">
+                {TABS.filter(tab => tab.id !== 'exit').map(({id, label, icon: Icon}) => <button type="button" key={id} aria-current={activeTab === id ? 'page' : undefined} onClick={() => setActiveTab(id)}><Icon /><span>{label}</span></button>)}
+              </nav>
+              <div className="career-sidebar-progress"><strong>{completeness}% complete</strong><div role="progressbar" aria-label="Career profile completeness" aria-valuenow={completeness} aria-valuemin={0} aria-valuemax={100}><span style={{width: `${completeness}%`}} /></div><p>Keep going to build a stronger profile</p></div>
+              <button className="career-sidebar-exit text-red-600 hover:text-red-700" type="button" aria-current={activeTab === 'exit' ? 'page' : undefined} onClick={() => setActiveTab('exit')}><LogOut /> Leave Rejlers</button>
+            </aside>
+            <div className="career-profile-content">
             {activeTab === "personal" && (
-              <div className="p-6 sm:p-8 space-y-5">
+              <div className="career-personal">
+                <fieldset className="career-form-panel career-form-group"><legend><h2>Personal information</h2></legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div>
-                    <label className={labelCls}>First Name</label>
-                    <input
+                  <div className="career-input-field">
+                    <label htmlFor="career-field-first-name" className="sr-only">First Name</label>
+                    <input id="career-field-first-name"
                       type="text"
                       value={formData.first_name}
                       onChange={(e) =>
@@ -1157,9 +1096,9 @@ const Profile = ({ embedded = false }) => {
                       placeholder="First name"
                     />
                   </div>
-                  <div>
-                    <label className={labelCls}>Last Name</label>
-                    <input
+                  <div className="career-input-field">
+                    <label htmlFor="career-field-last-name" className="sr-only">Last Name</label>
+                    <input id="career-field-last-name"
                       type="text"
                       value={formData.last_name}
                       onChange={(e) =>
@@ -1172,38 +1111,36 @@ const Profile = ({ embedded = false }) => {
                       placeholder="Last name"
                     />
                   </div>
-                  <div>
-                    <label className={labelCls}>Email Address</label>
-                    <input
-                      type="email"
+                  <div className="career-input-field">
+                    <label htmlFor="career-field-email-address" className="sr-only">Email Address</label>
+                    <input id="career-field-email-address"
+                      type="email" placeholder="Email address"
                       value={profileEmail}
                       disabled
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed"
                     />
-                    <p className="text-xs text-gray-400 mt-1">
-                      Email cannot be changed
-                    </p>
+
                   </div>
-                  <div>
-                    <label className={labelCls}>Phone Number</label>
+                  <div className="career-input-field">
+                    <label htmlFor="career-field-phone-number" className="sr-only">Phone Number</label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                      <input
+                      <input id="career-field-phone-number"
                         type="tel"
                         value={formData.phone}
                         onChange={(e) =>
                           setFormData((p) => ({ ...p, phone: e.target.value }))
                         }
                         className={`${inputCls} pl-10`}
-                        placeholder="+971 50 123 4567"
+                        placeholder="Phone number"
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className={labelCls}>Location</label>
+                  <div className="career-input-field">
+                    <label htmlFor="career-field-location" className="sr-only">Location</label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                      <input
+                      <input id="career-field-location"
                         type="text"
                         value={formData.location}
                         onChange={(e) =>
@@ -1213,15 +1150,15 @@ const Profile = ({ embedded = false }) => {
                           }))
                         }
                         className={`${inputCls} pl-10`}
-                        placeholder="Abu Dhabi, UAE"
+                        placeholder="Location"
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className={labelCls}>Department</label>
+                  <div className="career-input-field">
+                    <label htmlFor="career-field-department" className="sr-only">Department</label>
                     <div className="relative">
                       <Building2 className="absolute left-3 top-3 w-4 h-4 text-gray-400 pointer-events-none" />
-                      <select
+                      <select id="career-field-department"
                         value={formData.department}
                         onChange={(e) =>
                           setFormData((p) => ({
@@ -1254,18 +1191,13 @@ const Profile = ({ embedded = false }) => {
                         </svg>
                       </div>
                     </div>
-                    {formData.department && (
-                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                        <Check className="w-3 h-3" />
-                        {DEPARTMENTS.find(
-                          (d) => d.value === formData.department,
-                        )?.label || formData.department}
-                      </p>
-                    )}
+
                   </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}>Job Title</label>
-                    <input
+                </div></fieldset>
+                <fieldset className="career-form-panel career-form-group"><legend><h2>Employment details</h2></legend><div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="career-input-field">
+                    <label htmlFor="career-field-job-title" className="sr-only">Job Title</label>
+                    <input id="career-field-job-title"
                       type="text"
                       value={formData.job_title}
                       onChange={(e) =>
@@ -1275,11 +1207,12 @@ const Profile = ({ embedded = false }) => {
                         }))
                       }
                       className={inputCls}
-                      placeholder="Senior Process Engineer"
+                      placeholder="Job title"
                     />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div>
                     <ReportingManagerSelect
+                      compact
                       employees={managers}
                       value={formData.manager_id}
                       selectedEmployee={profileData?.manager_detail}
@@ -1290,25 +1223,18 @@ const Profile = ({ embedded = false }) => {
                     />
                   </div>
 
-                  <div className="sm:col-span-2 pt-2 border-t border-gray-100">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5" />
-                      Organisation Details
-                      <span className="font-normal normal-case text-gray-300 ml-1">
-                        synced with Onboarding
-                      </span>
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="career-employment-fields">
+                    <div className="career-employment-fields">
                       {PROFILE_EMPLOYEE_FIELDS.map(({ key, label, type }) => (
-                        <div key={key}>
-                          <label className={labelCls}>{label}</label>
+                        <div key={key} className="career-input-field">
+                          <label htmlFor={`career-employment-${key}`} className="sr-only">{label}</label>
                           {type === "select" ? (
-                            <select
+                            <select id={`career-employment-${key}`}
                               value={empData[key] || ""}
                               onChange={(e) => setEmpField(key, e.target.value)}
                               className={inputCls}
                             >
-                              <option value="">Not set</option>
+                              <option value="">Select {label.toLowerCase()}</option>
                               {branchChoices.map((c) => (
                                 <option key={c.value} value={c.value}>
                                   {c.label}
@@ -1316,8 +1242,9 @@ const Profile = ({ embedded = false }) => {
                               ))}
                             </select>
                           ) : (
-                            <input
+                            <input id={`career-employment-${key}`}
                               type={type}
+                              title={label}
                               value={empData[key] || ""}
                               onChange={(e) => setEmpField(key, e.target.value)}
                               className={inputCls}
@@ -1328,14 +1255,16 @@ const Profile = ({ embedded = false }) => {
                       ))}
                     </div>
                   </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}>Professional Bio</label>
-                    <textarea
+                </div></fieldset>
+                <fieldset className="career-form-panel career-form-group"><legend><h2>Professional summary</h2></legend>
+                  <div>
+                    <label className="sr-only" htmlFor="career-bio">Professional Bio</label>
+                    <textarea id="career-bio"
                       value={formData.bio}
                       onChange={(e) =>
                         setFormData((p) => ({ ...p, bio: e.target.value }))
                       }
-                      rows={4}
+                      rows={2}
                       maxLength={500}
                       className={`${inputCls} resize-none`}
                       placeholder="Brief professional summary — experience, expertise, notable achievements…"
@@ -1344,7 +1273,7 @@ const Profile = ({ embedded = false }) => {
                       {formData.bio.length}/500
                     </p>
                   </div>
-                </div>
+                </fieldset>
 
                 {isLoading && selectedFile && (
                   <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-100">
@@ -1363,49 +1292,9 @@ const Profile = ({ embedded = false }) => {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-gray-50">
-                  {[
-                    {
-                      label: "Status",
-                      val: profileData?.status || "Active",
-                      pill: true,
-                    },
-                    {
-                      label: "Organization",
-                      val: profileData?.organization_name || "—",
-                    },
-                    {
-                      label: "Member Since",
-                      val: profileData?.created_at
-                        ? new Date(profileData.created_at).toLocaleDateString(
-                            "en-US",
-                            { month: "short", year: "numeric" },
-                          )
-                        : "—",
-                    },
-                    {
-                      label: "Employee ID",
-                      val: profileData?.employee_id || "—",
-                    },
-                  ].map(({ label, val, pill }) => (
-                    <div key={label} className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-                      {pill ? (
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full font-semibold ${profileData?.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
-                        >
-                          {val}
-                        </span>
-                      ) : (
-                        <p className="text-sm font-semibold text-gray-800 truncate">
-                          {val}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
 
-                <div className="flex justify-end">
+
+                <div className="career-save">
                   <button
                     onClick={savePersonalInfo}
                     disabled={isLoading}
@@ -1416,7 +1305,7 @@ const Profile = ({ embedded = false }) => {
                     ) : (
                       <Save className="w-4 h-4" />
                     )}
-                    Save Personal Info
+                    Save Update
                   </button>
                 </div>
               </div>
@@ -1424,40 +1313,25 @@ const Profile = ({ embedded = false }) => {
 
             {/* ── Tab: Engineering Expertise ── */}
             {activeTab === "expertise" && (
-              <div className="p-6 sm:p-8 space-y-8">
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">
-                    Career Level
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-                    {EXPERTISE_LEVELS.map((lvl) => (
-                      <button
-                        key={lvl.value}
-                        type="button"
-                        onClick={() =>
-                          setEp((p) => ({ ...p, expertise_level: lvl.value }))
-                        }
-                        className={`p-3 rounded-xl border-2 text-left transition-all ${
-                          ep.expertise_level === lvl.value
-                            ? `${lvl.colorClass} shadow-md`
-                            : "bg-gray-50 border-gray-200 hover:border-gray-300"
-                        }`}
-                      >
-                        <div
-                          className={`w-2.5 h-2.5 rounded-full mb-2 ${lvl.dotClass}`}
-                        />
-                        <p className="text-sm font-bold text-gray-900 leading-tight">
-                          {lvl.label}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {lvl.years}
-                        </p>
-                      </button>
-                    ))}
+              <div className="career-editor">
+                <fieldset className="career-section career-form-group career-level-section"><legend><h3>Career level</h3></legend>
+                  <div className="career-level-select">
+                    <label className="sr-only" htmlFor="career-level">Career level</label>
+                    <select id="career-level" value={ep.expertise_level} onChange={event => setEp(previous => ({...previous, expertise_level: event.target.value}))}>
+                      <option value="">Select career level</option>
+                      <optgroup label="Engineering">
+                        {EXPERTISE_LEVELS.map(level => <option key={level.value} value={level.value}>{level.label}</option>)}
+                      </optgroup>
+                      <optgroup label="Corporate &amp; Operational Support">
+                        {CORPORATE_CAREER_LEVELS.map(level => <option key={level.value} value={level.value}>{level.label}</option>)}
+                      </optgroup>
+                    </select>
+                    {currentExpertise && <div className="career-level-badge"><Check aria-hidden="true" /><strong title={`${ep.years_experience === "" || ep.years_experience == null ? "" : `${ep.years_experience} Years of `}${currentExpertise.label}`}>{ep.years_experience !== "" && ep.years_experience != null ? `${ep.years_experience} Years of ` : ""}{currentExpertise.label}</strong></div>}
                   </div>
-                  <div className="max-w-xs">
-                    <label className={labelCls}>Years of Experience</label>
+                  <div className="career-experience">
+                    <label className="sr-only" htmlFor="career-years">Years of Experience</label>
                     <input
+                      id="career-years"
                       type="number"
                       min="0"
                       max="50"
@@ -1469,163 +1343,37 @@ const Profile = ({ embedded = false }) => {
                         }))
                       }
                       className={inputCls}
-                      placeholder="e.g. 12"
+                      placeholder="Years of experience"
                     />
                   </div>
-                </div>
+                </fieldset>
 
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-1">
-                    Engineering Disciplines
-                  </h3>
-                  <p className="text-xs text-gray-400 mb-3">
-                    Select all disciplines you are competent in
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {disciplineOptions.map((d) => (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => toggleArr("engineering_disciplines", d)}
-                        className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-all ${
-                          ep.engineering_disciplines.includes(d)
-                            ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                            : "bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600"
-                        }`}
-                      >
-                        {ep.engineering_disciplines.includes(d) && (
-                          <Check className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
-                        )}
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex max-w-xl gap-2">
-                    <input
-                      type="text"
-                      value={newDiscipline}
-                      maxLength={100}
-                      onChange={(e) => setNewDiscipline(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addDiscipline();
-                        }
-                      }}
-                      className={`${inputCls} flex-1`}
-                      placeholder="Add another engineering discipline…"
-                    />
-                    <button
-                      type="button"
-                      onClick={addDiscipline}
-                      disabled={!newDiscipline.trim()}
-                      className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-                    >
-                      <Plus className="h-4 w-4" /> Add
-                    </button>
-                  </div>
-                </div>
+                <fieldset className="career-section career-form-group"><legend><h3>
+                    {isCorporateCareer ? "Functional Expertise" : "Engineering Disciplines"}
+                  </h3></legend>
+                  <CareerSelectionList label={isCorporateCareer ? 'Functional areas' : 'Engineering disciplines'} options={disciplineOptions} selected={ep.engineering_disciplines}
+                    onAdd={name => setEp(previous => ({...previous, engineering_disciplines: [...previous.engineering_disciplines, name]}))}
+                    onRemove={name => toggleArr('engineering_disciplines', name)} />
+                </fieldset>
 
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-1">
-                    Technical Skills &amp; Software
-                  </h3>
-                  <p className="text-xs text-gray-400 mb-3">
-                    Add tools and competencies with proficiency level (★)
-                  </p>
-                  <div className="flex gap-2 mb-4">
-                    <div className="flex-1">
-                      <input
-                        type="text"
-                        list="technical-skills-catalog"
-                        value={selectedSkill}
-                        maxLength={100}
-                        onChange={(e) => setSelectedSkill(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addSkill();
-                          }
-                        }}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
-                        placeholder="Select or type a technical skill…"
-                      />
-                      <datalist id="technical-skills-catalog">
-                        {TECHNICAL_SKILLS_CATALOG.filter(
-                          (s) =>
-                            !ep.technical_skills.some(
-                              (ts) =>
-                                String(ts.name || "").toLowerCase() ===
-                                s.toLowerCase(),
-                            ),
-                        ).map((s) => (
-                          <option key={s} value={s} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div className="flex items-center gap-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3">
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <button
-                          key={n}
-                          type="button"
-                          onClick={() => setSkillProficiency(n)}
-                        >
-                          <Star
-                            className={`w-4 h-4 transition-colors ${n <= skillProficiency ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}`}
-                          />
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={addSkill}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 flex items-center gap-1"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {ep.technical_skills.map((sk) => (
-                      <div
-                        key={sk.name}
-                        className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-full pl-3 pr-1.5 py-1 text-sm shadow-sm"
-                      >
-                        <span className="font-medium text-gray-800">
-                          {sk.name}
-                        </span>
-                        <span className="flex gap-0.5">
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <Star
-                              key={n}
-                              className={`w-3 h-3 ${n <= sk.proficiency ? "text-yellow-400 fill-yellow-400" : "text-gray-200"}`}
-                            />
-                          ))}
-                        </span>
-                        <button
-                          onClick={() => removeSkill(sk.name)}
-                          className="text-gray-300 hover:text-red-500 ml-0.5"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                    {ep.technical_skills.length === 0 && (
-                      <p className="text-sm text-gray-400 italic">
-                        No skills added yet
-                      </p>
-                    )}
-                  </div>
-                </div>
+                <fieldset className="career-section career-form-group"><legend><h3>
+                    {isCorporateCareer ? "Professional Skills & Software" : "Technical Skills & Software"}
+                  </h3></legend>
+                  <CareerSelectionList label={isCorporateCareer ? 'Professional skills & software' : 'Technical skills & software'} options={skillCatalog} selected={ep.technical_skills}
+                    onAdd={(name, proficiency) => setEp(previous => ({...previous, technical_skills: [...previous.technical_skills, {name, proficiency}]}))}
+                    onRemove={removeSkill}
+                    onProficiency={(name, proficiency) => setEp(previous => ({...previous, technical_skills: previous.technical_skills.map(skill => skill.name === name ? {...skill, proficiency} : skill)}))} />
+                </fieldset>
 
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
+                <fieldset className="career-section career-form-group"><legend><h3>
                     <Globe className="w-4 h-4 text-gray-400" /> Languages
-                  </h3>
+                  </h3></legend>
                   <div className="flex flex-wrap gap-2">
                     {LANGUAGES.map((l) => (
                       <button
                         key={l}
                         type="button"
+                        aria-pressed={ep.languages.includes(l)}
                         onClick={() => toggleArr("languages", l)}
                         className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-all ${
                           ep.languages.includes(l)
@@ -1637,12 +1385,12 @@ const Profile = ({ embedded = false }) => {
                       </button>
                     ))}
                   </div>
-                </div>
+                </fieldset>
 
-                <div className="flex justify-end">
+                <footer className="career-save">
                   <button
                     onClick={() =>
-                      saveEngineerProfile("Engineering profile saved!")
+                      saveEngineerProfile("Career profile updated!")
                     }
                     disabled={isLoading}
                     className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-semibold"
@@ -1652,9 +1400,9 @@ const Profile = ({ embedded = false }) => {
                     ) : (
                       <Save className="w-4 h-4" />
                     )}
-                    Save Engineering Profile
+                    Save Update
                   </button>
-                </div>
+                </footer>
               </div>
             )}
 
@@ -1868,7 +1616,7 @@ const Profile = ({ embedded = false }) => {
                       ) : (
                         <Save className="w-4 h-4" />
                       )}
-                      Save Certifications
+                      Save Update
                     </button>
                   </div>
                 )}
@@ -1877,191 +1625,57 @@ const Profile = ({ embedded = false }) => {
 
             {/* ── Tab: Availability ── */}
             {activeTab === "availability" && (
-              <div className="p-6 sm:p-8 space-y-8">
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">
-                    Current Availability
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {AVAILABILITY_STATUSES.map((a) => (
-                      <button
-                        key={a.value}
-                        type="button"
-                        onClick={() =>
-                          setEp((p) => ({ ...p, availability_status: a.value }))
-                        }
-                        className={`p-4 rounded-xl border-2 text-left transition-all ${
-                          ep.availability_status === a.value
-                            ? `${a.bgClass} shadow-md`
-                            : "bg-white border-gray-200 hover:border-gray-300"
-                        }`}
-                      >
-                        <div
-                          className={`w-3 h-3 rounded-full mb-2.5 ${a.badgeClass}`}
-                        />
-                        <p className={`text-sm font-bold ${a.textClass}`}>
-                          {a.label}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5 leading-tight">
-                          {a.desc}
-                        </p>
-                      </button>
-                    ))}
+              <div className="career-editor availability-editor">
+                <fieldset className="career-section career-form-group"><legend><h3>Current availability</h3></legend>
+                  <div className="availability-fields">
+                    <div>
+                      <label className="sr-only" htmlFor="availability-status">Availability status</label>
+                      <select id="availability-status" value={ep.availability_status} onChange={event => setEp(previous => ({...previous, availability_status: event.target.value}))}>
+                        {AVAILABILITY_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                      </select>
+                      {currentAvail && <div className={`availability-status-note ${currentAvail.textClass}`}><span className={`availability-dot ${currentAvail.badgeClass}`} /><strong>{currentAvail.label}</strong><span>{currentAvail.desc}</span></div>}
+                    </div>
+                    {(ep.availability_status === "busy" || ep.availability_status === "on_leave") && <div>
+                      <label htmlFor="availability-next-date" className="availability-label">Next available date</label>
+                      <input id="availability-next-date" type="date" value={ep.next_available_date || ''} onChange={event => setEp(previous => ({...previous, next_available_date: event.target.value}))} className={inputCls} />
+                    </div>}
                   </div>
-                </div>
-
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-1">
-                    Bandwidth Available:{" "}
-                    <span className="text-blue-600 font-bold">
-                      {ep.availability_percentage}%
-                    </span>
-                  </h3>
-                  <p className="text-xs text-gray-400 mb-3">
-                    What percentage of your time can be allocated to new
-                    projects?
-                  </p>
-                  <div className="flex items-center gap-4">
-                    <span className="text-xs text-gray-400 w-5">0%</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="5"
-                      value={ep.availability_percentage}
-                      onChange={(e) =>
-                        setEp((p) => ({
-                          ...p,
-                          availability_percentage: Number(e.target.value),
-                        }))
-                      }
-                      className="flex-1 accent-blue-600 cursor-pointer"
-                    />
-                    <span className="text-xs text-gray-400 w-8 text-right">
-                      100%
-                    </span>
+                </fieldset>
+                <fieldset className="career-section career-form-group"><legend><h3>Project capacity</h3></legend>
+                  <div className="availability-fields">
+                    <div>
+                      <div className="availability-bandwidth-heading"><label htmlFor="availability-bandwidth">Bandwidth available</label><output htmlFor="availability-bandwidth">{ep.availability_percentage}%</output></div>
+                      <input id="availability-bandwidth" type="range" min="0" max="100" step="5" value={ep.availability_percentage} aria-valuetext={`${ep.availability_percentage}% available for new projects`} onChange={event => setEp(previous => ({...previous, availability_percentage: Number(event.target.value)}))} />
+                      <div className="availability-range-labels"><span>0%</span><span>100%</span></div>
+                    </div>
+                    <div>
+                      <label className="sr-only" htmlFor="availability-project-limit">Maximum concurrent projects</label>
+                      <select id="availability-project-limit" value={ep.max_concurrent_projects} onChange={event => setEp(previous => ({...previous, max_concurrent_projects: Number(event.target.value)}))}>
+                        {Array.from({length: 10}, (_, index) => index + 1).map(count => <option key={count} value={count}>{count} concurrent {count === 1 ? 'project' : 'projects'} maximum</option>)}
+                      </select>
+                    </div>
                   </div>
-                  <div className="mt-2 w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-blue-500 h-2 rounded-full transition-all"
-                      style={{ width: `${ep.availability_percentage}%` }}
-                    />
-                  </div>
-                </div>
-
-                {(ep.availability_status === "busy" ||
-                  ep.availability_status === "on_leave") && (
-                  <div className="max-w-xs">
-                    <label className={labelCls}>
-                      <Clock className="inline w-4 h-4 mr-1 text-gray-400" />{" "}
-                      Next Available Date
-                    </label>
-                    <input
-                      type="date"
-                      value={ep.next_available_date}
-                      onChange={(e) =>
-                        setEp((p) => ({
-                          ...p,
-                          next_available_date: e.target.value,
-                        }))
-                      }
-                      className={inputCls}
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">
-                    Maximum Concurrent Projects
-                  </h3>
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() =>
-                        setEp((p) => ({
-                          ...p,
-                          max_concurrent_projects: Math.max(
-                            1,
-                            p.max_concurrent_projects - 1,
-                          ),
-                        }))
-                      }
-                      className="w-10 h-10 rounded-full border-2 border-gray-200 bg-white flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-50 transition-all"
-                    >
-                      −
-                    </button>
-                    <span className="text-3xl font-bold text-gray-900 w-10 text-center">
-                      {ep.max_concurrent_projects}
-                    </span>
-                    <button
-                      onClick={() =>
-                        setEp((p) => ({
-                          ...p,
-                          max_concurrent_projects: Math.min(
-                            10,
-                            p.max_concurrent_projects + 1,
-                          ),
-                        }))
-                      }
-                      className="w-10 h-10 rounded-full border-2 border-gray-200 bg-white flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-50 transition-all"
-                    >
-                      +
-                    </button>
-                    <span className="text-sm text-gray-500">
-                      projects at once
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">
-                    Preferred Project Types
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {PROJECT_TYPES.map((pt) => (
-                      <button
-                        key={pt}
-                        type="button"
-                        onClick={() => toggleArr("preferred_project_types", pt)}
-                        className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-all ${
-                          ep.preferred_project_types.includes(pt)
-                            ? "bg-purple-600 text-white border-purple-600"
-                            : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
-                        }`}
-                      >
-                        {pt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => saveEngineerProfile("Availability updated!")}
-                    disabled={isLoading}
-                    className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-semibold"
-                  >
-                    {isLoading ? (
-                      <Loader className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )}
-                    Save Availability
-                  </button>
-                </div>
+                </fieldset>
+                <fieldset className="career-section career-form-group"><legend><h3>Preferred project types</h3></legend>
+                  <CareerSelectionList label="Preferred project types" options={PROJECT_TYPES} selected={ep.preferred_project_types || []}
+                    onAdd={name => setEp(previous => ({...previous, preferred_project_types: [...(previous.preferred_project_types || []), name]}))}
+                    onRemove={name => toggleArr('preferred_project_types', name)} />
+                </fieldset>
+                <footer className="career-save"><button onClick={() => saveEngineerProfile("Availability updated!")} disabled={isLoading} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-semibold">
+                  {isLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Update
+                </button></footer>
               </div>
             )}
 
             {/* ── Tab: Projects ── */}
             {activeTab === "projects" && (
-              <div className="p-6 sm:p-8 space-y-6">
-                <div className="flex items-center justify-between">
+              <div className="career-editor projects-editor">
+                <div className="projects-heading">
                   <div>
                     <h3 className="text-base font-semibold text-gray-900">
                       Current Project Assignments
                     </h3>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Let management know what you are actively working on.
-                    </p>
+
                   </div>
                   <button
                     onClick={() => setShowProjectForm((v) => !v)}
@@ -2082,7 +1696,7 @@ const Profile = ({ embedded = false }) => {
                       (p) => p.status === "active",
                     ).length;
                     return (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div className="projects-summary">
                         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
                           <p className="text-2xl font-extrabold text-blue-600">
                             {active}
@@ -2119,10 +1733,7 @@ const Profile = ({ embedded = false }) => {
                   })()}
 
                 {showProjectForm && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-4">
-                    <h4 className="font-semibold text-blue-800 text-sm">
-                      New Project Assignment
-                    </h4>
+                  <fieldset className="career-section career-form-group projects-form"><legend><h3>New project assignment</h3></legend>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className={labelCls}>Project Name *</label>
@@ -2407,11 +2018,11 @@ const Profile = ({ embedded = false }) => {
                         <X className="w-4 h-4" /> Cancel
                       </button>
                     </div>
-                  </div>
+                  </fieldset>
                 )}
 
                 {(ep.current_projects || []).length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-300">
+                  <div className="projects-empty">
                     <FolderOpen className="w-16 h-16 mb-4" />
                     <p className="text-base font-semibold text-gray-400">
                       No project assignments yet
@@ -2421,7 +2032,7 @@ const Profile = ({ embedded = false }) => {
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="projects-list">
                     {(ep.current_projects || []).map((pr, projectIndex) => {
                       const si =
                         PROJECT_ASSIGNMENT_STATUSES.find(
@@ -2430,10 +2041,10 @@ const Profile = ({ embedded = false }) => {
                       return (
                         <div
                           key={pr.id}
-                          className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden"
+                          className="project-assignment-row"
                         >
-                          <div className={`h-1 w-full ${si.dotClass}`} />
-                          <div className="p-5">
+
+                          <div className="project-assignment-body">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <h4 className="font-bold text-gray-900 truncate">
@@ -2464,6 +2075,7 @@ const Profile = ({ embedded = false }) => {
                                   onClick={() => removeProject(pr, projectIndex)}
                                   disabled={isLoading}
                                   title="Delete project assignment"
+                                  aria-label={`Delete ${pr.name}`}
                                   className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:cursor-not-allowed disabled:opacity-40"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -2513,25 +2125,11 @@ const Profile = ({ embedded = false }) => {
                                 />
                               </div>
                             </div>
-                            <div className="mt-3 flex items-center gap-2">
-                              <span className="text-xs text-gray-400">
-                                Update status:
-                              </span>
-                              {PROJECT_ASSIGNMENT_STATUSES.map((s) => (
-                                <button
-                                  key={s.value}
-                                  onClick={() =>
-                                    updateProjectStatus(pr.id, s.value)
-                                  }
-                                  className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-all ${
-                                    pr.status === s.value
-                                      ? `${s.bgClass} border-transparent shadow-sm`
-                                      : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
-                                  }`}
-                                >
-                                  {s.label}
-                                </button>
-                              ))}
+                            <div className="project-status-control">
+                              <label className="sr-only" htmlFor={`project-status-${pr.id}`}>Status for {pr.name}</label>
+                              <select id={`project-status-${pr.id}`} value={pr.status} disabled={isLoading} onChange={event => updateProjectStatus(pr.id, event.target.value)}>
+                                {PROJECT_ASSIGNMENT_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                              </select>
                             </div>
                           </div>
                         </div>
@@ -2540,7 +2138,7 @@ const Profile = ({ embedded = false }) => {
                   </div>
                 )}
 
-                <div className="flex justify-end pt-2">
+                <div className="career-save">
                   <button
                     onClick={() =>
                       saveEngineerProfile("Project assignments saved!")
@@ -2553,7 +2151,7 @@ const Profile = ({ embedded = false }) => {
                     ) : (
                       <Save className="w-4 h-4" />
                     )}
-                    Save Projects
+                    Save Update
                   </button>
                 </div>
               </div>
@@ -2619,6 +2217,7 @@ const Profile = ({ embedded = false }) => {
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
