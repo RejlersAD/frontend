@@ -1,3 +1,4 @@
+import { useCurrentProfilePhoto } from '../../components/Layout/ProfilePhotoContext'
 import ProfileTimesheetTables from '../../components/HR/ProfileTimesheetTables'
 import { useSearchParams } from 'react-router-dom'
 import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
@@ -3299,7 +3300,7 @@ export default function EmployeeSelfService() {
   const [salaryVisible, setSalaryVisible] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoUploadState, setPhotoUploadState] = useState(null)
-  const [authenticatedPhotoUrl, setAuthenticatedPhotoUrl] = useState(null)
+  const { photo: authenticatedPhotoUrl } = useCurrentProfilePhoto()
 
   // -- Data state --------------------------------------------------------------
   const [profile,      setProfile]      = useState(null)
@@ -3374,6 +3375,7 @@ export default function EmployeeSelfService() {
 
       setProfile((current) => ({ ...current, profile_photo: photoUrl }))
       dispatch(updateUser({ profile_photo: photoUrl }))
+      window.dispatchEvent(new Event('radai:profile-photo-changed'))
       setPhotoUploadState({ type: 'success', message: 'Profile picture updated successfully.' })
     } catch (error) {
       const message = error?.response?.data?.error
@@ -3385,36 +3387,6 @@ export default function EmployeeSelfService() {
       setUploadingPhoto(false)
     }
   }, [dispatch])
-
-  // Load the canonical photo through an authenticated endpoint. This avoids
-  // broken images when a production S3 signature expires, media is private,
-  // or a proxy rewrites the public backend origin.
-  useEffect(() => {
-    if (!profile) {
-      setAuthenticatedPhotoUrl(null)
-      return undefined
-    }
-
-    let active = true
-    let objectUrl = null
-    apiClient.get('/users/employees/my-profile-photo/', {
-      responseType: 'blob',
-      silentTimeout: true,
-    })
-      .then((response) => {
-        if (!active || !response?.data || !String(response.data.type || '').startsWith('image/')) return
-        objectUrl = URL.createObjectURL(response.data)
-        setAuthenticatedPhotoUrl(objectUrl)
-      })
-      .catch(() => {
-        // The serializer URL remains available as a graceful fallback.
-      })
-
-    return () => {
-      active = false
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [profile?.id, profile?.canonical_employee, profile?.profile_photo])
 
   useEffect(() => {
     let active = true
