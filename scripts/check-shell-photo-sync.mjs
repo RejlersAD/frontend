@@ -70,6 +70,14 @@ try {
     return drawer?.naturalWidth > 0 && drawer.src !== previous && drawer.src === shell?.src;
   }, beforeUploadRefresh);
   await page.screenshot({path:'../artifacts/profile-workspace/hr-employee-drawer-photo-sync-fixed.png', fullPage:true});
+  await page.goto('http://localhost:5173/admin/ai-champion', {waitUntil:'domcontentloaded'});
+  await page.locator('.ad-tabs').getByRole('button', {name:'AI Champion', exact:true}).click();
+  await page.waitForFunction(() => {
+    const shell = document.querySelector('header button[aria-haspopup="menu"] img');
+    const photos = [...document.querySelectorAll('.mc-avatar img[alt^="Firaol"]')];
+    return photos.length >= 2 && photos.every(img => img.naturalWidth > 0 && img.src === shell?.src && img.src.startsWith('blob:'));
+  });
+  await page.screenshot({path:'../artifacts/profile-workspace/champion-photo-sync-fixed.png', fullPage:true});
   assert.deepEqual(errors, []);
-  console.log('PASS: HR employee drawer/list, Employee Profile and User Details share the shell photo; header/sidebar recover from failed images, share authenticated photo, and refresh together on return to app; server writes blocked');
+  console.log('PASS: Champion cards/candidate list, HR employee drawer/list, Employee Profile and User Details share the shell photo; header/sidebar recover from failed images, share authenticated photo, and refresh together on return to app; server writes blocked');
 } finally { await browser.close(); }
