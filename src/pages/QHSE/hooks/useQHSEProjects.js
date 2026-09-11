@@ -1,6 +1,6 @@
+import { getQhseApiBase } from '../../../services/qhse.service';
 import { useEffect, useState, useCallback } from 'react';
 import { STORAGE_KEYS } from '../../../config/app.config';
-import { API_BASE_URL } from '../../../config/api.config';
 
 /**
  * Custom hook to fetch QHSE Running Projects from Django API
@@ -31,7 +31,7 @@ export const useQHSERunningProjects = () => {
 
       // Fetch all projects (handling pagination)
       let allProjects = [];
-      let nextUrl = `${API_BASE_URL}/qhse/projects/?page_size=1000`; // Get all at once
+      let nextUrl = `${getQhseApiBase()}/projects/?page_size=1000`; // Get all at once
       
       console.log('🌐 Fetching from:', nextUrl);
       
