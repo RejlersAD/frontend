@@ -1,3 +1,4 @@
+import { useCurrentProfilePhoto } from '../Layout/ProfilePhotoContext';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { createPortal } from 'react-dom';
@@ -29,8 +30,11 @@ const issuesOf = u => [
 
 function Avatar({ user, large = false }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [user.profile_photo]);
-  return <span className={`ua-avatar${large ? ' ua-avatar-large' : ''}`}>{user.profile_photo && !failed ? <img src={user.profile_photo} alt="" onError={() => setFailed(true)} /> : nameOf(user).split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span>;
+  const sharedPhoto = useCurrentProfilePhoto();
+  const ownPhoto = String(user.user?.id || user.login_account_id) === String(sharedPhoto.userId) || (emailOf(user) && emailOf(user) === sharedPhoto.email);
+  const photo = (ownPhoto ? sharedPhoto.photo : null) || user.profile_photo;
+  useEffect(() => setFailed(false), [photo]);
+  return <span className={`ua-avatar${large ? ' ua-avatar-large' : ''}`}>{photo && !failed ? <img key={photo} src={photo} alt="" onError={() => setFailed(true)} /> : nameOf(user).split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span>;
 }
 Avatar.propTypes = { user: PropTypes.object.isRequired, large: PropTypes.bool };
 

@@ -1,3 +1,5 @@
+import useAuthenticatedPhoto from '../hooks/useAuthenticatedPhoto'
+import { useCurrentProfilePhoto } from '../components/Layout/ProfilePhotoContext'
 import './UserDetail.css'
 import rbacService from '../services/rbac.service'
 import { radaiConfirm, radaiAlert } from '../services/radaiDialog'
@@ -69,9 +71,13 @@ const UserDetail = () => {
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [photoFailed, setPhotoFailed] = useState(false)
+  const sharedPhoto = useCurrentProfilePhoto()
+  const isCurrentUser = userData && (String(userData.login_account_id) === String(sharedPhoto.userId) || (userData.email && userData.email === sharedPhoto.email))
+  const managedPhoto = useAuthenticatedPhoto(userData && !isCurrentUser ? `/rbac/users/${id}/profile-photo/` : null, userData?.profile_photo)
+  const profilePhoto = (isCurrentUser ? sharedPhoto.photo : managedPhoto) || userData?.profile_photo
   const [moduleSearch, setModuleSearch] = useState('')
   const [modulePage, setModulePage] = useState(1)
-  useEffect(() => { setPhotoFailed(false) }, [id, userData?.profile_photo])
+  useEffect(() => { setPhotoFailed(false) }, [id, profilePhoto])
   useEffect(() => { setModulePage(1); setModuleSearch('') }, [id])
   const matchingModules = userModules.filter(module => [module.name, module.code, module.description, typeof module === 'string' ? module : ''].some(value => String(value || '').toLowerCase().includes(moduleSearch.trim().toLowerCase())))
   const modulePages = Math.max(1, Math.ceil(matchingModules.length / 12))
@@ -293,7 +299,7 @@ const UserDetail = () => {
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-6">
               <div className="ud-avatar">
-                {userData.profile_photo && !photoFailed ? <img src={userData.profile_photo} alt={`${userData.first_name} ${userData.last_name}`} onError={() => setPhotoFailed(true)} /> : <>{userData.first_name?.[0]}{userData.last_name?.[0]}</>}
+                {profilePhoto && !photoFailed ? <img key={profilePhoto} src={profilePhoto} alt={`${userData.first_name} ${userData.last_name}`} onError={() => setPhotoFailed(true)} /> : <>{userData.first_name?.[0]}{userData.last_name?.[0]}</>}
               </div>
               <div>
                 <h2 className="text-3xl font-bold mb-2">
