@@ -15,7 +15,7 @@ const analyticsService = {
     return response.data;
   },
   getMonthlyChampion: async (year, month, config = {}) => {
-    const response = await apiClient.get('/rbac/ai-champion/monthly-award/', { ...config, params: { year, month } });
+    const response = await apiClient.get('/rbac/ai-champion/monthly-award/', { ...config, params: { ...config.params, year, month } });
     return response.data;
   },
   publishMonthlyChampion: async (data) => {

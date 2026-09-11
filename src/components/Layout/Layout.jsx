@@ -48,25 +48,48 @@ const Layout = () => {
 
     let active = true
     let objectUrl = null
+    let loading = false
+    let refreshQueued = false
     setAuthenticatedProfilePhoto(null)
 
-    apiClient.get('/users/employees/my-profile-photo/', {
-      responseType: 'blob',
-      silentTimeout: true,
-    })
-      .then((response) => {
+    const refreshPhoto = async () => {
+      if (!active || document.visibilityState === 'hidden') return
+      if (loading) {
+        refreshQueued = true
+        return
+      }
+      loading = true
+      try {
+        const response = await apiClient.get('/users/employees/my-profile-photo/', {
+          responseType: 'blob',
+          silentTimeout: true,
+        })
         if (!active || !response?.data || !String(response.data.type || '').startsWith('image/')) return
+        const previousUrl = objectUrl
         objectUrl = URL.createObjectURL(response.data)
         setAuthenticatedProfilePhoto(objectUrl)
-      })
-      .catch(() => {
-        if (active) setAuthenticatedProfilePhoto(null)
-      })
+        if (previousUrl) URL.revokeObjectURL(previousUrl)
+      } catch {
+        // Retain the current photo during transient network failures.
+      } finally {
+        loading = false
+        if (active && refreshQueued) {
+          refreshQueued = false
+          refreshPhoto()
+        }
+      }
+    }
+    refreshPhoto()
+    window.addEventListener('focus', refreshPhoto)
+    document.addEventListener('visibilitychange', refreshPhoto)
 
     return () => {
       active = false
+      window.removeEventListener('focus', refreshPhoto)
+      document.removeEventListener('visibilitychange', refreshPhoto)
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
+
   }, [isAuthenticated, user?.id, user?.user?.id, user?.profile_photo])
 
   // Public pages render their own navigation experience and should not show
