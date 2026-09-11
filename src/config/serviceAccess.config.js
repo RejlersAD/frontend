@@ -88,4 +88,14 @@ export const resolveRouteModule = (moduleCode, pathname, search = '') => {
   if (moduleCode === 'project_control' && (new URLSearchParams(search).get('view') === 'plan-baseline' || pathname.startsWith('/planning-'))) return 'planning_package';
   return moduleCode;
 };
-export const canAccessRouteModule = (codes, code) => hasAssignedModule(codes, code) || (code === 'planning_package' && codes.includes('project_control'));
+export const canAccessRouteModule = (codes, code) => hasAssignedModule(codes, code);
+
+export const viewableModuleCodes = (profile) => (profile?.modules || [])
+  .filter(module => profile.module_actions?.[module.code]?.includes('read'))
+  .map(module => module.code);
+
+export const resolveQhseApiPrefix = (pathname = '') => {
+  const area = pathname.split('/')[3];
+  return pathname.startsWith('/qhse/') && ['detailed', 'quality', 'health-safety', 'environmental', 'energy'].includes(area)
+    ? `/qhse/areas/${area}` : '/qhse';
+};

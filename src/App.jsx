@@ -1,4 +1,4 @@
-import { BUSINESS_SERVICES, resolveRouteModule, canAccessRouteModule } from './config/serviceAccess.config'
+import { BUSINESS_SERVICES, resolveRouteModule, canAccessRouteModule, viewableModuleCodes } from './config/serviceAccess.config'
 import { OvertimeReviewPage } from './pages/HR/OvertimeManagement'
 import LeaveRequestReviewPage from './pages/HR/LeaveRequestReviewPage'
 import React from 'react'
@@ -217,25 +217,11 @@ const REGISTER_REDIRECT_TARGET = PUBLIC_PATH_REDIRECTS.register
 
 const ModuleAccessContext = React.createContext(null)
 function ModuleProtectedRoute({ children, moduleCode }) {
-  const { isAuthenticated, user, modulesLoaded, userModules } = React.useContext(ModuleAccessContext)
+  const { isAuthenticated, modulesLoaded, userModules } = React.useContext(ModuleAccessContext)
     const routeLocation = useLocation()
     const requiredModule = resolveRouteModule(moduleCode, routeLocation.pathname, routeLocation.search)
     if (!isAuthenticated) {
       return <Navigate to="/login" replace />
-    }
-
-    // Smart admin check: Check nested user object AND roles array
-    const userData = user?.user || user
-    const hasAdminFlags = userData?.is_superuser === true
-    const hasSuperAdminRole = user?.roles?.some(role =>
-      role.code === 'super_admin' || role.name === 'Super Administrator'
-    )
-    const isAdmin = hasAdminFlags || hasSuperAdminRole
-
-    // Only super administrators bypass module grants; staff is a Django-admin flag.
-    if (isAdmin) {
-      console.log('✅ App: Admin access granted for module:', moduleCode)
-      return children
     }
 
     // Check if modules are loaded
@@ -347,7 +333,7 @@ function App() {
         setMustChangePassword(data.must_change_password === true)
 
         if (data.modules && Array.isArray(data.modules)) {
-          const moduleCodes = data.modules.map(m => m.code)
+          const moduleCodes = viewableModuleCodes(data)
           setUserModules(previous => JSON.stringify(previous) === JSON.stringify(moduleCodes) ? previous : moduleCodes)
           console.log('🔐 App: User accessible modules:', moduleCodes)
         } else {
@@ -1161,9 +1147,9 @@ function App() {
           <Route
             path="engineering/piping/pms"
             element={
-              <ProtectedRoute>
+              <ModuleProtectedRoute moduleCode="piping_pms">
                 <ValveMTO />
-              </ProtectedRoute>
+              </ModuleProtectedRoute>
             }
           />
 
@@ -1171,9 +1157,9 @@ function App() {
           <Route
             path="engineering/piping/datasheet"
             element={
-              <ProtectedRoute>
+              <ModuleProtectedRoute moduleCode="piping_datasheet">
                 <PipingDataSheet />
-              </ProtectedRoute>
+              </ModuleProtectedRoute>
             }
           />
 
@@ -1360,9 +1346,9 @@ function App() {
         <Route
           path="engineering/civil/datasheet"
           element={
-            <ProtectedRoute>
+            <ModuleProtectedRoute moduleCode="civil_datasheet">
               <CivilDatasheetPage />
-            </ProtectedRoute>
+            </ModuleProtectedRoute>
           }
         />
 
@@ -1412,9 +1398,9 @@ function App() {
         <Route
           path="engineering/digitization/smart-plant-3d"
           element={
-            <ProtectedRoute>
+            <ModuleProtectedRoute moduleCode="smart_plant_3d">
               <SmartPlant3DPage />
-            </ProtectedRoute>
+            </ModuleProtectedRoute>
           }
         />
         <Route

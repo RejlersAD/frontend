@@ -1,3 +1,4 @@
+import { getQhseApiBase } from '../../../../services/qhse.service';
 import React, { useState, useEffect } from 'react';
 import {
   Dialog,
@@ -15,7 +16,6 @@ import {
 } from '@mui/material';
 import { X, Save, Upload } from 'lucide-react';
 import { STORAGE_KEYS } from '../../../../config/app.config';
-import { API_BASE_URL } from '../../../../config/api.config';
 
 /**
  * Project Edit Modal - Soft-coded admin interface for creating/updating QHSE projects
@@ -135,8 +135,8 @@ export const ProjectEditModal = ({ open, onClose, project, onUpdate, mode = 'edi
       }
 
       const url = isCreateMode 
-        ? `${API_BASE_URL}/qhse/projects/`
-        : `${API_BASE_URL}/qhse/projects/${projectId}/`;
+        ? `${getQhseApiBase()}/projects/`
+        : `${getQhseApiBase()}/projects/${projectId}/`;
       
       const method = isCreateMode ? 'POST' : 'PATCH';
 
