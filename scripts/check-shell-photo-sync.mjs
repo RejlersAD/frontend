@@ -48,6 +48,28 @@ try {
   await page.goto(`http://localhost:5173/admin/users/${auth.profileId}`, {waitUntil:'domcontentloaded'});
   await page.waitForFunction(() => { const image = document.querySelector('.user-detail-avatar img, .ud-avatar img'); const shell = document.querySelector('header button[aria-haspopup="menu"] img'); return image?.naturalWidth > 0 && image.src.startsWith('blob:') && image.src === shell?.src; });
   await page.screenshot({path:'../artifacts/profile-workspace/user-detail-photo-sync-fixed.png', fullPage:true});
+  await page.goto('http://localhost:5173/hr/employees', {waitUntil:'domcontentloaded'});
+  await page.getByPlaceholder('Search employee ID, name, email, department, manager, location or role', {exact:false}).fill(email);
+  const employeeRow = page.locator('tbody tr').filter({hasText:email}).first();
+  await employeeRow.waitFor();
+  await employeeRow.locator('img').waitFor();
+  await employeeRow.click();
+  const employeeDialog = page.getByRole('dialog', {name:/employee profile/});
+  await employeeDialog.waitFor();
+  await page.waitForFunction(() => {
+    const shell = document.querySelector('header button[aria-haspopup="menu"] img');
+    const drawer = document.querySelector('[role="dialog"][aria-label$="employee profile"] img');
+    const row = document.querySelector('tbody tr img');
+    return shell?.src.startsWith('blob:') && drawer?.naturalWidth > 0 && row?.naturalWidth > 0 && drawer.src === shell.src && row.src === shell.src;
+  });
+  const beforeUploadRefresh = await employeeDialog.locator('img').first().getAttribute('src');
+  await page.evaluate(() => window.dispatchEvent(new Event('radai:profile-photo-changed')));
+  await page.waitForFunction(previous => {
+    const shell = document.querySelector('header button[aria-haspopup="menu"] img');
+    const drawer = document.querySelector('[role="dialog"][aria-label$="employee profile"] img');
+    return drawer?.naturalWidth > 0 && drawer.src !== previous && drawer.src === shell?.src;
+  }, beforeUploadRefresh);
+  await page.screenshot({path:'../artifacts/profile-workspace/hr-employee-drawer-photo-sync-fixed.png', fullPage:true});
   assert.deepEqual(errors, []);
-  console.log('PASS: Employee Profile and User Details share the shell photo; header/sidebar recover from failed images, share authenticated photo, and refresh together on return to app; server writes blocked');
+  console.log('PASS: HR employee drawer/list, Employee Profile and User Details share the shell photo; header/sidebar recover from failed images, share authenticated photo, and refresh together on return to app; server writes blocked');
 } finally { await browser.close(); }
