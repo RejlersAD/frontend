@@ -685,10 +685,10 @@ function RoleManagement() {
 
       {/* ── Page header ── */}
       <header className="ra-page-header">
-             <div className="ra-page-title"><div><h1>Roles &amp; Access</h1><p>Create roles, assign users and control application permissions.</p></div>
+             <div className="ra-page-title"><div><h2>Roles &amp; Access Management</h2></div>
           <div className="ra-header-actions"><button onClick={exportReport}><HeroIcons.ArrowDownTrayIcon />Export access report</button><button onClick={() => changeMainTab(MAIN_TAB_AR)}><HeroIcons.UserGroupIcon />Review requests</button>{isSuperAdmin && <button className="ra-primary" onClick={() => { setShowCreate(true); setCreateError(null); setCreateForm(EMPTY_FORM); }}><HeroIcons.PlusIcon />Create role</button>}</div>
         </div>
-        <div className="ra-notice ra-pending"><HeroIcons.ClockIcon /><span>{pendingTotal} access request{pendingTotal === 1 ? '' : 's'} awaiting review</span><button className="ra-link" onClick={() => changeMainTab(MAIN_TAB_AR)}>Review requests <HeroIcons.ArrowRightIcon /></button></div>
+        {pendingTotal > 0 && <div className="ra-notice ra-pending"><HeroIcons.ClockIcon /><span>{pendingTotal} access request{pendingTotal === 1 ? '' : 's'} awaiting review</span><button className="ra-link" onClick={() => changeMainTab(MAIN_TAB_AR)}>Review requests <HeroIcons.ArrowRightIcon /></button></div>}
         <div className="ra-tabs" role="tablist" aria-label="Roles and access">{[[MAIN_TAB_ROLES, 'Roles'], [MAIN_TAB_AR, 'Access requests'], ['reviews', 'Access reviews'], ['audit', 'Audit']].map(([key, label]) => <button key={key} role="tab" aria-selected={mainTab === key} onClick={() => changeMainTab(key)}>{label}</button>)}</div>
       </header>
 

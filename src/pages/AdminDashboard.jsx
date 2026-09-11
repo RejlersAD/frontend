@@ -124,10 +124,10 @@ export default function AdminDashboard() {
   const healthyCount = services.filter(service => service.status === 'healthy').length;
   const successRate = health?.error_rates?.api == null ? null : Math.round((100 - health.error_rates.api) * 100) / 100;
   const cards = [
-    { title: 'Services healthy', value: health ? `${healthyCount} of ${services.length}` : '—', icon: CheckCircle2, tone: 'healthy' },
-    { title: 'Active incidents', value: data.alerts == null ? '—' : data.alerts.count ?? alerts.length, icon: AlertCircle, tone: alerts.length ? 'critical' : 'healthy' },
-    { title: 'Request success', value: display(successRate, '%'), icon: Activity, tone: 'blue', note: 'Observed API requests · last 5 min' },
-    { title: 'Average response', value: display(health?.response_times?.api == null ? null : Math.round(health.response_times.api), ' ms'), icon: Clock, tone: 'muted', note: 'Observed API requests · last 5 min' },
+    { title: 'Services healthy', value: health ? `${healthyCount} of ${services.length}` : '—', icon: CheckCircle2, tone: !health || !services.length ? 'muted' : healthyCount === services.length ? 'healthy' : 'degraded' },
+    { title: 'Active incidents', value: data.alerts == null ? '—' : data.alerts.count ?? alerts.length, icon: AlertCircle, tone: data.alerts == null ? 'muted' : (data.alerts.count ?? alerts.length) > 0 ? 'critical' : 'healthy' },
+    { title: 'Request success', value: display(successRate, '%'), icon: Activity, tone: successRate == null ? 'muted' : 'blue', note: 'Observed API requests · last 5 min' },
+    { title: 'Average response', value: display(health?.response_times?.api == null ? null : Math.round(health.response_times.api), ' ms'), icon: Clock, tone: health?.response_times?.api == null ? 'muted' : 'blue', note: 'Observed API requests · last 5 min' },
   ];
   const closeDialog = () => { setDetail(null); setTaskOpen(false); };
   const reviewIssue = () => setDetail({ title: issue?.title || `${failing?.name || 'Service'} requires attention`, description: issue?.description || issue?.message || 'Review the latest service check.', raw: issue, alertId: issueIsAlert ? issue.id : null });
@@ -160,7 +160,7 @@ export default function AdminDashboard() {
       <div id="ac-tabpanel" role="tabpanel" aria-labelledby={`ac-tab-${tab.replaceAll(' ', '-')}`}>
         {tab === 'Overview' && <>
           <section className={`ac-incident ${incidentTone}`} aria-label="Priority health finding"><AlertCircle className="ac-incident-icon" size={34} /><div className="ac-incident-copy"><h2>{issue ? `${issueIsAlert ? 'Active incident' : 'Attention required'} · ${issue.title}` : failing ? `Service requires attention · ${failing.name}` : data.alerts == null ? 'Incident status unavailable' : 'No active incidents reported'}</h2><p>{issue?.description || issue?.message || (failing ? 'Review the latest service check and related administrative changes.' : 'Monitor the live service checks below.')}</p></div>{(issue || failing) && <><div className="ac-incident-meta"><div><small>Severity</small><strong>{label(issue?.severity || issue?.impact_level || (failing ? 'critical' : 'high'))}</strong></div><div><small>Owner</small><span>{issue?.assigned_to_name || 'Unassigned'}</span></div><div><small>Detected</small><b>{time(issueTime)}</b></div></div><button className="ac-primary" onClick={reviewIssue}>{issueIsAlert ? 'Review incident' : 'Review finding'}</button><button className="ac-detail-button" onClick={reviewIssue}>Open details</button></>}</section>
-          <section className="ac-signals" aria-label="Health signals">{cards.map(({ title, value, icon: Icon, tone, note }) => <article className="ac-signal" key={title}><span className={`ac-signal-icon ${tone}`}><Icon size={34} /></span><div><p>{title}</p><strong>{value}</strong>{note && <small>{note}</small>}</div></article>)}</section>
+          <section className="ac-signals" aria-label="Health signals">{cards.map(({ title, value, icon: Icon, tone, note }) => <article className="ac-signal" data-tone={tone} key={title}><span className={`ac-signal-icon ${tone}`}><Icon size={34} /></span><div><p>{title}</p><strong>{value}</strong>{note && <small>{note}</small>}</div></article>)}</section>
           <div className="ac-content-grid">{serviceTable}{serviceDetails}</div><div className="ac-bottom-grid">{resources}<History history={data.history} hours={period} now={now} /></div>
         </>}
         {tab === 'Services' && <div className="ac-content-grid">{serviceTable}{serviceDetails}</div>}

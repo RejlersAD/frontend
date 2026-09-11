@@ -154,3 +154,21 @@
 .ac-signal-icon.healthy svg { fill: var(--ac-success); stroke: #fff; }
 .ac-signal-icon.critical svg { fill: var(--ac-danger); stroke: #fff; }
 .ac-incident.critical .ac-incident-icon { fill: var(--ac-danger); stroke: #fff; }
+
+/* RADAI Enterprise Visual Language: flat semantic health cards. */
+.admin-console .ac-signal{--signal-border:#bfdbfe;--signal-tint:#eff6ff;--signal-ink:#1e40af;--signal-icon:#dbeafe;border:1px solid var(--signal-border);border-radius:12px;background:linear-gradient(135deg,#fff 15%,var(--signal-tint));box-shadow:none}
+.admin-console .ac-signal[data-tone=healthy]{--signal-border:#a7f3d0;--signal-tint:#f0fdf7;--signal-ink:#065f46;--signal-icon:#d1fae5}
+.admin-console .ac-signal[data-tone=degraded]{--signal-border:#fde68a;--signal-tint:#fffbeb;--signal-ink:#92400e;--signal-icon:#fef3c7}
+.admin-console .ac-signal[data-tone=critical]{--signal-border:#fecdd3;--signal-tint:#fff1f2;--signal-ink:#9f1239;--signal-icon:#ffe4e6}
+.admin-console .ac-signal[data-tone=muted]{--signal-border:#e2e8f0;--signal-tint:#f8fafc;--signal-ink:#475569;--signal-icon:#f1f5f9}
+.admin-console .ac-signal-icon{height:42px;width:42px;flex-shrink:0;padding:0;border:0;border-radius:8px;background:var(--signal-icon);color:var(--signal-ink);display:grid;place-items:center}
+.admin-console .ac-signal-icon svg{width:24px;height:24px;fill:none;stroke:currentColor}
+.admin-console .ac-signal p{font-size:12px;line-height:16px;font-weight:600;letter-spacing:.035em;text-transform:uppercase;color:#526071}
+.admin-console .ac-signal strong{color:var(--signal-ink);font-weight:650;margin-top:4px}
+.admin-console .ac-signal small{color:var(--signal-ink);margin-top:4px;display:block}
+.dark .admin-console .ac-signal{background:linear-gradient(135deg,#0f172a 15%,var(--signal-tint));--signal-tint:#14233c;--signal-border:#1e3a8a;--signal-ink:#bfdbfe;--signal-icon:#172e52}
+.dark .admin-console .ac-signal[data-tone=healthy]{--signal-tint:#102b28;--signal-border:#064e3b;--signal-ink:#a7f3d0;--signal-icon:#123b32}
+.dark .admin-console .ac-signal[data-tone=degraded]{--signal-tint:#302820;--signal-border:#78350f;--signal-ink:#fde68a;--signal-icon:#443322}
+.dark .admin-console .ac-signal[data-tone=critical]{--signal-tint:#331c2a;--signal-border:#881337;--signal-ink:#fecdd3;--signal-icon:#4c1c30}
+.dark .admin-console .ac-signal[data-tone=muted]{--signal-tint:#1e293b;--signal-border:#334155;--signal-ink:#cbd5e1;--signal-icon:#334155}
+.dark .admin-console .ac-signal p{color:#cbd5e1}

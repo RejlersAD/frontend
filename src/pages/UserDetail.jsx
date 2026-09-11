@@ -1,3 +1,5 @@
+import './UserDetail.css'
+import rbacService from '../services/rbac.service'
 import { radaiConfirm, radaiAlert } from '../services/radaiDialog'
 /**
  * User Detail Page
@@ -62,9 +64,19 @@ const UserDetail = () => {
   const [userModules, setUserModules] = useState([])
   const [userRoles, setUserRoles] = useState([])
   const [userActivity, setUserActivity] = useState([])
+  const [activityError, setActivityError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
+  const [photoFailed, setPhotoFailed] = useState(false)
+  const [moduleSearch, setModuleSearch] = useState('')
+  const [modulePage, setModulePage] = useState(1)
+  useEffect(() => { setPhotoFailed(false) }, [id, userData?.profile_photo])
+  useEffect(() => { setModulePage(1); setModuleSearch('') }, [id])
+  const matchingModules = userModules.filter(module => [module.name, module.code, module.description, typeof module === 'string' ? module : ''].some(value => String(value || '').toLowerCase().includes(moduleSearch.trim().toLowerCase())))
+  const modulePages = Math.max(1, Math.ceil(matchingModules.length / 12))
+  const currentModulePage = Math.min(modulePage, modulePages)
+  const visibleModules = matchingModules.slice((currentModulePage - 1) * 12, currentModulePage * 12)
 
   useEffect(() => {
     fetchUserDetails()
@@ -73,6 +85,7 @@ const UserDetail = () => {
   const fetchUserDetails = async () => {
     try {
       setLoading(true)
+      setError(null)
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
       const headers = {
         'Authorization': `Bearer ${token}`,
@@ -85,37 +98,16 @@ const UserDetail = () => {
       const user = await userResponse.json()
       setUserData(normalizeUserProfile(user))
 
-      // Fetch user modules
+      // The profile response includes effective modules and active role assignments.
+      setUserModules(Array.isArray(user.modules) ? user.modules : [])
+      setUserRoles(Array.isArray(user.roles) ? user.roles : [])
+      setUserActivity([])
+      setActivityError('')
       try {
-        const modulesResponse = await fetch(`${API_BASE_URL}/rbac/users/${id}/modules/`, { headers })
-        if (modulesResponse.ok) {
-          const modules = await modulesResponse.json()
-          setUserModules(modules)
-        }
-      } catch (err) {
-        console.log('Modules not available')
-      }
-
-      // Fetch user roles
-      try {
-        const rolesResponse = await fetch(`${API_BASE_URL}/rbac/users/${id}/roles/`, { headers })
-        if (rolesResponse.ok) {
-          const roles = await rolesResponse.json()
-          setUserRoles(roles)
-        }
-      } catch (err) {
-        console.log('Roles not available')
-      }
-
-      // Fetch user activity (if available)
-      try {
-        const activityResponse = await fetch(`${API_BASE_URL}/rbac/users/${id}/activity/`, { headers })
-        if (activityResponse.ok) {
-          const activity = await activityResponse.json()
-          setUserActivity(activity.results || activity)
-        }
-      } catch (err) {
-        console.log('Activity not available')
+        const response = await rbacService.getAuditLogs({resource_type: 'UserProfile', resource_id: id, page_size: 20, ordering: '-timestamp'})
+        setUserActivity(response.data?.results || (Array.isArray(response.data) ? response.data : []))
+      } catch {
+        setActivityError('Account activity is unavailable. Please try again later.')
       }
 
       setLoading(false)
@@ -200,8 +192,8 @@ const UserDetail = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
+      <div className="user-detail-workspace">
+        <div className="ud-container">
           <div className="flex items-center justify-center py-20">
             <div className="relative">
               <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200"></div>
@@ -215,8 +207,8 @@ const UserDetail = () => {
 
   if (error || !userData) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
+      <div className="user-detail-workspace">
+        <div className="ud-container">
           <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
             <XCircleIcon className="w-20 h-20 text-red-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 mb-2">User Not Found</h2>
@@ -241,27 +233,27 @@ const UserDetail = () => {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="user-detail-workspace">
+      <div className="ud-container">
         {/* Header */}
-        <div className="mb-6">
+        <div className="ud-header">
           <button
             onClick={() => navigate('/admin/users')}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 transition-colors"
+            className="ud-back"
           >
             <ArrowLeftIcon className="w-5 h-5" />
             Back to Users
           </button>
 
-          <div className="flex items-center justify-between">
+          <div className="ud-heading">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">User Details</h1>
               <p className="text-gray-600">Complete profile and activity information</p>
             </div>
-            <div className="flex gap-3">
+            <div className="ud-actions">
               <button
                 onClick={() => navigate('/admin/users')}
-                className="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl hover:border-blue-500 transition-all flex items-center gap-2"
+                className="ud-primary"
               >
                 <PencilIcon className="w-5 h-5" />
                 Edit
@@ -297,11 +289,11 @@ const UserDetail = () => {
         </div>
 
         {/* Profile Card */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-xl p-8 mb-6 text-white">
+        <div className="ud-profile">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-6">
-              <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center text-4xl font-bold backdrop-blur-sm">
-                {userData.first_name?.[0]}{userData.last_name?.[0]}
+              <div className="ud-avatar">
+                {userData.profile_photo && !photoFailed ? <img src={userData.profile_photo} alt={`${userData.first_name} ${userData.last_name}`} onError={() => setPhotoFailed(true)} /> : <>{userData.first_name?.[0]}{userData.last_name?.[0]}</>}
               </div>
               <div>
                 <h2 className="text-3xl font-bold mb-2">
@@ -341,14 +333,15 @@ const UserDetail = () => {
         </div>
 
         {/* Tabs */}
-        <div className="bg-white rounded-2xl shadow-lg mb-6 overflow-hidden">
-          <div className="border-b border-gray-200">
-            <div className="flex">
+        <div className="ud-tabs-panel">
+          <div className="ud-tabs">
+            <div className="flex" role="tablist" aria-label="User details">
               {tabs.map((tab) => {
                 const Icon = tab.icon
                 return (
                   <button
                     key={tab.id}
+                    role="tab" aria-selected={activeTab === tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={`flex-1 px-6 py-4 flex items-center justify-center gap-2 font-medium transition-all ${
                       activeTab === tab.id
@@ -358,19 +351,20 @@ const UserDetail = () => {
                   >
                     <Icon className="w-5 h-5" />
                     {tab.name}
+                    {tab.id === 'modules' && <span className="ud-tab-count">{userModules.length}</span>}
                   </button>
                 )
               })}
             </div>
           </div>
 
-          <div className="p-8">
+          <div className="ud-tab-content">
             {/* Overview Tab */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Contact Information */}
-                  <div className="bg-gray-50 rounded-xl p-6">
+                  <div className="ud-panel">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <EnvelopeIcon className="w-5 h-5 text-blue-600" />
                       Contact Information
@@ -390,7 +384,7 @@ const UserDetail = () => {
                   </div>
 
                   {/* Organization Information */}
-                  <div className="bg-gray-50 rounded-xl p-6">
+                  <div className="ud-panel">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <BuildingOfficeIcon className="w-5 h-5 text-purple-600" />
                       Organization
@@ -418,7 +412,7 @@ const UserDetail = () => {
                   </div>
 
                   {/* Account Details */}
-                  <div className="bg-gray-50 rounded-xl p-6">
+                  <div className="ud-panel">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <CalendarIcon className="w-5 h-5 text-green-600" />
                       Account Details
@@ -466,7 +460,7 @@ const UserDetail = () => {
                   </div>
 
                   {/* Statistics */}
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6">
+                  <div className="ud-panel ud-statistics">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <ChartBarIcon className="w-5 h-5 text-indigo-600" />
                       Statistics
@@ -481,8 +475,8 @@ const UserDetail = () => {
                         <p className="text-sm text-gray-600">Roles</p>
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-green-600">{userActivity.length}</p>
-                        <p className="text-sm text-gray-600">Activities</p>
+                        <p className="text-2xl font-bold text-green-600">{activityError ? '?' : userActivity.length}</p>
+                        <p className="text-sm text-gray-600">Recent account changes</p>
                       </div>
                       <div>
                         <p className="text-2xl font-bold text-orange-600">
@@ -499,39 +493,20 @@ const UserDetail = () => {
             {/* Modules Tab */}
             {activeTab === 'modules' && (
               <div>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900">Assigned Modules</h3>
-                  <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-xl font-semibold">
-                    {userModules.length} Modules
-                  </span>
+                <div className="ud-module-toolbar">
+                  <input type="search" aria-label="Search assigned modules" placeholder="Search modules..." value={moduleSearch} onChange={event => { setModuleSearch(event.target.value); setModulePage(1) }} />
                 </div>
-                {userModules.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {userModules.map((module, index) => (
-                      <div
-                        key={index}
-                        className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
-                            {module.code?.[0] || module.name?.[0] || 'M'}
-                          </div>
-                          <div>
-                            <p className="font-bold text-gray-900">{module.name || module.code || module}</p>
-                            {module.description && (
-                              <p className="text-sm text-gray-600">{module.description}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <KeyIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">No modules assigned</p>
-                  </div>
-                )}
+                <ul className="ud-module-list" aria-label="Assigned modules">
+                  {visibleModules.map((module, index) => <li key={module.id || module.code || index}>
+                    <span className="ud-module-symbol"><KeyIcon /></span>
+                    <div><strong>{module.name || module.code || module}</strong>{module.description && <p>{module.description}</p>}</div>
+                  </li>)}
+                </ul>
+                {!matchingModules.length && <p className="ud-module-empty">{userModules.length ? 'No modules match your search.' : 'No modules assigned.'}</p>}
+                <div className="ud-module-pagination">
+                  <span>Showing {matchingModules.length ? (currentModulePage - 1) * 12 + 1 : 0}&ndash;{Math.min(currentModulePage * 12, matchingModules.length)} of {matchingModules.length}</span>
+                  <div><button disabled={currentModulePage === 1} onClick={() => setModulePage(currentModulePage - 1)}>Previous</button><span>Page {currentModulePage} of {modulePages}</span><button disabled={currentModulePage === modulePages} onClick={() => setModulePage(currentModulePage + 1)}>Next</button></div>
+                </div>
               </div>
             )}
 
@@ -549,7 +524,7 @@ const UserDetail = () => {
                     {userRoles.map((role, index) => (
                       <div
                         key={index}
-                        className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border-2 border-purple-200"
+                        className="ud-role"
                       >
                         <div className="flex items-start justify-between">
                           <div>
@@ -605,7 +580,7 @@ const UserDetail = () => {
                     {userActivity.map((activity, index) => (
                       <div
                         key={index}
-                        className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-blue-500 transition-all"
+                        className="ud-activity"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
@@ -629,7 +604,7 @@ const UserDetail = () => {
                 ) : (
                   <div className="text-center py-12">
                     <ChartBarIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">No activity recorded</p>
+                    <p className="text-gray-600">{activityError || 'No account activity recorded'}</p>
                   </div>
                 )}
               </div>
