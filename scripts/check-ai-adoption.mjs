@@ -12,7 +12,7 @@ await mkdir('../artifacts/ai-adoption',{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try {
  const page=await browser.newPage({viewport:{width:1672,height:941}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.setContent('<style>body{margin:0}</style><div id="root"></div>');await page.addStyleTag({content:await readFile('src/pages/Admin/AIAdoptionDashboard.css','utf8')});for(const name of ['AIAdoptionHelp.css','AIAdoptionVisualLanguage.css'])await page.addStyleTag({content:await readFile('src/pages/Admin/'+name,'utf8')});await page.addScriptTag({content:bundle.outputFiles[0].text});
+ await page.setContent('<style>body{margin:0}</style><div id="root"></div>');await page.addStyleTag({content:await readFile('src/pages/Admin/AIAdoptionDashboard.css','utf8')});for(const name of ['AIAdoptionHelp.css','AIAdoptionVisualLanguage.css','AILiveActivity.css'])await page.addStyleTag({content:await readFile('src/pages/Admin/'+name,'utf8')});await page.addScriptTag({content:bundle.outputFiles[0].text});
  await page.getByRole('heading',{name:'Contribution register',exact:true}).waitFor();
  await page.getByRole('button',{name:'Open Overview help',exact:true}).click();
  const help=page.getByRole('dialog',{name:'Overview Help',exact:true});
@@ -22,7 +22,7 @@ try {
  await help.getByLabel('Search knowledge base',{exact:true}).fill('no-such-help-topic');await help.getByRole('status').waitFor();
  await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByRole('button',{name:'Open Overview help',exact:true}).evaluate(el=>el===document.activeElement),true);
 
- assert.deepEqual(await page.locator('.ad-kpi strong').allTextContents(),['12','83.33%','View evidence','$0.25']);
+ assert.deepEqual(await page.locator('.ad-kpi strong').allTextContents(),['12','90','24','12']);
  assert.equal(await page.locator('.ad-contribution-table tbody tr').count(),10);
  assert.equal(await page.getByRole('button',{name:'Review monthly award',exact:true}).isEnabled(),true);
  await page.screenshot({path:'../artifacts/ai-adoption/reference-overview.png',fullPage:true});
@@ -35,6 +35,7 @@ try {
  await page.getByRole('button',{name:'Show supporting evidence',exact:true}).click();
  const contributionDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Export report',exact:true}).click();const contributionCsv=await readFile(await (await contributionDownload).path(),'utf8');assert.ok(contributionCsv.includes("'="));assert.ok(contributionCsv.includes('Avery Engineer'));assert.ok(!contributionCsv.includes('Contributor 2'));
  await page.getByRole('button',{name:'Reset',exact:true}).click();
+ await page.locator('.ad-tabs').getByRole('button',{name:'Contributions',exact:true}).click();
  await page.getByRole('combobox',{name:'Dashboard model',exact:true}).selectOption('Example AI/test-model');assert.equal(await page.locator('.ad-contribution-table tbody tr').count(),6);assert.equal(await page.locator('.ad-kpi strong').first().textContent(),'6');
  await page.getByRole('combobox',{name:'Dashboard model',exact:true}).selectOption('all');
  await page.locator('.ad-register-tabs[aria-label="Contribution views"]').getByRole('button',{name:'Verified outcomes',exact:true}).click();await page.getByRole('heading',{name:'Verified outcomes are not connected',exact:true}).waitFor();
@@ -51,7 +52,7 @@ try {
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export report',exact:true}).click();const saved=await download;const csv=await readFile(await saved.path(),'utf8');assert.ok(csv.includes("'="));assert.ok(csv.includes('Your organization'));
  await page.getByRole('button',{name:'View model costs',exact:true}).click();await page.getByRole('heading',{name:'Recorded AI costs'}).waitFor();assert.ok(await page.getByRole('cell',{name:'Not configured',exact:true}).count());
  await page.getByRole('combobox',{name:'Cost grouping'}).selectOption('providers');await page.getByRole('cell',{name:'See model breakdown',exact:true}).waitFor();
- await page.getByRole('button',{name:'Enablement',exact:true}).click();await page.getByRole('button',{name:'Open Enablement help',exact:true}).click();await page.getByRole('dialog',{name:'Enablement Help',exact:true}).getByRole('heading',{name:'Enablement',exact:true}).waitFor();await page.keyboard.press('Escape');await page.getByRole('heading',{name:'Current month candidates'}).waitFor();
+ await page.getByRole('button',{name:'Enablement',exact:true}).click();await page.getByRole('button',{name:'Open Enablement help',exact:true}).click();await page.getByRole('dialog',{name:'Enablement Help',exact:true}).getByRole('heading',{name:'Enablement',exact:true}).waitFor();await page.keyboard.press('Escape');await page.getByRole('heading',{name:'Legacy engagement comparison'}).waitFor();
  assert.ok((await page.locator('.ad-main').textContent()).includes('September 2026'));assert.ok((await page.locator('.ad-main').textContent()).includes('July 2026'));
  await page.getByRole('button',{name:'Score details for Avery Engineer',exact:true}).click();assert.equal(await page.locator('.ad-score-breakdown progress').count(),6);
  await page.screenshot({path:'../artifacts/ai-adoption/champion-desktop.png',fullPage:true});
@@ -60,7 +61,7 @@ try {
  await page.evaluate(()=>document.documentElement.classList.add('dark'));await page.screenshot({path:'../artifacts/ai-adoption/overview-dark.png',fullPage:true});assert.equal(await page.locator('.ad-kpi').first().evaluate(el=>getComputedStyle(el).boxShadow),'none');
  await page.evaluate(()=>document.documentElement.classList.remove('dark'));await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:'../artifacts/ai-adoption/overview-mobile.png',fullPage:true});
  await page.evaluate(()=>window.fail=true);await page.getByRole('button',{name:'Refresh',exact:true}).click();await page.getByRole('heading',{name:'Report unavailable'}).waitFor();assert.equal(await page.locator('.ad-kpi').count(),0);assert.ok((await page.locator('.ad-report-meta').textContent()).includes('Update failed'));
- await page.evaluate(()=>{window.fail=false;window.empty=true});await page.getByRole('button',{name:'Retry',exact:true}).click();await page.getByRole('heading',{name:'Contribution register',exact:true}).waitFor();assert.equal(await page.locator('.ad-kpi strong').last().textContent(),'Not reported');
+ await page.evaluate(()=>{window.fail=false;window.empty=true});await page.getByRole('button',{name:'Retry',exact:true}).click();await page.getByRole('heading',{name:'Contribution register',exact:true}).waitFor();assert.equal(await page.locator('.ad-kpi strong').last().textContent(),'0');
  await page.getByRole('combobox',{name:'Reporting period'}).selectOption('7');await page.getByRole('heading',{name:'Contribution register',exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.calls.at(-1)),7);
  assert.deepEqual(errors,[]);console.log('PASS: reference contribution layout, evidence samples, unavailable approvals, model filters and KPI updates, filtered safe CSV, pagination, historical periods, methodology, dark/mobile, errors and missing data');
 } finally {await browser.close();}
