@@ -1,17 +1,18 @@
 import { resolveRouteModule, canAccessRouteModule } from '../../config/serviceAccess.config';
-import React, { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import React, { useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { updateUser } from "../../store/slices/authSlice";
 import { API_BASE_URL } from "../../config/api.config";
 import { getSectionTitle } from "../../config/navigationLabels.config";
 import { getEngineeringDisciplines } from "../../config/engineeringStructure.config";
-import { USER_DISPLAY_CONFIG } from "../../config/userDisplay.config";
 import { SIDEBAR } from "../../config/layout.config";
+import { getActiveSidebarItem } from "../../utils/sidebarNavigation";
+import useSidebarDrawer from "../../hooks/useSidebarDrawer";
+import "./Sidebar.css";
 import { FEATURE_FLAGS } from "../../config/features.config";
 import {
   QHSE_MODULE_LABELS,
-  isQHSEModuleEnabled,
 } from "../../config/qhseModules.config";
 import {
   ChevronDownIcon,
@@ -97,10 +98,9 @@ const Sidebar = ({
   setIsOpen,
   isCollapsed: isCollapsedProp,
   setIsCollapsed: setIsCollapsedProp,
-  profilePhotoUrl,
 }) => {
-  const navigate = useNavigate();
   const location = useLocation();
+  const sidebarRef = useRef(null);
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const [userModules, setUserModules] = useState([]);
@@ -109,11 +109,13 @@ const Sidebar = ({
   const [freshIsAdmin, setFreshIsAdmin] = useState(false);
   // If parent Layout drives collapse state, use those props; otherwise
   // fall back to local state so the component still works standalone.
-  const [internalCollapsed, setInternalCollapsed] = useState(true);
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
   const isCollapsed =
     isCollapsedProp !== undefined ? isCollapsedProp : internalCollapsed;
   const setIsCollapsed = setIsCollapsedProp || setInternalCollapsed;
   const [expandedSections, setExpandedSections] = useState({});
+  const [tooltip, setTooltip] = useState(null);
+  const isMobileDrawer = useSidebarDrawer({ sidebarRef, isOpen, setIsOpen });
 
   // Handle nested user object from API response (user.user.is_staff vs user.is_staff)
   const userData = user?.user || user;
@@ -309,16 +311,17 @@ const Sidebar = ({
     });
   };
 
-  // Check if route is active
-  const isActiveRoute = (path) => {
-    if (path === "/sales") return location.pathname === path;
-    return (
-      location.pathname === path || location.pathname.startsWith(path + "/")
-    );
-  };
-
   // Navigation menu structure
   const menuStructure = [
+    {
+      id: "executive",
+      title: "Executive overview",
+      icon: PresentationChartLineIcon,
+      path: "/executive",
+      type: "single",
+      moduleCode: "executive_dashboard",
+      description: "Business performance and management priorities",
+    },
     {
       id: "dashboard",
       title: "Dashboard",
@@ -326,6 +329,15 @@ const Sidebar = ({
       path: "/dashboard",
       type: "single",
       requiresModule: false, // Dashboard is always accessible
+    },
+    {
+      id: "approvals",
+      title: "Approvals",
+      icon: ClipboardDocumentListIcon,
+      path: "/approvals",
+      type: "single",
+      requiresModule: false,
+      description: "Review your pending approvals",
     },
     {
       id: "processEngineering",
@@ -342,7 +354,7 @@ const Sidebar = ({
         description: discipline.description,
         color: discipline.color,
         gradient: discipline.gradient,
-        children: discipline.subFeatures.map((subFeature, subIndex) => ({
+        children: discipline.subFeatures.map((subFeature) => ({
           id: subFeature.id,
           title: subFeature.name,
           icon: subFeature.icon,
@@ -401,7 +413,7 @@ const Sidebar = ({
         },
         {
           id: "myProfile",
-          title: "2.5 My Profile",
+          title: "2.5 Employee self-service",
           icon: SparklesIcon,
           path: "/hr/Employeprofile",
           description: "My leave, attendance, timesheet & payroll",
@@ -870,7 +882,7 @@ const Sidebar = ({
         },
         {
           id: "userManagement",
-          title: "9.2 Users & Roles",
+          title: "9.2 Users",
           icon: UsersIcon,
           path: "/admin/users",
           description: "User accounts & permissions",
@@ -878,7 +890,7 @@ const Sidebar = ({
         },
         {
           id: "roleManagement",
-          title: "9.3 Role & Access Management",
+          title: "9.3 Roles & permissions",
           icon: ShieldCheckIcon,
           path: "/admin/roles",
           description: "Roles, module permissions & access request approvals",
@@ -926,413 +938,156 @@ const Sidebar = ({
     });
   }
 
-  // Keep the accordion synchronized with direct links, browser history, and
-  // programmatic navigation. A route can activate one top-level section and,
-  // for Engineering, one nested discipline.
+  const visibleMenu = filteredMenu.filter((item) => item.type === "single" || item.children?.length);
+  const active = getActiveSidebarItem(visibleMenu, location);
+  const { sectionId, subsectionId } = active;
+
+  // Follow direct links and history while allowing manual accordion browsing.
   React.useEffect(() => {
-    let activeTopLevel = null;
-    let activeNested = null;
-
-    for (const item of filteredMenu) {
-      if (item.type !== "section") continue;
-
-      if (item.path && location.pathname === item.path) {
-        activeTopLevel = item.id;
-        break;
-      }
-
-      for (const child of item.children || []) {
-        if (child.type === "subsection") {
-          const hasActiveChild = (child.children || []).some((nestedChild) =>
-            isActiveRoute(nestedChild.path),
-          );
-          if (hasActiveChild) {
-            activeTopLevel = item.id;
-            activeNested = child.id;
-            break;
-          }
-        } else if (child.path && isActiveRoute(child.path)) {
-          activeTopLevel = item.id;
-          break;
-        }
-      }
-
-      if (activeTopLevel) break;
-    }
-
-    setExpandedSections((prev) => {
-      const next = {};
-      if (activeTopLevel) next[activeTopLevel] = true;
-      if (activeNested) next[activeNested] = true;
-      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-    });
-  }, [location.pathname, userModules, isAdmin]);
+    const next = {};
+    if (sectionId) next[sectionId] = true;
+    if (subsectionId) next[subsectionId] = true;
+    setExpandedSections(next);
+  }, [location.pathname, location.search, sectionId, subsectionId]);
 
   React.useEffect(() => {
-    const handleEscape = (event) => {
-      if (event.key !== "Escape") return;
-      if (window.matchMedia("(min-width: 1024px)").matches) {
-        setIsCollapsed(true);
-      } else {
-        setIsOpen(false);
-      }
-    };
+    setTooltip(null);
+  }, [isCollapsed, isOpen, location.pathname, location.search]);
 
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [setIsCollapsed, setIsOpen]);
-
-  const handleNavigation = (path) => {
-    navigate(path);
-    if (window.innerWidth < 1024) {
-      setIsOpen(false);
-    } else {
-      setIsCollapsed(true);
-    }
+  const handleNavigation = (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (window.matchMedia("(max-width: 1023px)").matches) setIsOpen(false);
+    setTooltip(null);
   };
+
+  const tooltipProps = (item) => {
+    const show = (event) => {
+      if (!isCollapsed) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      setTooltip({ id: item.id, title: item.title, top: rect.top + rect.height / 2, left: rect.right + 12 });
+    };
+    return {
+      onMouseEnter: show,
+      onFocus: show,
+      onMouseLeave: () => setTooltip(null),
+      onBlur: () => setTooltip(null),
+      'aria-describedby': isCollapsed && tooltip?.id === item.id ? 'sidebar-tooltip' : undefined,
+    };
+  };
+
+  const renderLink = (item, collapsed = false) => (
+    <Link
+      key={item.id}
+      to={item.path}
+      onClick={handleNavigation}
+      aria-label={item.title}
+      aria-current={active.itemId === item.id ? "page" : undefined}
+      title={item.description ? `${item.title} — ${item.description}` : item.title}
+      className="sidebar-row"
+      {...(collapsed ? tooltipProps(item) : {})}
+    >
+      <item.icon aria-hidden="true" />
+      {!collapsed && <span className="min-w-0 flex-1 break-words">{item.title}</span>}
+    </Link>
+  );
+
+  const groups = [
+    { id: "workspace", title: "Workspace", items: visibleMenu.filter((item) => item.type === "single") },
+    { id: "modules", title: "Modules", items: visibleMenu.filter((item) => item.type === "section" && item.id !== "admin") },
+    { id: "administration", title: "Administration", items: visibleMenu.filter((item) => item.id === "admin") },
+  ].filter((group) => group.items.length);
 
   return (
     <>
-      {/* Mobile drawer backdrop */}
-      {isOpen && (
+      {isMobileDrawer && (
         <button
           type="button"
+          tabIndex={-1}
           aria-label="Close navigation menu"
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[2px]"
           onClick={() => setIsOpen(false)}
         />
       )}
-
-      {/* Sidebar */}
       <aside
+        ref={sidebarRef}
+        id="application-sidebar"
+        role={isMobileDrawer ? "dialog" : undefined}
+        aria-modal={isMobileDrawer ? true : undefined}
         aria-label="Application navigation"
         aria-hidden={!isOpen ? true : undefined}
         inert={!isOpen ? "" : undefined}
-        className={`
-          fixed inset-y-0 left-0 z-50 h-dvh lg:relative lg:inset-auto lg:z-50
-          ${isCollapsed ? SIDEBAR.collapsed.widthClass : SIDEBAR.expanded.widthClass} bg-white dark:bg-gray-800
-          border-r border-slate-200 dark:border-slate-700
-          flex-none ${!isCollapsed ? "lg:shadow-sm" : ""}
-          transform transition-all duration-300 ease-in-out motion-reduce:transition-none
-          ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
-          flex flex-col
-        `}
+        tabIndex={-1}
+        data-collapsed={isCollapsed}
+        onKeyDown={(event) => {
+          if (!isMobileDrawer && event.key === "Escape" && !event.defaultPrevented && !isCollapsed) {
+            event.preventDefault();
+            setIsCollapsed(true);
+            sidebarRef.current.querySelector('[data-sidebar-toggle]')?.focus();
+          }
+        }}
+        className={`app-sidebar fixed inset-y-0 left-0 z-50 flex h-dvh max-w-[calc(100vw-32px)] flex-none flex-col border-r lg:relative lg:inset-auto ${isCollapsed ? SIDEBAR.collapsed.widthClass : SIDEBAR.expanded.widthClass} ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} transition-[width,transform] duration-200 ease-out motion-reduce:transition-none`}
       >
-        {/* Sidebar Header */}
-        <div
-          className="flex h-14 flex-none items-center justify-between border-b border-slate-200 px-3 dark:border-slate-700"
-        >
-          {!isCollapsed ? (
-            <>
-              <div className="flex min-w-0 items-center gap-2.5">
-                <div className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-blue-600">
-                  <span className="text-sm font-bold text-white">AI</span>
-                </div>
-                <div className="min-w-0">
-                  <span className="block truncate text-sm font-extrabold tracking-wide text-slate-900 dark:text-white">RADAI</span>
-                  <span className="block text-[8px] font-semibold uppercase tracking-[0.18em] text-slate-400">AI Platform</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setIsCollapsed(true)}
-                  className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Collapse sidebar"
-                  aria-label="Collapse sidebar"
-                >
-                  <ChevronLeftIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                </button>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <XMarkIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                </button>
-              </div>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsCollapsed(false)}
-              className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white shadow-sm transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              title="Expand sidebar"
-              aria-label="Expand sidebar"
-            >
-              AI
-            </button>
-          )}
+        <div className={`sidebar-header flex h-14 flex-none items-center border-b px-4 ${isCollapsed ? "justify-center" : "justify-between"}`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="sidebar-brand-mark flex h-8 w-8 flex-none items-center justify-center rounded-lg text-xs font-bold" aria-hidden="true">AI</span>
+            {!isCollapsed && <div><span className="sidebar-brand-title block text-sm font-semibold tracking-wide">RADAI</span><span className="sidebar-brand-caption block text-[10px] leading-4">Your workspace</span></div>}
+          </div>
+          <button type="button" data-sidebar-close aria-label="Close sidebar" onClick={() => setIsOpen(false)} className="sidebar-close flex h-10 w-10 items-center justify-center rounded-md lg:hidden"><XMarkIcon className="h-5 w-5" aria-hidden="true" /></button>
         </div>
 
-        {/* Navigation Menu */}
-        <nav
-          aria-label="Primary application sections"
-          className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4 [scrollbar-width:thin]"
-        >
-          {filteredMenu.map((item) => (
-            <div key={item.id}>
-              {item.type === "single" ? (
-                // Single menu item
-                <button
-                  onClick={() => handleNavigation(item.path)}
-                  aria-current={isActiveRoute(item.path) ? "page" : undefined}
-                  aria-label={item.title}
-                  className={`
-                    w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between"} px-3 py-2.5 rounded-lg
-                    transition-all duration-200 motion-reduce:transition-none relative overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
-                    ${
-                      isActiveRoute(item.path)
-                        ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900 dark:to-indigo-900 text-blue-700 dark:text-blue-300 font-semibold shadow-md ring-2 ring-blue-200"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:shadow-sm"
-                    }
-                  `}
-                  title={isCollapsed ? item.title : item.description || ""}
-                >
-                  <div className="flex items-center space-x-3">
-                    <item.icon
-                      className={`w-5 h-5 ${isActiveRoute(item.path) ? "text-blue-600 dark:text-blue-400" : ""}`}
-                    />
-                    {!isCollapsed && (
-                      <span className="flex-1 text-left">{item.title}</span>
-                    )}
-                  </div>
-                  {!isCollapsed && item.badge && (
-                    <span className="px-2 py-0.5 text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full shadow-sm animate-pulse">
-                      {item.badge}
-                    </span>
-                  )}
-                  {/* Hover effect background */}
-                  {!isActiveRoute(item.path) && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10"></div>
-                  )}
-                </button>
-              ) : (
-                // Section with children
-                <div className="space-y-1">
-                  <button
-                    onClick={() => {
-                      if (isCollapsed) {
-                        setIsCollapsed(false);
-                        setExpandedSections((prev) => (
-                          prev[item.id] ? prev : { [item.id]: true }
-                        ));
-                        return;
-                      }
-                      toggleSection(item.id);
-                    }}
-                    aria-expanded={!isCollapsed && Boolean(item.expanded)}
-                    aria-controls={`sidebar-section-${item.id}`}
-                    aria-label={item.title}
-                    className={`w-full flex items-center ${isCollapsed ? "justify-center" : "justify-between"} px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors motion-reduce:transition-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1`}
-                    title={isCollapsed ? item.title : ""}
-                  >
-                    {isCollapsed ? (
-                      <item.icon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                    ) : (
-                      <>
-                        <div className="flex items-center space-x-3">
-                          <item.icon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                          <span>{item.title}</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {item.badge && (
-                            <span className="px-2 py-0.5 text-xs font-bold bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full">
-                              {item.badge}
-                            </span>
-                          )}
-                          {item.expanded ? (
-                            <ChevronDownIcon className="w-4 h-4 text-gray-500" />
-                          ) : (
-                            <ChevronRightIcon className="w-4 h-4 text-gray-500" />
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </button>
-
-                  {/* Child items */}
-                  {!isCollapsed && item.expanded && (
-                    <div id={`sidebar-section-${item.id}`} className="ml-4 pl-4 border-l-2 border-gray-200 dark:border-gray-700 space-y-1">
-                      {item.children.map((child) =>
-                        child.type === "subsection" ? (
-                          // Subsection with nested children (like Engineering disciplines)
-                          <div key={child.id} className="space-y-1">
-                            <button
-                              onClick={() => toggleSection(child.id)}
-                              aria-expanded={Boolean(expandedSections[child.id])}
-                              aria-controls={`sidebar-subsection-${child.id}`}
-                              className={`
-                                w-full flex items-center justify-between px-3 py-2 rounded-lg
-                                transition-all duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
-                                ${
-                                  expandedSections[child.id]
-                                    ? "bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-gray-100"
-                                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                                }
-                              `}
-                            >
-                              <div className="flex items-center space-x-2">
-                                <child.icon className="w-4 h-4" />
-                                <span className="text-sm font-medium">
-                                  {child.title}
-                                </span>
-                              </div>
-                              {expandedSections[child.id] ? (
-                                <ChevronDownIcon className="w-3 h-3" />
-                              ) : (
-                                <ChevronRightIcon className="w-3 h-3" />
-                              )}
-                            </button>
-
-                            {/* Nested sub-features */}
-                            {expandedSections[child.id] && (
-                              <div id={`sidebar-subsection-${child.id}`} className="ml-4 pl-3 border-l-2 border-gray-100 dark:border-gray-600 space-y-0.5">
-                                {child.children.map((subFeature) => (
-                                  <button
-                                    key={subFeature.id}
-                                    onClick={() =>
-                                      handleNavigation(subFeature.path)
-                                    }
-                                    aria-current={isActiveRoute(subFeature.path) ? "page" : undefined}
-                                    className={`
-                                      w-full flex items-center justify-between px-2.5 py-2 rounded-md
-                                      transition-all duration-200 motion-reduce:transition-none text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
-                                      ${
-                                        isActiveRoute(subFeature.path)
-                                          ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 text-blue-700 dark:text-blue-300 font-medium shadow-sm"
-                                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-gray-200"
-                                      }
-                                    `}
-                                  >
-                                    <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                      <subFeature.icon
-                                        className={`w-3.5 h-3.5 flex-shrink-0 ${isActiveRoute(subFeature.path) ? "text-blue-600 dark:text-blue-400" : ""}`}
-                                      />
-                                      <span className="text-xs truncate">
-                                        {subFeature.title}
-                                      </span>
-                                    </div>
-                                    {subFeature.badge && (
-                                      <span
-                                        className={`
-                                        px-1.5 py-0.5 text-[10px] font-bold rounded-full flex-shrink-0
-                                        ${
-                                          subFeature.badge === "AI"
-                                            ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white"
-                                            : "bg-gradient-to-r from-green-500 to-emerald-500 text-white"
-                                        }
-                                      `}
-                                      >
-                                        {subFeature.badge}
-                                      </span>
-                                    )}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          // Regular child item (no nested children)
-                          <button
-                            key={child.id}
-                            onClick={() => handleNavigation(child.path)}
-                            aria-current={isActiveRoute(child.path) ? "page" : undefined}
-                            className={`
-                              w-full flex items-center justify-between px-3 py-2.5 rounded-lg
-                              transition-all duration-200 motion-reduce:transition-none text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
-                              ${
-                                isActiveRoute(child.path)
-                                  ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900 dark:to-indigo-900 text-blue-700 dark:text-blue-300 font-medium shadow-sm"
-                                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-200"
-                              }
-                            `}
-                          >
-                            <div className="flex items-start space-x-3 flex-1 min-w-0">
-                              <child.icon
-                                className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isActiveRoute(child.path) ? "text-blue-600 dark:text-blue-400" : ""}`}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div
-                                  className={`text-sm ${isActiveRoute(child.path) ? "font-semibold" : "font-medium"}`}
-                                >
-                                  {child.title}
-                                </div>
-                                {child.description && (
-                                  <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
-                                    {child.description}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            {child.badge && (
-                              <span
-                                className={`
-                                px-2 py-0.5 text-[10px] font-bold rounded-full flex-shrink-0 ml-2
-                                ${
-                                  child.badge === "AI"
-                                    ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white"
-                                    : "bg-gradient-to-r from-green-500 to-emerald-500 text-white"
-                                }
-                              `}
-                              >
-                                {child.badge}
-                              </span>
-                            )}
+        <nav aria-label="Primary application sections" onScroll={() => setTooltip(null)} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 [scrollbar-width:thin]">
+          {groups.map((group, index) => (
+            <section key={group.id} aria-label={group.title} className={index ? "sidebar-group-divider mt-3 border-t pt-3" : ""}>
+              {!isCollapsed && <p className="sidebar-group-label">{group.title}</p>}
+              <div className="space-y-1">
+                {group.items.map((item) => item.type === "single" ? renderLink(item, isCollapsed) : (
+                  <div key={item.id}>
+                    <button
+                      type="button"
+                      className="sidebar-row"
+                      aria-label={item.title}
+                      aria-expanded={!isCollapsed && Boolean(expandedSections[item.id])}
+                      aria-controls={`sidebar-section-${item.id}`}
+                      data-active={active.sectionId === item.id}
+                      title={item.title}
+                      {...tooltipProps(item)}
+                      onClick={() => {
+                        setTooltip(null);
+                        if (isCollapsed) {
+                          setIsCollapsed(false);
+                          setExpandedSections((previous) => ({ [item.id]: true, ...(active.sectionId === item.id && active.subsectionId ? { [active.subsectionId]: true } : {}), ...(previous[item.id] ? previous : {}) }));
+                        } else toggleSection(item.id);
+                      }}
+                    >
+                      <item.icon aria-hidden="true" />
+                      {!isCollapsed && <><span className="min-w-0 flex-1">{item.title}</span>{expandedSections[item.id] ? <ChevronDownIcon className="sidebar-chevron" aria-hidden="true" /> : <ChevronRightIcon className="sidebar-chevron" aria-hidden="true" />}</>}
+                    </button>
+                    <div id={`sidebar-section-${item.id}`} hidden={isCollapsed || !expandedSections[item.id]} className="sidebar-branch sidebar-nested ml-4 space-y-1 border-l-2 pl-4">
+                      {item.children.map((child) => child.type === "subsection" ? (
+                        <div key={child.id}>
+                          <button type="button" className="sidebar-row" aria-expanded={Boolean(expandedSections[child.id])} aria-controls={`sidebar-subsection-${child.id}`} data-active={active.subsectionId === child.id} title={child.description || child.title} onClick={() => toggleSection(child.id)}>
+                            <child.icon aria-hidden="true" /><span className="min-w-0 flex-1">{child.title}</span>{expandedSections[child.id] ? <ChevronDownIcon className="sidebar-chevron" aria-hidden="true" /> : <ChevronRightIcon className="sidebar-chevron" aria-hidden="true" />}
                           </button>
-                        ),
-                      )}
+                          <div id={`sidebar-subsection-${child.id}`} hidden={!expandedSections[child.id]} className="sidebar-branch ml-4 space-y-0.5 border-l-2 pl-3">
+                            {child.children.map((feature) => renderLink(feature))}
+                          </div>
+                        </div>
+                      ) : renderLink(child))}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           ))}
         </nav>
 
-        {/* Sidebar Footer - User Info */}
-        <div className="flex-none border-t border-gray-200 p-3 dark:border-gray-700">
-          <div
-            className={`flex items-center ${isCollapsed ? "justify-center" : "space-x-3"}`}
-          >
-            <div className="w-10 h-10 rounded-full flex items-center justify-center relative overflow-hidden ring-2 ring-white dark:ring-gray-700 shadow-lg bg-gradient-to-br from-blue-500 to-indigo-600">
-              {/* Show profile photo when available, fall back to initials */}
-              {profilePhotoUrl || user?.profile_photo ? (
-                <img
-                  key={profilePhotoUrl || user.profile_photo}
-                  src={profilePhotoUrl || user.profile_photo}
-                  alt="Profile"
-                  className="absolute inset-0 w-full h-full object-cover z-10"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.style.display = "none";
-                  }}
-                />
-              ) : null}
-              <span className="absolute inset-0 flex items-center justify-center text-white font-semibold text-sm">
-                {USER_DISPLAY_CONFIG.formatting.getUserInitials(userData)}
-              </span>
-              {isAdmin && isCollapsed && (
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-amber-400 to-orange-500 rounded-full border-2 border-white z-20"></span>
-              )}
-            </div>
-            {!isCollapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                  {USER_DISPLAY_CONFIG.formatting.getDisplayName(userData)}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {USER_DISPLAY_CONFIG.formatting.getEmailDisplay(userData)}
-                </p>
-                {isAdmin && (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-bold bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full mt-1">
-                    ADMIN
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+        <div className="sidebar-footer hidden flex-none border-t p-3 lg:block">
+          <button type="button" data-sidebar-toggle className="sidebar-row" aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!isCollapsed} title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setIsCollapsed(!isCollapsed)}>
+            {isCollapsed ? <ChevronRightIcon aria-hidden="true" /> : <><ChevronLeftIcon aria-hidden="true" /><span>Collapse sidebar</span></>}
+          </button>
         </div>
       </aside>
+      {isCollapsed && tooltip && <div id="sidebar-tooltip" role="tooltip" className="pointer-events-none fixed z-[60] -translate-y-1/2 rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-white shadow-md dark:bg-slate-100 dark:text-slate-900" style={{ top: tooltip.top, left: tooltip.left }}>{tooltip.title}</div>}
     </>
   );
 };

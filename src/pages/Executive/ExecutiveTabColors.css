@@ -1,0 +1,23 @@
+/* Color-only extensions for the five detailed tabs. Preserve every table's density. */
+@media screen {
+  .cc-radai-page :is(.fp-panel, .pp-panel, .cp-panel, .wf-panel, .rc-panel) { box-shadow: 0 2px 8px #17255406; }
+  .cc-radai-page :is(.fp-panel-heading, .pp-panel-heading, .cp-panel-heading, .wf-panel-heading, .rc-panel-heading) h2 { color: var(--cc-overview-heading); }
+  .cc-radai-page :is(.fp-panel-footer, .pp-panel-footer, .cp-panel-footer, .wf-panel-heading, .rc-panel-footer, .pp-side-table, .cp-bid-table) .cc-link {
+    color: var(--cc-blue);
+    border-color: var(--cc-overview-accent-border);
+    background: var(--cc-overview-accent-soft);
+  }
+  .cc-radai-page :is(.fp-panel-footer, .pp-panel-footer, .cp-panel-footer, .wf-panel-heading, .rc-panel-footer, .pp-side-table, .cp-bid-table) .cc-link:hover { border-color: var(--cc-blue); }
+  .cc-radai-page :is(.pp-pagination, .cp-pagination) button[aria-current=page] {
+    color: #fff;
+    border-color: var(--cc-overview-primary-fill);
+    background: var(--cc-overview-primary-fill);
+  }
+  .cc-radai-page :is(.pp-progress i, .cp-concentration-track > span, .wf-distribution-track > span) {
+    background: linear-gradient(90deg, var(--cc-overview-bar-start), var(--cc-overview-bar-end));
+  }
+  .cc-radai-page :is(.fp-controls-table, .wf-retention-table) thead {
+    color: var(--cc-overview-heading);
+    background: var(--cc-table-head);
+  }
+}
