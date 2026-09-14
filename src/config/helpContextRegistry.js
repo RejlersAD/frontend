@@ -6,6 +6,8 @@
  * drawer never falls back to articles belonging to another business area.
  */
 
+import { adoptionKnowledge } from '../pages/Admin/aiAdoptionKnowledge'
+
 const article = (id, title, summary, sections) => ({ id, title, summary, sections })
 
 const context = ({ id, moduleCode, moduleLabel, featureLabel, summary, articles, landingSections = [] }) => ({
@@ -291,6 +293,27 @@ const PROJECT_VIEW_ALIASES = {
 }
 
 export const HELP_ROUTE_RULES = [
+  {
+    id: 'ai-adoption',
+    test: path => ['/admin/ai-champion', '/admin/ai-adoption', '/admin/ai-champion/legacy'].includes(path),
+    resolve: params => {
+      const selected = adoptionKnowledge.find(topic => topic.id === params.get('tab')) || adoptionKnowledge[0]
+      return {
+        ...context({
+          id: `ai-adoption.${selected.id}`, moduleCode: 'ai_champion', moduleLabel: 'AI Adoption & Champions', featureLabel: selected.title,
+          summary: selected.purpose,
+          articles: adoptionKnowledge.map(topic => article(topic.id, topic.title, topic.purpose, [
+            { heading: 'How to use this view', steps: topic.steps },
+            { heading: 'Metrics and definitions', steps: topic.metrics },
+            { heading: 'Reporting boundaries', steps: topic.limits },
+            { heading: 'Common questions', steps: topic.faq },
+          ])),
+        }),
+        searchableArticles: true,
+        selectedArticleId: selected.id,
+      }
+    },
+  },
   { id: 'planning-packages', test: path => path.startsWith('/planning-packages'), resolve: () => PROJECT_CONTROL_CONTEXTS['plan-baseline'] },
   { id: 'planning-workspace', test: path => path.startsWith('/planning-workspace/') || path.startsWith('/proposal-workspace/'), resolve: () => PROJECT_CONTROL_CONTEXTS['plan-baseline'] },
   {

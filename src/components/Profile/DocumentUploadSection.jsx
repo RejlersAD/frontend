@@ -1,3 +1,4 @@
+import './ProfileDocumentsList.css';
 import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
@@ -25,7 +26,7 @@ const DocumentUploadSection = () => {
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     document_type: '',
@@ -145,15 +146,15 @@ const DocumentUploadSection = () => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
-      
+
       const formDataToSend = new FormData();
       formDataToSend.append('document_type', formData.document_type);
-      
+
       // ✅ SOFT-CODED: Only append file if provided (for replace) or if new upload
       if (formData.document_file) {
         formDataToSend.append('document_file', formData.document_file);
       }
-      
+
       if (formData.document_number) formDataToSend.append('document_number', formData.document_number);
       if (formData.issue_date) formDataToSend.append('issue_date', formData.issue_date);
       if (formData.expiry_date) formDataToSend.append('expiry_date', formData.expiry_date);
@@ -175,10 +176,10 @@ const DocumentUploadSection = () => {
         throw new Error(error.detail || 'Upload failed');
       }
 
-      const actionMessage = isEditingDetails 
-        ? 'Document details updated successfully' 
+      const actionMessage = isEditingDetails
+        ? 'Document details updated successfully'
         : DOCUMENT_UPLOAD_CONFIG.messages.uploadSuccess;
-      
+
       toast.success(actionMessage);
       resetForm();
       fetchDocuments();
@@ -245,11 +246,11 @@ const DocumentUploadSection = () => {
   // ✅ SOFT-CODED: Handle Replace File action (requires new file)
   const handleReplaceFile = async (doc, type) => {
     const actions = DOCUMENT_UPLOAD_CONFIG.actions;
-    if (actions.replace.requiresConfirmation && 
+    if (actions.replace.requiresConfirmation &&
         !(await radaiConfirm(actions.replace.confirmMessage))) {
       return;
     }
-    
+
     setEditingDoc(doc);
     setIsEditingDetails(false);
     setUploadingType(type.code);
@@ -338,175 +339,25 @@ const DocumentUploadSection = () => {
     );
   };
 
-  const renderDocumentCard = (type) => {
-    // ✅ SOFT-CODED: Backend returns single object per type, not array
-    const latestDoc = documents[type.code];
-    const hasDoc = latestDoc && typeof latestDoc === 'object' && latestDoc.id;
-
-    return (
-      <div key={type.code} className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-all">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-lg ${type.bg_color}`}>
-              <span className="text-2xl">{type.icon}</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">{type.label}</h3>
-              <p className="text-xs text-gray-500">{type.description}</p>
-              {type.required && (
-                <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded">
-                  Required
-                </span>
-              )}
-            </div>
-          </div>
-          {hasDoc && getVerificationBadge(latestDoc.verification_status)}
-        </div>
-
-        {/* Document Info */}
-        {hasDoc && latestDoc ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm">
-              <FileText size={16} className="text-gray-400" />
-              <a 
-                href={latestDoc.document_file_url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline flex-1 truncate"
-              >
-                {latestDoc.document_file_name}
-              </a>
-              <a
-                href={latestDoc.document_file_url}
-                download
-                className="text-gray-600 hover:text-gray-900"
-              >
-                <Download size={16} />
-              </a>
-            </div>
-
-            {latestDoc.document_number && (
-              <div className="text-sm text-gray-600">
-                <span className="font-medium">Number:</span> {latestDoc.document_number}
-              </div>
-            )}
-
-            {latestDoc.expiry_date && (
-              <div className="flex items-center gap-2 text-sm">
-                <Calendar size={14} className="text-gray-400" />
-                <span className={latestDoc.is_expired ? 'text-red-600 font-medium' : latestDoc.expires_soon ? 'text-orange-600 font-medium' : 'text-gray-600'}>
-                  Expires: {new Date(latestDoc.expiry_date).toLocaleDateString()}
-                  {latestDoc.is_expired && ' (Expired)'}
-                  {latestDoc.expires_soon && !latestDoc.is_expired && ' (Expiring Soon)'}
-                </span>
-              </div>
-            )}
-
-            {latestDoc.rejection_reason && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                <span className="font-medium">Rejection Reason:</span> {latestDoc.rejection_reason}
-              </div>
-            )}
-
-            {/* ✅ SOFT-CODED: Action buttons from configuration */}
-            <div className="flex flex-wrap gap-2 pt-2">
-              {/* View Button */}
-              {DOCUMENT_UPLOAD_CONFIG.actions.view.enabled && 
-               DOCUMENT_UPLOAD_CONFIG.actions.view.showInCard && (
-                <button
-                  onClick={() => handleView(latestDoc)}
-                  className={`flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.view.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.view.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.view.hoverColor} transition-colors text-sm font-medium`}
-                  title={DOCUMENT_UPLOAD_CONFIG.actions.view.label}
-                >
-                  <Eye size={16} />
-                  <span className="hidden sm:inline">{DOCUMENT_UPLOAD_CONFIG.actions.view.label}</span>
-                </button>
-              )}
-
-              {/* Download Button */}
-              {DOCUMENT_UPLOAD_CONFIG.actions.download.enabled && 
-               DOCUMENT_UPLOAD_CONFIG.actions.download.showInCard && (
-                <button
-                  onClick={() => handleDownload(latestDoc)}
-                  className={`flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.download.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.download.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.download.hoverColor} transition-colors text-sm font-medium`}
-                  title={DOCUMENT_UPLOAD_CONFIG.actions.download.label}
-                >
-                  <Download size={16} />
-                  <span className="hidden sm:inline">{DOCUMENT_UPLOAD_CONFIG.actions.download.label}</span>
-                </button>
-              )}
-
-              {/* Edit Details Button */}
-              {DOCUMENT_UPLOAD_CONFIG.actions.edit.enabled && 
-               DOCUMENT_UPLOAD_CONFIG.actions.edit.showInCard && (
-                <button
-                  onClick={() => handleEditDetails(latestDoc, type)}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.edit.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.edit.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.edit.hoverColor} transition-colors text-sm font-medium`}
-                  title={DOCUMENT_UPLOAD_CONFIG.actions.edit.description}
-                >
-                  <Edit2 size={16} />
-                  <span>{DOCUMENT_UPLOAD_CONFIG.actions.edit.label}</span>
-                </button>
-              )}
-
-              {/* Replace File Button */}
-              {DOCUMENT_UPLOAD_CONFIG.actions.replace.enabled && 
-               DOCUMENT_UPLOAD_CONFIG.actions.replace.showInCard && (
-                <button
-                  onClick={() => handleReplaceFile(latestDoc, type)}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.replace.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.replace.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.replace.hoverColor} transition-colors text-sm font-medium`}
-                  title={DOCUMENT_UPLOAD_CONFIG.actions.replace.description}
-                >
-                  <Upload size={16} />
-                  <span>{DOCUMENT_UPLOAD_CONFIG.actions.replace.label}</span>
-                </button>
-              )}
-
-              {/* Delete Button */}
-              {DOCUMENT_UPLOAD_CONFIG.actions.delete.enabled && 
-               DOCUMENT_UPLOAD_CONFIG.actions.delete.showInCard && (
-                <button
-                  onClick={async () => {
-                    if (DOCUMENT_UPLOAD_CONFIG.actions.delete.requiresConfirmation) {
-                      if ((await radaiConfirm(DOCUMENT_UPLOAD_CONFIG.actions.delete.confirmMessage))) {
-                        handleDelete(latestDoc.id);
-                      }
-                    } else {
-                      handleDelete(latestDoc.id);
-                    }
-                  }}
-                  className={`flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.delete.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.delete.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.delete.hoverColor} transition-colors text-sm font-medium`}
-                  title={DOCUMENT_UPLOAD_CONFIG.actions.delete.label}
-                >
-                  <Trash2 size={16} />
-                  <span className="hidden sm:inline">{DOCUMENT_UPLOAD_CONFIG.actions.delete.label}</span>
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <input
-              ref={uploadingType === type.code ? fileInputRef : null}
-              type="file"
-              accept={DOCUMENT_UPLOAD_CONFIG.allowedExtensions.join(',')}
-              onChange={(e) => handleFileSelect(e, type.code)}
-              className="hidden"
-              id={`file-${type.code}`}
-            />
-            <label
-              htmlFor={`file-${type.code}`}
-              className="flex flex-col items-center justify-center gap-2 p-8 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
-            >
-              <Upload size={32} className="text-gray-400" />
-              <span className="text-sm text-gray-600">Click to upload {type.label}</span>
-              <span className="text-xs text-gray-400">PDF, JPG, JPEG, PNG (max {formatFileSize(type.max_file_size_mb * 1024 * 1024)})</span>
-            </label>
-          </div>
-        )}
-      </div>
-    );
+  const renderDocumentRow = (type) => {
+    const doc = documents[type.code];
+    if (!doc?.id) return null;
+    return <tr key={type.code}>
+      <td><div className="document-table-name"><span className="document-table-icon" aria-hidden="true">{type.icon}</span><div>
+        <strong>{type.label}</strong><span title={doc.document_file_name}>{doc.document_file_name || doc.document_number || type.description}</span>
+      </div></div></td>
+      <td className="document-number">{doc.document_number || "Not provided"}</td>
+      <td>{getVerificationBadge(doc.verification_status)}</td>
+      <td><span className={doc.is_expired ? 'text-red-600' : doc.expires_soon ? 'text-orange-600' : ''}>
+        {doc.expiry_date ? new Date(`${doc.expiry_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No expiry'}
+        {doc.is_expired ? ' - Expired' : doc.expires_soon ? ' - Expiring soon' : ''}
+      </span></td>
+      <td><div className="document-table-actions">
+        {DOCUMENT_UPLOAD_CONFIG.actions.view.enabled && <button type="button" title="View" aria-label={`View ${type.label}`} onClick={() => handleView({...doc, document_type: type.code})}><Eye size={16} aria-hidden="true" /></button>}
+        {DOCUMENT_UPLOAD_CONFIG.actions.replace.enabled && <button type="button" title="Re-upload" aria-label={`Re-upload ${type.label}`} onClick={() => handleReplaceFile(doc, type)}><Upload size={16} aria-hidden="true" /></button>}
+        {DOCUMENT_UPLOAD_CONFIG.actions.delete.enabled && <button type="button" className="document-delete" title="Delete" aria-label={`Delete ${type.label}`} onClick={() => handleDelete(doc.id)}><Trash2 size={16} aria-hidden="true" /></button>}
+      </div></td>
+    </tr>;
   };
 
   const renderUploadForm = () => {
@@ -522,9 +373,9 @@ const DocumentUploadSection = () => {
           <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900">
               {/* ✅ SOFT-CODED: Dynamic title based on action */}
-              {isEditingDetails 
+              {isEditingDetails
                 ? `${DOCUMENT_UPLOAD_CONFIG.actions.edit.label} — ${type.label}`
-                : editingDoc 
+                : editingDoc
                   ? `${DOCUMENT_UPLOAD_CONFIG.actions.replace.label} — ${type.label}`
                   : `Upload ${type.label}`
               }
@@ -605,7 +456,7 @@ const DocumentUploadSection = () => {
                   <div>
                     <p className="text-sm font-medium text-orange-900">Editing Document Details</p>
                     <p className="text-xs text-orange-700 mt-1">
-                      You are updating the document information only. To replace the file, use the "Replace File" button.
+                      You are updating the document information only. To replace the file, use the &quot;Replace File&quot; button.
                     </p>
                   </div>
                 </div>
@@ -743,12 +594,21 @@ const DocumentUploadSection = () => {
         </div>
       </div>
 
-      {/* Document Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {documentTypes
-          .sort((a, b) => a.display_order - b.display_order)
-          .map(type => renderDocumentCard(type))}
+      <div className="document-table-scroll">
+        <table className="profile-document-table">
+          <caption className="sr-only">Uploaded profile documents</caption>
+          <thead><tr><th scope="col">Document</th><th scope="col">Document Number</th><th scope="col">Status</th><th scope="col">Expiry</th><th scope="col">Actions</th></tr></thead>
+          <tbody>{[...documentTypes].sort((a, b) => a.display_order - b.display_order).map(renderDocumentRow)}
+            {!documentTypes.some(type => documents[type.code]?.id) && <tr><td colSpan={5}>No documents uploaded yet.</td></tr>}
+          </tbody>
+        </table>
       </div>
+      {documentTypes.some(type => !documents[type.code]?.id) && <details className="document-missing"><summary>Upload missing documents</summary>
+        <ul>{documentTypes.filter(type => !documents[type.code]?.id).map(type => <li key={type.code}>
+          <span>{type.label}{type.required ? ' ? Required' : ''}</span>
+          <label className="document-open">Upload<input type="file" className="sr-only" aria-label={`Upload ${type.label}`} accept={DOCUMENT_UPLOAD_CONFIG.allowedExtensions.join(',')} onChange={event => handleFileSelect(event, type.code)} /></label>
+        </li>)}</ul>
+      </details>}
 
       {/* Upload Form Modal */}
       {renderUploadForm()}
@@ -815,6 +675,80 @@ const DocumentUploadSection = () => {
 
               <aside className="overflow-y-auto border-l border-gray-200 bg-white p-5">
                 <h3 className="mb-4 font-semibold text-gray-900">Document Details</h3>
+            <div className="profile-document-actions">
+              {/* View Button */}
+              {DOCUMENT_UPLOAD_CONFIG.actions.view.enabled &&
+               DOCUMENT_UPLOAD_CONFIG.actions.view.showInCard && (
+                <button
+                  onClick={() => handleView(previewDocument)}
+                  className={`flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.view.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.view.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.view.hoverColor} transition-colors text-sm font-medium`}
+                  title={DOCUMENT_UPLOAD_CONFIG.actions.view.label}
+                >
+                  <Eye size={16} />
+                  <span className="hidden sm:inline">{DOCUMENT_UPLOAD_CONFIG.actions.view.label}</span>
+                </button>
+              )}
+
+              {/* Download Button */}
+              {DOCUMENT_UPLOAD_CONFIG.actions.download.enabled &&
+               DOCUMENT_UPLOAD_CONFIG.actions.download.showInCard && (
+                <button
+                  onClick={() => handleDownload(previewDocument)}
+                  className={`flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.download.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.download.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.download.hoverColor} transition-colors text-sm font-medium`}
+                  title={DOCUMENT_UPLOAD_CONFIG.actions.download.label}
+                >
+                  <Download size={16} />
+                  <span className="hidden sm:inline">{DOCUMENT_UPLOAD_CONFIG.actions.download.label}</span>
+                </button>
+              )}
+
+              {/* Edit Details Button */}
+              {DOCUMENT_UPLOAD_CONFIG.actions.edit.enabled &&
+               DOCUMENT_UPLOAD_CONFIG.actions.edit.showInCard && (
+                <button
+                  onClick={() => { closePreview(); handleEditDetails(previewDocument, documentTypes.find(item => item.code === previewDocument.document_type)); }}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.edit.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.edit.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.edit.hoverColor} transition-colors text-sm font-medium`}
+                  title={DOCUMENT_UPLOAD_CONFIG.actions.edit.description}
+                >
+                  <Edit2 size={16} />
+                  <span>{DOCUMENT_UPLOAD_CONFIG.actions.edit.label}</span>
+                </button>
+              )}
+
+              {/* Replace File Button */}
+              {DOCUMENT_UPLOAD_CONFIG.actions.replace.enabled &&
+               DOCUMENT_UPLOAD_CONFIG.actions.replace.showInCard && (
+                <button
+                  onClick={() => { closePreview(); handleReplaceFile(previewDocument, documentTypes.find(item => item.code === previewDocument.document_type)); }}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.replace.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.replace.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.replace.hoverColor} transition-colors text-sm font-medium`}
+                  title={DOCUMENT_UPLOAD_CONFIG.actions.replace.description}
+                >
+                  <Upload size={16} />
+                  <span>{DOCUMENT_UPLOAD_CONFIG.actions.replace.label}</span>
+                </button>
+              )}
+
+              {/* Delete Button */}
+              {DOCUMENT_UPLOAD_CONFIG.actions.delete.enabled &&
+               DOCUMENT_UPLOAD_CONFIG.actions.delete.showInCard && (
+                <button
+                  onClick={async () => {
+                    if (DOCUMENT_UPLOAD_CONFIG.actions.delete.requiresConfirmation) {
+                      if ((await radaiConfirm(DOCUMENT_UPLOAD_CONFIG.actions.delete.confirmMessage))) {
+                        handleDelete(previewDocument.id);
+                      }
+                    } else {
+                      handleDelete(previewDocument.id);
+                    }
+                  }}
+                  className={`flex items-center justify-center gap-2 px-3 py-2 ${DOCUMENT_UPLOAD_CONFIG.actions.delete.bgColor} ${DOCUMENT_UPLOAD_CONFIG.actions.delete.textColor} rounded-lg ${DOCUMENT_UPLOAD_CONFIG.actions.delete.hoverColor} transition-colors text-sm font-medium`}
+                  title={DOCUMENT_UPLOAD_CONFIG.actions.delete.label}
+                >
+                  <Trash2 size={16} />
+                  <span className="hidden sm:inline">{DOCUMENT_UPLOAD_CONFIG.actions.delete.label}</span>
+                </button>
+              )}
+            </div>
                 <dl className="space-y-4 text-sm">
                   <div>
                     <dt className="text-gray-500">Document Number</dt>

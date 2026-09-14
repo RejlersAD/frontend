@@ -156,11 +156,12 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
         <div className="flex min-w-0 justify-center">
           <div className="flex w-full max-w-4xl min-w-0 items-center gap-2">
             <GlobalSearch user={user} rbacData={rbacData} />
-            {isAuthenticated && <ContextualHelpButton />}
+            {isAuthenticated && <div className="hidden sm:flex"><ContextualHelpButton /></div>}
           </div>
         </div>
 
         <div className="flex min-w-0 flex-none items-center justify-end gap-1">
+          {isAuthenticated && <div className="flex sm:hidden"><ContextualHelpButton /></div>}
           {isAuthenticated && <NotificationBell />}
           {isAuthenticated && <PWAHeaderInstall />}
 
@@ -188,6 +189,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
                 <span className="relative flex h-9 w-9 flex-none items-center justify-center overflow-hidden rounded-full bg-blue-600 text-[11px] font-bold text-white ring-1 ring-slate-200 dark:ring-slate-600">
                   {profilePhoto && (
                     <img
+                      key={profilePhoto}
                       src={profilePhoto}
                       alt=""
                       className="absolute inset-0 z-10 h-full w-full object-cover"

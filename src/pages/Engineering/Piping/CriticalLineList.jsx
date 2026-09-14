@@ -830,7 +830,7 @@ const CriticalLineList = () => {
 
       const response = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/previous_outputs/?list_type=line_list`,
+        `${API_BASE_URL}/designiq/critical-lists/previous_outputs/?list_type=line_list`,
 
         {
 
@@ -882,7 +882,7 @@ const CriticalLineList = () => {
 
       // Fetch items
 
-      let itemsUrl = `${API_BASE_URL}/designiq/lists/?list_type=line_list`;
+      let itemsUrl = `${API_BASE_URL}/designiq/critical-lists/?list_type=line_list`;
 
       if (statusFilter !== 'all') {
 
@@ -932,7 +932,7 @@ const CriticalLineList = () => {
 
       const statsResponse = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/stats/?list_type=line_list`,
+        `${API_BASE_URL}/designiq/critical-lists/stats/?list_type=line_list`,
 
         {
 
@@ -1027,7 +1027,7 @@ const CriticalLineList = () => {
 
       const response = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/download_output/${outputId}/`,
+        `${API_BASE_URL}/designiq/critical-lists/download_output/${outputId}/`,
 
         {
 
@@ -1173,7 +1173,7 @@ const CriticalLineList = () => {
 
       const res = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/update_output/${editingOutput.id}/`,
+        `${API_BASE_URL}/designiq/critical-lists/update_output/${editingOutput.id}/`,
 
         {
 
@@ -1243,7 +1243,7 @@ const CriticalLineList = () => {
 
       const res = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/delete_output/${output.id}/`,
+        `${API_BASE_URL}/designiq/critical-lists/delete_output/${output.id}/`,
 
         {
 
@@ -1299,7 +1299,7 @@ const CriticalLineList = () => {
 
       const res = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/recheck_output/${output.id}/`,
+        `${API_BASE_URL}/designiq/critical-lists/recheck_output/${output.id}/`,
 
         {
 
@@ -1396,7 +1396,7 @@ const CriticalLineList = () => {
 
       try {
 
-        const response = await fetch(`${API_BASE_URL}/designiq/lists/upload_pid_status/${taskId}/`, {
+        const response = await fetch(`${API_BASE_URL}/designiq/critical-lists/upload_pid_status/${taskId}/`, {
 
           headers: { 'Authorization': `Bearer ${token}` }
 
@@ -1706,7 +1706,7 @@ const CriticalLineList = () => {
 
 
 
-      const response = await fetch(`${API_BASE_URL}/designiq/lists/upload_pid/`, {
+      const response = await fetch(`${API_BASE_URL}/designiq/critical-lists/upload_pid/`, {
 
         method: 'POST',
 
@@ -2016,7 +2016,7 @@ const CriticalLineList = () => {
 
       const response = await apiClientLongTimeout.post(
 
-        '/designiq/lists/upload_pid/',
+        '/designiq/critical-lists/upload_pid/',
 
         formData,
 
@@ -5303,7 +5303,7 @@ const CriticalLineList = () => {
                     <div>
                       <strong style={{ color: fmt.accent }}>Auto-detection enabled.</strong>{' '}
                       RAD AI will run every known pattern ({fmt.coversFormats.map(s => s.toUpperCase()).join(' · ')})
-                      against each line and merge unique matches — no need to guess your project's format.
+                      against each line and merge unique matches — no need to guess your project&apos;s format.
                     </div>
                   </div>
                 );
@@ -6001,7 +6001,7 @@ const CriticalLineList = () => {
 
                   </svg>
 
-                  Ready! Click "Process All 5 Documents" to extract 35 columns (8 base from P&ID + 27 enriched via AI)
+                  Ready! Click &quot;Process All 5 Documents&quot; to extract 35 columns (8 base from P&ID + 27 enriched via AI)
 
                 </div>
 
@@ -6444,7 +6444,7 @@ const CriticalLineList = () => {
                 </div>
 
                 <p style={{ marginTop:14, fontSize:'0.7rem', color:'#64748b', textAlign:'center' }}>
-                  Typically completes in 1–3 minutes · you can switch tabs, we'll keep processing
+                  Typically completes in 1–3 minutes · you can switch tabs, we&apos;ll keep processing
                 </p>
               </div>
             </div>

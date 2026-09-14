@@ -1,3 +1,4 @@
+import ProfileMetricCard from './ProfileMetricCard'
 import { useEffect, useState } from 'react'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import hrCoreService from '../../services/hrCore.service'
@@ -50,7 +51,7 @@ export default function UnifiedHRWorkspacePanel() {
       {notice && <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{notice}</div>}
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-blue-600">Unified self-service</p><h2 className="mt-1 text-xl font-bold text-slate-950">My work</h2></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Permission scoped</span></div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{metrics.map(([key, label, Icon]) => <div key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><Icon className="h-5 w-5 text-blue-600" /><div className="mt-3 text-2xl font-bold text-slate-900">{workspace.my_work?.[key] || 0}</div><p className="text-xs text-slate-500">{label}</p></div>)}</div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{metrics.map(([key, label, Icon]) => <ProfileMetricCard key={key} icon={<Icon />} label={label} value={workspace.my_work?.[key] || 0} />)}</div>
       </section>
       {workspace.capabilities?.manager && <section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-[.14em] text-amber-700">Manager hub</p><h2 className="mt-1 text-lg font-bold text-slate-950">Team approval inbox</h2><div className="mt-4 grid gap-3 sm:grid-cols-5">{[['employees','Direct reports'], ...metrics.map(([k,l]) => [k,l])].map(([key,label]) => <div key={key} className="rounded-xl bg-amber-50 p-3"><div className="text-xl font-bold text-amber-900">{workspace.manager_queue?.[key] || 0}</div><p className="text-xs text-amber-700">{label}</p></div>)}</div></section>}
       <section className="grid gap-5 lg:grid-cols-2">

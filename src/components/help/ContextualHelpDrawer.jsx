@@ -4,6 +4,7 @@ import PropTypes from 'prop-types'
 import { BookOpenIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 import { useHelpContext } from './HelpContext'
+import HelpArticleBrowser from './HelpArticleBrowser'
 
 const FOCUSABLE = [
   'a[href]', 'button:not([disabled])', 'input:not([disabled])',
@@ -140,7 +141,9 @@ export default function ContextualHelpDrawer() {
             <BookOpenIcon className="h-5 w-5 text-blue-700 dark:text-blue-300" aria-hidden="true" />
             Help topics
           </h3>
-          <HelpTable section={tableSection} />
+          {helpContext.searchableArticles
+            ? <HelpArticleBrowser key={helpContext.id} articles={helpContext.articles} selectedArticleId={helpContext.selectedArticleId} />
+            : <HelpTable section={tableSection} />}
         </div>
 
         <footer className="flex-none border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">

@@ -1,3 +1,4 @@
+import ProfileMetricCard from './ProfileMetricCard'
 import { useState } from 'react'
 import { CalendarDaysIcon, ClockIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 
@@ -25,12 +26,6 @@ export function LeavePanel({ title, subtitle, children }) {
 export function ProfileLeaveSummary({ leaveRecord, requests = [], loading, typeConfig }) {
   const approved = requests.filter(request => request.status?.toUpperCase() === 'APPROVED')
   const pending = requests.filter(request => pendingStatuses.includes(request.status?.toUpperCase()))
-  const tones = {
-    blue: 'border-blue-200 to-blue-50/70 text-blue-800 dark:border-blue-900 dark:to-blue-950/20 dark:text-blue-300',
-    emerald: 'border-emerald-200 to-emerald-50/70 text-emerald-800 dark:border-emerald-900 dark:to-emerald-950/20 dark:text-emerald-300',
-    amber: 'border-amber-200 to-amber-50/70 text-amber-800 dark:border-amber-900 dark:to-amber-950/20 dark:text-amber-300',
-    indigo: 'border-indigo-200 to-indigo-50/70 text-indigo-800 dark:border-indigo-900 dark:to-indigo-950/20 dark:text-indigo-300',
-  }
   const metrics = [
     ['Available annual leave', leaveRecord ? `${days(leaveRecord.leave_balance)} days` : '\u2014', leaveRecord ? `${days(leaveRecord.total_earned)} days earned` : 'Balance not configured', 'blue'],
     ['Approved leave', `${days(approved.reduce((total, request) => total + Number(request.days_requested || 0), 0))} days`, 'Across loaded approved requests', 'emerald'],
@@ -39,7 +34,7 @@ export function ProfileLeaveSummary({ leaveRecord, requests = [], loading, typeC
   ]
   return <div className="space-y-3">
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-busy={loading}>
-      {metrics.map(([label, value, sub, tone]) => <div key={label} className={`rounded-xl border bg-gradient-to-br from-white p-4 dark:from-slate-900 ${tones[tone]}`}><p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{loading ? '\u2014' : value}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{sub}</p></div>)}
+      {metrics.map(([label, value, sub, tone]) => <ProfileMetricCard key={label} icon={<CalendarDaysIcon />} label={label} value={loading ? '\u2014' : value} sub={sub} tone={tone === 'emerald' ? 'green' : tone === 'indigo' ? 'purple' : tone} />)}
     </div>
     <details className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
       <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-200">Leave types and allowances <span className="ml-2 text-xs font-normal text-slate-500">View breakdown</span></summary>

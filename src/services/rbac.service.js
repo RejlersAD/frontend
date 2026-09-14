@@ -195,6 +195,22 @@ class RBACService {
     return apiService.patch(`${RBAC_BASE_URL}/roles/${id}/`, data);
   }
 
+  async reviewRoleAccess(id, data) {
+    return apiService.post(`${RBAC_BASE_URL}/roles/${id}/review-access/`, data);
+  }
+
+  async getUserPermissionOverrides(id) {
+    return apiService.get(`${RBAC_BASE_URL}/users/${id}/permission-overrides/`);
+  }
+
+  async saveUserPermissionOverrides(id, data) {
+    return apiService.patch(`${RBAC_BASE_URL}/users/${id}/permission-overrides/`, data);
+  }
+
+  async getPermissionCatalogue() {
+    return apiService.get(`${RBAC_BASE_URL}/permissions/by_module/`);
+  }
+
   async deleteRole(id) {
     return apiService.delete(`${RBAC_BASE_URL}/roles/${id}/`);
   }

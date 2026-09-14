@@ -1,3 +1,5 @@
+import { useCurrentProfilePhoto } from '../../components/Layout/ProfilePhotoContext'
+import ProfileTimesheetTables from '../../components/HR/ProfileTimesheetTables'
 import { useSearchParams } from 'react-router-dom'
 import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
 /**
@@ -45,6 +47,10 @@ import HRAssistantPanel from '../../components/HR/HRAssistantPanel'
 import EmployeeTabLoading from '../../components/HR/EmployeeTabLoading'
 import MySignaturePanel from '../../components/HR/MySignaturePanel'
 import Profile from '../Profile'
+import DocumentUploadSection from '../../components/Profile/DocumentUploadSection'
+import ProfileOverviewWorkspace, { ProfileWorkspaceNavigation } from '../../components/HR/ProfileOverviewWorkspace'
+import ProfileMetricCard from '../../components/HR/ProfileMetricCard'
+import '../../components/HR/ProfileTabWorkspace.css'
 import apiClient from '../../services/api.service'
 import { updateUser } from '../../store/slices/authSlice'
 import { API_BASE_URL } from '../../config/api.config'
@@ -58,11 +64,13 @@ import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR,
 const ESS_TABS = [
   { id: 'overview',    label: 'Overview',        icon: 'HomeIcon' },
   { id: 'career',      label: 'Career Profile',  icon: 'AcademicCapIcon' },
+  { id: 'documents', label: 'Documents', icon: 'DocumentTextIcon' },
+  { id: 'notifications', label: 'Notifications', icon: 'BellIcon' },
+  { id: 'team', label: 'Team calendar', icon: 'UserGroupIcon' },
   { id: 'signature',   label: 'My Signature',    icon: 'PencilSquareIcon' },
   { id: 'workspace',   label: 'My Work',         icon: 'Squares2X2Icon' },
   { id: 'leave',       label: 'Leave',           icon: 'CalendarDaysIcon' },
-  { id: 'attendance',  label: 'Attendance',      icon: 'ClipboardDocumentCheckIcon' },
-  { id: 'timesheet',   label: 'Timesheet',       icon: 'ClockIcon' },
+  { id: 'attendance',  label: 'Work & Attendance', icon: 'ClipboardDocumentCheckIcon' },
   { id: 'payroll',     label: 'Payroll',         icon: 'BanknotesIcon' },
   { id: 'requests',    label: 'My Requests',     icon: 'InboxStackIcon' },
   { id: 'performance', label: 'Performance',     icon: 'ChartBarSquareIcon' },
@@ -129,31 +137,12 @@ const Icon = ({ name, className = 'w-5 h-5' }) => {
 }
 
 const KpiCard = ({ icon, label, value, sub, tone = 'blue', trend = null }) => {
-  const tones = {
-    blue:   { bg: 'bg-blue-50',   border: 'border-blue-100',   text: 'text-blue-700',   icon: 'text-blue-500' },
-    green:  { bg: 'bg-emerald-50',border: 'border-emerald-100',text: 'text-emerald-700',icon: 'text-emerald-500' },
-    amber:  { bg: 'bg-amber-50',  border: 'border-amber-100',  text: 'text-amber-700',  icon: 'text-amber-500' },
-    purple: { bg: 'bg-violet-50', border: 'border-violet-100', text: 'text-violet-700', icon: 'text-violet-500' },
-    rose:   { bg: 'bg-rose-50',   border: 'border-rose-100',   text: 'text-rose-700',   icon: 'text-rose-500' },
-    slate:  { bg: 'bg-slate-50',  border: 'border-slate-100',  text: 'text-slate-700',  icon: 'text-slate-500' },
-  }
-  const t = tones[tone] || tones.blue
-  return (
-    <div className={`${t.bg} ${t.border} border rounded-xl p-4 flex flex-col gap-1`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</span>
-        <Icon name={icon} className={`w-4 h-4 ${t.icon}`} />
-      </div>
-      <div className={`text-2xl font-bold ${t.text}`}>{value ?? EMPTY_DISPLAY}</div>
-      {sub && <div className="text-xs text-slate-400">{sub}</div>}
-      {trend !== null && (
-        <div className={`text-xs flex items-center gap-1 mt-0.5 ${trend >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-          <Icon name={trend >= 0 ? 'ArrowUpIcon' : 'ArrowDownIcon'} className="w-3 h-3" />
-          {Math.abs(trend)}% vs last month
-        </div>
-      )}
-    </div>
-  )
+  return <ProfileMetricCard icon={<Icon name={icon} />} label={label} value={value ?? EMPTY_DISPLAY} sub={sub} tone={tone}>
+    {trend !== null && <div className={`text-xs flex items-center gap-1 mt-0.5 ${trend >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+      <Icon name={trend >= 0 ? 'ArrowUpIcon' : 'ArrowDownIcon'} className="w-3 h-3" />
+      {Math.abs(trend)}% vs last month
+    </div>}
+  </ProfileMetricCard>
 }
 
 const SectionCard = ({ title, subtitle, icon, action, children, className = '' }) => (
@@ -437,38 +426,10 @@ const EmployeeProfileHeader = ({
     return { label: 'No activity today', className: 'bg-rose-500' }
   }, [liveAttendance, profile, todayData])
 
-  const quickStats = [
-    {
-      label: 'Leave Balance',
-      value: leaveRecord ? `${Number(leaveRecord.leave_balance).toFixed(1)} d` : EMPTY_DISPLAY,
-      icon: 'CalendarDaysIcon',
-      tone: 'blue',
-    },
-    {
-      label: 'Month Hours',
-      value: monthlyTs ? fmtHours(monthlyTs.total_hours) : EMPTY_DISPLAY,
-      icon: 'ClockIcon',
-      tone: 'green',
-    },
-    {
-      label: 'Month OT',
-      value: monthlyTs ? fmtHours(monthlyTs.total_overtime) : EMPTY_DISPLAY,
-      icon: 'ArrowTrendingUpIcon',
-      tone: 'amber',
-    },
-    {
-      label: 'Basic Salary',
-      value: salaryInfo ? (salaryVisible ? fmtCurrency(salaryInfo.basic_salary) : '****') : EMPTY_DISPLAY,
-      icon: 'BanknotesIcon',
-      tone: 'purple',
-      sensitive: true,
-    },
-  ]
-
   return (
-    <section className="overflow-hidden rounded-b-2xl bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]">
+    <section className="epw-profile-header">
       {/* Facebook-style cover: visual context first, controls stay secondary. */}
-      <div className="relative h-[280px] overflow-hidden bg-[#1877F2]">
+      <div className="epw-cover">
         <div className="absolute inset-0 bg-[linear-gradient(125deg,#1877F2_0%,#1769d2_50%,#0d47a1_100%)]" />
         <div className="absolute -right-20 -top-28 h-80 w-80 rounded-full border-[52px] border-white/10" />
         <div className="absolute bottom-[-190px] left-[12%] h-96 w-96 rounded-full border-[70px] border-white/[0.07]" />
@@ -481,9 +442,9 @@ const EmployeeProfileHeader = ({
         </div>
       </div>
 
-      <div className="px-5 sm:px-8">
-        <div className="relative flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start">
-          <div className="relative -mt-[76px] w-fit shrink-0">
+      <div className="epw-identity">
+        <div className="epw-identity-row">
+          <div className="epw-avatar">
             {photoUrl && !photoFailed ? (
               <img
                 src={photoUrl}
@@ -524,7 +485,7 @@ const EmployeeProfileHeader = ({
             </button>
           </div>
 
-          <div className="min-w-0 flex-1 pb-1 sm:pt-3">
+          <div className="epw-profile-name">
             {loading ? (
               <div className="space-y-2">
                 <SkeletonBox className="h-8 w-56" />
@@ -554,7 +515,7 @@ const EmployeeProfileHeader = ({
             )}
           </div>
 
-          <div className="flex flex-wrap gap-2 pb-1 sm:self-center sm:justify-end">
+          <div className="epw-profile-badges">
             <span className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold ${profile?.is_active !== false ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
               {profile?.is_active !== false ? 'Active Employee' : 'Inactive'}
             </span>
@@ -567,52 +528,9 @@ const EmployeeProfileHeader = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 py-4 sm:grid-cols-4">
-          {quickStats.map((stat) => (
-            <div key={stat.label} className="rounded-2xl bg-[#F0F2F5] px-4 py-3 transition-colors hover:bg-slate-200/70">
-              <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                <span>{stat.label}</span>
-                {stat.sensitive ? (
-                  <button
-                    type="button"
-                    onClick={onToggleSalary}
-                    className="rounded-full p-1 text-[#1877F2] hover:bg-blue-100"
-                    aria-label={salaryVisible ? 'Hide salary' : 'Show salary'}
-                    title={salaryVisible ? 'Hide salary' : 'Show salary'}
-                  >
-                    <Icon name={salaryVisible ? 'EyeSlashIcon' : 'EyeIcon'} className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <Icon name={stat.icon} className="h-4 w-4 text-[#1877F2]" />
-                )}
-              </div>
-              <div className="mt-1 text-lg font-bold text-slate-900">{stat.value}</div>
-            </div>
-          ))}
-        </div>
       </div>
 
-      <nav aria-label="Employee profile sections" className="border-t border-slate-200 px-3 sm:px-6">
-        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
-          {ESS_TABS.map((tab) => {
-            const isActive = tab.id === activeTab
-            const badge = tabBadges[tab.id]
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => onTabChange(tab.id)}
-                className={`relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-4 text-sm font-semibold transition-colors ${isActive ? 'bg-blue-50 text-[#1877F2]' : 'text-slate-600 hover:bg-[#F0F2F5] hover:text-slate-900'}`}
-              >
-                <Icon name={tab.icon} className={`h-4 w-4 ${isActive ? 'text-[#1877F2]' : 'text-slate-400'}`} />
-                {tab.label}
-                {badge && <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[#1877F2] px-1 text-[10px] font-bold text-white">{badge}</span>}
-                {isActive && <span className="absolute inset-x-2 bottom-0 h-[3px] rounded-t-full bg-[#1877F2]" />}
-              </button>
-            )
-          })}
-        </div>
-      </nav>
+      <ProfileWorkspaceNavigation activeTab={activeTab} onChange={onTabChange} />
     </section>
   )
 }
@@ -3047,14 +2965,8 @@ function DailyTrackerTab({ currentUser }) {
         ].map(tile => {
           const Icon = HeroIcons[tile.icon]
           return (
-            <div key={tile.label} className={`rounded-2xl p-4 ${tile.bg} border border-white/60`}>
-              <div className="flex items-center gap-2 mb-1">
-                {Icon && <Icon className={`h-4 w-4 ${tile.color}`} />}
-                <span className="text-xs text-slate-500 font-medium">{tile.label}</span>
-              </div>
-              <p className={`text-2xl font-bold ${tile.color}`}>{tile.value}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">{tile.sub}</p>
-            </div>
+            <ProfileMetricCard key={tile.label} icon={Icon && <Icon />} label={tile.label} value={tile.value} sub={tile.sub}
+              tone={({ 'bg-indigo-50': 'blue', 'bg-emerald-50': 'green', 'bg-red-50': 'rose', 'bg-purple-50': 'purple' })[tile.bg]} />
           )
         })}
       </div>
@@ -3374,19 +3286,21 @@ export default function EmployeeSelfService() {
   const authProfile = currentUser || authUser
 
   const [profileParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState(() => {
+  const [activeTab, setActiveTabState] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab')
-    return requestedTab === 'overtime' ? 'requests' : ESS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
+    return requestedTab === 'timesheet' ? 'attendance' : requestedTab === 'overtime' ? 'requests' : ESS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
   })
+  const setActiveTab = tab => setActiveTabState(tab === 'timesheet' ? 'attendance' : tab)
   useEffect(() => {
     const tab = profileParams.get('tab')
-    if (tab === 'overtime') setActiveTab('requests')
+    if (tab === 'timesheet') setActiveTab('attendance')
+    else if (tab === 'overtime') setActiveTab('requests')
     else if (ESS_TABS.some(item => item.id === tab)) setActiveTab(tab)
   }, [profileParams])
   const [salaryVisible, setSalaryVisible] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoUploadState, setPhotoUploadState] = useState(null)
-  const [authenticatedPhotoUrl, setAuthenticatedPhotoUrl] = useState(null)
+  const { photo: authenticatedPhotoUrl } = useCurrentProfilePhoto()
 
   // -- Data state --------------------------------------------------------------
   const [profile,      setProfile]      = useState(null)
@@ -3395,6 +3309,11 @@ export default function EmployeeSelfService() {
   const [liveAttendance, setLiveAttendance] = useState(null)
   const [userHistory,  setUserHistory]  = useState(null)
   const [leaveRecord,  setLeaveRecord]  = useState(null)
+  const [leaveAvailable, setLeaveAvailable] = useState(false)
+  const [profileDocuments, setProfileDocuments] = useState(null)
+  const [organizationEmployees, setOrganizationEmployees] = useState(undefined)
+  const [downloadingOverview, setDownloadingOverview] = useState(false)
+  const [overviewError, setOverviewError] = useState('')
   const [leaveTypes,   setLeaveTypes]   = useState([])
   const [leaveRequests,setLeaveRequests]= useState([])
   const [salaryInfo,   setSalaryInfo]   = useState(null)
@@ -3456,6 +3375,7 @@ export default function EmployeeSelfService() {
 
       setProfile((current) => ({ ...current, profile_photo: photoUrl }))
       dispatch(updateUser({ profile_photo: photoUrl }))
+      window.dispatchEvent(new Event('radai:profile-photo-changed'))
       setPhotoUploadState({ type: 'success', message: 'Profile picture updated successfully.' })
     } catch (error) {
       const message = error?.response?.data?.error
@@ -3468,35 +3388,34 @@ export default function EmployeeSelfService() {
     }
   }, [dispatch])
 
-  // Load the canonical photo through an authenticated endpoint. This avoids
-  // broken images when a production S3 signature expires, media is private,
-  // or a proxy rewrites the public backend origin.
   useEffect(() => {
-    if (!profile) {
-      setAuthenticatedPhotoUrl(null)
-      return undefined
-    }
-
     let active = true
-    let objectUrl = null
-    apiClient.get('/users/employees/my-profile-photo/', {
-      responseType: 'blob',
-      silentTimeout: true,
-    })
-      .then((response) => {
-        if (!active || !response?.data || !String(response.data.type || '').startsWith('image/')) return
-        objectUrl = URL.createObjectURL(response.data)
-        setAuthenticatedPhotoUrl(objectUrl)
-      })
-      .catch(() => {
-        // The serializer URL remains available as a graceful fallback.
-      })
+    apiClient.get('/rbac/users/reporting-managers/')
+      .then(response => { if (active) setOrganizationEmployees(response.data?.results || []) })
+      .catch(() => { if (active) setOrganizationEmployees(null) })
+    apiClient.get('/rbac/profile-documents/my_documents/')
+      .then(response => { if (active) setProfileDocuments(Array.isArray(response.data) ? response.data : response.data?.results || []) })
+      .catch(() => { if (active) setProfileDocuments(null) })
+    return () => { active = false }
+  }, [])
 
-    return () => {
-      active = false
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [profile?.id, profile?.canonical_employee, profile?.profile_photo])
+  const downloadOverviewPayslip = async slip => {
+    if (!slip?.id) return
+    setDownloadingOverview(true)
+    setOverviewError('')
+    try {
+      const blob = await payrollEngineService.downloadPayslipXlsx(slip.id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `payslip-${slip.run_cycle || slip.id}.xlsx`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch { setOverviewError('Payslip download failed. Open Pay & benefits to try again.') }
+    finally { setDownloadingOverview(false) }
+  }
 
   // -- Load timesheet data for current user ------------------------------------
   useEffect(() => {
@@ -3570,7 +3489,7 @@ export default function EmployeeSelfService() {
       // mine=true forces scoping to the current user's own requests even when
       // they hold an HR/Admin role (which otherwise gets unrestricted visibility
       // for the Leave Management / Approval Tracker views).
-      payrollService.getLeaveRequests({ mine: true, year: new Date().getFullYear(), page_size: 50 }).catch(() => ({ results: [] })),
+      payrollService.getLeaveRequests({ mine: true, year: new Date().getFullYear(), page_size: 50 }).catch(() => null),
       // 2026-08-31: this call had no `mine: true` (unlike its sibling right
       // above) — the comment below claimed the backend "auto-scopes... no
       // need to pass employee_code", but it never actually did that for an
@@ -3582,6 +3501,7 @@ export default function EmployeeSelfService() {
       // mine=true forces self-scoping regardless of role, same as above.
       payrollService.getLeaveRecords({ mine: true, year: new Date().getFullYear(), page_size: 5 }).catch(() => ({ results: [] })),
     ]).then(([types, reqRes, recRes]) => {
+      setLeaveAvailable(reqRes !== null)
       // Filter leave types to only show enabled types from ESS_LEAVE_TYPE_CONFIG.
       // To enable/disable a type, change `enabled` in hrLeave.config.js — no code change needed.
       const enabledCategories = Object.keys(LEAVE_TYPE_CONFIG).filter(
@@ -3782,7 +3702,7 @@ export default function EmployeeSelfService() {
     const loadingByTab = {
       overview: loadingProfile || loadingTs || loadingLeave || loadingPayroll,
       leave: loadingProfile || loadingLeave,
-      attendance: loadingProfile || loadingTs,
+      attendance: loadingProfile,
       payroll: loadingProfile || loadingPayroll,
       twin: loadingProfile || loadingTs || loadingLeave || loadingPayroll,
       notifications: loadingNotifications,
@@ -3802,50 +3722,17 @@ export default function EmployeeSelfService() {
     
     switch (activeTab) {
       case 'overview':
-        return (
-          <div className="space-y-5">
-            {/* Profile Configuration Alert */}
-            {needsConfig && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <Icon name="ExclamationTriangleIcon" className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="font-semibold text-amber-900 text-sm mb-1">
-                      Profile Configuration Required
-                    </div>
-                    <div className="text-amber-700 text-sm leading-relaxed">
-                      Your employee ID is not configured. Attendance and leave data require a valid employee ID linked to the biometric system.
-                      Please contact HR (<a href="mailto:hr@rejlers.ae" className="underline hover:text-amber-900">hr@rejlers.ae</a>) to complete your profile setup.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-              <div className="xl:col-span-2">
-                <TodayStatusCard todayData={todayTs} loading={loadingTs} />
-              </div>
-              <AIInsightsPanel insights={insights} loading={loadingTs || loadingLeave || loadingPayroll} />
-            </div>
+        return <ProfileOverviewWorkspace
+          profile={profile} organizationEmployees={organizationEmployees} todayData={todayTs} monthlyTs={monthlyTs}
+          leaveRecord={leaveRecord}
+          leaveRequests={leaveRequests} leaveAvailable={leaveAvailable}
+          slips={slips} documents={profileDocuments} onNavigate={setActiveTab}
+          onDownloadPayslip={downloadOverviewPayslip} downloading={downloadingOverview}
+          downloadError={overviewError}
+        />
 
-            {/* Quick leave balance preview */}
-            <SectionCard title="Leave Balance Snapshot" icon="CalendarDaysIcon">
-              {loadingLeave ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[...Array(4)].map((_, i) => <SkeletonBox key={i} className="h-16" />)}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <KpiCard icon="CalendarDaysIcon" label="Annual Balance" value={`${Number(leaveRecord?.leave_balance||0).toFixed(1)} d`} sub="Remaining" tone="blue" />
-                  <KpiCard icon="CheckCircleIcon" label="Days Taken" value={`${totalDaysTaken.toFixed(1)} d`} sub="This year" tone="green" />
-                  <KpiCard icon="ClockIcon" label="Pending" value={pendingLeave} sub="Awaiting approval" tone={pendingLeave ? 'amber' : 'slate'} />
-                  <KpiCard icon="BanknotesIcon" label="Encashed" value={`${Number(leaveRecord?.total_encashed||0).toFixed(1)} d`} sub={`${new Date().toLocaleString('default',{month:'short',year:'numeric'})} YTD`} tone="purple" />
-                </div>
-              )}
-            </SectionCard>
-          </div>
-        )
+      case 'documents':
+        return <div className="rounded-xl border border-slate-200 bg-white p-5"><DocumentUploadSection /></div>
 
       case 'career':
         return <Profile embedded />
@@ -3894,10 +3781,8 @@ export default function EmployeeSelfService() {
         )
 
       case 'attendance':
-        return <AttendanceAnalytics profile={profile} monthlyTs={monthlyTs} loading={loadingTs} />
-
       case 'timesheet':
-        return <ESSTimesheetView profile={profile} />
+        return <ProfileTimesheetTables profile={profile} />
 
       case 'payroll':
         return (
@@ -3917,7 +3802,7 @@ export default function EmployeeSelfService() {
         return <EmployeeServiceRequestsPanel employeeIdentifier={employeeIdentifier} />
 
       case 'performance':
-        return <EmployeeTalentPerformancePanel employee={{ id: employeeIdentifier }} />
+        return <EmployeeTalentPerformancePanel employee={{ id: employeeIdentifier }} profileWorkspace />
 
       case 'schedule':
         return <EmployeeWorkforceSchedulePanel employee={{ id: employeeIdentifier }} />
@@ -3961,8 +3846,8 @@ export default function EmployeeSelfService() {
   }
 
   return (
-    <div className="min-h-full min-w-0 overflow-x-hidden bg-[#F0F2F5] font-['Inter','Segoe_UI',sans-serif]">
-      <div className="w-full min-w-0 max-w-none space-y-4 px-3 sm:px-6 lg:px-8">
+    <div className="epw-page">
+      <div className="epw-container">
         {/* -- Profile Header -- */}
         <EmployeeProfileHeader
           profile={profile}
@@ -3984,14 +3869,13 @@ export default function EmployeeSelfService() {
         />
 
         {/* -- Active Section -- */}
-        <div className="min-w-0 max-w-full overflow-hidden">
+        <div className={`epw-active-section${activeTab === 'overview' ? '' : ' epw-tab-content'}`} data-profile-tab={activeTab}>
           {renderSection()}
         </div>
 
         {/* -- Footer -- */}
-        <div className="pb-6 text-center text-xs text-slate-400 flex items-center justify-center gap-1">
-          <Icon name="ShieldCheckIcon" className="w-3.5 h-3.5 text-emerald-400" />
-          You are viewing your own personal workspace. Data is securely scoped to your account.
+        <div className="epw-footer">
+          Your personal workspace · Only your own employee records are shown.
         </div>
       </div>
     </div>

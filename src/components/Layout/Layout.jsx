@@ -5,7 +5,8 @@ import Header from './Header'
 import Footer from './Footer'
 import Sidebar from './Sidebar'
 import ProcurementApprovalReminder from '../ProcurementApprovalReminder'
-import apiClient from '../../services/api.service'
+import useAuthenticatedPhoto from '../../hooks/useAuthenticatedPhoto'
+import { ProfilePhotoContext } from './ProfilePhotoContext'
 import { HelpContextProvider } from '../help/HelpContext'
 import ContextualHelpDrawer from '../help/ContextualHelpDrawer'
 
@@ -19,7 +20,7 @@ import ContextualHelpDrawer from '../help/ContextualHelpDrawer'
 const Layout = () => {
   const location = useLocation()
   const { isAuthenticated, user } = useSelector((state) => state.auth)
-  const [authenticatedProfilePhoto, setAuthenticatedProfilePhoto] = useState(null)
+  const authenticatedProfilePhoto = useAuthenticatedPhoto(isAuthenticated ? '/users/employees/my-profile-photo/' : null, `${user?.id || user?.user?.id}:${user?.profile_photo || ''}`)
   const isDesktopViewport = () => (
     typeof window === 'undefined' || window.matchMedia('(min-width: 1024px)').matches
   )
@@ -36,38 +37,6 @@ const Layout = () => {
     desktopQuery.addEventListener('change', handleViewportChange)
     return () => desktopQuery.removeEventListener('change', handleViewportChange)
   }, [])
-
-  // Resolve the current employee photo once at shell level so every global
-  // avatar uses the same authenticated, durable image source. Object URLs are
-  // intentionally kept out of persisted Redux/localStorage state.
-  useEffect(() => {
-    if (!isAuthenticated || !user) {
-      setAuthenticatedProfilePhoto(null)
-      return undefined
-    }
-
-    let active = true
-    let objectUrl = null
-    setAuthenticatedProfilePhoto(null)
-
-    apiClient.get('/users/employees/my-profile-photo/', {
-      responseType: 'blob',
-      silentTimeout: true,
-    })
-      .then((response) => {
-        if (!active || !response?.data || !String(response.data.type || '').startsWith('image/')) return
-        objectUrl = URL.createObjectURL(response.data)
-        setAuthenticatedProfilePhoto(objectUrl)
-      })
-      .catch(() => {
-        if (active) setAuthenticatedProfilePhoto(null)
-      })
-
-    return () => {
-      active = false
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [isAuthenticated, user?.id, user?.user?.id, user?.profile_photo])
 
   // Public pages render their own navigation experience and should not show
   // the shared authenticated shell even when the user is logged in.
@@ -144,7 +113,7 @@ const Layout = () => {
   )
 
   return isApplicationShell
-    ? <HelpContextProvider>{application}</HelpContextProvider>
+    ? <ProfilePhotoContext.Provider value={{ photo: authenticatedProfilePhoto, userId: user?.user?.id || user?.id, email: user?.email || user?.user?.email }}><HelpContextProvider>{application}</HelpContextProvider></ProfilePhotoContext.Provider>
     : application
 }
 

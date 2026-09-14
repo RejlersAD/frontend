@@ -1,3 +1,4 @@
+import ProfileMetricCard from './ProfileMetricCard'
 import { radaiPrompt } from '../../services/radaiDialog'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -9,7 +10,7 @@ import EmployeeTabLoading from './EmployeeTabLoading'
 
 const statusTone = (status) => ({ active: 'bg-emerald-100 text-emerald-700', completed: 'bg-blue-100 text-blue-700', submitted: 'bg-violet-100 text-violet-700', approved: 'bg-emerald-100 text-emerald-700', pending: 'bg-amber-100 text-amber-700' }[status] || 'bg-slate-100 text-slate-600')
 
-const EmployeeTalentPerformancePanel = ({ employee }) => {
+const EmployeeTalentPerformancePanel = ({ employee, profileWorkspace = false }) => {
   const [employeeId, setEmployeeId] = useState('')
   const [data, setData] = useState({ cycles: [], goals: [], reviews: [], feedback: [], plans: [], talent: [], promotions: [] })
   const [loading, setLoading] = useState(true)
@@ -78,7 +79,9 @@ const EmployeeTalentPerformancePanel = ({ employee }) => {
   return <div className="space-y-5">
     {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {[[FlagIcon, 'Active goals', data.goals.filter((g) => g.status === 'active').length, 'text-blue-600'], [StarIcon, 'Review score', average, 'text-violet-600'], [AcademicCapIcon, 'Development plans', data.plans.filter((p) => p.status === 'active').length, 'text-emerald-600'], [TrophyIcon, 'Nine-box', latestTalent?.nine_box || 'Not assessed', 'text-amber-600']].map(([Icon, label, value, tone]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><Icon className={`h-5 w-5 ${tone}`} /><p className="mt-3 text-2xl font-bold text-slate-950">{value}</p><p className="text-xs text-slate-500">{label}</p></div>)}
+      {[[FlagIcon, 'Active goals', data.goals.filter((g) => g.status === 'active').length, 'text-blue-600'], [StarIcon, 'Review score', average, 'text-violet-600'], [AcademicCapIcon, 'Development plans', data.plans.filter((p) => p.status === 'active').length, 'text-emerald-600'], [TrophyIcon, 'Nine-box', latestTalent?.nine_box || 'Not assessed', 'text-amber-600']].map(([Icon, label, value, tone]) => profileWorkspace
+        ? <ProfileMetricCard key={label} icon={<Icon />} label={label} value={value} tone={({ 'text-blue-600': 'blue', 'text-violet-600': 'purple', 'text-emerald-600': 'green', 'text-amber-600': 'amber' })[tone]} />
+        : <div key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><Icon className={`h-5 w-5 ${tone}`} /><p className="mt-3 text-2xl font-bold text-slate-950">{value}</p><p className="text-xs text-slate-500">{label}</p></div>)}
     </div>
 
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -5,6 +5,9 @@
  */
 
 import { API_BASE_URL } from '../config/api.config';
+import { resolveQhseApiPrefix } from '../config/serviceAccess.config';
+
+export const getQhseApiBase = () => `${API_BASE_URL}${resolveQhseApiPrefix(window.location.pathname)}`;
 
 /**
  * Get authentication headers
@@ -48,7 +51,7 @@ export const qhseProjectsAPI = {
    */
   async getAll(filters = {}) {
     const queryParams = new URLSearchParams(filters).toString();
-    const url = `${API_BASE_URL}/qhse/projects/${queryParams ? `?${queryParams}` : ''}`;
+    const url = `${getQhseApiBase()}/projects/${queryParams ? `?${queryParams}` : ''}`;
     const response = await fetch(url, { headers: getAuthHeaders() });
     return handleResponse(response);
   },
@@ -59,7 +62,7 @@ export const qhseProjectsAPI = {
    * @returns {Promise<Object>} Project details
    */
   async getById(id) {
-    const response = await fetch(`${API_BASE_URL}/qhse/projects/${id}/`, {
+    const response = await fetch(`${getQhseApiBase()}/projects/${id}/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -71,7 +74,7 @@ export const qhseProjectsAPI = {
    * @returns {Promise<Object>} Created project
    */
   async create(projectData) {
-    const response = await fetch(`${API_BASE_URL}/qhse/projects/`, {
+    const response = await fetch(`${getQhseApiBase()}/projects/`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(projectData)
@@ -86,7 +89,7 @@ export const qhseProjectsAPI = {
    * @returns {Promise<Object>} Updated project
    */
   async update(id, projectData) {
-    const response = await fetch(`${API_BASE_URL}/qhse/projects/${id}/`, {
+    const response = await fetch(`${getQhseApiBase()}/projects/${id}/`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(projectData)
@@ -101,7 +104,7 @@ export const qhseProjectsAPI = {
    * @returns {Promise<Object>} Updated project
    */
   async patch(id, projectData) {
-    const response = await fetch(`${API_BASE_URL}/qhse/projects/${id}/`, {
+    const response = await fetch(`${getQhseApiBase()}/projects/${id}/`, {
       method: 'PATCH',
       headers: getAuthHeaders(),
       body: JSON.stringify(projectData)
@@ -119,7 +122,7 @@ export const qhseProjectsAPI = {
   async delete(id, options = {}) {
     const { hardDelete = false } = options;
     const queryParams = hardDelete ? '?hard_delete=true' : '';
-    const url = `${API_BASE_URL}/qhse/projects/${id}/${queryParams}`;
+    const url = `${getQhseApiBase()}/projects/${id}/${queryParams}`;
     
     console.log('[QHSE Service] 🗑️ Delete request:', {
       id,
@@ -143,7 +146,7 @@ export const qhseProjectsAPI = {
    * @returns {Promise<Object>} Dashboard stats
    */
   async getDashboardStats() {
-    const response = await fetch(`${API_BASE_URL}/qhse/projects/dashboard_stats/`, {
+    const response = await fetch(`${getQhseApiBase()}/projects/dashboard_stats/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -155,7 +158,7 @@ export const qhseProjectsAPI = {
    * @returns {Promise<Object>} Duplicated project
    */
   async duplicate(id) {
-    const response = await fetch(`${API_BASE_URL}/qhse/projects/${id}/duplicate/`, {
+    const response = await fetch(`${getQhseApiBase()}/projects/${id}/duplicate/`, {
       method: 'POST',
       headers: getAuthHeaders()
     });
@@ -174,7 +177,7 @@ export const qhseProjectsAPI = {
 //    */
 //   async getAll(filters = {}) {
 //     const queryParams = new URLSearchParams(filters).toString();
-//     const url = `${API_BASE_URL}/qhse/spot-checks/${queryParams ? `?${queryParams}` : ''}`;
+//     const url = `${getQhseApiBase()}/spot-checks/${queryParams ? `?${queryParams}` : ''}`;
 //     const response = await fetch(url, { headers: getAuthHeaders() });
 //     return handleResponse(response);
 //   },
@@ -185,7 +188,7 @@ export const qhseProjectsAPI = {
 //    * @returns {Promise<Object>} Spot check details
 //    */
 //   async getById(id) {
-//     const response = await fetch(`${API_BASE_URL}/qhse/spot-checks/${id}/`, {
+//     const response = await fetch(`${getQhseApiBase()}/spot-checks/${id}/`, {
 //       headers: getAuthHeaders()
 //     });
 //     return handleResponse(response);
@@ -197,7 +200,7 @@ export const qhseProjectsAPI = {
 //    * @returns {Promise<Object>} Created spot check
 //    */
 //   async create(spotCheckData) {
-//     const response = await fetch(`${API_BASE_URL}/qhse/spot-checks/`, {
+//     const response = await fetch(`${getQhseApiBase()}/spot-checks/`, {
 //       method: 'POST',
 //       headers: getAuthHeaders(),
 //       body: JSON.stringify(spotCheckData)
@@ -212,7 +215,7 @@ export const qhseProjectsAPI = {
 //    * @returns {Promise<Object>} Updated spot check
 //    */
 //   async update(id, spotCheckData) {
-//     const response = await fetch(`${API_BASE_URL}/qhse/spot-checks/${id}/`, {
+//     const response = await fetch(`${getQhseApiBase()}/spot-checks/${id}/`, {
 //       method: 'PUT',
 //       headers: getAuthHeaders(),
 //       body: JSON.stringify(spotCheckData)
@@ -226,7 +229,7 @@ export const qhseProjectsAPI = {
 //    * @returns {Promise<void>}
 //    */
 //   async delete(id) {
-//     const response = await fetch(`${API_BASE_URL}/qhse/spot-checks/${id}/`, {
+//     const response = await fetch(`${getQhseApiBase()}/spot-checks/${id}/`, {
 //       method: 'DELETE',
 //       headers: getAuthHeaders()
 //     });
@@ -242,7 +245,7 @@ export const qhseProjectsAPI = {
 //    */
 //   async getByProject(filters = {}) {
 //     const queryParams = new URLSearchParams(filters).toString();
-//     const url = `${API_BASE_URL}/qhse/spot-checks/by_project/${queryParams ? `?${queryParams}` : ''}`;
+//     const url = `${getQhseApiBase()}/spot-checks/by_project/${queryParams ? `?${queryParams}` : ''}`;
 //     const response = await fetch(url, { headers: getAuthHeaders() });
 //     return handleResponse(response);
 //   }
@@ -260,7 +263,7 @@ export const qhseAuditsAPI = {
    */
   async getAll(filters = {}) {
     const queryParams = new URLSearchParams(filters).toString();
-    const url = `${API_BASE_URL}/qhse/audits/${queryParams ? `?${queryParams}` : ''}`;
+    const url = `${getQhseApiBase()}/audits/${queryParams ? `?${queryParams}` : ''}`;
     const response = await fetch(url, { headers: getAuthHeaders() });
     return handleResponse(response);
   },
@@ -271,7 +274,7 @@ export const qhseAuditsAPI = {
    * @returns {Promise<Object>} Audit details
    */
   async getById(id) {
-    const response = await fetch(`${API_BASE_URL}/qhse/audits/${id}/`, {
+    const response = await fetch(`${getQhseApiBase()}/audits/${id}/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -283,7 +286,7 @@ export const qhseAuditsAPI = {
    * @returns {Promise<Object>} Created audit
    */
   async create(auditData) {
-    const response = await fetch(`${API_BASE_URL}/qhse/audits/`, {
+    const response = await fetch(`${getQhseApiBase()}/audits/`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(auditData)
@@ -298,7 +301,7 @@ export const qhseAuditsAPI = {
    * @returns {Promise<Object>} Updated audit
    */
   async update(id, auditData) {
-    const response = await fetch(`${API_BASE_URL}/qhse/audits/${id}/`, {
+    const response = await fetch(`${getQhseApiBase()}/audits/${id}/`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(auditData)
@@ -312,7 +315,7 @@ export const qhseAuditsAPI = {
    * @returns {Promise<void>}
    */
   async delete(id) {
-    const response = await fetch(`${API_BASE_URL}/qhse/audits/${id}/`, {
+    const response = await fetch(`${getQhseApiBase()}/audits/${id}/`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
@@ -331,7 +334,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} AI insights and analytics
    */
   async getAIInsights() {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/insights/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/insights/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -343,7 +346,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} Risk prediction
    */
   async predictProjectRisk(projectNo) {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/risk-prediction/${projectNo}/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/risk-prediction/${projectNo}/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -356,8 +359,8 @@ export const qhseAIAPI = {
    */
   async predictAllRisks(limit = null) {
     const url = limit 
-      ? `${API_BASE_URL}/qhse/ai/risk-prediction/all/?limit=${limit}`
-      : `${API_BASE_URL}/qhse/ai/risk-prediction/all/`;
+      ? `${getQhseApiBase()}/ai/risk-prediction/all/?limit=${limit}`
+      : `${getQhseApiBase()}/ai/risk-prediction/all/`;
     const response = await fetch(url, { headers: getAuthHeaders() });
     return handleResponse(response);
   },
@@ -369,7 +372,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} Classification result
    */
   async classifyCAR(carText, context = {}) {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/car-classification/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/car-classification/`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ car_text: carText, context })
@@ -383,7 +386,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} Manhour prediction
    */
   async predictManhours(projectDetails) {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/manhour-prediction/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/manhour-prediction/`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(projectDetails)
@@ -397,7 +400,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} Anomaly detection result
    */
   async detectAnomalies(projectNo) {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/anomaly-detection/${projectNo}/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/anomaly-detection/${projectNo}/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -408,7 +411,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} Models status and performance
    */
   async getModelsStatus() {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/models/status/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/models/status/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -421,7 +424,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} Analysis results
    */
   async analyzeRemarks(remarksText, analysisTypes = ['sentiment', 'entities']) {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/nlp/analyze-remarks/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/nlp/analyze-remarks/`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ remarks_text: remarksText, analysis_types: analysisTypes })
@@ -436,7 +439,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} Comparison results
    */
   async compareProjects(projectNos, comparisonMetrics = ['risk_score', 'kpis', 'cars', 'quality_costs']) {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/compare-projects/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/compare-projects/`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ project_nos: projectNos, comparison_metrics: comparisonMetrics })
@@ -449,7 +452,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} All AI models with configurations and statistics
    */
   async getModelsRegistry() {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/models/registry/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/models/registry/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -461,7 +464,7 @@ export const qhseAIAPI = {
    * @returns {Promise<Object>} Model details
    */
   async getModelDetail(modelId) {
-    const response = await fetch(`${API_BASE_URL}/qhse/ai/models/registry/${modelId}/`, {
+    const response = await fetch(`${getQhseApiBase()}/ai/models/registry/${modelId}/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
