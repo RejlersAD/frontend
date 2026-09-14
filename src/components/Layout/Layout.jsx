@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useLayoutEffect, useRef } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import Header from './Header'
@@ -6,6 +6,7 @@ import Footer from './Footer'
 import Sidebar from './Sidebar'
 import ProcurementApprovalReminder from '../ProcurementApprovalReminder'
 import useAuthenticatedPhoto from '../../hooks/useAuthenticatedPhoto'
+import useSidebarLayout from '../../hooks/useSidebarLayout'
 import { ProfilePhotoContext } from './ProfilePhotoContext'
 import { HelpContextProvider } from '../help/HelpContext'
 import ContextualHelpDrawer from '../help/ContextualHelpDrawer'
@@ -13,30 +14,22 @@ import ContextualHelpDrawer from '../help/ContextualHelpDrawer'
 /**
  * Layout Component
  * Smart layout wrapper with sidebar, header and footer.
- * Sidebar width + main-content offset are driven by config/layout.config.js
- * so the two stay in sync (no overlap, no gap).
+ * Sidebar widths come from config/layout.config.js; the flex content fills
+ * the remaining space as the navigation expands or collapses.
  */
 
 const Layout = () => {
   const location = useLocation()
   const { isAuthenticated, user } = useSelector((state) => state.auth)
   const authenticatedProfilePhoto = useAuthenticatedPhoto(isAuthenticated ? '/users/employees/my-profile-photo/' : null, `${user?.id || user?.user?.id}:${user?.profile_photo || ''}`)
-  const isDesktopViewport = () => (
-    typeof window === 'undefined' || window.matchMedia('(min-width: 1024px)').matches
-  )
-  const [sidebarOpen, setSidebarOpen] = useState(isDesktopViewport)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(isDesktopViewport)
-
-  useEffect(() => {
-    const desktopQuery = window.matchMedia('(min-width: 1024px)')
-    const handleViewportChange = (event) => {
-      setSidebarOpen(event.matches)
-      setSidebarCollapsed(event.matches)
-    }
-
-    desktopQuery.addEventListener('change', handleViewportChange)
-    return () => desktopQuery.removeEventListener('change', handleViewportChange)
-  }, [])
+  const {
+    isDesktop,
+    sidebarOpen,
+    setSidebarOpen,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+  } = useSidebarLayout()
+  const applicationContentRef = useRef(null)
 
   // Public pages render their own navigation experience and should not show
   // the shared authenticated shell even when the user is logged in.
@@ -70,11 +63,19 @@ const Layout = () => {
   const showSidebar = isAuthenticated && !isPublicRoute
   const showHeader = isAuthenticated && !isPublicRoute
   const isApplicationShell = isAuthenticated && !isPublicRoute
+  const isMobileDrawerOpen = showSidebar && sidebarOpen && !isDesktop
+
+  useLayoutEffect(() => {
+    const content = applicationContentRef.current
+    content?.toggleAttribute('inert', isMobileDrawerOpen)
+    return () => content?.removeAttribute('inert')
+  }, [isMobileDrawerOpen])
+
   const isPurchaseRecommendationFormRoute = (
     location.pathname === '/procurement/requisitions/new'
     || /^\/procurement\/requisitions\/[^/]+\/edit$/.test(location.pathname)
   )
-  const isViewportWorkspace = ['/dashboard', '/approvals', '/notifications'].includes(location.pathname)
+  const isViewportWorkspace = ['/dashboard', '/executive', '/approvals', '/notifications', '/admin/enquiries'].includes(location.pathname)
   const isVendorWorkspace = location.pathname === '/procurement/vendors'
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
   // Hide the shared footer on public pages that render their own or are auth flow pages.
@@ -88,11 +89,15 @@ const Layout = () => {
           setIsOpen={setSidebarOpen}
           isCollapsed={sidebarCollapsed}
           setIsCollapsed={setSidebarCollapsed}
-          profilePhotoUrl={authenticatedProfilePhoto}
         />
       )}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        id="application-content"
+        ref={applicationContentRef}
+        aria-hidden={isMobileDrawerOpen ? true : undefined}
+        className="isolate flex min-h-0 min-w-0 flex-1 flex-col"
+      >
         {showHeader && (
           <Header
             sidebarOpen={sidebarOpen}
@@ -105,9 +110,9 @@ const Layout = () => {
           <Outlet />
         </main>
         {showFooter && <Footer />}
+        {showHeader && location.pathname !== '/executive' && <ProcurementApprovalReminder />}
       </div>
 
-      {showHeader && <ProcurementApprovalReminder />}
       {showHeader && <ContextualHelpDrawer />}
     </div>
   )

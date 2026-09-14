@@ -16,8 +16,8 @@ export const SIDEBAR = {
     marginClass: 'lg:ml-[250px]',   // match on lg+ screens
   },
   collapsed: {
-    widthClass:  'w-20',       // 5rem   → 80px
-    marginClass: 'lg:ml-20',
+    widthClass:  'w-[72px]',        // exact collapsed desktop width
+    marginClass: 'lg:ml-[72px]',
   },
   hidden: {
     widthClass:  'w-0',

@@ -357,8 +357,7 @@ const UserDetail = () => {
                   >
                     <Icon className="w-5 h-5" />
                     {tab.name}
-                    {tab.id === 'modules' && <span className="ud-tab-count">{userModules.length}</span>}
-                  </button>
+                 </button>
                 )
               })}
             </div>
@@ -499,8 +498,14 @@ const UserDetail = () => {
             {/* Modules Tab */}
             {activeTab === 'modules' && (
               <div>
+                <div className="flex items-center justify-between mb-6">
+                   <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-xl font-semibold">
+                    {userModules.length} Modules
+                  </span>
+                </div>
                 <div className="ud-module-toolbar">
                   <input type="search" aria-label="Search assigned modules" placeholder="Search modules..." value={moduleSearch} onChange={event => { setModuleSearch(event.target.value); setModulePage(1) }} />
+                  <span>{matchingModules.length} of {userModules.length} modules</span>
                 </div>
                 <ul className="ud-module-list" aria-label="Assigned modules">
                   {visibleModules.map((module, index) => <li key={module.id || module.code || index}>

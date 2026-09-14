@@ -21,6 +21,7 @@ import RequestPasswordReset from './pages/RequestPasswordReset'
 import TermsOfService from './pages/TermsOfService'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import Dashboard from './pages/Dashboard'
+const ExecutiveDashboard = React.lazy(() => import('./pages/Executive/ExecutiveDashboard'))
 import ProfileAlignedComprehensive from './pages/ProfileAlignedComprehensive'  // ✅ Comprehensive profile with engineering expertise
 import ProfileNew from './pages/ProfileNew'  // ✅ NEW: Modern redesigned profile page
 import NotificationPanel from './pages/NotificationPanel'
@@ -495,6 +496,16 @@ function App() {
         <Route path="privacy-policy" element={<PrivacyPolicy />} />
 
         {/* Protected Routes */}
+        <Route
+          path="executive"
+          element={
+            <ProtectedRoute>
+              <React.Suspense fallback={<div className="p-6" role="status">Loading executive overview…</div>}>
+                <ExecutiveDashboard />
+              </React.Suspense>
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="dashboard"
           element={
