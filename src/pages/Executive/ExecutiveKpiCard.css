@@ -1,0 +1,100 @@
+/* Shared reference cards; all layout changes are confined to the KPI articles. */
+@media screen {
+  .cc-command-center.cc-radai-page .cc-reference-kpi {
+    container-type: inline-size;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    min-height: 104px;
+    padding: 12px;
+    border: 1px solid var(--cc-kpi-border);
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--cc-surface), var(--cc-kpi-soft));
+  }
+  .cc-radai-page .cc-reference-kpi-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    color: var(--cc-kpi-icon);
+    background: var(--cc-kpi-icon-bg);
+  }
+  .cc-radai-page .cc-reference-kpi-icon svg { width: 21px; height: 21px; }
+  .cc-radai-page .cc-reference-kpi-body { flex: 1; min-width: 0; }
+  .cc-radai-page .cc-reference-kpi-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    min-height: 32px;
+    gap: 4px;
+  }
+  .cc-command-center.cc-radai-page .cc-reference-kpi h2 {
+    min-width: 0;
+    min-height: 0;
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .025em;
+    color: var(--cc-muted);
+    overflow-wrap: anywhere;
+  }
+  .cc-radai-page .cc-reference-kpi-heading .cc-info-button {
+    width: 16px;
+    height: 16px;
+    padding: 1px;
+  }
+  .cc-command-center.cc-radai-page .cc-reference-kpi-value {
+    display: block;
+    font-size: 24px;
+    line-height: 30px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--cc-text);
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
+  }
+  .cc-radai-page .cc-reference-kpi-details { margin-top: 3px; color: var(--cc-muted); }
+  .cc-command-center.cc-radai-page .cc-reference-kpi-details :is(p, .cc-status) {
+    font-size: 10px;
+    line-height: 14px;
+  }
+  .cc-radai-page .cc-reference-kpi-details .cc-status { white-space: normal; background: transparent; }
+  .cc-radai-page .cc-reference-kpi-details :is(.fp-outcome-bottom, .cp-outcome-bottom, .wf-outcome-bottom) { margin-top: 3px; }
+  .cc-command-center.cc-radai-page .cc-reference-kpi-value.pp-outcome-value--multiple { font-size: 16px; line-height: 22px; }
+  .cc-risk-page .cc-reference-kpi-heading { min-height: 48px; }
+}
+
+@media screen and (min-width: 1901px) {
+  .cc-command-center.cc-radai-page .cc-reference-kpi { padding: 16px; gap: 16px; }
+  .cc-radai-page .cc-reference-kpi-icon { width: 44px; height: 44px; }
+  .cc-radai-page .cc-reference-kpi-icon svg { width: 23px; height: 23px; }
+}
+
+@container (max-width: 185px) {
+  .cc-radai-page .cc-reference-kpi-icon { width: 30px; height: 30px; }
+  .cc-radai-page .cc-reference-kpi-icon svg { width: 19px; height: 19px; }
+  .cc-command-center.cc-radai-page .cc-reference-kpi-value { font-size: 20px; line-height: 27px; }
+}
+
+@media screen and (min-width: 1201px) and (max-width: 1500px) {
+  .cc-command-center.cc-radai-page .rc-outcome.cc-reference-kpi {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 30px minmax(32px, auto) auto 1fr;
+    gap: 8px;
+  }
+  .cc-risk-page :is(.cc-reference-kpi-body, .cc-reference-kpi-heading) { display: contents; }
+  .cc-risk-page .cc-reference-kpi-icon { grid-column: 1; grid-row: 1; }
+  .cc-risk-page .cc-reference-kpi-heading .cc-info-button { grid-column: 2; grid-row: 1; justify-self: end; }
+  .cc-risk-page :is(.cc-reference-kpi h2, .cc-reference-kpi-value, .cc-reference-kpi-details) { grid-column: 1 / -1; }
+}
+
+@media print {
+  .cc-radai-page .cc-reference-kpi-icon { display: none; }
+  .cc-radai-page .cc-reference-kpi { break-inside: avoid; }
+}

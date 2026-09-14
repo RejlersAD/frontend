@@ -122,7 +122,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
   return (
     <header className="relative z-40 h-14 flex-none border-b border-slate-200 bg-white text-slate-700 shadow-sm dark:border-slate-700 dark:bg-gray-800 dark:text-slate-100">
       <nav
-        className="grid h-full w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:gap-3 sm:px-5 lg:grid-cols-[minmax(12rem,1fr)_minmax(28rem,54rem)_minmax(12rem,1fr)]"
+        className="grid h-full w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 sm:gap-3 sm:px-5"
         aria-label="Primary navigation"
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -133,6 +133,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white lg:hidden"
               aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
               aria-expanded={sidebarOpen}
+              aria-controls="application-sidebar"
             >
               <Bars3Icon className="h-5 w-5" />
             </button>
