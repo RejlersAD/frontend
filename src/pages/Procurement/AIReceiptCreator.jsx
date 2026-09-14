@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import PropTypes from 'prop-types';
 import {
   SparklesIcon,
   XMarkIcon,
@@ -17,6 +18,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { PROCUREMENT_CONFIG, getCategoryByCode } from '../../config/procurement.config';
 import apiClient from '../../services/api.service';
+import { buildReceiptItems, receiptLineDrafts } from './receiptQuantity';
 
 const createEmptyAISuggestions = () => ({
   grNumber: null,
@@ -28,7 +30,7 @@ const createEmptyAISuggestions = () => ({
   defectAnalysis: null
 });
 
-const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
+const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders, canApprove = false }) => {
   const availableOrders = Array.isArray(orders) ? orders : [];
   const [formData, setFormData] = useState({
     po_id: '',
@@ -36,6 +38,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
     received_date: new Date().toISOString().split('T')[0],
     quantity_received: 0,
     quantity_rejected: 0,
+    quantity_uom: '',
     inspector_name: '',
     inspection_agency: '',
     packaging_condition: 'good',
@@ -56,8 +59,13 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
   const [aiProcessing, setAiProcessing] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState(createEmptyAISuggestions);
   const [selectedPO, setSelectedPO] = useState(null);
+  const [lineQuantities, setLineQuantities] = useState([]);
   const [aiInsights, setAiInsights] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useRef(null);
+  const closeRef = useRef(null);
+  const submittingRef = useRef(false);
+  submittingRef.current = submitting;
 
   /**
    * AI Feature 1: Auto-generate GR Number
@@ -694,13 +702,13 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
       setFormData(prev => ({
         ...prev,
         quality_check_passed: anyFailed ? false : (allPassed ? true : null),
-        status: recommendation.decision === 'reject' ? 'rejected' : 
+        status: canApprove !== true ? 'pending' : recommendation.decision === 'reject' ? 'rejected' :
                recommendation.decision === 'accept' ? 'accepted' : 
                recommendation.decision === 'hold' ? 'pending' : 'pending'
       }));
     }
   }, [formData.dimensional_check_passed, formData.visual_inspection_passed, 
-      formData.material_verification_passed, formData.ndt_results]);
+      formData.material_verification_passed, formData.ndt_results, canApprove]);
 
   const handlePOSelect = (e) => {
     const poId = e.target.value;
@@ -708,13 +716,14 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
     
     if (po) {
       setSelectedPO(po);
+      setLineQuantities(receiptLineDrafts(po));
       setFormData(prev => ({
         ...prev,
         po_id: poId,
         po_number: po.po_number,
-        quantity_received: po.total_quantity || (Array.isArray(po.items)
-          ? po.items.reduce((sum, item) => sum + Number(item.quantity || item.ordered_qty || 0), 0)
-          : 0) || 1
+        quantity_received: '',
+        quantity_rejected: '0',
+        quantity_uom: ''
       }));
       
       // Auto-trigger AI analysis
@@ -725,7 +734,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
         generateQualityChecklist();
         recommendInspector();
       }, 500);
-    }
+    } else { setSelectedPO(null); setLineQuantities([]); setFormData(prev => ({ ...prev, po_id: '', po_number: '' })); }
   };
 
   const addAiInsight = (type, title, message) => {
@@ -738,44 +747,14 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
     if (!selectedPO || !formData.po_id) {
       addAiInsight('error', 'Purchase Order Required', 'Select a purchase order before recording the receipt.');
       return;
     }
-    if (Number(formData.quantity_received || 0) <= 0) {
-      addAiInsight('error', 'Quantity Required', 'Quantity received must be greater than zero.');
-      return;
-    }
-
     setSubmitting(true);
     try {
-      const receivedQuantity = Number(formData.quantity_received || 0);
-      const rejectedQuantity = Number(formData.quantity_rejected || 0);
-      const acceptedQuantity = Math.max(0, receivedQuantity - rejectedQuantity);
-      const poItems = Array.isArray(selectedPO.items) ? selectedPO.items : [];
-      const itemsReceived = poItems.length > 0
-        ? poItems.map((item, index) => {
-            const ordered = Number(item.quantity || item.ordered_qty || 0);
-            return {
-              po_line_id: item.id || item.po_line_id || null,
-              line_number: item.line_number || index + 1,
-              item: item.description || item.item || item.name || `PO item ${index + 1}`,
-              uom: item.unit || item.uom || 'EA',
-              ordered_qty: ordered,
-              received_qty: ordered,
-              accepted_qty: ordered,
-              rejected_qty: 0,
-            };
-          })
-        : [{
-            line_number: 1,
-            item: selectedPO.title || selectedPO.description || 'Goods received against purchase order',
-            uom: 'LOT',
-            ordered_qty: receivedQuantity,
-            received_qty: receivedQuantity,
-            accepted_qty: acceptedQuantity,
-            rejected_qty: rejectedQuantity,
-          }];
+      const itemsReceived = buildReceiptItems(selectedPO, lineQuantities, formData);
 
       const heatNumbers = Array.isArray(formData.heat_numbers)
         ? formData.heat_numbers
@@ -784,7 +763,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
       // Map the UI model to the canonical Receipt API contract.
       const submitData = {
         purchase_order: formData.po_id,
-        status: formData.status || 'pending',
+        status: canApprove === true ? (formData.status || 'pending') : 'pending',
         items_received: itemsReceived,
         inspector_name: formData.inspector_name || '',
         inspection_agency: formData.inspection_agency || '',
@@ -804,7 +783,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
       const response = await apiClient.post('/procurement/receipts/', submitData);
       const data = response.data;
       onReceiptCreated(data);
-      handleClose();
+      handleClose(true);
       addAiInsight('success', 'Receipt Recorded', 'Goods receipt created successfully with AI quality analysis');
     } catch (error) {
       console.error('Error creating receipt:', error);
@@ -818,13 +797,15 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
     }
   };
 
-  const handleClose = () => {
+  const handleClose = (completed = false) => {
+    if (submitting && completed !== true) return;
     setFormData({
       po_id: '',
       po_number: '',
       received_date: new Date().toISOString().split('T')[0],
       quantity_received: 0,
       quantity_rejected: 0,
+      quantity_uom: '',
       inspector_name: '',
       inspection_agency: '',
       packaging_condition: 'good',
@@ -842,11 +823,34 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
       status: 'pending'
     });
     setSelectedPO(null);
+    setLineQuantities([]);
     setSubmitting(false);
     setAiSuggestions(createEmptyAISuggestions());
     setAiInsights([]);
     onClose();
   };
+  closeRef.current = handleClose;
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const controls = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || [])].filter(element => element.getClientRects().length && !element.matches(':disabled'));
+    const focusFirst = () => (controls()[0] || dialogRef.current)?.focus();
+    const frame = requestAnimationFrame(focusFirst);
+    const keydown = event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (!submittingRef.current) closeRef.current?.(); return; }
+      if (event.key !== 'Tab') return;
+      const elements = controls();
+      if (!elements.length) { event.preventDefault(); dialogRef.current?.focus(); return; }
+      if (event.shiftKey && (document.activeElement === elements[0] || !dialogRef.current?.contains(document.activeElement))) { event.preventDefault(); elements.at(-1).focus(); }
+      else if (!event.shiftKey && (document.activeElement === elements.at(-1) || !dialogRef.current?.contains(document.activeElement))) { event.preventDefault(); elements[0].focus(); }
+    };
+    const containFocus = event => { if (dialogRef.current && !dialogRef.current.contains(event.target)) focusFirst(); };
+    document.addEventListener('keydown', keydown, true);
+    document.addEventListener('focusin', containFocus);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', keydown, true); document.removeEventListener('focusin', containFocus); document.body.style.overflow = previousOverflow; previousFocus?.isConnected && previousFocus.focus(); };
+  }, [isOpen]);
 
   const toggleCertificate = (cert) => {
     setFormData(prev => {
@@ -860,9 +864,11 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
   };
 
   if (!isOpen) return null;
+  const poLines = Array.isArray(selectedPO?.items) ? selectedPO.items.filter(item => item && typeof item === 'object' && !Array.isArray(item)) : [];
+  const changeLineQuantity = (index, key, value) => setLineQuantities(current => current.map((line, lineIndex) => lineIndex === index ? { ...line, [key]: value } : line));
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[100] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true" aria-busy={submitting}>
       <div className="fixed inset-0 bg-gray-900/70 backdrop-blur-sm" aria-hidden="true" onClick={handleClose} />
       <div className="relative flex min-h-full items-center justify-center p-4 sm:p-6">
         <div className="relative w-full max-w-6xl overflow-hidden rounded-xl bg-white text-left shadow-2xl">
@@ -884,6 +890,8 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
               </div>
               <button
                 type="button"
+                aria-label="Close receipt creator"
+                disabled={submitting}
                 onClick={handleClose}
                 className="bg-white bg-opacity-20 rounded-md p-2 inline-flex items-center justify-center text-white hover:bg-opacity-30 focus:outline-none"
               >
@@ -909,8 +917,9 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit}><fieldset disabled={submitting} style={{ display: 'contents' }}>
             <div className="bg-white px-6 py-6 max-h-[calc(100vh-250px)] overflow-y-auto">
+              {canApprove !== true && <p data-testid="receipt-approval-note" className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">This receipt will be recorded as pending inspection. Acceptance or rejection requires approval access.</p>}
               <div className="space-y-6">
                 {/* PO Selection */}
                 <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-6 border-2 border-indigo-200">
@@ -925,6 +934,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                         Select Purchase Order *
                       </label>
                       <select
+                        aria-label="Select purchase order"
                         value={formData.po_id}
                         onChange={handlePOSelect}
                         required
@@ -999,6 +1009,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                             Received Date *
                           </label>
                           <input
+                            aria-label="Received date"
                             type="date"
                             value={formData.received_date}
                             onChange={(e) => setFormData({...formData, received_date: e.target.value})}
@@ -1007,17 +1018,19 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                           />
                         </div>
 
-                        <div>
+                        {!poLines.length && <><div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             <CubeIcon className="h-4 w-4 inline mr-1" />
                             Quantity Received *
                           </label>
                           <input
                             type="number"
+                            aria-label="Quantity received"
                             value={formData.quantity_received}
-                            onChange={(e) => setFormData({...formData, quantity_received: parseInt(e.target.value) || 0})}
+                            onChange={(e) => setFormData({...formData, quantity_received: e.target.value})}
                             required
                             min="0"
+                            step="any"
                             className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                           />
                         </div>
@@ -1028,18 +1041,21 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                           </label>
                           <input
                             type="number"
+                            aria-label="Quantity rejected"
                             value={formData.quantity_rejected}
-                            onChange={(e) => setFormData({...formData, quantity_rejected: parseInt(e.target.value) || 0})}
+                            onChange={(e) => setFormData({...formData, quantity_rejected: e.target.value})}
                             min="0"
+                            step="any"
                             className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                           />
-                        </div>
+                        </div><div><label className="block text-sm font-medium text-gray-700 mb-2">Unit of measure *</label><input aria-label="Quantity unit of measure" value={formData.quantity_uom} onChange={event => setFormData({ ...formData, quantity_uom: event.target.value })} required className="block w-full border border-gray-300 rounded-md py-2 px-3" /></div></>}
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Packaging Condition *
                           </label>
                           <select
+                            aria-label="Packaging condition"
                             value={formData.packaging_condition}
                             onChange={(e) => setFormData({...formData, packaging_condition: e.target.value})}
                             className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
@@ -1051,6 +1067,16 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                           </select>
                         </div>
                       </div>
+                      {poLines.length > 0 && <div className="mt-5">
+                        <h5 className="font-semibold text-gray-900">Quantities received by PO line</h5><p className="mt-1 text-sm text-gray-600">Enter this delivery only. Leave unreceived lines blank. Quantities retain each line’s unit of measure.</p>
+                        <div className="mt-3 overflow-x-auto" role="region" aria-label="Purchase-order receipt quantities" tabIndex={0}><table className="w-full min-w-[640px] text-sm"><thead><tr className="text-left text-gray-600"><th className="p-2">Line</th><th className="p-2">Item</th><th className="p-2">Ordered</th><th className="p-2">Unit</th><th className="p-2">Received</th><th className="p-2">Rejected</th></tr></thead><tbody>
+                          {poLines.map((item, index) => <tr key={item.id || item.po_line_id || index} className="border-t border-gray-200"><td className="p-2">{item.line_number || index + 1}</td><td className="p-2">{item.description || item.item || item.name || `PO line ${index + 1}`}</td><td className="p-2">{item.quantity ?? item.ordered_qty ?? '—'}</td>
+                            <td className="p-2">{item.unit || item.uom || <input aria-label={`Unit of measure for PO line ${index + 1}`} value={lineQuantities[index]?.uom || ''} onChange={event => changeLineQuantity(index, 'uom', event.target.value)} required={Number(lineQuantities[index]?.received_qty) > 0} className="w-20 rounded border border-gray-300 p-2" />}</td>
+                            <td className="p-2"><input aria-label={`Received quantity for PO line ${index + 1}`} type="number" min="0" step="any" value={lineQuantities[index]?.received_qty ?? ''} onChange={event => changeLineQuantity(index, 'received_qty', event.target.value)} className="w-24 rounded border border-gray-300 p-2" /></td>
+                            <td className="p-2"><input aria-label={`Rejected quantity for PO line ${index + 1}`} type="number" min="0" step="any" value={lineQuantities[index]?.rejected_qty ?? '0'} onChange={event => changeLineQuantity(index, 'rejected_qty', event.target.value)} className="w-24 rounded border border-gray-300 p-2" /></td>
+                          </tr>)}
+                        </tbody></table></div>
+                      </div>}
                     </div>
 
                     {/* Inspector Information */}
@@ -1096,6 +1122,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                             Inspector Name
                           </label>
                           <input
+                            aria-label="Inspector name"
                             type="text"
                             value={formData.inspector_name}
                             onChange={(e) => setFormData({...formData, inspector_name: e.target.value})}
@@ -1109,6 +1136,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                             Inspection Agency
                           </label>
                           <input
+                            aria-label="Inspection agency"
                             type="text"
                             value={formData.inspection_agency}
                             onChange={(e) => setFormData({...formData, inspection_agency: e.target.value})}
@@ -1122,6 +1150,7 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                             Inspection Report Number
                           </label>
                           <input
+                            aria-label="Inspection report number"
                             type="text"
                             value={formData.inspection_report_number}
                             onChange={(e) => setFormData({...formData, inspection_report_number: e.target.value})}
@@ -1269,7 +1298,8 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                               NDT Results
                             </label>
                             <textarea
-                              value={formData.ndt_results}
+                              aria-label="NDT results"
+                            value={formData.ndt_results}
                               onChange={(e) => setFormData({...formData, ndt_results: e.target.value})}
                               rows="3"
                               className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
@@ -1329,7 +1359,8 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                           Heat Numbers / Serial Numbers
                         </label>
                         <textarea
-                          value={formData.heat_numbers}
+                          aria-label="Heat numbers / serial numbers"
+                            value={formData.heat_numbers}
                           onChange={(e) => setFormData({...formData, heat_numbers: e.target.value})}
                           rows="2"
                           className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
@@ -1421,7 +1452,8 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                         Additional Notes
                       </label>
                       <textarea
-                        value={formData.notes}
+                        aria-label="Additional notes"
+                            value={formData.notes}
                         onChange={(e) => setFormData({...formData, notes: e.target.value})}
                         rows="3"
                         className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
@@ -1465,12 +1497,20 @@ const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
                 </button>
               </div>
             </div>
-          </form>
+          </fieldset></form>
         </div>
       </div>
     </div>,
     document.body
   );
+};
+
+AIReceiptCreator.propTypes = {
+  isOpen: PropTypes.bool,
+  onClose: PropTypes.func,
+  onReceiptCreated: PropTypes.func,
+  orders: PropTypes.array,
+  canApprove: PropTypes.bool,
 };
 
 export default AIReceiptCreator;

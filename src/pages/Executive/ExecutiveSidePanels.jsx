@@ -87,7 +87,7 @@ export function EnterpriseRisk({ report, onExplain }) {
       <MiniStat metric={auditProjects} label="Delayed audits (projects)" onExplain={onExplain} />
     </div>
     <h3 className="cc-side-subtitle">Top risks</h3>
-    <div className="cc-table-wrap">
+    <div className="cc-table-wrap" role="region" aria-label="Enterprise risk table" tabIndex={0}>
       <table className="cc-compact-table cc-risk-table" aria-label="Recorded project and quality risks">
         <thead><tr><th scope="col">Risk</th><th scope="col">Owner</th><th scope="col">Next review</th></tr></thead>
         <tbody>{risks.map(item => <tr key={item.id}>
@@ -179,7 +179,7 @@ export function DepartmentPulse({ report, onExplain, onDepartment }) {
     'Status reflects the highest severity in reported department alerts or source availability. Reported data and an empty alert preview do not establish that a department is on track.');
   return <section className="cc-panel cc-pulse-panel" aria-labelledby="cc-department-pulse-title" data-testid="executive-department-pulse">
     <div className="cc-panel-heading"><h2 id="cc-department-pulse-title">Department pulse</h2><ExplainButton metric={sourceInfo} onExplain={onExplain} /></div>
-    <div className="cc-table-wrap"><table className="cc-compact-table cc-pulse-table" aria-label="Department reporting and exceptions">
+    <div className="cc-table-wrap" role="region" aria-label="Department reporting table" tabIndex={0}><table className="cc-compact-table cc-pulse-table" aria-label="Department reporting and exceptions">
       <thead><tr><th scope="col">Department</th><th scope="col">Key metric</th><th scope="col">Status</th><th scope="col"><span className="cc-sr-only">View department</span></th></tr></thead>
       <tbody>{DEPARTMENTS.map(metadata => {
         const section = report?.departments?.find(item => item.id === metadata.id)

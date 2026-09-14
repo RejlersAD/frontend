@@ -56,8 +56,8 @@
 .eop-queues button > span { border-radius: 4px; min-width: 20px; text-align: center; background: #f0f4fa; color: var(--eop-muted); padding: 1px 6px; font-size: 10px; }
 .eop-queues button.is-active > span { background: var(--eop-blue-soft); color: var(--eop-blue); }
 .eop-table-scroll { width: 100%; overflow: auto; scrollbar-width: thin; scrollbar-color: #b9cde7 transparent; }
-.eop-table { width: 100%; min-width: 870px; border-collapse: collapse; table-layout: fixed; text-align: left; color: var(--eop-text); font-size: 12px; }
-.eop-table th { height: 31px; padding: 8px 9px; border-bottom: 1px solid var(--eop-border); background: linear-gradient(180deg, var(--eop-subtle), var(--eop-surface)); color: var(--eop-muted); font-size: 8.5px; text-transform: uppercase; font-weight: 650; white-space: nowrap; }
+.eop-table { width: 100%; min-width: 1140px; border-collapse: collapse; table-layout: fixed; text-align: left; color: var(--eop-text); font-size: 12px; line-height: 16px; }
+.eop-table th { height: 31px; padding: 8px 9px; border-bottom: 1px solid var(--eop-border); background: linear-gradient(180deg, var(--eop-subtle), var(--eop-surface)); color: var(--eop-muted); font-size: 8.5px; line-height: 14px; text-transform: uppercase; font-weight: 650; white-space: nowrap; }
 .eop-table th:nth-child(1) { width: 9%; padding-left: 13px; }
 .eop-table th:nth-child(2) { width: 9%; }
 .eop-table th:nth-child(3) { width: 26%; }
@@ -81,7 +81,7 @@
 .eop-request-title:hover { color: var(--eop-blue); }
 .eop-request-cell small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; color: var(--eop-muted); font-size: 11px; }
 .eop-cell-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.eop-priority, .eop-status { display: inline-block; border-radius: 3px; font-size: 9px; font-weight: 600; line-height: 1.3; padding: 4px 8px; }
+.eop-priority, .eop-status { display: inline-block; border-radius: 3px; font-size: 9px; font-weight: 600; line-height: 14px; padding: 4px 8px; }
 .eop-priority--urgent { background: #ffe1e9; color: #bd1536; }
 .eop-priority--high { background: var(--eop-amber-soft); color: #a44700; }
 .eop-priority--normal, .eop-priority--unknown { background: #edf1f6; color: #3c5273; }
