@@ -6,7 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { checkArtifacts, historicalGuardsEnabled, loadSnapshot, launchBrowser, sidebarWidth } from './ui-check-support.mjs';
+import { inlineLocalCssImports, checkArtifacts, historicalGuardsEnabled, loadSnapshot, launchBrowser, sidebarWidth } from './ui-check-support.mjs';
 import AxeBuilder from '@axe-core/playwright';
 import postcss from 'postcss';
 import tailwind from 'tailwindcss';
@@ -99,7 +99,7 @@ const related = [...(await filesIn('src/pages/Admin')).filter(file => /enquir/i.
 const componentFiles = [...new Set([...await filesIn('src/components/Layout'), 'src/config/layout.config.js', ...related])].filter(file => !baselineOnly || sourcePaths.has(path.normalize(path.join(frontend, file)).toLowerCase()));
 const readSource = file => readFile(baselineOnly && sourcePaths.has(path.normalize(path.join(frontend, file)).toLowerCase()) ? sourcePaths.get(path.normalize(path.join(frontend, file)).toLowerCase()) : path.join(frontend, file), 'utf8');
 const classSources = await Promise.all(componentFiles.filter(file => /\.[jm]sx?$/.test(file)).map(readSource));
-const utilityCss = await postcss([tailwind({ ...tailwindConfig, content: [{ raw: [entry, serviceButtons, ...classSources].join('\n'), extension: 'jsx' }] })]).process(await readSource('src/index.css'), { from: undefined });
+const utilityCss = await postcss([tailwind({ ...tailwindConfig, content: [{ raw: [entry, serviceButtons, ...classSources].join('\n'), extension: 'jsx' }] })]).process(await inlineLocalCssImports(await readSource('src/index.css'), path.join(frontend, 'src/index.css'), file => readSource(path.relative(frontend, file).replaceAll('\\', '/'))), { from: undefined });
 const styleBundle = await build({ stdin: { contents: componentFiles.filter(file => file.endsWith('.css')).map(file => `@import ${JSON.stringify('./' + file)};`).join('\n'), loader: 'css', resolveDir: frontend }, bundle: true, write: false, external: ['/assets/*'], loader: { '.woff2': 'dataurl', '.woff': 'dataurl' }, plugins: [savedSourcePlugin] });
 let html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Enquiry browser checks</title><style>${utilityCss.css}\n${styleBundle.outputFiles[0].text}</style></head><body><div id="root"></div><script>${bundle.outputFiles[0].text.replaceAll('</script', '<\\/script')}</script></body></html>`;
 if (baselineOnly) {

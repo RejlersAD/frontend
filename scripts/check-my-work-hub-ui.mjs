@@ -5,7 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { checkArtifacts, historicalGuardsEnabled, loadSnapshot, launchBrowser, sidebarWidth } from './ui-check-support.mjs';
+import { inlineLocalCssImports, checkArtifacts, historicalGuardsEnabled, loadSnapshot, launchBrowser, sidebarWidth } from './ui-check-support.mjs';
 import AxeBuilder from '@axe-core/playwright';
 import postcss from 'postcss';
 import tailwind from 'tailwindcss';
@@ -135,7 +135,7 @@ for (const folder of ['src/pages/MyWorkHub', 'src/components/workhub']) {
 componentFiles.push(...(await readdir(path.join(frontend, 'src/pages'))).filter(file => /^MyWorkHub.*\.(css|jsx)$/.test(file)).map(file => `src/pages/${file}`));
 const readSource = file => readFile(colorBaselineOnly && file === 'src/pages/MyWorkHub.css' ? path.join(artifacts, 'kpi-color-polish/MyWorkHub-before.css') : baselineOnly && sourcePaths.has(path.join(frontend, file).toLowerCase()) ? sourcePaths.get(path.join(frontend, file).toLowerCase()) : path.join(frontend, file), 'utf8');
 const classSources = await Promise.all([...new Set(componentFiles)].filter(file => /\.[jm]sx?$/.test(file)).map(readSource));
-const css = await postcss([tailwind({ ...tailwindConfig, content: [{ raw: [entry, serviceButtons, ...classSources].join('\n'), extension: 'jsx' }] })]).process(await readSource('src/index.css'), { from: undefined });
+const css = await postcss([tailwind({ ...tailwindConfig, content: [{ raw: [entry, serviceButtons, ...classSources].join('\n'), extension: 'jsx' }] })]).process(await inlineLocalCssImports(await readSource('src/index.css'), path.join(frontend, 'src/index.css'), file => readSource(path.relative(frontend, file).replaceAll('\\', '/'))), { from: undefined });
 const styles = await Promise.all([...new Set(componentFiles)].filter(file => file.endsWith('.css')).map(readSource));
 let html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Work Hub fixture checks</title><style>${css.css}\n${styles.join('\n')}</style></head><body><div id="root"></div><script>${bundle.outputFiles[0].text.replaceAll('</script', '<\\/script')}</script></body></html>`;
 if (baselineOnly) {

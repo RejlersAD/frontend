@@ -159,6 +159,16 @@
   .rc-movement { border-left: 0; border-top: 1px solid var(--cc-border); padding: 8px 0 0; }
   .rc-heatmap { grid-template-rows: 145px auto; }
 }
+/* Keep audit labels and owner names whole at the shared table text size. */
+@media screen {
+  .risk-compliance .rc-followups-table { min-width: 1120px; }
+  .risk-compliance .rc-compliance-table { min-width: 640px; }
+  .rc-followups-table :is(th, td), .rc-compliance-table :is(th, td),
+  .rc-followups-table .rc-truncate { overflow-wrap: normal; word-break: normal; }
+  .rc-compliance-table .cc-status, .rc-compliance-table td:nth-child(3) > span,
+  .rc-compliance-table .rc-calendar-timing { white-space: nowrap; }
+}
+
 @media print {
   .executive-page-open .risk-compliance { --rc-amber: #995800; --rc-red: #c90736; --rc-green: #087d55; }
   .executive-page-open .rc-layout { display: block; }

@@ -4,6 +4,26 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { chromium } from 'playwright-core';
+import postcss from 'postcss';
+
+// Fixture HTML has no stylesheet server. Resolve local imports before Tailwind
+// so the browser receives the same imported rules as the Vite application.
+// An injectable reader lets historical checks keep their immutable source tree.
+export async function inlineLocalCssImports(css, filename, reader = file => readFile(file, 'utf8'), ancestors = []) {
+  const absolute = path.resolve(filename);
+  assert.ok(!ancestors.includes(absolute), `Circular fixture CSS import: ${absolute}`);
+  const root = postcss.parse(css, { from: absolute });
+  const imports = [];
+  root.walkAtRules('import', node => imports.push(node));
+  for (const node of imports) {
+    const match = node.params.match(/^(['"])(\.{1,2}\/[^'"]+)\1\s*$/);
+    assert.ok(match, `Fixture CSS imports must be plain relative paths: ${node.params}`);
+    const imported = path.resolve(path.dirname(absolute), match[2]);
+    const expanded = await inlineLocalCssImports(await reader(imported), imported, reader, [...ancestors, absolute]);
+    node.replaceWith(...postcss.parse(expanded, { from: imported }).nodes);
+  }
+  return root.toString();
+}
 
 // Historical redesign snapshots are local review artifacts, not required test fixtures.
 // Functional, source-state, accessibility and geometry checks run independently of them.

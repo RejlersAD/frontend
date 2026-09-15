@@ -60,7 +60,7 @@
 .apc-queue-column > * { flex-shrink: 0; }
 .apc-table-panel { overflow: hidden; }
 .apc-table-scroll { width: 100%; overflow-x: auto; scrollbar-width: thin; scrollbar-color: #b4c6dd transparent; }
-.apc-table { width: 100%; min-width: 860px; border-collapse: collapse; table-layout: fixed; text-align: left; font-size: 12px; }
+.apc-table { width: 100%; min-width: 1100px; border-collapse: collapse; table-layout: fixed; text-align: left; font-size: 12px; line-height: 16px; }
 .apc-table th { height: 38px; padding: 9px 10px; background: linear-gradient(180deg, var(--apc-surface), var(--apc-row)); color: var(--apc-muted); border-bottom: 1px solid var(--apc-border); font-size: 9.5px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
 .apc-table th:nth-child(1) { width: 10%; }
 .apc-table th:nth-child(2) { width: 11.5%; }
@@ -90,7 +90,7 @@
 .apc-reference-button:hover { color: var(--apc-blue); }
 .apc-reference-cell small, .apc-requester-cell > span, .apc-requester-cell > small { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; display: block; }
 .apc-amount { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.apc-stage-badge { display: inline-block; padding: 4px 9px; border-radius: 16px; background: var(--apc-track); color: #344963; font-size: 10px; }
+.apc-stage-badge { display: inline-block; padding: 4px 9px; border-radius: 16px; background: var(--apc-track); color: #344963; font-size: 10px; line-height: 14px; }
 .apc-due-overdue, .apc-table .apc-due-overdue small { color: var(--apc-red); font-weight: 600; }
 .apc-table time { display: block; white-space: nowrap; font-size: 11px; }
 .apc-muted { color: var(--apc-muted); }
@@ -213,7 +213,7 @@
   .apc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .apc-toolbar { flex-wrap: wrap; gap: 10px; }
   .apc-search { flex-basis: 100%; }
-  .apc-table { min-width: 900px; }
+  .apc-table { min-width: 1100px; }
   .apc-tabs { width: 100%; }
 }
 @media (max-width: 600px) {
