@@ -66,8 +66,10 @@ export const PROJECT_CONTROL_ENDPOINTS = {
 export const PROJECT_VIEW_MODES = [
   // Project Dashboard — first tab; shows key commercial & scheduling facts.
   { key: 'project-dashboard', label: 'Overview', phaseFlag: 'phase_1_project_dashboard', icon: 'squares' },
+  { key: 'epc-lifecycle', label: 'EPC lifecycle', icon: 'shield' },
   { key: 'portfolio-exceptions', label: 'Portfolio Exceptions', icon: 'alert' },
   { key: 'plan-baseline', label: 'Plan & Baseline', icon: 'calendar' },
+  { key: 'milestones', label: 'Milestones', icon: 'flag' },
   { key: 'controls-periods', label: 'Controls & Periods', icon: 'shield' },
   { key: 'commercial-dashboard', label: 'Cost & Commercial', phaseFlag: 'phase_1_cost_dashboard', icon: 'banknotes' },
   { key: 'cost-dashboard',    label: 'Cost Detail',    phaseFlag: 'phase_1_cost_dashboard',    icon: 'chart' },
@@ -75,7 +77,7 @@ export const PROJECT_VIEW_MODES = [
   { key: 'documents',         label: 'Documents',         phaseFlag: 'phase_1_documents',         icon: 'folder' },
   { key: 'ai-takeoff',        label: 'AI Take-Off',       phaseFlag: 'phase_2_ai_takeoff',        icon: 'sparkles', phaseLabel: 'Phase 2' },
   { key: 'evm',               label: 'EVM Forecast',      phaseFlag: 'phase_3_evm_forecast',      icon: 'trending', phaseLabel: 'Phase 3' },
-  { key: 'risk',              label: 'Risk Analytics',    phaseFlag: 'phase_4_risk_analytics',    icon: 'shield',   phaseLabel: 'Phase 4' },
+  { key: 'risk',              label: 'Risks & Changes', icon: 'shield' },
 ]
 
 // ───────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
+import process from 'node:process'
 
 const testEmail = process.env.PW_TEST_EMAIL
 const testPassword = process.env.PW_TEST_PASSWORD
@@ -26,7 +27,7 @@ async function expectNoBlockingAxeViolations(page, context) {
 }
 
 async function signIn(page) {
-  await page.goto('/login')
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
   await page.locator('#login-email').fill(testEmail)
   await page.locator('#login-password').fill(testPassword)
   await page.getByRole('button', { name: /log in|login|sign in/i }).click()
@@ -34,7 +35,7 @@ async function signIn(page) {
 }
 
 test('login is keyboard reachable and has no blocking WCAG violations', async ({ page }) => {
-  await page.goto('/login')
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: /user login/i })).toBeVisible()
 
   await page.keyboard.press('Tab')
@@ -44,7 +45,8 @@ test('login is keyboard reachable and has no blocking WCAG violations', async ({
 
 test('login reflows without page-level horizontal overflow at 320 CSS pixels', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 })
-  await page.goto('/login')
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: /user login/i })).toBeVisible()
 
   const dimensions = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
@@ -55,7 +57,7 @@ test('login reflows without page-level horizontal overflow at 320 CSS pixels', a
 })
 
 test('protected Project Control routes return unauthenticated users to sign-in', async ({ page }) => {
-  await page.goto('/projects')
+  await page.goto('/projects', { waitUntil: 'domcontentloaded' })
   await expect(page).toHaveURL(/\/login(?:\?|$)/)
   await expect(page.getByRole('heading', { name: /user login/i })).toBeVisible()
 })
@@ -68,14 +70,14 @@ test.describe('authenticated Project Control journeys', () => {
   })
 
   test('opens an authorised project and reviews project health', async ({ page }) => {
-    await page.goto('/projects')
+    await page.goto('/projects', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { name: /project performance|project portfolio/i })).toBeVisible()
     await expect(page.getByLabel(/active project/i)).toBeVisible()
     await expectNoBlockingAxeViolations(page, 'Project Control overview')
   })
 
   test('opens the embedded five-stage planning workflow', async ({ page }) => {
-    await page.goto('/projects')
+    await page.goto('/projects', { waitUntil: 'domcontentloaded' })
     const selector = page.getByLabel(/active project/i)
     const pilotOption = selector.locator('option').filter({ hasText: '5900913' })
     if (await pilotOption.count()) {

@@ -1,12 +1,13 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
+import process from 'node:process'
 
 const testEmail = process.env.PW_TEST_EMAIL
 const testPassword = process.env.PW_TEST_PASSWORD
 const hasTestCredentials = Boolean(testEmail && testPassword)
 
 async function signIn(page) {
-  await page.goto('/login')
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
   await page.locator('#login-email').fill(testEmail)
   await page.locator('#login-password').fill(testPassword)
   await page.getByRole('button', { name: /log in|login|sign in/i }).click()
@@ -14,7 +15,7 @@ async function signIn(page) {
 }
 
 test('protected procurement dashboard returns unauthenticated users to sign-in', async ({ page }) => {
-  await page.goto('/procurement')
+  await page.goto('/procurement', { waitUntil: 'domcontentloaded' })
   await expect(page).toHaveURL(/\/login(?:\?|$)/)
 })
 
@@ -24,7 +25,7 @@ test.describe('authenticated procurement command centre', () => {
   test.beforeEach(async ({ page }) => { await signIn(page) })
 
   test('supports keyboard operation and WCAG 2.2 AA', async ({ page }) => {
-    await page.goto('/procurement')
+    await page.goto('/procurement', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { name: 'Procurement Overview' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Action required' })).toBeVisible()
     await expect(page.getByRole('table', { name: /recent procurement approvals/i })).toBeVisible()
@@ -42,7 +43,7 @@ test.describe('authenticated procurement command centre', () => {
 
   test('keeps controls usable at 320 CSS pixels', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 })
-    await page.goto('/procurement')
+    await page.goto('/procurement', { waitUntil: 'domcontentloaded' })
     await page.getByRole('button', { name: /current portfolio/i }).click()
     await expect(page.getByLabel('Dashboard reporting scope')).toBeVisible()
     const dimensions = await page.evaluate(() => ({

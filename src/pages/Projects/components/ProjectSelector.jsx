@@ -5,7 +5,7 @@ import { PROJECT_COPY } from '../../../config/projectControl.config'
 
 const projectLabel = (project) => `${project.code} — ${project.name}`
 
-export default function ProjectSelector({ projects, value, onChange, loading, error, label = 'Active Project' }) {
+export default function ProjectSelector({ projects, value, onChange, loading, error, label = 'Active Project', compact = false }) {
   const inputId = useId()
   const listboxId = `${inputId}-options`
   const rootRef = useRef(null)
@@ -76,8 +76,8 @@ export default function ProjectSelector({ projects, value, onChange, loading, er
     : projects.length ? 'No projects match your search.' : PROJECT_COPY.noProjects
 
   return (
-    <div ref={rootRef} className="relative block">
-      <label htmlFor={inputId} className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-500">
+    <div ref={rootRef} className={`relative block${compact ? ' pp-selector' : ''}`}>
+      <label htmlFor={inputId} className={compact ? 'sr-only' : 'mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-500'}>
         {label}
       </label>
       <div className="relative">

@@ -1,0 +1,146 @@
+.prf-sp { display: grid; gap: 10px; color: #153153; font-size: 11px; line-height: 1.35; min-width: 0; }
+.prf-sp * { box-sizing: border-box; }
+.prf-sp .prf-sp-card { min-width: 0; padding: 11px 12px 10px; border: 1px solid #dfE8f1; border-radius: 7px; background: #fff; box-shadow: 0 2px 5px #24486b04; }
+.prf-sp h2 { margin: 0 0 6px; color: #09274b; font-size: 14px; font-weight: 700; line-height: 20px; }
+.prf-sp h3 { margin: 0; color: #09274b; font-size: 11px; font-weight: 700; line-height: 17px; }
+.prf-sp button, .prf-sp input, .prf-sp select, .prf-sp textarea { font: inherit; }
+.prf-sp button { cursor: pointer; }
+.prf-sp button:disabled { cursor: default; opacity: .55; }
+.prf-sp :is(button,input,select,textarea):focus-visible { outline: 2px solid #075dff; outline-offset: 2px; }
+.prf-sp input:not([type=radio]), .prf-sp select, .prf-sp textarea { min-width: 0; width: 100%; min-height: 28px; padding: 4px 7px; color: #143251; background: #fff; border: 1px solid #cddcec; border-radius: 4px; }
+.prf-sp input::placeholder, .prf-sp textarea::placeholder { color: #778497; font-size: 10px; }
+.prf-sp textarea { display: block; resize: vertical; line-height: 15px; }
+.prf-sp input:read-only { background: #f3f6fa; }
+.prf-sp [aria-invalid=true] { border-color: #d32e4c !important; }
+.prf-sp input[type=radio] { width: 14px; height: 14px; margin: 0; accent-color: #0562ff; flex: 0 0 auto; }
+.prf-sp svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.prf-sp .prf-sp-required { color: #e02e3d; }
+.prf-sp .prf-sp-error { color: #c42944; margin: 4px 0 0; font-size: 10px; }
+.prf-sp .prf-sp-muted { color: #667b92; font-size: 10px; }
+.prf-sp .prf-sp-selection-type { border: 0; padding: 0; margin: 0 0 8px; }
+.prf-sp .prf-sp-selection-type legend { display: flex; gap: 4px; align-items: center; padding: 0; margin-bottom: 5px; font-size: 11px; font-weight: 600; }
+.prf-sp .prf-sp-selection-type legend svg { width: 12px; height: 12px; }
+.prf-sp .prf-sp-selection-type > div { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.prf-sp .prf-sp-selection-type label { display: flex; gap: 7px; align-items: center; font-size: 10px; cursor: pointer; }
+.prf-sp .prf-sp-selection-type label:has(input:checked) { font-weight: 600; }
+.prf-sp .prf-sp-supplier-grid { display: grid; grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr); gap: 10px; }
+.prf-sp .prf-sp-subcard { min-width: 0; padding: 7px; background: linear-gradient(115deg,#f6f9fc 0%,#fff 95%); border: 1px solid #dfe7f0; border-radius: 5px; }
+.prf-sp .prf-sp-vendor-search { display: flex; position: relative; gap: 10px; margin-top: 3px; margin-bottom: 8px; }
+.prf-sp .prf-sp-search-field { display: flex; align-items: center; position: relative; min-width: 0; flex: 1; }
+.prf-sp .prf-sp-search-field > svg { position: absolute; left: 7px; color: #405f81; }
+.prf-sp .prf-sp-search-field > input { padding-left: 29px; }
+.prf-sp .prf-sp-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-height: 27px; padding: 3px 10px; color: #0056ff; background: #fff; border: 1px solid #a8c6fc; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.prf-sp .prf-sp-button:hover { background: #edf5ff; }
+.prf-sp .prf-sp-link { display: inline-flex; align-items: center; gap: 4px; padding: 0; color: #0056ff; background: transparent; border: 0; font-size: 10px; font-weight: 600; }
+.prf-sp .prf-sp-link:hover { text-decoration: underline; }
+.prf-sp .prf-sp-link svg { width: 12px; height: 12px; }
+.prf-sp .prf-sp-icon-button { display: inline-flex; justify-content: center; align-items: center; padding: 4px; border: 0; border-radius: 3px; background: transparent; color: #62809f; }
+.prf-sp .prf-sp-icon-button:hover { background: #e8f1fc; color: #075dff; }
+.prf-sp .prf-sp-shortlist-rows { display: grid; gap: 3px; min-height: 134px; align-content: start; }
+.prf-sp .prf-sp-shortlist-row { display: flex; min-width: 0; min-height: 43px; align-items: center; gap: 5px; padding: 5px 6px 5px 9px; border: 1px solid #e4eaf1; border-radius: 4px; background: #fff; }
+.prf-sp .prf-sp-shortlist-row.is-selected { border-color: #a2c2ff; background: #e5f0ff; }
+.prf-sp .prf-sp-shortlist-row > label { display: flex; flex: 1; min-width: 0; align-items: center; gap: 12px; cursor: pointer; }
+.prf-sp .prf-sp-shortlist-row > label > span { min-width: 0; }
+.prf-sp .prf-sp-shortlist-row strong { display: block; font-size: 10px; font-weight: 600; overflow-wrap: anywhere; }
+.prf-sp .prf-sp-shortlist-row small, .prf-sp .prf-sp-vendor-option small { display: block; margin-top: 1px; color: #536982; font-size: 10px; }
+.prf-sp .prf-sp-badge { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; }
+.prf-sp .prf-sp-badge.is-green { border: 1px solid #99e0c7; background: #cdf5e7; color: #086e52; }
+.prf-sp .prf-sp-remove-vendor { padding: 2px; }
+.prf-sp .prf-sp-remove-vendor svg { width: 12px; height: 12px; }
+.prf-sp .prf-sp-vendor-options { position: absolute; z-index: 40; inset: 32px 0 auto; max-height: 260px; overflow: auto; background: white; border: 1px solid #bdd2ed; border-radius: 5px; box-shadow: 0 6px 18px #16395924; }
+.prf-sp .prf-sp-options-heading { display: flex; align-items: center; justify-content: space-between; padding: 5px 9px; background: #f4f8fd; font-size: 10px; font-weight: 600; }
+.prf-sp .prf-sp-vendor-options > p { padding: 9px; margin: 0; font-size: 11px; }
+.prf-sp .prf-sp-vendor-option { display: flex; align-items: center; justify-content: space-between; gap: 7px; width: 100%; padding: 7px 9px; border: 0; border-top: 1px solid #e7edf6; background: #fff; text-align: left; color: #153153; }
+.prf-sp .prf-sp-vendor-option:hover:not(:disabled) { background: #edf5ff; }
+.prf-sp .prf-sp-vendor-option > span:last-child { font-size: 10px; }
+.prf-sp .prf-sp-empty { display: flex; align-items: center; justify-content: center; min-height: 122px; padding: 16px; color: #6a8199; text-align: center; border: 1px dashed #d3dfed; border-radius: 4px; }
+.prf-sp .prf-sp-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
+.prf-sp .prf-sp-card-heading > h2 { margin-bottom: 0; }
+.prf-sp .prf-sp-selected-supplier { display: flex; flex-direction: column; }
+.prf-sp .prf-sp-supplier-name { display: block; margin-top: 1px; font-size: 13px; line-height: 17px; font-weight: 700; color: #0a294a; }
+.prf-sp .prf-sp-supplier-checks { display: flex; flex-wrap: wrap; gap: 4px 13px; margin: 6px 0 9px; }
+.prf-sp .prf-sp-check { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; color: #45617d; }
+.prf-sp .prf-sp-check svg { width: 14px; height: 14px; color: #7890a6; }
+.prf-sp .prf-sp-check.is-verified svg { color: #168d6a; fill: #168d6a; stroke: #fff; }
+.prf-sp .prf-sp-field { display: block; min-width: 0; color: #163456; font-size: 10px; font-weight: 600; }
+.prf-sp .prf-sp-field > :is(input,select,textarea) { display: block; margin-top: 3px; font-size: 11px; font-weight: 400; }
+.prf-sp .prf-sp-field > svg { display: inline-block; vertical-align: middle; margin-left: 4px; width: 12px; height: 12px; }
+.prf-sp .prf-sp-selected-supplier .prf-sp-field + .prf-sp-field { margin-top: 6px; }
+.prf-sp .prf-sp-character-count { display: block; margin-top: 2px; text-align: right; color: #7b8da0; font-size: 9px; }
+.prf-sp .prf-sp-vendor-detail-list { display: grid; gap: 3px; margin: 0 0 9px; padding: 6px; background: #f0f5fa; border-radius: 4px; font-size: 10px; }
+.prf-sp .prf-sp-vendor-detail-list > div { display: grid; grid-template-columns: 80px 1fr; }
+.prf-sp .prf-sp-vendor-detail-list dd { margin: 0; overflow-wrap: anywhere; }
+.prf-sp .prf-sp-notice { margin-top: 9px; padding: 8px; border: 1px solid #f1d7a7; border-radius: 4px; background: #fffbef; color: #9b600b; }
+.prf-sp .prf-sp-notice > strong { font-size: 10px; }
+.prf-sp .prf-sp-icv-fields { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 9px; margin-top: 5px; }
+.prf-sp .prf-sp-single-source { margin-top: 9px; }
+.prf-sp .prf-sp-currency { display: inline-flex; align-items: center; gap: 10px; color: #244266; font-size: 10px; }
+.prf-sp .prf-sp-currency select { width: 82px; min-height: 25px; font-weight: 600; font-size: 10px; }
+.prf-sp .prf-sp-table-scroll { position: relative; width: 100%; overflow-x: auto; margin-top: 7px; border: 1px solid #dbe5f0; border-radius: 3px; }
+.prf-sp .prf-sp-items { width: 100%; table-layout: fixed; border-collapse: collapse; color: #163454; font-size: 10px; }
+.prf-sp .prf-sp-items th { height: 28px; padding: 4px 6px; border-right: 1px solid #dbe5f0; border-bottom: 1px solid #dbe5f0; text-align: left; background: #f0f5fa; font-weight: 600; font-size: 9px; line-height: 13px; }
+.prf-sp .prf-sp-items td { height: 30px; padding: 2px 5px; border-right: 1px solid #e4ebf3; border-top: 1px solid #e4ebf3; font-size: 10px; line-height: 14px; }
+.prf-sp .prf-sp-items :is(th,td):last-child { border-right: 0; }
+.prf-sp .prf-sp-items td > :is(input,select) { padding: 2px 3px; min-height: 23px; border-color: transparent; border-radius: 3px; font-size: 10px; line-height: 14px; }
+.prf-sp .prf-sp-items td > :is(input,select):hover { border-color: #cddcec; }
+.prf-sp .prf-sp-items td > input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+.prf-sp .prf-sp-items input::-webkit-inner-spin-button, .prf-sp .prf-sp-items input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.prf-sp .prf-sp-items td > select { border-color: #cfdfef; background: #fff; }
+.prf-sp .prf-sp-col-number { width: 3%; }
+.prf-sp .prf-sp-col-description { width: 27%; }
+.prf-sp .prf-sp-col-quantity { width: 6%; }
+.prf-sp .prf-sp-col-unit { width: 8%; }
+.prf-sp .prf-sp-col-price { width: 13%; }
+.prf-sp .prf-sp-col-vat { width: 8.5%; }
+.prf-sp .prf-sp-col-total { width: 10.5%; }
+.prf-sp .prf-sp-col-vendor { width: 20%; }
+.prf-sp .prf-sp-col-action { width: 4%; }
+.prf-sp .prf-sp-line-total { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.prf-sp .prf-sp-items .prf-sp-icon-button { padding: 1px; }
+.prf-sp .prf-sp-items .prf-sp-icon-button svg { width: 12px; height: 12px; }
+.prf-sp .prf-sp-add-first { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 35px; width: 100%; border: 0; background: #fafcff; color: #5c789a; font-size: 10px; }
+.prf-sp .prf-sp-commercial-bottom { display: grid; grid-template-columns: minmax(0,1.55fr) minmax(0,1fr); gap: 13px; align-items: start; margin-top: 6px; }
+.prf-sp .prf-sp-commercial { padding-top: 7px; }
+.prf-sp .prf-sp-commercial .prf-sp-table-scroll { margin-top: 4px; }
+.prf-sp .prf-sp-commercial .prf-sp-commercial-bottom { margin-top: 4px; }
+.prf-sp .prf-sp-add-line { min-height: 25px; padding: 2px 8px; margin-bottom: 6px; }
+.prf-sp .prf-sp-negotiation textarea { min-height: 29px; }
+.prf-sp .prf-sp-totals { min-width: 0; margin: 2px 0 0; background: #f5f8fc; border: 1px solid #e6edf6; border-radius: 4px; }
+.prf-sp .prf-sp-totals > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 10px; }
+.prf-sp .prf-sp-totals dt { font-size: 10px; }
+.prf-sp .prf-sp-totals dd { margin: 0; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.prf-sp .prf-sp-totals > .prf-sp-grand-total { color: #052b61; background: #e5f1ff; border: 1px solid #c1dfff; border-radius: 3px; margin: -1px; font-weight: 700; }
+.prf-sp .prf-sp-grand-total dt { font-size: 12px; }
+.prf-sp .prf-sp-grand-total dd { font-size: 17px; font-weight: 700; }
+.prf-sp .prf-sp-lump-pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+.prf-sp .prf-sp-advanced-toggle { display: flex; width: max-content; max-width: 100%; margin-top: 4px; font-weight: 400; line-height: 14px; }
+.prf-sp .prf-sp-advanced-toggle > svg { width: 14px; height: 14px; stroke-width: 2.5; }
+.prf-sp .prf-sp-advanced { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 7px 0; padding: 10px; background: #f5f8fc; border: 1px solid #e0e9f2; border-radius: 5px; }
+.prf-sp .prf-sp-full-width { grid-column: 1/-1; }
+.prf-sp .prf-sp-budget-heading { display: flex; gap: 6px; align-items: center; margin-top: 3px; font-size: 11px; font-weight: 600; }
+.prf-sp .prf-sp-budget-heading svg { width: 12px; height: 12px; }
+.prf-sp .prf-sp-budget { display: grid; grid-template-columns: 1fr 1fr 1.12fr; gap: 0; padding: 7px 10px; color: #115d4e; background: #edfaf5; border: 1px solid #ddf2e8; border-radius: 5px; }
+.prf-sp .prf-sp-budget > div { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.prf-sp .prf-sp-budget > div + div { padding-left: 15px; margin-left: 10px; border-left: 1px solid #bddbd3; }
+.prf-sp .prf-sp-budget small, .prf-sp .prf-sp-budget strong { display: block; }
+.prf-sp .prf-sp-budget small { font-size: 9px; line-height: 13px; font-weight: 400; }
+.prf-sp .prf-sp-budget strong { font-size: 12px; line-height: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.prf-sp .prf-sp-budget-icon { display: flex; align-items: center; justify-content: center; width: 33px; height: 33px; border-radius: 50%; background: #dff4eb; flex: 0 0 auto; }
+.prf-sp .prf-sp-budget-icon svg { width: 18px; height: 18px; }
+.prf-sp .prf-sp-budget.is-unavailable { background: #f3f7fb; border-color: #e0e9f2; color: #4f6781; }
+.prf-sp .prf-sp-budget.is-unavailable .prf-sp-budget-icon { background: #e7eff7; }
+.prf-sp .prf-sp-budget-note { margin: 4px 0 0; font-size: 9px; color: #536982; }
+.prf-sp .prf-sp-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 1180px) {
+  .prf-sp .prf-sp-supplier-grid { grid-template-columns: 1fr; }
+  .prf-sp .prf-sp-shortlist-rows { min-height: auto; }
+  .prf-sp .prf-sp-items { min-width: 700px; }
+  .prf-sp .prf-sp-budget-icon { display: none; }
+}
+@media (max-width: 640px) {
+  .prf-sp .prf-sp-card { padding: 10px; }
+  .prf-sp .prf-sp-commercial-bottom, .prf-sp .prf-sp-advanced, .prf-sp .prf-sp-lump-pricing { grid-template-columns: 1fr; }
+  .prf-sp .prf-sp-budget { grid-template-columns: 1fr; gap: 8px; }
+  .prf-sp .prf-sp-budget > div + div { margin-left: 0; padding-left: 0; padding-top: 7px; border-left: 0; border-top: 1px solid #d6e3e9; }
+  .prf-sp .prf-sp-icv-fields { grid-template-columns: 1fr; }
+}

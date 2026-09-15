@@ -3,38 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import {
-  ShoppingCartIcon,
-  MagnifyingGlassIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ClockIcon,
-  SparklesIcon,
-  PaperAirplaneIcon,
-  DocumentCheckIcon,
-  TruckIcon,
-  CalendarIcon,
-  CurrencyDollarIcon,
-  UserGroupIcon,
-  ArrowPathIcon,
-  ExclamationTriangleIcon,
-  DocumentTextIcon,
-  Squares2X2Icon,
-  ListBulletIcon,
-  EyeIcon,
-  PlusIcon,
-  PencilIcon,
-  TrashIcon,
-  ArrowDownTrayIcon,
-  ArrowUpTrayIcon,
-  ChevronUpDownIcon,
-  PrinterIcon,
-  XMarkIcon
-} from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import * as XLSX from 'xlsx';
 import { usePageControls } from '../../hooks/usePageControls';
-import { getStatusConfig, getOrderTabs } from '../../config/procurement.config';
 import AIPurchaseOrderCreator from './AIPurchaseOrderCreator';
 import PurchaseRequisitionApproval from './PurchaseRequisitionApproval';
 import PurchaseRequisitionExcelImport from './PurchaseRequisitionExcelImport';
@@ -44,6 +16,9 @@ import PurchaseOrderPdfImport from './PurchaseOrderPdfImport';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
 import { employeeDisplayName } from '../../utils/employeeDisplayName';
+import ProcurementRegister from './ProcurementRegister';
+import { pendingPurchaseOrderDocument } from './procurementRegisterModel';
+import PurchaseRecommendations from './PurchaseRecommendations';
 
 const PR_REGISTER_COLUMNS = [
   ['SN', 8],
@@ -174,13 +149,15 @@ const OrderManagement = () => {
   const activeTab = location.pathname.startsWith('/procurement/requisitions')
     ? 'purchaseRequisitions'
     : 'purchaseOrders';
-  const orderTabs = getOrderTabs();
   
   // View mode state - soft-coded toggle between card and list view
-  const [viewMode, setViewMode] = useState('list');
   
   // Purchase Orders state
   const [orders, setOrders] = useState([]);
+  const [pendingUploadError, setPendingUploadError] = useState('');
+  const [orderPdfBusy, setOrderPdfBusy] = useState(false);
+  const [recommendationCount, setRecommendationCount] = useState(null);
+  const [purchaseOrderCount, setPurchaseOrderCount] = useState(null);
   
   // Purchase Requisitions state
   const [requisitions, setRequisitions] = useState([]);
@@ -188,26 +165,16 @@ const OrderManagement = () => {
   // Shared state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterVendor, setFilterVendor] = useState('all');
-  const [filterPriority, setFilterPriority] = useState('all');
-  const [filterType, setFilterType] = useState('all');
-  const [activeOrderCard, setActiveOrderCard] = useState('total');
-  const [activeRequisitionCard, setActiveRequisitionCard] = useState('total');
-  const [orderPage, setOrderPage] = useState(1);
-  const [orderPageSize, setOrderPageSize] = useState(25);
-  const [requisitionSort, setRequisitionSort] = useState({ key: 'created_at', direction: 'desc' });
-  const [requisitionPage, setRequisitionPage] = useState(1);
-  const [requisitionPageSize, setRequisitionPageSize] = useState(25);
-  const [selectedRequisitionIds, setSelectedRequisitionIds] = useState([]);
   const [batchActionLoading, setBatchActionLoading] = useState(false);
   const [showAICreator, setShowAICreator] = useState(false);
   const [showPOForm, setShowPOForm] = useState(false);
   const [showPRExcelImport, setShowPRExcelImport] = useState(false);
   const [showPRPdfImport, setShowPRPdfImport] = useState(false);
+  const [pdfAttachmentPrNumber, setPdfAttachmentPrNumber] = useState('');
   const [showPOExcelImport, setShowPOExcelImport] = useState(false);
   const [showPOPdfImport, setShowPOPdfImport] = useState(false);
+  const [poPreviewDocumentId, setPoPreviewDocumentId] = useState(null);
+  const [poDocumentEditMode, setPoDocumentEditMode] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedRequisition, setSelectedRequisition] = useState(null);
   const [prPrintPreview, setPrPrintPreview] = useState(null);
@@ -224,7 +191,6 @@ const OrderManagement = () => {
     features: { autoRefresh: true, fullscreen: true, sidebar: true }
   });
 
-  const APPROVED_REQUISITION_STATUSES = ['approved'];
   const currentUserData = currentUser?.user || currentUser || {};
   const currentUserId = currentUserData.id || currentUser?.user_id;
   const currentUserRolesRaw = currentUser?.roles || currentUserData.roles;
@@ -245,38 +211,18 @@ const OrderManagement = () => {
     isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId))
   );
 
-  /**
-   * Reset all search and filter values when switching tabs
-   * Prevents search filter persistence bugs across tabs
-   */
-  const handleTabChange = (newTab) => {
-    setSearchTerm('');
-    setFilterStatus('all');
-    setFilterVendor('all');
-    setFilterPriority('all');
-    setFilterType('all');
-    setActiveOrderCard('total');
-    setActiveRequisitionCard('total');
-    setViewMode('list');
-    setRequisitionPage(1);
-    navigate(
-      newTab === 'purchaseRequisitions'
-        ? '/procurement/requisitions'
-        : '/procurement/orders'
-    );
-  };
-
   const fetchOrders = async () => {
     try {
       setLoading(true);
       setError(null);
       
       const urlFilters = new URLSearchParams(window.location.search);
-      const response = await apiClient.get('/procurement/orders/', { params: {
+      const requestParams = {
         page_size: 10000,
         enterprise_project: urlFilters.get('enterprise_project') || undefined,
         legacy_project: urlFilters.get('legacy_project') || undefined,
-      } });
+      };
+      const response = await apiClient.get('/procurement/orders/', { params: requestParams });
       
       // Soft-coded data normalization - ensure array
       let normalizedData = [];
@@ -286,7 +232,18 @@ const OrderManagement = () => {
       } else if (data && Array.isArray(data.results)) {
         normalizedData = data.results;
       } else if (data && typeof data === 'object') {
-        normalizedData = [data];
+        throw new Error('The purchase order register returned an unexpected response.');
+      }
+      let next = data?.next;
+      const visitedPages = new Set(['1']);
+      while (next) {
+        const nextPage = new URL(next, window.location.origin).searchParams.get('page');
+        if (!nextPage || visitedPages.has(nextPage)) throw new Error('The purchase order register pagination could not be completed.');
+        visitedPages.add(nextPage);
+        const following = await apiClient.get('/procurement/orders/', { params: { ...requestParams, page: nextPage } });
+        if (!Array.isArray(following.data?.results)) throw new Error('The purchase order register returned an incomplete page.');
+        normalizedData.push(...following.data.results);
+        next = following.data.next;
       }
       
       normalizedData.sort((a, b) => {
@@ -296,7 +253,35 @@ const OrderManagement = () => {
         return (b.po_number || '').localeCompare(a.po_number || '', undefined, { numeric: true, sensitivity: 'base' });
       });
       
-      setOrders(normalizedData);
+      setPurchaseOrderCount(normalizedData.length);
+      setPendingUploadError('');
+      let pendingDocuments = [];
+      // Unreconciled PDFs do not yet have a verified project association.
+      if (!requestParams.enterprise_project && !requestParams.legacy_project) {
+        try {
+          const documentParams = { pending_reconciliation: true, page_size: 10000 };
+          const pending = await apiClient.get('/procurement/po-documents/', { params: documentParams });
+          const payload = pending.data;
+          if (!Array.isArray(payload) && !Array.isArray(payload?.results)) throw new Error('Unexpected uploaded document response.');
+          pendingDocuments = Array.isArray(payload) ? payload : payload.results;
+          let nextDocumentPage = payload?.next;
+          const documentPages = new Set(['1']);
+          while (nextDocumentPage) {
+            const page = new URL(nextDocumentPage, window.location.origin).searchParams.get('page');
+            if (!page || documentPages.has(page)) throw new Error('Uploaded document pagination could not be completed.');
+            documentPages.add(page);
+            const following = await apiClient.get('/procurement/po-documents/', { params: { ...documentParams, page } });
+            if (!Array.isArray(following.data?.results)) throw new Error('Uploaded document response was incomplete.');
+            pendingDocuments.push(...following.data.results);
+            nextDocumentPage = following.data.next;
+          }
+        } catch (problem) {
+          setPendingUploadError(problem.response?.data?.detail || problem.message || 'Uploaded PDFs could not be loaded.');
+        }
+      }
+      const pendingRows = [...new Map(pendingDocuments.filter(document => !document.confirmed_po).map(document => [document.id, document])).values()]
+        .map(pendingPurchaseOrderDocument);
+      setOrders([...normalizedData, ...pendingRows]);
       
     } catch (error) {
       console.error('Error fetching orders:', error);
@@ -339,7 +324,7 @@ const OrderManagement = () => {
       setError(null);
 
       const [response, employeeResponse] = await Promise.all([
-        apiClient.get('/procurement/requisitions/', { params: { _fresh: Date.now() } }),
+        apiClient.get('/procurement/requisitions/', { params: { _fresh: Date.now(), page_size: 10000 } }),
         apiClient.get('/procurement/requisitions/get_approvers/', {
           params: { role: 'any_active', _fresh: Date.now() },
           silentTimeout: true,
@@ -347,16 +332,20 @@ const OrderManagement = () => {
       ]);
       const data = response.data;
       
-      // Soft-coded data normalization - ensure array
-      let normalizedData = [];
-      if (Array.isArray(data)) {
-        normalizedData = data;
-      } else if (data && Array.isArray(data.results)) {
-        normalizedData = data.results;
-      } else if (data && typeof data === 'object') {
-        normalizedData = [data];
+      let normalizedData = Array.isArray(data) ? data : data?.results;
+      if (!Array.isArray(normalizedData)) throw new Error('The recommendation register response was invalid.');
+      let nextPage = Array.isArray(data) ? null : data.next;
+      const visitedPages = new Set(['1']);
+      while (nextPage) {
+        const nextNumber = new URL(nextPage, window.location.origin).searchParams.get('page');
+        if (!nextNumber || visitedPages.has(nextNumber)) throw new Error('The recommendation register could not be loaded completely.');
+        visitedPages.add(nextNumber);
+        const nextResponse = await apiClient.get('/procurement/requisitions/', { params: { page: nextNumber, page_size: 10000, _fresh: Date.now() } });
+        if (!Array.isArray(nextResponse.data?.results)) throw new Error('The recommendation register response was invalid.');
+        normalizedData = [...normalizedData, ...nextResponse.data.results];
+        nextPage = nextResponse.data.next;
       }
-      
+
       const employeesById = new Map(
         approverUsersFromResponse(employeeResponse).map(employee => [String(employee.id), employee]),
       );
@@ -418,6 +407,18 @@ const OrderManagement = () => {
   }, [pageControls.isRefreshing, activeTab]);
 
   useEffect(() => {
+    let current = true;
+    const controller = new AbortController();
+    const otherEndpoint = activeTab === 'purchaseOrders' ? '/procurement/requisitions/' : '/procurement/orders/';
+    const updateCount = activeTab === 'purchaseOrders' ? setRecommendationCount : setPurchaseOrderCount;
+    apiClient.get(otherEndpoint, { params: { page_size: 1 }, signal: controller.signal })
+      .then(response => {
+        if (current) updateCount(Array.isArray(response.data) ? response.data.length : response.data?.count ?? null);
+      }).catch(() => { if (current) updateCount(null); });
+    return () => { current = false; controller.abort(); };
+  }, [activeTab]);
+
+  useEffect(() => {
     if (!requisitionRouteId || activeTab !== 'purchaseRequisitions') return undefined;
 
     let cancelled = false;
@@ -441,117 +442,6 @@ const OrderManagement = () => {
     return () => { cancelled = true; };
   }, [activeTab, navigate, requisitionRouteId]);
 
-  // Soft-coded filter logic with safe array handling
-  const filteredOrders = Array.isArray(orders) ? orders.filter(order => {
-    // Soft-coded field access with fallbacks
-    const poNumber = order?.po_number || '';
-    const vendorName = order?.vendor_name || '';
-    const status = order?.status || '';
-    const vendorId = order?.vendor?.toString() || '';
-    const deliveryDate = order?.delivery_date || order?.expected_delivery;
-    const isOverdue = Boolean(deliveryDate && status !== 'completed' && new Date(deliveryDate) < new Date());
-    
-    const matchesSearch = poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         vendorName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || (filterStatus === 'overdue' ? isOverdue : status === filterStatus);
-    const matchesVendor = filterVendor === 'all' || vendorId === filterVendor;
-    return matchesSearch && matchesStatus && matchesVendor;
-  }).sort((a, b) => {
-    const aCreated = a?.created_at ? new Date(a.created_at).getTime() : 0;
-    const bCreated = b?.created_at ? new Date(b.created_at).getTime() : 0;
-    if (aCreated !== bCreated) return bCreated - aCreated;
-    return (b.po_number || '').localeCompare(
-      a.po_number || '',
-      undefined,
-      { numeric: true, sensitivity: 'base' }
-    );
-  }) : [];
-
-  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / orderPageSize));
-  const currentOrderPage = Math.min(orderPage, orderTotalPages);
-  const orderPageStart = (currentOrderPage - 1) * orderPageSize;
-  const paginatedOrders = filteredOrders.slice(orderPageStart, orderPageStart + orderPageSize);
-
-  useEffect(() => {
-    setOrderPage(1);
-  }, [searchTerm, filterStatus, filterVendor, orderPageSize]);
-
-  // Soft-coded filter logic for requisitions
-  const filteredRequisitions = Array.isArray(requisitions) ? requisitions.filter(req => {
-    // Soft-coded field access with fallbacks
-    const title = req?.title || '';
-    const prNumber = req?.pr_number || '';
-    const status = req?.status || '';
-    const priority = req?.priority || '';
-    const requisitionType = req?.requisition_type || 'general';
-    
-    const searchText = [title, prNumber, req?.po_number_reference, req?.product_service, req?.project_department, req?.supplier_name]
-      .filter(Boolean).join(' ').toLowerCase();
-    const matchesSearch = searchText.includes(searchTerm.toLowerCase());
-    const approvalSummary = req?.approval_status_summary || status;
-    const matchesStatus =
-      filterStatus === 'all' ||
-      (filterStatus === 'approved'
-        ? APPROVED_REQUISITION_STATUSES.includes(status)
-        : ['overdue', 'under_review'].includes(filterStatus)
-          ? approvalSummary === filterStatus
-          : status === filterStatus);
-    const matchesPriority = filterPriority === 'all' || priority === filterPriority;
-    const matchesType = filterType === 'all' || requisitionType === filterType;
-    return matchesSearch && matchesStatus && matchesPriority && matchesType;
-  }).sort((left, right) => {
-    const getValue = (item) => {
-      if (requisitionSort.key === 'pr_value') return Number(item.total_price || 0);
-      if (requisitionSort.key === 'approval_status') return item.approval_status_summary || item.status || '';
-      if (PR_REGISTER_COLUMNS.some(([column]) => column === requisitionSort.key)) {
-        return getPRRegisterValue(item, requisitionSort.key);
-      }
-      return item[requisitionSort.key] || '';
-    };
-    const a = getValue(left);
-    const b = getValue(right);
-    const comparison = typeof a === 'number'
-      ? a - b
-      : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-    return requisitionSort.direction === 'asc' ? comparison : -comparison;
-  }) : [];
-
-  const toggleRequisitionSort = (key) => {
-    setRequisitionSort(previous => ({
-      key,
-      direction: previous.key === key && previous.direction === 'asc' ? 'desc' : 'asc',
-    }));
-  };
-
-  const requisitionTotalPages = Math.max(1, Math.ceil(filteredRequisitions.length / requisitionPageSize));
-  const currentRequisitionPage = Math.min(requisitionPage, requisitionTotalPages);
-  const requisitionPageStart = (currentRequisitionPage - 1) * requisitionPageSize;
-  const paginatedRequisitions = filteredRequisitions.slice(
-    requisitionPageStart,
-    requisitionPageStart + requisitionPageSize,
-  );
-
-  const selectedRequisitions = requisitions.filter(req => selectedRequisitionIds.includes(String(req.id)));
-  const visibleRequisitionIds = paginatedRequisitions.map(req => String(req.id));
-  const allVisibleRequisitionsSelected = visibleRequisitionIds.length > 0
-    && visibleRequisitionIds.every(id => selectedRequisitionIds.includes(id));
-
-  const toggleRequisitionSelection = (requisitionId) => {
-    const id = String(requisitionId);
-    setSelectedRequisitionIds(current => (
-      current.includes(id) ? current.filter(item => item !== id) : [...current, id]
-    ));
-  };
-
-  const toggleVisibleRequisitionSelection = () => {
-    setSelectedRequisitionIds(current => {
-      if (allVisibleRequisitionsSelected) {
-        return current.filter(id => !visibleRequisitionIds.includes(id));
-      }
-      return [...new Set([...current, ...visibleRequisitionIds])];
-    });
-  };
-
   const activeAssignedStage = (requisition) => {
     const workflow = Array.isArray(requisition?.approval_workflow_config)
       ? requisition.approval_workflow_config
@@ -566,19 +456,6 @@ const OrderManagement = () => {
     )) || null;
   };
 
-  const batchApprovableRequisitions = selectedRequisitions.filter(req => (
-    !['draft', 'approved', 'rejected', 'converted', 'cancelled'].includes(req.status)
-    && activeAssignedStage(req)
-  ));
-
-  useEffect(() => {
-    setRequisitionPage(1);
-  }, [searchTerm, filterStatus, filterPriority, filterType, requisitionPageSize]);
-
-  useEffect(() => {
-    setViewMode('list');
-  }, [activeTab]);
-
   const exportRequisitionRowsToExcel = (requisitionRows, filenameSuffix = '') => {
     const rows = requisitionRows.map((req, rowIndex) => Object.fromEntries(
       PR_REGISTER_COLUMNS.map(([column]) => [column, getPRRegisterValue(req, column, rowIndex)]),
@@ -590,10 +467,9 @@ const OrderManagement = () => {
     XLSX.writeFile(workbook, `RADAI_Purchase_Requisitions${filenameSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  const exportRequisitionsToExcel = () => exportRequisitionRowsToExcel(filteredRequisitions);
 
-  const exportOrdersToExcel = () => {
-    const rows = filteredOrders.map(order => Object.fromEntries(
+  const exportOrdersToExcel = (orderRows = orders) => {
+    const rows = (Array.isArray(orderRows) ? orderRows : orders).map(order => Object.fromEntries(
       PO_REGISTER_COLUMNS.map(([column]) => [column, getPORegisterValue(order, column)]),
     ));
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -603,13 +479,11 @@ const OrderManagement = () => {
     XLSX.writeFile(workbook, `RADAI_Purchase_Orders_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  const exportSelectedRequisitions = () => {
-    if (!selectedRequisitions.length) return;
-    exportRequisitionRowsToExcel(selectedRequisitions, '_Selected');
-  };
-
-  const approveSelectedRequisitions = async () => {
-    if (!batchApprovableRequisitions.length || batchActionLoading) return;
+  const approveSelectedRequisitions = async (rows = []) => {
+    const batchApprovableRequisitions = (Array.isArray(rows) ? rows : []).filter(req => (
+      !['draft', 'approved', 'rejected', 'converted', 'cancelled'].includes(req.status) && activeAssignedStage(req)
+    ));
+    if (!batchApprovableRequisitions.length || batchActionLoading) return [];
     const confirmed = (await radaiConfirm(
       `Approve ${batchApprovableRequisitions.length} selected Purchase Recommendation${batchApprovableRequisitions.length === 1 ? '' : 's'} assigned to your active stage?`
     ));
@@ -624,10 +498,10 @@ const OrderManagement = () => {
       if (result.status === 'fulfilled') succeededIds.push(String(batchApprovableRequisitions[index].id));
     });
     const failedCount = results.length - succeededIds.length;
-    setSelectedRequisitionIds(current => current.filter(id => !succeededIds.includes(id)));
     await fetchRequisitions();
     setBatchActionLoading(false);
     await radaiAlert(`${succeededIds.length} approved${failedCount ? `; ${failedCount} could not be approved and remain selected.` : '.'}`);
+    return succeededIds;
   };
 
   const handleOrderCreated = async (orderData) => {
@@ -643,6 +517,38 @@ const OrderManagement = () => {
   const handleViewOrderDetails = (orderId) => {
     // Soft-coded navigation - can be configured to modal or separate page
     navigate(`/procurement/orders/${orderId}`);
+  };
+
+  const handleOrderPdf = async (order) => {
+    if (!order?.id || orderPdfBusy) return;
+    setOrderPdfBusy(true);
+    try {
+      const response = await apiClient.get(`/procurement/orders/${order.id}/export-pdf/`, { responseType: 'blob', timeout: 120000 });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = buildProcurementPdfFilename(order.po_number || `PO-${order.id}`, 'po', order.po_date);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (problem) {
+      toast.error(problem.response?.data?.detail || 'The purchase order PDF could not be prepared.');
+    } finally {
+      setOrderPdfBusy(false);
+    }
+  };
+
+  const handleAcknowledgeOrder = async (order) => {
+    if (!order?.id || order.status !== 'sent') return;
+    if (!await radaiConfirm(`Confirm the supplier accepted Purchase Order ${order.po_number}. Mark this order acknowledged?`)) return;
+    try {
+      await apiClient.post(`/procurement/orders/${order.id}/acknowledge/`, {});
+      toast.success('Supplier acknowledgement status recorded.');
+      await fetchOrders();
+    } catch (problem) {
+      toast.error(problem.response?.data?.detail || problem.response?.data?.error || 'The acknowledgement could not be recorded.');
+    }
   };
 
   /**
@@ -720,6 +626,20 @@ const OrderManagement = () => {
    * Permission-based delete with confirmation dialog
    * Available for every PO status; API permissions still apply.
    */
+  const handleDeletePendingDocument = async (document) => {
+    if (!document?.is_pending_document || !document.po_document_id) return;
+    if (!await radaiConfirm(`Delete uploaded purchase order ${document.po_number || document.source_filename}?\n\nThis removes the saved PDF entry from this register.`)) return;
+    try {
+      setLoading(true);
+      await apiClient.delete(`/procurement/po-documents/${document.po_document_id}/`);
+      await fetchOrders();
+    } catch (problem) {
+      await radaiAlert(problem.response?.data?.detail || problem.response?.data?.error || 'The uploaded PDF could not be deleted.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteOrder = async (order) => {
     if (!order || !order.id) {
       console.error('Invalid order data');
@@ -904,1242 +824,35 @@ const OrderManagement = () => {
     link.remove();
   };
 
-  const getStatusBadge = (status) => {
-    // Soft-coded status configuration based on active tab
-    const statusType = activeTab === 'purchaseOrders' ? 'purchaseOrder' : 'requisition';
-    const config = getStatusConfig(statusType, status);
-    const colorClasses = {
-      green: 'bg-green-100 text-green-800 border-green-200',
-      red: 'bg-red-100 text-red-800 border-red-200',
-      yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      blue: 'bg-blue-100 text-blue-800 border-blue-200',
-      indigo: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      cyan: 'bg-cyan-100 text-cyan-800 border-cyan-200',
-      amber: 'bg-amber-100 text-amber-800 border-amber-200',
-      gray: 'bg-gray-100 text-gray-800 border-gray-200'
-    };
-    return (
-      <span className={`inline-flex shrink-0 items-center px-2 py-0.5 rounded-full text-[11px] leading-4 font-medium border ${colorClasses[config.color]}`}>
-        {config.label}
-      </span>
-    );
-  };
-
-  const getPriorityBadge = (priority = 'normal') => {
-    const normalized = String(priority || 'normal').toLowerCase();
-    const styles = {
-      urgent: 'border-rose-200 bg-rose-50 text-rose-700',
-      high: 'border-amber-200 bg-amber-50 text-amber-700',
-      normal: 'border-sky-200 bg-sky-50 text-sky-700',
-      low: 'border-slate-200 bg-slate-50 text-slate-600',
-    };
-    return (
-      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${styles[normalized] || styles.normal}`}>
-        {normalized}
-      </span>
-    );
-  };
-
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (amount === null || amount === undefined || amount === '') return '—';
-    const numericAmount = Number(amount);
-    if (!Number.isFinite(numericAmount)) return '—';
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency || 'USD',
-        maximumFractionDigits: 2,
-      }).format(numericAmount);
-    } catch {
-      return `${currency || 'USD'} ${numericAmount.toLocaleString()}`;
-    }
-  };
-
-  const OrderStats = () => {
-    // Soft-coded stats calculation with safe array handling - conditional based on tab
-    if (activeTab === 'purchaseOrders') {
-      const safeOrders = Array.isArray(orders) ? orders : [];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const vendorCounts = safeOrders.reduce((counts, order) => {
-        const vendorName = order?.vendor_name || 'Unknown vendor';
-        counts[vendorName] = (counts[vendorName] || 0) + 1;
-        return counts;
-      }, {});
-      const topVendor = Object.entries(vendorCounts).sort((a, b) => b[1] - a[1])[0];
-      const stats = {
-        total: safeOrders.length,
-        draft: safeOrders.filter(o => o?.status === 'draft').length,
-        awaitingAction: safeOrders.filter(o => o?.status === 'draft' || o?.status === 'pending').length,
-        sent: safeOrders.filter(o => o?.status === 'sent').length,
-        acknowledged: safeOrders.filter(o => o?.status === 'acknowledged').length,
-        completed: safeOrders.filter(o => o?.status === 'completed').length,
-        overdue: safeOrders.filter((order) => {
-          const deliveryDate = order?.delivery_date || order?.expected_delivery;
-          return deliveryDate && order?.status !== 'completed' && new Date(deliveryDate) < today;
-        }).length,
-        totalValue: safeOrders.reduce((sum, o) => sum + (parseFloat(o?.total_amount) || 0), 0),
-        topVendorName: topVendor?.[0] || 'No vendor data',
-        topVendorOrders: topVendor?.[1] || 0,
-      };
-      const applyCardFilter = (cardKey, statusValue) => {
-        setActiveOrderCard(cardKey);
-        setFilterStatus(statusValue);
-        setSearchTerm('');
-        setFilterVendor('all');
-        setOrderPage(1);
-      };
-      const percentage = (value, total) => total > 0 ? Math.round((value / total) * 100) : 0;
-      const orderShares = {
-        draft: percentage(stats.draft, stats.total),
-        sent: percentage(stats.sent, stats.total),
-        acknowledged: percentage(stats.acknowledged, stats.total),
-        overdue: percentage(stats.overdue, stats.total),
-        completed: percentage(stats.completed, stats.total),
-        topVendor: percentage(stats.topVendorOrders, stats.total),
-      };
-      const metrics = [
-        { key: 'total', status: 'all', label: 'All Purchase Orders', value: stats.total, context: `${orderShares.topVendor}% top vendor share`, icon: ShoppingCartIcon, surfaceClass: 'border-slate-900 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white', contextClass: 'bg-white/15 text-slate-100' },
-        { key: 'draft', status: 'draft', label: 'Draft', value: stats.draft, context: `${orderShares.draft}% of total`, icon: ClockIcon, surfaceClass: 'border-slate-600 bg-gradient-to-br from-slate-500 to-slate-700 text-white', contextClass: 'bg-white/15 text-slate-50' },
-        { key: 'sent', status: 'sent', label: 'Sent', value: stats.sent, context: `${orderShares.sent}% of total`, icon: PaperAirplaneIcon, surfaceClass: 'border-blue-600 bg-gradient-to-br from-blue-500 to-indigo-700 text-white', contextClass: 'bg-white/15 text-blue-50' },
-        { key: 'acknowledged', status: 'acknowledged', label: 'Acknowledged', value: stats.acknowledged, context: `${orderShares.acknowledged}% acknowledged`, icon: DocumentCheckIcon, surfaceClass: 'border-cyan-600 bg-gradient-to-br from-cyan-500 to-sky-700 text-white', contextClass: 'bg-white/15 text-cyan-50' },
-        { key: 'overdue', status: 'overdue', label: 'Overdue', value: stats.overdue, context: `${orderShares.overdue}% require attention`, icon: ExclamationTriangleIcon, surfaceClass: 'border-orange-500 bg-gradient-to-br from-amber-400 to-orange-600 text-white', contextClass: 'bg-black/15 text-white' },
-        { key: 'completed', status: 'completed', label: 'Completed', value: stats.completed, context: `${orderShares.completed}% completed`, icon: CheckCircleIcon, surfaceClass: 'border-emerald-600 bg-gradient-to-br from-emerald-500 to-teal-700 text-white', contextClass: 'bg-white/15 text-emerald-50' },
-        { key: 'value', status: 'all', label: 'Total Order Value', value: formatCurrency(stats.totalValue, 'AED'), context: `${stats.total} orders`, icon: CurrencyDollarIcon, surfaceClass: 'border-violet-600 bg-gradient-to-br from-violet-500 to-purple-700 text-white', contextClass: 'bg-white/15 text-violet-50', compactValue: true },
-      ];
-
-      return (
-        <div className="mb-4 overflow-x-auto pb-1" aria-label="Purchase order status filters">
-          <div className="grid min-w-[1120px] grid-cols-7 gap-3">
-            {metrics.map((metric) => {
-              const Icon = metric.icon;
-              const isSelected = activeOrderCard === metric.key;
-              return (
-                <button
-                  key={metric.key}
-                  type="button"
-                  onClick={() => applyCardFilter(metric.key, metric.status)}
-                  aria-pressed={isSelected}
-                  className={`group relative h-[112px] min-w-[148px] overflow-hidden rounded-xl border p-3 text-left shadow-sm transition duration-200 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 ${metric.surfaceClass} ${
-                    isSelected
-                      ? 'z-[1] shadow-lg ring-2 ring-slate-950 ring-offset-2'
-                      : 'hover:-translate-y-0.5 hover:brightness-105 hover:shadow-md'
-                  }`}
-                >
-                  <Icon className="pointer-events-none absolute -right-2 -top-2 h-[72px] w-[72px] opacity-[0.14] transition-transform duration-200 group-hover:scale-105" aria-hidden="true" />
-                  <div className="relative z-[1] flex h-full flex-col">
-                    <p className={`${metric.compactValue ? 'text-[17px]' : 'text-[25px]'} truncate font-semibold leading-none tabular-nums`} title={String(metric.value)}>{metric.value}</p>
-                    <p className="mt-1.5 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.065em] opacity-90">{metric.label}</p>
-                    <div className="mt-auto min-w-0">
-                      <span className={`inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold ${metric.contextClass}`}>{metric.context}</span>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      );
-    } else {
-      // Requisitions stats
-      const safeReqs = Array.isArray(requisitions) ? requisitions : [];
-      const stats = {
-        total: safeReqs.length,
-        draft: safeReqs.filter(r => r?.status === 'draft').length,
-        underReview: safeReqs.filter(r => r?.approval_status_summary === 'under_review').length,
-        overdue: safeReqs.filter(r => r?.approval_status_summary === 'overdue').length,
-        approved: safeReqs.filter(r => APPROVED_REQUISITION_STATUSES.includes(r?.status)).length,
-        rejected: safeReqs.filter(r => r?.status === 'rejected').length,
-        converted: safeReqs.filter(r => r?.status === 'converted').length
-      };
-      const applyCardFilter = (cardKey, statusValue) => {
-        setActiveRequisitionCard(cardKey);
-        setFilterStatus(statusValue);
-        setSearchTerm('');
-        setFilterPriority('all');
-        setFilterType('all');
-        setRequisitionPage(1);
-      };
-      const percentage = (value, total) => total > 0 ? Math.round((value / total) * 100) : 0;
-      const draftShare = percentage(stats.draft, stats.total);
-      const reviewEntryRatio = percentage(stats.underReview, Math.max(0, stats.total - stats.draft));
-      const approvalYield = percentage(stats.approved + stats.converted, stats.approved + stats.converted + stats.rejected);
-      const overdueShare = percentage(stats.overdue, stats.total);
-      const rejectedShare = percentage(stats.rejected, stats.total);
-      const convertedShare = percentage(stats.converted, stats.total);
-      const metrics = [
-        { key: 'total', status: 'all', label: 'All Recommendations', value: stats.total, context: 'Current portfolio', icon: DocumentTextIcon, surfaceClass: 'border-slate-900 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white', contextClass: 'bg-white/15 text-slate-100' },
-        { key: 'draft', status: 'draft', label: 'Draft', value: stats.draft, context: `${draftShare}% of total`, icon: ClockIcon, surfaceClass: 'border-slate-600 bg-gradient-to-br from-slate-500 to-slate-700 text-white', contextClass: 'bg-white/15 text-slate-50' },
-        { key: 'under_review', status: 'under_review', label: 'Under Review', value: stats.underReview, context: `${reviewEntryRatio}% entered review`, icon: PaperAirplaneIcon, surfaceClass: 'border-blue-600 bg-gradient-to-br from-blue-500 to-indigo-700 text-white', contextClass: 'bg-white/15 text-blue-50' },
-        { key: 'approved', status: 'approved', label: 'Approved', value: stats.approved, context: `${approvalYield}% approval yield`, icon: CheckCircleIcon, surfaceClass: 'border-emerald-600 bg-gradient-to-br from-emerald-500 to-teal-700 text-white', contextClass: 'bg-white/15 text-emerald-50' },
-        { key: 'overdue', status: 'overdue', label: 'Overdue', value: stats.overdue, context: `${overdueShare}% require attention`, icon: ExclamationTriangleIcon, surfaceClass: 'border-orange-500 bg-gradient-to-br from-amber-400 to-orange-600 text-white', contextClass: 'bg-black/15 text-white' },
-        { key: 'rejected', status: 'rejected', label: 'Rejected', value: stats.rejected, context: `${rejectedShare}% of total`, icon: XCircleIcon, surfaceClass: 'border-rose-600 bg-gradient-to-br from-rose-500 to-red-700 text-white', contextClass: 'bg-white/15 text-rose-50' },
-        { key: 'converted', status: 'converted', label: 'Converted to PO', value: stats.converted, context: `${convertedShare}% converted`, icon: ShoppingCartIcon, surfaceClass: 'border-violet-600 bg-gradient-to-br from-violet-500 to-purple-700 text-white', contextClass: 'bg-white/15 text-violet-50' },
-      ];
-
-      return (
-        <div className="mb-4 overflow-x-auto pb-1" aria-label="Purchase recommendation status filters">
-          <div className="grid min-w-[1120px] grid-cols-7 gap-3">
-            {metrics.map((metric) => {
-              const Icon = metric.icon;
-              const isSelected = activeRequisitionCard === metric.key;
-              return (
-                <button
-                  key={metric.key}
-                  type="button"
-                  onClick={() => applyCardFilter(metric.key, metric.status)}
-                  aria-pressed={isSelected}
-                  className={`group relative h-[112px] min-w-[148px] overflow-hidden rounded-xl border p-3 text-left shadow-sm transition duration-200 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 ${metric.surfaceClass} ${
-                    isSelected
-                      ? 'z-[1] shadow-lg ring-2 ring-slate-950 ring-offset-2'
-                      : 'hover:-translate-y-0.5 hover:brightness-105 hover:shadow-md'
-                  }`}
-                >
-                  <Icon className="pointer-events-none absolute -right-2 -top-2 h-[72px] w-[72px] opacity-[0.14] transition-transform duration-200 group-hover:scale-105" aria-hidden="true" />
-                  <div className="relative z-[1] flex h-full flex-col">
-                    <p className="text-[25px] font-semibold leading-none tabular-nums">{metric.value}</p>
-                    <p className="mt-1.5 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.065em] opacity-90">{metric.label}</p>
-                    <span className={`mt-auto inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold ${metric.contextClass}`}>{metric.context}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
-      <div className="py-3" style={pageControls.styles.content}>
-        {/* Header and workspace navigation */}
-        <div className="w-full px-3 sm:px-4 lg:px-6">
-          <div className="mb-4 flex flex-col gap-4 border-b border-slate-200 lg:flex-row lg:items-end lg:justify-between">
-            <div className="pb-1">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-600">Procurement workspace</p>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                {activeTab === 'purchaseOrders' ? 'Purchase Order Management' : 'Purchase Recommendations'}
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">
-                {activeTab === 'purchaseOrders'
-                  ? 'Manage vendor selection, purchase orders, and delivery tracking'
-                  : 'Create, review, approve, and track purchase recommendations in one workspace'}
-              </p>
-            </div>
-            <div className="flex shrink-0 gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Procurement workspace">
-              {orderTabs.map((tab) => {
-                const isActive = activeTab === tab.key;
-                const Icon = tab.icon === 'ShoppingCartIcon' ? ShoppingCartIcon : DocumentTextIcon;
-                const totalCount = tab.key === 'purchaseOrders' ? (Array.isArray(orders) ? orders.length : 0) : (Array.isArray(requisitions) ? requisitions.length : 0);
-
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => handleTabChange(tab.key)}
-                    className={`group relative isolate flex items-center gap-2 overflow-hidden rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${
-                      isActive
-                        ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20 ring-1 ring-inset ring-white/20 hover:from-blue-700 hover:via-indigo-700 hover:to-violet-700'
-                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-                    }`}
-                  >
-                    <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} aria-hidden="true" />
-                    <span className="whitespace-nowrap">{tab.label}</span>
-                    <span className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
-                      isActive ? 'bg-white/20 text-white ring-1 ring-white/20' : 'bg-slate-100 text-slate-600'
-                    }`}>
-                      {totalCount}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Statistics */}
-        <div className="w-full px-3 sm:px-4 lg:px-6">
-          <OrderStats />
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="w-full px-3 sm:px-4 lg:px-6 mt-6">
-            <div className={`rounded-md p-4 ${error.type === 'auth' ? 'bg-yellow-50 border-l-4 border-yellow-400' : 'bg-red-50 border-l-4 border-red-400'}`}>
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  {error.type === 'auth' ? (
-                    <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400" />
-                  ) : (
-                    <XCircleIcon className="h-5 w-5 text-red-400" />
-                  )}
-                </div>
-                <div className="ml-3 flex-1">
-                  <p className={`text-sm font-medium ${error.type === 'auth' ? 'text-yellow-800' : 'text-red-800'}`}>
-                    {error.message}
-                  </p>
-                </div>
-                <div className="ml-auto pl-3">
-                  <div className="-mx-1.5 -my-1.5 flex">
-                    {error.action && (
-                      <button
-                        type="button"
-                        onClick={error.action}
-                        className={`inline-flex rounded-md p-1.5 ${error.type === 'auth' ? 'text-yellow-800 hover:bg-yellow-100' : 'text-red-800 hover:bg-red-100'} focus:outline-none`}
-                      >
-                        <ArrowPathIcon className="h-5 w-5" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setError(null)}
-                      className={`inline-flex rounded-md p-1.5 ml-2 ${error.type === 'auth' ? 'text-yellow-800 hover:bg-yellow-100' : 'text-red-800 hover:bg-red-100'} focus:outline-none`}
-                    >
-                      <XCircleIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Filters and Search - Soft-coded based on active tab */}
-        <div className="sticky top-[4.75rem] z-20 mt-3 w-full px-3 sm:px-4 lg:px-6">
-          <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm lg:flex-row lg:items-end lg:gap-2 lg:overflow-x-auto">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4 lg:contents">
-              {/* Search */}
-              <div className="min-w-0 md:col-span-2 lg:min-w-[300px] lg:flex-1">
-                <label htmlFor="search" className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  {activeTab === 'purchaseOrders' ? 'Search Purchase Orders' : 'Search Purchase Recommendations'}
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    id="search"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="block h-10 w-full pl-9 pr-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
-                    placeholder={
-                      activeTab === 'purchaseOrders' 
-                        ? 'Search by PO number or vendor...' 
-                        : 'Search PR, PO, description, project, or supplier...'
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* Status Filter */}
-              <div className="lg:w-[150px] lg:shrink-0">
-                <label htmlFor="status" className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  Status
-                </label>
-                <select
-                  id="status"
-                  value={filterStatus}
-                  onChange={(e) => {
-                    const nextStatus = e.target.value;
-                    setFilterStatus(nextStatus);
-                    if (activeTab === 'purchaseOrders') {
-                      setActiveOrderCard(nextStatus === 'all' ? 'total' : nextStatus);
-                    } else {
-                      setActiveRequisitionCard(nextStatus === 'all' ? 'total' : nextStatus);
-                    }
-                  }}
-                  className="block h-10 w-full px-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
-                >
-                  <option value="all">All Statuses</option>
-                  {activeTab === 'purchaseOrders' ? (
-                    <>
-                      <option value="draft">Draft</option>
-                      <option value="sent">Sent</option>
-                      <option value="acknowledged">Acknowledged</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="overdue">Overdue</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="draft">Draft</option>
-                      <option value="submitted">Submitted</option>
-                      <option value="in_review">In Review</option>
-                      <option value="under_review">Under Review (summary)</option>
-                      <option value="overdue">Overdue</option>
-                      <option value="approved">Approved</option>
-                      <option value="rejected">Rejected</option>
-                      <option value="cancelled">Cancelled</option>
-                      <option value="converted">Converted to PO</option>
-                    </>
-                  )}
-                </select>
-              </div>
-
-              {/* Conditional Filters - Soft-coded based on tab */}
-              {activeTab === 'purchaseOrders' ? (
-                <div className="lg:w-[170px] lg:shrink-0">
-                  <label htmlFor="vendor" className="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Vendor
-                  </label>
-                  <select
-                    id="vendor"
-                    value={filterVendor}
-                    onChange={(e) => setFilterVendor(e.target.value)}
-                    className="block h-10 w-full px-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
-                  >
-                    <option value="all">All Vendors</option>
-                    {vendors.map(vendor => (
-                      <option key={vendor.id} value={vendor.id}>
-                        {vendor.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div className="lg:w-[150px] lg:shrink-0">
-                  <label htmlFor="priority" className="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Priority
-                  </label>
-                  <select
-                    id="priority"
-                    value={filterPriority}
-                    onChange={(e) => setFilterPriority(e.target.value)}
-                    className="block h-10 w-full px-3 border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm"
-                  >
-                    <option value="all">All Priorities</option>
-                    <option value="urgent">Urgent</option>
-                    <option value="high">High</option>
-                    <option value="normal">Normal</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between lg:contents">
-              <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:shrink-0 lg:flex-nowrap">
-                {activeTab === 'purchaseOrders' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setShowPOPdfImport(true)}
-                      className="inline-flex h-9 items-center rounded-lg border border-purple-300 bg-purple-50 px-3 text-xs font-semibold text-purple-700 hover:bg-purple-100"
-                    >
-                      <DocumentTextIcon className="mr-1.5 h-3.5 w-3.5" /> Import Signed PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowPOExcelImport(true)}
-                      className="inline-flex h-9 items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-                    >
-                      <ArrowUpTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Import Excel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={exportOrdersToExcel}
-                      className="inline-flex h-9 items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                    >
-                      <ArrowDownTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Export Excel
-                    </button>
-                  </>
-                )}
-                {activeTab === 'purchaseRequisitions' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setShowPRPdfImport(true)}
-                      className="inline-flex h-9 items-center rounded-lg border border-purple-300 bg-purple-50 px-3 text-xs font-semibold text-purple-700 hover:bg-purple-100"
-                    >
-                      <DocumentTextIcon className="mr-1.5 h-3.5 w-3.5" /> Import Signed PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowPRExcelImport(true)}
-                      className="inline-flex h-9 items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-                    >
-                      <ArrowUpTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Import Excel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={exportRequisitionsToExcel}
-                      className="inline-flex h-9 items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                    >
-                      <ArrowDownTrayIcon className="mr-1.5 h-3.5 w-3.5" /> Export Excel
-                    </button>
-                  </>
-                )}
-                {/* View Toggle - Soft-coded */}
-                <div className="order-last inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('card')}
-                    className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      viewMode === 'card'
-                        ? 'bg-white text-indigo-700 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                    title="Card View"
-                  >
-                    <Squares2X2Icon className="h-3.5 w-3.5 mr-1.5" />
-                    Cards
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('list')}
-                    className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      viewMode === 'list'
-                        ? 'bg-white text-indigo-700 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                    title="List View"
-                  >
-                    <ListBulletIcon className="h-3.5 w-3.5 mr-1.5" />
-                    List
-                  </button>
-                </div>
-                
-                <button
-                  type="button"
-                  onClick={() => activeTab === 'purchaseOrders' ? navigate('/procurement/orders/new') : navigate('/procurement/requisitions/new')}
-                  className="inline-flex h-9 items-center px-3.5 border border-transparent text-xs font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  <PlusIcon className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                  {activeTab === 'purchaseOrders' ? 'Create Purchase Order' : 'Create Purchase Recommendation'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {activeTab === 'purchaseRequisitions' && selectedRequisitions.length > 0 && (
-          <div className="sticky bottom-4 z-30 mt-3 w-full px-3 sm:px-4 lg:px-6">
-            <div className="mx-auto flex max-w-4xl flex-col gap-3 rounded-2xl border border-indigo-300 bg-slate-900 px-4 py-3 text-white shadow-2xl sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <span className="grid h-8 min-w-8 place-items-center rounded-lg bg-indigo-500 px-2 text-sm font-bold">{selectedRequisitions.length}</span>
-                <div>
-                  <p className="text-sm font-semibold">Purchase Recommendations selected</p>
-                  <p className="text-[11px] text-slate-300">{batchApprovableRequisitions.length} assigned to your active approval stage</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button type="button" onClick={exportSelectedRequisitions} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 text-xs font-semibold hover:bg-white/20">
-                  <ArrowDownTrayIcon className="h-4 w-4" /> Export selected
-                </button>
-                <button type="button" onClick={approveSelectedRequisitions} disabled={!batchApprovableRequisitions.length || batchActionLoading} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-bold text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40">
-                  <CheckCircleIcon className="h-4 w-4" /> {batchActionLoading ? 'Approving…' : `Approve assigned (${batchApprovableRequisitions.length})`}
-                </button>
-                <button type="button" onClick={() => setSelectedRequisitionIds([])} className="h-9 rounded-lg px-3 text-xs font-semibold text-slate-300 hover:bg-white/10 hover:text-white">Clear</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Content - Conditional based on active tab */}
-        <div className="mt-4 w-full px-3 sm:px-4 lg:px-6">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-              <p className="mt-4 text-sm text-gray-500">
-                {activeTab === 'purchaseOrders' ? 'Loading purchase orders...' : 'Loading requisitions...'}
-              </p>
-            </div>
-          ) : activeTab === 'purchaseOrders' ? (
-            // Purchase Orders Tab Content
-            filteredOrders.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg shadow">
-              <ShoppingCartIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No purchase orders found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                {searchTerm || filterStatus !== 'all' || filterVendor !== 'all'
-                  ? 'Try adjusting your search or filter criteria.'
-                  : 'Get started by creating a new purchase order.'}
-              </p>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={() => navigate('/procurement/orders/new')}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-                >
-                  <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-                  Create Purchase Order
-                </button>
-              </div>
-            </div>
-          ) : viewMode === 'card' ? (
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {paginatedOrders.map((order) => {
-                const isOverdue = order.delivery_date && new Date(order.delivery_date) < new Date() && order.status !== 'completed';
-                const completionRate = order.items_count ? ((order.received_items || 0) / order.items_count) * 100 : 0;
-                
-                return (
-                <article key={order.id} className="group flex min-h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-indigo-300 hover:shadow-md">
-                  {/* Status Bar */}
-                  <div className={`h-1 ${
-                    order.status === 'completed' ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
-                    order.status === 'sent' ? 'bg-gradient-to-r from-blue-400 to-blue-500' :
-                    order.status === 'draft' ? 'bg-gradient-to-r from-gray-300 to-gray-400' :
-                    'bg-gradient-to-r from-yellow-400 to-amber-500'
-                  }`} />
-                  
-                  <div className="flex flex-1 flex-col p-5">
-                    {/* Order Header */}
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start gap-2.5">
-                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600">
-                            <ShoppingCartIcon className="h-4 w-4 text-white" />
-                          </div>
-                          <div className="min-w-0">
-                            <h3 className="break-words text-base font-semibold leading-5 text-gray-950 group-hover:text-indigo-700">
-                              {order.po_number || `PO-${order.id}`}
-                            </h3>
-                            <p className="mt-1 line-clamp-2 text-xs leading-4 text-gray-500">
-                              {order.vendor_name || 'No vendor assigned'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      {getStatusBadge(order.status)}
-                    </div>
-
-                    {/* Order Details Grid */}
-                    <div className="mb-4 space-y-2.5">
-                      {order.delivery_date && (
-                        <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs ${
-                          isOverdue ? 'bg-red-50' : 'bg-gray-50'
-                        }`}>
-                          <div className="flex items-center">
-                            <CalendarIcon className={`h-3.5 w-3.5 mr-1.5 ${isOverdue ? 'text-red-500' : 'text-gray-400'}`} />
-                            <span className={isOverdue ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                              Delivery: {new Date(order.delivery_date).toLocaleDateString()}
-                            </span>
-                          </div>
-                          {isOverdue && (
-                            <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-1 rounded-full">
-                              Overdue
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      
-                      {order.total_amount && (
-                        <div className="flex items-center justify-between rounded-lg border border-teal-100 bg-teal-50 px-3 py-2.5">
-                          <div className="flex items-center">
-                            <CurrencyDollarIcon className="h-3.5 w-3.5 mr-1.5 text-teal-600" />
-                            <span className="text-xs font-medium text-gray-600">Order value</span>
-                          </div>
-                          <span className="text-base font-semibold tabular-nums text-teal-800">
-                            {formatCurrency(order.total_amount, order.currency)}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {order.shipping_address && (
-                        <div className="flex items-start rounded-lg bg-gray-50 px-3 py-2 text-xs">
-                          <TruckIcon className="h-3.5 w-3.5 mr-1.5 text-gray-400 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-2 leading-4 text-gray-600">{order.shipping_address}</span>
-                        </div>
-                      )}
-
-                      {/* Progress Bar for Partial Receipts */}
-                      {completionRate > 0 && completionRate < 100 && (
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs text-gray-600">
-                            <span>Received Items</span>
-                            <span className="font-semibold">{Math.round(completionRate)}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                            <div 
-                              className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full transition-all duration-500"
-                              style={{ width: `${completionRate}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions - Soft-coded button handlers */}
-                    <div className="mt-auto flex items-center gap-2 border-t border-gray-100 pt-3">
-                      <button 
-                        type="button"
-                        onClick={() => handleViewOrderDetails(order.id)}
-                        className="inline-flex h-9 flex-1 items-center justify-center rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
-                        <EyeIcon className="mr-1.5 h-3.5 w-3.5" />
-                        <span>View</span>
-                      </button>
-                      {order.status !== 'completed' && (
-                        <button
-                          type="button"
-                          onClick={() => handleEditOrder(order)}
-                          className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
-                          <PencilIcon className="h-3.5 w-3.5 mr-1.5" />
-                          <span>Edit</span>
-                        </button>
-                      )}
-                      {order.status === 'draft' && (
-                        <button 
-                          type="button"
-                          onClick={() => handleSendOrder(order)}
-                          className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
-                          <PaperAirplaneIcon className="h-3.5 w-3.5 mr-1.5" />
-                          <span>Send</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteOrder(order)}
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:border-red-300 hover:bg-red-100 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                        title={`Delete ${order.status || ''} purchase order`}
-                        aria-label={`Delete purchase order ${order.po_number || order.id}`}>
-                        <TrashIcon className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-              })}
-            </div>
-          ) : (
-            // List View for Purchase Orders
-            <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
-              <div className="flex flex-col gap-2 border-b border-slate-300 bg-slate-50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="grid h-8 w-8 place-items-center rounded-md bg-indigo-700 text-white shadow-sm">
-                    <ShoppingCartIcon className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <h3 className="text-base font-bold uppercase tracking-wide text-slate-900">Purchase Orders Register</h3>
-                    <p className="text-[11px] text-slate-500">Corporate spreadsheet view</p>
-                  </div>
-                </div>
-                <span className="inline-flex w-fit items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold tabular-nums text-slate-600">
-                  {filteredOrders.length} record{filteredOrders.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <div className="max-h-[72vh] overflow-auto bg-slate-100">
-              <table className="w-full min-w-[1840px] table-fixed border-separate border-spacing-0 bg-white font-['Segoe_UI',Inter,Arial,sans-serif] text-[13px] font-medium text-slate-700">
-                <colgroup>
-                  <col className="w-[48px]" />
-                  <col className="w-[160px]" />
-                  <col className="w-[150px]" />
-                  <col className="w-[190px]" />
-                  <col className="w-[260px]" />
-                  <col className="w-[200px]" />
-                  <col className="w-[120px]" />
-                  <col className="w-[130px]" />
-                  <col className="w-[145px]" />
-                  <col className="w-[120px]" />
-                  <col className="w-[155px]" />
-                </colgroup>
-                <thead className="text-slate-700">
-                  <tr className="h-6 bg-slate-100 text-xs font-semibold text-slate-500">
-                    <th className="sticky left-0 top-0 z-50 border-b border-r border-slate-300 bg-slate-200" aria-label="Row number" />
-                    {['A','B','C','D','E','F','G','H','I','J'].map((letter, index) => (
-                      <th key={letter} className={`sticky top-0 z-30 border-b border-r border-slate-300 bg-slate-100 text-center ${index === 0 ? 'left-[48px] z-40' : index === 9 ? 'right-0 z-40 border-l shadow-[-4px_0_8px_rgba(15,23,42,0.08)]' : ''}`}>{letter}</th>
-                    ))}
-                  </tr>
-                  <tr className="h-11">
-                    <th scope="col" className="sticky left-0 top-6 z-50 border-b border-r border-slate-300 bg-slate-200 px-1 py-3 text-center text-sm font-bold text-slate-800">#</th>
-                    {['PO Number', 'PR Number', 'Supplier', 'Summary', 'Project / Department', 'Order Date', 'Delivery Date', 'Amount', 'Status'].map((column) => (
-                      <th key={column} scope="col" className={`sticky top-6 z-30 border-b border-r border-slate-300 bg-slate-200 px-3 py-3 text-left text-sm font-bold tracking-normal text-slate-800 ${column === 'PO Number' ? 'left-[48px] z-40' : ''}`}>
-                        {column}
-                      </th>
-                    ))}
-                    <th scope="col" className="sticky right-0 top-6 z-40 border-b border-l border-slate-300 bg-slate-200 px-3 py-3 text-center text-sm font-bold tracking-normal text-slate-800 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  {paginatedOrders.map((order, rowIndex) => {
-                    const summary = order.description || order.title || 'Untitled order';
-                    const projectDepartment = order.project_number || order.project_display || '—';
-                    const orderDate = order.po_date || order.created_at;
-                    const deliveryDate = order.expected_delivery || order.delivery_date;
-                    return (
-                      <tr key={order.id} className={`group h-12 transition-colors hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}`}>
-                        <td className="sticky left-0 z-20 border-b border-r border-slate-300 bg-slate-100 px-1 text-center text-xs font-semibold tabular-nums text-slate-600 group-hover:bg-blue-100">{orderPageStart + rowIndex + 1}</td>
-                        <td className={`sticky left-[48px] z-20 border-b border-r border-slate-300 px-2.5 py-2 align-middle group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                          <button type="button" onClick={() => handleViewOrderDetails(order.id)} className="whitespace-nowrap text-[13px] font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
-                            {order.po_number || `PO-${order.id}`}
-                          </button>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
-                          <p className="truncate" title={order.pr_number || ''}>{order.pr_number || '—'}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
-                          <p className="truncate" title={order.vendor_name || ''}>{order.vendor_name || 'No supplier assigned'}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2">
-                          <p className="truncate text-[13px] font-semibold text-slate-800" title={summary}>{summary}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
-                          <p className="truncate" title={projectDepartment}>{projectDepartment}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium tabular-nums text-slate-700">
-                          {orderDate ? new Date(orderDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium tabular-nums text-slate-700">
-                          {deliveryDate ? new Date(deliveryDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-right text-[13px] font-semibold tabular-nums text-slate-900">
-                          {formatCurrency(order.total_amount, order.currency || 'AED')}
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-2 py-1.5">{getStatusBadge(order.status)}</td>
-                        <td className={`sticky right-0 border-b border-l border-slate-300 px-2 py-1.5 shadow-[-4px_0_8px_rgba(15,23,42,0.08)] group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleViewOrderDetails(order.id)}
-                              className="grid h-7 w-7 place-items-center rounded border border-sky-300 bg-white text-sky-700 transition hover:bg-sky-100"
-                              title="View"
-                            >
-                              <EyeIcon className="h-4 w-4" />
-                            </button>
-                            {order.status !== 'completed' && (
-                              <button
-                                type="button"
-                                onClick={() => handleEditOrder(order)}
-                                className="grid h-7 w-7 place-items-center rounded border border-amber-300 bg-white text-amber-700 transition hover:bg-amber-100"
-                                title="Edit"
-                              >
-                                <PencilIcon className="h-4 w-4" />
-                              </button>
-                            )}
-                            {order.status === 'draft' && (
-                              <button
-                                type="button"
-                                onClick={() => handleSendOrder(order)}
-                                className="grid h-7 w-7 place-items-center rounded border border-emerald-300 bg-white text-emerald-700 transition hover:bg-emerald-100"
-                                title="Send"
-                              >
-                                <PaperAirplaneIcon className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteOrder(order)}
-                              className="grid h-7 w-7 place-items-center rounded border border-rose-300 bg-white text-rose-700 transition hover:bg-rose-100"
-                              title={`Delete ${order.status || ''} purchase order`}
-                              aria-label={`Delete purchase order ${order.po_number || order.id}`}
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          )) : (
-            // Purchase Requisitions Tab Content
-            filteredRequisitions.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg shadow">
-              <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No requisitions found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                {searchTerm || filterStatus !== 'all' || filterPriority !== 'all'
-                  ? 'Try adjusting your search or filter criteria.'
-                  : 'Get started by creating a new requisition.'}
-              </p>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={() => navigate('/procurement/requisitions/new')}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-                >
-                  <SparklesIcon className="-ml-1 mr-2 h-5 w-5" />
-                  Create Requisition
-                </button>
-              </div>
-            </div>
-          ) : viewMode === 'card' ? (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {paginatedRequisitions.map((req) => {
-                const daysSinceCreation = req.created_date 
-                  ? Math.floor((new Date() - new Date(req.created_date)) / (1000 * 60 * 60 * 24))
-                  : 0;
-                const isUrgent = req.priority === 'urgent' || req.priority === 'high';
-                const approvalStages = Array.isArray(req.approval_workflow_config)
-                  ? req.approval_workflow_config
-                  : (Array.isArray(req.approval_hierarchy) ? req.approval_hierarchy : []);
-                const supplierTag = req.supplier_name || req.vendor_name || req.vendor_details?.name;
-                const isSelected = selectedRequisitionIds.includes(String(req.id));
-                
-                return (
-                <div key={req.id} className={`group overflow-hidden rounded-2xl border-2 bg-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:border-purple-400 hover:shadow-2xl ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-gray-100'}`}>
-                  {/* Status Bar */}
-                  <div className={`h-2 ${
-                    req.status === 'converted' ? 'bg-gradient-to-r from-purple-400 to-indigo-500' :
-                    APPROVED_REQUISITION_STATUSES.includes(req.status) ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
-                    req.status === 'in_review' ? 'bg-gradient-to-r from-yellow-400 to-amber-500' :
-                    req.status === 'submitted' ? 'bg-gradient-to-r from-blue-400 to-blue-500' :
-                    req.status === 'rejected' ? 'bg-gradient-to-r from-red-400 to-red-500' :
-                    'bg-gradient-to-r from-gray-300 to-gray-400'
-                  }`} />
-                  
-                  <div className="p-6">
-                    {/* Requisition Header */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <div className="bg-gradient-to-br from-purple-500 to-indigo-600 p-2 rounded-lg">
-                            <DocumentTextIcon className="h-5 w-5 text-white" />
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="text-lg font-bold text-gray-900 group-hover:text-purple-600 transition-colors">
-                              {req.pr_number || `PR-${req.id}`}
-                            </h3>
-                            <p className="text-xs text-gray-500 line-clamp-1">
-                              {req.title || 'No title'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg border border-slate-200 bg-white shadow-sm" title="Select recommendation">
-                          <input type="checkbox" checked={isSelected} onChange={() => toggleRequisitionSelection(req.id)} className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                        </label>
-                        {getStatusBadge(req.status)}
-                      </div>
-                    </div>
-
-                    {/* Requisition Details Grid */}
-                    <div className="space-y-3 mb-4">
-                      {req.created_date && (
-                        <div className="flex items-center justify-between text-sm p-2 bg-gray-50 rounded-lg">
-                          <div className="flex items-center">
-                            <CalendarIcon className="h-4 w-4 mr-2 text-gray-400" />
-                            <span className="text-gray-600">
-                              Created {daysSinceCreation === 0 ? 'today' : `${daysSinceCreation}d ago`}
-                            </span>
-                          </div>
-                          <span className="text-xs text-gray-400">
-                            {new Date(req.created_date).toLocaleDateString()}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {(req.total_price || req.estimated_value) && (
-                        <div className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg">
-                          <div className="flex items-center">
-                            <CurrencyDollarIcon className="h-5 w-5 mr-2 text-purple-600" />
-                            <span className="text-sm text-gray-600">Estimated Value</span>
-                          </div>
-                          <span className="text-lg font-bold text-purple-700">
-                            ~${parseFloat(req.total_price || req.estimated_value).toLocaleString()}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {req.priority && (
-                        <div className="flex items-center justify-between p-2 rounded-lg">
-                          <span className="text-sm text-gray-600 font-medium">Priority Level</span>
-                          <div className="flex items-center space-x-2">
-                            {isUrgent && (
-                              <span className="flex h-2 w-2 relative">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                              </span>
-                            )}
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                              req.priority === 'urgent' ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-md' :
-                              req.priority === 'high' ? 'bg-gradient-to-r from-orange-400 to-orange-500 text-white shadow-md' :
-                              req.priority === 'normal' ? 'bg-blue-100 text-blue-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {req.priority.charAt(0).toUpperCase() + req.priority.slice(1)}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Requester Info */}
-                      {req.requester_name && (
-                        <div className="flex items-center text-sm p-2 bg-gray-50 rounded-lg">
-                          <UserGroupIcon className="h-4 w-4 mr-2 text-gray-400" />
-                          <span className="text-gray-600">Requested by <span className="font-semibold text-gray-900">{req.requester_name}</span></span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mb-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
-                      {supplierTag && <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-[10px] font-semibold text-cyan-800">Supplier · {supplierTag}</span>}
-                      {approvalStages.slice(0, 4).map((stage, index) => {
-                        const stageStatus = String(stage?.status || 'pending').toLowerCase();
-                        const stageLabel = stage?.approval_label || stage?.role || `L${stage?.level ?? index + 1}`;
-                        return <span key={`${stageLabel}-${index}`} className={`rounded-full px-2 py-1 text-[10px] font-semibold ${stageStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' : stageStatus === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-50 text-amber-700'}`}>{stageLabel} · {stageStatus === 'approved' ? 'Done' : stageStatus === 'rejected' ? 'Rejected' : 'Pending'}</span>;
-                      })}
-                      {approvalStages.length > 4 && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">+{approvalStages.length - 4} stages</span>}
-                    </div>
-
-                    {/* Actions - Soft-coded button handlers */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button 
-                        onClick={() => handleOpenApproval(req)}
-                        className="inline-flex justify-center items-center px-2.5 py-2 border border-gray-200 shadow-sm text-xs font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 hover:border-purple-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200">
-                        <EyeIcon className="h-3.5 w-3.5 mr-1" />
-                        <span>View Details</span>
-                      </button>
-                      {canModifyRequisition(req) && (
-                        <button
-                          onClick={() => handleEditRequisition(req)}
-                          className="inline-flex justify-center items-center px-2.5 py-2 border border-amber-300 shadow-sm text-xs font-medium rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all duration-200">
-                          <PencilIcon className="h-3.5 w-3.5 mr-1" />
-                          <span>Edit</span>
-                        </button>
-                      )}
-                      {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && (
-                        <button 
-                          onClick={() => handleConvertToPO(req)}
-                          className="inline-flex justify-center items-center px-2.5 py-2 border border-transparent text-xs font-semibold rounded-lg text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 shadow-sm hover:shadow-md transition-all duration-200">
-                          <ShoppingCartIcon className="h-3.5 w-3.5 mr-1" />
-                          <span>Convert to PO</span>
-                        </button>
-                      )}
-                      {APPROVED_REQUISITION_STATUSES.includes(req.status) && (
-                        <button 
-                          onClick={() => handlePrintPreviewPR(req)}
-                          disabled={prPrintPreviewLoadingId === req.id}
-                          className="inline-flex justify-center items-center px-2.5 py-2 border border-purple-300 shadow-sm text-xs font-medium rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 disabled:opacity-50">
-                          <DocumentTextIcon className="h-3.5 w-3.5 mr-1" />
-                          <span>{prPrintPreviewLoadingId === req.id ? 'Loading...' : 'Print Preview'}</span>
-                        </button>
-                      )}
-                      {canDeleteRequisition(req) && (
-                        <button 
-                          onClick={() => handleDeleteRequisition(req)}
-                          className="col-span-2 inline-flex justify-center items-center px-2.5 py-2 border border-red-300 shadow-sm text-xs font-medium rounded-lg text-red-700 bg-red-50 hover:bg-red-100 hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
-                          title="Delete this purchase requisition">
-                          <TrashIcon className="h-3.5 w-3.5 mr-1" />
-                          <span>Delete</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-              })}
-            </div>
-          ) : (
-            // List View for Purchase Requisitions
-            <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
-              <div className="flex flex-col gap-2 border-b border-slate-300 bg-slate-50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="grid h-8 w-8 place-items-center rounded-md bg-emerald-700 text-white shadow-sm">
-                    <Squares2X2Icon className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <h3 className="text-base font-bold uppercase tracking-wide text-slate-900">Purchase Recommendations Register</h3>
-                    <p className="text-[11px] text-slate-500">Ready Procurement view  </p>
-                  </div>
-                </div>
-                <span className="inline-flex w-fit items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold tabular-nums text-slate-600">
-                  {filteredRequisitions.length} record{filteredRequisitions.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <div className="max-h-[72vh] overflow-auto bg-slate-100">
-              <table className="w-full min-w-[1940px] table-fixed border-separate border-spacing-0 bg-white font-['Segoe_UI',Inter,Arial,sans-serif] text-[13px] font-medium text-slate-700">
-                <colgroup>
-                  <col className="w-[48px]" />
-                  <col className="w-[165px]" />
-                  <col className="w-[112px]" />
-                  <col className="w-[165px]" />
-                  <col className="w-[255px]" />
-                  <col className="w-[150px]" />
-                  <col className="w-[190px]" />
-                  <col className="w-[185px]" />
-                  <col className="w-[135px]" />
-                  <col className="w-[100px]" />
-                  <col className="w-[120px]" />
-                  <col className="w-[155px]" />
-                </colgroup>
-                <thead className="text-slate-700">
-                  <tr className="h-6 bg-slate-100 text-xs font-semibold text-slate-500">
-                    <th className="sticky left-0 top-0 z-50 border-b border-r border-slate-300 bg-slate-200" aria-label="Row number" />
-                    {['A','B','C','D','E','F','G','H','I','J','K'].map((letter, index) => (
-                      <th key={letter} className={`sticky top-0 z-30 border-b border-r border-slate-300 bg-slate-100 text-center ${index === 0 ? 'left-[48px] z-40' : index === 10 ? 'right-0 z-40 border-l shadow-[-4px_0_8px_rgba(15,23,42,0.08)]' : ''}`}>{letter}</th>
-                    ))}
-                  </tr>
-                  <tr className="h-11">
-                    <th scope="col" className="sticky left-0 top-6 z-50 border-b border-r border-slate-300 bg-slate-200 px-1 py-3 text-center text-sm font-bold text-slate-800">
-                      <label className="flex cursor-pointer items-center justify-center gap-1" title="Select visible rows">
-                        <input type="checkbox" checked={allVisibleRequisitionsSelected} onChange={toggleVisibleRequisitionSelection} className="h-3.5 w-3.5 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500" />
-                        <span>#</span>
-                      </label>
-                    </th>
-                    {[
-                      ['PR number', 'PR Number'],
-                      ['Date', 'PR Accepted Date'],
-                      ['PO reference', 'PO Number'],
-                      ['Request / Service', 'Summary of Purchase /Activity'],
-                      ['Requested by', 'issued_by_name'],
-                      ['Project / Department', 'Project short name/ Code'],
-                      ['Supplier', 'Suppl.Name'],
-                      ['Amount', 'PO Amount w/o VAT'],
-                      ['Priority', 'priority'],
-                      ['Status', 'PO Status'],
-                    ].map(([label, sortKey], index) => (
-                      <th key={label} scope="col" className={`sticky top-6 z-30 border-b border-r border-slate-300 bg-slate-200 px-3 py-3 text-left text-sm font-bold tracking-normal text-slate-800 ${index === 0 ? 'left-[48px] z-40' : ''}`}>
-                        <button type="button" onClick={() => toggleRequisitionSort(sortKey)} className="inline-flex w-full items-center justify-between gap-1 whitespace-nowrap hover:text-indigo-700">
-                          {label}<ChevronUpDownIcon className="h-4 w-4 shrink-0 text-slate-400" />
-                        </button>
-                      </th>
-                    ))}
-                    <th scope="col" className="sticky right-0 top-6 z-40 border-b border-l border-slate-300 bg-slate-200 px-3 py-3 text-center text-sm font-bold tracking-normal text-slate-800 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  {paginatedRequisitions.map((req, rowIndex) => {
-                    const requestSummary = req.product_service || req.title || 'Untitled request';
-                    const projectDepartment = req.project_department || req.project || '—';
-                    const supplier = req.supplier_name || req.vendor_name || 'Not selected';
-                    const requestDate = req.issued_date || req.created_date;
-                    return (
-                      <tr key={req.id} className={`group h-12 transition-colors hover:bg-blue-50 ${selectedRequisitionIds.includes(String(req.id)) ? 'bg-indigo-50' : rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}`}>
-                        <td className="sticky left-0 z-20 border-b border-r border-slate-300 bg-slate-100 px-1 text-center text-xs font-semibold tabular-nums text-slate-600 group-hover:bg-blue-100">
-                          <label className="flex cursor-pointer items-center justify-center gap-1" title="Select row">
-                            <input type="checkbox" checked={selectedRequisitionIds.includes(String(req.id))} onChange={() => toggleRequisitionSelection(req.id)} className="h-3.5 w-3.5 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500" />
-                            <span>{requisitionPageStart + rowIndex + 1}</span>
-                          </label>
-                        </td>
-                        <td className={`sticky left-[48px] z-20 border-b border-r border-slate-300 px-2 py-2 align-middle group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                          <button type="button" onClick={() => handleOpenApproval(req)} className="whitespace-nowrap text-[13px] font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
-                            {req.pr_number || `PR-${req.id}`}
-                          </button>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium tabular-nums text-slate-700">
-                          {requestDate ? new Date(requestDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
-                          <p className="truncate" title={req.po_number_reference || ''}>{req.po_number_reference || '—'}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-2.5 py-2 align-middle">
-                          <p className="truncate text-[13px] font-semibold text-slate-800" title={requestSummary}>{requestSummary}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
-                          <p className="truncate" title={req.requester_name || req.issued_by_name || req.requested_by_name || ''}>{req.requester_name || req.issued_by_name || req.requested_by_name || '—'}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
-                          <p className="truncate" title={projectDepartment}>{projectDepartment}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-[13px] font-medium text-slate-700">
-                          <p className="truncate" title={supplier}>{supplier}</p>
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-3 py-2.5 text-right text-[13px] font-semibold tabular-nums text-slate-900">
-                          {formatCurrency(req.total_price || req.estimated_value, req.currency || 'AED')}
-                        </td>
-                        <td className="border-b border-r border-slate-300 px-2 py-1.5">{getPriorityBadge(req.priority)}</td>
-                        <td className="border-b border-r border-slate-300 px-2 py-1.5">{getStatusBadge(req.status)}</td>
-                        <td className={`sticky right-0 border-b border-l border-slate-300 px-2 py-1.5 shadow-[-4px_0_8px_rgba(15,23,42,0.08)] group-hover:bg-blue-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={() => handleOpenApproval(req)} className="grid h-7 w-7 place-items-center rounded border border-sky-300 bg-white text-sky-700 transition hover:bg-sky-100" title="View"><EyeIcon className="h-3.5 w-3.5" /></button>
-                            {canModifyRequisition(req) && <button onClick={() => handleEditRequisition(req)} className="grid h-7 w-7 place-items-center rounded border border-amber-300 bg-white text-amber-700 transition hover:bg-amber-100" title="Edit"><PencilIcon className="h-3.5 w-3.5" /></button>}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && hasPurchaseOrderAccess && <button onClick={() => handleConvertToPO(req)} className="grid h-7 w-7 place-items-center rounded border border-indigo-600 bg-indigo-600 text-white transition hover:bg-indigo-700" title="Convert to PO"><ShoppingCartIcon className="h-3.5 w-3.5" /></button>}
-                            {APPROVED_REQUISITION_STATUSES.includes(req.status) && <button onClick={() => handlePrintPreviewPR(req)} disabled={prPrintPreviewLoadingId === req.id} className="grid h-7 w-7 place-items-center rounded border border-violet-300 bg-white text-violet-700 transition hover:bg-violet-100 disabled:opacity-50" title="Print Preview"><DocumentTextIcon className="h-3.5 w-3.5" /></button>}
-                            {canDeleteRequisition(req) && <button onClick={() => handleDeleteRequisition(req)} className="grid h-7 w-7 place-items-center rounded border border-rose-300 bg-white text-rose-700 transition hover:bg-rose-100" title="Delete"><TrashIcon className="h-3.5 w-3.5" /></button>}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          ))}
-
-          {activeTab === 'purchaseOrders' && filteredOrders.length > 0 && (
-            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2 text-xs text-gray-600">
-                <label htmlFor="order-page-size" className="font-medium">Rows per page</label>
-                <select
-                  id="order-page-size"
-                  value={orderPageSize}
-                  onChange={(event) => setOrderPageSize(Number(event.target.value))}
-                  className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                >
-                  {[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
-                </select>
-                <span>
-                  {orderPageStart + 1}-{Math.min(orderPageStart + orderPageSize, filteredOrders.length)} of {filteredOrders.length}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <button type="button" onClick={() => setOrderPage(1)} disabled={currentOrderPage === 1} className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">First</button>
-                <button type="button" onClick={() => setOrderPage(page => Math.max(1, page - 1))} disabled={currentOrderPage === 1} className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
-                <span className="min-w-[90px] text-center text-xs font-semibold text-gray-700">Page {currentOrderPage} of {orderTotalPages}</span>
-                <button type="button" onClick={() => setOrderPage(page => Math.min(orderTotalPages, page + 1))} disabled={currentOrderPage === orderTotalPages} className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
-                <button type="button" onClick={() => setOrderPage(orderTotalPages)} disabled={currentOrderPage === orderTotalPages} className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Last</button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'purchaseRequisitions' && filteredRequisitions.length > 0 && (
-            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2 text-xs text-gray-600">
-                <label htmlFor="requisition-page-size" className="font-medium">Rows per page</label>
-                <select
-                  id="requisition-page-size"
-                  value={requisitionPageSize}
-                  onChange={(event) => setRequisitionPageSize(Number(event.target.value))}
-                  className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                >
-                  {[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
-                </select>
-                <span>
-                  {requisitionPageStart + 1}-{Math.min(requisitionPageStart + requisitionPageSize, filteredRequisitions.length)} of {filteredRequisitions.length}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRequisitionPage(1)}
-                  disabled={currentRequisitionPage === 1}
-                  className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  First
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRequisitionPage(page => Math.max(1, page - 1))}
-                  disabled={currentRequisitionPage === 1}
-                  className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Previous
-                </button>
-                <span className="min-w-[90px] text-center text-xs font-semibold text-gray-700">
-                  Page {currentRequisitionPage} of {requisitionTotalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setRequisitionPage(page => Math.min(requisitionTotalPages, page + 1))}
-                  disabled={currentRequisitionPage === requisitionTotalPages}
-                  className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Next
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRequisitionPage(requisitionTotalPages)}
-                  disabled={currentRequisitionPage === requisitionTotalPages}
-                  className="h-8 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Last
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
+    <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-container' : 'min-h-screen bg-gray-50'} style={pageControls.styles.container}>
+      <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-content' : 'pb-3'} style={pageControls.styles.content}>
+        {activeTab === 'purchaseOrders' ? <ProcurementRegister
+          orders={orders} loading={loading} error={error} pendingUploadError={pendingUploadError} currentUserId={currentUserId}
+          requisitionCount={recommendationCount} onRefresh={fetchOrders}
+          onCreate={() => navigate('/procurement/orders/new')}
+          onImportPdf={() => { setPoPreviewDocumentId(null); setPoDocumentEditMode(false); setShowPOPdfImport(true); }} onImportExcel={() => setShowPOExcelImport(true)}
+          onPreviewDocument={documentId => { setPoPreviewDocumentId(documentId); setPoDocumentEditMode(false); setShowPOPdfImport(true); }}
+          onEditDocument={documentId => { setPoPreviewDocumentId(documentId); setPoDocumentEditMode(true); setShowPOPdfImport(true); }}
+          onDeleteDocument={handleDeletePendingDocument}
+          onExport={exportOrdersToExcel} onOpen={handleViewOrderDetails} onEdit={handleEditOrder}
+          onDelete={handleDeleteOrder} onIssue={handleSendOrder} onPdf={handleOrderPdf}
+          onAcknowledge={handleAcknowledgeOrder} pdfBusy={orderPdfBusy}
+        /> : <PurchaseRecommendations
+          requisitions={requisitions} loading={loading} error={error} currentUserId={currentUserId}
+          orderCount={purchaseOrderCount} onRefresh={fetchRequisitions}
+          onCreate={() => navigate('/procurement/requisitions/new')}
+          onImportPdf={() => { setPdfAttachmentPrNumber(''); setShowPRPdfImport(true); }} onImportExcel={() => setShowPRExcelImport(true)}
+          onAttachPdf={requisition => { setPdfAttachmentPrNumber(requisition.pr_number); setShowPRPdfImport(true); }}
+          onExport={exportRequisitionRowsToExcel} onOpen={id => handleOpenApproval({ id })}
+          onEdit={handleEditRequisition} onDelete={handleDeleteRequisition}
+          onConvert={handleConvertToPO} onPdf={handlePrintPreviewPR}
+          canLinkPurchaseOrder={hasPurchaseOrderAccess}
+          canModify={canModifyRequisition} canDelete={canDeleteRequisition}
+          canConvert={requisition => hasPurchaseOrderAccess && requisition.status === 'approved' && !requisition.linked_po_id}
+          canApprove={requisition => !['draft', 'approved', 'rejected', 'converted', 'cancelled'].includes(requisition.status) && Boolean(activeAssignedStage(requisition))}
+          onApproveSelected={approveSelectedRequisitions} pdfBusyId={prPrintPreviewLoadingId} batchBusy={batchActionLoading}
+        />}
       {/* AI Creator Modals - Conditional based on active tab */}
       {activeTab === 'purchaseOrders' && (
         <AIPurchaseOrderCreator
@@ -2172,12 +885,16 @@ const OrderManagement = () => {
         isOpen={showPRExcelImport}
         onClose={() => setShowPRExcelImport(false)}
         onImported={() => fetchRequisitions()}
+        onAttachPdf={requisition => { setPdfAttachmentPrNumber(requisition.pr_number); setShowPRPdfImport(true); }}
+        canLinkPurchaseOrder={hasPurchaseOrderAccess}
       />
 
       <PurchaseRequisitionPdfImport
         isOpen={showPRPdfImport}
         onClose={() => setShowPRPdfImport(false)}
         onImported={() => fetchRequisitions()}
+        expectedPrNumber={pdfAttachmentPrNumber}
+        canLinkPurchaseOrder={hasPurchaseOrderAccess}
       />
 
       <PurchaseOrderExcelImport
@@ -2191,6 +908,8 @@ const OrderManagement = () => {
 
       <PurchaseOrderPdfImport
         isOpen={showPOPdfImport}
+        documentId={poPreviewDocumentId}
+        editMode={poDocumentEditMode}
         onClose={() => setShowPOPdfImport(false)}
         onImported={() => {
           fetchOrders();

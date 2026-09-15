@@ -11,6 +11,7 @@ import { getActiveSidebarItem } from "../../utils/sidebarNavigation";
 import useSidebarDrawer from "../../hooks/useSidebarDrawer";
 import "./Sidebar.css";
 import { FEATURE_FLAGS } from "../../config/features.config";
+import { canManageReplica } from "../../services/fileReplica.service";
 import {
   QHSE_MODULE_LABELS,
 } from "../../config/qhseModules.config";
@@ -920,6 +921,13 @@ const Sidebar = ({
           description: "Assignment, responses, escalation and service reporting",
           moduleCode: "enquiry_management",
         },
+        ...(canManageReplica(user) ? [{
+          id: "fileServerReplica",
+          title: "9.7 File Server Replica",
+          icon: FolderIcon,
+          path: "/admin/file-server-replica",
+          description: "Server connections, project folders, and synchronization",
+        }] : []),
         // SOFT-CODED: Subscription feature disabled for in-house deployment
         // {
         //   id: 'subscriptionManagement',

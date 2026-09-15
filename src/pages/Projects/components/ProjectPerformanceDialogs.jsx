@@ -1,0 +1,36 @@
+/* eslint-disable react/prop-types */
+import React, { useEffect, useRef } from 'react'
+import { AlertTriangle, ArrowRight, X } from 'lucide-react'
+import { ActivityTable, ManagementActions } from '../tabs/ProjectDashboardTab'
+import { formatDate, formatDateTime } from '../useProjectPerformance'
+
+export default function ProjectPerformanceDialogs({ type, model, onClose, onAction }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const dialog = ref.current
+    const opener = document.activeElement
+    dialog.showModal()
+    return () => {
+      dialog.close()
+      if (opener?.isConnected && typeof opener.focus === 'function') opener.focus({ preventScroll: true })
+    }
+  }, [])
+  const titles = { milestones: 'Project milestones', risk: 'Risks & changes', actions: 'Management actions', activity: 'Project activity', 'data-quality': 'Data quality review', 'reporting-source': 'Reporting source' }
+  const act = view => { onClose(); onAction(view) }
+  return <dialog ref={ref} className="pp-dialog" aria-label={titles[type]} onCancel={event => { event.preventDefault(); onClose() }} onClick={event => { if (event.target === ref.current) onClose() }}><header className="pp-dialog-header"><h2>{titles[type]}</h2><button type="button" className="pp-button pp-icon-button" aria-label="Close dialog" onClick={onClose}><X size={18} /></button></header><div className="pp-dialog-body">
+    {!model ? <p className="pp-empty">Project data is still loading.</p> : <>
+      {type === 'reporting-source' && <><p>{model.reportingNote}</p>{model.reportingCostNote && <p className="pp-cost-warning">{model.reportingCostNote}</p>}<dl className="pp-source-facts">{[
+        ['Source', model.progressSource], ['Reporting data date', formatDate(model.dataDate)],
+        ['Reported progress', model.progress === null ? 'Not available' : `${model.progress}%`], ['Planned progress', model.plannedProgress === null ? 'Not available' : `${model.plannedProgress}%`],
+        ['Variance', model.variance === null ? 'Not available' : `${model.variance} percentage points`],
+        ...(model.latestSnapshot ? [['Reporting period', model.latestSnapshot.reporting_period ?? 'Not recorded'], ['Snapshot reference', model.latestSnapshot.id], ['Snapshot version', model.reportingVersion], ['Sealed at', formatDateTime(model.latestSnapshot.sealed_at)], ['Schedule observation', model.latestSnapshot.source_manifest?.schedule_control_snapshot_id ?? 'Control-account reporting source'], ['Schedule source', model.latestSnapshot.source_manifest?.schedule_source?.replaceAll('_', ' ') || 'Not recorded']] : []),
+        ['Current working progress', model.workingProgressConfirmed === false ? 'Not confirmed' : model.workingProgress === null ? 'Not recorded' : `${model.workingProgress}%`], ['Working data date', formatDate(model.workingDataDate)], ['Project record updated', formatDateTime(model.workingUpdatedAt)],
+      ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value ?? 'Not recorded'}</dd></div>)}</dl><p className="pp-muted">Current ledger totals, risk records and milestone targets may have changed since this report. Working finish dates are shown separately from sealed performance measures.</p><div className="pp-dialog-actions"><button type="button" className="pp-button pp-primary" onClick={() => act(model.reportingView)}>{model.latestSnapshot ? 'Open reporting periods' : model.workingFallback ? 'Edit working project' : 'Review data quality'}<ArrowRight size={15} /></button><button type="button" className="pp-button" onClick={() => act('plan-baseline')}>Open current schedule<ArrowRight size={15} /></button></div></>}
+      {type === 'actions' && <><p className="pp-muted">Suggested actions based on the current project records and missing data.</p>{model.actions.length ? <ManagementActions actions={model.actions} onAction={act} /> : <p className="pp-empty">No management actions identified from the available data.</p>}</>}
+      {type === 'activity' && <><p className="pp-muted">Audited commercial activity for this project.</p>{model.recentEvents?.length ? <ActivityTable events={model.recentEvents} /> : <p className="pp-empty">{model.recentEvents === null ? 'Activity is unavailable. Refresh the project data to retry.' : 'No audited commercial activity has been recorded.'}</p>}</>}
+      {type === 'milestones' && <>{model.milestones?.length ? <div className="pp-table-wrap"><table className="pp-table" data-table-typography="preserve"><thead><tr><th scope="col">Milestone</th><th scope="col">Target date</th><th scope="col">Status</th></tr></thead><tbody>{model.milestones.map(item => <tr key={item.id}><td><strong>{item.name}</strong>{item.description && <small>{item.description}</small>}</td><td>{formatDate(item.target_date)}</td><td>{item.is_completed ? 'Complete' : item.target_date && new Date(`${item.target_date}T23:59:59`) < new Date() ? 'Overdue' : 'Planned'}</td></tr>)}</tbody></table></div> : <p className="pp-empty">{model.milestones === null ? 'Milestones are unavailable. Refresh the project data to retry.' : 'No milestones recorded. Plan contractual and internal milestones in the project schedule.'}</p>}<div className="pp-dialog-actions"><button type="button" className="pp-button pp-primary" onClick={() => act('plan-baseline')}>Open schedule<ArrowRight size={15} /></button></div></>}
+      {type === 'risk' && <><div className="pp-notice"><AlertTriangle size={20} /><div><strong>{model.riskAvailable ? 'Risk register connected' : model.risk.availability.notConfigured ? 'Risk register not connected' : 'Risk register unavailable'}</strong><p>{model.risk.scopeNote}</p></div></div>{model.risk.rows.length ? <div className="pp-table-wrap"><table className="pp-table" data-table-typography="preserve"><thead><tr><th scope="col">Record</th><th scope="col">Type</th><th scope="col">Priority</th><th scope="col">Status</th></tr></thead><tbody>{model.risk.rows.map(item => <tr key={item.id}><td>{item.title}</td><td>{item.typeLabel}</td><td>{item.priority}</td><td>{item.statusLabel}</td></tr>)}</tbody></table></div> : <p className="pp-empty">{model.risk.countsComplete ? 'No register items or document findings recorded.' : 'Register records are unavailable.'}</p>}<button type="button" className="pp-button" onClick={() => act('risk')}>Open current register<ArrowRight size={15} /></button></>}
+      {type === 'data-quality' && <><p className="pp-muted">{model.readinessNote || 'Data completeness measures how many required checks are ready. It is not a forecast probability.'}</p><p><strong>{model.progressSource}:</strong> {model.reportingNote}</p><div className="pp-quality-list">{model.confidence.map(item => <div key={item.label}><div><strong>{item.label}</strong><span className={`pp-${item.tone}`}>{item.status}</span></div><button type="button" className="pp-button" onClick={() => act(item.view)}>Review<ArrowRight size={14} /></button></div>)}</div><p className="pp-muted">{model.chartNote}</p></>}
+    </>}
+  </div></dialog>
+}

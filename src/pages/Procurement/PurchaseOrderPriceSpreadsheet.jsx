@@ -247,14 +247,14 @@ const PurchaseOrderPriceSpreadsheet = ({ items, headers, currency, onItemsChange
     </div>
 
     <div ref={gridRef} className="max-h-[430px] overflow-auto">
-      <table style={{ minWidth: `${columns.reduce((sum, column) => sum + (Number(columnWidths[column.key]) || column.defaultWidth), 0) + 144}px` }} className="table-fixed border-separate border-spacing-0 text-sm">
+      <table aria-label="Purchase order price spreadsheet" style={{ minWidth: `${columns.reduce((sum, column) => sum + (Number(columnWidths[column.key]) || column.defaultWidth), 0) + 144}px` }} className="table-fixed border-separate border-spacing-0 text-sm">
         <thead className="sticky top-0 z-20 bg-slate-100">
           <tr>
             <th className="sticky left-0 z-30 w-12 border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center text-[10px] font-bold text-slate-500">#</th>
             {columns.map((column) => <th key={column.key} style={{ width: `${Number(columnWidths[column.key]) || column.defaultWidth}px` }} className="relative border-b border-r border-slate-300 p-1.5">
               <div className="flex items-center gap-1">
-                <input data-column-header={column.key} type="text" value={headers[column.key] ?? column.fallback} onChange={(event) => onHeaderChange(column.key, event.target.value)} className="min-w-0 flex-1 rounded border border-blue-200 bg-white px-2 py-1.5 text-[10px] font-semibold uppercase text-slate-600 focus:border-blue-500 focus:ring-blue-500" />
-                <div className="flex shrink-0 flex-col overflow-hidden rounded border border-slate-300 bg-white"><button type="button" onClick={() => onAddColumn(column.key)} title={`Add column after ${headers[column.key] || column.fallback}`} className="h-[14px] px-1 text-[10px] font-bold leading-none text-blue-600 hover:bg-blue-100">+</button><button type="button" onClick={() => onRemoveColumn(column.key)} disabled={columns.length <= 1} title={`Remove ${headers[column.key] || column.fallback}`} className="h-[14px] border-t border-slate-200 px-1 text-[10px] font-bold leading-none text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-white">−</button></div>
+                <input data-column-header={column.key} aria-label={`Edit ${headers[column.key] || column.fallback} column heading`} type="text" value={headers[column.key] ?? column.fallback} onChange={(event) => onHeaderChange(column.key, event.target.value)} className="min-w-0 flex-1 rounded border border-blue-200 bg-white px-2 py-1.5 text-[10px] font-semibold uppercase text-slate-600 focus:border-blue-500 focus:ring-blue-500" />
+                <div className="flex shrink-0 flex-col overflow-hidden rounded border border-slate-300 bg-white"><button type="button" onClick={() => onAddColumn(column.key)} aria-label={`Add column after ${headers[column.key] || column.fallback}`} title={`Add column after ${headers[column.key] || column.fallback}`} className="h-[14px] px-1 text-[10px] font-bold leading-none text-blue-600 hover:bg-blue-100">+</button><button type="button" onClick={() => onRemoveColumn(column.key)} disabled={columns.length <= 1} aria-label={`Remove ${headers[column.key] || column.fallback} column`} title={`Remove ${headers[column.key] || column.fallback}`} className="h-[14px] border-t border-slate-200 px-1 text-[10px] font-bold leading-none text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-white">−</button></div>
               </div>
               <button type="button" aria-label={`Resize ${headers[column.key] || column.fallback} column`} title="Drag to resize · double-click to auto-fit" onPointerDown={(event) => startColumnResize(event, column)} onDoubleClick={() => autoFitColumn(column)} className="absolute -right-1 top-0 z-40 h-full w-2 cursor-col-resize touch-none hover:bg-blue-400/60" />
             </th>)}
@@ -271,6 +271,7 @@ const PurchaseOrderPriceSpreadsheet = ({ items, headers, currency, onItemsChange
               return <td key={column.key} className={`border-b border-r border-slate-200 p-1 ${isActive ? 'bg-blue-50 ring-2 ring-inset ring-blue-500' : ''}`}>
                 <input
                   data-cell={`${rowIndex}-${columnIndex}`}
+                  aria-label={`Row ${rowIndex + 1} ${headers[column.key] || column.fallback}`}
                   type={column.type}
                   min={column.type === 'number' ? 0 : undefined}
                   step={column.type === 'number' ? '0.01' : undefined}
@@ -283,7 +284,7 @@ const PurchaseOrderPriceSpreadsheet = ({ items, headers, currency, onItemsChange
                 />
               </td>;
             })}
-            <td className="border-b border-slate-200 px-2 py-1 text-center"><div className="flex justify-center gap-1"><button type="button" onClick={() => duplicateRow(rowIndex)} title="Duplicate row" className="rounded px-2 py-1 text-xs text-blue-600 hover:bg-blue-100">Copy</button><button type="button" onClick={() => removeRow(rowIndex)} title="Delete row" className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-100">Delete</button></div></td>
+            <td className="border-b border-slate-200 px-2 py-1 text-center"><div className="flex justify-center gap-1"><button type="button" onClick={() => duplicateRow(rowIndex)} aria-label={`Copy row ${rowIndex + 1}`} title="Duplicate row" className="rounded px-2 py-1 text-xs text-blue-600 hover:bg-blue-100">Copy</button><button type="button" onClick={() => removeRow(rowIndex)} aria-label={`Delete row ${rowIndex + 1}`} title="Delete row" className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-100">Delete</button></div></td>
           </tr>)}
           {!rows.length && <tr><td colSpan={columns.length + 2} className="px-4 py-14 text-center"><p className="text-sm text-slate-500">No pricing rows yet.</p><button type="button" onClick={addRow} className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Add the first row</button></td></tr>}
         </tbody>
