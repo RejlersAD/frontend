@@ -1,5 +1,7 @@
 // Synthetic records only. Every API request is intercepted before the actual
 // App mounts; unknown requests fail locally and never touch the live database.
+import { fileURLToPath } from 'node:url'
+
 export const formRecordId = '00000000-0000-4000-8000-000000009001'
 export const formActor = {
   id: 7, username: 'test-manager', first_name: 'Maya', last_name: 'Hassan', full_name: 'Maya Hassan',
@@ -81,6 +83,13 @@ export async function recommendationFormHarness(page, options = {}) {
     localStorage.setItem('radai_theme', 'light')
   }, formActor)
   page.on('pageerror', error => state.pageErrors.push(error.message))
+  // PDF export clones the page and reloads background images. Serve the exact
+  // repository image directly so Vite image latency cannot consume the workflow
+  // timeout; the sidebar and exported document still use their real assets.
+  await page.route('**/assets/images/sidebar-industrial-dusk.png', route => route.fulfill({
+    path: fileURLToPath(new URL('../../public/assets/images/sidebar-industrial-dusk.png', import.meta.url)),
+    contentType: 'image/png',
+  }))
   await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method(), body = parseBody(request)
     state.requests.push({ path, method, body })
@@ -129,6 +138,6 @@ export async function recommendationFormHarness(page, options = {}) {
     state.unknown.push({ path, method })
     return reply(route, { detail: 'Unexpected isolated form test request.' }, 400)
   })
-  await page.goto(options.edit ? `/procurement/requisitions/${formRecordId}/edit` : '/procurement/requisitions/new')
+  await page.goto(options.edit ? `/procurement/requisitions/${formRecordId}/edit` : '/procurement/requisitions/new', { waitUntil: 'domcontentloaded' })
   return state
 }

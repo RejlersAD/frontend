@@ -101,7 +101,7 @@ test('new request adds supplier shortlist, updates pricing and keeps draft saves
   expect(state.submissions).toEqual([])
   // The API normalizes line items. VAT, vendor and budget must survive through
   // the supported metadata field and be restored when the draft is reopened.
-  await page.goto(`/procurement/requisitions/${formRecordId}/edit`)
+  await page.goto(`/procurement/requisitions/${formRecordId}/edit`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible()
   await gotoStep(page, 'Supplier & pricing')
   await expect(page.getByRole('combobox', { name: 'Line item 1 VAT', exact: true })).toHaveValue('5')
