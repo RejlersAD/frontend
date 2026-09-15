@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
+import PurchaseOrderLinkReview from './PurchaseOrderLinkReview';
 import {
   ArrowPathIcon,
   ArrowUpTrayIcon,
-  CheckBadgeIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   XMarkIcon,
@@ -26,6 +26,7 @@ const EDITABLE_FIELDS = [
   ['preferred_supplier', 'Preferred Supplier', 'text', false],
   ['net_total', 'Total Price', 'number', true],
   ['currency', 'Currency', 'select', true],
+  ['price_remarks', 'Price Remarks / Sales Budget', 'textarea', false],
   ['budget_in_aed', 'Budget in AED', 'number', false],
   ['net_total_aed', 'Net Total in AED', 'number', false],
   ['po_reference', 'PO Reference', 'text', false],
@@ -58,6 +59,7 @@ const submitSignedRequisitionPdf = async (file, payload = {}) => {
 export const uploadSignedRequisitionPdf = async (file, expectedPrNumber = '', approvalDate = '') => (
   submitSignedRequisitionPdf(file, {
     expected_pr_number: expectedPrNumber,
+    attach_only: expectedPrNumber ? 'true' : undefined,
     approval_date: approvalDate,
   })
 );
@@ -70,7 +72,7 @@ const errorMessage = (requestError, fallback) => (
     : requestError.message || fallback)
 );
 
-const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrNumber = '' }) => {
+const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrNumber = '', canLinkPurchaseOrder = true }) => {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState('');
@@ -82,7 +84,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const [manualSignatures, setManualSignatures] = useState({});
   const [employees, setEmployees] = useState([]);
   const [employeeLoadError, setEmployeeLoadError] = useState('');
-
+  const [recordCheck, setRecordCheck] = useState(null);
   useEffect(() => {
     if (!file) {
       setFileUrl('');
@@ -119,6 +121,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setResult(null);
     setEdits({});
     setManualSignatures({});
+    setRecordCheck(null);
   };
 
   const close = () => {
@@ -134,6 +137,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setEdits({});
     setManualSignatures({});
     setError('');
+    setRecordCheck(null);
   };
 
   const capturePreview = async () => {
@@ -144,10 +148,12 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       const data = await submitSignedRequisitionPdf(file, {
         preview_only: 'true',
         expected_pr_number: expectedPrNumber,
+        attach_only: expectedPrNumber ? 'true' : undefined,
       });
       const extracted = data.extracted_data || {};
       const approvers = data.approval_detection?.approver_names || {};
       setPreview(data);
+      setRecordCheck({ number: String(extracted.pr_number || data.pr_number || '').trim().toUpperCase(), exists: data.database_match });
       setEdits({
         ...extracted,
         approval_date: data.approval_detection?.approval_date || '',
@@ -163,25 +169,52 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     }
   };
 
-  const saveReviewed = async () => {
+  const reviewedNumber = String(edits.pr_number || '').trim().toUpperCase();
+  const numberNeedsCheck = !reviewedNumber || !recordCheck || typeof recordCheck.exists !== 'boolean' || reviewedNumber !== recordCheck.number;
+  const sourceNumber = String(preview?.extracted_data?.pr_number || preview?.pr_number || '').trim().toUpperCase();
+  const attachmentNumber = expectedPrNumber || (!numberNeedsCheck && recordCheck?.exists ? reviewedNumber : '');
+  const expectedMismatch = Boolean(attachmentNumber && (sourceNumber !== attachmentNumber.trim().toUpperCase() || preview?.document_comparison?.identity_matched === false));
+  const createNew = !expectedPrNumber && !numberNeedsCheck && recordCheck.exists === false;
+  const missingBoundRecord = Boolean(expectedPrNumber && recordCheck?.exists === false);
+
+  const checkReviewedNumber = async () => {
+    if (!reviewedNumber) return setError('Enter the PR number shown on the PDF.');
     setLoading(true);
     setError('');
     try {
-      const manualOverrides = Object.fromEntries(
+      const response = await apiClient.post('/procurement/requisitions/check_pr_number/', { pr_number: reviewedNumber });
+      if (typeof response.data?.exists !== 'boolean') throw new Error('The PR number could not be checked. Please retry.');
+      setRecordCheck({ number: reviewedNumber, exists: response.data.exists });
+    } catch (requestError) {
+      setError(errorMessage(requestError, 'The PR number could not be checked.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveReviewed = async () => {
+    if (numberNeedsCheck || expectedMismatch || missingBoundRecord) return;
+    setLoading(true);
+    setError('');
+    try {
+      const manualOverrides = attachmentNumber ? {} : Object.fromEntries(
         EDITABLE_FIELDS.map(([key]) => [key, edits[key] ?? '']),
       );
+      if (!attachmentNumber && edits.price_lines?.length) manualOverrides.price_lines = edits.price_lines;
       const manualSignatureOverrides = Object.fromEntries(
         Object.entries(manualSignatures).filter(([, verified]) => verified),
       );
       const data = await submitSignedRequisitionPdf(file, {
-        expected_pr_number: expectedPrNumber,
+        expected_pr_number: attachmentNumber,
+        attach_only: attachmentNumber ? 'true' : undefined,
         approval_date: edits.approval_date || '',
-        pm_name: edits.pm_name || '',
-        moe_name: edits.moe_name || '',
-        mop_name: edits.mop_name || '',
-        vp_name: edits.vp_name || '',
+        pm_name: preview?.document_signed_off ? undefined : edits.pm_name || '',
+        moe_name: preview?.document_signed_off ? undefined : edits.moe_name || '',
+        mop_name: preview?.document_signed_off ? undefined : edits.mop_name || '',
+        vp_name: preview?.document_signed_off ? undefined : edits.vp_name || '',
         manual_overrides: JSON.stringify(manualOverrides),
-        manual_signature_overrides: JSON.stringify(manualSignatureOverrides),
+        manual_signature_overrides: preview?.document_signed_off ? undefined : JSON.stringify(manualSignatureOverrides),
+        create_new: createNew ? 'true' : undefined,
       });
       const unacknowledgedSignatures = Object.keys(manualSignatureOverrides).filter(
         (role) => !data.approval_detection?.signatures?.[role],
@@ -199,29 +232,31 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   };
 
   const detection = (result || preview)?.approval_detection || {};
+  const documentSignedOff = Boolean((result || preview)?.document_signed_off ?? preview?.document_signed_off);
+  const comparisonIssues = (preview?.document_comparison?.fields || []).filter(field => field.status === 'mismatch' || (field.status === 'missing' && field.missing_in !== 'both' && [field.current_value, field.pdf_value].some(value => value != null && String(value).trim() !== '')));
   const confidence = preview?.extracted_data?.field_confidence || {};
-  const allIssues = [
+  const originalPriceLines = preview?.extracted_data?.price_lines || [];
+  const allIssues = [...new Set([
     ...((result || preview)?.mapping_issues || []),
     ...((result || preview)?.workflow_issues || []),
-  ];
+  ])];
 
   return (
     <div className="fixed inset-0 z-[70] overflow-y-auto">
       <div className="flex min-h-screen items-center justify-center px-4 py-8">
         <button type="button" aria-label="Close approved PR import" className="fixed inset-0 bg-black/50" onClick={close} />
-        <div className="relative w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div role="dialog" aria-modal="true" aria-labelledby="approved-pr-import-title" className="relative w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
           <div className="flex items-start justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 text-white">
             <div>
-              <h2 className="text-lg font-bold">Import Approved PR PDF</h2>
-              <p className="mt-1 text-xs text-indigo-100">Review OCR beside the original PDF, correct uncertain fields, then save the verified values.</p>
+              <h2 id="approved-pr-import-title" className="text-lg font-bold">{attachmentNumber ? 'Attach signed PR PDF' : 'Import Approved PR PDF'}</h2>
             </div>
-            <button type="button" onClick={close} disabled={loading}><XMarkIcon className="h-6 w-6" /></button>
+            <button type="button" aria-label="Close import dialog" onClick={close} disabled={loading}><XMarkIcon className="h-6 w-6" /></button>
           </div>
 
           <div className="max-h-[78vh] space-y-5 overflow-y-auto p-6">
-            {expectedPrNumber && (
+            {attachmentNumber && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                This attachment must match <strong>{expectedPrNumber}</strong>. Manual correction cannot attach it to a different PR.
+                Attach to <strong>{attachmentNumber}</strong>. Existing recommendation values will be kept.
               </div>
             )}
 
@@ -231,7 +266,6 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-gray-800">{file?.name || 'Select signed or approved PR PDF'}</p>
-                    <p className="mt-1 text-xs text-gray-500">OCR preview does not modify the database. The original PDF is stored only after Save.</p>
                   </div>
                   <button type="button" onClick={() => inputRef.current?.click()} disabled={loading} className="h-9 rounded-lg border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700">
                     <ArrowUpTrayIcon className="mr-1.5 inline h-4 w-4" /> Choose PDF
@@ -240,7 +274,17 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
               </div>
             )}
 
-            {error && <div className="flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><ExclamationTriangleIcon className="h-5 w-5 flex-none" />{error}</div>}
+            {error && <div role="alert" className="flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><ExclamationTriangleIcon className="h-5 w-5 flex-none" />{error}</div>}
+
+            {preview && !result && <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900" role="status">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{expectedMismatch ? 'PR number does not match this recommendation' : missingBoundRecord ? 'The original recommendation is no longer available' : numberNeedsCheck ? 'Check the corrected PR number' : attachmentNumber ? 'Attach the signed PDF' : recordCheck?.exists ? 'Update existing recommendation' : 'Create a recommendation from this PDF'}</p>
+                  <p className="mt-1 text-xs">{expectedMismatch ? `The PDF number is ${sourceNumber || 'not detected'}. Select the PDF for ${attachmentNumber}.` : missingBoundRecord ? 'Close this attachment flow and select an existing recommendation.' : numberNeedsCheck ? 'The PR number was edited. Check whether it already exists before saving.' : attachmentNumber ? `${attachmentNumber} exists in RADAI. Review any differences below before attaching.` : recordCheck?.exists ? `${reviewedNumber} exists in RADAI. Saving will update it and attach this PDF.` : `${reviewedNumber} is not in RADAI. Review the fields below, including the PR number, then create it from this PDF.`}</p>
+                </div>
+                {!attachmentNumber && <button type="button" onClick={checkReviewedNumber} disabled={loading || !reviewedNumber} className="h-9 rounded-lg border border-blue-300 bg-white px-3 text-xs font-semibold text-blue-700">Check PR number</button>}
+              </div>
+            </div>}
 
             {preview && !result && (
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
@@ -248,39 +292,57 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                   {fileUrl && <iframe src={`${fileUrl}#toolbar=0&navpanes=0`} title="Approved PR source PDF" className="h-[74vh] min-h-[680px] w-full" />}
                 </div>
                 <div className="space-y-4">
-                  <div className={`rounded-lg border p-3 text-sm ${preview.requires_manual_review ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-300 bg-emerald-50 text-emerald-900'}`}>
-                    <p className="font-semibold">{preview.requires_manual_review ? 'Manual review required' : 'OCR confidence checks passed'}</p>
-                    <p className="mt-1 text-xs">Compare every value with the PDF. Edited values are recorded as manually verified.</p>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  {attachmentNumber && <label className="block text-xs font-semibold text-gray-700">PR Number<input aria-label="PR Number" readOnly value={sourceNumber} className="mt-1 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm" /></label>}
+                  {comparisonIssues.length > 0 && <section aria-label="Differences between recommendation and PDF" className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                    <h3 className="text-sm font-semibold text-amber-900">Review differences</h3>
+                    <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th scope="col" className="p-2">Field</th><th scope="col" className="p-2">Current recommendation</th><th scope="col" className="p-2">Signed PDF</th></tr></thead><tbody>{comparisonIssues.map(field => <tr key={field.field} className="border-t border-amber-200"><th scope="row" className="p-2 font-semibold">{field.label}</th><td className="p-2">{field.current_value == null || field.current_value === '' ? 'Not provided' : String(field.current_value)}</td><td className="p-2">{field.pdf_value == null || field.pdf_value === '' ? 'Not detected' : String(field.pdf_value)}</td></tr>)}</tbody></table></div>
+                  </section>}
+                  {!attachmentNumber && <div className="grid gap-3 sm:grid-cols-2">
                     {EDITABLE_FIELDS.map(([key, label, inputType, required]) => {
                       const confidenceKey = ({ issued_by_name: 'issued_by', supplier_name: 'supplier', description_reason: 'description', net_total: 'price' })[key] || key;
-                      const fieldConfidence = confidence[confidenceKey];
-                      const baseClass = `mt-1 w-full rounded-lg border px-3 py-2 text-sm ${fieldConfidence === 'missing' ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`;
+                      const edited = String(edits[key] ?? '') !== String(preview.extracted_data?.[key] ?? '');
+                      const missing = !String(edits[key] ?? '').trim();
+                      const conflicting = !missing && !edited && (confidence[key] || confidence[confidenceKey]) === 'conflict';
+                      const fieldError = required && missing ? `Enter ${label.toLowerCase()}.` : conflicting ? 'Conflicting values. Check this field against the PDF.' : '';
+                      const errorId = `approved-pr-${key}-error`;
+                      const fieldAccessibility = { 'aria-label': label, 'aria-invalid': Boolean(fieldError), 'aria-describedby': fieldError ? errorId : undefined };
+                      const baseClass = `mt-1 w-full rounded-lg border px-3 py-2 text-sm ${fieldError ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}`;
                       return (
                         <label key={key} className={inputType === 'textarea' ? 'sm:col-span-2 text-xs font-semibold text-gray-700' : 'text-xs font-semibold text-gray-700'}>
                           <span>{label}{required && <span className="text-red-500"> *</span>}</span>
-                          {fieldConfidence && <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] uppercase ${fieldConfidence === 'missing' ? 'bg-amber-200 text-amber-900' : 'bg-emerald-100 text-emerald-700'}`}>{fieldConfidence}</span>}
                           {inputType === 'textarea' ? (
-                            <textarea rows={3} value={edits[key] ?? ''} onChange={(event) => setEdits((current) => ({ ...current, [key]: event.target.value }))} className={baseClass} />
+                            <textarea {...fieldAccessibility} rows={3} value={edits[key] ?? ''} onChange={(event) => setEdits((current) => ({ ...current, [key]: event.target.value }))} className={baseClass} />
                           ) : inputType === 'select' ? (
-                            <select value={edits[key] ?? ''} onChange={(event) => setEdits((current) => ({ ...current, [key]: event.target.value }))} className={baseClass}>
+                            <select {...fieldAccessibility} value={edits[key] ?? ''} onChange={(event) => setEdits((current) => ({ ...current, [key]: event.target.value }))} className={baseClass}>
                               <option value="">Select currency</option>
                               {['AED', 'USD', 'EUR', 'GBP'].map((currency) => <option key={currency} value={currency}>{currency}</option>)}
                             </select>
                           ) : (
-                            <input type={inputType} step={inputType === 'number' ? '0.01' : undefined} value={edits[key] ?? ''} onChange={(event) => setEdits((current) => ({ ...current, [key]: event.target.value }))} className={baseClass} />
+                            <input {...fieldAccessibility} type={inputType} list={key === 'issued_by_name' ? 'approved-pr-active-employees' : undefined} step={inputType === 'number' ? '0.01' : undefined} value={edits[key] ?? ''} onChange={(event) => setEdits((current) => ({ ...current, [key]: event.target.value }))} className={baseClass} />
                           )}
+                          {fieldError && <span id={errorId} className="mt-1 block text-xs font-normal text-red-700">{fieldError}</span>}
                         </label>
                       );
                     })}
-                  </div>
+                  </div>}
 
-                  <div className="rounded-xl border border-gray-200 p-3">
-                    <p className="text-sm font-semibold text-gray-800">Approval evidence</p>
-                    <p className="mt-1 text-xs text-gray-500">Search active employees or edit a signer name. If detection missed a visible signature, confirm it after checking the PDF.</p>
-                    {employeeLoadError && <p className="mt-2 text-xs text-amber-700">{employeeLoadError}</p>}
+                  {!attachmentNumber && originalPriceLines.length > 0 && <div className="rounded-xl border border-gray-200 p-3">
+                    <h3 className="text-sm font-semibold text-gray-800">Price breakdown</h3>
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-gray-50"><tr><th className="p-2">Description</th><th className="p-2">Amount</th><th className="p-2">Remarks</th></tr></thead>
+                        <tbody>{(edits.price_lines || originalPriceLines).map((line, index) => <tr key={index} className="border-t border-gray-100">
+                          {['description', 'total', 'remarks'].map((field) => <td key={field} className="p-2">
+                            {field === 'total' && <select aria-label={`Price line ${index + 1} currency`} value={line.currency || ''} className="mb-1 w-full rounded border border-gray-300 px-1 py-1" onChange={(event) => setEdits((current) => ({ ...current, price_lines: current.price_lines.map((item, rowIndex) => rowIndex === index ? { ...item, currency: event.target.value } : item) }))}><option value="">Currency</option>{['AED', 'USD', 'EUR', 'GBP'].map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select>}
+                            <input aria-label={`Price line ${index + 1} ${field === 'total' ? 'amount' : field}`} type={field === 'total' ? 'number' : 'text'} step={field === 'total' ? '0.01' : undefined} value={line[field] || ''} className="w-full min-w-[90px] rounded border border-gray-300 px-2 py-1" onChange={(event) => setEdits((current) => ({ ...current, price_lines: current.price_lines.map((item, rowIndex) => rowIndex === index ? { ...item, [field]: event.target.value } : item) }))} />
+                          </td>)}
+                        </tr>)}</tbody>
+                      </table>
+                    </div>
+                  </div>}
+
+                  {(!documentSignedOff || !detection.approval_date) && <div className="rounded-xl border border-gray-200 p-3">
+                    {!documentSignedOff && employeeLoadError && <p className="mt-2 text-xs text-amber-700">{employeeLoadError}</p>}
                     <datalist id="approved-pr-active-employees">
                       {employees.map((employee) => (
                         <option key={employee.id} value={employeeDisplayName(employee)}>
@@ -288,12 +350,12 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                         </option>
                       ))}
                     </datalist>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      {Object.entries(ROLE_LABELS).map(([key, label]) => {
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {!documentSignedOff && Object.entries(ROLE_LABELS).map(([key, label]) => {
                         const automaticallyDetected = Boolean(detection.signatures?.[key]);
                         const manuallyVerified = Boolean(manualSignatures[key]);
                         return (
-                          <div key={key} className={`rounded-lg border p-3 ${automaticallyDetected || manuallyVerified ? 'border-emerald-200 bg-emerald-50/40' : 'border-red-200 bg-red-50/40'}`}>
+                          <div key={key} className={`rounded-lg border p-3 ${automaticallyDetected || manuallyVerified ? 'border-gray-200 bg-white' : 'border-red-200 bg-red-50/40'}`}>
                             <label className="text-xs font-semibold text-gray-700">
                               {label}
                               <input
@@ -304,17 +366,15 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                                 className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                               />
                             </label>
-                            {automaticallyDetected ? (
-                              <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckBadgeIcon className="h-4 w-4" />Signature detected automatically</span>
-                            ) : (
-                              <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs font-semibold text-red-700">
+                            {!automaticallyDetected && (
+                              <label className={`mt-2 flex cursor-pointer items-start gap-2 text-xs font-semibold ${manuallyVerified ? 'text-gray-700' : 'text-red-700'}`}>
                                 <input
                                   type="checkbox"
                                   checked={manuallyVerified}
                                   onChange={(event) => setManualSignatures((current) => ({ ...current, [key]: event.target.checked }))}
                                   className="mt-0.5 h-4 w-4 rounded border-red-300 text-emerald-600"
                                 />
-                                <span>{manuallyVerified ? 'Signature manually verified in PDF' : 'Signature not detected — verify it visually'}</span>
+                                <span>{manuallyVerified ? 'Signature verified in PDF' : 'Verify signature in PDF'}</span>
                               </label>
                             )}
                           </div>
@@ -322,10 +382,11 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                       })}
                       <label className="text-xs font-semibold text-gray-700 sm:col-span-2">
                         Approval Date
-                        <input type="date" value={edits.approval_date || ''} onChange={(event) => setEdits((current) => ({ ...current, approval_date: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                        <input aria-invalid={Boolean(detection.approval_date_evidence?.review_required && !edits.approval_date)} type="date" value={edits.approval_date || ''} onChange={(event) => setEdits((current) => ({ ...current, approval_date: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                       </label>
+                      {detection.approval_date_evidence?.review_required && !edits.approval_date && <p className="text-xs text-red-700 sm:col-span-2">Enter the approval date shown in the PDF.</p>}
                     </div>
-                  </div>
+                  </div>}
                 </div>
               </div>
             )}
@@ -334,25 +395,23 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
               <div className="space-y-4">
                 <div className="flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                   <CheckCircleIcon className="h-5 w-5 flex-none" />
-                  <div><strong>{result.pr_number}</strong> was manually reviewed, attached, and saved. Database status: <strong>{result.status}</strong>.</div>
+                  <div><strong>{result.pr_number}</strong>{attachmentNumber ? ' has the signed PDF attached' : ` was ${result.created ? 'created from the reviewed PDF' : 'updated from the reviewed PDF'}`}. {attachmentNumber ? 'Existing recommendation values were kept.' : 'The source PDF is attached.'} Status: <strong>{result.status}</strong>.</div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {Object.entries(ROLE_LABELS).map(([key, label]) => (
+                  {!documentSignedOff && Object.entries(ROLE_LABELS).filter(([key]) => !detection.signatures?.[key]).map(([key, label]) => (
                     <div key={key} className="rounded-lg border border-gray-200 p-3">
                       <p className="text-xs text-gray-500">{label}</p>
                       <p className="mt-1 text-sm font-semibold text-gray-800">{detection.approver_names?.[key] || 'Name not detected'}</p>
-                      <p className={`mt-1 text-xs font-semibold ${detection.signatures?.[key] ? 'text-emerald-700' : 'text-red-700'}`}>
-                        {detection.signature_sources?.[key] === 'manual' ? 'Signature manually verified' : detection.signatures?.[key] ? 'Signature detected' : 'Signature not detected'}
-                      </p>
+                      <p className="mt-1 text-xs font-semibold text-red-700">Signature verification required</p>
                     </div>
                   ))}
                 </div>
+                <PurchaseOrderLinkReview requisitionId={result.requisition_id || result.pr_id} poLink={result.po_link} canLink={canLinkPurchaseOrder} onOpen={close} onLinked={poLink => { const updated = { ...result, po_link: poLink }; setResult(updated); onImported?.(updated); }} />
               </div>
             )}
 
             {allIssues.length > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                <p className="font-semibold">Review notes</p>
                 <ul className="mt-2 list-disc space-y-1 pl-5">{allIssues.map((issue, index) => <li key={`${issue}-${index}`}>{issue}</li>)}</ul>
               </div>
             )}
@@ -365,7 +424,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
             <div className="flex gap-2">
               <button type="button" onClick={close} disabled={loading} className="h-9 rounded-lg border border-gray-300 bg-white px-4 text-xs font-semibold text-gray-700">{result ? 'Close' : 'Cancel'}</button>
               {!preview && !result && <button type="button" onClick={capturePreview} disabled={!file || loading} className="h-9 rounded-lg bg-indigo-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{loading ? 'Running OCR...' : 'Preview OCR'}</button>}
-              {preview && !result && <button type="button" onClick={saveReviewed} disabled={loading} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{loading ? 'Validating and saving...' : 'Save Reviewed PR'}</button>}
+              {preview && !result && <button type="button" onClick={saveReviewed} disabled={loading || numberNeedsCheck || expectedMismatch || missingBoundRecord} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{loading ? 'Validating and saving...' : attachmentNumber ? 'Attach signed PDF' : createNew ? 'Create reviewed PR' : 'Save Reviewed PR'}</button>}
             </div>
           </div>
         </div>
@@ -379,6 +438,7 @@ PurchaseRequisitionPdfImport.propTypes = {
   onClose: PropTypes.func.isRequired,
   onImported: PropTypes.func,
   expectedPrNumber: PropTypes.string,
+  canLinkPurchaseOrder: PropTypes.bool,
 };
 
 export default PurchaseRequisitionPdfImport;

@@ -75,11 +75,12 @@ const Layout = () => {
     location.pathname === '/procurement/requisitions/new'
     || /^\/procurement\/requisitions\/[^/]+\/edit$/.test(location.pathname)
   )
+  const isPurchaseOrderFormRoute = location.pathname === '/procurement/orders/new'
   const isViewportWorkspace = ['/dashboard', '/executive', '/approvals', '/notifications', '/admin/enquiries'].includes(location.pathname)
   const isVendorWorkspace = location.pathname === '/procurement/vendors'
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
   // Hide the shared footer on public pages that render their own or are auth flow pages.
-  const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isViewportWorkspace && !isFlushWorkspace
+  const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isPurchaseOrderFormRoute && !isViewportWorkspace && !isFlushWorkspace
 
   const application = (
     <div className={`${isApplicationShell ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex bg-gray-50 dark:bg-gray-900`}>

@@ -2,7 +2,7 @@ import { radaiAlert } from '../../services/radaiDialog'
 /**
  * Purchase Requisition Form Component
  * Aligned with RAD-OM-PRC-0001 FRM -1 Rev 0 template
- * 
+ *
  * Features:
  * - All 23 fields from company template
  * - Multi-file upload to S3
@@ -13,24 +13,29 @@ import { radaiAlert } from '../../services/radaiDialog'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import PropTypes from 'prop-types';
+import { Save as SaveIcon } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useSelector } from 'react-redux';
 import apiClient from '../../services/api.service';
 import { uploadSignedRequisitionPdf, validateSignedRequisitionPdf } from './PurchaseRequisitionPdfImport';
-import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
+import RecommendationPreviewPane from './RecommendationPreviewPane';
+import RecommendationSupplierPricing from './RecommendationSupplierPricing';
+import { prepareRecommendationPayload } from './recommendationFormPayload';
+import './PurchaseRequisitionForm.css';
 import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
 import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
 import {
-  DocumentTextIcon,
   PaperClipIcon,
   CheckCircleIcon,
   XCircleIcon,
   CloudArrowUpIcon,
-  InformationCircleIcon,
   PlusIcon,
-  SparklesIcon,
-  TrashIcon,
   XMarkIcon,
+  ArrowRightIcon,
+  ArrowLeftIcon,
+  PencilSquareIcon,
+  CheckIcon,
+  ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
@@ -39,7 +44,6 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'
 ]);
 
-const getCurrencyLabel = (currency = 'USD') => String(currency || 'USD').toUpperCase();
 
 const normalizeApiErrors = (payload) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
@@ -131,6 +135,7 @@ const ActiveEmployeePicker = ({
         <div className="relative">
           <input
             value={search}
+            aria-label={label}
             onChange={(event) => setSearch(event.target.value)}
             disabled={disabled}
             placeholder="Search active employee by name, email, ID, title, or department"
@@ -154,6 +159,7 @@ const ActiveEmployeePicker = ({
           <label className="mb-1 block text-xs font-semibold text-gray-600">Approval table suffix</label>
           <input
             value={tableSuffix}
+            aria-label={`${label} table suffix`}
             onChange={(event) => onTableSuffixChange(event.target.value.slice(0, 20))}
             maxLength={20}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-purple-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
@@ -188,7 +194,8 @@ const buildInitialFormData = (editData) => ({
   preferred_supplier_if_any: editData?.preferred_supplier_if_any || '',
   price_description: editData?.price_description || editData?.description_reason || '',
   total_price: editData?.total_price || '',
-  currency: editData?.currency || 'USD',
+  currency: editData?.currency || 'AED',
+  estimated_budget: editData?.estimated_budget ?? '',
   price_remarks: editData?.price_remarks || editData?.price_remarks_data?.negotiation_remarks || '',
   net_total_excl_vat: editData?.net_total_excl_vat || '',
   po_number_reference: editData?.po_number_reference || '',
@@ -200,7 +207,13 @@ const buildInitialFormData = (editData) => ({
   project_details: Array.isArray(editData?.project_details) ? editData.project_details : [],
   approval_workflow_config: editData?.approval_workflow_config || [],
   price_remarks_data: editData?.price_remarks_data || {},
-  items: Array.isArray(editData?.items) ? editData.items : [],
+  items: Array.isArray(editData?.items) ? editData.items.map((item, index) => ({
+    ...item,
+    ...Object.fromEntries(['vat_rate', 'vendor_id', 'budget'].flatMap(key => {
+      const value = editData?.price_remarks_data?.line_details?.[index]?.[key];
+      return value === undefined ? [] : [[key, value]];
+    })),
+  })) : [],
   requisition_type: editData?.requisition_type || 'project',
   priority: editData?.priority || 'normal',
   po_applicable: Boolean(editData?.po_applicable),
@@ -373,16 +386,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   ).trim();
   const [submitLoading, setSubmitLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  
+
   // Form state - all 23 fields from PDF template
   const [formData, setFormData] = useState(() => buildInitialFormData(editData));
-  
+
   const [files, setFiles] = useState([]);
   const [approvedPdfFile, setApprovedPdfFile] = useState(null);
   const [approvedPdfDate, setApprovedPdfDate] = useState('');
   const [managementEvidenceFile, setManagementEvidenceFile] = useState(null);
   const [vendorSearch, setVendorSearch] = useState('');
-  const [showVendorOptions, setShowVendorOptions] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
   const [showProjectOptions, setShowProjectOptions] = useState(false);
   const [showProjectCreator, setShowProjectCreator] = useState(false);
@@ -392,6 +404,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const [manualIcv, setManualIcv] = useState({ vendorId: null, value: '', expiryDate: '', saving: false, error: '' });
   const [prNumberStatus, setPrNumberStatus] = useState({ checking: false, available: null, message: '' });
   const [errors, setErrors] = useState({});
+  const [serverErrors, setServerErrors] = useState({});
   const [autoSaving, setAutoSaving] = useState(false);
   const draftIdRef = useRef(editData?.id || null);
   const autoSaveInFlightRef = useRef(null);
@@ -400,14 +413,21 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const submissionInFlightRef = useRef(false);
   const lastAutoSaveFingerprintRef = useRef('');
   const priceDescriptionEditedRef = useRef(Boolean(editData?.price_description));
+  const lastTotalPriceRef = useRef(editData?.total_price || '');
   const workspaceRef = useRef(null);
-  const [formPanePercent, setFormPanePercent] = useState(60);
+  const [formPanePercent, setFormPanePercent] = useState(58);
+  const [activeStep, setActiveStep] = useState(0);
+  const [visitedSteps, setVisitedSteps] = useState([0]);
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [saveError, setSaveError] = useState('');
+  const [savedAttachments, setSavedAttachments] = useState(editData?.attachments || []);
+  const formScrollRef = useRef(null);
   const [isPaneResizing, setIsPaneResizing] = useState(false);
-  
+
   // New state for dynamic features
   const [vendors, setVendors] = useState([]);
   const [loadingVendors, setLoadingVendors] = useState(false);
-  
+
   // Approval workflow state
   const [projectManagers, setProjectManagers] = useState([]);
   const [engineeringManagers, setEngineeringManagers] = useState([]);
@@ -482,13 +502,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     const initialData = buildInitialFormData(editData);
     setFormData(initialData);
     priceDescriptionEditedRef.current = Boolean(editData?.price_description);
+    lastTotalPriceRef.current = initialData.total_price;
     formDataRef.current = initialData;
     approvalWorkflowRef.current = editData?.approval_workflow_config || [];
     draftIdRef.current = editData?.id || null;
     autoSaveInFlightRef.current = null;
     submissionInFlightRef.current = false;
-    const { approval_workflow_config: _workflow, ...initialAutoSavePayload } = initialData;
-    lastAutoSaveFingerprintRef.current = JSON.stringify(initialAutoSavePayload);
+    lastAutoSaveFingerprintRef.current = JSON.stringify(initialData);
     const initialApprovers = selectedApproversFromWorkflow(editData?.approval_workflow_config || []);
     const savedApprovalLabels = editData?.price_remarks_data?.approval_table_labels || {};
     setSelectedApprovers(initialApprovers);
@@ -508,7 +528,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     setApprovedPdfDate('');
     setManagementEvidenceFile(null);
     setVendorSearch('');
-    setShowVendorOptions(false);
     setProjectSearch('');
     setShowProjectOptions(false);
     setShowProjectCreator(false);
@@ -517,27 +536,29 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     setVendorLoadError('');
     setPrNumberStatus({ checking: false, available: null, message: '' });
     setErrors({});
+    setServerErrors({});
     setUploadProgress(0);
+    setActiveStep(0);
+    setVisitedSteps([0]);
+    setLastSavedAt(null);
+    setSaveError('');
+    setSavedAttachments(editData?.attachments || []);
     setProductSuggestions([]);
     setProjectSuggestions([]);
-    setSupplierSuggestions([]);
     setPoNumberSuggestions([]);
     setSuggestionStatus({});
     setShowProductDropdown(false);
-    setShowSupplierDropdown(false);
     setShowPoDropdown(false);
   }, [isOpen, editData]);
-  
+
   // Price Remarks Advanced Fields
   const [showAdvancedPricing, setShowAdvancedPricing] = useState(false);
-  
+
   // Autocomplete suggestions state
   const [productSuggestions, setProductSuggestions] = useState([]);
   const [projectSuggestions, setProjectSuggestions] = useState([]);
-  const [supplierSuggestions, setSupplierSuggestions] = useState([]);
   const [poNumberSuggestions, setPoNumberSuggestions] = useState([]);
   const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [showPoDropdown, setShowPoDropdown] = useState(false);
   const suggestionTimersRef = useRef({});
   const suggestionRequestIdsRef = useRef({});
@@ -576,10 +597,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const searchVendors = (query) => {
+    setVendorSearch(query);
     clearTimeout(suggestionTimersRef.current.vendorOption);
     suggestionTimersRef.current.vendorOption = setTimeout(() => fetchVendors(query), 200);
   };
-  
+
   const fetchApprovers = async () => {
     setLoadingApprovers(true);
     setApproverLoadError('');
@@ -589,7 +611,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'vp_operations' } }),
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'procurement_head' } }),
       ]);
-      
+
       const usersFrom = (response) => {
         const payload = response?.data?.data || response?.data || {};
         return Array.isArray(payload.users) ? payload.users : [];
@@ -701,7 +723,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       return { ...prev, level_one: next, project_manager: next[0] || null };
     });
   };
-  
+
   const queueSuggestionFetch = (key, endpoint, rawQuery, setter, force = false) => {
     const query = String(rawQuery || '').trim();
     clearTimeout(suggestionTimersRef.current[key]);
@@ -752,10 +774,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     'project', '/procurement/requisitions/get_projects_departments/', query, setProjectSuggestions, force
   );
 
-  const fetchSupplierSuggestions = (query, force = false) => queueSuggestionFetch(
-    'supplier', '/procurement/requisitions/get_suppliers/', query, setSupplierSuggestions, force
-  );
-
   const fetchPoNumberSuggestions = (query, force = false) => queueSuggestionFetch(
     'po', '/procurement/requisitions/get_po_numbers/', query, setPoNumberSuggestions, force
   );
@@ -769,18 +787,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   useEffect(() => () => {
     Object.values(suggestionTimersRef.current).forEach(clearTimeout);
   }, []);
-
-  const selectSupplier = (supplier) => {
-    setFormData(prev => ({
-      ...prev,
-      supplier_name: supplier.supplier_name,
-      supplier_business_id: supplier.supplier_business_id || '',
-      vendor: supplier.vendor_id || null,
-    }));
-    setErrors(prev => ({ ...prev, supplier_name: null, supplier_business_id: null }));
-    closeSuggestions('supplier', setSupplierSuggestions);
-    setShowSupplierDropdown(false);
-  };
 
   const selectProduct = (product) => {
     setFormData(prev => ({ ...prev, product_service: product }));
@@ -951,7 +957,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       };
     });
     setVendorSearch('');
-    setShowVendorOptions(false);
     setErrors(prev => ({ ...prev, selected_vendors: null }));
   };
 
@@ -1061,6 +1066,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   useEffect(() => {
+    if (String(lastTotalPriceRef.current) === String(formData.total_price)) return;
+    lastTotalPriceRef.current = formData.total_price;
     setFormData(prev => ({
       ...prev,
       net_total_excl_vat: prev.total_price || ''
@@ -1108,11 +1115,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       (sum, item) => sum + (parseFloat(item.budget) || 0),
       0
     ).toFixed(2);
-    setFormData(prev => ({ ...prev, total_price: itemsTotal, estimated_budget: itemsBudget }));
+    const hasLineBudgets = formData.items.some(item => item.budget !== '' && item.budget != null);
+    setFormData(prev => ({ ...prev, total_price: itemsTotal, ...(hasLineBudgets ? { estimated_budget: itemsBudget } : {}) }));
   }, [formData.items]);
 
   useEffect(() => {
     formDataRef.current = formData;
+    setServerErrors(previous => Object.keys(previous).length ? {} : previous);
   }, [formData]);
 
   const handleAutoSave = useCallback(async () => {
@@ -1121,12 +1130,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       return autoSaveInFlightRef.current;
     }
 
-    const autoSavePayload = {
+    const currentDraft = {
       ...formDataRef.current,
       approval_workflow_config: approvalWorkflowRef.current,
     };
-    const fingerprint = JSON.stringify(autoSavePayload);
+    const fingerprint = JSON.stringify(currentDraft);
     if (fingerprint === lastAutoSaveFingerprintRef.current) return null;
+    const autoSavePayload = prepareRecommendationPayload(currentDraft, approvalWorkflowRef.current);
 
     const saveOperation = (async () => {
       setAutoSaving(true);
@@ -1145,8 +1155,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               : { ...prev, pr_number: response.data.pr_number }
           ));
         }
+        setLastSavedAt(new Date());
+        setSaveError('');
         return response.data;
       } catch (error) {
+        setSaveError('Draft could not be saved. Please retry.');
         console.error('Auto-save failed:', error);
         throw error;
       } finally {
@@ -1232,32 +1245,55 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const addLineItem = () => {
-    setFormData(prev => ({ ...prev, items: [...(prev.items || []), newLineItem()] }));
+    setFormData(prev => ({ ...prev, items: [...(prev.items || []), newLineItem()],
+      price_remarks_data: { ...prev.price_remarks_data, line_details: [
+        ...(prev.items || []).map((item, index) => prev.price_remarks_data?.line_details?.[index] ||
+          Object.fromEntries(['vat_rate', 'vendor_id', 'budget'].filter(key => item[key] !== undefined).map(key => [key, item[key]]))),
+        {},
+      ] },
+    }));
   };
 
   const updateLineItem = (index, field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.map((item, itemIndex) => {
+    setFormData(prev => {
+      const items = prev.items.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         const updated = { ...item, [field]: value };
         updated.total = (
           (parseFloat(updated.quantity) || 0) * (parseFloat(updated.unit_price) || 0)
         ).toFixed(2);
         return updated;
-      })
-    }));
+      });
+      return { ...prev, items, ...(field === 'budget' && !items.some(item => item.budget !== '' && item.budget != null) ? { estimated_budget: '' } : {}), price_remarks_data: { ...prev.price_remarks_data,
+        line_details: items.map((item, itemIndex) => ({
+          ...(prev.price_remarks_data?.line_details?.[itemIndex] || {}),
+          ...Object.fromEntries(['vat_rate', 'vendor_id', 'budget'].filter(key => item[key] !== undefined).map(key => [key, item[key]])),
+        })),
+      } };
+    });
     setErrors(prev => ({ ...prev, items: null }));
   };
 
   const removeLineItem = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.filter((_, itemIndex) => itemIndex !== index)
-    }));
+    setFormData(prev => {
+      const items = prev.items.filter((_, itemIndex) => itemIndex !== index);
+      const removedBudget = prev.items[index]?.budget;
+      const clearedLastBudget = removedBudget !== '' && removedBudget != null
+        && !items.some(item => item.budget !== '' && item.budget != null);
+      return {
+        ...prev, items,
+        ...(clearedLastBudget ? { estimated_budget: '' } : {}),
+        ...(items.length === 0 ? { total_price: '', net_total_excl_vat: '', estimated_budget: '' } : {}),
+        price_remarks_data: { ...prev.price_remarks_data,
+          line_details: prev.items.flatMap((item, itemIndex) => itemIndex === index ? [] : [
+            prev.price_remarks_data?.line_details?.[itemIndex] || Object.fromEntries(['vat_rate', 'vendor_id', 'budget'].filter(key => item[key] !== undefined).map(key => [key, item[key]])),
+          ]),
+        },
+      };
+    });
   };
 
-  const validateForm = () => {
+  const getValidationErrors = () => {
     const newErrors = {};
     if (!formData.pr_number?.trim()) {
       newErrors.pr_number = 'Enter the PR number manually';
@@ -1290,6 +1326,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     if (!formData.vendor) {
       newErrors.vendor = 'Select the supplier from the shortlisted vendors';
     }
+    if (formData.vendor && !formData.vendor_selection_reason?.trim()) {
+      newErrors.vendor_selection_reason = 'Provide the reason for supplier selection';
+    }
     if ((formData.selected_vendors || []).length === 1 && !formData.single_source_justification?.trim()) {
       newErrors.single_source_justification = 'Single source justification is required';
     }
@@ -1316,25 +1355,38 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     if (invalidItemIndex >= 0) {
       newErrors.items = `Line item ${invalidItemIndex + 1} requires a description, positive quantity, and valid unit price.`;
     }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount;
+    if (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations
+      || (formData.requisition_type === 'project' && !selectedApprovers.manager_projects)
+      || (!formData.po_applicable && !selectedApprovers.general_manager)) {
+      newErrors.approval_workflow_config = 'Complete the required approval levels before submitting.';
+    }
+    return newErrors;
   };
 
-  const handleSubmit = async (e, submitForApproval = false) => {
+  const validateForm = () => {
+    const validation = getValidationErrors();
+    setErrors(validation);
+    return Object.keys(validation).length === 0;
+  };
+
+  const handleSubmit = async (e, submitForApproval = false, stayOnPage = false) => {
     e.preventDefault();
     if (submissionInFlightRef.current) return;
     if (!formData.pr_number?.trim() || prNumberStatus.available === false) {
       setErrors(prev => ({ ...prev, pr_number: prNumberStatus.available === false ? 'This PR number already exists' : 'Enter the PR number manually' }));
+      setActiveStep(0);
       return;
     }
     if (submitForApproval && !validateForm()) {
       return;
     }
-    
+
     setSubmitLoading(true);
+    setSaveError('');
     submissionInFlightRef.current = true;
-    
+
     try {
       // Signed PDFs are authoritative and use the exact same atomic pipeline
       // as the standalone Import Signed PDF action.
@@ -1380,19 +1432,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         await radaiAlert('Complete the required approval levels before submitting.');
         return;
       }
-      
-      const formDataWithWorkflow = {
-        ...formData,
-        approval_workflow_config: approvalWorkflow,
-        price_remarks_data: {
-          ...(formData.price_remarks_data || {}),
-          approval_table_labels: Object.fromEntries(
-            approvalWorkflow
-              .filter(stage => stage.user_id && stage.approval_label)
-              .map(stage => [String(stage.user_id), stage.approval_label]),
-          ),
-        },
-      };
+
+      const formDataWithWorkflow = prepareRecommendationPayload(formData, approvalWorkflow);
       Object.keys(formDataWithWorkflow).forEach(key => {
         if (formDataWithWorkflow[key] !== null && formDataWithWorkflow[key] !== undefined && formDataWithWorkflow[key] !== '') {
           if (typeof formDataWithWorkflow[key] === 'object') {
@@ -1402,14 +1443,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           }
         }
       });
-      
+
       files.forEach((file) => {
         submitData.append('attachments_files', file);
       });
       if (managementEvidenceFile) {
         submitData.append('management_approval_evidence_file', managementEvidenceFile);
       }
-      
+
       const config = {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
@@ -1417,7 +1458,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           setUploadProgress(percentCompleted);
         },
       };
-      
+
       if (autoSaveInFlightRef.current) {
         await autoSaveInFlightRef.current;
       }
@@ -1428,8 +1469,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         : await apiClient.post('/procurement/requisitions/', submitData, config);
 
       draftIdRef.current = response.data.id;
-      const { approval_workflow_config: _workflow, ...savedAutoSavePayload } = formDataRef.current;
-      lastAutoSaveFingerprintRef.current = JSON.stringify(savedAutoSavePayload);
+      lastAutoSaveFingerprintRef.current = JSON.stringify({ ...formDataRef.current, approval_workflow_config: approvalWorkflow });
 
       const responseStatus = String(response.data.status || '').toLowerCase();
       const shouldSubmitForApproval = submitForApproval && responseStatus === 'draft';
@@ -1445,16 +1485,27 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       toast.success(shouldSubmitForApproval
           ? `${requisitionLabel} successfully created and submitted for approval.`
           : `${requisitionLabel} changes saved successfully.`);
-      
-      if (onSuccess) onSuccess(response.data);
-      if (onClose) onClose();
+
+      setLastSavedAt(new Date());
+      setSavedAttachments(response.data.attachments || savedAttachments);
+      setFiles([]);
+      if (response.data.management_approval_evidence) {
+        setFormData(previous => ({ ...previous, management_approval_evidence: response.data.management_approval_evidence }));
+        setManagementEvidenceFile(null);
+      }
+      if (!stayOnPage || shouldSubmitForApproval) {
+        if (onSuccess) onSuccess(response.data);
+        if (onClose) onClose();
+      }
     } catch (error) {
       console.error('Error submitting PR:', error);
       const apiErrors = normalizeApiErrors(error.response?.data);
       if (Object.keys(apiErrors).length) {
+        setServerErrors(apiErrors);
         setErrors(prev => ({ ...prev, ...apiErrors }));
       }
       const apiMessage = apiErrors.error || apiErrors.detail || firstApiError(apiErrors);
+      setSaveError(apiMessage || 'Draft could not be saved. Please retry.');
       (await radaiAlert(apiMessage || error.message || (submitForApproval
         ? 'Failed to submit requisition. Please check all required fields.'
         : 'Failed to save draft. Please try again.')));
@@ -1496,129 +1547,86 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     issued_by_name: editData?.issued_by_name || sessionUserName,
     approval_workflow_config: liveApprovalWorkflow,
     attachments: [
-      ...(Array.isArray(editData?.attachments) ? editData.attachments : []),
+      ...savedAttachments,
       ...files.map((file) => ({ filename: file.name })),
     ],
     form_reference: editData?.form_reference || 'RAD-OM-PRC-0001 FRM -1 Rev 0',
     page_number: 'Page 1 of 1',
   };
 
+
+  const stepLabels = ['Request', 'Supplier & pricing', 'Business justification', 'Documents', 'Approval & submit'];
+  const fieldSteps = {
+    pr_number: 0, product_service: 0, project_department: 0, issued_date: 0,
+    total_price: 1, selected_vendors: 1, vendor: 1, vendor_selection_reason: 1,
+    single_source_justification: 1, items: 1, price_description: 2,
+    description_reason: 2, purchase_recommendation: 2, po_number_reference: 2,
+    management_approval: 4, management_approval_remarks: 4, management_approval_evidence: 4,
+    approval_workflow_config: 4, attachments: 3, approved_pdf: 3,
+  };
+  const validationErrors = getValidationErrors();
+  const unsavedChanges = files.length > 0 || Boolean(managementEvidenceFile) || JSON.stringify({ ...formData, approval_workflow_config: liveApprovalWorkflow }) !== lastAutoSaveFingerprintRef.current;
+  const issues = Object.entries({ ...validationErrors, ...serverErrors, ...Object.fromEntries(Object.entries(errors).filter(([field, message]) => message && (fieldSteps[field] === undefined || ['attachments', 'approved_pdf'].includes(field)))) })
+    .map(([field, message]) => ({ field, message, step: fieldSteps[field] ?? 4 }));
+  const goToStep = (step) => {
+    setActiveStep(step);
+    setVisitedSteps(previous => [...new Set([...previous, step])]);
+    formScrollRef.current?.scrollTo({ top: 0 });
+  };
+  const revealIssue = (issue) => {
+    setErrors(previous => ({ ...previous, [issue.field]: issue.message }));
+    if (issue.field === 'price_description') setShowAdvancedPricing(true);
+    goToStep(issue.field === 'price_description' ? 1 : issue.step ?? 4);
+    requestAnimationFrame(() => {
+      const field = issue.field === 'project_department' ? 'project_department_search' : issue.field;
+      const input = document.getElementById('pr-modal-form')?.querySelector(`[name="${field}"]`);
+      input?.focus();
+      input?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  };
+  const continueStep = () => {
+    const stepIssues = Object.entries(validationErrors).filter(([field]) => fieldSteps[field] === activeStep);
+    if (stepIssues.length) {
+      setErrors(previous => ({ ...previous, ...Object.fromEntries(stepIssues) }));
+      revealIssue({ field: stepIssues[0][0], message: stepIssues[0][1], step: activeStep });
+      return;
+    }
+    goToStep(Math.min(4, activeStep + 1));
+  };
+  const reviewSubmission = () => { setErrors(validationErrors); goToStep(4); };
+  const displayDate = formData.issued_date ? new Date(`${formData.issued_date}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const requiredMessage = issues.length ? `${issues.length} required item${issues.length === 1 ? '' : 's'} remaining` : 'Ready for review';
   return (
-    <div className={pageMode
-      ? 'min-h-screen bg-slate-100 px-3 py-4 sm:px-5 lg:px-6 xl:h-[calc(100dvh-4.75rem)] xl:min-h-0 xl:overflow-hidden'
-      : 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-0 sm:p-4'}>
-      <div className={pageMode
-        ? 'mx-auto flex w-full max-w-[1800px] flex-col overflow-hidden rounded-xl bg-white shadow-xl xl:h-full'
-        : 'flex h-dvh w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-[94vh] sm:max-w-[96vw] sm:rounded-xl'}>
-
-        {/* Header */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-4 text-white sm:rounded-t-xl sm:px-8 sm:py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <DocumentTextIcon className="h-8 w-8 text-purple-200" />
-              <div>
-                <h2 className="text-xl font-bold">
-                  {editData ? 'Edit Purchase Recommendation' : 'New Purchase Recommendation'}
-                </h2>
-                <p className="text-purple-100 text-xs mt-0.5">
-                  RAD-OM-PRC-0001 FRM -1 Rev 0
-                  {formData.pr_number && (
-                    <> <span aria-hidden="true">&middot;</span> PR No: {formData.pr_number}</>
-                  )}
-                </p>
+    <div className={`recommendation-form-workspace ${pageMode ? 'prf-page' : 'prf-modal'}`}>
+      <div ref={workspaceRef} className="prf-workspace-grid" style={{ '--form-pane-width': `${formPanePercent}%` }}>
+        <section className="prf-editor" aria-label="Purchase recommendation form">
+          <header className="prf-header">
+            <nav aria-label="Breadcrumb" className="prf-breadcrumb"><button type="button" onClick={onClose}>Procurement</button><span>/</span><button type="button" onClick={onClose}>Purchase Recommendations</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong></nav>
+            <div className="prf-title-row">
+              <div><h1>{editData ? 'Edit purchase recommendation' : 'Create purchase recommendation'}</h1><p>Define the requirement, compare suppliers and route the recommendation for approval.</p></div>
+              <div className="prf-header-actions">
+                <span role="status" className={`prf-save-state ${saveError ? 'prf-save-error' : ''}`}><CheckCircleIcon />{autoSaving || submitLoading ? 'Saving draft...' : saveError ? 'Changes not saved' : unsavedChanges ? (editData || lastSavedAt ? 'Unsaved changes' : 'Unsaved draft') : lastSavedAt ? 'Draft saved' : editData ? 'Existing draft' : 'Unsaved draft'}</span>
+                <button type="button" className="prf-button" onClick={event => handleSubmit(event, false, true)} disabled={submitLoading || autoSaving}><SaveIcon />Save draft</button>
+                {canSubmitForApproval && <button type="button" className="prf-button prf-primary" onClick={reviewSubmission}>Review & submit<ArrowRightIcon /></button>}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="text-white hover:text-purple-200 transition-colors p-1"
-            >
-              <XCircleIcon className="h-7 w-7" />
-            </button>
-          </div>
-          
-          {autoSaving && (
-            <div className="mt-2 flex items-center space-x-2 text-purple-100 text-xs">
-              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
-              <span>Auto-saving changes...</span>
-            </div>
-          )}
-        </div>
-
-        <div
-          ref={workspaceRef}
-          style={pageMode ? { '--form-pane-width': `${formPanePercent}%` } : undefined}
-          className={pageMode
-            ? 'grid min-h-0 flex-1 xl:grid-cols-[minmax(0,var(--form-pane-width))_10px_minmax(0,1fr)] xl:overflow-hidden'
-            : 'grid min-h-0 flex-1 overflow-y-auto 2xl:grid-cols-[minmax(0,1.2fr)_minmax(400px,0.8fr)] 2xl:overflow-hidden'}
-        >
-          {/* Form Body - Single Scroll Container with overflow-x-hidden */}
-          <form
-            id="pr-modal-form"
-            onSubmit={(e) => handleSubmit(e, canSubmitForApproval)}
-            className={`flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden p-4 sm:p-5 lg:p-6 [&>div.border-b]:pb-4 [&>div>h3]:mb-3 [&>div>h3]:text-base [&_label]:mb-1 [&_textarea]:px-3 [&_textarea]:py-1.5 [&_textarea]:text-sm [&_select]:px-3 [&_select]:py-1.5 [&_select]:text-sm [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:px-3 [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:py-1.5 [&_input:not([type=radio]):not([type=checkbox]):not([type=file])]:text-sm ${pageMode ? 'xl:overflow-y-auto xl:overscroll-contain' : '2xl:overflow-y-auto'}`}
-          >
-          {/* Signed approval PDF is intentionally first when editing. */}
-          {editData && (
-            <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-5 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-base font-bold text-emerald-900">Attach Signed / Approved PR PDF</p>
-                  <p className="mt-1 text-xs leading-relaxed text-emerald-800">
-                    The PDF must match PR {formData.pr_number}. RADAI captures its details, verifies the approval table, attaches the signed source, and records approval only when validation succeeds.
-                  </p>
-                </div>
-                <label className="inline-flex h-10 shrink-0 cursor-pointer items-center rounded-lg border border-emerald-400 bg-white px-4 text-xs font-bold text-emerald-700 hover:bg-emerald-100">
-                  <CheckCircleIcon className="mr-1.5 h-4 w-4" /> {approvedPdfFile ? 'Change Signed PDF' : 'Choose Signed PDF'}
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    className="hidden"
-                    onChange={(event) => {
-                      const selected = event.target.files?.[0] || null;
-                      try {
-                        validateSignedRequisitionPdf(selected);
-                        setErrors(previous => ({ ...previous, approved_pdf: null }));
-                        setApprovedPdfFile(selected);
-                      } catch (validationError) {
-                        setErrors(previous => ({ ...previous, approved_pdf: validationError.message }));
-                        setApprovedPdfFile(null);
-                      }
-                      event.target.value = '';
-                    }}
-                  />
-                </label>
-              </div>
-              {approvedPdfFile && (
-                <div className="mt-4 rounded-lg border border-emerald-200 bg-white p-3">
-                  <p className="text-xs font-semibold text-emerald-800">Selected signed PDF: {approvedPdfFile.name}</p>
-                  <label className="mt-3 block text-xs font-semibold text-gray-700">
-                    Approval date override (only when visible handwriting cannot be read by OCR)
-                    <input type="date" value={approvedPdfDate} onChange={(event) => setApprovedPdfDate(event.target.value)} className="mt-1 block h-9 w-full rounded-lg border border-emerald-300 bg-white px-3 font-normal text-gray-800" />
-                  </label>
-                </div>
-              )}
-              {(editData.attachments || []).filter((attachment) => (
-                attachment?.type === 'signed_purchase_requisition_pdf'
-                || attachment?.document_type === 'signed_purchase_requisition_pdf'
-              )).map((attachment) => (
-                <a
-                  key={attachment.sha256 || attachment.url || attachment.filename}
-                  href={attachment.url || attachment.s3_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                >
-                  <PaperClipIcon className="h-4 w-4" /> Currently recorded: {attachment.filename || 'Signed PR PDF'}
-                </a>
-              ))}
-              {errors.approved_pdf && <p className="mt-2 text-xs font-medium text-red-600">{errors.approved_pdf}</p>}
-            </div>
-          )}
-
-          {/* Section 1: Header Section */}
-          <div className="border-b border-gray-200 pb-6">
+            <nav aria-label="Recommendation steps" className="prf-steps">
+              {stepLabels.map((label, index) => {
+                const complete = visitedSteps.includes(index) && !issues.some(issue => issue.step === index) && activeStep !== index;
+                return <button key={label} type="button" aria-current={activeStep === index ? 'step' : undefined} onClick={() => goToStep(index)} className={`${activeStep === index ? 'is-active' : ''} ${complete ? 'is-complete' : ''}`}><span className="prf-step-circle">{complete ? <CheckIcon /> : index + 1}</span><span className="prf-step-copy"><strong>{label}</strong><small>{activeStep === index ? 'In progress' : complete ? 'Complete' : visitedSteps.includes(index) ? 'Needs attention' : 'Not started'}</small></span></button>;
+              })}
+            </nav>
+          </header>
+          <form id="pr-modal-form" className="prf-form" onSubmit={event => { event.preventDefault(); if (activeStep < 4) continueStep(); else handleSubmit(event, canSubmitForApproval); }} noValidate>
+            <div ref={formScrollRef} className="prf-form-scroll">
+              {saveError && <div role="alert" className="prf-error-banner"><ExclamationCircleIcon />{saveError}</div>}
+              {activeStep > 0 && <section className="prf-card prf-request-summary" aria-label="Request summary">
+                <div className="prf-card-heading"><h2>Request summary</h2><button type="button" className="prf-button prf-small" onClick={() => goToStep(0)}><PencilSquareIcon />Edit request</button></div>
+                <dl>{[['Type', formData.requisition_type === 'general' ? 'General / Internal' : 'Project'], ['PR number', formData.pr_number || 'Draft'], ['Issued date', displayDate], ['Priority', {normal: 'Normal · 2-day review', high: 'High · 1-day review', urgent: 'Urgent · same-day review'}[formData.priority]], ['Product / service', formData.product_service || '—'], ['Project', formData.project_department || '—']].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+              </section>}
+              {activeStep === 0 && <div className="prf-step-panel" aria-label="Request">{/* Section 1: Header Section */}
+          <div className="prf-card prf-legacy-card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">1</span>
               Header Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1643,7 +1651,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 </label>
                 <input
                   type="text"
-                  name="pr_number"
+                  name="pr_number" aria-label="PR number"
                   value={formData.pr_number}
                   onChange={(event) => {
                     const value = event.target.value.toUpperCase();
@@ -1660,26 +1668,26 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   </p>
                 )}
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Issued Date
                 </label>
                 <input
                   type="date"
-                  name="issued_date"
+                  name="issued_date" aria-label="Issued date"
                   value={formData.issued_date}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Priority
                 </label>
                 <select
-                  name="priority"
+                  name="priority" aria-label="Priority"
                   value={formData.priority}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -1690,100 +1698,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 </select>
               </div>
             </div>
-          </div>
-
-          {/* Supplier information is derived from the selected vendor shortlist. */}
-          {false && <div className="border-b border-gray-200 pb-6">
+          </div>{/* Section 3: Project/Product Section */}
+          <div className="prf-card prf-legacy-card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">2</span>
-              Supplier Information
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="relative">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Supplier Name
-                  <span className="ml-2 text-xs text-gray-500">(Auto-suggests from database)</span>
-                </label>
-                <input
-                  type="text"
-                  name="supplier_name"
-                  value={formData.supplier_name}
-                  onChange={(e) => {
-                    const supplierName = e.target.value;
-                    setFormData(prev => ({
-                      ...prev,
-                      supplier_name: supplierName,
-                      supplier_business_id: '',
-                      vendor: null,
-                    }));
-                    fetchSupplierSuggestions(supplierName);
-                    setShowSupplierDropdown(true);
-                  }}
-                  onFocus={() => {
-                    fetchSupplierSuggestions(formData.supplier_name, true);
-                    setShowSupplierDropdown(true);
-                  }}
-                  onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Start typing to see suggestions..."
-                />
-                {showSupplierDropdown && suggestionStatus.supplier?.loading && (
-                  <p className="mt-1 text-xs text-gray-500">Loading suppliers...</p>
-                )}
-                {showSupplierDropdown && suggestionStatus.supplier?.error && (
-                  <p className="mt-1 text-xs text-red-600">{suggestionStatus.supplier.error}</p>
-                )}
-                {showSupplierDropdown && suggestionStatus.supplier?.loaded && !suggestionStatus.supplier?.error && supplierSuggestions.length === 0 && (
-                  <p className="mt-1 text-xs text-gray-500">No matching suppliers found.</p>
-                )}
-                {showSupplierDropdown && supplierSuggestions.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {supplierSuggestions.map((supplier, index) => (
-                      <button
-                        type="button"
-                        key={supplier.vendor_id || `${supplier.supplier_name}-${index}`}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => selectSupplier(supplier)}
-                        className="block w-full px-4 py-3 text-left hover:bg-purple-50 border-b border-gray-100 last:border-0"
-                      >
-                        <div className="font-medium text-gray-900">{supplier.supplier_name}</div>
-                        {supplier.supplier_business_id && (
-                          <div className="text-sm text-gray-600">ID: {supplier.supplier_business_id}</div>
-                        )}
-                        {supplier.rating && (
-                          <div className="text-xs text-yellow-600">Rating: {supplier.rating}/5</div>
-                        )}
-                        <div className="text-xs text-gray-400 mt-1">
-                          {supplier.source === 'master' ? 'Vendor Database' : 'Historical Data'}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Supplier Business ID No
-                  <span className="ml-2 text-xs text-gray-500">(Auto-filled)</span>
-                </label>
-                <input
-                  type="text"
-                  name="supplier_business_id"
-                  value={formData.supplier_business_id}
-                  readOnly
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
-                  placeholder="Auto-filled from supplier selection"
-                  title="Select a supplier name to populate this identifier"
-                />
-              </div>
-            </div>
-          </div>}
-
-          {/* Section 3: Project/Product Section */}
-          <div className="border-b border-gray-200 pb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">2</span>
               Product / Service & Project Details
             </h3>
             <div className="space-y-4">
@@ -1793,7 +1710,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   <span className="ml-2 text-xs text-gray-500">(Auto-suggests from past PRs)</span>
                 </label>
                 <textarea
-                  name="product_service"
+                  name="product_service" aria-label="Product / service"
                   value={formData.product_service}
                   onChange={(e) => {
                     handleChange(e);
@@ -1839,14 +1756,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   <p className="mt-1 text-sm text-red-600">{errors.product_service}</p>
                 )}
               </div>
-              
+
               <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Project / Department <span className="text-red-500">*</span>
                   <span className="ml-2 text-xs text-gray-500">(Current ongoing projects; multiple selections allowed)</span>
                 </label>
                 <input
-                  name="project_department_search"
+                  name="project_department_search" aria-label="Project / Department"
                   value={projectSearch}
                   onChange={(event) => {
                     setProjectSearch(event.target.value);
@@ -1956,12 +1873,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Section 4: Description Section */}
-          <div className="border-b border-gray-200 pb-6">
+          </div></div>}
+              {activeStep === 1 && <RecommendationSupplierPricing formData={formData} setFormData={setFormData} errors={{ ...Object.fromEntries(Object.entries(errors).filter(([field]) => validationErrors[field])), ...serverErrors }} vendors={vendors} vendorSearch={vendorSearch} onVendorSearch={searchVendors} loadingVendors={loadingVendors} vendorLoadError={vendorLoadError} onAddVendor={addVendorToShortlist} onRemoveVendor={removeVendorFromShortlist} onPreferredVendor={selectPreferredVendor} onAddLineItem={addLineItem} onUpdateLineItem={updateLineItem} onRemoveLineItem={removeLineItem} showAdvancedPricing={showAdvancedPricing} setShowAdvancedPricing={setShowAdvancedPricing} manualIcv={manualIcv} setManualIcv={setManualIcv} onSaveManualIcv={saveManualIcv} onPriceDescriptionChange={value => { priceDescriptionEditedRef.current = true; setFormData(previous => ({ ...previous, price_description: value })); }} />}
+              {activeStep === 2 && <div className="prf-step-panel" aria-label="Business justification">{/* Section 4: Description Section */}
+          <div className="prf-card prf-legacy-card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">3</span>
               Purchase Description
             </h3>
             <div>
@@ -1970,7 +1886,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 <span className="ml-2 text-xs font-normal text-gray-500">Describe the scope and purchase reason</span>
               </label>
               <textarea
-                name="description_reason"
+                name="description_reason" aria-label="Purchase description"
                 value={formData.description_reason}
                 onChange={handleChange}
                 rows={3}
@@ -1983,440 +1899,28 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 <p className="mt-1 text-sm text-red-600">{errors.description_reason}</p>
               )}
             </div>
-          </div>
-
-          {/* Section 5: Vendor Selection Section */}
-          <div className="border-b border-gray-200 pb-6">
+          </div>{/* Section 7: Purchase Recommendation Section */}
+          <div className="prf-card prf-legacy-card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">4</span>
-              Vendor Selection
+              Purchase Recommendation
             </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                   Vendor Shortlist <span className="text-red-500">*</span>
-                   <span className="ml-2 text-xs font-normal text-gray-500">Search active vendors; ICV is filled automatically</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type="search"
-                      value={vendorSearch}
-                      onChange={(event) => {
-                        const query = event.target.value;
-                        setVendorSearch(query);
-                        setShowVendorOptions(true);
-                        searchVendors(query);
-                      }}
-                      onFocus={() => {
-                        setShowVendorOptions(true);
-                        if (!vendors.length) fetchVendors(vendorSearch);
-                      }}
-                      onBlur={() => setTimeout(() => setShowVendorOptions(false), 200)}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-purple-500"
-                      placeholder="Search vendor name or code..."
-                      autoComplete="off"
-                    />
-                    {showVendorOptions && (
-                      <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                        {loadingVendors && <p className="px-4 py-3 text-sm text-gray-500">Loading vendors...</p>}
-                        {!loadingVendors && vendorLoadError && (
-                          <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-red-600">
-                            <span>{vendorLoadError}</span>
-                            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => fetchVendors(vendorSearch)} className="font-semibold text-purple-700">Retry</button>
-                          </div>
-                        )}
-                        {!loadingVendors && !vendorLoadError && vendors.length === 0 && (
-                          <p className="px-4 py-3 text-sm text-gray-500">No active vendors found.</p>
-                        )}
-                        {!loadingVendors && !vendorLoadError && vendors.map(vendor => {
-                          const alreadySelected = (formData.selected_vendors || []).some(item => String(item.vendor_id || item.id) === String(vendor.id));
-                          return (
-                            <button
-                              type="button"
-                              key={vendor.id}
-                              disabled={alreadySelected}
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => addVendorToShortlist(vendor.id)}
-                              className="block w-full border-b border-gray-100 px-3 py-2 text-left last:border-0 hover:bg-purple-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
-                            >
-                              <span className="block text-sm font-medium text-gray-900">{vendor.name}</span>
-                              <span className="block text-xs text-gray-500">{vendor.vendor_code} · Rating: {vendor.rating || 'N/A'}{alreadySelected ? ' · Already shortlisted' : ''}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {errors.selected_vendors && <p className="mt-1 text-sm text-red-600">{errors.selected_vendors}</p>}
-                {(formData.selected_vendors || []).length > 0 && (
-                  <div className="mt-2 overflow-hidden rounded-lg border border-gray-200">
-                    {(formData.selected_vendors || []).map(shortlisted => (
-                      <div key={shortlisted.vendor_id || shortlisted.id} className="flex items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 last:border-0">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{shortlisted.name}</p>
-                          <p className="text-xs text-gray-500">
-                            {shortlisted.vendor_code || 'No vendor code'} · ICV {shortlisted.icv_percentage ?? 'N/A'}%
-                            {shortlisted.icv_expiry_date ? ` · Valid until ${shortlisted.icv_expiry_date}` : ' · Validity not recorded'}
-                          </p>
-                        </div>
-                        <button type="button" onClick={() => removeVendorFromShortlist(shortlisted.vendor_id || shortlisted.id)} className="rounded p-1 text-red-500 hover:bg-red-50" aria-label="Remove vendor">
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                   Selected Supplier <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.vendor || ''}
-                  onChange={(event) => selectPreferredVendor(event.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="">-- Select from shortlisted vendors --</option>
-                  {(formData.selected_vendors || []).map(shortlisted => (
-                    <option key={shortlisted.vendor_id || shortlisted.id} value={shortlisted.vendor_id || shortlisted.id}>{shortlisted.name}</option>
-                  ))}
-                </select>
-                {errors.vendor && <p className="mt-1 text-sm text-red-600">{errors.vendor}</p>}
-                {manualIcv.vendorId && (
-                  <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
-                    <p className="text-sm font-semibold text-amber-900">The selected vendor has no ICV recorded. Would you like to enter it manually?</p>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-                      <label className="text-xs font-semibold text-amber-900">ICV percentage
-                        <input type="number" min="0" max="100" step="0.01" value={manualIcv.value} onChange={(event) => setManualIcv(previous => ({ ...previous, value: event.target.value, error: '' }))} className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" placeholder="0–100" />
-                      </label>
-                      <label className="text-xs font-semibold text-amber-900">Certificate expiry (optional)
-                        <input type="date" value={manualIcv.expiryDate} onChange={(event) => setManualIcv(previous => ({ ...previous, expiryDate: event.target.value, error: '' }))} className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" />
-                      </label>
-                      <button type="button" onClick={saveManualIcv} disabled={manualIcv.saving} className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50">{manualIcv.saving ? 'Saving…' : 'Save ICV'}</button>
-                    </div>
-                    {manualIcv.error && <p className="mt-2 text-sm font-medium text-red-600">{manualIcv.error}</p>}
-                  </div>
-                )}
-              </div>
-
-              {(formData.selected_vendors || []).length === 1 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <label className="block text-sm font-semibold text-amber-900 mb-2">
-                    Single Source Justification <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    name="single_source_justification"
-                    value={formData.single_source_justification}
-                    onChange={handleChange}
-                    rows={2}
-                    className="w-full rounded-lg border border-amber-300 px-4 py-2 focus:ring-2 focus:ring-amber-500"
-                    placeholder="Explain why this purchase recommendation uses only one supplier..."
-                  />
-                  {errors.single_source_justification && <p className="mt-1 text-sm text-red-600">{errors.single_source_justification}</p>}
-                </div>
-              )}
-              
-              {formData.vendor_selection_reason && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Vendor Selection Reason
-                  </label>
-                  <textarea
-                    name="vendor_selection_reason"
-                    value={formData.vendor_selection_reason}
-                    onChange={handleChange}
-                    rows={2}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="Reason for selecting this vendor..."
-                  />
-                </div>
-              )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Purchase Recommendation <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                name="purchase_recommendation" aria-label="Purchase recommendation"
+                value={formData.purchase_recommendation}
+                onChange={handleChange}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="Any special requirements or notes..."
+              />
+              {errors.purchase_recommendation && <p className="mt-1 text-sm text-red-600">{errors.purchase_recommendation}</p>}
             </div>
-          </div>
-
-          {/* Section 6: Pricing Section */}
-          <div className="border-b border-gray-200 pb-6">
+          </div>{/* Section 6: Reference Section */}
+          <div className="prf-card prf-legacy-card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">5</span>
-              Pricing Details
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                   Purchase Description <span className="text-red-500">*</span>
-                   <span className="ml-2 text-xs font-normal text-gray-500">Initially copied; editable for pricing</span>
-                </label>
-                <textarea
-                  name="price_description"
-                  value={formData.price_description}
-                  onChange={(event) => {
-                    priceDescriptionEditedRef.current = true;
-                    handleChange(event);
-                  }}
-                  rows={2}
-                  className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-purple-500 ${
-                    errors.price_description ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="Initially copied from Purchase Description; edit pricing wording when needed."
-                />
-                {errors.price_description && (
-                  <p className="mt-1 text-sm text-red-600">{errors.price_description}</p>
-                )}
-              </div>
-
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-900">Line Items</h4>
-                    <p className="text-xs text-gray-500">Quantity, unit price, line budget, and total are captured together.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={addLineItem}
-                    className="inline-flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-800"
-                  >
-                    <PlusIcon className="h-4 w-4" /> Add Item
-                  </button>
-                </div>
-
-                {formData.items?.length > 0 ? (
-                  <div className="space-y-3">
-                    {formData.items.map((item, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-2 items-start">
-                        <input
-                          value={item.description || ''}
-                          onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-                          placeholder="Description"
-                          className="col-span-12 md:col-span-4 px-2 py-2 text-sm border border-gray-300 rounded"
-                        />
-                        <input
-                          type="number"
-                          min="0.0001"
-                          step="0.0001"
-                          value={item.quantity ?? ''}
-                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
-                          aria-label={`Line item ${index + 1} quantity`}
-                          className="col-span-3 md:col-span-1 px-2 py-2 text-sm border border-gray-300 rounded"
-                        />
-                        <input
-                          value={item.unit || ''}
-                          onChange={(e) => updateLineItem(index, 'unit', e.target.value)}
-                          placeholder="Unit"
-                          aria-label={`Line item ${index + 1} unit`}
-                          className="col-span-3 md:col-span-1 px-2 py-2 text-sm border border-gray-300 rounded"
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.unit_price ?? ''}
-                          onChange={(e) => updateLineItem(index, 'unit_price', e.target.value)}
-                          placeholder="Unit price"
-                          aria-label={`Line item ${index + 1} unit price`}
-                          className="col-span-4 md:col-span-2 px-2 py-2 text-sm border border-gray-300 rounded"
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.budget ?? ''}
-                          onChange={(e) => updateLineItem(index, 'budget', e.target.value)}
-                          placeholder="Budget"
-                          aria-label={`Line item ${index + 1} budget`}
-                          className="col-span-4 md:col-span-2 px-2 py-2 text-sm border border-gray-300 rounded"
-                        />
-                        <div className="col-span-6 md:col-span-1 px-2 py-2 text-sm text-right font-medium">
-                          {formData.currency} {item.total || '0.00'}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeLineItem(index)}
-                          aria-label={`Remove line item ${index + 1}`}
-                          className="col-span-2 md:col-span-1 p-2 text-red-500 hover:text-red-700"
-                        >
-                          <TrashIcon className="h-5 w-5 mx-auto" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <button type="button" onClick={addLineItem} className="w-full py-4 text-sm text-gray-500 border border-dashed border-gray-300 rounded">
-                    Add structured quantities and unit prices
-                  </button>
-                )}
-                {errors.items && <p className="mt-2 text-sm text-red-600">{errors.items}</p>}
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Currency
-                  </label>
-                  <select
-                    name="currency"
-                    value={formData.currency}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    <option value="USD">USD</option>
-                    <option value="AED">AED</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
-                    <option value="SAR">SAR</option>
-                    <option value="INR">INR</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Total Price <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="total_price"
-                      value={formData.total_price}
-                      onChange={handleChange}
-                      readOnly={formData.items?.length > 0}
-                      className={`w-full border rounded-lg py-2 pl-4 pr-14 focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
-                        errors.total_price ? 'border-red-500' : 'border-gray-300'
-                      } ${
-                        formData.items?.length > 0 ? 'bg-gray-50' : ''
-                      }`}
-                      placeholder="4000.00"
-                    />
-                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-sm font-medium text-gray-600">
-                      {getCurrencyLabel(formData.currency)}
-                    </span>
-                  </div>
-                  {errors.total_price && (
-                    <p className="mt-1 text-sm text-red-600">{errors.total_price}</p>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Net Total (excl. VAT)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="net_total_excl_vat"
-                      value={formData.net_total_excl_vat}
-                      readOnly
-                      className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2 pl-4 pr-14 text-gray-700"
-                      placeholder="4000.00"
-                    />
-                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-sm font-medium text-gray-600">
-                      {getCurrencyLabel(formData.currency)}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Calculated from the pricing total before VAT.</p>
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Negotiation Remarks
-                </label>
-                <textarea
-                  name="price_remarks"
-                  value={formData.price_remarks}
-                  onChange={handleChange}
-                  rows={2}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Record negotiation outcome, agreed savings, commercial clarifications, or final terms"
-                />
-                <p className="mt-1 text-xs text-gray-500">Replaces the former Discount % field.</p>
-              </div>
-              
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedPricing(!showAdvancedPricing)}
-                  className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center space-x-1"
-                >
-                  <SparklesIcon className="h-4 w-4" />
-                  <span>{showAdvancedPricing ? 'Hide' : 'Show'} Advanced Pricing Details</span>
-                </button>
-              </div>
-              
-              {showAdvancedPricing && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-4">
-                  <h4 className="text-sm font-semibold text-gray-900">Advanced Pricing Information</h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Budget Allocation
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.price_remarks_data?.budget_allocation || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          price_remarks_data: {
-                            ...prev.price_remarks_data,
-                            budget_allocation: e.target.value
-                          }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        placeholder="e.g., HSE Budget"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Cost Center
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.price_remarks_data?.cost_center || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          price_remarks_data: {
-                            ...prev.price_remarks_data,
-                            cost_center: e.target.value
-                          }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        placeholder="e.g., CC-001"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Payment Terms
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.price_remarks_data?.payment_terms || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          price_remarks_data: {
-                            ...prev.price_remarks_data,
-                            payment_terms: e.target.value
-                          }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        placeholder="e.g., Net 45 days"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section 6: Reference Section */}
-          <div className="border-b border-gray-200 pb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">6</span>
               Reference
             </h3>
             <div className="relative">
@@ -2449,7 +1953,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               </label>
               <input
                 type="text"
-                name="po_number_reference"
+                name="po_number_reference" aria-label="PO number"
                 value={formData.po_number_reference}
                 onChange={(e) => {
                   handleChange(e);
@@ -2511,7 +2015,130 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             </div>
           </div>
 
-          {formData.currency === 'AED' && parseFloat(formData.total_price || 0) > 100000 && (
+          </div>}
+              {activeStep === 3 && <div className="prf-step-panel" aria-label="Documents">{/* Signed approval PDF is intentionally first when editing. */}
+          {editData && (
+            <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-5 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-base font-bold text-emerald-900">Attach Signed / Approved PR PDF</p>
+                  <p className="mt-1 text-xs leading-relaxed text-emerald-800">
+                    The PDF must match PR {formData.pr_number}. RADAI captures its details, verifies the approval table, attaches the signed source, and records approval only when validation succeeds.
+                  </p>
+                </div>
+                <label className="inline-flex h-10 shrink-0 cursor-pointer items-center rounded-lg border border-emerald-400 bg-white px-4 text-xs font-bold text-emerald-700 hover:bg-emerald-100">
+                  <CheckCircleIcon className="mr-1.5 h-4 w-4" /> {approvedPdfFile ? 'Change Signed PDF' : 'Choose Signed PDF'}
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                    onChange={(event) => {
+                      const selected = event.target.files?.[0] || null;
+                      try {
+                        validateSignedRequisitionPdf(selected);
+                        setErrors(previous => ({ ...previous, approved_pdf: null }));
+                        setApprovedPdfFile(selected);
+                      } catch (validationError) {
+                        setErrors(previous => ({ ...previous, approved_pdf: validationError.message }));
+                        setApprovedPdfFile(null);
+                      }
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+              {approvedPdfFile && (
+                <div className="mt-4 rounded-lg border border-emerald-200 bg-white p-3">
+                  <p className="text-xs font-semibold text-emerald-800">Selected signed PDF: {approvedPdfFile.name}</p>
+                  <label className="mt-3 block text-xs font-semibold text-gray-700">
+                    Approval date override (only when visible handwriting cannot be read by OCR)
+                    <input type="date" value={approvedPdfDate} onChange={(event) => setApprovedPdfDate(event.target.value)} className="mt-1 block h-9 w-full rounded-lg border border-emerald-300 bg-white px-3 font-normal text-gray-800" />
+                  </label>
+                </div>
+              )}
+              {(editData.attachments || []).filter((attachment) => (
+                attachment?.type === 'signed_purchase_requisition_pdf'
+                || attachment?.document_type === 'signed_purchase_requisition_pdf'
+              )).map((attachment) => (
+                <a
+                  key={attachment.sha256 || attachment.url || attachment.filename}
+                  href={attachment.url || attachment.s3_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                >
+                  <PaperClipIcon className="h-4 w-4" /> Currently recorded: {attachment.filename || 'Signed PR PDF'}
+                </a>
+              ))}
+              {errors.approved_pdf && <p className="mt-2 text-xs font-medium text-red-600">{errors.approved_pdf}</p>}
+            </div>
+          )}{/* Section 8: Attachments Section */}
+          <div className="prf-card prf-legacy-card">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              Attachments (Multiple Files Supported)
+            </h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-center w-full">
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <CloudArrowUpIcon className="h-10 w-10 text-gray-400 mb-2" />
+                    <p className="mb-2 text-sm text-gray-500">
+                      <span className="font-semibold">Choose files</span> to attach
+                    </p>
+                    <p className="text-xs text-gray-500">PDF, DOC, DOCX, XLS, XLSX, Images (MAX. 10MB each)</p>
+
+                  </div>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileChange} aria-label="Attach supporting documents"
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  />
+                </label>
+              </div>
+
+              {files.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">Selected Files:</p>
+                  {files.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <PaperClipIcon className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                          <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        <XCircleIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {errors.attachments && (
+                <p className="text-sm text-red-600">{errors.attachments}</p>
+              )}
+
+              {uploadProgress > 0 && uploadProgress < 100 && (
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    className="bg-purple-600 h-2.5 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              )}
+            </div>
+          </div>{savedAttachments.length > 0 && <section className="prf-card"><h2>Attached documents</h2>{savedAttachments.map((file,index) => <a className="prf-file-link" key={file.id || index} href={file.url || file.s3_url} target="_blank" rel="noreferrer"><PaperClipIcon />{file.filename || file.name || 'Document'}</a>)}</section>}</div>}
+              {activeStep === 4 && <div className="prf-step-panel" aria-label="Approval and submit">
+                <section className="prf-card prf-review-checks"><h2>Review before submission</h2><p>{issues.length ? 'Complete the items below to route this recommendation for approval.' : 'The required information is complete. Review the document and approval route, then submit.'}</p>{issues.map(issue => <button key={issue.field} type="button" onClick={() => revealIssue(issue)}><ExclamationCircleIcon /><span>{issue.message}</span><ArrowRightIcon /></button>)}</section>
+                {formData.currency === 'AED' && parseFloat(formData.total_price || 0) > 100000 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-4">
               <div>
                 <h4 className="text-sm font-bold text-amber-900">Management Approval Required</h4>
@@ -2526,43 +2153,18 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 ))}
               </div>
               {errors.management_approval && <p className="text-sm text-red-600">{errors.management_approval}</p>}
-              <textarea name="management_approval_remarks" value={formData.management_approval_remarks} onChange={handleChange} rows={2} className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm" placeholder="Management approval remarks" />
+              <textarea name="management_approval_remarks" aria-label="Management approval remarks" value={formData.management_approval_remarks} onChange={handleChange} rows={2} className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm" placeholder="Management approval remarks" />
               {errors.management_approval_remarks && <p className="text-sm text-red-600">{errors.management_approval_remarks}</p>}
               <div>
                 <label className="block text-sm font-semibold text-gray-800 mb-2">Evidence of Approval</label>
-                <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={(event) => setManagementEvidenceFile(event.target.files?.[0] || null)} className="block w-full text-sm" />
+                <input type="file" aria-label="Evidence of management approval" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={(event) => setManagementEvidenceFile(event.target.files?.[0] || null)} className="block w-full text-sm" />
                 {(managementEvidenceFile || (formData.management_approval_evidence || []).length > 0) && <p className="mt-1 text-xs text-emerald-700">{managementEvidenceFile?.name || 'Existing evidence attached'}</p>}
                 {errors.management_approval_evidence && <p className="mt-1 text-sm text-red-600">{errors.management_approval_evidence}</p>}
               </div>
             </div>
-          )}
-
-          {/* Section 7: Purchase Recommendation Section */}
-          <div className="border-b border-gray-200 pb-6">
+          )}{/* Section 9: Approval Workflow Section */}
+          <div className="prf-card prf-legacy-card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">7</span>
-              Purchase Recommendation
-            </h3>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Purchase Recommendation <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                name="purchase_recommendation"
-                value={formData.purchase_recommendation}
-                onChange={handleChange}
-                rows={2}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Any special requirements or notes..."
-              />
-              {errors.purchase_recommendation && <p className="mt-1 text-sm text-red-600">{errors.purchase_recommendation}</p>}
-            </div>
-          </div>
-
-          {/* Section 9: Approval Workflow Section */}
-          <div className="order-last border-b border-gray-200 pb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">9</span>
               Approval Workflow
             </h3>
             <div className="space-y-4">
@@ -2574,8 +2176,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
               <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
                 <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_100px] md:items-end">
-                  <div><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Level 1 required</label><input type="number" min="1" max="20" value={levelOneApproverCount} onChange={(event) => changeLevelOneCount(event.target.value)} className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" /></div>
-                  <div className="relative"><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Add Level 1 approver</label><input value={levelOneSearch} onChange={(event) => setLevelOneSearch(event.target.value)} disabled={loadingApprovers || (selectedApprovers.level_one || []).length >= levelOneApproverCount} placeholder="Search employee by name, ID, title, or department" className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" />{levelOneSearch.trim() && (selectedApprovers.level_one || []).length < levelOneApproverCount && <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">{projectManagers.filter(user => employeeSearchText(user).includes(levelOneSearch.trim().toLowerCase()) && !(selectedApprovers.level_one || []).some(id => String(id) === String(user.id))).slice(0, 20).map(user => <button key={user.id} type="button" onClick={() => addLevelOneApprover(user.id)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-purple-50 last:border-0"><span className="block font-semibold text-gray-900">{employeeDisplayName(user)}</span><span className="block text-xs text-gray-500">{user.job_title || user.department || user.employee_id || 'Active employee'}</span></button>)}</div>}</div>
+                  <div><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Level 1 required</label><input type="number" min="1" max="20" value={levelOneApproverCount} aria-label="Level 1 required" onChange={(event) => changeLevelOneCount(event.target.value)} className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" /></div>
+                  <div className="relative"><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Add Level 1 approver</label><input value={levelOneSearch} aria-label="Add Level 1 approver" onChange={(event) => setLevelOneSearch(event.target.value)} disabled={loadingApprovers || (selectedApprovers.level_one || []).length >= levelOneApproverCount} placeholder="Search employee by name, ID, title, or department" className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" />{levelOneSearch.trim() && (selectedApprovers.level_one || []).length < levelOneApproverCount && <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">{projectManagers.filter(user => employeeSearchText(user).includes(levelOneSearch.trim().toLowerCase()) && !(selectedApprovers.level_one || []).some(id => String(id) === String(user.id))).slice(0, 20).map(user => <button key={user.id} type="button" onClick={() => addLevelOneApprover(user.id)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-purple-50 last:border-0"><span className="block font-semibold text-gray-900">{employeeDisplayName(user)}</span><span className="block text-xs text-gray-500">{user.job_title || user.department || user.employee_id || 'Active employee'}</span></button>)}</div>}</div>
                   <div className={`rounded-full px-3 py-2 text-center text-xs font-bold ${(selectedApprovers.level_one || []).length === levelOneApproverCount ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{(selectedApprovers.level_one || []).length} of {levelOneApproverCount}</div>
                 </div>
               </div>
@@ -2584,17 +2186,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 <table className="min-w-[900px] w-full table-fixed border-collapse text-sm">
                   <thead className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-white"><tr><th className="w-[150px] px-4 py-3">Level label</th><th className="w-[230px] px-4 py-3">Approval role</th><th className="px-4 py-3">Selected approver</th><th className="w-[110px] px-4 py-3 text-center">Status / Action</th></tr></thead>
                   <tbody className="divide-y divide-gray-200">
-                    <tr className="bg-blue-50/50"><td className="p-3 align-top"><input value={stageLabels.procurement} onChange={(event) => changeStageLabel('procurement', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Procurement Department</p><p className="mt-1 text-xs text-gray-500">Level 0 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Procurement Department Approval" value={selectedApprovers.procurement || ''} employees={projectManagers} onChange={(value) => handleApproverChange('procurement', value)} required disabled /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Default</span></td></tr>
+                    <tr className="bg-blue-50/50"><td className="p-3 align-top"><input aria-label="procurement approval label" value={stageLabels.procurement} onChange={(event) => changeStageLabel('procurement', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Procurement Department</p><p className="mt-1 text-xs text-gray-500">Level 0 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Procurement Department Approval" value={selectedApprovers.procurement || ''} employees={projectManagers} onChange={(value) => handleApproverChange('procurement', value)} required disabled /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Default</span></td></tr>
 
                     {(selectedApprovers.level_one || []).length ? (selectedApprovers.level_one || []).map((userId, index) => { const user = findEmployeeById(projectManagers, userId); const displayName = employeeDisplayName(user, savedApproverName(editData?.approval_workflow_config, userId)); return <tr key={userId}><td className="p-3"><input value={levelOneLabels[userId] ?? `L1-${index + 1}`} onChange={(event) => changeLevelOneLabel(userId, event.target.value)} maxLength={20} aria-label={`Approval table level for ${displayName}`} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3"><p className="font-semibold text-gray-900">Level 1 Approver {index + 1}</p><p className="mt-1 text-xs text-gray-500">All Level 1 approvers must approve</p></td><td className="p-3"><p className="font-semibold text-gray-900">{displayName}</p><p className="text-xs text-gray-500">{user?.job_title || user?.department || savedApproverById(editData?.approval_workflow_config, userId)?.job_title || 'Active employee'}</p></td><td className="p-3 text-center"><button type="button" onClick={() => removeLevelOneApprover(userId)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button></td></tr>; }) : <tr><td className="p-3 text-center font-semibold text-purple-700">L1</td><td className="p-3"><p className="font-semibold">Level 1 Approvers</p><p className="text-xs text-gray-500">Required</p></td><td className="p-3 text-gray-500">Use the search box above to add approvers.</td><td className="p-3 text-center text-xs font-semibold text-amber-700">0 selected</td></tr>}
 
-                    {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input value={stageLabels.engineering_manager} onChange={(event) => changeStageLabel('engineering_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Engineering (MoE)</p><p className="mt-1 text-xs text-gray-500">Level 2 · Optional</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Engineering (MoE)" value={selectedApprovers.engineering_manager || ''} employees={engineeringManagers} onChange={(value) => handleApproverChange('engineering_manager', value)} disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">Optional</span></td></tr>}
+                    {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input aria-label="engineering manager approval label" value={stageLabels.engineering_manager} onChange={(event) => changeStageLabel('engineering_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Engineering (MoE)</p><p className="mt-1 text-xs text-gray-500">Level 2 · Optional</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Engineering (MoE)" value={selectedApprovers.engineering_manager || ''} employees={engineeringManagers} onChange={(value) => handleApproverChange('engineering_manager', value)} disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">Optional</span></td></tr>}
 
-                    {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input value={stageLabels.manager_projects} onChange={(event) => changeStageLabel('manager_projects', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Projects (MoP)</p><p className="mt-1 text-xs text-gray-500">Level 3 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Projects (MoP)" value={selectedApprovers.manager_projects || ''} employees={managerProjects} onChange={(value) => handleApproverChange('manager_projects', value)} required disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">Required</span></td></tr>}
+                    {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input aria-label="manager projects approval label" value={stageLabels.manager_projects} onChange={(event) => changeStageLabel('manager_projects', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Projects (MoP)</p><p className="mt-1 text-xs text-gray-500">Level 3 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Projects (MoP)" value={selectedApprovers.manager_projects || ''} employees={managerProjects} onChange={(value) => handleApproverChange('manager_projects', value)} required disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">Required</span></td></tr>}
 
-                    <tr><td className="p-3 align-top"><input value={stageLabels.vp_operations} onChange={(event) => changeStageLabel('vp_operations', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">{formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'}</p><p className="mt-1 text-xs text-gray-500">{formData.requisition_type === 'general' ? 'Level 2 · Required' : 'Level 4 · Required'}</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Vice President / Delivery Approver" value={selectedApprovers.vp_operations || ''} employees={vpOperations} onChange={(value) => handleApproverChange('vp_operations', value)} required disabled={loadingApprovers || formData.requisition_type === 'project'} />{!loadingApprovers && !selectedApprovers.vp_operations && <p className="mt-2 text-xs font-medium text-amber-700">{formData.requisition_type === 'project' ? 'Mohamad El-Ghawanmeh could not be found as an active employee.' : 'Select the authorized Vice President approver.'}</p>}</td><td className="p-3 text-center align-middle"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${formData.requisition_type === 'project' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>{formData.requisition_type === 'project' ? 'Default' : 'Required'}</span></td></tr>
+                    <tr><td className="p-3 align-top"><input aria-label="vp operations approval label" value={stageLabels.vp_operations} onChange={(event) => changeStageLabel('vp_operations', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">{formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'}</p><p className="mt-1 text-xs text-gray-500">{formData.requisition_type === 'general' ? 'Level 2 · Required' : 'Level 4 · Required'}</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Vice President / Delivery Approver" value={selectedApprovers.vp_operations || ''} employees={vpOperations} onChange={(value) => handleApproverChange('vp_operations', value)} required disabled={loadingApprovers || formData.requisition_type === 'project'} />{!loadingApprovers && !selectedApprovers.vp_operations && <p className="mt-2 text-xs font-medium text-amber-700">{formData.requisition_type === 'project' ? 'Mohamad El-Ghawanmeh could not be found as an active employee.' : 'Select the authorized Vice President approver.'}</p>}</td><td className="p-3 text-center align-middle"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${formData.requisition_type === 'project' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>{formData.requisition_type === 'project' ? 'Default' : 'Required'}</span></td></tr>
 
-                    {!formData.po_applicable && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">CEO</p><p className="mt-1 text-xs text-gray-500">Level 5 · Required when PO is not applicable</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="CEO Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} required disabled />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">Jarmo Suominen could not be found as an active employee.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
+                    {!formData.po_applicable && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input aria-label="general manager approval label" value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">CEO</p><p className="mt-1 text-xs text-gray-500">Level 5 · Required when PO is not applicable</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="CEO Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} required disabled />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">Jarmo Suominen could not be found as an active employee.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -2621,7 +2223,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               {errors.approval_workflow_config && (
                 <p className="text-sm font-medium text-red-600">{errors.approval_workflow_config}</p>
               )}
-              
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-xs text-blue-800">
                   <strong>Sequential routing:</strong> each level becomes active only after the previous level is approved.
@@ -2629,153 +2231,18 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               </div>
             </div>
           </div>
-
-          {/* Section 8: Attachments Section */}
-          <div className="border-b border-gray-200 pb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-purple-100 text-purple-700 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-sm font-bold">8</span>
-              Attachments (Multiple Files Supported)
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-center w-full">
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <CloudArrowUpIcon className="h-10 w-10 text-gray-400 mb-2" />
-                    <p className="mb-2 text-sm text-gray-500">
-                      <span className="font-semibold">Click to upload</span> or drag and drop
-                    </p>
-                    <p className="text-xs text-gray-500">PDF, DOC, DOCX, XLS, XLSX, Images (MAX. 10MB each)</p>
-                    <p className="text-xs text-purple-600 font-medium mt-1">Stored securely in AWS S3</p>
-                  </div>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="hidden"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                  />
-                </label>
-              </div>
-              
-              {files.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-gray-700">Selected Files:</p>
-                  {files.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <PaperClipIcon className="h-5 w-5 text-gray-400" />
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                          <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index)}
-                        className="text-red-500 hover:text-red-700 transition-colors"
-                      >
-                        <XCircleIcon className="h-5 w-5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {errors.attachments && (
-                <p className="text-sm text-red-600">{errors.attachments}</p>
-              )}
-              
-              {uploadProgress > 0 && uploadProgress < 100 && (
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div
-                    className="bg-purple-600 h-2.5 rounded-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
-                </div>
-              )}
+              </div>}
             </div>
-          </div>
-
-          {/* Info Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start space-x-3">
-            <InformationCircleIcon className="h-6 w-6 text-blue-500 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800">
-              <p className="font-medium mb-1">Approval Workflow</p>
-              <p>After submission, approval starts with the default Procurement Department approver, then proceeds sequentially through the selected active employees and the final VP Delivery stage.</p>
-            </div>
-          </div>
+            <footer className="prf-action-bar">
+              <button type="button" className="prf-button prf-cancel" onClick={onClose}>Cancel</button>
+              <button type="button" className={`prf-required ${issues.length ? '' : 'is-ready'}`} onClick={reviewSubmission}><ExclamationCircleIcon />{requiredMessage}</button>
+              <div className="prf-bottom-actions">{activeStep > 0 && activeStep !== 1 && <button type="button" className="prf-button prf-back" onClick={() => goToStep(activeStep - 1)}><ArrowLeftIcon />Back</button>}<button type="button" className="prf-button" disabled={submitLoading || autoSaving} onClick={event => handleSubmit(event, false, true)}>{approvedPdfFile ? 'Record signed PDF' : 'Save draft'}</button>
+              {activeStep < 4 ? <button type="button" className="prf-button prf-primary" onClick={continueStep}>Continue to {['supplier & pricing', 'business justification', 'documents', 'approval'][activeStep]}<ArrowRightIcon /></button> : !approvedPdfFile && canSubmitForApproval && <button type="submit" className="prf-button prf-primary" disabled={submitLoading || autoSaving}>{submitLoading ? 'Submitting...' : 'Submit for approval'}<ArrowRightIcon /></button>}</div>
+            </footer>
           </form>
-
-          {pageMode && (
-            <div
-              role="separator"
-              aria-label="Resize form and Live Preview panes"
-              aria-orientation="vertical"
-              aria-valuemin={35}
-              aria-valuemax={75}
-              aria-valuenow={Math.round(formPanePercent)}
-              tabIndex={0}
-              title="Drag to resize · Double-click to reset"
-              onPointerDown={(event) => {
-                event.preventDefault();
-                resizeFormPane(event.clientX);
-                setIsPaneResizing(true);
-              }}
-              onDoubleClick={() => setFormPanePercent(60)}
-              onKeyDown={handlePaneResizeKeyDown}
-              className={`group relative z-10 hidden cursor-col-resize touch-none items-center justify-center bg-slate-300 outline-none transition-colors hover:bg-purple-400 focus-visible:bg-purple-500 xl:flex ${isPaneResizing ? 'bg-purple-500' : ''}`}
-            >
-              <span className="h-12 w-1 rounded-full bg-white/90 shadow-sm transition-transform group-hover:scale-y-110" />
-            </div>
-          )}
-
-          <aside className={`min-h-0 min-w-0 overflow-x-auto border-t border-slate-300 bg-slate-200 p-3 sm:p-4 ${pageMode ? 'xl:overflow-y-auto xl:overscroll-contain xl:border-t-0' : '2xl:overflow-y-auto 2xl:border-l 2xl:border-t-0'}`} aria-label="Live purchase recommendation preview">
-            <PurchaseRequisitionDocumentPreview requisition={livePreviewRequisition} live />
-          </aside>
-        </div>
-
-        {/* Modal Footer Actions - Fixed Bottom Bar */}
-        <div className={`flex flex-shrink-0 flex-col gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:rounded-b-xl sm:px-8 md:flex-row md:items-center md:justify-between md:py-4 ${pageMode ? 'sticky bottom-0 z-20 shadow-[0_-4px_12px_rgba(15,23,42,0.08)]' : ''}`}>
-          <div className="text-sm text-gray-500">
-            <span className="text-red-500">*</span> Required fields
-          </div>
-          <div className="flex flex-wrap justify-end gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 sm:px-6"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={(e) => handleSubmit(e, false)}
-              disabled={submitLoading}
-              className="rounded-lg border border-purple-300 bg-purple-50 px-4 py-2.5 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 disabled:opacity-50 sm:px-6"
-            >
-              {approvedPdfFile ? 'Record Signed PDF' : editData ? 'Save Changes' : 'Save Draft'}
-            </button>
-            {!approvedPdfFile && canSubmitForApproval && <button
-              type="submit"
-              form="pr-modal-form"
-              disabled={submitLoading}
-              className="flex items-center space-x-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 sm:px-6"
-            >
-              {submitLoading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>Submitting...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircleIcon className="h-5 w-5" />
-                  <span>Submit for Approval</span>
-                </>
-              )}
-            </button>}
-          </div>
-        </div>
-
+        </section>
+        <div role="separator" aria-label="Resize form and preview panes" aria-orientation="vertical" aria-valuemin={35} aria-valuemax={75} aria-valuenow={Math.round(formPanePercent)} tabIndex={0} onPointerDown={event => { event.preventDefault(); resizeFormPane(event.clientX); setIsPaneResizing(true); }} onDoubleClick={() => setFormPanePercent(58)} onKeyDown={handlePaneResizeKeyDown} className="prf-pane-divider" title="Drag to resize; double-click to reset" />
+        <RecommendationPreviewPane requisition={livePreviewRequisition} issues={issues} onIssueClick={revealIssue} />
       </div>
     </div>
   );

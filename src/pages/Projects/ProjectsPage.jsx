@@ -14,29 +14,61 @@ import ProjectFormModal from './components/ProjectFormModal'
 import QhseImportModal from './components/QhseImportModal'
 import ProjectDashboardTab from './tabs/ProjectDashboardTab'
 import CostDashboardTab from './tabs/CostDashboardTab'
-import CommercialDashboardTab from './tabs/CommercialDashboardTab'
-import EstimatesTab from './tabs/EstimatesTab'
-import DocumentsTab from './tabs/DocumentsTab'
+import CommercialDashboardTab, { downloadCommercialCsv } from './tabs/CommercialDashboardTab'
+import MilestoneControlTab, { downloadMilestoneCsv } from './tabs/MilestoneControlTab'
+import EstimatesTab, { downloadEstimateCsv } from './tabs/EstimatesTab'
+import useEstimateControl from './useEstimateControl'
+import DocumentsTab, { downloadDocumentRegisterCsv } from './tabs/DocumentsTab'
+import useDocumentControl from './useDocumentControl'
 import TakeoffTab from './tabs/TakeoffTab'
 import EVMTab from './tabs/EVMTab'
-import RiskTab from './tabs/RiskTab'
-import PlanBaselineTab from './tabs/PlanBaselineTab'
+import RiskChangeControlTab, { downloadRiskRegisterCsv } from './tabs/RiskChangeControlTab'
+import useRiskChangeControl from './useRiskChangeControl'
+import PlanBaselineTab, { downloadScheduleCsv } from './tabs/PlanBaselineTab'
 import ControlsPeriodsTab from './tabs/ControlsPeriodsTab'
+import EPCLifecycleTab from './tabs/EPCLifecycleTab'
 import PortfolioExceptionsTab from './tabs/PortfolioExceptionsTab'
 import Notification from '../../components/ui/Notification'
+import useProjectPerformance from './useProjectPerformance'
+import useSchedulePerformance from './useSchedulePerformance'
+import useCommercialPerformance from './useCommercialPerformance'
+import useMilestoneControl from './useMilestoneControl'
+import ProjectPerformanceDialogs from './components/ProjectPerformanceDialogs'
+import './ProjectPerformance.css'
+import './SchedulePerformance.css'
+import './CommercialPerformance.css'
+import './MilestoneControl.css'
+import './RiskChangeControl.css'
+import './EstimateControl.css'
+import './DocumentControl.css'
+
+const loadProjectList = async () => {
+  const projects = []
+  let page = 1
+  let next = true
+  while (next) {
+    const data = await PC.listProjects({ page, page_size: 100 })
+    projects.push(...(Array.isArray(data) ? data : data?.results || []))
+    next = Boolean(data?.next)
+    page += 1
+  }
+  return projects
+}
 
 const TAB_COMPONENTS = {
   'project-dashboard': ProjectDashboardTab,
   'plan-baseline':     PlanBaselineTab,
   'controls-periods':  ControlsPeriodsTab,
+  'epc-lifecycle': EPCLifecycleTab,
   'portfolio-exceptions': PortfolioExceptionsTab,
   'cost-dashboard':    CostDashboardTab,
   'commercial-dashboard': CommercialDashboardTab,
+  'milestones':           MilestoneControlTab,
   'estimates':         EstimatesTab,
   'documents':         DocumentsTab,
   'ai-takeoff':        TakeoffTab,
   'evm':               EVMTab,
-  'risk':              RiskTab,
+  'risk':              RiskChangeControlTab,
 }
 
 export default function ProjectsPage() {
@@ -54,27 +86,44 @@ export default function ProjectsPage() {
   const [editingProject, setEditingProject] = useState(null)
   const [toast, setToast] = useState(null)
   const [qhseImportOpen, setQhseImportOpen] = useState(false)
+  const [refreshVersion, setRefreshVersion] = useState(0)
+  const [lastRefreshed, setLastRefreshed] = useState(null)
+  const [overviewDialog, setOverviewDialog] = useState(null)
+  const [milestoneDialog, setMilestoneDialog] = useState(null)
+  const [riskDialog, setRiskDialog] = useState(null)
+  const [estimateDialog, setEstimateDialog] = useState(null)
+  const [documentDialog, setDocumentDialog] = useState(null)
+  const [documentId, setDocumentId] = useState(null)
+  const [estimateId, setEstimateId] = useState(null)
+  const [compareEstimateId, setCompareEstimateId] = useState(null)
+  const [scheduleBaselineId, setScheduleBaselineId] = useState('')
+  const [scheduleVersionId, setScheduleVersionId] = useState('')
+  const scheduleMode = searchParams.get('scheduleMode') === 'planner' ? 'planner' : 'management'
+  const commercialMode = searchParams.get('commercialMode') === 'controls' ? 'controls' : 'management'
 
   const reloadProjects = useCallback(async ({ selectId } = {}) => {
     setLoadingProjects(true)
     try {
-      const data = await PC.listProjects()
-      const list = Array.isArray(data) ? data : (data?.results || [])
+      const list = await loadProjectList()
       setProjects(list)
       if (selectId) {
         setSelectedProjectId(selectId)
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.set('project', selectId)
+        setSearchParams(nextParams, { replace: true })
       } else if (list.length && !list.find((p) => String(p.id) === String(selectedProjectId))) {
         setSelectedProjectId(list[0].id)
       } else if (!list.length) {
         setSelectedProjectId(null)
       }
       setError(null)
+      setRefreshVersion(value => value + 1)
     } catch (e) {
       setError(e?.message || 'Failed to load projects')
     } finally {
       setLoadingProjects(false)
     }
-  }, [selectedProjectId])
+  }, [selectedProjectId, searchParams, setSearchParams])
 
   // Initial load: projects + phase flags in parallel
   useEffect(() => {
@@ -83,7 +132,7 @@ export default function ProjectsPage() {
     setLoadingFlags(true)
     setError(null)
 
-    Promise.allSettled([PC.listProjects(), PC.getPhaseFlags()])
+    Promise.allSettled([loadProjectList(), PC.getPhaseFlags()])
       .then(([projectsRes, flagsRes]) => {
         if (cancelled) return
         if (projectsRes.status === 'fulfilled') {
@@ -122,7 +171,7 @@ export default function ProjectsPage() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [selectedProjectId])
+  }, [selectedProjectId, refreshVersion])
 
   useEffect(() => {
     if (!toast) return
@@ -168,14 +217,64 @@ export default function ProjectsPage() {
     () => projects.find((p) => String(p.id) === String(selectedProjectId)) || null,
     [projects, selectedProjectId]
   )
+  const performance = useProjectPerformance(selectedProject, refreshVersion)
+  const schedulePerformance = useSchedulePerformance(selectedProject, performance, refreshVersion, {
+    enabled: view === 'plan-baseline' || view === 'milestones' || view === 'risk', baselineId: scheduleBaselineId, versionId: scheduleVersionId,
+  })
+  const commercialPerformance = useCommercialPerformance(selectedProject, performance, refreshVersion, {
+    enabled: view === 'commercial-dashboard',
+  })
+  const milestoneControl = useMilestoneControl(selectedProject, performance, schedulePerformance, { enabled: view === 'milestones' })
+  const riskControl = useRiskChangeControl(selectedProject, performance, schedulePerformance, { enabled: view === 'risk' })
+  const estimateControl = useEstimateControl(selectedProject, refreshVersion, { enabled: view === 'estimates', estimateId, compareId: compareEstimateId })
+  const documentControl = useDocumentControl(selectedProject, refreshVersion, { enabled: view === 'documents', documentId })
+  useEffect(() => { setMilestoneDialog(null); setRiskDialog(null); setEstimateDialog(null); setEstimateId(null); setCompareEstimateId(null); setDocumentDialog(null); setDocumentId(null) }, [selectedProjectId])
+  useEffect(() => { setScheduleBaselineId(''); setScheduleVersionId('') }, [selectedProjectId])
+  useEffect(() => {
+    if (selectedProject && !performance.loading && performance.model) setLastRefreshed(new Date().toISOString())
+  }, [selectedProject, performance.loading, performance.model])
+  useEffect(() => { setOverviewDialog(null); setLastRefreshed(null) }, [selectedProjectId])
+
+  const handleSelectProject = useCallback(id => {
+    setSelectedProjectId(id)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('project', id)
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  useEffect(() => {
+    const requested = searchParams.get('project')
+    if (requested && String(selectedProjectId) !== requested) setSelectedProjectId(requested)
+  }, [searchParams, selectedProjectId])
 
   const handleSelectView = useCallback((nextView) => {
+    if (view === 'project-dashboard' && ['risk', 'plan-baseline'].includes(nextView)) setScheduleVersionId('')
     setView(nextView)
     const nextParams = new URLSearchParams(searchParams)
     if (nextView === PROJECT_DEFAULT_VIEW) nextParams.delete('view')
     else nextParams.set('view', nextView)
     setSearchParams(nextParams, { replace: true })
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, view])
+
+  const handleScheduleMode = nextMode => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('view', 'plan-baseline')
+    if (nextMode === 'planner') nextParams.set('scheduleMode', 'planner')
+    else nextParams.delete('scheduleMode')
+    setSearchParams(nextParams, { replace: true })
+    if (nextMode !== 'planner') schedulePerformance.reload()
+  }
+
+  const handleCommercialMode = nextMode => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('view', 'commercial-dashboard')
+    if (nextMode === 'controls') nextParams.set('commercialMode', 'controls')
+    else nextParams.delete('commercialMode')
+    setSearchParams(nextParams, { replace: true })
+    if (nextMode !== 'controls') {
+      commercialPerformance.reload()
+    }
+  }
 
   useEffect(() => {
     const requestedView = searchParams.get('view')
@@ -189,14 +288,19 @@ export default function ProjectsPage() {
   const ActiveTab = TAB_COMPONENTS[view] || CostDashboardTab
   const activeMode = PROJECT_VIEW_MODES.find((m) => m.key === view)
   const isActiveFlagOn = activeMode ? phaseFlags[activeMode.phaseFlag] !== false : true
+  const handlePerformanceAction = nextView => {
+    if (nextView === 'edit-project') handleOpenEdit()
+    else if (['actions', 'activity', 'data-quality', 'reporting-source'].includes(nextView)) setOverviewDialog(nextView)
+    else handleSelectView(nextView || PROJECT_DEFAULT_VIEW)
+  }
 
   return (
-    <div className="project-control-workspace min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className={`project-control-workspace project-performance-workspace${view === 'plan-baseline' ? ' pp-schedule-workspace' : view === 'commercial-dashboard' ? ' pp-commercial-workspace' : view === 'milestones' ? ' pp-milestone-workspace' : view === 'risk' ? ' pp-risk-workspace' : view === 'estimates' ? ' pp-estimate-workspace' : view === 'documents' ? ' pp-document-workspace' : ''}`}>
       <ProjectControlHeader
         projects={projects}
         selectedProject={selectedProject}
         selectedProjectId={selectedProjectId}
-        onSelectProject={setSelectedProjectId}
+        onSelectProject={handleSelectProject}
         loading={loadingProjects}
         error={error}
         phaseFlags={phaseFlags}
@@ -211,11 +315,26 @@ export default function ProjectsPage() {
           await reloadProjects({ selectId: selectedProjectId })
           setToast({ type: 'success', message: 'Project data refreshed.' })
         }}
-        onExport={() => window.print()}
+        onExport={() => view === 'documents' ? downloadDocumentRegisterCsv(documentControl.model, selectedProject) : view === 'estimates' ? downloadEstimateCsv(estimateControl.model, selectedProject) : view === 'risk' ? downloadRiskRegisterCsv(riskControl.model, selectedProject) : view === 'plan-baseline' ? downloadScheduleCsv(schedulePerformance.model, selectedProject) : view === 'commercial-dashboard' ? downloadCommercialCsv(commercialPerformance.model, selectedProject) : view === 'milestones' ? downloadMilestoneCsv(milestoneControl.model, selectedProject) : window.print()}
+        performance={performance}
+        schedulePerformance={schedulePerformance}
+        onUpdateSchedule={() => handleScheduleMode('planner')}
+        commercialPerformance={commercialPerformance}
+        onUpdateCommercial={() => handleCommercialMode('controls')}
+        milestoneControl={milestoneControl}
+        onAddMilestone={() => setMilestoneDialog({ type: 'create' })}
+        documentControl={documentControl}
+        onAddDocument={() => setDocumentDialog({ type: 'create' })}
+        estimateControl={estimateControl}
+        onNewEstimate={type => setEstimateDialog({ type })}
+        riskControl={riskControl}
+        onAddRiskRecord={itemType => setRiskDialog({ type: 'create', itemType })}
+        lastRefreshed={lastRefreshed}
+        onOpenDialog={setOverviewDialog}
       />
 
       {/* Body */}
-      <div className="w-full space-y-6 px-3 py-3 sm:px-4 sm:py-4">
+      <div className="pp-body">
         {loadingProjects || loadingFlags ? (
           <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500">
             {PROJECT_COPY.loadingProjects}
@@ -243,16 +362,51 @@ export default function ProjectsPage() {
           <PhaseStubCard mode={activeMode} />
         ) : (
           <ActiveTab
+            key={['milestones', 'risk', 'estimates', 'documents', 'epc-lifecycle'].includes(view) ? selectedProject.id : undefined}
             project={selectedProject}
             projects={projects}
             phaseFlags={phaseFlags}
             onSelectView={handleSelectView}
-            onSelectProject={setSelectedProjectId}
+            onSelectProject={handleSelectProject}
             onNavigate={navigate}
             onEdit={handleOpenEdit}
+            onProjectUpdated={async () => {
+              const detail = await PC.getProject(selectedProject.id)
+              setProjects(current => current.map(row => String(row.id) === String(selectedProject.id) ? { ...row, ...detail } : row))
+              setRefreshVersion(value => value + 1)
+            }}
+            onOpenDocument={id => { setDocumentId(id); handleSelectView('documents') }}
+            performance={performance}
+            onOpenDialog={setOverviewDialog}
+            schedulePerformance={schedulePerformance}
+            scheduleMode={scheduleMode}
+            onScheduleMode={handleScheduleMode}
+            onSelectBaseline={setScheduleBaselineId}
+            onSelectVersion={setScheduleVersionId}
+            commercialPerformance={commercialPerformance}
+            commercialMode={commercialMode}
+            onCommercialMode={handleCommercialMode}
+            documentControl={documentControl}
+            documentDialog={documentDialog}
+            onDocumentDialog={setDocumentDialog}
+            onSelectDocument={setDocumentId}
+            refreshVersion={refreshVersion}
+            estimateControl={estimateControl}
+            estimateDialog={estimateDialog}
+            onEstimateDialog={setEstimateDialog}
+            onSelectEstimate={setEstimateId}
+            onCompareEstimate={setCompareEstimateId}
+            riskControl={riskControl}
+            riskDialog={riskDialog}
+            onRiskDialog={setRiskDialog}
+            milestoneControl={milestoneControl}
+            milestoneDialog={milestoneDialog}
+            onMilestoneDialog={setMilestoneDialog}
+            onOpenSchedule={() => handleScheduleMode('planner')}
           />
         )}
       </div>
+      {overviewDialog && selectedProject && <ProjectPerformanceDialogs key={`${selectedProject.id}:${overviewDialog}`} type={overviewDialog} model={performance.model} onClose={() => setOverviewDialog(null)} onAction={handlePerformanceAction} />}
 
       <ProjectFormModal
         open={formOpen}

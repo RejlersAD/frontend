@@ -1,168 +1,122 @@
-import { radaiConfirm } from '../../../services/radaiDialog'
+/* eslint-disable react/prop-types */
 import React, { useEffect, useRef, useState } from 'react'
-import { ArrowUpTrayIcon, ArrowDownTrayIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { useSelector } from 'react-redux'
+import { AlertCircle, AlertTriangle, ArrowRight, BarChart3, CalendarDays, CheckCircle2, ClipboardList, Copy, Download, FileCheck2, FileText, Filter, FolderOpen, Info, Paperclip, Pencil, RefreshCw, Search, Send, ShieldCheck, Trash2 } from 'lucide-react'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import ServerFileBrowser from '../../../components/fileReplica/ServerFileBrowser'
+import DocumentControlDialogs from '../components/DocumentControlDialogs'
+import DocumentPreviewDialog, { documentFileError, documentPreviewKind, saveDocumentBlob } from '../components/DocumentPreviewDialog'
+import { downloadProjectDocument } from '../../../services/projectControl.service'
+import { formatDate } from '../useProjectPerformance'
 
-import * as PC from '../../../services/projectControl.service'
-import { DOCUMENT_KIND_OPTIONS } from '../../../config/projectControl.config'
+const tone = value => ({ red: 'danger', amber: 'warning', green: 'success' }[value] || value || 'neutral')
+const size = value => value === null || value === undefined ? 'Not recorded' : value < 1024 ? `${value} B` : value < 1048576 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1048576).toFixed(1)} MB`
+const reference = row => `#${row.id}`
+function Panel({ title, icon: Icon = ClipboardList, className = '', actions, children }) { return <section className={`dc-panel ${className}`} aria-label={title}><header><h2><Icon aria-hidden="true" />{title}</h2>{actions && <div className="dc-panel-actions">{actions}</div>}</header>{children}</section> }
+function TextAction({ children, onClick, disabled }) { return <button type="button" className="dc-text-button" onClick={onClick} disabled={disabled}>{children}<ArrowRight aria-hidden="true" /></button> }
+function Empty({ children, title, icon: Icon = FileText }) { return <div className="dc-empty"><Icon aria-hidden="true" />{title && <strong>{title}</strong>}<p>{children}</p></div> }
+function Status({ children, color = 'neutral' }) { return <span className={`dc-status dc-${tone(color)}`}><span className="dc-status-dot" aria-hidden="true" />{children}</span> }
+function Segments({ options, value, onChange, label }) { return <div className="dc-segmented" role="group" aria-label={label}>{options.map(([key, text]) => <button type="button" key={key} aria-pressed={key === value} onClick={() => onChange(key)}>{text}</button>)}</div> }
+function Kpi({ title, value, note, icon: Icon, color = 'blue', onClick }) { return <button type="button" className={`dc-kpi dc-${color}`} onClick={onClick}><Icon aria-hidden="true" /><span className="dc-kpi-copy"><span>{title}</span><strong>{value ?? '—'}</strong><small>{note}</small></span></button> }
 
-function fmtBytes(n) {
-  if (!n) return '—'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let i = 0
-  let v = Number(n)
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
-  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`
+export function downloadDocumentRegisterCsv(model, project) {
+  if (!model?.availability?.list) return
+  const data = [['Project', project?.code || project?.project_code || project?.name], ['Source', 'Uploaded project documents'], ['Scope', 'Full uploaded register; server files are a separate source'], [], ['Record ID', 'Title', 'Document type', 'Filename', 'Size bytes', 'Uploaded by', 'Uploaded at', 'Updated at', 'Metadata processing', 'File reference']]
+  for (const row of model.rows || []) data.push([row.id, row.title, row.kindLabel, row.filename, row.sizeBytes, row.uploadedBy, row.createdAt, row.updatedAt, row.parseLabel, row.hasFile ? 'Registered' : 'Missing'])
+  const csv = data.map(row => row.map(value => { const cell = String(value ?? ''); return `"${(/^[=+@\-\t\r]/.test(cell) ? "'" : '') + cell.replaceAll('"', '""')}"` }).join(',')).join('\r\n')
+  saveDocumentBlob(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }), { filename: `document-register-${String(project?.code || project?.id || 'project').replace(/[^a-zA-Z0-9_-]/g, '-')}.csv` })
 }
 
-export default function DocumentsTab({ project }) {
-  const [documents, setDocuments] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [uploading, setUploading] = useState(false)
-  const [uploadKind, setUploadKind] = useState('other')
-  const fileRef = useRef(null)
-
-  const reload = () => {
-    setLoading(true)
-    setError(null)
-    PC.listDocuments(project.id)
-      .then((data) => setDocuments(Array.isArray(data) ? data : (data?.results || [])))
-      .catch((e) => setError(e?.response?.data?.error || e?.message || 'Failed to load documents'))
-      .finally(() => setLoading(false))
+export default function DocumentsTab({ project, documentControl: control, documentDialog, onDocumentDialog, onSelectDocument, refreshVersion = 0 }) {
+  const user = useSelector(state => state.auth?.user || null)
+  const [mode, setMode] = useState('management'), [search, setSearch] = useState(''), [kind, setKind] = useState('all'), [processing, setProcessing] = useState('all')
+  const [uploader, setUploader] = useState('all'), [myUploads, setMyUploads] = useState(false), [filters, setFilters] = useState(false)
+  const [fromDate, setFromDate] = useState(''), [toDate, setToDate] = useState(''), [groupBy, setGroupBy] = useState('none'), [sort, setSort] = useState('newest')
+  const [reviewTab, setReviewTab] = useState('reviews'), [chartView, setChartView] = useState('chart'), [notice, setNotice] = useState(''), [error, setError] = useState('')
+  const [preview, setPreview] = useState(null), [downloading, setDownloading] = useState(null)
+  const downloadRef = useRef(null)
+  useEffect(() => () => downloadRef.current?.abort(), [])
+  const model = control?.model || {}, rows = model.rows || [], selected = model.selected, counts = model.counts || {}, actions = model.actions || []
+  const known = model.availability?.list === true
+  const open = (type, document) => onDocumentDialog?.({ type, document })
+  const select = row => onSelectDocument?.(row.id)
+  const uploaders = [...new Map(rows.map(row => [String(row.uploadedById ?? 'unknown'), row.uploadedBy || 'Not recorded'])).entries()]
+  const filtered = rows.filter(row => {
+    const created = row.createdAt?.slice(0, 10)
+    return (kind === 'all' || row.kind === kind) && (processing === 'all' || row.parseStatus === processing) && (uploader === 'all' || String(row.uploadedById ?? 'unknown') === uploader)
+      && (!myUploads || user?.id != null && String(row.uploadedById) === String(user.id))
+      && (!fromDate || created && created >= fromDate) && (!toDate || created && created <= toDate)
+      && (!search.trim() || `${row.id} ${row.title} ${row.filename}`.toLowerCase().includes(search.trim().toLowerCase()))
+  }).sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title) : sort === 'oldest' ? String(a.createdAt).localeCompare(String(b.createdAt)) : String(b.createdAt).localeCompare(String(a.createdAt)))
+  const groupLabel = row => groupBy === 'kind' ? row.kindLabel : groupBy === 'uploader' ? row.uploadedBy || 'Not recorded' : 'All documents'
+  const registerGroups = new Map()
+  filtered.forEach(row => { const label = groupLabel(row); if (!registerGroups.has(label)) registerGroups.set(label, []); registerGroups.get(label).push(row) })
+  const types = [...new Set(rows.map(row => row.kind))].map(value => ({ key: value, label: rows.find(row => row.kind === value).kindLabel, total: rows.filter(row => row.kind === value).length, files: rows.filter(row => row.kind === value && row.hasFile).length, processed: rows.filter(row => row.kind === value && row.parseStatus === 'done').length }))
+  const timelineMap = new Map()
+  rows.filter(row => row.createdAt).forEach(row => { const date = row.createdAt.slice(0, 10); timelineMap.set(date, (timelineMap.get(date) || 0) + 1) })
+  let cumulative = 0
+  const timeline = [...timelineMap].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, time: Date.parse(date + 'T00:00:00Z'), count, total: cumulative += count }))
+  const quality = [
+    { label: 'Revision control', value: 'Not configured', color: 'neutral' },
+    { label: 'Document titles', value: known ? `${rows.filter(row => row.raw.title?.trim()).length}/${rows.length} recorded` : 'Unavailable', color: known ? 'blue' : 'warning' },
+    { label: 'Files scanned', value: 'Not verified', color: 'neutral' },
+    { label: 'Metadata processing', value: known ? `${counts.processed} processed` : 'Unavailable', color: counts.failed ? 'warning' : 'blue' },
+    { label: 'Schedule links', value: 'Not configured', color: 'neutral' },
+    { label: 'Register confidence', value: 'Not assessed', color: 'neutral' },
+  ]
+  const fetchFile = async row => {
+    downloadRef.current?.abort(); const controller = new AbortController(); downloadRef.current = controller
+    setDownloading(row.id); setError('')
+    try { const blob = await downloadProjectDocument(row.id, { signal: controller.signal }); if (!controller.signal.aborted) saveDocumentBlob(blob, row) }
+    catch (failure) { const message = await documentFileError(failure); if (!controller.signal.aborted) setError(message) }
+    finally { if (!controller.signal.aborted) setDownloading(null) }
   }
-
-  useEffect(() => { reload() /* eslint-disable-next-line */ }, [project.id])
-
-  const onUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      await PC.uploadDocument(project.id, file, { kind: uploadKind, title: file.name })
-      reload()
-    } catch (err) {
-      setError(err?.response?.data?.error || err?.message || 'Upload failed')
-    } finally {
-      setUploading(false)
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
-
-  const onDownload = async (doc) => {
-    try {
-      const res = await PC.presignDocumentDownload(doc.id)
-      if (res?.download_url) {
-        window.open(res.download_url, '_blank', 'noopener')
-      }
-    } catch (err) {
-      setError('Could not generate download link.')
-    }
-  }
-
-  const onDelete = async (doc) => {
-    if (!(await radaiConfirm(`Delete ${doc.original_filename || doc.title}?`))) return
-    try {
-      await PC.deleteDocument(doc.id)
-      reload()
-    } catch (err) {
-      setError('Delete failed.')
-    }
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="bg-white border border-slate-200 rounded-xl p-5">
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-xs uppercase tracking-wider text-slate-500 mb-1">Document Kind</label>
-            <select
-              value={uploadKind}
-              onChange={(e) => setUploadKind(e.target.value)}
-              className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
-            >
-              {DOCUMENT_KIND_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <label className="inline-flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg
-                            bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700
-                            disabled:opacity-50">
-            <ArrowUpTrayIcon className="h-4 w-4" />
-            {uploading ? 'Uploading…' : 'Upload Document'}
-            <input
-              ref={fileRef}
-              type="file"
-              className="hidden"
-              onChange={onUpload}
-              disabled={uploading}
-            />
-          </label>
-          <p className="text-xs text-slate-500">Files are stored privately in S3 when enabled, or local media otherwise.</p>
-        </div>
-      </div>
-
-      {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-sm">{error}</div>
-      )}
-
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-800">Project Documents</h3>
-          <span className="text-xs text-slate-500">{documents.length} file(s)</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] tracking-wider">
-              <tr>
-                <th className="px-4 py-2 text-left">Title</th>
-                <th className="px-4 py-2 text-left">Kind</th>
-                <th className="px-4 py-2 text-left">Filename</th>
-                <th className="px-4 py-2 text-right">Size</th>
-                <th className="px-4 py-2 text-left">Uploaded By</th>
-                <th className="px-4 py-2 text-left">Status</th>
-                <th className="px-4 py-2 text-left">Date</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading && <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-500">Loading…</td></tr>}
-              {!loading && documents.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-500">No documents yet — upload above.</td></tr>
-              )}
-              {documents.map((d) => (
-                <tr key={d.id}>
-                  <td className="px-4 py-2 text-slate-800 max-w-xs truncate">{d.title || '—'}</td>
-                  <td className="px-4 py-2 text-slate-600">{d.kind_display || d.kind}</td>
-                  <td className="px-4 py-2 text-slate-600 max-w-xs truncate">{d.original_filename}</td>
-                  <td className="px-4 py-2 text-right">{fmtBytes(d.size_bytes)}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{d.uploaded_by_name || '—'}</td>
-                  <td className="px-4 py-2 text-xs">
-                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">{d.parse_status_display || d.parse_status}</span>
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{new Date(d.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-2 text-right">
-                    <div className="inline-flex gap-2">
-                      <button
-                        onClick={() => onDownload(d)}
-                        className="text-xs inline-flex items-center gap-1 text-indigo-600 hover:underline"
-                      >
-                        <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Download
-                      </button>
-                      <button
-                        onClick={() => onDelete(d)}
-                        className="text-xs inline-flex items-center gap-1 text-rose-600 hover:underline"
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" /> Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  const onSaved = result => { onDocumentDialog?.(null); setNotice(result?.deletedDocumentId ? 'Document removed from the register.' : 'Document saved.'); if (result?.deletedDocumentId) onSelectDocument?.(null); else if (result?.id) onSelectDocument?.(result.id); control?.reload() }
+  const runAction = action => action.action === 'refresh' ? control?.reload() : onSelectDocument?.(action.documentId)
+  const register = expanded => <Panel title="Document register" icon={FileText} className={expanded ? 'dc-register-mode' : 'dc-register-panel'} actions={<><label className="dc-toolbar-field"><span className="sr-only">Sort documents</span><select aria-label="Sort documents" value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Latest uploads</option><option value="oldest">Oldest uploads</option><option value="title">Title A–Z</option></select></label><label className="dc-toolbar-search"><Search aria-hidden="true" /><input type="search" aria-label="Search document register" placeholder="Search documents…" value={search} onChange={event => setSearch(event.target.value)} /></label><label className="dc-toolbar-field">Group by<select value={groupBy} onChange={event => setGroupBy(event.target.value)}><option value="none">None</option><option value="kind">Document type</option><option value="uploader">Uploaded by</option></select></label></>}>
+    <div className="dc-table-wrap" tabIndex={0} role="region" aria-label="Uploaded document records"><table className="dc-table dc-register-table"><thead><tr><th>Record</th><th>Title</th><th>Document type</th><th>Revision</th><th>Metadata processing</th><th>Uploaded by</th><th>Uploaded</th><th>File</th><th>Action</th></tr></thead><tbody>{[...registerGroups].map(([label, documents]) => <React.Fragment key={label}>{groupBy !== 'none' && <tr className="dc-group-row"><th colSpan={9}>{label} · {documents.length} documents</th></tr>}{documents.map(row => <tr key={row.id} className={String(selected?.id) === String(row.id) ? 'is-selected' : ''}><td>{reference(row)}</td><td><button type="button" className="dc-row-link" aria-label={`Select document ${row.title}`} onClick={() => select(row)}><strong>{row.title}</strong></button>{expanded && <small>{row.filename}</small>}</td><td>{row.kindLabel}</td><td><span title="Revision control is not configured">—</span></td><td><Status color={row.tone}>{row.parseLabel}</Status></td><td>{row.uploadedBy || 'Not recorded'}</td><td>{formatDate(row.createdAt)}</td><td><span className="dc-file-count"><Paperclip size={12} aria-hidden="true" />{row.hasFile ? '1' : '—'}</span></td><td><button type="button" className="pp-button" aria-label={`View ${row.title}`} onClick={() => select(row)}>View</button></td></tr>)}</React.Fragment>)}</tbody></table>{!filtered.length && <Empty>{!known ? 'Document register unavailable. Refresh to retry.' : rows.length ? 'No documents match the selected filters.' : 'No documents uploaded. Add a new document or browse Server files.'}</Empty>}</div>
+    <div className="dc-register-footer"><span>{filtered.length} of {rows.length} uploaded documents</span><span>Revision and client review status are not tracked.</span></div>
+  </Panel>
+  const details = <Panel title="Document details" icon={FileText} className="dc-details-panel" actions={<TextAction onClick={() => open('history', selected)} disabled={!selected}>Revision history</TextAction>}>
+    {!selected ? <Empty>Select a document to view its file and recorded metadata.</Empty> : !selected.detailLoaded ? <Empty>{control?.loading ? 'Loading document details…' : 'Document details are unavailable. Refresh to retry.'}</Empty> : <>
+      <div className="dc-details-title"><div><h3>{selected.title}</h3><p>Record {reference(selected)} · {selected.kindLabel}</p></div><Status color={selected.tone}>{selected.parseLabel}</Status></div>
+      <div className="dc-details-body"><div><dl className="dc-document-facts">{[['Current revision', 'Not tracked'], ['Document type', selected.kindLabel], ['Workflow status', 'Not configured'], ['Client response', 'Not recorded'], ['Uploaded by', selected.uploadedBy || 'Not recorded'], ['Uploaded', formatDate(selected.createdAt)], ['Last updated', formatDate(selected.updatedAt)], ['Access', 'Project permissions'], ['Linked milestone', 'Not recorded']].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></div><div><h4><Paperclip size={13} aria-hidden="true" />Files ({selected.hasFile ? 1 : 0})</h4><div className="dc-document-file"><FileText size={15} aria-hidden="true" /><span><strong>{selected.filename || 'No filename recorded'}</strong><small>{size(selected.sizeBytes)}</small></span><button type="button" className="dc-text-button" aria-label={`Download ${selected.filename || selected.title}`} disabled={!selected.canDownload || downloading !== null} onClick={() => fetchFile(selected)}><Download aria-hidden="true" /></button></div>
+        <p className="dc-note"><ShieldCheck size={13} aria-hidden="true" />Virus scan status: not verified</p>
+        <h4>Review progress</h4><ul className="dc-review-list"><li><Info aria-hidden="true" />Review assignments<strong>Not configured</strong></li><li><Info aria-hidden="true" />Client comments<strong>Not recorded</strong></li><li><Info aria-hidden="true" />Approval decisions<strong>Not recorded</strong></li></ul>
+        {selected.parseError ? <p className="dc-warning-note">{selected.parseError}</p> : <p>Metadata processing does not confirm content extraction or engineering approval.</p>}
+      </div></div><div className="dc-details-footer"><button type="button" className="pp-button" disabled={!selected.canEdit} onClick={() => open('edit', selected)}><Pencil size={13} aria-hidden="true" />Edit metadata</button><button type="button" className="pp-button" disabled={!selected.canDelete} onClick={() => open('delete', selected)}><Trash2 size={13} aria-hidden="true" />Delete</button><button type="button" className="pp-button pp-primary" disabled={!selected.canDownload || downloading !== null} onClick={() => documentPreviewKind(selected) ? setPreview(selected) : fetchFile(selected)}>{documentPreviewKind(selected) ? <FolderOpen size={13} aria-hidden="true" /> : <Download size={13} aria-hidden="true" />}{downloading === selected.id ? 'Downloading…' : documentPreviewKind(selected) ? 'Open document' : 'Download file'}</button></div>
+    </>}
+  </Panel>
+  return <div className="dc-workspace" aria-busy={control?.loading}>
+    <div className="dc-toolbar"><div className="dc-mode-switch" role="group" aria-label="Document view">{[['management', 'Management'], ['register', 'Document register'], ['server', 'Server files']].map(([key, label]) => <button type="button" key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</button>)}</div>
+      {mode !== 'server' && <><label className="dc-toolbar-search"><Search aria-hidden="true" /><input type="search" aria-label="Search document title or file" placeholder="Search document title or file…" value={search} onChange={event => setSearch(event.target.value)} /></label><label className="dc-toolbar-field">Document type<select value={kind} onChange={event => setKind(event.target.value)}><option value="all">All</option>{(model.kinds || []).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="dc-toolbar-field">Processing<select value={processing} onChange={event => setProcessing(event.target.value)}><option value="all">All</option>{[...new Map(rows.map(row => [row.parseStatus, row.parseLabel])).entries()].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="dc-toolbar-field">Uploaded by<select value={uploader} onChange={event => setUploader(event.target.value)}><option value="all">All</option>{uploaders.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label><label className="dc-toolbar-toggle"><input type="checkbox" checked={myUploads} disabled={!user?.id} onChange={event => setMyUploads(event.target.checked)} />Only my uploads</label><button type="button" className="pp-button" aria-expanded={filters} onClick={() => setFilters(value => !value)}><Filter aria-hidden="true" />Filters</button><span className="dc-record-count">{known ? `${rows.length} documents` : 'Register unavailable'}</span></>}
     </div>
-  )
+    {mode !== 'server' && filters && <div className="dc-filters"><label>Uploaded from<input type="date" value={fromDate} max={toDate || undefined} onChange={event => setFromDate(event.target.value)} /></label><label>Uploaded to<input type="date" value={toDate} min={fromDate || undefined} onChange={event => setToDate(event.target.value)} /></label><button type="button" className="dc-text-button" onClick={() => { setFromDate(''); setToDate(''); setKind('all'); setUploader('all'); setSearch(''); setProcessing('all'); setMyUploads(false) }}>Reset filters</button><span>Filters apply to the register; summary cards show all uploaded documents.</span></div>}
+    {notice && <div className="dc-note" role="status">{notice}<button type="button" className="dc-text-button" onClick={() => setNotice('')}>Dismiss</button></div>}
+    {error && <div className="dc-warning-note" role="alert">{error}<button type="button" className="dc-text-button" onClick={() => setError('')}>Dismiss</button></div>}
+    {mode === 'server' ? <div className="dc-server-browser"><ServerFileBrowser key={project.id} projectId={project.id} revision={refreshVersion} /></div> : <>
+      {!!control?.issues?.length && <div className="dc-warning-note" role="alert"><AlertTriangle aria-hidden="true" />{control.issues.join(' ')}<button type="button" className="dc-text-button" onClick={control.reload}>Retry</button></div>}
+      {control?.loading && <div className="dc-note" role="status">Loading document data…</div>}
+      <div className="dc-kpis"><Kpi title="Project documents" value={counts.total} note="Uploaded register" icon={FileText} onClick={() => setMode('register')} /><Kpi title="Due this month" value="—" note="Review dates not tracked" icon={CalendarDays} onClick={() => open('reviews')} /><Kpi title="In review" value="—" note="Reviews not configured" icon={RefreshCw} onClick={() => open('reviews')} /><Kpi title="Requires attention" value={known ? new Set(actions.filter(action => action.documentId).map(action => action.documentId)).size : null} note="File and processing checks" icon={AlertCircle} color="danger" onClick={() => open('actions')} /><Kpi title="Issued to client" value="—" note="Transmittals not configured" icon={FileCheck2} color="success" onClick={() => open('transmittals')} /><Kpi title="Superseded revisions" value="—" note="Revision control not configured" icon={Copy} onClick={() => open('history', selected)} /></div>
+      {mode === 'register' ? <div className="dc-register-layout">{register(true)}{details}</div> : <div className="dc-grid"><div className="dc-left">
+        <Panel title="Deliverable progress" icon={BarChart3} className="dc-progress-panel" actions={<TextAction onClick={() => open('deliverables')}>Open deliverable plan</TextAction>}>
+          <div className="dc-deliverable-body"><div><h3>Uploaded documents by type</h3><div className="dc-table-wrap" role="region" aria-label="Document type totals" tabIndex={0}><table className="dc-table dc-deliverable-table"><thead><tr><th>Document type</th><th>Uploaded</th><th>File references</th><th>Metadata processed</th></tr></thead><tbody>{types.map(item => <tr key={item.key}><td>{item.label}</td><td>{item.total}</td><td><span className="dc-document-bar"><span style={{ width: `${item.total ? item.files / item.total * 100 : 0}%` }} /></span>{item.files}</td><td><span className="dc-document-bar dc-success"><span style={{ width: `${item.total ? item.processed / item.total * 100 : 0}%` }} /></span>{item.processed}</td></tr>)}</tbody></table>{!types.length && <Empty>{known ? 'No uploaded documents yet.' : 'Upload totals unavailable.'}</Empty>}</div></div><div><div className="dc-chart-heading"><h3>Document uploads over time</h3><Segments label="Upload history view" value={chartView} onChange={setChartView} options={[[ 'chart', 'Chart'], ['table', 'Table']]} /></div>
+            {chartView === 'table' ? <div className="dc-table-wrap dc-upload-history" role="region" aria-label="Document upload history" tabIndex={0}><table className="dc-table"><thead><tr><th>Upload date</th><th>Uploaded</th><th>Cumulative</th></tr></thead><tbody>{timeline.map(point => <tr key={point.date}><td>{formatDate(point.date)}</td><td>{point.count}</td><td>{point.total}</td></tr>)}</tbody></table></div> : timeline.length ? <div className="dc-chart-plot" role="img" aria-label="Cumulative uploaded document count by upload date"><ResponsiveContainer width="100%" height="100%"><LineChart data={timeline} margin={{ top: 12, right: 12, bottom: 0, left: 0 }}><CartesianGrid stroke="#e3ebf6" /><XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} tickCount={4} tickFormatter={value => new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })} tick={{ fontSize: 9 }} /><YAxis allowDecimals={false} width={25} tick={{ fontSize: 9 }} /><Tooltip labelFormatter={value => new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} /><Line dataKey="total" name="Uploaded documents" type="linear" stroke="#075bff" strokeWidth={2} dot={{ r: 2.5 }} isAnimationActive={false} /></LineChart></ResponsiveContainer></div> : <Empty>No dated uploads available.</Empty>}
+            <p className="dc-chart-caption">{known ? `${counts.total} uploaded records` : 'Upload history unavailable'} · planned submissions and approvals are not recorded.</p>
+          </div></div>
+        </Panel>
+        {register(false)}
+        <Panel title="Review & comment workload" icon={ClipboardList} className="dc-workload-panel" actions={<Segments label="Document workload" value={reviewTab} onChange={setReviewTab} options={[[ 'reviews', 'Reviews'], ['comments', 'Comments'], ['approvals', 'Approvals']]} />}>
+          <div className="dc-table-wrap" tabIndex={0} role="region" aria-label="Document workload register"><table className="dc-table dc-workload-table"><thead><tr><th>Document</th><th>{reviewTab === 'comments' ? 'Comment resolution' : 'Review stage'}</th><th>Reviewer</th><th>Due date</th><th>Status</th><th>Action</th></tr></thead></table></div><div className="dc-workload-empty"><Info aria-hidden="true" /><div><strong>{reviewTab === 'reviews' ? 'Reviews are not configured' : reviewTab === 'comments' ? 'Client comments are not recorded' : 'Approval decisions are not recorded'}</strong><p>Review assignments and deadlines are separate from metadata processing.</p></div><TextAction onClick={() => open('reviews')}>View requirements</TextAction></div>
+        </Panel>
+      </div><div className="dc-right">
+        <Panel title="Document actions" className="dc-actions-panel" actions={<TextAction onClick={() => open('actions')}>View all</TextAction>}><div className="dc-table-wrap"><table className="dc-table dc-actions-table"><thead><tr><th>Priority</th><th>Action</th><th>Document</th><th>Status</th><th>Action</th></tr></thead><tbody>{actions.slice(0, 4).map(action => <tr key={action.id}><td><Status color="warning">{action.priority}</Status></td><td><strong>{action.title}</strong><small>{action.detail}</small></td><td>{action.documentId ? `#${action.documentId}` : 'Register'}</td><td>Needs review</td><td><button type="button" className="pp-button" onClick={() => runAction(action)}>{action.button || 'Review'}</button></td></tr>)}</tbody></table>{!actions.length && <Empty>{known ? 'No recorded file or processing exceptions.' : 'Document actions unavailable.'}</Empty>}</div></Panel>
+        {details}
+        <Panel title="Transmittals" icon={Send} className="dc-transmittals-panel" actions={<button type="button" className="pp-button" disabled title="Transmittal tracking is not configured">Create transmittal</button>}><div className="dc-transmittal-empty"><Info size={16} aria-hidden="true" /><span>Transmittal tracking is not configured. Client issue and receipt status are unavailable.</span><TextAction onClick={() => open('transmittals')}>View requirements</TextAction></div></Panel>
+      </div></div>}
+      <section className="dc-quality" aria-label="Document data quality"><h2><ShieldCheck size={17} aria-hidden="true" />Document data quality</h2><div className="dc-quality-items">{quality.map(item => <button type="button" key={item.label} className={`dc-${item.color}`} onClick={() => open('quality')}>{item.color === 'success' ? <CheckCircle2 aria-hidden="true" /> : <Info aria-hidden="true" />}<span><small>{item.label}</small><strong>{item.value}</strong></span></button>)}</div><button type="button" className="pp-button" onClick={() => open('quality')}>Review document quality</button></section>
+    </>}
+    {documentDialog && <DocumentControlDialogs key={`${project.id}:${documentDialog.type}:${documentDialog.document?.id || selected?.id || ''}`} dialog={documentDialog} onClose={() => onDocumentDialog(null)} onSaved={onSaved} project={project} model={model} />}
+    {preview && <DocumentPreviewDialog key={preview.id} document={preview} onClose={() => setPreview(null)} />}
+  </div>
 }

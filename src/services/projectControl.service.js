@@ -23,6 +23,8 @@ export const listProjectTasks = (projectId, params = {}) =>
   unwrap(apiClient.get(EP.projectTasks, { params: { project_id: projectId, ...params } }))
 export const listProjectMilestones = (projectId, params = {}) =>
   unwrap(apiClient.get(EP.projectMilestones, { params: { project_id: projectId, ...params } }))
+export const createProjectMilestone = payload => unwrap(apiClient.post(EP.projectMilestones, payload))
+export const updateProjectMilestone = (id, payload) => unwrap(apiClient.patch(`${EP.projectMilestones}${id}/`, payload))
 
 // ─── Analytics (Phase 1 live) ────────────────────────────────────────────────
 export const getCostKpis        = (projectId)       => unwrap(apiClient.get(EP.costKpis,    { params: { project: projectId } }))
@@ -69,14 +71,19 @@ export const getEstimate      = (id)        => unwrap(apiClient.get(`${EP.estima
 export const createEstimate   = (payload)   => unwrap(apiClient.post(EP.estimates, payload))
 export const updateEstimate   = (id, body)  => unwrap(apiClient.patch(`${EP.estimates}${id}/`, body))
 export const approveEstimate  = (id)        => unwrap(apiClient.post(`${EP.estimates}${id}/approve/`))
+export const copyEstimateVersion = (id, payload = {}) => unwrap(apiClient.post(`${EP.estimates}${id}/copy-version/`, payload))
+export const createEstimateLine = payload => unwrap(apiClient.post(EP.estimateLines, payload))
+export const updateEstimateLine = (id, payload) => unwrap(apiClient.patch(`${EP.estimateLines}${id}/`, payload))
+export const deleteEstimateLine = id => unwrap(apiClient.delete(`${EP.estimateLines}${id}/`))
 export const supersedeEstimate = (id)       => unwrap(apiClient.post(`${EP.estimates}${id}/supersede/`))
 
 // ─── BOQ Excel import ────────────────────────────────────────────────────────
-export const importBoqExcel = (projectId, file, { kind = 'estimate', title = '', notes = '' } = {}) => {
+export const importBoqExcel = (projectId, file, { kind = 'estimate', title = '', notes = '', currency = 'AED' } = {}) => {
   const form = new FormData()
   form.append('project', projectId)
   form.append('file', file)
   form.append('kind', kind)
+  form.append('currency', currency)
   if (title) form.append('title', title)
   if (notes) form.append('notes', notes)
   return unwrap(apiClient.post(EP.importBoq, form, {
@@ -87,6 +94,10 @@ export const importBoqExcel = (projectId, file, { kind = 'estimate', title = '',
 // ─── Documents ───────────────────────────────────────────────────────────────
 export const listDocuments    = (projectId, params = {}) =>
   unwrap(apiClient.get(EP.documents, { params: { project: projectId, ...params } }))
+
+export const getDocument = id => unwrap(apiClient.get(`${EP.documents}${id}/`))
+export const updateDocument = (id, body) => unwrap(apiClient.patch(`${EP.documents}${id}/`, body))
+export const downloadProjectDocument = (id, { signal } = {}) => unwrap(apiClient.get(`${EP.documents}${id}/download/`, { responseType: 'blob', signal }))
 
 export const uploadDocument = (projectId, file, { kind = 'other', title = '' } = {}) => {
   const form = new FormData()
@@ -232,7 +243,7 @@ export const importQhseRows = async (qhseRows, existingProjects, onProgress) => 
 export default {
   getPhaseFlags,
   listProjects, getProject, createProject, updateProject, deleteProject, getProjectStats,
-  listProjectTasks, listProjectMilestones,
+  listProjectTasks, listProjectMilestones, createProjectMilestone, updateProjectMilestone,
   getCostKpis, getCommercialDashboard, getPortfolioExceptions, getEstimateVariance, runFinanceSync,
   listWbsNodes, createWbsNode,
   listControlAccounts, createControlAccount, updateControlAccount, submitControlAccount, approveControlAccount, closeControlAccount,
@@ -242,8 +253,9 @@ export default {
   listBudgetAllocations, createBudgetAllocation, approveBudgetAllocation,
   listCostAllocations, createCostAllocation, approveCostAllocation, listCostLedger,
   listEstimates, getEstimate, createEstimate, updateEstimate, approveEstimate, supersedeEstimate,
+  copyEstimateVersion, createEstimateLine, updateEstimateLine, deleteEstimateLine,
   importBoqExcel,
-  listDocuments, uploadDocument, presignDocumentDownload, deleteDocument,
+  listDocuments, getDocument, updateDocument, downloadProjectDocument, uploadDocument, presignDocumentDownload, deleteDocument,
   runAiTakeoff, getEvm, getCashflow, getRiskAnalytics, runChangeDetection, listChangeEvents,
   listQhseProjects, mapQhseRowToProjectPayload, importQhseRows,
 }

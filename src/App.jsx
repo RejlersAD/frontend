@@ -83,6 +83,7 @@ import UserDetail from './pages/UserDetail'
 import WrenchIntegration from './pages/WrenchIntegration'
 import AIChampion from './pages/Admin/AIAdoptionDashboard'
 import EnquiryManagement from './pages/Admin/EnquiryManagement'
+import FileServerReplica from './pages/Admin/FileServerReplica'
 import EnquiryDetail from './pages/Admin/EnquiryDetail'
 import MyEnquiries from './pages/MyEnquiries'
 import MyEnquiryDetail from './pages/MyEnquiryDetail'
@@ -1584,6 +1585,10 @@ function App() {
               <EnquiryManagement />
             </ModuleProtectedRoute>
           }
+        />
+        <Route
+          path="admin/file-server-replica"
+          element={<ProtectedRoute><FileServerReplica /></ProtectedRoute>}
         />
         <Route
           path="admin/enquiries/:id"

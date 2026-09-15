@@ -1,187 +1,135 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { ArrowUpTrayIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+/* eslint-disable react/prop-types */
+import React, { useEffect, useState } from 'react'
+import { ArrowRight, BarChart3, Calculator, CheckCircle2, ClipboardList, Coins, FileText, Filter, Info, Layers, Lock, Plus, Search, ShieldCheck, TrendingUp, AlertTriangle } from 'lucide-react'
+import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line } from 'recharts'
+import EstimateControlDialogs from '../components/EstimateControlDialogs'
+import { formatDate } from '../useProjectPerformance'
 
-import * as PC from '../../../services/projectControl.service'
-import {
-  ESTIMATE_KIND_OPTIONS, ESTIMATE_STATUS_TONES,
-} from '../../../config/projectControl.config'
-import VarianceTable from '../components/VarianceTable'
-
-export default function EstimatesTab({ project }) {
-  const [estimates, setEstimates] = useState([])
-  const [variance, setVariance] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [uploading, setUploading] = useState(false)
-  const [uploadResult, setUploadResult] = useState(null)
-  const [groupBy, setGroupBy] = useState('wbs')
-  const [importKind, setImportKind] = useState('estimate')
-  const fileInputRef = useRef(null)
-
-  const reload = () => {
-    setLoading(true)
-    setError(null)
-    Promise.allSettled([
-      PC.listEstimates(project.id),
-      PC.getEstimateVariance(project.id, { group_by: groupBy }),
-    ]).then(([estRes, varRes]) => {
-      if (estRes.status === 'fulfilled') {
-        const data = estRes.value
-        setEstimates(Array.isArray(data) ? data : (data?.results || []))
-      } else {
-        setError(estRes.reason?.message || 'Failed to load estimates')
-      }
-      if (varRes.status === 'fulfilled') setVariance(varRes.value)
-    }).finally(() => setLoading(false))
+const number = value => value === null || value === undefined ? '—' : new Intl.NumberFormat('en-GB', { maximumFractionDigits: 4 }).format(value)
+const money = (value, currency = 'AED', compact = false) => value === null || value === undefined || !Number.isFinite(Number(value)) ? '—' : `${currency} ${new Intl.NumberFormat('en-GB', compact ? { notation: 'compact', maximumFractionDigits: 3 } : { maximumFractionDigits: 2 }).format(Number(value))}`
+const statusTone = status => status === 'approved' ? 'success' : status === 'superseded' ? 'neutral' : 'warning'
+const same = (a, b) => String(a) === String(b)
+const sum = rows => Math.round(rows.reduce((total, row) => total + Number(row.lineTotal || 0), 0) * 100) / 100
+const versionLabel = estimate => estimate ? `${estimate.kindLabel || estimate.kind} v${estimate.version}` : 'No estimate'
+function Panel({ title, icon: Icon = ClipboardList, className = '', actions, children }) { return <section className={`ec-panel ${className}`} aria-label={title}><header><h2><Icon aria-hidden="true" />{title}</h2>{actions && <div className="ec-panel-actions">{actions}</div>}</header>{children}</section> }
+function TextAction({ children, onClick, disabled }) { return <button type="button" className="ec-text-button" onClick={onClick} disabled={disabled}>{children}<ArrowRight aria-hidden="true" /></button> }
+function Segments({ options, value, onChange, label }) { return <div className="ec-segmented" role="group" aria-label={label}>{options.map(([key, text]) => <button type="button" key={key} aria-pressed={value === key} onClick={() => onChange(key)}>{text}</button>)}</div> }
+function Empty({ children }) { return <div className="ec-empty"><FileText aria-hidden="true" /><p>{children}</p></div> }
+function Status({ children, tone = 'neutral' }) { return <span className={`ec-status ec-${tone}`}><span className="ec-status-dot" aria-hidden="true" />{children}</span> }
+function Kpi({ title, value, note, icon: Icon, tone, onClick }) { return <button type="button" className={`ec-kpi ec-${tone || 'blue'}`} onClick={onClick}><Icon aria-hidden="true" /><span className="ec-kpi-copy"><span>{title}</span><strong>{value}</strong><small>{note}</small></span></button> }
+function groupLines(lines, groupBy) {
+  const groups = new Map()
+  for (const line of lines) {
+    const key = String(groupBy === 'wbs' ? line.wbsCode || 'Unassigned' : line[groupBy] || 'Unassigned')
+    if (!groups.has(key)) groups.set(key, { key, label: key, lines: [], amount: 0 })
+    const group = groups.get(key); group.lines.push(line); group.amount += Number(line.lineTotal || 0)
   }
+  return [...groups.values()].sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }))
+}
+export function downloadEstimateCsv(model, project) {
+  if (!model?.selected) return
+  const selected = model.selected
+  const rows = [['Project', project?.project_code || project?.code || project?.name], ['Estimate', selected.title], ['Kind', selected.kindLabel], ['Version', selected.version], ['Status', selected.statusLabel], ['Currency', selected.currency], ['Cost basis', selected.snapshotDate || 'Not recorded'], ['Recorded total', selected.totalAmount], ['Basis notes', selected.notes || 'Not recorded'], [], ['WBS', 'Cost item', 'Discipline', 'Category', 'Unit', 'Quantity', 'Unit rate', 'Amount', 'Recorded override']]
+  for (const line of model.lines || []) rows.push([line.wbsCode, line.description, line.discipline, line.category, line.unit, line.quantity, line.unitRate, line.lineTotal, line.isOverride ? 'Yes' : 'No'])
+  const csv = rows.map(row => row.map(value => { const text = String(value ?? ''); return `"${(/^[=+@\-\t\r]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"` }).join(',')).join('\r\n')
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }))
+  const link = document.createElement('a'); link.href = url; link.download = `estimate-v${selected.version}-${String(project?.project_code || project?.id || 'project').replace(/[^a-zA-Z0-9_-]/g, '-')}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
-  useEffect(() => { reload() /* eslint-disable-next-line */ }, [project.id, groupBy])
-
-  const onImport = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    setUploadResult(null)
-    try {
-      const result = await PC.importBoqExcel(project.id, file, { kind: importKind })
-      setUploadResult(result.summary)
-      reload()
-    } catch (err) {
-      setUploadResult({ error: err?.response?.data?.error || err?.message || 'Import failed' })
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
-
-  const onApprove = (id) => {
-    PC.approveEstimate(id).then(reload).catch(() => {})
-  }
-
-  if (loading) return <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500">Loading estimates…</div>
-  if (error)   return <div className="bg-white border border-rose-200 text-rose-700 rounded-xl p-6">{error}</div>
-
-  return (
-    <div className="space-y-6">
-      {/* Import card */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5">
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-xs uppercase tracking-wider text-slate-500 mb-1">Kind</label>
-            <select
-              value={importKind}
-              onChange={(e) => setImportKind(e.target.value)}
-              className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
-            >
-              {ESTIMATE_KIND_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <label className="inline-flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg
-                            bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700
-                            disabled:opacity-50">
-            <ArrowUpTrayIcon className="h-4 w-4" />
-            {uploading ? 'Importing…' : 'Import BOQ (Excel)'}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              className="hidden"
-              onChange={onImport}
-              disabled={uploading}
-            />
-          </label>
-          {uploadResult && (
-            <div className="text-xs">
-              {uploadResult.error ? (
-                <span className="text-rose-600">{uploadResult.error}</span>
-              ) : (
-                <span className="text-emerald-700">
-                  Imported {uploadResult.imported_rows} rows · skipped {uploadResult.skipped_rows} · total {uploadResult.total_amount} {uploadResult.currency}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Estimates list */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-800">Estimate Versions</h3>
-          <span className="text-xs text-slate-500">{estimates.length} record(s)</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] tracking-wider">
-              <tr>
-                <th className="px-4 py-2 text-left">Title</th>
-                <th className="px-4 py-2 text-left">Kind</th>
-                <th className="px-4 py-2 text-right">Version</th>
-                <th className="px-4 py-2 text-right">Lines</th>
-                <th className="px-4 py-2 text-right">Total</th>
-                <th className="px-4 py-2 text-left">Status</th>
-                <th className="px-4 py-2 text-left">Created</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {estimates.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-500">No estimates yet — import a BOQ above.</td></tr>
-              )}
-              {estimates.map((e) => (
-                <tr key={e.id}>
-                  <td className="px-4 py-2 text-slate-800">{e.title || '—'}</td>
-                  <td className="px-4 py-2 text-slate-600">{e.kind_display || e.kind}</td>
-                  <td className="px-4 py-2 text-right">v{e.version}</td>
-                  <td className="px-4 py-2 text-right">{e.line_item_count}</td>
-                  <td className="px-4 py-2 text-right font-medium">
-                    {Number(e.total_amount).toLocaleString()} {e.currency}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className={`text-xs px-2 py-0.5 rounded ${ESTIMATE_STATUS_TONES[e.status] || 'bg-slate-100 text-slate-600'}`}>
-                      {e.status_display || e.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-500">
-                    {new Date(e.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    {e.status === 'draft' && (
-                      <button
-                        onClick={() => onApprove(e.id)}
-                        className="text-xs inline-flex items-center gap-1 text-emerald-700 hover:underline"
-                      >
-                        <CheckCircleIcon className="h-3.5 w-3.5" /> Approve
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Variance */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-800">Estimate Variance</h3>
-          <div className="text-xs">
-            <label className="text-slate-500 mr-2">Group by:</label>
-            <select
-              value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value)}
-              className="border border-slate-300 rounded px-2 py-1"
-            >
-              <option value="wbs">WBS code</option>
-              <option value="discipline">Discipline</option>
-            </select>
-          </div>
-        </div>
-        <VarianceTable report={variance} />
-      </div>
+export default function EstimatesTab({ project, estimateControl: control, estimateDialog, onEstimateDialog, onSelectEstimate, onCompareEstimate, onSelectView }) {
+  const [mode, setMode] = useState('management'), [chart, setChart] = useState('waterfall'), [groupBy, setGroupBy] = useState('wbs')
+  const [search, setSearch] = useState(''), [wbs, setWbs] = useState('all'), [discipline, setDiscipline] = useState('all')
+  const [changedOnly, setChangedOnly] = useState(false), [filters, setFilters] = useState(false), [statusFilter, setStatusFilter] = useState('all')
+  const [packageKey, setPackageKey] = useState(null), [basisTab, setBasisTab] = useState('notes'), [notice, setNotice] = useState('')
+  const model = control?.model || {}, selected = model.selected, comparison = model.comparison
+  const lines = model.lines || [], versions = model.estimates || [], currency = selected?.currency || project.currency || 'AED'
+  const matchesFilter = line => (wbs === 'all' || line.wbsCode === wbs) && (discipline === 'all' || line.discipline === discipline) && (!search.trim() || `${line.wbsCode} ${line.description} ${line.discipline} ${line.category}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const filteredLines = lines.filter(matchesFilter)
+  const baseGroups = new Map(groupLines((model.baseLines || []).filter(matchesFilter), groupBy).map(row => [row.key, row]))
+  const groups = groupLines(filteredLines, groupBy).map(row => ({ ...row, delta: model.comparable ? row.amount - (baseGroups.get(row.key)?.amount || 0) : null })).filter(row => !changedOnly || (row.delta !== null && Math.abs(row.delta) >= .01))
+  const selectedPackage = groups.find(row => row.key === packageKey) || groups[0]
+  const packageDisciplines = groupLines(selectedPackage?.lines || [], 'discipline')
+  const quantities = lines.filter(line => Number(line.quantity) > 0).length, rates = lines.filter(line => Number(line.unitRate) > 0).length, mapped = lines.filter(line => line.wbsCode).length
+  const actions = model.exceptions || []
+  const open = (type, extra = {}) => onEstimateDialog({ type, ...extra })
+  useEffect(() => { setPackageKey(null); setWbs('all'); setDiscipline('all'); setSearch(''); setChangedOnly(false) }, [selected?.id])
+  const onSaved = async result => { onEstimateDialog(null); setNotice('Estimate saved.'); const newId = result?.id || result?.summary?.estimate_id; if (newId && !same(newId, selected?.id)) onSelectEstimate(newId); control.reload() }
+  const quality = [
+    { title: 'Quantities', text: `${quantities}/${lines.length} recorded`, tone: quantities === lines.length && lines.length ? 'success' : 'warning' },
+    { title: 'Rate coverage', text: `${rates}/${lines.length} priced`, tone: rates === lines.length && lines.length ? 'success' : 'warning' },
+    { title: 'Basis notes', text: selected?.notes?.trim() ? 'Recorded' : 'Missing', tone: selected?.notes?.trim() ? 'success' : 'warning' },
+    { title: 'WBS mapping', text: `${mapped}/${lines.length} assigned`, tone: mapped === lines.length && lines.length ? 'success' : 'warning' },
+    { title: 'Estimate total', text: model.reconciled ? 'Reconciled' : 'Review required', tone: model.reconciled ? 'success' : 'warning' },
+    { title: 'Estimate confidence', text: 'Not assessed', tone: 'neutral' },
+  ]
+  const versionOptions = versions.filter(item => statusFilter === 'all' || item.status === statusFilter || same(item.id, selected?.id))
+  const waterfall = (model.waterfall || []).map(row => ({ ...row, offset: Math.min(row.start, row.end), value: row.type === 'total' ? Math.abs(row.amount) : Math.abs(row.end - row.start) }))
+  const chartData = chart === 'trend' ? model.trendPoints || [] : waterfall
+  const waterfallLevels = waterfall.flatMap(row => row.type === 'total' ? [row.amount] : [row.start, row.end])
+  const waterfallMin = Math.min(...waterfallLevels), waterfallMax = Math.max(...waterfallLevels)
+  const waterfallPadding = Math.max((waterfallMax - waterfallMin) * .3, Math.abs(waterfallMax) * .08, 1)
+  const waterfallDomain = waterfallLevels.length && waterfallMin >= 0 ? [Math.max(0, waterfallMin - waterfallPadding), waterfallMax + waterfallPadding] : ['auto', 'auto']
+  const amount = value => money(value, currency, true)
+  return <div className="ec-workspace" aria-busy={control?.loading}>
+    <div className="ec-toolbar">
+      <div className="ec-mode-switch" role="group" aria-label="Estimate mode">{[['management', 'Management'], ['builder', 'Estimate builder']].map(([key, label]) => <button type="button" key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</button>)}</div>
+      <label className="ec-toolbar-field"><span className="sr-only">Estimate version</span><select aria-label="Estimate version" value={selected?.id || ''} disabled={control?.loading || !versions.length} onChange={event => onSelectEstimate(event.target.value)}>{!versions.length && <option value="">No estimates</option>}{versionOptions.map(item => <option key={item.id} value={item.id}>{versionLabel(item)} — {item.title || item.statusLabel}</option>)}</select></label>
+      <label className="ec-toolbar-field">Compare with<select aria-label="Compare with" value={comparison?.id || 'none'} disabled={!selected || control?.loading} onChange={event => onCompareEstimate(event.target.value)}><option value="none">No comparison</option>{versions.filter(item => !same(item.id, selected?.id)).map(item => <option key={item.id} value={item.id}>{versionLabel(item)} · {item.currency}</option>)}</select></label>
+      <span className="ec-toolbar-currency">Cost basis <strong>{formatDate(selected?.snapshotDate)}</strong></span><span className="ec-toolbar-currency">Currency <strong>{currency}</strong></span>
+      <label className="ec-toolbar-field">WBS<select value={wbs} onChange={event => setWbs(event.target.value)}><option value="all">All</option>{[...new Set(lines.map(line => line.wbsCode).filter(Boolean))].map(value => <option key={value}>{value}</option>)}</select></label>
+      <label className="ec-toolbar-field">Discipline<select value={discipline} onChange={event => setDiscipline(event.target.value)}><option value="all">All</option>{[...new Set(lines.map(line => line.discipline).filter(Boolean))].map(value => <option key={value}>{value}</option>)}</select></label>
+      <button type="button" className="pp-button" aria-expanded={filters} onClick={() => setFilters(value => !value)}><Filter aria-hidden="true" />Filters</button>
+      <span className="ec-toolbar-state"><Status tone={statusTone(selected?.status)}>{selected?.statusLabel || 'No version'}</Status><span className="ec-readonly-note"><Lock aria-hidden="true" />Approved versions are locked; revisions create a new version.</span></span>
     </div>
-  )
+    {filters && <div className="ec-filters"><label>Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="approved">Approved</option><option value="superseded">Superseded</option></select></label><span>Filters apply to the version list and cost breakdown. Totals show the full selected estimate.</span><button type="button" className="ec-text-button" onClick={() => { setWbs('all'); setDiscipline('all'); setSearch(''); setChangedOnly(false); setStatusFilter('all') }}>Reset filters</button></div>}
+    {!!control?.issues?.length && <div className="ec-warning-note" role="alert"><AlertTriangle aria-hidden="true" /><span>{control.issues.join(' ')}</span><button type="button" className="ec-text-button" onClick={control.reload}>Retry</button></div>}
+    {notice && <div role="status" className="ec-note">{notice}<button type="button" className="ec-text-button" onClick={() => setNotice('')}>Dismiss</button></div>}
+    {control?.loading && <div className="ec-note" role="status">Loading estimate data…</div>}
+    {!selected && !control?.loading ? <Empty>{model.availability?.list === false ? 'The estimate register is unavailable. Retry to load your estimates.' : 'No estimates recorded. Create a blank estimate or import an Excel BOQ to start.'}</Empty> : selected && model.availability?.selected === false && !control?.loading ? <Panel title={mode === 'builder' ? 'Estimate builder' : 'Estimate breakdown'} icon={Layers}><Empty>Selected estimate details are unavailable. Retry to load its cost items, basis notes and approval checks.</Empty></Panel> : <>
+      <div className="ec-validation-notice"><AlertTriangle aria-hidden="true" /><span><strong>{actions.length ? 'Estimate requires review before approval' : selected?.status === 'approved' ? 'Approved estimate is locked' : 'Estimate ready for review'}</strong><br />{actions.length ? `${actions.length} data ${actions.length === 1 ? 'check needs' : 'checks need'} attention. Review the estimate basis and cost items before approval.` : selected?.status === 'approved' ? 'Copy this version to prepare revisions.' : 'Recorded totals reconcile. Confidence and rate freshness have not been assessed.'}</span><div className="ec-notice-actions"><button type="button" className="pp-button pp-primary" onClick={() => open('checks')}>Review estimate checks</button><button type="button" className="pp-button" onClick={() => open('basis')}>View basis</button></div></div>
+      <div className="ec-kpis">
+        <Kpi title="Total estimate" value={amount(selected?.totalAmount)} note={versionLabel(selected)} icon={Calculator} onClick={() => open('checks')} />
+        <Kpi title="Direct cost" value={model.directCost === null ? 'Not classified' : amount(model.directCost)} note="Recorded direct cost items" icon={Coins} onClick={() => setMode('builder')} />
+        <Kpi title="Indirect cost" value={model.indirectCost === null ? 'Not classified' : amount(model.indirectCost)} note="Recorded indirect cost items" icon={BarChart3} onClick={() => setMode('builder')} />
+        <Kpi title="Contingency" value={model.contingency === null ? 'Not recorded' : amount(model.contingency)} note="Explicit contingency items" icon={ShieldCheck} onClick={() => setMode('builder')} />
+        <Kpi title={`Change vs ${comparison ? `v${comparison.version}` : 'prior version'}`} value={model.delta === null ? 'No comparison' : `${model.delta > 0 ? '+' : ''}${amount(model.delta)}`} note={model.deltaPct === null ? 'Select matching kind and currency' : `${model.deltaPct > 0 ? '+' : ''}${number(model.deltaPct)}%`} icon={TrendingUp} onClick={() => setChart('table')} />
+        <Kpi title="Estimate confidence" value="Not assessed" note="No confidence model recorded" icon={BarChart3} tone="warning" onClick={() => open('checks')} />
+      </div>
+      {comparison && !model.comparable && <div className="ec-warning-note"><Info aria-hidden="true" />{model.comparisonReason}</div>}
+      {mode === 'builder' ? <Panel title="Estimate builder" icon={Layers} className="ec-builder-container" actions={<><button type="button" className="pp-button" disabled={!model.canEdit} onClick={() => open('edit-estimate')}>Edit estimate</button><button type="button" className="pp-button pp-primary" disabled={!model.canEdit} onClick={() => open('line')}><Plus aria-hidden="true" />Add cost item</button></>}>
+        <div className="ec-note"><strong>{selected?.title || versionLabel(selected)}</strong><span>{model.canEdit ? 'Edit draft quantities, rates and recorded amount overrides.' : 'This estimate is read only. Copy the version to make changes.'}</span></div>
+        <label className="ec-builder-search"><Search size={14} aria-hidden="true" /><input type="search" aria-label="Search cost item" placeholder="Search cost item…" value={search} onChange={event => setSearch(event.target.value)} /></label>
+        <div className="ec-table-wrap"><table className="ec-table ec-builder-table"><thead><tr>{['WBS', 'Cost item', 'Discipline', 'Category', 'Unit', 'Quantity', 'Unit rate', `Amount (${currency})`, 'Basis', 'Action'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{filteredLines.map(line => <tr key={line.id}><td>{line.wbsCode || '—'}</td><td><strong>{line.description || 'Untitled item'}</strong></td><td>{line.discipline || '—'}</td><td>{line.category || 'Unclassified'}</td><td>{line.unit || '—'}</td><td>{number(line.quantity)}</td><td>{number(line.unitRate)}</td><td>{number(line.lineTotal)}</td><td>{line.isOverride ? 'Recorded override' : 'Quantity × rate'}</td><td><button type="button" className="pp-button" disabled={!model.canEdit} aria-label={`Edit ${line.description || 'cost item'}`} onClick={() => open('line', { line })}>Edit</button></td></tr>)}</tbody><tfoot><tr><th colSpan={7}>Filtered cost items ({filteredLines.length} / {lines.length})</th><th>{number(sum(filteredLines))}</th><td colSpan={2} /></tr></tfoot></table></div>{!filteredLines.length && <Empty>No cost items match the current filters.</Empty>}
+      </Panel> : <div className="ec-grid">
+        <div className="ec-left">
+          <Panel title="Estimate composition" icon={BarChart3} className="ec-composition-panel" actions={<><Segments label="Composition view" value={chart} onChange={setChart} options={[[ 'waterfall', 'Waterfall'], ['trend', 'Trend'], ['table', 'Table']]} /><TextAction onClick={() => setChart('table')}>Open comparison</TextAction></>}>
+            <div className="ec-composition-body"><div className="ec-chart-main">
+              {chart === 'table' ? <div className="ec-table-wrap"><table className="ec-table"><thead><tr><th>WBS</th><th>Previous ({currency})</th><th>Current ({currency})</th><th>Change</th></tr></thead><tbody>{(model.comparisonRows || []).map(row => <tr key={row.id || row.key}><td>{row.label}</td><td>{number(row.baseAmount)}</td><td>{number(row.currentAmount)}</td><td className={row.delta > 0 ? 'ec-danger' : 'ec-success'}>{number(row.delta)}</td></tr>)}</tbody></table>{!model.comparable && <Empty>{model.comparisonReason}</Empty>}</div> : chartData.length ? <div className="ec-chart-plot" role="img" aria-label={chart === 'trend' ? 'Recorded totals by estimate version' : `Estimate waterfall from ${money(comparison?.totalAmount, currency)} to ${money(selected?.totalAmount, currency)}`}><ResponsiveContainer width="100%" height="100%">{chart === 'trend' ? <LineChart data={chartData} margin={{ left: 0, right: 18, top: 12, bottom: 5 }}><CartesianGrid stroke="#e3eaf4" /><XAxis dataKey="label" tick={{ fontSize: 9 }} /><YAxis tickFormatter={value => new Intl.NumberFormat('en', { notation: 'compact' }).format(value)} width={50} tick={{ fontSize: 9 }} /><Tooltip formatter={value => money(value, currency)} /><Line type="linear" dataKey="amount" name="Recorded total" stroke="#075bff" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} /></LineChart> : <BarChart data={chartData} margin={{ left: 0, right: 10, top: 12, bottom: 5 }}><CartesianGrid stroke="#e3eaf4" /><XAxis dataKey="label" tick={{ fontSize: 9 }} interval={0} /><YAxis width={50} tick={{ fontSize: 9 }} domain={waterfallDomain} allowDataOverflow tickFormatter={value => new Intl.NumberFormat('en', { notation: 'compact' }).format(value)} /><Tooltip content={({ active, payload }) => active && payload?.length ? <div className="ec-chart-tooltip"><strong>{payload[0].payload.label}</strong><br />{money(payload[0].payload.amount, currency)}</div> : null} /><Bar dataKey="offset" stackId="cost" fill="transparent" isAnimationActive={false} /><Bar dataKey="value" stackId="cost" isAnimationActive={false}>{chartData.map(row => <Cell key={row.id} fill={row.type === 'total' ? '#2774ff' : row.amount >= 0 ? '#ff9d25' : '#00856b'} />)}</Bar></BarChart>}</ResponsiveContainer></div> : <Empty>{chart === 'trend' ? 'No estimate version totals available.' : model.comparisonReason}</Empty>}
+              {chart !== 'table' && <div className="ec-chart-legend">{chart === 'waterfall' ? <><span className="ec-legend-current">Previous / Total</span><span className="ec-legend-increase">Increase</span><span className="ec-legend-decrease">Decrease</span></> : <span>Recorded version totals · {currency}</span>}</div>}
+            </div><dl className="ec-chart-summary"><div><dt>Estimate summary</dt><dd>{amount(selected?.totalAmount)}</dd></div><div><dt>Cost item total</dt><dd>{amount(model.lineTotal)}</dd></div><div><dt>Contingency</dt><dd>{model.contingency === null ? 'Not recorded' : amount(model.contingency)}</dd></div><div><dt>P80 range</dt><dd>Not modelled</dd></div></dl></div>
+          </Panel>
+          <Panel title="Estimate breakdown" icon={Layers} className="ec-breakdown-panel" actions={<><label className="ec-toolbar-field">Group by<select value={groupBy} onChange={event => { setGroupBy(event.target.value); setPackageKey(null) }}><option value="wbs">WBS</option><option value="discipline">Discipline</option><option value="category">Category</option></select></label><label className="ec-toolbar-search"><Search aria-hidden="true" /><input type="search" aria-label="Search cost item" placeholder="Search cost item…" value={search} onChange={event => setSearch(event.target.value)} /></label><label className="ec-toolbar-toggle"><input type="checkbox" checked={changedOnly} disabled={!model.comparable} onChange={event => setChangedOnly(event.target.checked)} />Show changed only</label></>}>
+            <div className="ec-table-wrap"><table className="ec-table ec-breakdown-table"><thead><tr><th>{groupBy === 'wbs' ? 'WBS' : groupBy === 'discipline' ? 'Discipline' : 'Category'}</th><th>Cost package</th><th>Items</th><th>Quantity basis</th><th>Total ({currency})</th><th>Variance vs {comparison ? `v${comparison.version}` : 'prior'}</th><th>Status</th></tr></thead><tbody>{groups.map(row => <tr key={row.key} className={selectedPackage?.key === row.key ? 'is-selected' : ''}><td>{row.key}</td><td><button type="button" className="ec-row-link" onClick={() => setPackageKey(row.key)} aria-label={`Select package ${row.key}`}><strong>{groupBy === 'wbs' ? row.lines[0]?.description || row.label : row.label}</strong></button></td><td>{row.lines.length}</td><td>{row.lines.filter(line => line.quantity > 0).length}/{row.lines.length} recorded</td><td><strong>{number(row.amount)}</strong></td><td className={row.delta > 0 ? 'ec-danger' : row.delta < 0 ? 'ec-success' : ''}>{row.delta === null ? '—' : `${row.delta > 0 ? '+' : ''}${number(row.delta)}`}</td><td><Status tone={row.lines.some(line => line.isOverride) ? 'warning' : statusTone(selected?.status)}>{row.lines.some(line => line.isOverride) ? 'Amount override' : selected?.statusLabel}</Status></td></tr>)}</tbody><tfoot><tr><th colSpan={4}>Filtered total</th><th>{number(groups.reduce((value, row) => value + row.amount, 0))}</th><td colSpan={2}>{groups.length} packages</td></tr></tfoot></table>{!groups.length && <Empty>No packages match the current filters.</Empty>}</div>
+          </Panel>
+          <Panel title="Basis, assumptions & exclusions" icon={FileText} className="ec-basis-panel" actions={<button type="button" className="pp-button pp-primary" onClick={() => open('basis')}>{model.canEdit ? <><Plus aria-hidden="true" />Edit basis</> : 'View basis'}</button>}>
+            <div className="ec-basis-tabs"><Segments label="Estimate basis sections" value={basisTab} onChange={setBasisTab} options={[[ 'notes', 'Basis notes'], ['sources', 'Sources']]} /></div>
+            {basisTab === 'notes' ? <div className="ec-basis-preview">{selected?.notes?.trim() || 'No basis notes recorded. Document assumptions, exclusions and qualifications for this version.'}</div> : <div className="ec-note"><FileText aria-hidden="true" /><span>{selected?.sourceDocumentId ? 'Source document linked' : 'No source document linked.'}<br />{lines.filter(line => Object.keys(line.sourceRow || {}).length).length} cost items have recorded import provenance.</span>{selected?.sourceDocumentId && <TextAction onClick={() => onSelectView('documents')}>Open documents</TextAction>}</div>}
+          </Panel>
+        </div>
+        <div className="ec-right">
+          <Panel title="Estimate actions" className="ec-actions-panel" actions={<TextAction onClick={() => open('checks')}>View all</TextAction>}>
+            <div className="ec-table-wrap"><table className="ec-table"><thead><tr><th>Priority</th><th>Action</th><th>Source</th><th>Status</th><th>Action</th></tr></thead><tbody>{actions.slice(0, 4).map(action => <tr key={action.id}><td><Status tone="warning">{action.priority === 'high' ? 'High' : 'Medium'}</Status></td><td><strong>{action.title}</strong><small>{action.detail}</small></td><td>Estimate checks</td><td>Review required</td><td><button type="button" className="pp-button" onClick={() => action.view === 'builder' ? setMode('builder') : open(action.view === 'basis' ? 'basis' : 'checks')}>{action.view === 'builder' ? 'Review' : action.button}</button></td></tr>)}</tbody></table>{!actions.length && <Empty>No recorded estimate data checks require attention. Review the basis before approval.</Empty>}</div>
+          </Panel>
+          <Panel title="Selected package" icon={Layers} className="ec-package-panel" actions={<><button type="button" className="pp-button" disabled={!selectedPackage} onClick={() => { setMode('builder'); if (groupBy === 'wbs') setWbs(selectedPackage.key === 'Unassigned' ? 'all' : selectedPackage.key); if (groupBy === 'discipline') setDiscipline(selectedPackage.key === 'Unassigned' ? 'all' : selectedPackage.key) }}>Open package</button><button type="button" className="pp-button pp-primary" disabled={!selectedPackage || !model.canEdit} onClick={() => { setMode('builder'); if (groupBy === 'wbs') setWbs(selectedPackage.key === 'Unassigned' ? 'all' : selectedPackage.key) }}>Review quantities</button></>}>
+            {selectedPackage ? <><div className="ec-package-title"><h3>{selectedPackage.key} · {selectedPackage.lines[0]?.description || selectedPackage.label}</h3><Status tone={statusTone(selected?.status)}>{selected?.statusLabel}</Status></div><div className="ec-package-body"><div><dl className="ec-package-summary"><div><dt>Total ({currency})</dt><dd>{number(selectedPackage.amount)}</dd></div><div><dt>Variance vs prior</dt><dd className={selectedPackage.delta > 0 ? 'ec-danger' : ''}>{number(selectedPackage.delta)}</dd></div><div><dt>Quantities recorded</dt><dd>{selectedPackage.lines.filter(line => line.quantity > 0).length}/{selectedPackage.lines.length}</dd></div><div><dt>Rates recorded</dt><dd>{selectedPackage.lines.filter(line => line.unitRate > 0).length}/{selectedPackage.lines.length}</dd></div></dl><p>Recorded coverage; validation sign-off is not recorded.</p></div><div><h4>Discipline breakdown</h4><div className="ec-table-wrap"><table className="ec-table"><thead><tr><th>Discipline</th><th>Items</th><th>Amount ({currency})</th></tr></thead><tbody>{packageDisciplines.map(row => <tr key={row.key}><td>{row.label}</td><td>{row.lines.length}</td><td>{number(row.amount)}</td></tr>)}</tbody></table></div></div></div></> : <Empty>Select a cost package from the estimate breakdown.</Empty>}
+          </Panel>
+          <Panel title="Version & approval" icon={ShieldCheck} className="ec-approval-panel" actions={<><button type="button" className="pp-button pp-primary" disabled={!model.canApprove || !lines.length || selected?.status !== 'draft'} onClick={() => open('approve')}>Approve estimate</button><button type="button" className="pp-button" onClick={() => open('workflow')}>View workflow</button></>}>
+            <div className="ec-approval-body"><div><h3>Version history</h3><div className="ec-version-list">{versions.slice(0, 4).map(item => <button type="button" key={item.id} onClick={() => onSelectEstimate(item.id)} aria-current={same(item.id, selected?.id) ? 'true' : undefined}><span className={`ec-status-dot ec-${statusTone(item.status)}`} aria-hidden="true" /><strong>{versionLabel(item)}</strong><span>{item.statusLabel}</span><span>{money(item.totalAmount, item.currency, true)}</span><time>{formatDate(item.date)}</time></button>)}</div></div><div><h3>Approval checklist</h3><ul className="ec-check-list"><li><CheckCircle2 aria-hidden="true" />Cost items <strong>{lines.length ? `${lines.length} recorded` : 'Missing'}</strong></li><li><CheckCircle2 aria-hidden="true" />Total reconciliation <strong>{model.reconciled ? 'Complete' : 'Review required'}</strong></li><li><Info aria-hidden="true" />Basis review <strong>{selected?.notes?.trim() ? 'Notes recorded' : 'Missing'}</strong></li><li><Lock aria-hidden="true" />Version status <strong>{selected?.statusLabel}</strong></li></ul></div></div>
+          </Panel>
+        </div>
+      </div>}
+      <section className="ec-quality" aria-label="Estimate data quality"><h2><ShieldCheck size={17} aria-hidden="true" />Estimate data quality</h2><div className="ec-quality-items">{quality.map(item => <button type="button" key={item.title} className={`ec-${item.tone}`} onClick={() => open('checks')}>{item.tone === 'success' ? <CheckCircle2 aria-hidden="true" /> : <Info aria-hidden="true" />}<span><small>{item.title}</small><strong>{item.text}</strong></span></button>)}</div><button type="button" className="pp-button" onClick={() => open('checks')}>Review estimate quality</button></section>
+    </>}
+    {estimateDialog && <EstimateControlDialogs key={`${selected?.id || project.id}:${estimateDialog.type}:${estimateDialog.line?.id || ''}`} dialog={estimateDialog} project={project} model={model} onClose={() => onEstimateDialog(null)} onSaved={onSaved} />}
+  </div>
 }

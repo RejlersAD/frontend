@@ -15,14 +15,15 @@ import { radaiPrompt } from '../../services/radaiDialog'
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
-import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
+import PurchaseOrderPreviewPane from './PurchaseOrderPreviewPane';
+import './PurchaseOrderForm.css';
+import { Save as SaveIcon, ArrowRight, ArrowLeft, AlertCircle, X } from 'lucide-react';
 import PurchaseOrderPriceSpreadsheet from './PurchaseOrderPriceSpreadsheet';
 import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
 import {
   DocumentTextIcon,
   PaperClipIcon,
   CheckCircleIcon,
-  XCircleIcon,
   CloudArrowUpIcon,
   InformationCircleIcon,
   BuildingOfficeIcon,
@@ -210,8 +211,8 @@ const RichTextEditor = ({ value, onChange }) => {
             </div>
             <div className="flex items-center gap-0.5">
               {ribbonButton('B', 'bold', null, 'font-black')}{ribbonButton('I', 'italic', null, 'italic')}{ribbonButton('U', 'underline', null, 'underline')}{ribbonButton('x₂', 'subscript')}{ribbonButton('x²', 'superscript')}
-              <label title="Font colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">A<input type="color" onChange={(event) => runCommand('foreColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
-              <label title="Highlight colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">Highlight<input type="color" defaultValue="#fff2cc" onChange={(event) => runCommand('hiliteColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
+              <label title="Font colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">A<input type="color" aria-label="Font colour" onChange={(event) => runCommand('foreColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
+              <label title="Highlight colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">Highlight<input type="color" aria-label="Highlight colour" defaultValue="#fff2cc" onChange={(event) => runCommand('hiliteColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
             </div>
           </div>
           <div className="flex flex-col justify-between border-r border-slate-300 pr-2">
@@ -240,8 +241,8 @@ const RichTextEditor = ({ value, onChange }) => {
           </div>
           <div className="space-y-4 p-4">
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-xs font-semibold text-slate-700">Rows</label><input type="number" min="1" max="30" value={tableRows} onChange={(event) => setTableRows(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–30 rows</p></div>
-              <div><label className="block text-xs font-semibold text-slate-700">Columns</label><input type="number" min="1" max="12" value={tableColumns} onChange={(event) => setTableColumns(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–12 columns</p></div>
+              <div><label className="block text-xs font-semibold text-slate-700">Rows</label><input type="number" min="1" max="30" aria-label="Table rows" value={tableRows} onChange={(event) => setTableRows(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–30 rows</p></div>
+              <div><label className="block text-xs font-semibold text-slate-700">Columns</label><input type="number" min="1" max="12" aria-label="Table columns" value={tableColumns} onChange={(event) => setTableColumns(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–12 columns</p></div>
             </div>
             <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={tableHeaderRow} onChange={(event) => setTableHeaderRow(event.target.checked)} className="rounded border-slate-300 text-[#2b579a] focus:ring-[#2b579a]" />Use first row as a header</label>
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-600">Preview: <b>{Math.min(30, Math.max(1, Number(tableRows) || 1))} × {Math.min(12, Math.max(1, Number(tableColumns) || 1))}</b> table</div>
@@ -250,7 +251,7 @@ const RichTextEditor = ({ value, onChange }) => {
         </div>
       </div>}
 
-      <div ref={editorRef} contentEditable suppressContentEditableWarning onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={(event) => { rememberSelection(); onChange(event.currentTarget.innerHTML); }} className="min-h-80 rounded-b-lg bg-white px-8 py-6 font-sans text-sm leading-6 outline-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)] [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_img]:my-2 [&_img]:max-w-full [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-7 [&_table]:my-3 [&_table]:w-full [&_td]:border [&_td]:border-gray-400 [&_td]:p-2 [&_ul]:list-disc [&_ul]:pl-7" data-placeholder="Enter the complete PO narrative..." />
+      <div ref={editorRef} contentEditable role="textbox" aria-label="PO Narrative" aria-multiline="true" suppressContentEditableWarning onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={(event) => { rememberSelection(); onChange(event.currentTarget.innerHTML); }} className="min-h-80 rounded-b-lg bg-white px-8 py-6 font-sans text-sm leading-6 outline-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)] [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_img]:my-2 [&_img]:max-w-full [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-7 [&_table]:my-3 [&_table]:w-full [&_td]:border [&_td]:border-gray-400 [&_td]:p-2 [&_ul]:list-disc [&_ul]:pl-7" data-placeholder="Enter the complete PO narrative..." />
     </div>
   );
 };
@@ -412,6 +413,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [projectLoadError, setProjectLoadError] = useState('');
   const [projectSearch, setProjectSearch] = useState(editData?.project_number || '');
   const [showProjectChoices, setShowProjectChoices] = useState(false);
+  const [activeProjectIndex, setActiveProjectIndex] = useState(-1);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [newProject, setNewProject] = useState({ project_number: '', project_name: '' });
   const [projectCreating, setProjectCreating] = useState(false);
@@ -421,6 +423,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [selectedRequisition, setSelectedRequisition] = useState(prReference || null);
   const [prSearch, setPrSearch] = useState(prReference?.pr_number || editData?.pr_number || '');
   const [showPRChoices, setShowPRChoices] = useState(false);
+  const [activePRIndex, setActivePRIndex] = useState(-1);
   const [requisitionsLoading, setRequisitionsLoading] = useState(false);
   const [requisitionLoadError, setRequisitionLoadError] = useState('');
   const [poNumberLoading, setPONumberLoading] = useState(false);
@@ -563,6 +566,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [autoSaving, setAutoSaving] = useState(false);
   const [draftId, setDraftId] = useState(editData?.id || null);
   const [currentSection, setCurrentSection] = useState(1);
+  const formScrollRef = useRef(null);
   const [approvalEmployees, setApprovalEmployees] = useState([]);
   const [approversLoading, setApproversLoading] = useState(false);
   const [approverLoadError, setApproverLoadError] = useState('');
@@ -634,16 +638,6 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       if (!editData) fetchAvailableRequisitions();
     }
   }, [isOpen, pageMode, editData]);
-
-  // Auto-calculate tax when total amount or VAT% changes
-  useEffect(() => {
-    if (formData.total_amount && formData.vat_percentage) {
-      const amount = parseFloat(formData.total_amount) || 0;
-      const vatPct = parseFloat(formData.vat_percentage) || 0;
-      const taxAmount = (amount * vatPct) / 100;
-      setFormData(prev => ({ ...prev, tax_amount: taxAmount.toFixed(2) }));
-    }
-  }, [formData.total_amount, formData.vat_percentage]);
 
   // Auto-save draft every 30 seconds
   useEffect(() => {
@@ -777,6 +771,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   const handleProjectSearch = (event) => {
+    setActiveProjectIndex(-1);
     const value = event.target.value;
     setProjectSearch(value);
     setShowProjectChoices(true);
@@ -1037,6 +1032,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   }, [isOpen, editData, prReference?.id]);
 
   const handleRequisitionSearch = (event) => {
+    setActivePRIndex(-1);
     const value = event.target.value;
     setPrSearch(value);
     setShowPRChoices(true);
@@ -1356,7 +1352,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   );
   const missingApprovalStages = requiredApprovalStages.filter((stage) => !assignedApprovalStages.has(stage));
 
-  const validateForm = (requireSummary = false) => {
+  const getValidationErrors = (requireSummary = false) => {
     const newErrors = {};
     
     if (!formData.pr_reference) newErrors.pr_reference = 'An existing Purchase Requisition is required';
@@ -1382,8 +1378,36 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       newErrors.approval_log = `Select an active employee for: ${missingApprovalStages.join(', ')}`;
     }
     
+    return newErrors;
+  };
+
+  const validateForm = (requireSummary = false) => {
+    const newErrors = getValidationErrors(requireSummary);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const openSection = (section) => {
+    if (window.matchMedia('(max-width: 1099px)').matches) {
+      formScrollRef.current?.closest('.pof-editor')?.scrollIntoView({ block: 'start' });
+    }
+    setCurrentSection(section);
+    formScrollRef.current?.scrollTo({ top: 0 });
+  };
+
+  const sectionForField = (field) => field === 'total_amount' ? 3 : field === 'attachments' ? 4 : 1;
+  const openValidationIssue = (issue) => {
+    const field = issue.field || issue.id;
+    openSection(sectionForField(field));
+    setErrors(getValidationErrors(true));
+    window.setTimeout(() => {
+      const target = field === 'pr_reference' ? '#po-pr-search'
+        : field === 'total_amount' ? '[data-po-price-summary]'
+          : `[name="${field}"], #po-${field}`;
+      const element = formScrollRef.current?.querySelector(target);
+      element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      element?.focus({ preventScroll: true });
+    }, 50);
   };
 
   const handleSubmit = async (e, sendToVendor = false) => {
@@ -1406,8 +1430,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                 ? `Please select: ${missingApprovalStages.join(', ')}.`
                 : 'Please add a short summary before sending to the vendor.';
       setPopupError(validationMessage);
-      setCurrentSection(missingApprovalStages.length ? 1
-        : !formData.pr_reference || !formData.po_number?.trim() || !formData.vendor || !formData.title?.trim() || (sendToVendor && !formData.summary?.trim()) ? 1 : 2);
+      openSection(sectionForField(Object.keys(getValidationErrors(sendToVendor))[0]));
       setTimeout(() => setPopupError(''), 6000);
       return;
     }
@@ -1529,84 +1552,55 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     { id: 4, name: 'Attachments', icon: PaperClipIcon },
   ];
 
+  const validationErrors = formData.pr_reference ? getValidationErrors(true) : { pr_reference: 'Select an existing purchase recommendation to continue.' };
+  const validationIssues = Object.entries(validationErrors).map(([field, message]) => ({ id: field, field, message, title: message }));
+  const busy = submitLoading || autoSaving;
+
   return (
-    <div className={pageMode
-      ? 'min-h-screen bg-slate-100 px-3 py-4 sm:px-5 lg:px-6 xl:h-[calc(100dvh-4.75rem)] xl:min-h-0 xl:overflow-hidden'
-      : 'fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black bg-opacity-50 p-4'}>
-      {popupError && (
-        <div className="fixed top-6 right-6 z-60">
-          <div className="flex items-start space-x-3 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg max-w-sm">
-            <div className="flex-1">
-              <div className="font-semibold">Error</div>
-              <div className="text-sm mt-1">{popupError}</div>
-            </div>
-            <button onClick={() => setPopupError('')} className="text-white opacity-90 hover:opacity-100 ml-2">×</button>
-          </div>
-        </div>
-      )}
-      <div className={pageMode
-        ? 'mx-auto flex w-full max-w-[1800px] flex-col overflow-hidden rounded-xl bg-white shadow-xl xl:h-full'
-        : 'flex h-[94vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl'}>
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-6 rounded-t-xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <DocumentTextIcon className="h-8 w-8" />
+    <div className={`purchase-order-form-workspace ${pageMode ? 'pof-page' : 'pof-modal'}`}>
+      <div className="pof-workspace-grid">
+        <section className="pof-editor" aria-label="Purchase order editor">
+          <header className="pof-header">
+            <nav className="pof-breadcrumb" aria-label="Breadcrumb">
+              <span>Procurement</span><span>/</span><button type="button" onClick={onClose}>Purchase Orders</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong>
+            </nav>
+            <div className="pof-title-row">
               <div>
-                <h2 className="text-2xl font-bold">
-                  {editData ? 'Edit Purchase Order' : 'New Purchase Order'}
-                </h2>
-                <p className="text-blue-100 text-sm mt-1">
-                  {formData.po_number ? `PO No: ${formData.po_number}` : 'RAD-PRJ-PUR Template'}
-                  {effectiveRequisition && ` • From PR: ${effectiveRequisition.pr_number}`}
-                </p>
+                <h1>{editData ? 'Edit purchase order' : 'New purchase order'}</h1>
+                <p>Confirm the supplier, scope and commercial terms for your purchase order.</p>
+              </div>
+              <button type="button" className="pof-close" onClick={onClose} aria-label="Close purchase order"><X size={18} /></button>
+            </div>
+            <div className="pof-header-bottom">
+              <span className="pof-draft-state" role="status"><DocumentTextIcon />{autoSaving ? 'Saving draft…' : formData.po_number || 'Draft · select a recommendation to start'}</span>
+              <div className="pof-header-actions">
+                <button type="button" className="pof-button" onClick={(event) => handleSubmit(event, false)} disabled={busy || !hasRequiredRequisition || poNumberLoading}><SaveIcon />{submitLoading ? 'Saving…' : editData ? 'Save changes' : 'Save draft'}</button>
+                {(!editData || editData.status === 'draft') && <button type="button" className="pof-button pof-primary" onClick={() => openSection(4)} disabled={!hasRequiredRequisition}>Review order <ArrowRight /></button>}
               </div>
             </div>
-            <button onClick={onClose} className="text-white hover:text-blue-200 transition-colors">
-              <XCircleIcon className="h-7 w-7" />
-            </button>
-          </div>
-          
-          {autoSaving && (
-            <div className="mt-3 flex items-center space-x-2 text-blue-100 text-sm">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              <span>Auto-saving draft...</span>
+            <div className="pof-tabs" role="tablist" aria-label="Purchase order sections">
+              {sections.map(section => (
+                <button type="button" role="tab" id={`po-tab-${section.id}`} aria-controls="po-section-panel" aria-selected={currentSection === section.id}
+                  tabIndex={currentSection === section.id ? 0 : -1}
+                  key={section.id} onClick={() => openSection(section.id)}
+                  onKeyDown={event => {
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    event.preventDefault();
+                    const last = hasRequiredRequisition ? 4 : 1;
+                    const next = event.key === 'Home' ? 1 : event.key === 'End' ? last : ((currentSection - 1 + (event.key === 'ArrowRight' ? 1 : -1) + last) % last) + 1;
+                    openSection(next);
+                    event.currentTarget.parentElement.querySelector(`#po-tab-${next}`)?.focus();
+                  }}
+                  disabled={isNewOrder && !hasRequiredRequisition && section.id !== 1}>
+                  <span className="pof-tab-icon"><section.icon /></span><span>{section.name}</span>
+                </button>
+              ))}
             </div>
-          )}
-        </div>
-
-        {/* Section Navigation */}
-        <div className="border-b border-gray-200 bg-gray-50 px-6 py-3">
-          <div className="flex space-x-4 overflow-x-auto">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setCurrentSection(section.id)}
-                disabled={isNewOrder && !hasRequiredRequisition && section.id !== 1}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                  currentSection === section.id
-                    ? 'bg-blue-100 text-blue-700 font-semibold'
-                    : 'text-gray-600 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent'
-                }`}
-              >
-                <section.icon className="h-5 w-5" />
-                <span className="text-sm">{section.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Form Content */}
-        <form
-          onSubmit={(e) => handleSubmit(e, false)}
-          className={pageMode
-            ? 'grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1.25fr)_minmax(400px,0.75fr)] xl:overflow-hidden'
-            : 'grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1.25fr)_minmax(400px,0.75fr)] xl:overflow-hidden'}
-        >
-          <div className={pageMode
-            ? 'min-h-0 min-w-0 overflow-x-hidden px-5 py-4 xl:overflow-y-auto xl:overscroll-contain'
-            : 'min-w-0 px-5 py-4 xl:overflow-y-auto'}>
-          
+          </header>
+          <form className="pof-form" noValidate onSubmit={(event) => handleSubmit(event, false)} aria-label="Purchase order form">
+            {popupError && <div className="pof-error" role="alert"><AlertCircle size={17} /><span>{popupError}</span><button type="button" aria-label="Dismiss error" onClick={() => setPopupError('')}><X size={16} /></button></div>}
+            <div className="pof-form-scroll" ref={formScrollRef}>
+              <div id="po-section-panel" role="tabpanel" aria-labelledby={`po-tab-${currentSection}`} className="pof-section-panel">
           {/* Section 1: Header, buyer, seller and project details */}
           {currentSection === 1 && (
             <div className="space-y-4">
@@ -1624,7 +1618,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <label htmlFor="po-pr-search" className="block text-sm font-bold text-gray-900">
                       Existing PR Number <span className="text-red-600">*</span>
                     </label>
-                    <p className="mt-1 text-xs text-gray-600">All PRs created in RADAI are available, including PRs already used by another PO.</p>
+                    <p className="mt-1 text-xs text-gray-600">Select a purchase recommendation to fill in the supplier, project and pricing details.</p>
                   </div>
                   {selectedRequisition && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
@@ -1637,10 +1631,22 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <div className="relative mt-3">
                     <input
                       id="po-pr-search"
+                      role="combobox"
                       type="search"
                       value={prSearch}
                       onChange={handleRequisitionSearch}
                       onFocus={() => setShowPRChoices(true)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') { setShowPRChoices(false); event.preventDefault(); }
+                        else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          setShowPRChoices(true);
+                          setActivePRIndex(index => Math.max(0, Math.min(filteredRequisitions.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
+                        } else if (event.key === 'Enter') {
+                          event.preventDefault();
+                          if (showPRChoices && filteredRequisitions[activePRIndex]) handleRequisitionSelect(filteredRequisitions[activePRIndex]);
+                        }
+                      }}
                       onBlur={() => window.setTimeout(() => setShowPRChoices(false), 150)}
                       autoComplete="off"
                       placeholder={requisitionsLoading ? 'Loading existing PRs…' : 'Type or select an existing PR number…'}
@@ -1648,14 +1654,17 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       aria-autocomplete="list"
                       aria-expanded={showPRChoices}
                       aria-controls="available-pr-options"
+                      aria-activedescendant={showPRChoices && filteredRequisitions[activePRIndex] ? `po-pr-option-${filteredRequisitions[activePRIndex].id}` : undefined}
                       className={`block w-full rounded-xl border bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 ${errors.pr_reference ? 'border-red-500' : 'border-gray-300'}`}
                     />
 
                     {showPRChoices && !requisitionsLoading && !requisitionLoadError && (
                       <div id="available-pr-options" role="listbox" className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-xl">
-                        {filteredRequisitions.length ? filteredRequisitions.map((requisition) => (
+                        {filteredRequisitions.length ? filteredRequisitions.map((requisition, index) => (
                           <button
                             key={requisition.id}
+                            id={`po-pr-option-${requisition.id}`}
+                            data-highlighted={index === activePRIndex}
                             type="button"
                             role="option"
                             aria-selected={String(requisition.id) === String(formData.pr_reference)}
@@ -1699,7 +1708,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
               </div>
 
               {!hasRequiredRequisition ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-8 text-center">
+                <div className="pof-empty-requisition">
                   <DocumentCheckIcon className="mx-auto h-10 w-10 text-amber-500" />
                   <h4 className="mt-3 font-bold text-amber-900">Select an existing PR to continue</h4>
                   <p className="mt-1 text-sm text-amber-700">RADAI will link the PO to that requisition and prefill the available supplier, scope, project, pricing, and delivery data.</p>
@@ -1711,7 +1720,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <label className="block text-sm font-medium text-gray-700">PO Number *</label>
                     <input
                       type="text"
-                      value={formData.po_number}
+                      id="po-po_number" aria-label="PO Number" value={formData.po_number}
                       onChange={handlePONumberChange}
                       readOnly={poNumberLoading}
                       className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm font-semibold uppercase text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.po_number ? 'border-red-500' : 'border-gray-300'} ${poNumberLoading ? 'cursor-wait bg-gray-100' : ''}`}
@@ -1726,6 +1735,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="date"
                       name="po_date"
+                      aria-label="Po Date"
                       value={formData.po_date}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1735,6 +1745,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <label className="block text-sm font-medium text-gray-700">Currency *</label>
                     <select
                       name="currency"
+                      aria-label="Currency"
                       value={formData.currency}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1751,6 +1762,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <label className="block text-sm font-medium text-gray-700">Seller Information *</label>
                   <select
                     name="vendor"
+                      aria-label="Seller Information"
                     value={formData.vendor}
                     onChange={handleVendorChange}
                     className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
@@ -1796,6 +1808,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="seller_reference"
+                      aria-label="Seller Reference"
                       value={formData.seller_reference}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1807,6 +1820,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="quote_ref"
+                      aria-label="Quote Reference"
                       value={formData.quote_ref}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1818,6 +1832,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="seller_license_no"
+                      aria-label="Seller License No"
                       value={formData.seller_license_no}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1831,6 +1846,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <input
                     type="text"
                     name="title"
+                      aria-label="Title / Description"
                     value={formData.title}
                     onChange={handleChange}
                     className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
@@ -1845,6 +1861,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <label className="block text-sm font-medium text-gray-700">Vendor Summary (included when sending to vendor) *</label>
                   <textarea
                     name="summary"
+                      aria-label="Vendor Summary"
                     value={formData.summary}
                     onChange={handleChange}
                     rows={2}
@@ -1860,6 +1877,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="email"
                       name="seller_email"
+                      aria-label="Seller Email"
                       value={formData.seller_email}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1871,6 +1889,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="seller_phone"
+                      aria-label="Seller Phone"
                       value={formData.seller_phone}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1883,6 +1902,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       type="text"
                       id="seller-address"
                       name="seller_address"
+                      aria-label="Seller Address"
                       value={formData.seller_address}
                       onChange={handleChange}
                       autoComplete="street-address"
@@ -1915,6 +1935,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="invoicing_attn"
+                      aria-label="Invoicing Attn"
                       value={formData.invoicing_attn}
                       readOnly
                       className="mt-1 block w-full cursor-not-allowed rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900"
@@ -1929,6 +1950,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="company_fax"
+                      aria-label="Company Fax"
                       value={formData.company_fax}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1945,13 +1967,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                         <div className="flex items-center gap-3">
                           <span className="w-20 text-xs font-bold uppercase text-gray-500">{slotIndex === 0 ? 'Primary' : `Reference ${slotIndex + 1}`}</span>
                           {slotIndex === 0 ? (
-                            <select value={reference?.user_id || ''} onChange={(event) => handleBuyerReferenceSelection(slotIndex, event.target.value)} disabled className="block flex-1 rounded-md border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900">
+                            <select aria-label="Primary buyer reference" value={reference?.user_id || ''} onChange={(event) => handleBuyerReferenceSelection(slotIndex, event.target.value)} disabled className="block flex-1 rounded-md border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900">
                               <option value={reference?.user_id || ''}>{reference?.name || DEFAULT_BUYER_REFERENCE}</option>
                             </select>
                           ) : (
                             <>
                               <input
                                 type="text"
+                                aria-label={`Buyer reference ${slotIndex + 1}`}
                                 list={`buyer-reference-options-${slotIndex}`}
                                 value={reference?.name || ''}
                                 onChange={(event) => handleBuyerReferenceInput(slotIndex, event.target.value)}
@@ -1980,6 +2003,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       type="number"
                       step="0.01"
                       name="total_amount"
+                      aria-label="Total Amount"
                       value={formData.total_amount}
                       onChange={handleChange}
                       className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
@@ -1995,6 +2019,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       type="number"
                       step="0.01"
                       name="vat_percentage"
+                      aria-label="VAT percentage"
                       value={formData.vat_percentage}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2007,6 +2032,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       type="number"
                       step="0.01"
                       name="tax_amount"
+                      aria-label="Tax Amount"
                       value={formData.tax_amount}
                       disabled
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900"
@@ -2020,6 +2046,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="payment_terms"
+                      aria-label="Payment Terms"
                       value={formData.payment_terms}
                       onChange={handleChange}
                       className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
@@ -2033,6 +2060,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <label className="block text-sm font-medium text-gray-700">Payment Mode</label>
                     <select
                       name="payment_mode"
+                      aria-label="Payment Mode"
                       value={formData.payment_mode}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2051,6 +2079,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="delivery_terms"
+                      aria-label="Delivery Terms"
                       value={formData.delivery_terms}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2062,6 +2091,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="marking"
+                      aria-label="Marking"
                       value={formData.marking}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2107,10 +2137,22 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <div className="relative mt-3">
                     <input
                       id="po-project-search"
+                      role="combobox"
                       type="search"
                       value={projectSearch}
                       onChange={handleProjectSearch}
                       onFocus={() => setShowProjectChoices(true)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') { setShowProjectChoices(false); event.preventDefault(); }
+                        else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          setShowProjectChoices(true);
+                          setActiveProjectIndex(index => Math.max(0, Math.min(filteredProjects.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
+                        } else if (event.key === 'Enter') {
+                          event.preventDefault();
+                          if (showProjectChoices && filteredProjects[activeProjectIndex]) handleProjectSelect(filteredProjects[activeProjectIndex]);
+                        }
+                      }}
                       onBlur={() => window.setTimeout(() => setShowProjectChoices(false), 150)}
                       autoComplete="off"
                       placeholder={projectsLoading ? 'Loading existing projects…' : projectLinking ? 'Linking project to Procurement…' : 'Type a project number or name…'}
@@ -2118,14 +2160,17 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       aria-autocomplete="list"
                       aria-expanded={showProjectChoices}
                       aria-controls="project-options"
+                      aria-activedescendant={showProjectChoices && filteredProjects[activeProjectIndex] ? `po-project-option-${filteredProjects[activeProjectIndex].id}` : undefined}
                       className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     />
 
                     {showProjectChoices && !projectsLoading && !projectLoadError && (
                       <div id="project-options" role="listbox" className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-xl">
-                        {filteredProjects.length ? filteredProjects.map((project) => (
+                        {filteredProjects.length ? filteredProjects.map((project, index) => (
                           <button
                             key={project.id}
+                            id={`po-project-option-${project.id}`}
+                            data-highlighted={index === activeProjectIndex}
                             type="button"
                             role="option"
                             aria-selected={String(project.id) === String(formData.project)}
@@ -2173,7 +2218,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                           <label className="block text-xs font-semibold text-gray-700">Project Number *</label>
                           <input
                             type="text"
-                            value={newProject.project_number}
+                            aria-label="New project number" value={newProject.project_number}
                             onChange={(event) => setNewProject((prev) => ({ ...prev, project_number: event.target.value }))}
                             placeholder="e.g. 5901055"
                             className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -2183,7 +2228,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                           <label className="block text-xs font-semibold text-gray-700">Project Title *</label>
                           <input
                             type="text"
-                            value={newProject.project_name}
+                            aria-label="New project title" value={newProject.project_name}
                             onChange={(event) => setNewProject((prev) => ({ ...prev, project_name: event.target.value }))}
                             placeholder="Enter the project title"
                             className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -2211,6 +2256,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="project_number"
+                      aria-label="Project Number"
                       value={formData.project_number}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2223,6 +2269,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="rad_project_no"
+                      aria-label="Rad Project No"
                       value={formData.rad_project_no}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2234,6 +2281,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="company_agreement_no"
+                      aria-label="Company Agreement No"
                       value={formData.company_agreement_no}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2248,6 +2296,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="end_client"
+                      aria-label="End Client"
                       value={formData.end_client}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2260,6 +2309,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="project_manager"
+                      aria-label="Project Manager"
                       value={formData.project_manager}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2273,6 +2323,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="contractor"
+                      aria-label="Contractor"
                       value={formData.contractor}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2284,6 +2335,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="subcontractor"
+                      aria-label="Subcontractor"
                       value={formData.subcontractor}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2302,6 +2354,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="date"
                       name="start_date"
+                      aria-label="Start Date"
                       value={formData.start_date}
                       onChange={handleChange}
                       className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.start_date ? 'border-red-500' : 'border-gray-300'}`}
@@ -2314,6 +2367,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="date"
                       name="end_date"
+                      aria-label="End Date"
                       value={formData.end_date}
                       onChange={handleChange}
                       className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.end_date ? 'border-red-500' : 'border-gray-300'}`}
@@ -2326,6 +2380,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="date"
                       name="expected_delivery"
+                      aria-label="Expected Delivery"
                       value={formData.expected_delivery}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -2354,11 +2409,11 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
           {/* Section 3: Summary of Prices */}
           {currentSection === 3 && (
-            <div className="space-y-4">
+            <div className="space-y-4" data-po-price-summary tabIndex={-1}>
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Summary of Prices</h3>
-                  <p className="text-sm text-gray-500">These pricing rows are rendered only in the final Summary of Prices pages.</p>
+                  <p className="text-sm text-gray-500">Review line items, discounts and VAT. The order totals update as you work.</p>
                 </div>
                 <button
                   type="button"
@@ -2549,6 +2604,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <label className="block text-sm font-medium text-gray-700">Preset Template</label>
                     <select
                       name="terms_template"
+                      aria-label="Terms Template"
                       value={formData.terms_template}
                       onChange={(e) => {
                         const templateKey = e.target.value;
@@ -2583,6 +2639,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <label className="block text-sm font-medium text-gray-700">Terms &amp; Conditions</label>
                   <textarea
                     name="terms_and_conditions"
+                      aria-label="Terms And Conditions"
                     value={formData.terms_and_conditions}
                     onChange={handleChange}
                     rows={8}
@@ -2597,6 +2654,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="warranty_period"
+                      aria-label="Warranty Period"
                       value={formData.warranty_period}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -2608,6 +2666,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <input
                       type="text"
                       name="guarantee_period"
+                      aria-label="Guarantee Period"
                       value={formData.guarantee_period}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -2620,6 +2679,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <label className="block text-sm font-medium text-gray-700">Inspection &amp; Testing Requirements</label>
                   <textarea
                     name="inspection_requirements"
+                      aria-label="Inspection Requirements"
                     value={formData.inspection_requirements}
                     onChange={handleChange}
                     rows={5}
@@ -2632,6 +2692,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <label className="block text-sm font-medium text-gray-700">Liquidated Damages &amp; Penalty Clauses</label>
                   <textarea
                     name="liquidated_damages"
+                      aria-label="Liquidated Damages"
                     value={formData.liquidated_damages}
                     onChange={handleChange}
                     rows={5}
@@ -2653,6 +2714,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                 </div>
                 <textarea
                   name="final_approver_notes"
+                      aria-label="Final Approver Notes"
                   value={formData.final_approver_notes}
                   onChange={handleChange}
                   rows={5}
@@ -2727,12 +2789,12 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
           {currentSection === 4 && <div className="space-y-4">
             <div>
               <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">Attachments</h3>
-              <p className="text-sm text-gray-500">Attachment 1 supports multiple files. Each selected item has its own editable title and description.</p>
+              <p className="text-sm text-gray-500">Attach supporting documents and give each file a clear title and description.</p>
             </div>
             <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-3"><h4 className="font-semibold text-gray-900">Attachment 1</h4><span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{attachmentSlots.length} item{attachmentSlots.length === 1 ? '' : 's'}</span></div>
               <div className="mt-3 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/40 p-4 text-center hover:border-blue-400">
-                <input type="file" multiple onChange={addAttachmentFiles} className="hidden" id="po-attachment-multiple" />
+                <input type="file" multiple onChange={addAttachmentFiles} className="sr-only" id="po-attachment-multiple" />
                 <label htmlFor="po-attachment-multiple" className="cursor-pointer"><CloudArrowUpIcon className="mx-auto h-10 w-10 text-blue-500" /><p className="mt-2 text-sm font-semibold text-blue-700">Select multiple attachments</p><p className="mt-1 text-xs text-gray-500">PDF, Word, Excel, PNG, or JPEG · up to 10 new files per save</p></label>
               </div>
 
@@ -2742,8 +2804,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     <PaperClipIcon className="mt-1 h-5 w-5 shrink-0 text-blue-500" />
                     <div className="min-w-0 flex-1">
                       <div className="grid gap-3 md:grid-cols-2">
-                        <div><label className="block text-xs font-semibold text-gray-600">Item {index + 1} title</label><input type="text" value={slot.title} onChange={(event) => updateAttachmentSlot(index, 'title', event.target.value)} className="mt-1 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
-                        <div><label className="block text-xs font-semibold text-gray-600">Description</label><input type="text" value={slot.description} onChange={(event) => updateAttachmentSlot(index, 'description', event.target.value)} placeholder="Editable attachment description" className="mt-1 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
+                        <div><label className="block text-xs font-semibold text-gray-600">Item {index + 1} title</label><input type="text" aria-label={`Attachment ${index + 1} title`} value={slot.title} onChange={(event) => updateAttachmentSlot(index, 'title', event.target.value)} className="mt-1 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
+                        <div><label className="block text-xs font-semibold text-gray-600">Description</label><input type="text" aria-label={`Attachment ${index + 1} description`} value={slot.description} onChange={(event) => updateAttachmentSlot(index, 'description', event.target.value)} placeholder="Editable attachment description" className="mt-1 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
                       </div>
                       <p className="mt-2 truncate text-xs text-gray-500">{slot.file?.name || slot.existingAttachment?.filename}</p>
                     </div>
@@ -2754,64 +2816,24 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
             </section>
           </div>}
 
-          </div>
-          <aside
-            className={pageMode
-              ? 'min-h-0 min-w-0 overflow-x-auto border-t border-slate-300 bg-slate-200 p-3 sm:p-4 xl:overflow-y-auto xl:border-l xl:border-t-0 xl:overscroll-contain'
-              : 'min-h-[760px] overflow-hidden border-t border-slate-300 xl:min-h-0 xl:border-l xl:border-t-0'}
-            aria-label="Live purchase order preview"
-          >
-            <PurchaseOrderLivePreview formData={formData} vendor={selectedVendor} files={attachmentSlots.filter((slot) => slot.file || slot.existingAttachment)} />
-          </aside>
-        </form>
-
-        {/* Footer Actions */}
-        <div className="bg-gray-50 px-8 py-4 rounded-b-xl border-t flex items-center justify-between">
-          <div className="flex space-x-2 text-sm text-gray-600">
-            <button
-              onClick={() => setCurrentSection(Math.max(1, currentSection - 1))}
-              disabled={currentSection === 1}
-              className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
-            >
-              ← Previous
-            </button>
-            <button
-              onClick={() => setCurrentSection(Math.min(4, currentSection + 1))}
-              disabled={currentSection === 4 || !hasRequiredRequisition}
-              className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
-            >
-              Next →
-            </button>
-          </div>
-
-          <div className="flex space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={(e) => handleSubmit(e, false)}
-              disabled={submitLoading || !hasRequiredRequisition}
-              className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
-            >
-              {submitLoading ? 'Saving...' : editData ? 'Save Changes' : 'Save Draft'}
-            </button>
-            {(!editData || editData.status === 'draft') && (
-              <button
-                type="button"
-                onClick={(e) => handleSubmit(e, true)}
-                disabled={submitLoading || !hasRequiredRequisition}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {submitLoading ? 'Sending...' : 'Send to Vendor'}
-              </button>
-            )}
-          </div>
-        </div>
+              </div>
+            </div>
+            <footer className="pof-actionbar">
+              <button type="button" className="pof-button pof-cancel" onClick={onClose}>Cancel</button>
+              <span className={`pof-validation-state ${validationIssues.length ? 'has-issues' : ''}`} role="status">
+                {validationIssues.length ? <AlertCircle /> : <CheckCircleIcon />}
+                {validationIssues.length ? `${validationIssues.length} required item${validationIssues.length === 1 ? '' : 's'} remaining` : 'Required fields complete'}
+              </span>
+              <div className="pof-footer-actions">
+                {currentSection > 1 && <button type="button" className="pof-button" onClick={() => openSection(currentSection - 1)}><ArrowLeft />Previous</button>}
+                <button type="submit" className="pof-button" disabled={busy || !hasRequiredRequisition || poNumberLoading}><SaveIcon />{submitLoading ? (uploadProgress ? `Uploading ${uploadProgress}%` : 'Saving…') : editData ? 'Save changes' : 'Save draft'}</button>
+                {currentSection < 4 ? <button type="button" className="pof-button pof-primary" disabled={!hasRequiredRequisition} onClick={() => openSection(currentSection + 1)}>Continue <ArrowRight /></button>
+                  : (!editData || editData.status === 'draft') && <button type="button" className="pof-button pof-primary" disabled={busy || !hasRequiredRequisition || poNumberLoading} onClick={(event) => handleSubmit(event, true)}>{submitLoading ? 'Sending…' : 'Send to vendor'}<ArrowRight /></button>}
+              </div>
+            </footer>
+          </form>
+        </section>
+        <PurchaseOrderPreviewPane formData={formData} vendor={selectedVendor} files={attachmentSlots.filter(slot => slot.file || slot.existingAttachment)} issues={validationIssues} onIssueClick={openValidationIssue} />
       </div>
     </div>
   );

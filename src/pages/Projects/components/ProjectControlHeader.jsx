@@ -1,87 +1,77 @@
 /* eslint-disable react/prop-types */
-import React from 'react'
-import {
-  ArrowDownTrayIcon, ArrowPathIcon, BanknotesIcon, CalendarDaysIcon,
-  ChartBarIcon, CloudArrowDownIcon, DocumentTextIcon, EllipsisHorizontalIcon,
-  ExclamationTriangleIcon, FolderIcon, PencilSquareIcon, PlusIcon, ShieldCheckIcon, Squares2X2Icon,
-} from '@heroicons/react/24/outline'
-import { PROJECT_COPY, PROJECT_VIEW_MODES } from '../../../config/projectControl.config'
+import React, { useEffect, useRef } from 'react'
+import { Download, FileText, MoreHorizontal, Plus, RefreshCw, Upload, Pencil, CalendarDays, LayoutGrid, CircleDollarSign, Flag, ShieldCheck, Briefcase, AlertTriangle, ChevronDown } from 'lucide-react'
+import { PROJECT_VIEW_MODES } from '../../../config/projectControl.config'
+import { formatDate, projectManagerName } from '../useProjectPerformance'
 import ProjectSelector from './ProjectSelector'
 
-const ICONS = {
-  banknotes: BanknotesIcon, calendar: CalendarDaysIcon, chart: ChartBarIcon,
-  document: DocumentTextIcon, folder: FolderIcon, shield: ShieldCheckIcon,
-  squares: Squares2X2Icon, alert: ExclamationTriangleIcon,
-}
-
-const titleCase = (value) => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
-const dateLabel = (value) => {
-  if (!value) return 'Not set'
-  const date = new Date(String(value).length === 10 ? `${value}T00:00:00` : value)
-  return Number.isNaN(date.getTime()) ? 'Not set' : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-const compactDateLabel = (value) => {
-  if (!value) return 'Not set'
-  const date = new Date(String(value).length === 10 ? `${value}T00:00:00` : value)
-  return Number.isNaN(date.getTime()) ? 'Not set' : date.toLocaleDateString()
-}
-
-const Badge = ({ children, tone }) => {
-  const tones = {
-    green: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
-    blue: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
-    amber: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-    slate: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  }
-  return <span className={`rounded-md px-2.5 py-1 text-xs font-semibold ${tones[tone] || tones.slate}`}>{children}</span>
-}
+const titleCase = value => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())
 
 export default function ProjectControlHeader({
   projects, selectedProject, selectedProjectId, onSelectProject, loading, error,
   phaseFlags, activeView, onSelectView, onNavigate, onCreate, onEdit, onImport,
-  onArchive, onRefresh, onExport,
+  onArchive, onRefresh, onExport, performance, lastRefreshed, onOpenDialog,
+  schedulePerformance, onUpdateSchedule, commercialPerformance, onUpdateCommercial, milestoneControl, onAddMilestone, riskControl, onAddRiskRecord, estimateControl, onNewEstimate, documentControl, onAddDocument,
 }) {
-  const visibleAreas = PROJECT_VIEW_MODES.filter((area) => (
-    area.route || !area.phaseFlag || (area.phaseLabel ? phaseFlags[area.phaseFlag] === true : phaseFlags[area.phaseFlag] !== false)
-  ))
-  const dataDate = selectedProject?.custom_fields?.data_date || selectedProject?.updated_at
-  const health = selectedProject?.is_overdue ? 'Needs attention' : 'On track'
-  const progress = Math.max(0, Math.min(100, Number(selectedProject?.progress) || 0))
-
-  return (
-    <header className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 print:border-0">
-      <div className="px-4 pt-3 sm:px-6">
-        {selectedProject ? (
-          <div className="flex flex-col gap-3 pb-3 2xl:flex-row 2xl:items-center">
-            <div className="w-full shrink-0 2xl:w-[22rem]"><ProjectSelector projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} label={activeView === 'portfolio-exceptions' ? 'Drill-down project' : 'Active Project'} /></div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">{activeView === 'portfolio-exceptions' ? 'Portfolio Exceptions' : 'Project Performance'}</h1><Badge tone={selectedProject.status === 'active' ? 'green' : 'slate'}>{titleCase(selectedProject.status)}</Badge><Badge tone={selectedProject.priority === 'critical' || selectedProject.priority === 'high' ? 'amber' : 'blue'}>{titleCase(selectedProject.priority)} priority</Badge><Badge tone={selectedProject.is_overdue ? 'amber' : 'green'}>{health}</Badge></div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
-                <p className="max-w-full truncate text-sm font-medium text-slate-700 dark:text-slate-200">{selectedProject.name}</p>
-                <span className="rounded bg-slate-100 px-2 py-0.5 font-mono font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">{selectedProject.code}</span>
-                <span><span className="font-semibold">Start:</span> {compactDateLabel(selectedProject.start_date)}</span>
-                <span><span className="font-semibold">End:</span> {compactDateLabel(selectedProject.end_date)}</span>
-                <span className="inline-flex items-center gap-2">
-                  <span><span className="font-semibold">Progress:</span> {progress}%</span>
-                  <span className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" role="progressbar" aria-label="Project progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}><span className="block h-full rounded-full bg-indigo-600" style={{ width: `${progress}%` }} /></span>
-                </span>
-              </div>
-            </div>
-            <div className="shrink-0 text-xs text-slate-500 dark:text-slate-400"><p><span className="font-semibold text-slate-700 dark:text-slate-200">Data date:</span> {dateLabel(dataDate)}</p><p className="mt-0.5">Last refreshed: {dateLabel(selectedProject.updated_at)}</p></div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">
-              <button type="button" onClick={onRefresh} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"><ArrowPathIcon aria-hidden="true" className="h-4 w-4" />Refresh</button>
-              <button type="button" onClick={onExport} title="Print or save this report as PDF" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"><ArrowDownTrayIcon aria-hidden="true" className="h-4 w-4" />Export report</button>
-              <details className="relative"><summary className="grid min-h-11 min-w-11 cursor-pointer list-none place-items-center rounded-lg border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 dark:border-slate-600 dark:bg-slate-800"><span className="sr-only">More project actions</span><EllipsisHorizontalIcon aria-hidden="true" className="h-5 w-5" /></summary><div className="absolute right-0 z-30 mt-1 min-w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900"><button type="button" onClick={onEdit} className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"><PencilSquareIcon aria-hidden="true" className="h-4 w-4" />Edit project details</button><button type="button" onClick={onImport} className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"><CloudArrowDownIcon aria-hidden="true" className="h-4 w-4" />Import from QHSE</button><button type="button" onClick={onCreate} className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"><PlusIcon aria-hidden="true" className="h-4 w-4" />New project</button><button type="button" onClick={onArchive} className="flex min-h-10 w-full items-center rounded-md px-3 text-left text-sm text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Delete project</button></div></details>
-              <button type="button" onClick={onEdit} className="inline-flex min-h-11 items-center rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2">Update progress</button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4 pb-4 xl:flex-row xl:items-end xl:justify-between"><div><h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">Project Portfolio</h1><p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Open and manage the projects you are authorised to access.</p></div><div className="flex flex-wrap items-end gap-2"><div className="min-w-[18rem]"><ProjectSelector projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} /></div><button type="button" onClick={onCreate} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white hover:bg-indigo-800"><PlusIcon aria-hidden="true" className="h-4 w-4" />{PROJECT_COPY.newProject}</button></div></div>
-        )}
+  const menuRef = useRef(null), addRef = useRef(null)
+  useEffect(() => {
+    const dismiss = event => {
+      for (const ref of [menuRef, addRef]) {
+        if (event.type === 'keydown' ? event.key === 'Escape' : !ref.current?.contains(event.target)) ref.current?.removeAttribute('open')
+      }
+    }
+    document.addEventListener('pointerdown', dismiss); document.addEventListener('keydown', dismiss)
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', dismiss) }
+  }, [])
+  const run = action => { menuRef.current?.removeAttribute('open'); action?.() }
+  const enabled = key => {
+    const area = PROJECT_VIEW_MODES.find(item => item.key === key)
+    return !area?.phaseFlag || phaseFlags[area.phaseFlag] !== false
+  }
+  const areas = [
+    { key: 'project-dashboard', label: 'Overview', scheduleIcon: LayoutGrid },
+    { key: 'plan-baseline', label: 'Schedule', scheduleIcon: CalendarDays },
+    { key: 'commercial-dashboard', label: 'Cost & Commercial', scheduleIcon: CircleDollarSign },
+    { key: 'milestones', label: 'Milestones', scheduleIcon: Flag },
+    { key: 'risk', label: 'Risks & Changes', scheduleIcon: ShieldCheck },
+    { key: 'estimates', label: 'Estimates', icon: FileText },
+    { key: 'documents', label: 'Documents', scheduleIcon: Briefcase },
+    { key: 'epc-lifecycle', label: 'EPC lifecycle', icon: ShieldCheck },
+  ].filter(item => item.dialog || enabled(item.key))
+  const extras = PROJECT_VIEW_MODES.filter(item => !areas.some(area => area.key === item.key) && (!item.phaseFlag || (item.phaseLabel ? phaseFlags[item.phaseFlag] === true : enabled(item.key))))
+  const isSchedule = activeView === 'plan-baseline'
+  const isCommercial = activeView === 'commercial-dashboard'
+  const isMilestones = activeView === 'milestones'
+  const isRisk = activeView === 'risk'
+  const isEstimates = activeView === 'estimates'
+  const isDocuments = activeView === 'documents'
+  const isEPC = activeView === 'epc-lifecycle'
+  const operationalStatusConfirmed = selectedProject?.custom_fields?.control_setup?.operational_status_confirmed !== false
+  const isPerformanceArea = isSchedule || isCommercial || isMilestones || isRisk || isEstimates || isDocuments
+  const activePerformance = isDocuments ? documentControl : isEstimates ? estimateControl : isRisk ? riskControl : isMilestones ? milestoneControl : isSchedule ? schedulePerformance : isCommercial ? commercialPerformance : performance
+  const model = activePerformance?.model
+  const health = isEPC ? null : model?.health
+  const refreshed = isPerformanceArea ? activePerformance?.loadedAt : lastRefreshed
+  const heading = !selectedProject ? 'Project Portfolio' : activeView === 'epc-lifecycle' ? 'EPC lifecycle' : isDocuments ? 'Project Documents' : isEstimates ? 'Project Estimates' : isRisk ? 'Risk & Change Control' : isMilestones ? 'Milestone Control' : isCommercial ? 'Cost & Commercial Performance' : isSchedule ? 'Schedule Performance' : activeView === 'portfolio-exceptions' ? 'Portfolio Exceptions' : 'Project Performance'
+  const primaryAction = !selectedProject ? onCreate : isMilestones ? onAddMilestone : isCommercial ? onUpdateCommercial : isSchedule ? onUpdateSchedule : onEdit
+  const primaryLabel = !selectedProject ? 'New project' : activeView === 'epc-lifecycle' ? 'Edit project details' : isMilestones ? 'Add milestone' : isCommercial ? 'Update commercial' : isSchedule ? 'Update schedule' : 'Update progress'
+  const exportLabel = isDocuments ? 'Export register' : isEstimates ? 'Export estimate' : isRisk ? 'Export register' : isMilestones ? 'Export milestone report' : isCommercial ? 'Export commercial' : isSchedule ? 'Export schedule' : 'Export report'
+  const exportDisabled = !selectedProject || (isDocuments && (!model?.availability?.list || activePerformance?.loading)) || (isEstimates && (!model?.availability?.selected || activePerformance?.loading)) || (isRisk && (!model?.rows?.length || activePerformance?.loading)) || (isMilestones && (!model?.rows?.length || activePerformance?.loading)) || (isSchedule && (!model?.activities?.length || activePerformance?.loading)) || (isCommercial && (!model?.availability?.commercial || activePerformance?.loading))
+  return <header className="pp-header">
+    <div className="pp-header-main">
+      <div className="pp-project-picker"><nav className="pp-breadcrumb" aria-label="Breadcrumb"><span>Project Control</span><span>/</span><a href="/projects">Portfolio</a><span>/</span><span aria-current="page">{activeView === 'epc-lifecycle' ? 'EPC lifecycle' : isDocuments ? 'Documents' : isEstimates ? 'Estimates' : isRisk ? 'Risks & Changes' : isMilestones ? 'Milestones' : isCommercial ? 'Cost & Commercial' : isSchedule ? 'Schedule' : 'Project performance'}</span></nav>{isPerformanceArea && <span className={isDocuments ? "dc-picker-label" : isEstimates ? "ec-picker-label" : isRisk ? "rc-picker-label" : isMilestones ? "mc-picker-label" : isSchedule ? "sp-picker-label" : "cp-picker-label"} aria-hidden="true">Active project</span>}<ProjectSelector compact projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} label="Active Project" /></div>
+      <div className="pp-project-heading"><div className="pp-title-row"><h1>{heading}</h1>{selectedProject && <><span className={`pp-badge pp-${operationalStatusConfirmed && selectedProject.status === 'active' ? 'success' : 'neutral'}`}>{operationalStatusConfirmed ? titleCase(selectedProject.status) : 'Status to confirm'}</span>{health && <span className={`pp-badge pp-${health.tone}`}>{isPerformanceArea && health.tone !== 'success' && <AlertTriangle size={12} aria-hidden="true" />}{health.label}</span>}</>}</div>
+        {selectedProject ? <div className="pp-project-meta"><span>Client: {selectedProject.client_name || 'Not provided'}</span><span>Project manager: {projectManagerName(selectedProject)}</span>{!isPerformanceArea && <span>{formatDate(selectedProject.start_date)} – {formatDate(selectedProject.end_date)}</span>}{!isEPC && <span>Data date: {formatDate(model?.dataDate)}</span>}</div> : <p className="pp-muted">Open and manage the projects you are authorised to access.</p>}
       </div>
-
-      {selectedProject && <nav aria-label="Project work areas" className="overflow-x-auto border-t border-slate-200 px-4 dark:border-slate-700 sm:px-6 print:hidden"><ul className="flex min-w-max gap-1">{visibleAreas.map((area) => { const Icon = ICONS[area.icon] || ArrowPathIcon; const current = !area.route && activeView === area.key; return <li key={area.key}><button type="button" aria-current={current ? 'page' : undefined} onClick={() => area.route ? onNavigate(area.route) : onSelectView(area.key)} className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-600 ${current ? 'border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-950 dark:text-slate-300'}`}><Icon aria-hidden="true" className="h-4 w-4" />{area.label}</button></li> })}</ul></nav>}
-    </header>
-  )
+      <div className="pp-header-actions"><div><button type="button" className="pp-button" disabled={loading || performance?.loading || activePerformance?.loading} onClick={onRefresh}><RefreshCw size={16} />Refresh</button><button type="button" className="pp-button" disabled={exportDisabled} onClick={onExport} title={isDocuments ? 'Download the full project document register as CSV' : isEstimates ? 'Download the selected estimate and cost items as CSV' : isRisk ? 'Download the complete risk, issue and change register as CSV' : isMilestones ? 'Download the complete milestone register as CSV' : isCommercial ? 'Download the current commercial summary, WBS costs and postings as CSV' : isSchedule ? 'Download the selected schedule comparison as CSV' : 'Print or save this report as PDF'}><Download size={16} />{exportLabel}</button>
+        <details ref={menuRef} className="pp-menu"><summary className="pp-button pp-icon-button"><span className="sr-only">More project actions</span><MoreHorizontal size={19} /></summary><div className="pp-menu-items">
+          {selectedProject && <button type="button" onClick={() => run(onEdit)}><Pencil size={15} />Edit project details</button>}<button type="button" onClick={() => run(onImport)}><Upload size={15} />Import from QHSE</button><button type="button" onClick={() => run(onCreate)}><Plus size={15} />New project</button>
+          {selectedProject && <>{extras.map(area => <button type="button" key={area.key} onClick={() => run(() => area.route ? onNavigate(area.route) : onSelectView(area.key))}>{area.label}</button>)}<button type="button" className="pp-danger" onClick={() => run(onArchive)}>Delete project</button></>}
+        </div></details>
+        {isDocuments && selectedProject ? <details ref={addRef} className="pp-menu dc-add-menu"><summary className="pp-button pp-primary" aria-label="Add document" aria-disabled={!model?.canUpload || activePerformance?.loading} onClick={event => { if (!model?.canUpload || activePerformance?.loading) event.preventDefault() }}><Plus size={15} aria-hidden="true" />Add<ChevronDown size={14} aria-hidden="true" /></summary><div className="pp-menu-items"><button type="button" onClick={() => { addRef.current?.removeAttribute('open'); addRef.current?.querySelector('summary')?.focus(); onAddDocument() }}><FileText size={14} aria-hidden="true" />New document</button><button type="button" disabled><Upload size={14} aria-hidden="true" />Upload revision</button><button type="button" disabled><Briefcase size={14} aria-hidden="true" />Create transmittal</button><p className="dc-menu-note">Revision control and transmittals are not configured for these documents.</p></div></details> : isEstimates && selectedProject ? <details ref={addRef} className="pp-menu ec-new-menu"><summary className="pp-button pp-primary" aria-label="New estimate" aria-disabled={!model?.canCreate || activePerformance?.loading} onClick={event => { if (!model?.canCreate || activePerformance?.loading) event.preventDefault() }}><Plus size={15} aria-hidden="true" />New estimate<ChevronDown size={14} aria-hidden="true" /></summary><div className="pp-menu-items">{[['create', 'Blank estimate'], ['copy', 'Copy version'], ['import', 'Import Excel']].map(([type, label]) => <button type="button" key={type} disabled={type === 'copy' && !model?.canCopy} onClick={() => { addRef.current?.removeAttribute('open'); addRef.current?.querySelector('summary')?.focus(); onNewEstimate(type) }}><FileText size={14} aria-hidden="true" />{label}</button>)}</div></details> : isRisk && selectedProject ? <details ref={addRef} className="pp-menu rc-add-menu"><summary className="pp-button pp-primary" aria-label="Add" aria-disabled={!model?.canCreate} onClick={event => { if (!model?.canCreate) event.preventDefault() }}><Plus size={15} aria-hidden="true" />Add<ChevronDown size={14} aria-hidden="true" /></summary><div className="pp-menu-items">{[['risk', 'Add risk', ShieldCheck], ['issue', 'Add issue', AlertTriangle], ['change_request', 'Add change', FileText]].map(([type, label, Icon]) => <button type="button" key={type} onClick={() => { addRef.current?.removeAttribute('open'); addRef.current?.querySelector('summary')?.focus(); onAddRiskRecord(type) }}><Icon size={14} aria-hidden="true" />{label}</button>)}</div></details> : <button type="button" className="pp-button pp-primary" disabled={isMilestones && !model?.canCreate} onClick={primaryAction}>{isMilestones && <Plus size={15} aria-hidden="true" />}{primaryLabel}</button>}</div>
+        {refreshed && <small>Last refreshed: {new Date(refreshed).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</small>}
+      </div>
+    </div>
+    {selectedProject && <nav className="pp-tabs" aria-label="Project work areas"><ul>{areas.map(({ key, label, icon, scheduleIcon, dialog }) => { const Icon = isPerformanceArea ? scheduleIcon || icon : icon; return <li key={key}><button type="button" aria-current={!dialog && activeView === key ? 'page' : undefined} onClick={() => dialog ? onOpenDialog(dialog) : onSelectView(key)}>{Icon && <Icon size={14} aria-hidden="true" />}{label}</button></li> })}</ul></nav>}
+  </header>
 }
