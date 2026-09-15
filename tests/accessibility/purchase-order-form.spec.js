@@ -226,3 +226,62 @@ test('desktop and mobile retain the sidebar and provide a usable editor with a f
   expect(mobileAudit.violations.filter(({ impact }) => ['serious', 'critical'].includes(impact))).toEqual([])
   verifyIsolation(state)
 })
+
+test('editing an order stays inside the application content when the sidebar collapses or the viewport changes', async ({ page }) => {
+  const state = await open(page)
+  await selectPR(page)
+  await clickSave(page)
+  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await page.getByRole('region', { name: 'Purchase order register', exact: true }).getByRole('button', { name: 'Edit', exact: true }).click()
+  await expect(workspace(page).getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
+  const measurements = []
+  const checkBounds = async (label, desktop) => {
+    await expect.poll(async () => page.evaluate(() => {
+      const bounds = selector => document.querySelector(selector).getBoundingClientRect()
+      const content = bounds('#application-content > main')
+      const form = bounds('.purchase-order-form-workspace')
+      return Math.max(Math.abs(form.left - content.left), Math.abs(form.top - content.top), Math.abs(form.right - content.right), Math.abs(form.bottom - content.bottom))
+    }), { message: `${label}: edit form must stay within the page below its header and beside its sidebar` }).toBeLessThan(2)
+    const result = await page.evaluate(() => {
+      const box = selector => {
+        const { x, y, right, bottom, width, height } = document.querySelector(selector).getBoundingClientRect()
+        return { x, y, right, bottom, width, height }
+      }
+      return { viewport: innerWidth, sidebar: box('#application-sidebar'), content: box('#application-content > main'), form: box('.purchase-order-form-workspace'), preview: box('.pop-preview'), actions: box('.pof-actionbar'), htmlWidth: document.documentElement.scrollWidth }
+    })
+    measurements.push({ label, ...result })
+    expect(result.htmlWidth).toBeLessThanOrEqual(result.viewport)
+    expect(result.preview.right).toBeLessThanOrEqual(result.content.right + 1)
+    if (desktop) {
+      expect(result.form.x).toBeGreaterThanOrEqual(result.sidebar.right - 1)
+      expect(result.preview.height).toBeGreaterThan(result.content.height - 4)
+      expect(result.actions.bottom).toBeLessThanOrEqual(result.content.bottom)
+    }
+    await expect(preview(page)).toContainText(orderFormNumber)
+    await expect(workspace(page).locator('[name="title"]')).toHaveValue('Value Engineering Services')
+  }
+  await checkBounds('expanded desktop', true)
+  await page.screenshot({ path: '../artifacts/purchase-order-edit-shell-desktop.png' })
+  await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
+  await expect.poll(() => page.locator('#application-sidebar').evaluate(element => element.getBoundingClientRect().width)).toBe(72)
+  await checkBounds('collapsed desktop', true)
+  await page.setViewportSize({ width: 1366, height: 900 })
+  await checkBounds('collapsed smaller desktop', true)
+  await page.getByRole('button', { name: 'Expand sidebar', exact: true }).click()
+  await expect.poll(() => page.locator('#application-sidebar').evaluate(element => element.getBoundingClientRect().width)).toBe(250)
+  await checkBounds('expanded smaller desktop', true)
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await checkBounds('tablet with sidebar', false)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await checkBounds('mobile', false)
+  await expect(page.getByRole('button', { name: 'Open sidebar', exact: true })).toBeVisible()
+  await preview(page).getByRole('button', { name: 'Fit width', exact: true }).click()
+  await expect(preview(page).getByRole('button', { name: 'Fit width', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.screenshot({ path: '../artifacts/purchase-order-edit-shell-mobile.png' })
+  await workspace(page).getByRole('button', { name: 'Close purchase order', exact: true }).click()
+  await expect(workspace(page)).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  expect(saves(state)).toHaveLength(1)
+  await writeFile('../artifacts/purchase-order-edit-shell-evidence.json', JSON.stringify(measurements, null, 2))
+  verifyIsolation(state)
+})

@@ -1,6 +1,7 @@
 // The actual App is used with every API request intercepted before navigation.
 // Synthetic records never reach the live database, including number reservation.
 import { formActor, formProject, formReference, formVendors } from './purchase-recommendation-form.fixture'
+import { fileURLToPath } from 'node:url'
 
 export const orderFormId = '00000000-0000-4000-8000-000000009002'
 export const orderFormNumber = 'RAD-PRJ-PUR-9002_SEP2026'
@@ -50,6 +51,10 @@ export async function orderFormHarness(page, options = {}) {
     localStorage.setItem('radai_theme', 'light')
   }, formActor)
   page.on('pageerror', error => state.pageErrors.push(error.message))
+  await page.route('**/assets/images/sidebar-industrial-dusk.png', route => route.fulfill({
+    path: fileURLToPath(new URL('../../public/assets/images/sidebar-industrial-dusk.png', import.meta.url)),
+    contentType: 'image/png',
+  }))
   await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method(), body = parseBody(request)
     state.requests.push({ path, method, body })
