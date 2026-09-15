@@ -1,22 +1,42 @@
 import apiClient from './api.service'
 
 const ROOT = '/file-replica'
+const READ_TIMEOUT_MS = 30000
 const unwrap = request => request.then(response => response.data)
 const requestOptions = { suppressErrorToast: true }
 const readAll = async (path, params = {}, signal) => {
-  const items = []
-  let page = 1
-  let more = true
-  while (more) {
-    const data = await unwrap(apiClient.get(`${ROOT}/${path}/`, { ...requestOptions, params: { ...params, page }, signal }))
-    items.push(...(Array.isArray(data) ? data : data?.results || []))
-    more = Boolean(data?.next)
-    page += 1
+  const controller = new AbortController()
+  const cancel = () => controller.abort()
+  if (signal?.aborted) cancel()
+  else signal?.addEventListener('abort', cancel, { once: true })
+  let timer
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error('Loading server data timed out. Please retry.')
+      error.isTimeout = true
+      reject(error)
+      controller.abort()
+    }, READ_TIMEOUT_MS)
+  })
+  const load = async () => {
+    const items = [], nextPages = new Set()
+    let page = 1
+    let more = true
+    while (more) {
+      const data = await unwrap(apiClient.get(`${ROOT}/${path}/`, { ...requestOptions, timeout: READ_TIMEOUT_MS, params: { ...params, page }, signal: controller.signal }))
+      items.push(...(Array.isArray(data) ? data : data?.results || []))
+      more = Boolean(data?.next)
+      if (more && nextPages.has(String(data.next))) throw new Error('The server returned a repeated results page. Please retry.')
+      if (more) nextPages.add(String(data.next))
+      page += 1
+    }
+    return items
   }
-  return items
+  try { return await Promise.race([load(), deadline]) }
+  finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel) }
 }
 
-export const listSources = () => readAll('sources')
+export const listSources = signal => readAll('sources', {}, signal)
 export const listScans = id => unwrap(apiClient.get(`${ROOT}/sources/${id}/scans/`, requestOptions))
 export const createSource = body => unwrap(apiClient.post(`${ROOT}/sources/`, body, requestOptions))
 export const updateSource = (id, body) => unwrap(apiClient.patch(`${ROOT}/sources/${id}/`, body, requestOptions))
