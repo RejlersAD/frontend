@@ -36,6 +36,7 @@ import {
 } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import specCustomizationAPI from '../../../services/specCustomizationAPI';
+import { SPEC_CUSTOMIZATION_UI } from '../../../config/specCustomizationUI.config';
 import PaperSpecExtractor from './components/PaperSpecExtractor';
 import ComponentMatchingWorkbookManager from './components/ComponentMatchingWorkbookManager';
 
@@ -377,15 +378,15 @@ const SpecCustomizationPage = () => {
         ) : (
           <>
             {/* Active-project banner */}
-            <div className={`mb-5 flex items-center justify-between gap-3 flex-wrap rounded-xl border px-4 py-3 ${SPEC_UI_THEME.activeBanner}`}>
+            <div className="mb-3 flex items-center justify-between gap-3 flex-wrap rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800 px-3 py-2.5 shadow-sm">
               <div className="flex items-center gap-3 min-w-0">
-                <div className={`p-2 rounded-lg bg-gradient-to-br ${SPEC_UI_THEME.headerIconGradient} text-white shadow-sm`}>
-                  <FolderOpenIcon className="w-5 h-5" />
+                <div className="p-1.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                  <FolderOpenIcon className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-[11px] font-semibold uppercase tracking-wide ${SPEC_UI_THEME.accentText}`}>Active project</span>
-                    <span className="text-sm font-bold text-gray-900 dark:text-white truncate max-w-[28rem]">
+                    <span className="text-[10px] font-semibold uppercase text-slate-500">Active project</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white truncate max-w-[28rem]">
                       {activeProject.name}
                     </span>
                     {activeProject.code && (
@@ -394,9 +395,6 @@ const SpecCustomizationPage = () => {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                    Reference workbooks, source PDFs, review decisions and exports stay in this project.
-                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -417,40 +415,42 @@ const SpecCustomizationPage = () => {
               </div>
             </div>
 
-            <div className="mb-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800 shadow-sm p-3">
-              <div className="flex items-center justify-between gap-3 flex-wrap px-1 pb-3">
+            <div className="mb-4 border-b border-slate-200 dark:border-slate-700 pb-3">
+              <div className="flex items-end justify-between gap-3 flex-wrap mb-2">
                 <div>
-                  <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Controlled delivery flow</div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">Set the Hexagon reference before extracting and reviewing the source.</div>
+                  <div className="text-[10px] font-semibold uppercase text-slate-500">{SPEC_CUSTOMIZATION_UI.workspace.eyebrow}</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{SPEC_CUSTOMIZATION_UI.workspace.title}</div>
                 </div>
-                <span className="text-[11px] text-slate-500">Project-scoped</span>
+                <span className="text-[11px] text-slate-500">{SPEC_CUSTOMIZATION_UI.workspace.scope}</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="inline-flex w-full sm:w-auto rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-1" role="tablist" aria-label="Customization workflow">
                 <button
                   type="button"
                   onClick={() => { setWorkspaceMode('reference'); setViewingJobId(null); }}
-                  className={`rounded-xl border p-3 text-left transition-colors ${workspaceMode === 'reference'
-                    ? 'border-violet-400 bg-violet-50 dark:border-violet-700 dark:bg-violet-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-violet-300 hover:bg-violet-50/50 dark:hover:bg-violet-900/10'}`}
+                  role="tab"
+                  aria-selected={workspaceMode === 'reference'}
+                  className={`flex-1 sm:flex-none rounded px-3 py-2 text-left transition-colors ${workspaceMode === 'reference'
+                    ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}
                 >
                   <div className="flex items-center gap-2">
-                    <TableCellsIcon className="w-5 h-5 text-violet-600 dark:text-violet-300" />
-                    <span className="text-sm font-bold text-gray-900 dark:text-white">1. Reference workbooks</span>
+                    <TableCellsIcon className="w-4 h-4" />
+                    <span className="text-xs font-semibold">1. Reference workbooks</span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Upload and activate Match, SPEC and CAT files that define the accepted target.</p>
                 </button>
                 <button
                   type="button"
                   onClick={() => setWorkspaceMode('extract')}
-                  className={`rounded-xl border p-3 text-left transition-colors ${workspaceMode === 'extract'
-                    ? 'border-blue-400 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-900/10'}`}
+                  role="tab"
+                  aria-selected={workspaceMode === 'extract'}
+                  className={`flex-1 sm:flex-none rounded px-3 py-2 text-left transition-colors ${workspaceMode === 'extract'
+                    ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}
                 >
                   <div className="flex items-center gap-2">
-                    <SparklesIcon className="w-5 h-5 text-blue-600 dark:text-blue-300" />
-                    <span className="text-sm font-bold text-gray-900 dark:text-white">2. Extract, review and publish</span>
+                    <SparklesIcon className="w-4 h-4" />
+                    <span className="text-xs font-semibold">2. Extract, review and publish</span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Extract the paper spec, approve corrections, validate the workbook and export.</p>
                 </button>
               </div>
             </div>
@@ -463,9 +463,9 @@ const SpecCustomizationPage = () => {
 
             {/* Job History Table */}
             {HUB_FEATURE_FLAGS.SHOW_PAPER_SPEC_EXTRACTOR && workspaceMode === 'extract' && !viewingJobId && (
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                     <DocumentTextIcon className="h-5 w-5 text-blue-600" />
                     Extraction History
                   </h3>

@@ -35,6 +35,10 @@ import {
   ClockIcon,
   CheckIcon,
   XMarkIcon,
+  DocumentTextIcon,
+  ArrowTopRightOnSquareIcon,
+  MapPinIcon,
+  QueueListIcon,
 } from '@heroicons/react/24/outline';
 import { 
   CheckIcon as CheckIconSolid,
@@ -42,17 +46,19 @@ import {
 } from '@heroicons/react/24/solid';
 
 import specCustomizationAPI from '../../../../services/specCustomizationAPI';
+import {
+  SPEC_CUSTOMIZATION_UI,
+  workbookWorkspaceStyle,
+} from '../../../../config/specCustomizationUI.config';
+import '../spec-customization.css';
 
 // G��G��G�� Soft-coded UI / behaviour knobs G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 const CANVAS_CONFIG = {
   defaultWorkbook: 'spec',
-  workbooks: [
-    { key: 'spec', label: 'SPEC Workbook', sub: 'Piping spec rules',  accent: 'from-pink-500 to-rose-500'   },
-    { key: 'cat',  label: 'CAT Workbook',  sub: 'Component catalog', accent: 'from-violet-500 to-fuchsia-500' },
-  ],
+  workbooks: SPEC_CUSTOMIZATION_UI.workbooks,
   autosaveDebounceMs: 500,
-  cellMinWidthPx:     140,
-  rowHeaderMinWidthPx: 220,
+  cellMinWidthPx: SPEC_CUSTOMIZATION_UI.layout.cellMinWidthPx,
+  rowHeaderMinWidthPx: SPEC_CUSTOMIZATION_UI.layout.sourceColumnWidthPx,
   density: {
     rowPx:        32,
     headerRowPx:  36,
@@ -90,7 +96,7 @@ const CANVAS_CONFIG = {
     maxBulkSelectRows: 500,         // Safety limit for bulk operations
     // Actions column (Edit/Delete buttons at end of row)
     showActionsColumn: true,        // Show actions column after all data columns
-    actionsColumnWidth: 140,        // Width in pixels
+    actionsColumnWidth: SPEC_CUSTOMIZATION_UI.layout.actionsColumnWidthPx,
     actionsColumnLabel: 'Actions',  // Column header text
     enableRowEdit: true,            // Show Edit button (highlights row for editing)
     enableRowDelete: false,         // Source records cannot be deleted here
@@ -136,16 +142,11 @@ const CANVAS_CONFIG = {
     overlayZIndex:   60,
   },
   chatbot: {
-    enabled: true,
-    maxHistory: 6,
-    instructionPlaceholder: 'set MaterialGrade to from uploaded document where Description contains PIPE page 12',
+    enabled: SPEC_CUSTOMIZATION_UI.features.chatbot,
+    maxHistory: SPEC_CUSTOMIZATION_UI.chatbot.maxHistory,
+    instructionPlaceholder: SPEC_CUSTOMIZATION_UI.chatbot.instructionPlaceholder,
     sendHint: 'Enter = Preview | approval is required before apply',
-    scopes: [
-      { value: 'auto', label: 'Auto' },
-      { value: 'spec', label: 'SPEC only' },
-      { value: 'cat', label: 'CAT only' },
-      { value: 'both', label: 'Both workbooks' },
-    ],
+    scopes: SPEC_CUSTOMIZATION_UI.chatbot.scopes,
     taskTemplates: [
       {
         key: 'material',
@@ -178,10 +179,10 @@ const CANVAS_CONFIG = {
   },
   sheetNavigator: {
     defaultMode: 'compact', // compact | detailed
-    storageKey: 'specCustomization.sheetNavigator.mode',
+    storageKey: SPEC_CUSTOMIZATION_UI.storage.sheetNavigatorMode,
   },
   userExperience: {
-    showQuickGuide: true,
+    showQuickGuide: SPEC_CUSTOMIZATION_UI.features.quickGuide,
     showGridSearch: true,
     labels: {
       activeSheetFallback: '-',
@@ -196,6 +197,28 @@ const CANVAS_CONFIG = {
 
 // `value` may be null/number/string G�� normalise to string for the input.
 const toInputValue = (v) => (v === null || v === undefined ? '' : String(v));
+
+const BULK_SELECT_COLUMN_WIDTH = 40;
+const DELETE_COLUMN_WIDTH = 48;
+
+const shortRecordId = (value) => value ? String(value).slice(0, 8) : '';
+
+const sourceDisplay = (source = {}) => {
+  const classCode = String(source.class_code || '').trim();
+  if (source.component_id) {
+    return {
+      label: classCode || 'Unassigned class',
+      detail: `Component ${shortRecordId(source.component_id)}`,
+    };
+  }
+  if (source.class_id) {
+    return {
+      label: classCode || 'Unassigned class',
+      detail: `Class ${shortRecordId(source.class_id)}`,
+    };
+  }
+  return { label: 'Template row', detail: 'No extracted record' };
+};
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 const WorkbookCanvas = ({ job }) => {
@@ -245,7 +268,23 @@ const WorkbookCanvas = ({ job }) => {
   const [copiedMessageTs, setCopiedMessageTs] = useState(null);
   const [chatTouchedKeys, setChatTouchedKeys] = useState(new Set());
   const [chatPreview, setChatPreview] = useState(null);
+  const [pendingRowFocus, setPendingRowFocus] = useState(null);
   const chatEndRef = useRef(null);
+  const [sheetRailOpen, setSheetRailOpen] = useState(() => {
+    try {
+      if (window.innerWidth <= SPEC_CUSTOMIZATION_UI.layout.compactViewportPx) return false;
+      return window.localStorage.getItem(SPEC_CUSTOMIZATION_UI.storage.sheetRailOpen) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [chatPanelOpen, setChatPanelOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(SPEC_CUSTOMIZATION_UI.storage.chatbotOpen) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [sheetNavMode, setSheetNavMode] = useState(() => {
     try {
       if (typeof window === 'undefined') return CANVAS_CONFIG.sheetNavigator.defaultMode;
@@ -328,6 +367,38 @@ const WorkbookCanvas = ({ job }) => {
   }, [jobId, workbook]);
 
   useEffect(() => { fetchPreview(); }, [fetchPreview]);
+
+  useEffect(() => {
+    if (!pendingRowFocus || loading || workbook !== pendingRowFocus.workbook || !data) return;
+    const sheetExists = data.sheets?.some((sheet) => sheet.name === pendingRowFocus.sheetName);
+    if (!sheetExists) {
+      setPendingRowFocus(null);
+      return;
+    }
+    if (activeSheet !== pendingRowFocus.sheetName) {
+      setActiveSheet(pendingRowFocus.sheetName);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const row = Array.from(rootRef.current?.querySelectorAll('[data-row-key]') || [])
+        .find((element) => element.getAttribute('data-row-key') === pendingRowFocus.rowKey);
+      row?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      setEditingRowKey(pendingRowFocus.rowKey);
+      setPendingRowFocus(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeSheet, data, loading, pendingRowFocus, workbook]);
+
+  const focusChatbotRow = useCallback((update) => {
+    const targetWorkbook = update.workbook || workbook;
+    setSearch('');
+    setPendingRowFocus({
+      workbook: targetWorkbook,
+      sheetName: update.sheet_name,
+      rowKey: update.row_key,
+    });
+    setWorkbook(targetWorkbook);
+  }, [workbook]);
 
   // G��G�� Save / clear helpers G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   const editKey = (sheet, rowKey, col) => `${sheet}::${rowKey}::${col}`;
@@ -823,7 +894,7 @@ const WorkbookCanvas = ({ job }) => {
   const applyChatInstruction = useCallback(async (mode = 'preview', instructionOverride = '', approvalToken = '') => {
     const instruction = (instructionOverride || chatInstruction).trim();
     if (!instruction) {
-      alert('Please enter an instruction first.');
+      await radaiAlert('Please enter an instruction first.');
       return;
     }
 
@@ -837,19 +908,22 @@ const WorkbookCanvas = ({ job }) => {
         ...(mode === 'apply' ? { approval_token: approvalToken } : {}),
       });
 
+      const updates = (result?.workbook_results || []).flatMap((wbResult) =>
+        (wbResult?.planned_updates || []).map((update) => ({
+          ...update,
+          workbook: wbResult?.workbook || update.workbook || workbook,
+        }))
+      );
+
       if (mode === 'preview') {
-        const updates = (result?.workbook_results || []).flatMap((wbResult) =>
-          (wbResult?.planned_updates || []).map((update) => ({
-            ...update,
-            workbook: wbResult?.workbook || update.workbook || workbook,
-          }))
-        );
         setChatPreview(result?.approval_token ? {
           instruction,
           approvalToken: result.approval_token,
           expiresIn: result.approval_expires_in || 0,
           plannedCount: result.planned_count || updates.length,
           updates,
+          documentContext: result?.document_context || {},
+          evidenceItems: result?.document_evidence || [],
         } : null);
       }
 
@@ -886,6 +960,9 @@ const WorkbookCanvas = ({ job }) => {
               : `Applied ${result.applied_count || 0} cell updates across ${(result.workbooks || []).join(', ') || workbook}.`,
             meta: `${sourceLabel}: ${docCtx?.filename || 'n/a'}${docCtx?.page_count ? ` (${docCtx.page_count} pages)` : ''} | RAG rows top-k: ${rag?.top_k ?? '-'} | Doc chunks: ${rag?.document_evidence_count ?? evidence.length} | CAG: ${cag?.result_cache_hit ? 'cache hit' : 'cache miss'}${autoValue?.used ? ` | Auto value: ${autoValue?.resolved || '-'}` : ''}${confidence?.label ? ` | Confidence: ${confidence.label} (${confidence.score})` : ''}`,
             evidence: evidenceTop,
+            evidenceItems: evidence,
+            documentContext: docCtx,
+            updates,
             warning: result?.warning || '',
             suggestion: result?.suggestions?.tip || '',
           },
@@ -919,6 +996,9 @@ const WorkbookCanvas = ({ job }) => {
             text: msg,
             meta: `${sourceLabel}: ${docCtx?.filename || 'n/a'} | RAG rows top-k: ${rag?.top_k ?? '-'} | Doc chunks: ${rag?.document_evidence_count ?? evidence.length} | CAG: ${cag?.result_cache_hit ? 'cache hit' : 'cache miss'}${autoValue?.used ? ` | Auto value: ${autoValue?.resolved || '-'}` : ''}`,
             evidence: evidenceTop,
+            evidenceItems: evidence,
+            documentContext: docCtx,
+            updates: [],
           },
         ];
         return next.slice(-CANVAS_CONFIG.chatbot.maxHistory);
@@ -1076,6 +1156,28 @@ const WorkbookCanvas = ({ job }) => {
     }
   }, [sheetNavMode]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SPEC_CUSTOMIZATION_UI.storage.sheetRailOpen, String(sheetRailOpen));
+      window.localStorage.setItem(SPEC_CUSTOMIZATION_UI.storage.chatbotOpen, String(chatPanelOpen));
+    } catch {
+      // Ignore storage failures (private mode, quota, policy).
+    }
+  }, [chatPanelOpen, sheetRailOpen]);
+
+  useEffect(() => {
+    if (!chatPanelOpen && !sheetRailOpen) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      setChatPanelOpen(false);
+      if (window.matchMedia(`(max-width: ${SPEC_CUSTOMIZATION_UI.layout.compactViewportPx - 1}px)`).matches) {
+        setSheetRailOpen(false);
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [chatPanelOpen, sheetRailOpen]);
+
   // G��G�� Render G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   if (!jobId) {
     return (
@@ -1090,11 +1192,12 @@ const WorkbookCanvas = ({ job }) => {
   // root to the viewport; native fullscreen styles the element automatically.
   const overlayActive = isFullscreen && !document.fullscreenElement;
   const rootClass = overlayActive
-    ? 'fixed inset-0 bg-slate-50 dark:bg-slate-900 p-4 overflow-auto space-y-3'
-    : 'space-y-3';
-  const rootStyle = overlayActive
-    ? { zIndex: CANVAS_CONFIG.fullscreen.overlayZIndex }
-    : undefined;
+    ? 'spec-workspace spec-workspace--fullscreen fixed inset-0 bg-slate-50 dark:bg-slate-900 p-4 overflow-auto space-y-3'
+    : 'spec-workspace space-y-3';
+  const rootStyle = {
+    ...workbookWorkspaceStyle,
+    ...(overlayActive ? { zIndex: CANVAS_CONFIG.fullscreen.overlayZIndex } : {}),
+  };
   const gridMaxH = isFullscreen
     ? CANVAS_CONFIG.fullscreen.gridMaxHeightFS
     : CANVAS_CONFIG.fullscreen.gridMaxHeight;
@@ -1102,24 +1205,45 @@ const WorkbookCanvas = ({ job }) => {
   return (
     <div ref={rootRef} className={rootClass} style={rootStyle}>
       {/* G��G�� Header bar G�� workbook toggle + reload + stats G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-sm">
-        <div className="flex gap-1 rounded-lg bg-slate-100 dark:bg-slate-900 p-1">
+      <div className="spec-workspace__toolbar flex flex-wrap items-center gap-2 border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-800/95 px-2.5 py-2 shadow-sm backdrop-blur">
+        <div className="flex gap-1 rounded-md bg-slate-100 dark:bg-slate-900 p-1" role="group" aria-label="Workbook">
           {CANVAS_CONFIG.workbooks.map((wb) => (
             <button
               key={wb.key}
               onClick={() => setWorkbook(wb.key)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                workbook === wb.key
-                  ? `bg-gradient-to-r ${wb.accent} text-white shadow`
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
-              }`}
-              title={wb.sub}
+              className="spec-workspace__segmented-button px-3 py-1.5 text-xs font-semibold rounded transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800"
+              aria-pressed={workbook === wb.key}
+              title={wb.description}
             >
-              <TableCellsIcon className="inline w-4 h-4 mr-1 -mt-0.5" />
               {wb.label}
             </button>
           ))}
         </div>
+
+        <button
+          onClick={() => setSheetRailOpen((open) => !open)}
+          className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 rounded flex items-center gap-1.5"
+          aria-expanded={sheetRailOpen}
+          aria-controls="workbook-sheet-navigator"
+          title={SPEC_CUSTOMIZATION_UI.labels.openSheets}
+        >
+          <QueueListIcon className="w-4 h-4" />
+          <span className="hidden sm:inline">{SPEC_CUSTOMIZATION_UI.labels.sheets}</span>
+        </button>
+
+        {CANVAS_CONFIG.chatbot.enabled && (
+          <button
+            onClick={() => setChatPanelOpen(true)}
+            className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 rounded flex items-center gap-1.5"
+            aria-expanded={chatPanelOpen}
+            aria-controls="workbook-chat-panel"
+            title={SPEC_CUSTOMIZATION_UI.labels.openAssistant}
+          >
+            <ChatBubbleLeftRightIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Assistant</span>
+            {chatPreview && <span className="w-2 h-2 rounded-full bg-amber-500" aria-label="Review pending" />}
+          </button>
+        )}
 
         <button
           onClick={fetchPreview}
@@ -1329,45 +1453,70 @@ const WorkbookCanvas = ({ job }) => {
 
       {/* G��G�� Main split: sheet sidebar + grid G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */}
       {!loadError && data && (
-        <div className="grid grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_340px] 2xl:grid-cols-[280px_minmax(0,1fr)_360px] gap-3 items-start">
+        <div className={`spec-workspace__layout ${sheetRailOpen ? '' : 'spec-workspace__layout--rail-closed'}`}>
+          {sheetRailOpen && (
+            <button
+              type="button"
+              className="spec-workspace__drawer-backdrop spec-workspace__sheet-backdrop"
+              onClick={() => setSheetRailOpen(false)}
+              aria-label="Close sheet navigator"
+            />
+          )}
           {/* Sheet list */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 h-fit xl:sticky xl:top-3 xl:max-h-[calc(100vh-210px)] xl:flex xl:flex-col">
+          <div
+            id="workbook-sheet-navigator"
+            className={`spec-workspace__sheet-rail ${sheetRailOpen ? '' : 'spec-workspace__sheet-rail--closed'} rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 flex flex-col overflow-hidden`}
+            aria-label="Workbook sheets"
+          >
             <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span>Sheets</span>
+                <span>{SPEC_CUSTOMIZATION_UI.labels.sheets}</span>
                 <span className="text-[10px] font-medium normal-case text-slate-400">
                   {data.sheets.length} total
                 </span>
               </div>
-              <div className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <div className="flex items-center gap-1">
+                <div className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
                 <button
                   onClick={() => setSheetNavMode('compact')}
-                  className={`px-2 py-1 text-[10px] font-semibold normal-case transition ${
+                  className={`spec-workspace__segmented-button px-2 py-1 text-[10px] font-semibold normal-case transition ${
                     sheetNavMode === 'compact'
-                      ? 'bg-slate-700 text-white dark:bg-slate-100 dark:text-slate-900'
+                      ? ''
                       : 'bg-white text-slate-500 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
                   }`}
+                  aria-pressed={sheetNavMode === 'compact'}
                   title="Compact chip view"
                 >
                   Compact
                 </button>
                 <button
                   onClick={() => setSheetNavMode('detailed')}
-                  className={`px-2 py-1 text-[10px] font-semibold normal-case transition ${
+                  className={`spec-workspace__segmented-button px-2 py-1 text-[10px] font-semibold normal-case transition ${
                     sheetNavMode === 'detailed'
-                      ? 'bg-slate-700 text-white dark:bg-slate-100 dark:text-slate-900'
+                      ? ''
                       : 'bg-white text-slate-500 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
                   }`}
+                  aria-pressed={sheetNavMode === 'detailed'}
                   title="Detailed list view"
                 >
                   Detailed
                 </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSheetRailOpen(false)}
+                  className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                  aria-label="Close sheet navigator"
+                  title="Close sheet navigator"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
               </div>
             </div>
-            <div className={`${
+            <div className={`spec-workspace__sheet-list ${
               sheetNavMode === 'compact'
-                ? 'flex flex-wrap gap-1.5 max-h-[34vh] xl:max-h-[calc(100vh-280px)] overflow-auto px-1 pb-1'
-                : 'flex flex-col gap-0.5 max-h-[52vh] xl:max-h-[calc(100vh-280px)] overflow-auto px-1 pb-1'
+                ? 'flex flex-col gap-1 px-1 pb-1'
+                : 'flex flex-col gap-0.5 px-1 pb-1'
             }`}>
               {data.sheets.map((s) => {
                 const active = s.name === activeSheet;
@@ -1375,13 +1524,12 @@ const WorkbookCanvas = ({ job }) => {
                   <button
                     key={s.name}
                     onClick={() => setActiveSheet(s.name)}
-                    className={`inline-flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs rounded-md transition ${
-                      sheetNavMode === 'compact' ? 'min-w-[170px] max-w-[240px]' : 'w-full'
-                    } ${
+                    className={`spec-workspace__sheet-button w-full inline-flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs rounded-md transition ${
                       active
-                        ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow'
+                        ? ''
                         : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900'
                     }`}
+                    aria-current={active}
                     title={s.name}
                   >
                     <span className="truncate font-medium">{s.name}</span>
@@ -1394,7 +1542,7 @@ const WorkbookCanvas = ({ job }) => {
             </div>
           </div>
 
-          <div className={`space-y-3 min-w-0 ${CANVAS_CONFIG.chatbot.enabled ? '' : 'xl:col-span-2'}`}>
+          <div className="spec-workspace__grid-column space-y-3">
 
           {/* Edit Mode Disabled Banner */}
           {!editModeEnabled && (
@@ -1475,13 +1623,25 @@ const WorkbookCanvas = ({ job }) => {
                 {CANVAS_CONFIG.emptySheetMessage}
               </div>
             ) : (
-              <div className="overflow-auto" style={{ maxHeight: gridMaxH }}>
-                <table className="min-w-full text-xs border-collapse">
+              <div className="spec-workspace__grid-viewport" style={isFullscreen ? { height: gridMaxH } : undefined}>
+                <table
+                  className="min-w-full text-xs border-collapse"
+                  style={{
+                    minWidth: CANVAS_CONFIG.rowHeaderMinWidthPx
+                      + (activeSheetData.headers.length * CANVAS_CONFIG.cellMinWidthPx)
+                      + (CANVAS_CONFIG.rowOperations.showActionsColumn ? CANVAS_CONFIG.rowOperations.actionsColumnWidth : 0)
+                      + (CANVAS_CONFIG.rowOperations.enableBulkSelect && editModeEnabled ? BULK_SELECT_COLUMN_WIDTH : 0)
+                      + (CANVAS_CONFIG.rowOperations.enableDelete ? DELETE_COLUMN_WIDTH : 0),
+                  }}
+                >
                   <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300">
                     <tr style={{ height: CANVAS_CONFIG.density.headerRowPx }}>
                       {/* Bulk Selection Checkbox */}
                       {CANVAS_CONFIG.rowOperations.enableBulkSelect && editModeEnabled && (
-                        <th className="sticky left-0 z-20 bg-slate-50 dark:bg-slate-900 border-b border-r border-slate-200 dark:border-slate-700 px-2 w-10">
+                        <th
+                          className="sticky z-30 bg-slate-50 dark:bg-slate-900 border-b border-r border-slate-200 dark:border-slate-700 px-2"
+                          style={{ left: 0, width: BULK_SELECT_COLUMN_WIDTH, minWidth: BULK_SELECT_COLUMN_WIDTH }}
+                        >
                           <button
                             onClick={toggleSelectAll}
                             className="flex items-center justify-center w-5 h-5 rounded border-2 border-slate-400 hover:border-purple-500 transition-colors"
@@ -1496,13 +1656,25 @@ const WorkbookCanvas = ({ job }) => {
                         </th>
                       )}
                       {CANVAS_CONFIG.rowOperations.enableDelete && (
-                        <th className="sticky left-0 z-20 bg-slate-50 dark:bg-slate-900 border-b border-r border-slate-200 dark:border-slate-700 px-2 w-12">
+                        <th
+                          className="sticky z-30 bg-slate-50 dark:bg-slate-900 border-b border-r border-slate-200 dark:border-slate-700 px-2"
+                          style={{
+                            left: CANVAS_CONFIG.rowOperations.enableBulkSelect && editModeEnabled ? BULK_SELECT_COLUMN_WIDTH : 0,
+                            width: DELETE_COLUMN_WIDTH,
+                            minWidth: DELETE_COLUMN_WIDTH,
+                          }}
+                        >
                           <TrashIcon className="w-4 h-4 text-slate-400 mx-auto" />
                         </th>
                       )}
                       <th
-                        className="sticky left-0 z-20 bg-slate-50 dark:bg-slate-900 text-left font-semibold border-b border-r border-slate-200 dark:border-slate-700 px-2"
-                        style={{ minWidth: CANVAS_CONFIG.rowHeaderMinWidthPx }}
+                        className="sticky z-20 bg-slate-50 dark:bg-slate-900 text-left font-semibold border-b border-r border-slate-200 dark:border-slate-700 px-2"
+                        style={{
+                          left: (CANVAS_CONFIG.rowOperations.enableBulkSelect && editModeEnabled ? BULK_SELECT_COLUMN_WIDTH : 0)
+                            + (CANVAS_CONFIG.rowOperations.enableDelete ? DELETE_COLUMN_WIDTH : 0),
+                          minWidth: CANVAS_CONFIG.rowHeaderMinWidthPx,
+                          width: CANVAS_CONFIG.rowHeaderMinWidthPx,
+                        }}
                       >
                         Source
                       </th>
@@ -1540,7 +1712,10 @@ const WorkbookCanvas = ({ job }) => {
                       >
                         {/* Bulk Selection Checkbox */}
                         {CANVAS_CONFIG.rowOperations.enableBulkSelect && editModeEnabled && (
-                          <td className="sticky left-0 bg-white dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 px-2 text-center">
+                          <td
+                            className="sticky z-20 bg-white dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 px-2 text-center"
+                            style={{ left: 0, width: BULK_SELECT_COLUMN_WIDTH, minWidth: BULK_SELECT_COLUMN_WIDTH }}
+                          >
                             <button
                               onClick={() => toggleRowSelection(row.row_key)}
                               className={`flex items-center justify-center w-5 h-5 rounded border-2 transition-all ${
@@ -1557,7 +1732,14 @@ const WorkbookCanvas = ({ job }) => {
                           </td>
                         )}
                         {CANVAS_CONFIG.rowOperations.enableDelete && (
-                          <td className="sticky left-0 bg-white dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 px-2 text-center">
+                          <td
+                            className="sticky z-20 bg-white dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 px-2 text-center"
+                            style={{
+                              left: CANVAS_CONFIG.rowOperations.enableBulkSelect && editModeEnabled ? BULK_SELECT_COLUMN_WIDTH : 0,
+                              width: DELETE_COLUMN_WIDTH,
+                              minWidth: DELETE_COLUMN_WIDTH,
+                            }}
+                          >
                             <button
                               onClick={() => handleDeleteRow(activeSheet, row.row_key, idx)}
                               disabled={deleting || !editModeEnabled}
@@ -1572,17 +1754,29 @@ const WorkbookCanvas = ({ job }) => {
                             </button>
                           </td>
                         )}
-                        <td
-                          className="sticky left-0 bg-white dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 px-2 py-1 text-[11px] text-slate-600 dark:text-slate-300 whitespace-nowrap"
-                          style={{ minWidth: CANVAS_CONFIG.rowHeaderMinWidthPx }}
-                        >
-                          <div className="font-semibold text-slate-700 dark:text-slate-200 truncate">
-                            {row.source?.class_code || 'G��'}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate" title={row.row_key}>
-                            {row.row_key}
-                          </div>
-                        </td>
+                        {(() => {
+                          const source = sourceDisplay(row.source);
+                          return (
+                            <td
+                              className="spec-workspace__source-cell sticky z-10 bg-white dark:bg-slate-800 border-b border-r border-slate-200 dark:border-slate-700 px-2 py-1 text-[11px] text-slate-600 dark:text-slate-300 whitespace-nowrap"
+                              style={{
+                                left: (CANVAS_CONFIG.rowOperations.enableBulkSelect && editModeEnabled ? BULK_SELECT_COLUMN_WIDTH : 0)
+                                  + (CANVAS_CONFIG.rowOperations.enableDelete ? DELETE_COLUMN_WIDTH : 0),
+                                minWidth: CANVAS_CONFIG.rowHeaderMinWidthPx,
+                                width: CANVAS_CONFIG.rowHeaderMinWidthPx,
+                                maxWidth: CANVAS_CONFIG.rowHeaderMinWidthPx,
+                              }}
+                              title={`${source.label} | ${source.detail} | ${row.row_key}`}
+                            >
+                              <div className="font-semibold text-slate-700 dark:text-slate-200 truncate">
+                                {source.label}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate">
+                                {source.detail}
+                              </div>
+                            </td>
+                          );
+                        })()}
                         {activeSheetData.headers.map((col) => {
                           const k = editKey(activeSheet, row.row_key, col);
                           const local = edits[k];
@@ -1700,14 +1894,34 @@ const WorkbookCanvas = ({ job }) => {
           </div>
           </div>
 
-          {CANVAS_CONFIG.chatbot.enabled && (
-            <aside className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm xl:sticky xl:top-3 xl:h-[calc(100vh-220px)] flex flex-col overflow-hidden">
+          {CANVAS_CONFIG.chatbot.enabled && chatPanelOpen && (
+            <>
+            <button
+              type="button"
+              className="spec-workspace__drawer-backdrop"
+              onClick={() => setChatPanelOpen(false)}
+              aria-label="Close workbook assistant"
+            />
+            <aside
+              id="workbook-chat-panel"
+              className="spec-workspace__drawer spec-workspace__drawer--right spec-workspace__chat-panel border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col overflow-hidden"
+              aria-label="Workbook assistant"
+            >
               <div className="px-3 py-2.5 border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 flex items-center gap-2">
                 <ChatBubbleLeftRightIcon className="w-5 h-5 text-slate-700 dark:text-slate-300" />
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Workbook Chatbot</h3>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">Document-aware assistant for workbook edits</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setChatPanelOpen(false)}
+                  className="ml-auto p-1.5 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  aria-label="Close workbook assistant"
+                  title="Close workbook assistant"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto px-3 py-3 bg-slate-50 dark:bg-slate-900/30 space-y-3">
@@ -1751,8 +1965,82 @@ const WorkbookCanvas = ({ job }) => {
                             <div className="font-semibold">{m.text}</div>
                             {m.warning && <div className="mt-1">{m.warning}</div>}
                             {m.suggestion && <div className="mt-1 opacity-80">Suggestion: {m.suggestion}</div>}
-                            {m.meta && <div className="mt-1 opacity-80">{m.meta}</div>}
-                            {m.evidence && <div className="mt-1 opacity-75">Evidence: {m.evidence}</div>}
+                            {m.documentContext?.available && (
+                              <div className="mt-2 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-2">
+                                <div className="flex items-start gap-2">
+                                  <DocumentTextIcon className="w-4 h-4 mt-0.5 text-cyan-700 dark:text-cyan-300 flex-shrink-0" />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-[10px] uppercase font-semibold text-slate-500">Source document</div>
+                                    {m.documentContext.file_url ? (
+                                      <a
+                                        href={m.documentContext.file_url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-0.5 flex items-center gap-1 font-semibold text-cyan-700 dark:text-cyan-300 hover:underline"
+                                      >
+                                        <span className="truncate">{m.documentContext.filename || 'Open document'}</span>
+                                        <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                                      </a>
+                                    ) : (
+                                      <div className="mt-0.5 font-semibold truncate">{m.documentContext.filename || 'Uploaded document'}</div>
+                                    )}
+                                    <div className="text-[10px] text-slate-500">
+                                      {[m.documentContext.document_number, m.documentContext.page_count ? `${m.documentContext.page_count} pages` : '']
+                                        .filter(Boolean).join(' | ')}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {m.evidenceItems?.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                <div className="text-[10px] uppercase font-semibold text-slate-500">Document evidence</div>
+                                {m.evidenceItems.slice(0, 3).map((item, index) => {
+                                  const content = (
+                                    <>
+                                      <span className="font-semibold text-cyan-700 dark:text-cyan-300">Page {item.page}</span>
+                                      <span className="line-clamp-2">{item.snippet}</span>
+                                    </>
+                                  );
+                                  return m.documentContext?.file_url ? (
+                                    <a
+                                      key={`${item.page}-${index}`}
+                                      href={`${m.documentContext.file_url}#page=${item.page}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block rounded border border-slate-200 dark:border-slate-700 p-1.5 hover:border-cyan-400"
+                                    >
+                                      {content}
+                                    </a>
+                                  ) : (
+                                    <div key={`${item.page}-${index}`} className="rounded border border-slate-200 dark:border-slate-700 p-1.5">
+                                      {content}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {m.updates?.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                <div className="text-[10px] uppercase font-semibold text-slate-500">Affected records</div>
+                                {m.updates.slice(0, 3).map((update, index) => (
+                                  <button
+                                    key={`${update.workbook}-${update.sheet_name}-${update.row_key}-${index}`}
+                                    type="button"
+                                    onClick={() => focusChatbotRow(update)}
+                                    className="w-full flex items-center gap-2 rounded border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-left hover:border-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20"
+                                    title={`Open ${update.sheet_name} row ${update.row_key}`}
+                                  >
+                                    <MapPinIcon className="w-3.5 h-3.5 text-cyan-700 dark:text-cyan-300 flex-shrink-0" />
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block font-semibold truncate">{update.source?.class_code || 'Template row'}</span>
+                                      <span className="block text-[10px] text-slate-500 truncate">{update.workbook?.toUpperCase()} / {update.sheet_name}</span>
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {m.meta && <details className="mt-2 text-[10px] opacity-75"><summary className="cursor-pointer">Technical details</summary><div className="mt-1">{m.meta}</div></details>}
                           </div>
                         </div>
                       </div>
@@ -1843,9 +2131,18 @@ const WorkbookCanvas = ({ job }) => {
                     </div>
                     <div className="max-h-28 overflow-y-auto space-y-1 font-mono text-[10px]">
                       {chatPreview.updates.slice(0, 5).map((update, index) => (
-                        <div key={`${update.sheet_name}-${update.row_key}-${update.column_name}-${index}`}>
-                          {update.sheet_name}/{update.column_name}: {String(update.previous_value ?? '') || '(empty)'} → {update.value}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => focusChatbotRow(update)}
+                          className="w-full flex items-start gap-1.5 rounded px-1 py-1 text-left hover:bg-amber-100"
+                          key={`${update.sheet_name}-${update.row_key}-${update.column_name}-${index}`}
+                        >
+                          <MapPinIcon className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                          <span>
+                            <span className="font-semibold">{update.source?.class_code || 'Template row'} | {update.sheet_name}/{update.column_name}</span>
+                            <span className="block">{String(update.previous_value ?? '') || '(empty)'} to {update.value}</span>
+                          </span>
+                        </button>
                       ))}
                       {chatPreview.updates.length > 5 && (
                         <div>…and {chatPreview.updates.length - 5} more changes</div>
@@ -1862,6 +2159,7 @@ const WorkbookCanvas = ({ job }) => {
                 )}
               </div>
             </aside>
+            </>
           )}
         </div>
       )}

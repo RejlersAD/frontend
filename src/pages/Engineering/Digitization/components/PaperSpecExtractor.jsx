@@ -230,13 +230,13 @@ const DETAIL_CONFIG = {
 // â”€â”€â”€ Soft-coded panel configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PANEL_CONFIG = {
   title:               'Paper Spec Extraction',
-  subtitle:            'Upload a scanned or digital Piping Material Specification (PDF). RAD AI extracts every Piping Class, P/T rating, and component table â€” using a smart Gemini â†’ OpenAI engine waterfall with cost-aware page skipping.',
+  subtitle:            'Upload a scanned or digital Piping Material Specification (PDF). RAD AI extracts every Piping Class, P/T rating, and component table using a smart Gemini to OpenAI engine waterfall with cost-aware page skipping.',
   acceptStr:           '.pdf',
   maxFileSizeMB:       SPEC_API_CONFIG.maxFileSizeMB,
   pollIntervalMs:      SPEC_API_CONFIG.pollIntervalMs,
   helperPoints:        [
     'Chunked extraction (20 pages / chunk) so even 2,000+ page specs stay responsive.',
-    'Native text-layer used first; AI vision only called when the page has no text â€” keeps cost down.',
+    'Native text-layer used first; AI vision only runs when the page has no text, which keeps cost down.',
     'Identical PDFs are auto-deduped by SHA-256; you instantly see the previous extraction.',
     'Export to Excel (one sheet per Piping Class) or JSON for downstream tools.',
   ],
@@ -252,8 +252,8 @@ const PANEL_CONFIG = {
 const SPEC_AI_ASSIST_CONFIG = {
   enabled:         true,
   title:           'AI Document Assist',
-  subtitleTag:     '(Wrench Â· optional)',
-  subtitle:        'Let RAD AI pick & recommend the right Piping Material Specification document for this project from Wrench DMS â€” drop it straight into the extractor below.',
+  subtitleTag:     '(Wrench | optional)',
+  subtitle:        'Let RAD AI recommend the right Piping Material Specification document for this project from Wrench DMS and place it in the extractor below.',
   defaultHint:     'piping material specification',
   hintPlaceholder: 'e.g. PMS, piping spec, valve list',
   topN:            6,
@@ -689,8 +689,8 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
       claude: 'Your Claude API Key (Anthropic)',
     },
     api_key_patterns: {
-      openai: /^sk-[A-Za-z0-9_\-]{18,}$/,
-      claude: /^sk-ant-[A-Za-z0-9_\-]{20,}$/,
+      openai: /^sk-[A-Za-z0-9_-]{18,}$/,
+      claude: /^sk-ant-[A-Za-z0-9_-]{20,}$/,
     },
   });
 
@@ -725,8 +725,8 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
               claude_models: c.byok.claude_models || [],
               provider_labels: c.byok.provider_labels || {},
               api_key_patterns: {
-                openai: /^sk-[A-Za-z0-9_\-]{18,}$/,
-                claude: /^sk-ant-[A-Za-z0-9_\-]{20,}$/,
+                openai: /^sk-[A-Za-z0-9_-]{18,}$/,
+                claude: /^sk-ant-[A-Za-z0-9_-]{20,}$/,
               },
             };
             setByokConfig(newByokConfig);
@@ -1076,27 +1076,27 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
   }, []);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-blue-100 dark:border-blue-900/40 overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
       {/* Header strip */}
-      <div className="bg-gradient-to-r from-blue-500 via-indigo-500 to-rose-500 px-6 py-4 flex items-center justify-between">
+      <div className="bg-slate-50 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-white/20 rounded-lg">
-            <SparklesIcon className="w-6 h-6 text-white" />
+          <div className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md">
+            <SparklesIcon className="w-5 h-5 text-blue-600 dark:text-blue-300" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">{PANEL_CONFIG.title}</h2>
-            <p className="text-blue-50 text-sm">AI-powered Piping Spec extraction</p>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{PANEL_CONFIG.title}</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-xs">AI-powered Piping Spec extraction</p>
           </div>
         </div>
         {config && (
-          <div className="hidden md:flex items-center gap-2 text-white/90 text-xs bg-white/10 px-3 py-1.5 rounded-lg">
+          <div className="hidden md:flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 rounded-md">
             <Cog6ToothIcon className="w-4 h-4" />
-            <span>chunk={config.chunk_size_pages}p Â· AI cap={config.max_ai_pages_per_job}p</span>
+            <span>chunk={config.chunk_size_pages}p | AI cap={config.max_ai_pages_per_job}p</span>
           </div>
         )}
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 space-y-4">
         <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           {PANEL_CONFIG.subtitle}
         </p>
@@ -1152,7 +1152,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   {file
                     ? fmtBytes(file.size)
-                    : `Max ${PANEL_CONFIG.maxFileSizeMB} MB Â· ${acceptedExts.length} formats supported`}
+                    : `Max ${PANEL_CONFIG.maxFileSizeMB} MB | ${acceptedExts.length} formats supported`}
                 </p>
                 {file && fileFormat?.meta && (
                   <div className="mt-2 inline-flex items-center gap-2 text-xs">
@@ -1231,7 +1231,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                                 sessionStorage.setItem('radai_spec_ai_model', 'gpt-4o');
                                 sessionStorage.removeItem('radai_spec_user_openai_key');
                                 sessionStorage.removeItem('radai_spec_user_claude_key');
-                              } catch (_) {}
+                              } catch (_) { /* Session storage is optional. */ }
                             }}
                             className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
                               aiProvider === 'openai'
@@ -1253,7 +1253,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                                 sessionStorage.setItem('radai_spec_ai_model', 'claude-3-5-sonnet-20241022');
                                 sessionStorage.removeItem('radai_spec_user_openai_key');
                                 sessionStorage.removeItem('radai_spec_user_claude_key');
-                              } catch (_) {}
+                              } catch (_) { /* Session storage is optional. */ }
                             }}
                             className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
                               aiProvider === 'claude'
@@ -1279,7 +1279,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                               setAiModel(e.target.value);
                               try {
                                 sessionStorage.setItem('radai_spec_ai_model', e.target.value);
-                              } catch (_) {}
+                              } catch (_) { /* Session storage is optional. */ }
                             }}
                             className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white dark:bg-slate-800 dark:text-white"
                           >
@@ -1317,7 +1317,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                                 const storageKey = aiProvider === 'openai' ? 'radai_spec_user_openai_key' : 'radai_spec_user_claude_key';
                                 if (val) sessionStorage.setItem(storageKey, val);
                                 else sessionStorage.removeItem(storageKey);
-                              } catch (_) {}
+                              } catch (_) { /* Session storage is optional. */ }
                             }}
                             placeholder={aiProvider === 'openai' ? 'sk-... (leave empty to use platform)' : 'sk-ant-... (leave empty to use platform)'}
                             autoComplete="off"
@@ -1343,7 +1343,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
 
                       {!aiProvider && (
                         <p className="text-xs text-slate-600 dark:text-slate-400 italic">
-                          ðŸ‘† Select a provider above to use your own API key, or leave empty to use the platform's key.
+                          ðŸ‘† Select a provider above to use your own API key, or leave empty to use the platform&apos;s key.
                         </p>
                       )}
                     </div>
@@ -1369,10 +1369,10 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                 <button
                   onClick={handleUpload}
                   disabled={!file || uploading}
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-rose-600 text-white rounded-lg text-sm font-semibold shadow hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 inline-flex items-center gap-1.5"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 >
                   <SparklesIcon className={`w-4 h-4 ${uploading ? 'animate-spin' : 'group-hover:animate-pulse'}`} />
-                  {uploading ? 'Uploadingâ€¦' : 'Extract with AI'}
+                  {uploading ? 'Uploading...' : 'Extract with AI'}
                 </button>
               </div>
 
@@ -1421,7 +1421,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                     {document?.original_filename || 'Document'}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {document?.total_pages || 0} pages Â· {fmtBytes(document?.file_size_bytes)}
+                    {document?.total_pages || 0} pages | {fmtBytes(document?.file_size_bytes)}
                   </p>
                 </div>
               </div>
@@ -1478,7 +1478,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
             {/* Progress bar */}
             <div className="mt-4">
               <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
-                <span>{livePhase || (isTerminal ? statusMeta.label : 'Startingâ€¦')}</span>
+                <span>{livePhase || (isTerminal ? statusMeta.label : 'Starting...')}</span>
                 <span>{progressPct}%</span>
               </div>
               <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
@@ -1540,7 +1540,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
               ))}
               {activeView === 'canvas' && (
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                  Edit any cell â€” changes autosave and are baked into the downloaded xlsx.
+                  Cell changes autosave and are included in the downloaded workbook.
                 </span>
               )}
             </div>

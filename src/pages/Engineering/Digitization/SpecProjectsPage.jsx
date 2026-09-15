@@ -5,8 +5,8 @@ import { radaiAlert, radaiConfirm } from '../../../services/radaiDialog'
  *
  * Lightweight, RBAC-aware project organiser for the Paper Spec PDF
  * Extractor. Mirrors the Non-TEFF projects page but stays self-contained
- * and uses a pink / rose theme to match the existing Spec Customization
- * landing page badges. No business-logic dependency on the extractor.
+ * and uses the shared Spec Customization visual language. No business-logic
+ * dependency on the extractor.
  *
  * All API endpoint paths and visual tokens are soft-coded in PROJECT_PAGE_CFG.
  */
@@ -26,6 +26,7 @@ import {
   ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
+import { REJLERS_COLORS } from '../../../config/theme.config';
 
 // ---------------------------------------------------------------------------
 // Soft-coded configuration
@@ -41,20 +42,20 @@ const PROJECT_PAGE_CFG = {
   },
   storageKey: 'specCustomActiveProject',
   statuses: [
-    { value: 'active',    label: 'Active',    color: '#be185d', bg: 'rgba(190,24,93,0.10)'   },
+    { value: 'active',    label: 'Active',    color: REJLERS_COLORS.status.success, bg: REJLERS_COLORS.secondary.green.complement },
     { value: 'on_hold',   label: 'On hold',   color: '#b45309', bg: 'rgba(180,83,9,0.10)'    },
-    { value: 'completed', label: 'Completed', color: '#1d4ed8', bg: 'rgba(29,78,216,0.10)'   },
+    { value: 'completed', label: 'Completed', color: REJLERS_COLORS.primary.base, bg: REJLERS_COLORS.primary.complement },
     { value: 'archived',  label: 'Archived',  color: '#6b7280', bg: 'rgba(107,114,128,0.10)' },
   ],
   theme: {
-    accent:        '#db2777',                  // pink-600
-    accentAlt:     '#9333ea',                  // violet-600 (gradient pair)
-    accentSoft:    'rgba(219,39,119,0.08)',
-    accentBorder:  'rgba(219,39,119,0.22)',
-    cardBg:        '#ffffff',
-    pageBg:        '#fdf2f8',                  // pink-50
-    text:          '#0f172a',
-    muted:         '#64748b',
+    accent:       REJLERS_COLORS.primary.base,
+    accentHover:  REJLERS_COLORS.primary.hover,
+    accentSoft:   REJLERS_COLORS.primary.complement,
+    accentBorder: REJLERS_COLORS.neutral.gray200,
+    cardBg:       REJLERS_COLORS.neutral.white,
+    pageBg:       REJLERS_COLORS.neutral.gray50,
+    text:         REJLERS_COLORS.neutral.gray900,
+    muted:        REJLERS_COLORS.neutral.gray600,
   },
 };
 
@@ -189,10 +190,10 @@ const SpecProjectsPage = () => {
           onClick={() => setShowCreate(true)}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
-            background: `linear-gradient(135deg, ${T.accent}, ${T.accentAlt})`,
+            background: T.accent,
             color: '#fff', border: 'none', padding: '10px 18px',
-            borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(219,39,119,0.30)',
+            borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(15,23,42,0.14)',
           }}
         >
           <FolderPlusIcon width={18} /> New Project
@@ -295,7 +296,7 @@ const ProjectCard = ({ project, theme, onOpen, onEdit, onDelete }) => {
         boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         transition: 'transform 0.15s, box-shadow 0.15s',
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(219,39,119,0.12)'; }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(15,23,42,0.10)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)';    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -423,7 +424,7 @@ const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme }) => {
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: '18px 22px',
-          background: `linear-gradient(135deg, ${theme.accentSoft}, rgba(147,51,234,0.05))`,
+          background: theme.accentSoft,
           borderBottom: `1px solid ${theme.accentBorder}`,
         }}>
           <div style={{
@@ -553,14 +554,12 @@ const ProjectFormModal = ({ initial, onClose, onSubmit, busy, theme }) => {
             type="submit"
             disabled={!canSubmit}
             style={{
-              background: canSubmit
-                ? `linear-gradient(135deg, ${theme.accent}, ${theme.accentAlt})`
-                : '#cbd5e1',
+              background: canSubmit ? theme.accent : '#cbd5e1',
               color: '#fff', border: 'none',
               padding: '9px 20px', borderRadius: 8, fontSize: 13, fontWeight: 700,
               cursor: canSubmit ? 'pointer' : 'not-allowed',
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              boxShadow: canSubmit ? '0 4px 14px rgba(219,39,119,0.30)' : 'none',
+              boxShadow: canSubmit ? '0 2px 8px rgba(15,23,42,0.14)' : 'none',
             }}
           >
             <CheckIcon width={14} /> {busy ? 'Saving…' : (initial ? 'Save changes' : 'Create project')}

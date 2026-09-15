@@ -1,0 +1,113 @@
+import { REJLERS_COLORS } from './theme.config';
+
+export const SPEC_CUSTOMIZATION_UI = {
+  features: {
+    projectContext: true,
+    referenceWorkbooks: true,
+    quickGuide: false,
+    sheetNavigator: true,
+    chatbot: true,
+    validation: true,
+    fullscreen: true,
+    autosave: true,
+    snapshots: false,
+  },
+  storage: {
+    activeProject: 'specCustomActiveProject',
+    sheetNavigatorMode: 'specCustomization.sheetNavigator.mode',
+    sheetRailOpen: 'specCustomization.sheetRail.open',
+    chatbotOpen: 'specCustomization.chatbot.open',
+    workbookDensity: 'specCustomization.workbook.density',
+  },
+  layout: {
+    wideViewportPx: 1536,
+    compactViewportPx: 1024,
+    mobileViewportPx: 640,
+    sheetRailWidthPx: 224,
+    chatbotDrawerWidthPx: 400,
+    gridMinUsableWidthPx: 720,
+    sourceColumnWidthPx: 208,
+    mobileSourceColumnWidthPx: 160,
+    cellMinWidthPx: 140,
+    actionsColumnWidthPx: 88,
+    toolbarMinHeightPx: 48,
+    workAreaHeight: 'calc(100vh - 220px)',
+    fullscreenWorkAreaHeight: 'calc(100vh - 118px)',
+    notificationSafeBottomPx: 96,
+  },
+  density: {
+    compact: { label: 'Compact', rowPx: 30, headerPx: 34, cellPaddingPx: 6 },
+    comfortable: { label: 'Comfortable', rowPx: 38, headerPx: 40, cellPaddingPx: 8 },
+  },
+  workbooks: [
+    { key: 'spec', label: 'SPEC', description: 'Piping specification rules' },
+    { key: 'cat', label: 'CAT', description: 'Component catalogue' },
+  ],
+  workspaceStages: [
+    { key: 'reference', label: 'Reference workbooks', shortLabel: 'References' },
+    { key: 'extract', label: 'Extract & review', shortLabel: 'Review' },
+  ],
+  workspace: {
+    eyebrow: 'Controlled delivery flow',
+    title: 'Set the reference workbooks, then extract and review the source.',
+    scope: 'Project-scoped',
+  },
+  jobStatuses: {
+    queued: { label: 'Queued', tone: 'neutral' },
+    processing: { label: 'Processing', tone: 'info' },
+    completed: { label: 'Completed', tone: 'success' },
+    failed: { label: 'Failed', tone: 'error' },
+    cancelled: { label: 'Cancelled', tone: 'warning' },
+  },
+  labels: {
+    sheets: 'Sheets',
+    assistant: 'Workbook assistant',
+    validation: 'Validation',
+    searchSheets: 'Search sheets',
+    searchRows: 'Search rows',
+    noSheetResults: 'No sheets match this search.',
+    closePanel: 'Close panel',
+    openSheets: 'Open sheets',
+    openAssistant: 'Open workbook assistant',
+    loadingWorkbook: 'Loading workbook',
+    templateRows: 'Template rows',
+    populatedSheets: 'Populated sheets',
+  },
+  chatbot: {
+    maxHistory: 8,
+    defaultScope: 'auto',
+    scopes: [
+      { value: 'auto', label: 'Auto' },
+      { value: 'spec', label: 'SPEC only' },
+      { value: 'cat', label: 'CAT only' },
+      { value: 'both', label: 'Both workbooks' },
+    ],
+    instructionPlaceholder: 'Describe a correction, or specify a column, value, and matching rows.',
+  },
+  palette: {
+    structure: REJLERS_COLORS.primary.base,
+    structureAccent: REJLERS_COLORS.primary.accent,
+    success: REJLERS_COLORS.status.success,
+    warning: REJLERS_COLORS.status.warning,
+    error: REJLERS_COLORS.status.error,
+    info: REJLERS_COLORS.status.info,
+    turbine: REJLERS_COLORS.secondary.turbine.base,
+    passion: REJLERS_COLORS.secondary.passion.base,
+  },
+};
+
+export const workbookWorkspaceStyle = {
+  '--spec-sheet-rail-width': `${SPEC_CUSTOMIZATION_UI.layout.sheetRailWidthPx}px`,
+  '--spec-chat-drawer-width': `${SPEC_CUSTOMIZATION_UI.layout.chatbotDrawerWidthPx}px`,
+  '--spec-grid-min-width': `${SPEC_CUSTOMIZATION_UI.layout.gridMinUsableWidthPx}px`,
+  '--spec-source-width': `${SPEC_CUSTOMIZATION_UI.layout.sourceColumnWidthPx}px`,
+  '--spec-source-mobile-width': `${SPEC_CUSTOMIZATION_UI.layout.mobileSourceColumnWidthPx}px`,
+  '--spec-work-area-height': SPEC_CUSTOMIZATION_UI.layout.workAreaHeight,
+  '--spec-work-area-height-fullscreen': SPEC_CUSTOMIZATION_UI.layout.fullscreenWorkAreaHeight,
+  '--spec-notification-safe-bottom': `${SPEC_CUSTOMIZATION_UI.layout.notificationSafeBottomPx}px`,
+  '--spec-brand-structure': SPEC_CUSTOMIZATION_UI.palette.structure,
+  '--spec-brand-accent': SPEC_CUSTOMIZATION_UI.palette.structureAccent,
+  '--spec-brand-turbine': SPEC_CUSTOMIZATION_UI.palette.turbine,
+};
+
+export default SPEC_CUSTOMIZATION_UI;
