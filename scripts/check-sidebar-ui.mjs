@@ -3,7 +3,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { checkArtifacts, launchBrowser, sidebarWidth } from './ui-check-support.mjs';
+import { inlineLocalCssImports, checkArtifacts, launchBrowser, sidebarWidth } from './ui-check-support.mjs';
 import AxeBuilder from '@axe-core/playwright';
 import postcss from 'postcss';
 import tailwind from 'tailwindcss';
@@ -98,7 +98,7 @@ const components = await Promise.all([
 const css = await postcss([tailwind({
   ...tailwindConfig,
   content: [{ raw: [source, reminder, serviceButtons, ...components].join('\n'), extension: 'jsx' }],
-})]).process(await readFile(path.join(frontend, 'src/index.css'), 'utf8'), { from: undefined });
+})]).process(await inlineLocalCssImports(await readFile(path.join(frontend, 'src/index.css'), 'utf8'), path.join(frontend, 'src/index.css'), file => readFile(file, 'utf8')), { from: undefined });
 const sidebarCss = await readFile(path.join(frontend, 'src/components/Layout/Sidebar.css'), 'utf8');
 const headerLogo = await readFile(path.join(frontend, 'public/assets/rejlers-header-logo.png'));
 const industrialPhotoPath = '/assets/images/sidebar-industrial-dusk.png';

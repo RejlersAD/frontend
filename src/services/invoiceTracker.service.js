@@ -52,6 +52,12 @@ const invoiceTrackerService = {
     return r.data
   },
 
+  async collectionsSummary(filters = {}) {
+    const p = buildParams(filters)
+    const r = await apiClient.get(`${BASE}/invoices/collections-summary/?${p.toString()}`)
+    return r.data
+  },
+
   /**
    * Bulk-import a customer-invoice Excel master file.
    *

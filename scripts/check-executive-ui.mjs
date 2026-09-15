@@ -5,7 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { checkArtifacts, historicalGuardsEnabled, loadSnapshot, snapshotSources, launchBrowser, sidebarWidth } from './ui-check-support.mjs';
+import { inlineLocalCssImports, checkArtifacts, historicalGuardsEnabled, loadSnapshot, snapshotSources, launchBrowser, sidebarWidth } from './ui-check-support.mjs';
 import AxeBuilder from '@axe-core/playwright';
 import postcss from 'postcss';
 import tailwind from 'tailwindcss';
@@ -20,6 +20,7 @@ import { runRiskComplianceChecks } from './check-risk-compliance.mjs';
 // Real executive page, Layout, Header and Sidebar; synthetic API responses only.
 // All requests are intercepted, so this script cannot write to a live service.
 const frontend = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const visualsOnly = process.argv.includes('--visuals-only');
 const overviewPolish = process.argv.includes('--overview-polish') || process.argv.includes('--overview-polish-baseline');
 const tabsPolishBaseline = process.argv.includes('--tabs-polish-baseline');
 const tabsPolish = tabsPolishBaseline || process.argv.includes('--tabs-polish') || process.argv.includes('--tabs-polish-visuals');
@@ -33,7 +34,7 @@ const guardedFiles = [
 await mkdir(artifacts, { recursive: true });
 const baselinePath = path.join(artifacts, 'sidebar-baseline-sha256.json');
 const snapshotGuards = historicalGuardsEnabled(overviewPolish, tabsPolish);
-console.log(`Historical snapshot guards: ${snapshotGuards ? 'enabled' : 'not requested; all six functional suites remain enabled'}`);
+console.log(`Historical snapshot guards: ${snapshotGuards ? 'enabled' : 'not requested'}; mode: ${visualsOnly ? 'current responsive visuals' : 'functional checks'}`);
 const sidebarBaseline = snapshotGuards ? await loadSnapshot(frontend, baselinePath) : await snapshotSources(frontend, guardedFiles);
 async function assertSidebarUnchanged() {
   for (const row of sidebarBaseline) {
@@ -152,7 +153,7 @@ const components = await Promise.all([
 const css = await postcss([tailwind({
   ...tailwindConfig,
   content: [{ raw: [source, serviceButtons, ...components].join('\n'), extension: 'jsx' }],
-})]).process(await readFile(path.join(frontend, 'src/index.css'), 'utf8'), { from: undefined });
+})]).process(await inlineLocalCssImports(await readFile(path.join(frontend, 'src/index.css'), 'utf8'), path.join(frontend, 'src/index.css'), file => readFile(file, 'utf8')), { from: undefined });
 const componentCssFiles = [
   'src/components/Layout/Sidebar.css',
   ...executiveFiles.filter(file => file.endsWith('.css')).map(file => `src/pages/Executive/${file}`),
@@ -502,10 +503,59 @@ async function runTabsPolishChecks() {
 
 const suiteOptions = name => ({ frontend, newPage, assertGeometry, reportFixture, ...(!snapshotGuards ? { verification: { artifacts: path.join(artifacts, name), assertProtected: assertSidebarUnchanged, comparisonMode: 'historical_snapshots_not_requested' } } : {}) });
 
+async function runCurrentVisualChecks() {
+  const requestedTabs = process.argv.find(arg => arg.startsWith('--tabs='))?.slice(7).split(',');
+  const tabs = ['overview', ...polishedTabs].filter(tab => !requestedTabs || requestedTabs.includes(tab));
+  assert.ok(tabs.length, 'Choose at least one supported Executive tab');
+  const results = [];
+  for (const tab of tabs) {
+    for (const options of [{ width: 1672 }, { width: 1440 }, { width: 1024 }, { width: 390 }, { width: 1672, dark: true }]) {
+      const { page } = await newPage({ ...options, route: tab === 'overview' ? '/executive' : `/executive?tab=${tab}` });
+      try {
+        await page.getByTestId(tab === 'overview' ? 'executive-outcomes' : `${tab}-outcomes`).waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        await assertGeometry(page, options.width);
+        const headers = await page.locator('.cc-command-center table thead th:visible').evaluateAll(nodes => nodes.map(node => ({
+          label: node.textContent.trim(), size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight,
+        })));
+        assert.ok(headers.length, `${tab} renders real table headings`);
+        for (const header of headers) assert.deepEqual([header.size, header.weight], ['13px', '600'], `${tab}: ${header.label}`);
+        const actions = page.locator('.cc-command-center table tbody button:not([disabled]):visible, .cc-command-center table tbody a[href]:visible');
+        if (await actions.count()) {
+          await actions.last().focus();
+          assert.equal(await actions.last().evaluate(node => node === document.activeElement), true);
+          await page.evaluate(() => {
+            document.activeElement?.blur();
+            for (const node of document.querySelectorAll('main,main *')) { node.scrollLeft = 0; node.scrollTop = 0; }
+          });
+        }
+        const name = `${tab}-${options.width}${options.dark ? '-dark' : ''}`;
+        await page.screenshot({ path: path.join(artifacts, `${name}.png`) });
+        const scan = options.width === 1672 || options.width === 390
+          ? await new AxeBuilder({ page }).include('.cc-command-center').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+          : { violations: [] };
+        const violations = scan.violations.map(({ id, nodes }) => ({ id, targets: nodes.map(node => node.target) }));
+        results.push({ name, headers, violations });
+        await writeFile(path.join(artifacts, 'visual-checks.json'), JSON.stringify({ mode: 'current-source-visuals', cases: results }, null, 2));
+        assert.deepEqual(violations, [], `${name} has no accessibility violations`);
+        console.log(`PASS: ${name} layout, shared table typography and keyboard controls`);
+      } finally { await page.context().close(); }
+    }
+  }
+  await assertSidebarUnchanged();
+  assert.deepEqual(errors, []);
+  assert.deepEqual(unexpectedRequests, []);
+  assert.ok(requests.every(request => request.method === 'GET'));
+  await writeFile(path.join(artifacts, 'visual-checks.json'), JSON.stringify({ mode: 'current-source-visuals', cases: results, runtimeErrors: errors, unexpectedRequests, sidebarHashesUnchanged: true }, null, 2));
+}
+
 try {
   const { page } = await newPage();
   await ready(page);
-  if (tabsPolishBaseline) {
+  if (visualsOnly) {
+    await page.context().close();
+    await runCurrentVisualChecks();
+  } else if (tabsPolishBaseline) {
     await captureTabsPolishBaseline();
   } else if (tabsPolish) {
     await runTabsPolishChecks();

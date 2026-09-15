@@ -219,6 +219,16 @@
   .pp-pagination nav { order: 3; width: 100%; justify-content: center; }
   .pp-outlook-grid { grid-template-columns: minmax(0, 1fr) 105px; }
 }
+/* Preserve compact rows while wider type scrolls within the existing panels. */
+@media screen {
+  .portfolio-performance .pp-decisions-table { min-width: 960px; }
+  .portfolio-performance .pp-register-table { min-width: 1120px; }
+  .portfolio-performance .pp-milestones-table { min-width: 640px; }
+  .pp-decisions-table :is(th, td), .pp-register-table :is(th, td), .pp-milestones-table :is(th, td),
+  .pp-decisions-table .pp-truncate, .pp-register-table .pp-truncate { overflow-wrap: normal; word-break: normal; }
+  .pp-milestones-table :is(.cc-status, .cc-link), .pp-milestones-table td:nth-child(3) { white-space: nowrap; }
+}
+
 @media print {
   .executive-page-open .portfolio-performance { --pp-green: #087d55; --pp-amber: #995800; --pp-red: #c90736; }
   .executive-page-open .pp-layout { display: block; }

@@ -99,6 +99,8 @@ const financeService = {
     if (filters.status) params.append('status', filters.status);
     if (filters.invoice_type) params.append('invoice_type', filters.invoice_type);
     if (filters.search) params.append('search', filters.search);
+    if (filters.page) params.append('page', filters.page);
+    if (filters.page_size) params.append('page_size', filters.page_size);
     
     const response = await apiClient.get(`${API_BASE}/invoices/?${params.toString()}`);
     return response.data;
@@ -107,6 +109,12 @@ const financeService = {
   /** Read-only normalized A/R + A/P totals, kept separate by currency. */
   async getCombinedInvoiceSummary() {
     const response = await apiClient.get(`${API_BASE}/invoices/combined-summary/`);
+    return response.data;
+  },
+
+  /** Read-only finance dashboard, with separate currencies and source permissions. */
+  async getFinanceCommandCenter() {
+    const response = await apiClient.get(`${API_BASE}/dashboard/command-center/`);
     return response.data;
   },
 

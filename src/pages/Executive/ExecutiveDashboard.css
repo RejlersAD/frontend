@@ -182,6 +182,8 @@
 .cc-allocation-track span { display: block; height: 100%; border-radius: 2px; background: #4e8aff; }
 .cc-allocation-value { text-align: right; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
 .cc-pulse-table { table-layout: fixed; }
+/* Keep the visually hidden column label inside its horizontal scroll region. */
+.cc-pulse-panel .cc-table-wrap { position: relative; }
 .cc-pulse-table th:first-child { width: 24%; }
 .cc-pulse-table th:nth-child(2) { width: 43%; }
 .cc-pulse-table th:nth-child(3) { width: 22%; }
@@ -274,6 +276,19 @@
   .cc-definition dl > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .cc-dialog { padding: 18px; } .cc-loading-grid { grid-template-columns: repeat(2, 1fr); }
 }
+/* Keep the readable table type inside the panel instead of adding wrapped rows. */
+@media screen {
+  .cc-command-center .cc-portfolio-table { min-width: 1100px; }
+  .cc-portfolio-table :is(th, td) { overflow-wrap: normal; word-break: normal; }
+  .cc-portfolio-table tbody th { min-width: 185px; }
+  .cc-portfolio-table td:nth-child(2) { min-width: 150px; }
+  .cc-portfolio-table td:nth-child(8) { min-width: 155px; }
+  .cc-command-center :is(.cc-risk-table, .cc-pulse-table) { min-width: 450px; }
+  .cc-risk-table :is(th, td), .cc-pulse-table :is(th, td),
+  .cc-risk-table .cc-risk-name > a, .cc-pulse-metric { overflow-wrap: normal; word-break: normal; }
+  .cc-pulse-table .cc-status { white-space: nowrap; }
+}
+
 @media print {
   html.executive-page-open, .executive-page-open body, .executive-page-open #root, .executive-page-open #root > *, .executive-page-open #application-content, .executive-page-open .main-content, .executive-page-open .cc-command-center { height: auto !important; min-height: 0 !important; overflow: visible !important; }
   .executive-page-open #application-sidebar, .executive-page-open #application-content > header, .executive-page-open .cc-screen-only, .executive-page-open .cc-dialog, .executive-page-open .cc-icon-button, .executive-page-open .cc-info-button { display: none !important; }

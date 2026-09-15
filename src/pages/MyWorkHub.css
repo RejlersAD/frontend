@@ -57,7 +57,7 @@
 .wh-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--wh-muted); padding: 5px 12px; font-size: 12px; }
 .wh-tabs button.is-active { color: var(--wh-blue); border-bottom-color: var(--wh-blue); font-weight: 650; }
 .wh-table-scroll { width: 100%; overflow-x: auto; scrollbar-width: thin; }
-.wh-work-table { width: 100%; min-width: 670px; border-collapse: collapse; table-layout: fixed; text-align: left; font-size: 11px; }
+.wh-work-table { width: 100%; min-width: 670px; border-collapse: collapse; table-layout: fixed; text-align: left; font-size: 11px; line-height: 15px; }
 .wh-work-table th { height: 29px; padding: 6px 8px; font-size: 10px; color: var(--wh-muted); font-weight: 650; border-bottom: 1px solid var(--wh-border); }
 .wh-work-table th:first-child { width: 5.5%; }
 .wh-work-table th:nth-child(2) { width: 35%; }
