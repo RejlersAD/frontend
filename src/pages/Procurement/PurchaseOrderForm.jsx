@@ -12,7 +12,7 @@ import { radaiPrompt } from '../../services/radaiDialog'
  * - Vendor confirmation tracking
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import PurchaseOrderPreviewPane from './PurchaseOrderPreviewPane';
@@ -567,9 +567,36 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [draftId, setDraftId] = useState(editData?.id || null);
   const [currentSection, setCurrentSection] = useState(1);
   const formScrollRef = useRef(null);
+  const workspaceRef = useRef(null);
+  const [modalBounds, setModalBounds] = useState(null);
   const [approvalEmployees, setApprovalEmployees] = useState([]);
   const [approversLoading, setApproversLoading] = useState(false);
   const [approverLoadError, setApproverLoadError] = useState('');
+
+  useLayoutEffect(() => {
+    if (!isOpen || pageMode) return undefined;
+    // The edit overlay belongs to the page, below the header and beside the
+    // sidebar. Measure the shell instead of duplicating its navigation widths.
+    const content = workspaceRef.current?.closest('main') || document.getElementById('application-content');
+    const updateBounds = () => {
+      const bounds = content?.getBoundingClientRect();
+      const next = {
+        left: bounds?.left ?? 0,
+        top: bounds?.top ?? 0,
+        width: bounds?.width ?? document.documentElement.clientWidth,
+        height: bounds?.height ?? window.innerHeight,
+      };
+      setModalBounds(previous => previous && Object.keys(next).every(key => previous[key] === next[key]) ? previous : next);
+    };
+    updateBounds();
+    const observer = new ResizeObserver(updateBounds);
+    if (content) observer.observe(content);
+    window.addEventListener('resize', updateBounds);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateBounds);
+    };
+  }, [isOpen, pageMode]);
 
   useEffect(() => {
     if (approvalEmployees.length === 0) return;
@@ -1557,7 +1584,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const busy = submitLoading || autoSaving;
 
   return (
-    <div className={`purchase-order-form-workspace ${pageMode ? 'pof-page' : 'pof-modal'}`}>
+    <div ref={workspaceRef} className={`purchase-order-form-workspace ${pageMode ? 'pof-page' : 'pof-modal'}`}
+      style={pageMode ? undefined : modalBounds || { visibility: 'hidden' }}>
       <div className="pof-workspace-grid">
         <section className="pof-editor" aria-label="Purchase order editor">
           <header className="pof-header">

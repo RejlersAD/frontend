@@ -1,5 +1,6 @@
 /* Purchase Order workspace only. The application header and sidebar stay unchanged. */
 #application-content > main.main-content:has(.purchase-order-form-workspace.pof-page) { padding-top: 0; }
+#application-content > main.main-content:has(.purchase-order-form-workspace.pof-modal) { overflow: hidden; }
 .purchase-order-form-workspace {
   --pof-blue: #075bff;
   --pof-navy: #09264b;
@@ -16,7 +17,7 @@
 .purchase-order-form-workspace button:disabled { cursor: not-allowed; opacity: .55; }
 .purchase-order-form-workspace svg { flex-shrink: 0; }
 .purchase-order-form-workspace.pof-page { height: 100%; }
-.purchase-order-form-workspace.pof-modal { position: fixed; inset: 20px; z-index: 50; border: 1px solid var(--pof-border); border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 100vmax #07213b70; }
+.purchase-order-form-workspace.pof-modal { position: fixed; z-index: 50; overflow: hidden; }
 .purchase-order-form-workspace .pof-workspace-grid { display: grid; grid-template-columns: minmax(0, 60%) minmax(0, 1fr); height: 100%; min-width: 0; }
 .purchase-order-form-workspace .pof-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-right: 4px solid #e0e8f1; }
 .purchase-order-form-workspace .pof-header { flex-shrink: 0; padding: 8px 18px 0; background: linear-gradient(110deg, #f9fcff, #f2f7fc); border-bottom: 1px solid var(--pof-border); }
@@ -108,7 +109,6 @@
   .purchase-order-form-workspace .pop-preview { height: 760px; min-height: 500px; max-height: none; border-top: 4px solid #e0e8f1; }
 }
 @media (max-width: 600px) {
-  .purchase-order-form-workspace.pof-modal { inset: 0; border: 0; border-radius: 0; }
   .purchase-order-form-workspace .pof-header { padding-inline: 12px; }
   .purchase-order-form-workspace .pof-header h1 { font-size: 21px; }
   .purchase-order-form-workspace .pof-title-row p { max-width: 310px; }
