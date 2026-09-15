@@ -50,7 +50,7 @@ function nestedRecords(folder, catalogue = false) {
   }))
 }
 
-async function harness(page, query = '') {
+async function harness(page, query = '', options = {}) {
   const adminView = new URLSearchParams(query).get('view') === 'admin'
   const state = {
     source: adminView ? { ...source, name: 'RAD File Server — Projects', status: 'connected', root_path: '\\\\uaeser2\\RAD_FILE_SERVER\\Projects', included_paths: adminScopes.map(item => item.relative_path), excluded_paths: ['Project archives'], last_heartbeat: '2026-09-15T06:20:00Z', last_success_at: '2026-09-15T06:18:00Z' } : { ...source },
@@ -70,7 +70,7 @@ async function harness(page, query = '') {
     if (path.includes('/project-control/documents/')) return fulfil(route, pageOf([]))
     if (path.endsWith('/projects/')) return fulfil(route, pageOf(projects))
     if (path.endsWith('/file-replica/scopes/')) return fulfil(route, pageOf(state.scopes.map(scopeMetadata)))
-    if (path.endsWith('/file-replica/sources/')) return fulfil(route, pageOf([state.source]))
+    if (path.endsWith('/file-replica/sources/')) return options.sources ? options.sources(route, state) : fulfil(route, pageOf([state.source]))
     if (path.endsWith('/file-replica/sources/source-1/')) {
       if (route.request().method() === 'PATCH') state.source = { ...state.source, ...route.request().postDataJSON() }
       return fulfil(route, state.source)
@@ -106,9 +106,67 @@ async function harness(page, query = '') {
     if (path.endsWith('/extractions/')) return fulfil(route, [])
     return fulfil(route, {})
   })
-  await page.goto(`/replica-test?${query}`)
+  await page.goto(`/replica-test?${query}`, { waitUntil: 'domcontentloaded' })
   return state
 }
+
+test('connection summary stays unknown until its source request completes', async ({ page }) => {
+  let release
+  const state = await harness(page, 'view=admin&admin=true', { sources: (route, data) => new Promise(resolve => {
+    release = () => fulfil(route, pageOf([data.source])).then(resolve)
+  }) })
+  const summary = page.getByRole('region', { name: 'File server summary' })
+  await expect(page.getByRole('status')).toContainText('Loading server connections')
+  await expect(summary).toHaveAttribute('aria-busy', 'true')
+  await expect(summary).toContainText('Checking')
+  for (const value of ['Not connected', 'Awaiting first contact', 'Never']) await expect(summary).not.toContainText(value)
+  await release()
+  await expect(summary).toHaveAttribute('aria-busy', 'false')
+  await expect(summary).toContainText('Healthy')
+  await expect(page.getByRole('region', { name: 'Folder mappings' })).toBeVisible()
+  expect(state.writes).toEqual([])
+})
+
+test('unavailable replica endpoint offers retry without reporting a disconnected or empty server', async ({ page }) => {
+  let unavailable = true
+  const state = await harness(page, 'view=admin&admin=true', { sources: (route, data) => unavailable
+    ? fulfil(route, { detail: 'Not found.' }, 404) : fulfil(route, pageOf([data.source])) })
+  const summary = page.getByRole('region', { name: 'File server summary' })
+  await expect(page.getByRole('alert')).toContainText('File Server Replica service is unavailable')
+  await expect(summary).toContainText('Unavailable')
+  for (const value of ['Not connected', 'Awaiting first contact', 'Never']) await expect(summary).not.toContainText(value)
+  await expect(page.getByRole('heading', { name: 'Connect your first server folder' })).toHaveCount(0)
+  await expect(page.getByText('Loading server connections…', { exact: true })).toHaveCount(0)
+  unavailable = false
+  await page.getByRole('button', { name: 'Retry connections' }).click()
+  await expect(summary).toContainText('Healthy')
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Folder mappings' })).toBeVisible()
+  expect(state.writes).toEqual([])
+})
+
+test('a stalled source request ends with a timeout and an enabled retry', async ({ page }) => {
+  await page.clock.install()
+  const state = await harness(page, 'view=admin&admin=true', { sources: () => new Promise(() => {}) })
+  await expect(page.getByText('Loading server connections…', { exact: true })).toBeVisible()
+  await page.clock.fastForward(31000)
+  await expect(page.getByRole('alert')).toContainText('timed out')
+  await expect(page.getByRole('button', { name: 'Retry connections' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
+  await expect(page.getByRole('region', { name: 'File server summary' })).toContainText('Unavailable')
+  await expect(page.getByText('Loading server connections…', { exact: true })).toHaveCount(0)
+  expect(state.writes).toEqual([])
+})
+
+test('repeated source pagination terminates instead of leaving connections loading', async ({ page }) => {
+  const state = await harness(page, 'view=admin&admin=true', { sources: (route, data) => fulfil(route, {
+    count: 2, results: [data.source], next: '?page=2', previous: null,
+  }) })
+  await expect(page.getByRole('alert')).toContainText('repeated results page')
+  await expect(page.getByRole('button', { name: 'Retry connections' })).toBeEnabled()
+  expect(state.requests.filter(item => item.path.endsWith('/file-replica/sources/'))).toHaveLength(2)
+  expect(state.writes).toEqual([])
+})
 
 test('project documents browse, preview, extract, and review source evidence', async ({ page }) => {
   await harness(page)

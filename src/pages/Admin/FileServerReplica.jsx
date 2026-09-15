@@ -154,6 +154,7 @@ function ReplicaConsole() {
   const [scopeLoading, setScopeLoading] = useState(false)
   const [error, setError] = useState('')
   const [scopeError, setScopeError] = useState('')
+  const [sourceError, setSourceError] = useState('')
   const [notice, setNotice] = useState('')
   const [revision, setRevision] = useState(0)
   const [query, setQuery] = useState('')
@@ -170,6 +171,7 @@ function ReplicaConsole() {
   const [mutationBusy, setMutationBusy] = useState(false)
   const [history, setHistory] = useState({ loading: false, items: [], error: '' })
   const selectAllRef = useRef(null)
+  const sourcesRequest = useRef(null)
   const source = sources.find(item => String(item.id) === selectedId)
   const activeScope = scopes.find(item => item.id === activeId)
   const reviewFolder = id => { setActiveId(id); setReviewRequest({ scopeId: id }) }
@@ -177,12 +179,21 @@ function ReplicaConsole() {
   const openModal = value => { setModalError(''); setToken(''); setMenu(false); setModal(value) }
   const closeModal = () => { if (!mutationBusy && !tokenBusy && !sourceBusy) { setModal(null); setToken(''); setModalError('') } }
   const reload = useCallback(async () => {
-    setLoading(true); setError('')
-    try { const data = Replica.itemsFrom(await Replica.listSources()); setSources(data); setSelectedId(previous => data.some(item => String(item.id) === previous) ? previous : String(data[0]?.id || '')) }
-    catch (err) { setError(Replica.replicaError(err)) }
-    finally { setLoading(false) }
+    sourcesRequest.current?.abort()
+    const controller = new AbortController()
+    sourcesRequest.current = controller
+    setLoading(true); setSourceError('')
+    try {
+      const data = Replica.itemsFrom(await Replica.listSources(controller.signal))
+      if (controller.signal.aborted) return
+      setSources(data); setSelectedId(previous => data.some(item => String(item.id) === previous) ? previous : String(data[0]?.id || ''))
+    }
+    catch (err) {
+      if (!controller.signal.aborted) setSourceError(err?.response?.status === 404 ? 'The File Server Replica service is unavailable on the server.' : Replica.replicaError(err))
+    }
+    finally { if (!controller.signal.aborted) setLoading(false) }
   }, [])
-  useEffect(() => { reload() }, [reload])
+  useEffect(() => { reload(); return () => sourcesRequest.current?.abort() }, [reload])
   useEffect(() => {
     let active = true
     const load = async () => {
@@ -196,7 +207,7 @@ function ReplicaConsole() {
   }, [])
   useEffect(() => { setActiveId(''); setReviewRequest(null); setCheckedIds([]); setToken(''); setQuery(''); setMappingFilter('all'); setAccessFilter('all'); setMenu(false) }, [selectedId])
   useEffect(() => {
-    if (!selectedId) { setScopes([]); return }
+    if (!selectedId) { setScopes([]); setScopeLoading(false); setScopeError(''); setFolderDates({}); return }
     const controller = new AbortController()
     setScopeLoading(true); setScopeError(''); setScopes([]); setFolderDates({})
     Replica.listScopes({ source: selectedId }, controller.signal).then(data => {
@@ -272,29 +283,32 @@ function ReplicaConsole() {
     } catch (err) { setModalError(Replica.replicaError(err)) }
     finally { setMutationBusy(false) }
   }
-  const health = !source ? ['neutral', 'Not connected'] : !source.enabled ? ['neutral', 'Disabled'] : ({ connected: ['success', 'Healthy'], syncing: ['blue', 'Syncing'], error: ['danger', 'Error'], offline: ['warning', 'Offline'], not_connected: ['neutral', 'Not connected'] }[source.status] || ['neutral', 'Unknown'])
+  const health = loading ? ['neutral', 'Checking…'] : sourceError ? ['warning', 'Unavailable'] : !source ? ['neutral', 'Not configured'] : !source.enabled ? ['neutral', 'Disabled'] : ({ connected: ['success', 'Healthy'], syncing: ['blue', 'Syncing'], error: ['danger', 'Error'], offline: ['warning', 'Offline'], not_connected: ['neutral', 'Not connected'] }[source.status] || ['neutral', 'Unknown'])
+  const unavailable = loading || Boolean(sourceError)
+  const countsUnavailable = unavailable || scopeLoading || Boolean(scopeError)
   const mappedCount = new Set(scopes.filter(scope => scope.project && !isExcluded(scope, source)).map(scope => scope.project)).size
   const reviewCount = scopes.filter(scope => ['review', 'unmapped'].includes(mappingState(scope, source))).length
   const resetFilters = () => { setMappingFilter('all'); setAccessFilter('all'); setQuery('') }
   const metrics = [
-    { label: 'Connection', value: health[1], detail: contactLabel(source?.last_heartbeat), icon: Server, tone: health[0] === 'success' ? 'green' : 'amber', onClick: () => source && openModal({ type: 'manage' }) },
-    { label: 'Last sync', value: dateLabel(source?.last_success_at), detail: source?.last_success_at ? 'Completed' : 'Awaiting synchronization', icon: RefreshCw, tone: 'green', onClick: () => source && openModal({ type: 'history' }) },
-    { label: 'Discovered folders', value: loading || scopeLoading ? '—' : scopes.length, icon: Folder, tone: 'blue', onClick: resetFilters },
-    { label: 'Mapped projects', value: loading || scopeLoading ? '—' : mappedCount, icon: LinkIcon, tone: 'blue', onClick: () => { resetFilters(); setMappingFilter('linked') } },
-    { label: 'Review required', value: loading || scopeLoading ? '—' : reviewCount, icon: AlertTriangle, tone: 'amber', onClick: () => { resetFilters(); setMappingFilter('needs_review') } },
+    { label: 'Connection', value: health[1], detail: loading ? 'Loading connection status' : sourceError ? 'Connection status unavailable' : source ? contactLabel(source.last_heartbeat) : 'No server connection configured', icon: Server, tone: health[0] === 'success' ? 'green' : 'amber', onClick: () => source && openModal({ type: 'manage' }) },
+    { label: 'Last sync', value: unavailable || !source ? '—' : dateLabel(source.last_success_at), detail: loading ? 'Loading sync status' : sourceError ? 'Sync status unavailable' : !source ? 'No connection configured' : source.last_success_at ? 'Completed' : 'Awaiting synchronization', icon: RefreshCw, tone: unavailable ? 'blue' : 'green', onClick: () => source && openModal({ type: 'history' }) },
+    { label: 'Discovered folders', value: countsUnavailable ? '—' : scopes.length, icon: Folder, tone: 'blue', onClick: resetFilters },
+    { label: 'Mapped projects', value: countsUnavailable ? '—' : mappedCount, icon: LinkIcon, tone: 'blue', onClick: () => { resetFilters(); setMappingFilter('linked') } },
+    { label: 'Review required', value: countsUnavailable ? '—' : reviewCount, icon: AlertTriangle, tone: 'amber', onClick: () => { resetFilters(); setMappingFilter('needs_review') } },
   ]
   return <div className="file-replica-workspace">
     <header className="rf-page-header"><div><nav className="rf-breadcrumb" aria-label="Breadcrumb"><a href="/admin/dashboard">Administration</a><span>/</span><span>Integrations</span><span>/</span><span aria-current="page">File Server Replica</span></nav><h1>File Server Replica</h1><p className="rf-subtitle">Connect approved server folders to projects for secure browsing and document indexing.</p></div><div className="rf-header-actions"><button type="button" className="rf-button" disabled={!source} onClick={() => openModal({ type: 'history' })}><History size={16} />View audit log</button><button type="button" className="rf-button" disabled={loading || scopeLoading} onClick={refresh}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button><button type="button" className="rf-button rf-primary" onClick={() => openModal({ type: 'add' })}><Plus size={17} />Add connection</button></div></header>
     {error && <p role="alert" className="rf-message rf-error">{error}</p>}{notice && <p role="status" className="rf-message rf-notice">{notice}<button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={14} /></button></p>}
-    <section className="rf-metrics" aria-label="File server summary">{metrics.map(({ label, value, detail, icon: Icon, tone, onClick }) => <button type="button" key={label} className="rf-metric" onClick={onClick}><span className={`rf-metric-icon rf-${tone}`}><Icon size={26} /></span><span className="rf-metric-copy"><span>{label}</span><strong>{value}</strong>{detail && <small>{label === 'Last sync' && source?.last_success_at && <CheckCircle2 size={12} />}{detail}</small>}</span><ChevronRight size={17} className="rf-chevron" /></button>)}</section>
+    {sourceError && <div role="alert" className="rf-message rf-error"><span>Could not load server connections. {sourceError}</span><button type="button" className="rf-button" onClick={reload}>Retry connections</button></div>}
+    <section className="rf-metrics" aria-label="File server summary" aria-busy={loading}>{metrics.map(({ label, value, detail, icon: Icon, tone, onClick }) => <button type="button" key={label} className="rf-metric" onClick={onClick}><span className={`rf-metric-icon rf-${tone}`}><Icon size={26} /></span><span className="rf-metric-copy"><span>{label}</span><strong>{value}</strong>{detail && <small>{label === 'Last sync' && !unavailable && source?.last_success_at && <CheckCircle2 size={12} />}{detail}</small>}</span><ChevronRight size={17} className="rf-chevron" /></button>)}</section>
     {loading && !source && <p role="status" className="rf-empty">Loading server connections…</p>}
-    {!loading && !source && !error && <section className="rf-panel rf-empty"><Server size={40} /><h2>Connect your first server folder</h2><p>Add a connection to discover project folders and review access.</p><button type="button" className="rf-button rf-primary" onClick={() => openModal({ type: 'add' })}><Plus size={16} />Add connection</button></section>}
+    {!loading && !source && !sourceError && !error && <section className="rf-panel rf-empty"><Server size={40} /><h2>Connect your first server folder</h2><p>Add a connection to discover project folders and review access.</p><button type="button" className="rf-button rf-primary" onClick={() => openModal({ type: 'add' })}><Plus size={16} />Add connection</button></section>}
     {source && <>
-      <section className="rf-connection" aria-label="Server connection"><div className="rf-connection-identity"><Server size={36} /><div><div><h2>{source.name}</h2><Pill tone={health[0]} icon={CheckCircle2}>{health[1] === 'Healthy' ? 'Connected' : health[1]}</Pill></div><p title={source.root_path}>{source.root_path}</p></div></div><dl className="rf-connection-facts">{[['Mode', source.mode === 'mirror' ? 'Mirror files' : 'Catalogue'], ['Last successful sync', dateLabel(source.last_success_at)], ['Connector version', source.connector_version || 'Not reported'], ['Credential last rotated', source.token_rotated_at ? dateLabel(source.token_rotated_at) : 'Not reported']].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><div className="rf-connection-actions"><button type="button" className="rf-button" onClick={() => openModal({ type: 'manage' })}><Settings size={17} />Manage connection</button><div className="rf-menu-wrapper"><button type="button" className="rf-button rf-icon-button" aria-label="More connection actions" aria-expanded={menu} onClick={() => setMenu(previous => !previous)}><MoreHorizontal size={19} /></button>{menu && <div className="rf-menu"><button type="button" onClick={() => { copy(source.id); setMenu(false) }}><Copy size={15} />Copy source ID</button><button type="button" onClick={() => openModal({ type: 'manage' })}><Key size={15} />Connector credentials</button><button type="button" onClick={() => openModal({ type: 'history' })}><History size={15} />Synchronization history</button></div>}</div></div></section>
+      <section className="rf-connection" aria-label="Server connection"><div className="rf-connection-identity"><Server size={36} /><div><div><h2>{source.name}</h2><Pill tone={health[0]} icon={CheckCircle2}>{health[1] === 'Healthy' ? 'Connected' : health[1]}</Pill></div><p title={source.root_path}>{source.root_path}</p></div></div><dl className="rf-connection-facts">{[['Mode', source.mode === 'mirror' ? 'Mirror files' : 'Catalogue'], ['Last successful sync', unavailable ? 'Unavailable' : dateLabel(source.last_success_at)], ['Connector version', source.connector_version || 'Not reported'], ['Credential last rotated', source.token_rotated_at ? dateLabel(source.token_rotated_at) : 'Not reported']].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><div className="rf-connection-actions"><button type="button" className="rf-button" onClick={() => openModal({ type: 'manage' })}><Settings size={17} />Manage connection</button><div className="rf-menu-wrapper"><button type="button" className="rf-button rf-icon-button" aria-label="More connection actions" aria-expanded={menu} onClick={() => setMenu(previous => !previous)}><MoreHorizontal size={19} /></button>{menu && <div className="rf-menu"><button type="button" onClick={() => { copy(source.id); setMenu(false) }}><Copy size={15} />Copy source ID</button><button type="button" onClick={() => openModal({ type: 'manage' })}><Key size={15} />Connector credentials</button><button type="button" onClick={() => openModal({ type: 'history' })}><History size={15} />Synchronization history</button></div>}</div></div></section>
       {source.last_error && <p role="alert" className="rf-message rf-error">{source.last_error}</p>}
-      {source.status === 'offline' && <div className="rf-message rf-connection-note" role="status"><Clock size={17} aria-hidden="true" /><div><strong>Office connector offline</strong><p>Offline means RADAI has not received a recent connector heartbeat. Last contact: {dateLabel(source.last_heartbeat)}. Cached folders remain browsable; updates resume when the office connector reconnects.</p></div><button type="button" className="rf-button" onClick={() => openModal({ type: 'manage' })}>Check connection</button></div>}
-      {source.status === 'not_connected' && <div className="rf-message rf-connection-note" role="status"><Server size={17} aria-hidden="true" /><div><strong>Awaiting office connector</strong><p>The connector has not contacted RADAI yet. Start it on a machine that can access {source.root_path}, then refresh this page.</p></div></div>}
-      {source.status === 'syncing' && source.latest_scan && <div className="rf-message rf-connection-note" role="status"><RefreshCw size={17} aria-hidden="true" /><div><strong>Folder scan in progress</strong><p>Started {dateLabel(source.latest_scan.started_at)}{source.latest_scan.entry_count != null ? ` · ${source.latest_scan.entry_count.toLocaleString()} catalogue entries seen` : ''}. Refresh to load the latest discovered folders and files.</p></div></div>}
+      {!unavailable && source.status === 'offline' && <div className="rf-message rf-connection-note" role="status"><Clock size={17} aria-hidden="true" /><div><strong>Office connector offline</strong><p>Offline means RADAI has not received a recent connector heartbeat. Last contact: {dateLabel(source.last_heartbeat)}. Cached folders remain browsable; updates resume when the office connector reconnects.</p></div><button type="button" className="rf-button" onClick={() => openModal({ type: 'manage' })}>Check connection</button></div>}
+      {!unavailable && source.status === 'not_connected' && <div className="rf-message rf-connection-note" role="status"><Server size={17} aria-hidden="true" /><div><strong>Awaiting office connector</strong><p>The connector has not contacted RADAI yet. Start it on a machine that can access {source.root_path}, then refresh this page.</p></div></div>}
+      {!unavailable && source.status === 'syncing' && source.latest_scan && <div className="rf-message rf-connection-note" role="status"><RefreshCw size={17} aria-hidden="true" /><div><strong>Folder scan in progress</strong><p>Started {dateLabel(source.latest_scan.started_at)}{source.latest_scan.entry_count != null ? ` · ${source.latest_scan.entry_count.toLocaleString()} catalogue entries seen` : ''}. Refresh to load the latest discovered folders and files.</p></div></div>}
       {source.scan_state === 'discovery_only' && <p className="rf-message"><FolderOpen size={17} aria-hidden="true" />This connection currently discovers project folder names only. Include the project folders in Manage connection to scan their subfolders and files.</p>}
       <div className="rf-workbench">
         <section className="rf-panel rf-mapping-panel" aria-label="Folder mappings"><div className="rf-panel-heading"><FolderOpen size={20} /><h2>Folder mappings</h2></div><div className="rf-tools">
