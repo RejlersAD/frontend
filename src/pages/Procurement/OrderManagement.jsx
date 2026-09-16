@@ -15,6 +15,7 @@ import PurchaseOrderPdfImport from './PurchaseOrderPdfImport';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
 import { employeeDisplayName } from '../../utils/employeeDisplayName';
+import { canDecideProcurement } from '../../utils/procurementApproval';
 import ProcurementRegister from './ProcurementRegister';
 import { pendingPurchaseOrderDocument } from './procurementRegisterModel';
 import PurchaseRecommendations from './PurchaseRecommendations';
@@ -466,17 +467,7 @@ const OrderManagement = () => {
   }, [activeTab, navigate, requisitionRouteId]);
 
   const activeAssignedStage = (requisition) => {
-    const workflow = Array.isArray(requisition?.approval_workflow_config)
-      ? requisition.approval_workflow_config
-      : (Array.isArray(requisition?.approval_hierarchy) ? requisition.approval_hierarchy : []);
-    const pending = workflow.filter(stage => ['pending', 'in_review', 'under_review'].includes(String(stage?.status || 'pending').toLowerCase()));
-    if (!pending.length || !currentUserId) return null;
-    const levelOf = (stage, index) => Number.isFinite(Number(stage?.level)) ? Number(stage.level) : index + 1;
-    const activeLevel = Math.min(...pending.map((stage, index) => levelOf(stage, index)));
-    return pending.find((stage, index) => (
-      levelOf(stage, index) === activeLevel
-      && String(stage?.user_id || stage?.approver_id) === String(currentUserId)
-    )) || null;
+    return canDecideProcurement(requisition, currentUser);
   };
 
   const exportRequisitionRowsToExcel = (requisitionRows, filenameSuffix = '') => {

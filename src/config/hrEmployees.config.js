@@ -642,7 +642,7 @@ export const HR_EDITABLE_FIELDS = {
       helpText: 'Organisation assignment cannot be changed here. Use Admin panel.'
     },
     { id: 'department', label: 'Department', type: 'text', placeholder: 'e.g., Process Engineering', required: true },
-    { id: 'job_title', label: 'Designation', type: 'text', placeholder: 'e.g., Senior Process Engineer', required: true },
+    { id: 'job_title', label: 'Organizational role / Job title', type: 'text', placeholder: 'Select a suggestion or enter the recorded job title', required: true },
     { 
       id: 'status', 
       label: 'Employment Status', 

@@ -33,7 +33,7 @@ async function openRecord(page, overrides = {}) {
   await page.getByRole('button', { name: `Select ${recommendationNumber(1)}`, exact: true }).click()
   const details = page.getByRole('complementary', { name: 'Recommendation details', exact: true })
   await expect(details).toHaveAttribute('aria-busy', 'false')
-  await details.getByRole('button', { name: 'Open recommendation', exact: true }).click()
+  await details.getByRole('button', { name: 'View approval record', exact: true }).click()
   await expect(page.getByRole('heading', { name: recommendationNumber(1), exact: true, level: 1 })).toBeVisible()
   await expect(history(page)).toBeVisible()
   return state
@@ -83,7 +83,7 @@ test('ordinary draft without source evidence keeps its unconfigured workflow mes
 
 test('configured workflow takes precedence over display-only uploaded approval history', async ({ page }) => {
   const state = await openRecord(page, {
-    status: 'in_review', status_display: 'In review',
+    status: 'in_review', status_display: 'In review', can_approve: true,
     approval_workflow_config: [{ level: 1, role: 'Project Manager', user_id: '7', user_name: 'Current Workflow Approver', status: 'pending' }],
     price_remarks_data: sourceMetadata,
     attachments: [{ type: 'signed_purchase_requisition_pdf', filename: 'Synthetic-approval-history.pdf' }],

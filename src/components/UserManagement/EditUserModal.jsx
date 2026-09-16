@@ -344,6 +344,10 @@ const EditUserModal = ({
         } else {
           selectOptions = field.options || [];
         }
+        // Preserve a recorded value if it is absent from the latest catalog.
+        if (['department', 'job_title'].includes(field.name) && value && !selectOptions.some(option => option.id === value)) {
+          selectOptions = [{ id: value, name: value }, ...selectOptions];
+        }
 
         return (
           <div key={field.name} className={`${field.gridCols || 'col-span-2'}`}>

@@ -12,6 +12,7 @@ import {
 import apiClient from '../../services/api.service'
 import PurchaseOrderLivePreview from '../../pages/Procurement/PurchaseOrderLivePreview'
 import PurchaseRequisitionDocumentPreview from '../../pages/Procurement/PurchaseRequisitionDocumentPreview'
+import { canDecideProcurement } from '../../utils/procurementApproval'
 
 const emptyDecision = { loading: false, mode: null, reason: '', message: '', error: '' }
 const emptyPdfPreview = { loading: false, url: '', error: '' }
@@ -36,6 +37,7 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
   const [activePreview, setActivePreview] = useState('document')
   const [linkedPoPdf, setLinkedPoPdf] = useState(emptyPdfPreview)
   const [linkedPoRetryKey, setLinkedPoRetryKey] = useState(0)
+  const decisionAllowed = canDecide && canDecideProcurement(record.data, null, type)
 
   useEffect(() => {
     if (!isOpen || !['po', 'pr'].includes(type) || !recordId) {
@@ -122,7 +124,7 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
   }, [decision.loading, isOpen, onClose])
 
   const submitDecision = async (action) => {
-    if (!canDecide || decision.loading || !record.data || !['approve', 'reject'].includes(action)) return
+    if (!decisionAllowed || decision.loading || !record.data || !['approve', 'reject'].includes(action)) return
     const reason = decision.reason.trim()
     if (action === 'reject' && reason.length < 10) {
       setDecision((current) => ({ ...current, error: 'Please provide a rejection reason of at least 10 characters.', message: '' }))
@@ -137,7 +139,7 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
         : `/procurement/requisitions/${recordId}/${action === 'approve' ? 'process_dynamic_approval' : 'process_dynamic_rejection'}/`
       const payload = isPurchaseOrder
         ? {
-            approval_stage: approvalStage || record.data.current_approval?.stage || record.data.approval_stage,
+            approval_stage: record.data.current_approval?.stage || approvalStage || record.data.approval_stage,
             note: reason,
             reason,
           }
@@ -235,7 +237,7 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
 
         {record.data && !record.loading && !record.error && (
           <footer className="border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-            {canDecide && decision.mode === 'reject' && !decision.message && (
+            {decisionAllowed && decision.mode === 'reject' && !decision.message && (
               <div className="mb-3">
                 <label htmlFor="approval-preview-rejection" className="mb-1.5 block text-xs font-semibold text-slate-700">Rejection reason</label>
                 <textarea id="approval-preview-rejection" value={decision.reason} onChange={(event) => setDecision((current) => ({ ...current, reason: event.target.value, error: '' }))} rows={3} maxLength={1000} disabled={decision.loading} placeholder="Explain why this request is being rejected..." className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#0f6cbd] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100" />
@@ -246,7 +248,7 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
             {decision.error && <div className="mb-3 flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"><ExclamationTriangleIcon className="h-4 w-4 flex-none" />{decision.error}</div>}
             {decision.message && <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700"><CheckCircleIcon className="h-4 w-4 flex-none" />{decision.message}</div>}
 
-            {canDecide && !decision.message && (
+            {decisionAllowed && !decision.message && (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {decision.mode === 'reject' && <button type="button" onClick={() => setDecision((current) => ({ ...current, mode: null, reason: '', error: '' }))} disabled={decision.loading} className="h-9 rounded-md border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">Cancel</button>}
                 <button type="button" onClick={() => decision.mode === 'reject' ? submitDecision('reject') : setDecision((current) => ({ ...current, mode: 'reject', message: '', error: '' }))} disabled={decision.loading} className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-300 bg-white px-4 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-40">

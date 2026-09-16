@@ -38,9 +38,7 @@ export const resolveNotificationTarget = (notification) => {
 
   try {
     const parsed = new URL(rawTarget, origin)
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return { href: parsed.href, isExternal: true, isRecordPreview: Boolean(recordTarget) }
-    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null
 
     if (parsed.origin !== origin) {
       return { href: parsed.href, isExternal: true, isRecordPreview: Boolean(recordTarget) }

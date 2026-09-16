@@ -3,6 +3,8 @@ import { API_ENDPOINTS } from '../config/api.config'
 import { STORAGE_KEYS } from '../config/app.config'
 import passwordExpiryService from './passwordExpiry.service'
 import { getApiTimeouts } from '../config/environment.config'
+import pushNotificationService from './pushNotification.service'
+import { clearDevicePushSession, getPushOwner } from './pushDeviceSession'
 
 // SOFT-CODED: Auth timeout from centralized config (90s to handle Railway cold-start DB reconnect)
 const { timeoutAuth: AUTH_TIMEOUT_MS } = getApiTimeouts()
@@ -183,6 +185,7 @@ export const authService = {
         }
       }
       
+      if (getPushOwner() && getPushOwner().userId !== String(userData?.user?.id ?? userData?.id ?? '')) await clearDevicePushSession()
       localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData))
       
       console.log('[AuthService] ✅ Login process completed successfully')
@@ -230,6 +233,7 @@ export const authService = {
    * Logout user
    */
   logout() {
+    pushNotificationService.clearForLogout()
     // Stop password expiry checking
     passwordExpiryService.stopPeriodicCheck()
     passwordExpiryService.clearStatus()

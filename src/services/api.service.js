@@ -2,6 +2,8 @@ import axios from 'axios'
 import { API_BASE_URL, API_TIMEOUT, API_TIMEOUT_LONG, API_TIMEOUT_REFRESH } from '../config/api.config'
 import { STORAGE_KEYS } from '../config/app.config'
 import { toast } from 'react-toastify'
+import { clearDevicePushSession } from './pushDeviceSession'
+import { REDIRECT_AFTER_LOGIN_KEY } from '../config/solutions.config'
 
 /**
  * Enhanced Axios instance with CORS error handling and retry logic
@@ -78,10 +80,12 @@ const _isRefreshBlacklisted = (url = '') =>
   AUTH_RESILIENCE_CONFIG.REFRESH_BLACKLIST.some((s) => url.includes(s))
 
 const _clearAuthAndRedirect = (showToast = true) => {
+  void clearDevicePushSession().catch(() => {})
   localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.USER_DATA)
   if (!window.location.pathname.includes('/login')) {
+    sessionStorage.setItem(REDIRECT_AFTER_LOGIN_KEY, `${window.location.pathname}${window.location.search}${window.location.hash}`)
     if (showToast) toast.error('Session expired. Please login again.')
     setTimeout(() => { window.location.href = '/login' }, 1000)
   }

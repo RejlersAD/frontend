@@ -11,6 +11,7 @@ import { useSearchParams } from 'react-router-dom'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import apiClient from '../../services/api.service'
 import DatePicker from '../../components/DatePicker'
+import OrganizationSuggestions from '../../components/HR/OrganizationSuggestions'
 
 // ── Soft-coded API endpoints ──────────────────────────────────────────────
 // Note: apiClient baseURL already includes /api/v1, so paths are relative to that
@@ -37,7 +38,7 @@ const QUICK_EDIT_FIELDS = [
   { key: 'first_name', label: 'First Name', type: 'text', source: 'employee_master' },
   { key: 'last_name', label: 'Last Name', type: 'text', source: 'employee_master' },
   { key: 'email', label: 'Email', type: 'email', source: 'employee_master' },
-  { key: 'job_title_uae', label: 'Job Title (UAE)', type: 'text', source: 'employee_master' },
+  { key: 'job_title_uae', label: 'Organizational role / Job title (UAE)', type: 'text', source: 'employee_master' },
   { key: 'division', label: 'Division', type: 'text', source: 'employee_master' },
   { key: 'department', label: 'Department', type: 'text', source: 'employee_master' },
 ]
@@ -1576,6 +1577,7 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
 
   return (
     <div className="space-y-4">
+      {editingRow && <OrganizationSuggestions id="onboarding-edit" />}
       {/* Alert */}
       {alert && (
         <div className={`rounded-lg border p-3 flex items-center gap-2 ${
@@ -1803,9 +1805,10 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wide block mb-1">Job Title</label>
+                        <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wide block mb-1">Organizational role / Job title</label>
                         <input
                           type="text"
+                          list="onboarding-edit-roles"
                           value={editFormData.job_title_uae || ''}
                           onChange={(e) => handleFieldChange('job_title_uae', e.target.value)}
                           className="w-full px-2 py-1.5 text-xs border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1816,6 +1819,7 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
                         <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wide block mb-1">Division</label>
                         <input
                           type="text"
+                          list="onboarding-edit-departments"
                           value={editFormData.division || ''}
                           onChange={(e) => handleFieldChange('division', e.target.value)}
                           className="w-full px-2 py-1.5 text-xs border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1826,6 +1830,7 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
                         <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wide block mb-1">Department</label>
                         <input
                           type="text"
+                          list="onboarding-edit-departments"
                           value={editFormData.department || ''}
                           onChange={(e) => handleFieldChange('department', e.target.value)}
                           className="w-full px-2 py-1.5 text-xs border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -4934,6 +4939,7 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
         return (
           <input
             type="text"
+            list={field.field === 'department' ? 'offboarding-exit-departments' : field.field === 'position' ? 'offboarding-exit-roles' : undefined}
             value={value}
             onChange={(e) => handleChange(field.field, e.target.value)}
             placeholder={field.placeholder}
@@ -4947,6 +4953,7 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
   
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <OrganizationSuggestions id="offboarding-exit" />
       <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Modal Header */}
         <div className="bg-gradient-to-r from-rose-500 to-pink-600 px-6 py-4 flex items-center justify-between">
@@ -5312,6 +5319,7 @@ function CreateEmployeeTab() {
   
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 lg:p-5 space-y-3.5">
+      <OrganizationSuggestions id="onboarding-create" />
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm">
@@ -5586,6 +5594,7 @@ function CreateEmployeeTab() {
             <input
               type="text"
               name="division"
+              list="onboarding-create-departments"
               value={formData.division}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -5620,11 +5629,12 @@ function CreateEmployeeTab() {
           
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Job Title (Finland)
+              Organizational role / Job title (Finland)
             </label>
             <input
               type="text"
               name="job_title_finland"
+              list="onboarding-create-roles"
               value={formData.job_title_finland}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -5633,11 +5643,12 @@ function CreateEmployeeTab() {
           
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Job Title (UAE)
+              Organizational role / Job title (UAE)
             </label>
             <input
               type="text"
               name="job_title_uae"
+              list="onboarding-create-roles"
               value={formData.job_title_uae}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
