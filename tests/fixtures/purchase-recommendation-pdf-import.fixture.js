@@ -27,7 +27,7 @@ export async function recommendationPdfImportHarness(page, options = {}) {
   // The existing harness intercepts every App API request before navigation.
   // These later, specific handlers intercept multipart imports before its JSON
   // request parser, with all preview/save behavior confined to synthetic state.
-  const state = await recommendationHarness(page, { realApp: true })
+  const state = await recommendationHarness(page, { realApp: true, prepare: options.prepare })
   Object.assign(state, {
     importRequests: [], previewRequests: [], saveRequests: [], numberChecks: [],
     importNumber: options.extracted?.pr_number || (options.existing ? existingImportNumber : missingImportNumber),
@@ -97,7 +97,8 @@ export async function recommendationPdfImportHarness(page, options = {}) {
       ...(previous || state.props.requisitions[0]), id: previous?.id || recommendationId(9002),
       pr_number: number, product_service: body.attach_only === 'true' ? previous.product_service : overrides.product_service || extracted.product_service,
       status: previous?.status === 'converted' ? 'converted' : options.documentSignedOff || previous ? 'approved' : 'draft', total_price: body.attach_only === 'true' ? previous.total_price : overrides.net_total || extracted.net_total,
-      attachments: [{ filename: syntheticApprovedPdf.name, s3_key: 'synthetic-only/approved-pr.pdf' }],
+      attachments: options.savedAttachments || [{ filename: syntheticApprovedPdf.name, s3_key: 'synthetic-only/approved-pr.pdf' }],
+      ...(options.savedVerification ? { price_remarks_data: { ...(previous?.price_remarks_data || {}), signed_document_verification: options.savedVerification } } : {}),
     }
     state.details[record.id] = record
     state.props.requisitions = previous

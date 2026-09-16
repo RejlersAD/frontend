@@ -5,11 +5,11 @@ import apiClient from '../../services/api.service'
 import { getOriginalRecommendationDocuments, getOriginalRecommendationUrl } from './recommendationSourceDocuments'
 import './RecommendationSourceDocument.css'
 
-export default function RecommendationSourceDocument({ requisitionId, attachments, loading, error, embedded = false }) {
+export default function RecommendationSourceDocument({ requisitionId, attachments, documentSha, loading, error, embedded = false }) {
   const [selectedKey, setSelectedKey] = useState('')
   const [retry, setRetry] = useState(0)
   const [content, setContent] = useState({ key: '', url: '', loading: false, error: '' })
-  const documents = getOriginalRecommendationDocuments(attachments)
+  const documents = getOriginalRecommendationDocuments(attachments, documentSha)
     .map((item, index) => ({
       key: `${item.sha256 || item.id || item.filename || 'source'}-${index}`,
       filename: typeof item.filename === 'string' && item.filename.trim() ? item.filename : 'Uploaded PR.pdf',
@@ -82,6 +82,7 @@ export default function RecommendationSourceDocument({ requisitionId, attachment
 RecommendationSourceDocument.propTypes = {
   requisitionId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   attachments: PropTypes.array,
+  documentSha: PropTypes.string,
   loading: PropTypes.bool,
   error: PropTypes.string,
   embedded: PropTypes.bool,
