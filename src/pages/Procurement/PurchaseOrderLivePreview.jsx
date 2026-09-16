@@ -61,7 +61,6 @@ const DEFAULT_BUYER_REFERENCE = 'Richa Hannah Thomas';
 const FINAL_APPROVER = 'Jarmo Suominen';
 const FINAL_APPROVER_TITLE = 'Sr. Vice President, Middle East\nCEO, Rejlers Abu Dhabi';
 const FINAL_APPROVER_COMPANY = 'Rejlers International Engineering Solutions AB';
-const USD_TO_AED_RATE = 3.6725;
 const DEFAULT_ITEMS_TABLE_HEADERS = {
   line_code: 'Line Code', description: 'Item Description', specification: 'Specification',
   comment: 'Comments', quantity: 'Qty.', uom: 'UOM', unit_price: 'Rate',
@@ -438,7 +437,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
         return <Page key={`summary-${pageIndex}`} data={formData} page={2 + middlePageCount + pageIndex} finalApproval={finalApproval}>
           <SectionTitle>Summary of Prices {summaryChunks.length > 1 ? `(${pageIndex + 1}/${summaryChunks.length})` : ''}</SectionTitle>
           {itemColumns.length > 0 && <table className="mt-4 w-full border-collapse"><thead><tr className="border-y-2 border-slate-600">{itemColumns.map((column) => <th key={column.key} className={`p-1 ${column.numeric ? 'text-right' : 'text-left'}`}>{headers[column.key]}</th>)}</tr></thead><tbody>{pageItems.length ? pageItems.map((item, index) => <tr key={`summary-${offset + index}`} className="align-top">{itemColumns.map((column) => <td key={column.key} className={`px-2 py-3 ${column.numeric ? 'text-right' : 'text-left'} ${column.key === 'description' || column.key === 'total_price' ? 'font-bold' : ''}`}>{column.render(item, offset + index)}</td>)}</tr>) : <tr><td colSpan={itemColumns.length} className="py-16 text-center italic text-slate-400">Price summary will appear when items are added.</td></tr>}</tbody></table>}
-          {last && <div className="mt-8 ml-auto w-[230px] border-2 border-slate-600 p-2 text-[10px]"><div className="flex justify-between"><b>Total Price:</b><b>{money(subtotal, formData.currency)}</b></div>{lineDiscount > 0 && <div className="flex justify-between"><b>Discount:</b><span>{money(lineDiscount, formData.currency)}</span></div>}<div className="flex justify-between"><b>VAT ({Number(formData.vat_percentage || 0)}%):</b><b>{money(tax, formData.currency)}</b></div><div className="flex justify-between"><b>Total Sum:</b><b>{money(total, formData.currency)}</b></div>{String(formData.currency || '').toUpperCase() === 'USD' && <div className="mt-1 flex justify-between border-t border-slate-400 pt-1"><b>Grand Total USD in AED:</b><b>{money(total * USD_TO_AED_RATE, 'AED')}</b></div>}</div>}
+          {last && <div className="mt-8 ml-auto w-[230px] border-2 border-slate-600 p-2 text-[10px]"><div className="flex justify-between"><b>Total Price:</b><b>{money(subtotal, formData.currency)}</b></div>{lineDiscount > 0 && <div className="flex justify-between"><b>Discount:</b><span>{money(lineDiscount, formData.currency)}</span></div>}<div className="flex justify-between"><b>VAT ({Number(formData.vat_percentage || 0)}%):</b><b>{money(tax, formData.currency)}</b></div><div className="flex justify-between"><b>Total Sum:</b><b>{money(total, formData.currency)}</b></div></div>}
         </Page>;
       })}
 
