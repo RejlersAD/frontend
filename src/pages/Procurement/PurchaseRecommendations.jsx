@@ -34,7 +34,7 @@ function RecommendationStatus({ record }) {
 function RecommendationDetails({ panelRef, record, loading, error, onRetry, onOpen, onEdit, onConvert, onPdf, onAttachPdf, canModify, canConvert, pdfBusyId, converting }) {
   if (!record) return <aside ref={panelRef} tabIndex={-1} className="prw-panel prw-details" aria-label="Recommendation details"><div className="prw-panel-header"><h2>Recommendation details</h2></div><div className="prw-empty"><FileText size={32} /><h3>Select a recommendation</h3><p>Choose a record to review its sourcing decision, approvals and next step.</p></div></aside>
   const raw = record.raw
-  const original = getOriginalRecommendationDocuments(raw.attachments).find(item => getOriginalRecommendationUrl(item))
+  const original = getOriginalRecommendationDocuments(raw.attachments, raw.price_remarks_data?.signed_document_verification?.document_sha256)[0]
   const originalUrl = getOriginalRecommendationUrl(original)
   const presentation = recommendationPresentation(record)
   const approved = record.approvalSummary === 'approved'

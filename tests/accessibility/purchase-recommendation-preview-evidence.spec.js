@@ -110,20 +110,20 @@ test('register title uses the selected PR number and keeps the original PDF link
   clean(state)
 })
 
-test('register original link chooses the first available designated source and ignores quotations', async ({ page }) => {
+test('register does not substitute a different public PDF when the current original has no link', async ({ page }) => {
   const fileRequests = await mockOriginals(page)
   const state = await recommendationHarness(page, { prepare: state => update(state, 1, {
     attachments: [
       { type: 'quotation', filename: 'supplier-quote.pdf', url: '/__original-pr-fixture__/supplier-quote.pdf' },
-      source('first-original.pdf', { url: undefined }),
+      source('first-original.pdf', { url: undefined, sha256: 'current-original' }),
       source('revised-original.pdf', { type: undefined, document_type: 'signed_purchase_requisition_pdf', url: undefined, s3_url: '/__original-pr-fixture__/revised-original.pdf' }),
       source('later-original.pdf'),
     ],
+    price_remarks_data: { signed_document_verification: { document_sha256: 'current-original' } },
   }) })
   await loaded(page)
   const link = details(page).getByRole('link', { name: 'Open original PDF', exact: true })
-  await expect(link).toHaveAttribute('href', '/__original-pr-fixture__/revised-original.pdf')
-  await expect(link).toHaveAttribute('title', 'revised-original.pdf')
+  await expect(link).toHaveCount(0)
   await expect(details(page).getByRole('combobox', { name: 'Uploaded PR file', exact: true })).toHaveCount(0)
   await expect(details(page).locator('iframe')).toHaveCount(0)
   expect(fileRequests).toEqual([])

@@ -179,7 +179,7 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
       </div>
       {downloadError && <div className="rpp-error" role="alert">{downloadError}</div>}
       {hasOriginal ? <section className="rpp-original" role="tabpanel" id={`${instanceId}-document-panel`} aria-labelledby={`${instanceId}-document-tab`} hidden={tab !== 'document'} tabIndex={0}>
-        <RecommendationSourceDocument key={requisition.id || requisition.pr_number} requisitionId={requisition.id} attachments={requisition.attachments} embedded />
+        <RecommendationSourceDocument key={requisition.id || requisition.pr_number} requisitionId={requisition.id} attachments={requisition.attachments} documentSha={requisition.price_remarks_data?.signed_document_verification?.document_sha256} embedded />
       </section> : <div
         className="rpp-document-viewport"
         ref={viewportRef}

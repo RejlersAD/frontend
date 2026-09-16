@@ -806,7 +806,7 @@ const OrderManagement = () => {
       const { data: current } = await apiClient.get(`/procurement/requisitions/${requisition.id}/`, { params: { _fresh: Date.now() } });
       if (request !== prPreviewRequest.current) return;
       if (String(current?.id) !== String(requisition.id)) throw new Error('The recommendation could not be loaded.');
-      const original = getOriginalRecommendationDocuments(current.attachments)[0];
+      const original = getOriginalRecommendationDocuments(current.attachments, current.price_remarks_data?.signed_document_verification?.document_sha256)[0];
       let blob;
       let filename;
       if (original) {
