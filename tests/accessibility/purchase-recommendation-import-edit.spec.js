@@ -110,6 +110,34 @@ test('editing an incomplete price explicitly saves confirmed VAT and preserves t
   assertIsolated(state);
 });
 
+test('an incomplete row retained by metadata prevents pricing edits from replacing the recorded header', async ({ page }) => {
+  const state = await open(page, {
+    vat_basis: 'exclusive', total_price: '105.00', net_total_excl_vat: '100.00',
+    price_remarks_data: { line_details: [{ note: 'Awaiting supplier quote' }, { vendor_id: '21' }] },
+    items: [
+      { description: '', quantity: '', unit_price: '', total: '' },
+      { description: 'Recorded service', quantity: '1', unit_price: '10.00', total: '10.00' },
+    ],
+  });
+  await step(page, 'Supplier & pricing');
+  await page.getByRole('spinbutton', { name: 'Line item 2 unit price', exact: true }).fill('20');
+  await expect(page.locator('.prf-sp-grand-total')).toContainText('105.00');
+  await page.clock.runFor(35000);
+  expect(saves(state)).toEqual([]);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click();
+  await expect.poll(() => saves(state).length).toBe(1);
+  expect(saves(state)[0].body).toMatchObject({
+    vat_basis: 'exclusive', entered_amount: 100, total_price: 105, net_total_excl_vat: 100,
+  });
+  expect(state.record.items).toHaveLength(2);
+  expect(state.record.items[0]).toMatchObject({ description: '', quantity: '', unit_price: '', total: '' });
+  expect(state.record.items[1]).toMatchObject({ unit_price: '20', total: '20.00' });
+  expect(state.record.price_remarks_data.line_details[0]).toMatchObject({ note: 'Awaiting supplier quote' });
+  expect(state.record.price_remarks_data.line_details[1]).toMatchObject({ vendor_id: '21' });
+  await expect(page.locator('.prf-save-state')).toHaveText('Draft saved');
+  assertIsolated(state);
+});
+
 test('clearing the final optional line keeps recorded header money instead of totaling an empty list', async ({ page }) => {
   const state = await open(page, {
     vat_basis: 'exclusive', total_price: '105.00', net_total_excl_vat: '100.00',

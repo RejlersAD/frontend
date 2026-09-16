@@ -1133,7 +1133,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
   useEffect(() => {
     if (!linePricingEditedRef.current || !formData.items?.length) return;
-    const savedItems = prepareRecommendationPayload({ items: formData.items }).items;
+    const savedItems = prepareRecommendationPayload({
+      items: formData.items,
+      price_remarks_data: { line_details: formData.price_remarks_data?.line_details },
+    }).items;
     if (!savedItems.length || !savedItems.every(hasCompleteRecommendationPricing) || recommendationLineError(savedItems)) return;
     const itemsTotal = sumProcurementMoney(savedItems.map(item => procurementLineNet(item.quantity, item.unit_price, recommendationLineDiscount(item))));
     const amounts = confirmedRecommendationVat(formData.vat_basis)
@@ -1145,7 +1148,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     ).toFixed(2);
     const hasLineBudgets = formData.items.some(item => item.budget !== '' && item.budget != null);
     setFormDataState(prev => ({ ...prev, _vatPricingChanged: true, _vatEnteredAmount: itemsTotal, net_total_excl_vat: amounts.netAmount.toFixed(2), total_price: amounts.totalAmount.toFixed(2), ...(hasLineBudgets ? { estimated_budget: itemsBudget } : {}) }));
-  }, [formData.items, formData.vat_basis, formData.price_remarks_data?.discount_amount]);
+  }, [formData.items, formData.vat_basis, formData.price_remarks_data?.discount_amount, formData.price_remarks_data?.line_details]);
 
   useEffect(() => {
     formDataRef.current = formData;
