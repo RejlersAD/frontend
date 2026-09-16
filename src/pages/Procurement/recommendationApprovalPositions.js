@@ -5,5 +5,9 @@ export const approvalPositionsFromWorkflow = (workflow = []) => Object.fromEntri
 )
 
 export const missingApprovalPosition = (workflow = []) => workflow.some(
-  stage => Number(stage?.level) === 1 && !stage.business_position,
+  stage => (Number(stage?.level) === 1 || stage?.role === 'Vice President') && !stage.business_position,
+)
+
+export const vicePresidentPositionFromWorkflow = (workflow = []) => (
+  workflow.find(stage => stage?.role === 'Vice President' && Number(stage.level) !== 1)?.business_position || ''
 )

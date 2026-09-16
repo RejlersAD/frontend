@@ -111,7 +111,7 @@ export async function recommendationFormHarness(page, options = {}) {
     if (path === '/api/v1/users/employees/my-signature/') return reply(route, { signature: '' })
     if (path === '/api/v1/procurement/orders/') return reply(route, { count: 0, next: null, results: [] })
     if (['/api/v1/procurement/vendors/', '/api/v1/procurement/projects/'].includes(path)) return reply(route, { count: 0, next: null, results: [] })
-    if (path === '/api/v1/rbac/users/organization-catalog/') return reply(route, { source: {}, departments: [], organizational_roles: [{ code: 'project_manager', label: 'Project Manager' }, { code: 'hr_manager', label: 'HR Manager' }] })
+    if (path === '/api/v1/rbac/users/organization-catalog/') return reply(route, { source: {}, departments: [], organizational_roles: [{ code: 'project_manager', label: 'Project Manager' }, { code: 'hr_manager', label: 'HR Manager' }, { code: 'cfo', label: 'CFO' }] })
     if (path === '/api/v1/procurement/requisitions/get_approvers/') {
       const role = url.searchParams.get('role')
       return reply(route, { users: role === 'procurement_head' ? [employees[2]] : role === 'vp_operations' ? [employees[3]] : employees })

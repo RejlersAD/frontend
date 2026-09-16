@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { approvalPositionsFromWorkflow, missingApprovalPosition } from '../src/pages/Procurement/recommendationApprovalPositions.js'
+import { approvalPositionsFromWorkflow, missingApprovalPosition, vicePresidentPositionFromWorkflow } from '../src/pages/Procurement/recommendationApprovalPositions.js'
 
 test('saved explicit positions remain verbatim and titles do not supply missing positions', () => {
   const workflow = [
@@ -12,4 +12,14 @@ test('saved explicit positions remain verbatim and titles do not supply missing 
   assert.equal(missingApprovalPosition(workflow), true)
   workflow[1].business_position = 'hr_manager'
   assert.equal(missingApprovalPosition(workflow), false)
+})
+
+test('a generic Vice President stage has no inferred operational position', () => {
+  const workflow = [{ level: 2, role: 'Vice President', job_title: 'VP Operations' }]
+  assert.equal(vicePresidentPositionFromWorkflow(workflow), '')
+  assert.equal(missingApprovalPosition(workflow), true)
+  workflow[0].business_position = 'cfo'
+  assert.equal(vicePresidentPositionFromWorkflow(workflow), 'cfo')
+  assert.equal(missingApprovalPosition(workflow), false)
+  assert.equal(missingApprovalPosition([{ level: 4, role: 'VP Delivery' }]), false)
 })

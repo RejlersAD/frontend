@@ -27,7 +27,7 @@ import { confirmedRecommendationVat, recommendationVat, recommendationLineDiscou
 import { calculateProcurementVat, procurementLineNet, sumProcurementMoney } from '../../utils/procurementVat';
 import './PurchaseRequisitionForm.css';
 import useOrganizationCatalog from '../../hooks/useOrganizationCatalog';
-import { approvalPositionsFromWorkflow, missingApprovalPosition } from './recommendationApprovalPositions';
+import { approvalPositionsFromWorkflow, missingApprovalPosition, vicePresidentPositionFromWorkflow } from './recommendationApprovalPositions';
 import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
 import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
 import {
@@ -303,6 +303,7 @@ const buildApprovalWorkflow = ({
   activeEmployees,
   levelOneLabels,
   levelOnePositions,
+  vicePresidentPosition,
   poApplicable,
   stageLabels,
   savedWorkflow = [],
@@ -356,6 +357,7 @@ const buildApprovalWorkflow = ({
       step: step++, level: requisitionType === 'general' ? 2 : 4,
       stage: requisitionType === 'general' ? 'Level 2 - Vice President' : 'Level 4 - VP Delivery',
       role: requisitionType === 'general' ? 'Vice President' : 'VP Delivery',
+      ...(requisitionType === 'general' ? { business_position: vicePresidentPosition || '' } : {}),
       approval_label: stageLabels?.vp_operations || 'L4 VOP/VP',
       user_id: selectedApprovers.vp_operations, user_name: employeeDisplayName(user, savedApproverName(savedWorkflow, selectedApprovers.vp_operations)),
       status: 'pending', approved_at: null,
@@ -461,6 +463,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const [approvalDefaults, setApprovalDefaults] = useState({ procurement: null, vp_operations: null, general_manager: null });
   const [levelOneLabels, setLevelOneLabels] = useState({});
   const [levelOnePositions, setLevelOnePositions] = useState({});
+  const [vicePresidentPosition, setVicePresidentPosition] = useState('');
   const { catalog, error: catalogError, reload: reloadCatalog } = useOrganizationCatalog({ enabled: isOpen && !preserveApprovalWorkflow });
   const [stageLabels, setStageLabels] = useState(() => stageLabelsFromWorkflow(
     editData?.approval_workflow_config || [],
@@ -540,6 +543,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     const savedApprovalLabels = editData?.price_remarks_data?.approval_table_labels || {};
     setSelectedApprovers(initialApprovers);
     setLevelOnePositions(approvalPositionsFromWorkflow(editData?.approval_workflow_config || []));
+    setVicePresidentPosition(vicePresidentPositionFromWorkflow(editData?.approval_workflow_config || []));
     setLevelOneLabels(Object.fromEntries(
       (editData?.approval_workflow_config || [])
         .filter(stage => Number(stage?.level) === 1 && (stage?.user_id || stage?.approver_id))
@@ -1244,6 +1248,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     levelOneApproverCount,
     levelOneLabels,
     levelOnePositions,
+    vicePresidentPosition,
     selectedApprovers,
     stageLabels,
   ]);
@@ -1401,7 +1406,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
     const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount
       && (selectedApprovers.level_one || []).every(userId => levelOnePositions[userId]);
-    if (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations
+    if ((formData.requisition_type === 'general' && !vicePresidentPosition) || !selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations
       || (formData.requisition_type === 'project' && !selectedApprovers.manager_projects)
       || (!formData.po_applicable && !selectedApprovers.general_manager)) {
       newErrors.approval_workflow_config = 'Complete the required approval levels before submitting.';
@@ -1425,6 +1430,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     }
     if (!approvedPdfFile && !preserveApprovalWorkflow && (selectedApprovers.level_one || []).some(userId => !levelOnePositions[userId])) {
       setErrors(previous => ({ ...previous, approval_workflow_config: 'Select the designated business position for every Level 1 approver.' }));
+      setActiveStep(4);
+      return;
+    }
+    if (!approvedPdfFile && !preserveApprovalWorkflow && formData.requisition_type === 'general' && selectedApprovers.vp_operations && !vicePresidentPosition) {
+      setErrors(previous => ({ ...previous, approval_workflow_config: 'Select the designated business position for the Vice President approval stage.' }));
       setActiveStep(4);
       return;
     }
@@ -1477,6 +1487,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         activeEmployees: projectManagers,
         levelOneLabels,
         levelOnePositions,
+        vicePresidentPosition,
         poApplicable: formData.po_applicable,
         stageLabels,
         savedWorkflow: editData?.approval_workflow_config || [],
@@ -1633,6 +1644,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     activeEmployees: projectManagers,
     levelOneLabels,
     levelOnePositions,
+    vicePresidentPosition,
     poApplicable: formData.po_applicable,
     stageLabels,
     savedWorkflow: editData?.approval_workflow_config || [],
@@ -2281,7 +2293,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   : `Internal workflow: Procurement Level 0 → Level 1 Department Manager → selectable Level 2 Vice President${formData.po_applicable ? '.' : ' → default Level 5 CEO.'}`}
               </p>
 
-              <p className="text-xs text-gray-500">Select the business position required for each Level 1 assignment. The assigned employee must hold that official position and have approval access.</p>
+              <p className="text-xs text-gray-500">Select the business position required for each Level 1 assignment and the general Vice President stage. The assigned employee must hold that official position and have approval access.</p>
               {catalogError && <p className="text-sm text-amber-700">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry positions</button></p>}
               <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
                 <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_100px] md:items-end">
@@ -2303,7 +2315,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
                     {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input aria-label="manager projects approval label" value={stageLabels.manager_projects} onChange={(event) => changeStageLabel('manager_projects', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Projects (MoP)</p><p className="mt-1 text-xs text-gray-500">Level 3 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Projects (MoP)" value={selectedApprovers.manager_projects || ''} employees={managerProjects} onChange={(value) => handleApproverChange('manager_projects', value)} required disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">Required</span></td></tr>}
 
-                    <tr><td className="p-3 align-top"><input aria-label="vp operations approval label" value={stageLabels.vp_operations} onChange={(event) => changeStageLabel('vp_operations', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">{formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'}</p><p className="mt-1 text-xs text-gray-500">{formData.requisition_type === 'general' ? 'Level 2 · Required' : 'Level 4 · Required'}</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Vice President / Delivery Approver" value={selectedApprovers.vp_operations || ''} employees={vpOperations} onChange={(value) => handleApproverChange('vp_operations', value)} required disabled={loadingApprovers || formData.requisition_type === 'project'} />{!loadingApprovers && !selectedApprovers.vp_operations && <p className="mt-2 text-xs font-medium text-amber-700">{formData.requisition_type === 'project' ? 'Mohamad El-Ghawanmeh could not be found as an active employee.' : 'Select the authorized Vice President approver.'}</p>}</td><td className="p-3 text-center align-middle"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${formData.requisition_type === 'project' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>{formData.requisition_type === 'project' ? 'Default' : 'Required'}</span></td></tr>
+                    <tr><td className="p-3 align-top"><input aria-label="vp operations approval label" value={stageLabels.vp_operations} onChange={(event) => changeStageLabel('vp_operations', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">{formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'}</p><p className="mt-1 text-xs text-gray-500">{formData.requisition_type === 'general' ? 'Level 2 · Required' : 'Level 4 · Required'}</p>{formData.requisition_type === 'general' && <label className="mt-2 block text-xs font-semibold text-gray-600">Designated business position<select aria-label="Business position for Vice President stage" value={vicePresidentPosition} onChange={event => { userEditedRef.current = true; setVicePresidentPosition(event.target.value); setErrors(previous => ({ ...previous, approval_workflow_config: null })); }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs"><option value="">Select position</option>{vicePresidentPosition && !(catalog?.organizational_roles || []).some(role => role.code === vicePresidentPosition) && <option value={vicePresidentPosition}>{vicePresidentPosition} (saved position)</option>}{(catalog?.organizational_roles || []).map(role => <option key={role.code} value={role.code}>{role.label}</option>)}</select></label>}</td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Vice President / Delivery Approver" value={selectedApprovers.vp_operations || ''} employees={vpOperations} onChange={(value) => handleApproverChange('vp_operations', value)} required disabled={loadingApprovers || formData.requisition_type === 'project'} />{!loadingApprovers && !selectedApprovers.vp_operations && <p className="mt-2 text-xs font-medium text-amber-700">{formData.requisition_type === 'project' ? 'Mohamad El-Ghawanmeh could not be found as an active employee.' : 'Select the authorized Vice President approver.'}</p>}</td><td className="p-3 text-center align-middle"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${formData.requisition_type === 'project' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>{formData.requisition_type === 'project' ? 'Default' : 'Required'}</span></td></tr>
 
                     {!formData.po_applicable && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input aria-label="general manager approval label" value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">CEO</p><p className="mt-1 text-xs text-gray-500">Level 5 · Required when PO is not applicable</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="CEO Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} required disabled />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">Jarmo Suominen could not be found as an active employee.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
                   </tbody>

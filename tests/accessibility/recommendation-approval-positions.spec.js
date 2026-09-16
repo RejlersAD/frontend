@@ -31,6 +31,23 @@ test('existing draft position is preserved without catalog normalization', async
   expect(state.pageErrors).toEqual([])
 })
 
+test('general Vice President stage requires an explicit saved business position', async ({ page }) => {
+  const workflow = formReference().approval_workflow_config.filter(stage => Number(stage.level) !== 3)
+    .map(stage => Number(stage.level) === 4 ? { ...stage, level: 2, role: 'Vice President', stage: 'Level 2 - Vice President', business_position: '' } : stage)
+  const state = await recommendationFormHarness(page, { edit: true, record: { requisition_type: 'general', approval_workflow_config: workflow } })
+  await page.getByRole('button', { name: 'Review & submit', exact: true }).click()
+  const position = page.getByRole('combobox', { name: 'Business position for Vice President stage' })
+  await expect(position).toHaveValue('')
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click()
+  await expect(page.getByText('Select the designated business position for the Vice President approval stage.', { exact: true })).toBeVisible()
+  expect(state.requests.filter(row => row.method === 'PATCH')).toEqual([])
+  await position.selectOption('cfo')
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click()
+  await expect.poll(() => state.record.approval_workflow_config.find(stage => stage.role === 'Vice President').business_position).toBe('cfo')
+  expect(state.unknown).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
+
 test('submitted workflow positions are immutable during unrelated edits', async ({ page }) => {
   const state = await recommendationFormHarness(page, { edit: true, record: { status: 'submitted' } })
   await page.getByRole('textbox', { name: 'Product / service', exact: true }).fill('Updated description')
