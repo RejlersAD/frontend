@@ -37,7 +37,12 @@
 .pop-issue-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 1px 4px; border-radius: 8px; background: #d53049; color: #fff; font-size: 9px; line-height: 14px; }
 .pop-document-viewport { flex: 1; min-height: 160px; padding: 12px 14px; overflow: auto; overscroll-behavior: contain; border: 1px solid #bac8d7; background: #c5d0dc; scrollbar-color: #94a8bd #cfdae4; scrollbar-width: thin; }
 .pop-document-viewport[hidden], .pop-validation[hidden], .pop-uploaded[hidden] { display: none; }
-.pop-uploaded { flex: 1; min-height: 160px; overflow: hidden; border: 1px solid #bac8d7; }
+.pop-uploaded { position: relative; flex: 1; min-height: 160px; overflow: hidden; border: 1px solid #bac8d7; }
+.pop-original-preview { padding: 0; }
+.pop-original-preview .pop-uploaded { border: 0; }
+.pop-original-preview .pop-tabs { padding: 4px 8px 0; }
+.pop-original-expand { position: absolute; z-index: 2; top: 8px; right: 84px; width: 32px; height: 32px; padding: 6px; background: #fff; }
+.pop-original-preview .upo-select { max-width: calc(100% - 116px); }
 .pop-paper-frame { position: relative; margin: 0 auto; }
 .pop-document { position: relative; width: 560px; transform-origin: top left; }
 .pop-document .po-template-pages { display: flex; flex-direction: column; gap: 18px; }
@@ -70,6 +75,7 @@
 
 @media (max-width: 1250px) {
   .pop-preview { padding: 10px; }
+  .pop-original-preview { padding: 0; }
   .pop-title-row h2 { font-size: 14px; }
   .pop-toolbar { gap: 5px; }
   .pop-tool { padding-right: 6px; padding-left: 6px; }
@@ -84,4 +90,7 @@
   .pop-preview { min-height: 400px; }
   .pop-toolbar { justify-content: flex-start; }
   .pop-page-number { margin-right: 4px; }
+  .pop-original-expand { right: 100px; width: 40px; height: 40px; }
+  .pop-original-preview .upo-select { max-width: calc(100% - 140px); }
 }
+.pop-original-preview:fullscreen { padding: 0; }

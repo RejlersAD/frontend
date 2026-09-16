@@ -74,9 +74,12 @@ test('actual App shell at three desktop widths serves current source and preserv
     measurements.push(await shellMeasurements(page))
     await page.screenshot({ path: `../artifacts/purchase-recommendations-real-shell-${width}.png` })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
-    const conversion = await details.getByRole('button', { name: 'Create purchase order', exact: true }).boundingBox()
+    const conversionAction = details.getByRole('button', { name: 'Create purchase order', exact: true })
+    await conversionAction.scrollIntoViewIfNeeded()
+    await expect(conversionAction).toBeVisible()
+    const conversion = await conversionAction.boundingBox()
     const main = await page.locator('main.main-content').boundingBox()
-    conversionChecks.push({ width, conversion, visibleMainBottom: main.y + main.height })
+    conversionChecks.push({ width, conversion, main, visibleMainBottom: main.y + main.height })
   }
   const accessibility = await new AxeBuilder({ page }).include('.purchase-recommendations-workspace').include('#application-content > footer').analyze()
   await page.locator('.purchase-recommendations-workspace').getByRole('link', { name: /^Purchase Orders/ }).click()
@@ -99,9 +102,12 @@ test('actual App shell at three desktop widths serves current source and preserv
   expect(state.unknown).toEqual([])
   expect(state.requests.filter(({ path, method }) => method !== 'GET' && !path.includes('/ai-champion/'))).toEqual([])
   expect(accessibility.violations.filter(value => ['critical', 'serious'].includes(value.impact))).toEqual([])
-  for (const { width, conversion, visibleMainBottom } of conversionChecks) {
+  for (const { width, conversion, main, visibleMainBottom } of conversionChecks) {
     expect(conversion, 'An eligible recommendation must expose its conversion action').not.toBeNull()
-    expect(conversion.y + conversion.height, `Conversion action must be above the shared footer at ${width}px`).toBeLessThanOrEqual(visibleMainBottom)
+    expect(conversion.y, `Scrolled conversion action must be below the shared header at ${width}px`).toBeGreaterThanOrEqual(main.y)
+    expect(conversion.y + conversion.height, `Scrolled conversion action must be above the shared footer at ${width}px`).toBeLessThanOrEqual(visibleMainBottom)
+    expect(conversion.x, `Scrolled conversion action must stay within the main content at ${width}px`).toBeGreaterThanOrEqual(main.x)
+    expect(conversion.x + conversion.width, `Scrolled conversion action must stay within the main content at ${width}px`).toBeLessThanOrEqual(main.x + main.width)
   }
 })
 
@@ -117,7 +123,7 @@ test('actual App mobile shell keeps the register and navigation usable without p
   const result = await new AxeBuilder({ page }).include('.purchase-recommendations-workspace').include('#application-content > footer').analyze()
   await page.locator('main.main-content').evaluate(element => { element.scrollTop = 0 })
   await page.screenshot({ path: '../artifacts/purchase-recommendations-real-shell-mobile.png' })
-  await page.getByRole('complementary', { name: 'Recommendation details' }).getByRole('heading', { name: 'Recommendation details', exact: true }).scrollIntoViewIfNeeded()
+  await page.getByRole('complementary', { name: 'Recommendation details' }).getByRole('heading', { level: 2 }).scrollIntoViewIfNeeded()
   await page.screenshot({ path: '../artifacts/purchase-recommendations-real-shell-mobile-details.png' })
   await writeFile('../artifacts/purchase-recommendations-real-shell-mobile-evidence.json', JSON.stringify({ measurements, violations: result.violations, requests: state.requests, unknown: state.unknown, pageErrors: state.pageErrors }, null, 2))
   expect(state.pageErrors).toEqual([])

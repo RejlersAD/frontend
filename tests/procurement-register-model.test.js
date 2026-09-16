@@ -180,6 +180,33 @@ test('PR history preserves recorded rejection actor and timestamp', () => {
   assert.equal(record.hasException, true);
 });
 
+test('PR history shows the recorded approval actor when different from the assigned reviewer', () => {
+  const record = recommendation({ status: 'approved', approval_workflow_config: [{
+    stage: 'Commercial', user_id: 43, user_name: 'Assigned Reviewer', status: 'approved',
+    approved_by_name: 'Recorded Decision Maker', approved_at: '2026-09-14T10:00:00Z',
+  }] });
+  assert.deepEqual(record.approvalHistory, [{
+    label: 'Commercial', assignee: 'Recorded Decision Maker', status: 'approved', date: '2026-09-14T10:00:00Z',
+  }]);
+});
+
+test('PR history keeps signed source-document names without requiring a linked user account', () => {
+  const record = recommendation({ status: 'approved', approval_workflow_config: [{
+    role: 'PM', user_id: null, user_name: 'Original PDF Signer', status: 'approved',
+    approved_at: '2026-07-01T12:00:00Z', source: 'signed_purchase_requisition_pdf', external: true,
+  }] });
+  assert.deepEqual(record.approvalHistory, [{
+    label: 'PM', assignee: 'Original PDF Signer', status: 'approved', date: '2026-07-01T12:00:00Z',
+  }]);
+});
+
+test('PR history never substitutes an account identifier for a missing approver name', () => {
+  const record = recommendation({ status: 'approved', approval_workflow_config: [{
+    role: 'PM', user_id: 43, status: 'approved', approved_at: '2026-07-01T12:00:00Z',
+  }] });
+  assert.equal(record.approvalHistory[0].assignee, 'Not assigned');
+});
+
 test('30+ day draft age uses creation date without an invented inactivity SLA', () => {
   const old = recommendation({ id: 'old', created_at: '2026-08-16T09:00:00Z', updated_at: '2026-09-15T10:00:00Z' });
   const young = recommendation({ id: 'young', created_at: '2026-08-17T09:00:00Z' });

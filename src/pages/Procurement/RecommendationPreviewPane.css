@@ -38,6 +38,12 @@
 .rpp-issue-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 1px 4px; border-radius: 8px; background: #d53049; color: #fff; font-size: 9px; line-height: 14px; }
 .rpp-document-viewport { flex: 1; min-height: 200px; padding: 12px 18px 14px; overflow: auto; overscroll-behavior: contain; border: 1px solid #acbac9; border-radius: 1px; background: #bdc9d5; scrollbar-color: #94a8bd #cfdae4; scrollbar-width: thin; }
 .rpp-document-viewport[hidden], .rpp-validation[hidden] { display: none; }
+.rpp-original { flex: 1; min-height: 200px; overflow: auto; border: 1px solid #acbac9; background: #fff; }
+.rpp-original[hidden] { display: none; }
+.rpp-preview.has-original { padding: 0; }
+.rpp-preview.has-original .rpp-heading { padding: 8px 10px; }
+.rpp-preview.has-original .rpp-original { min-height: 0; overflow: hidden; border: 0; }
+.rpp-preview.has-original .rpp-validation-bar { margin: 0; }
 .rpp-paper-frame { position: relative; margin: 0 auto; background: #fff; box-shadow: 0 0 0 4px #eef1f4, 0 0 0 5px #94a0b0, 0 2px 8px #53667b33; }
 .rpp-document { width: 740px; transform-origin: top left; background: #fff; }
 .rpp-document > div { width: 100%; }

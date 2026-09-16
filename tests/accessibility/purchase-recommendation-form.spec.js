@@ -10,6 +10,29 @@ const workspace = page => page.locator('.recommendation-form-workspace')
 const steps = page => page.getByRole('navigation', { name: 'Recommendation steps' })
 const editor = page => page.getByRole('region', { name: 'Purchase recommendation form', exact: true })
 const preview = page => page.getByRole('complementary', { name: 'Live purchase recommendation preview', exact: true })
+const fixturePdf = label => {
+  const stream = `BT /F1 14 Tf 40 750 Td (${label}) Tj ET`
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>', `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
+  let pdf = '%PDF-1.4\n'
+  const offsets = []
+  objects.forEach((object, index) => { offsets.push(pdf.length); pdf += `${index + 1} 0 obj\n${object}\nendobj\n` })
+  const xref = pdf.length
+  return `${pdf}xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map(value => `${String(value).padStart(10, '0')} 00000 n `).join('\n')}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
+}
+const assertCompactOriginal = async panel => {
+  const frame = panel.locator('iframe')
+  await expect(frame).toHaveAttribute('src', /^blob:/)
+  await expect(panel.getByRole('heading', { name: 'Original uploaded PR', exact: true })).toHaveCount(0)
+  await expect(panel.locator('.prr-source-filename')).toHaveCount(0)
+  await expect(panel).not.toContainText('If the PDF does not display here')
+  const area = await panel.boundingBox()
+  const document = await frame.boundingBox()
+  expect(Math.abs(document.x - area.x)).toBeLessThanOrEqual(2)
+  expect(Math.abs(document.width - area.width)).toBeLessThanOrEqual(2)
+  expect(Math.abs(document.y + document.height - area.y - area.height)).toBeLessThanOrEqual(2)
+  expect(document.y - area.y).toBeLessThanOrEqual(52)
+  expect(document.height).toBeGreaterThanOrEqual(area.height - 52)
+}
 const saves = state => state.requests.filter(({ method, path }) => ['POST', 'PATCH'].includes(method) && /^\/api\/v1\/procurement\/requisitions\/(?:[^/]+\/)?$/.test(path))
 const open = async (page, options = {}) => {
   const state = await recommendationFormHarness(page, options)
@@ -186,6 +209,95 @@ test('preview zoom and PDF export use the current document without saving the re
   expect(contents.subarray(0, 5).toString()).toBe('%PDF-')
   expect(contents.length).toBeGreaterThan(1000)
   expect(saves(state)).toEqual([])
+  verifyIsolation(state)
+})
+
+test('editing an uploaded PR keeps the original in Document while field edits and Validation remain usable', async ({ page }) => {
+  const sourcePath = '/__form-pr-original__/signed-recommendation.pdf'
+  const revisedPath = '/__form-pr-original__/revised-recommendation.pdf'
+  const contentUrl = `/api/v1/procurement/requisitions/${formRecordId}/uploaded-documents/1/content/`
+  const originalPdf = fixturePdf('ORIGINAL signed PR - synthetic test')
+  const revisionPdf = fixturePdf('REVISED signed PR - synthetic test')
+  const sourceRequests = []
+  await page.route('**/__form-pr-original__/**', async route => {
+    sourceRequests.push(new URL(route.request().url()).pathname)
+    await route.fulfill({ contentType: 'application/pdf', headers: { 'x-frame-options': 'DENY' }, body: revisionPdf })
+  })
+  const state = await open(page, { edit: true, prepare: state => { state.originalContent[contentUrl] = { body: originalPdf, headers: { 'x-frame-options': 'DENY' } } }, record: { attachments: [
+    { type: 'quotation', filename: 'supplier-quotation.pdf', url: '/__form-pr-original__/quotation.pdf' },
+    { type: 'signed_purchase_requisition_pdf', filename: 'signed-recommendation.pdf', url: sourcePath, content_url: contentUrl },
+    { type: 'signed_purchase_requisition_pdf', filename: 'revised-recommendation.pdf', url: revisedPath },
+  ] } })
+  const pane = preview(page)
+  const original = pane.getByRole('region', { name: 'Original uploaded PR', exact: true })
+  await expect(pane.getByRole('tab')).toHaveCount(2)
+  await expect(pane.getByRole('tab', { name: 'Document', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(original.locator('iframe')).toHaveAttribute('src', /^blob:/)
+  const originalBlobUrl = await original.locator('iframe').getAttribute('src')
+  expect(await page.evaluate(async url => (await fetch(url.split('#')[0])).text(), originalBlobUrl)).toBe(originalPdf)
+  await expect(original.getByRole('link', { name: 'Open original PDF', exact: true })).toHaveAttribute('href', /^blob:/)
+  expect(state.requests.filter(({ path }) => path === contentUrl).length).toBeGreaterThan(0)
+  expect(sourceRequests).toEqual([])
+  await assertCompactOriginal(pane.getByRole('tabpanel', { name: 'Document', exact: true }))
+  await pane.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: '../artifacts/original-document-preview/form-pr-compact.png' })
+  await expect(pane.locator('.rpp-document, .rpp-document-viewport, .rpp-current')).toHaveCount(0)
+  await expect(pane.getByRole('button', { name: 'Download PDF', exact: true })).toHaveCount(0)
+  await expect(pane.getByRole('button', { name: 'Zoom in preview', exact: true })).toHaveCount(0)
+  await expect(pane).not.toContainText('Updates as fields are completed')
+  await expect(pane).not.toContainText('supplier-quotation.pdf')
+  const sourceChoices = original.getByRole('combobox', { name: 'Uploaded PR file', exact: true })
+  await sourceChoices.selectOption({ label: 'revised-recommendation.pdf' })
+  await expect(original.locator('iframe')).toHaveAttribute('src', /^blob:/)
+  await expect(original.locator('iframe')).not.toHaveAttribute('src', originalBlobUrl)
+  const revisionBlobUrl = await original.locator('iframe').getAttribute('src')
+  expect(await page.evaluate(async url => (await fetch(url.split('#')[0])).text(), revisionBlobUrl)).toBe(revisionPdf)
+
+  await gotoStep(page, 'Request')
+  await page.getByRole('textbox', { name: 'PR number', exact: true }).fill('RAD-PRJ-PR-9002_2026')
+  await page.getByRole('textbox', { name: 'Product / service', exact: true }).fill('Edited commercial description')
+  await gotoStep(page, 'Supplier & pricing')
+  await page.getByRole('spinbutton', { name: 'Line item 1 quantity', exact: true }).fill('2')
+  await expect(sourceChoices.locator('option:checked')).toHaveText('revised-recommendation.pdf')
+  await expect(original.locator('iframe')).toHaveAttribute('src', revisionBlobUrl)
+  await expect(pane.locator('.rpp-document')).toHaveCount(0)
+  await pane.getByRole('tab', { name: /^Validation/ }).click()
+  await expect(pane.getByRole('tabpanel', { name: /^Validation/ })).toContainText('Management Approval must be Yes')
+  await expect(pane.getByRole('tabpanel', { name: 'Document', exact: true })).toBeHidden()
+  await pane.getByRole('tab', { name: /^Validation/ }).focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(pane.getByRole('tabpanel', { name: 'Document', exact: true })).toBeVisible()
+  await expect(original.locator('iframe')).toHaveAttribute('src', revisionBlobUrl)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await original.scrollIntoViewIfNeeded()
+  await expect(original.locator('iframe')).toBeVisible()
+  await assertCompactOriginal(pane.getByRole('tabpanel', { name: 'Document', exact: true }))
+  await page.screenshot({ path: '../artifacts/original-document-preview/form-pr-compact-mobile.png' })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  expect(state.submissions).toEqual([])
+  expect(sourceRequests.every(path => [sourcePath, revisedPath].includes(path))).toBeTruthy()
+  expect(state.requests.filter(({ path }) => path.includes('export_pdf'))).toEqual([])
+  verifyIsolation(state)
+})
+
+test('an uploaded PR with an unavailable link never falls back to a generated form preview', async ({ page }) => {
+  const state = await open(page, { edit: true, record: { attachments: [
+    { document_type: 'signed_purchase_requisition_pdf', filename: 'original-with-missing-link.pdf', url: '', s3_url: '' },
+  ] } })
+  const pane = preview(page)
+  await expect(pane.locator('.prr-source-filename')).toHaveCount(0)
+  await expect(pane).toContainText('The original file link is unavailable.')
+  await expect(pane.locator('iframe, .rpp-document, .rpp-document-viewport')).toHaveCount(0)
+  await expect(pane.getByRole('button', { name: 'Download PDF', exact: true })).toHaveCount(0)
+  await gotoStep(page, 'Request')
+  await page.getByRole('textbox', { name: 'Product / service', exact: true }).fill('Changed field with unavailable source')
+  await pane.getByRole('tab', { name: /^Validation/ }).click()
+  await expect(pane.getByRole('tabpanel', { name: /^Validation/ })).toBeVisible()
+  await pane.getByRole('tab', { name: 'Document', exact: true }).click()
+  await expect(pane).toContainText('The original file link is unavailable.')
+  await expect(pane.locator('iframe, .rpp-document')).toHaveCount(0)
+  expect(state.submissions).toEqual([])
+  expect(state.requests.filter(({ path }) => path.includes('export_pdf'))).toEqual([])
   verifyIsolation(state)
 })
 

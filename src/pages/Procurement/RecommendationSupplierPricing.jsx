@@ -32,6 +32,7 @@ export default function RecommendationSupplierPricing({
   const preferred = shortlist.find((vendor) => vendorId(vendor) === String(formData.vendor || ''));
   const masterVendor = vendors.find((vendor) => String(vendor.id) === String(formData.vendor || ''));
   const selectedVendor = preferred || masterVendor;
+  const recordedSupplier = !formData.vendor && String(formData.supplier_name || '').trim();
   const selectedDetails = { ...preferred, ...masterVendor };
   const metadata = formData.price_remarks_data || {};
   const selectionType = metadata.selection_type || (shortlist.length === 1 ? 'single_source' : 'competitive_shortlist');
@@ -83,7 +84,7 @@ export default function RecommendationSupplierPricing({
             </div>}
           </div>
           <div className="prf-sp-shortlist-rows">
-            {shortlist.length === 0 && <div className="prf-sp-empty">Search and add suppliers to compare their offers.</div>}
+            {shortlist.length === 0 && <div className="prf-sp-empty">{recordedSupplier ? <><strong>{recordedSupplier}</strong><p>Recorded on the PR. A vendor master link has not been selected.</p></> : 'Search and add suppliers to compare their offers.'}</div>}
             {shortlist.map((vendor) => {
               const id = vendorId(vendor);
               const master = vendors.find((candidate) => String(candidate.id) === id);
@@ -102,7 +103,7 @@ export default function RecommendationSupplierPricing({
         <div className="prf-sp-subcard prf-sp-selected-supplier">
           <div className="prf-sp-card-heading"><h3>Selected supplier</h3>{selectedVendor && <button type="button" className="prf-sp-link" onClick={() => setShowVendorDetails(!showVendorDetails)} aria-expanded={showVendorDetails}>View supplier details <ArrowTopRightOnSquareIcon aria-hidden="true" /></button>}</div>
           <strong className="prf-sp-supplier-name">{selectedVendor?.name || formData.supplier_name || 'Choose a preferred supplier'}</strong>
-          <span className="prf-sp-muted">{selectedDetails.vendor_code || formData.supplier_business_id || 'Supplier details appear after selection'}</span>
+          <span className="prf-sp-muted">{selectedDetails.vendor_code || formData.supplier_business_id || (recordedSupplier ? 'Supplier recorded on the PR' : 'Supplier details appear after selection')}</span>
           {selectedVendor && <div className="prf-sp-supplier-checks">
             <SupplierCheck available={icv !== null && !icvExpired}>{icv === null ? 'ICV not recorded' : icvExpired ? 'ICV expired' : `ICV ${icv}% available`}</SupplierCheck>
             <SupplierCheck available={active}>{active ? 'Vendor active' : selectedDetails.status ? `Vendor ${selectedDetails.status}` : 'Vendor status not provided'}</SupplierCheck>
@@ -113,7 +114,7 @@ export default function RecommendationSupplierPricing({
             <div><dt>Email</dt><dd>{selectedDetails.email || selectedDetails.contact_email || 'Not provided'}</dd></div>
             <div><dt>ICV expiry</dt><dd>{selectedDetails.icv_expiry_date || 'Not provided'}</dd></div>
           </dl>}
-          <label className="prf-sp-field">Preferred supplier <span className="prf-sp-required">*</span><select name="vendor" value={formData.vendor || ''} onChange={(event) => onPreferredVendor(event.target.value)} aria-invalid={!!errors.vendor}><option value="">Select from shortlisted suppliers</option>{shortlist.map((vendor) => <option key={vendorId(vendor)} value={vendorId(vendor)}>{vendor.name}</option>)}</select></label>
+          <label className="prf-sp-field">Preferred supplier <span className="prf-sp-required">*</span><select name="vendor" value={formData.vendor || ''} onChange={(event) => onPreferredVendor(event.target.value)} aria-invalid={!!errors.vendor}><option value="">{recordedSupplier || 'Select from shortlisted suppliers'}</option>{shortlist.map((vendor) => <option key={vendorId(vendor)} value={vendorId(vendor)}>{vendor.name}</option>)}</select></label>
           <FieldError value={errors.vendor} />
           <label className="prf-sp-field">Reason for supplier selection <span className="prf-sp-required">*</span><textarea name="vendor_selection_reason" rows={2} value={formData.vendor_selection_reason || ''} onChange={(event) => updateField('vendor_selection_reason', event.target.value)} placeholder="Explain the supplier's value, experience and commercial terms..." aria-invalid={!!errors.vendor_selection_reason} /></label>
           <span className="prf-sp-character-count">{(formData.vendor_selection_reason || '').length} characters</span>
@@ -147,7 +148,7 @@ export default function RecommendationSupplierPricing({
               <td><input type="number" min="0" step="0.01" aria-label={`Line item ${index + 1} unit price`} value={item.unit_price ?? ''} placeholder="0.00" onChange={(event) => onUpdateLineItem(index, 'unit_price', event.target.value)} /></td>
               <td><select aria-label={`Line item ${index + 1} VAT`} value={item.vat_rate ?? ''} onChange={(event) => onUpdateLineItem(index, 'vat_rate', event.target.value)}><option value="">Not set</option>{[0, 5, 15, ...(![0, 5, 15].includes(rate) && rate !== null ? [rate] : [])].map((value) => <option key={value} value={value}>{value}%</option>)}</select></td>
               <td className="prf-sp-line-total" title={rate === null ? 'VAT is not set for this line' : 'Line total including entered VAT'}>{money(lineTotal)}</td>
-              <td><select aria-label={`Line item ${index + 1} vendor`} value={item.vendor_id || item.vendor || ''} onChange={(event) => onUpdateLineItem(index, 'vendor_id', event.target.value)}><option value="">{selectedVendor?.name || 'Preferred supplier'}</option>{shortlist.map((vendor) => <option key={vendorId(vendor)} value={vendorId(vendor)}>{vendor.name}</option>)}</select></td>
+              <td><select aria-label={`Line item ${index + 1} vendor`} value={item.vendor_id || item.vendor || ''} onChange={(event) => onUpdateLineItem(index, 'vendor_id', event.target.value)}><option value="">{selectedVendor?.name || recordedSupplier || 'Preferred supplier'}</option>{shortlist.map((vendor) => <option key={vendorId(vendor)} value={vendorId(vendor)}>{vendor.name}</option>)}</select></td>
               <td><button type="button" className="prf-sp-icon-button" onClick={() => onRemoveLineItem(index)} aria-label={`Remove line item ${index + 1}`}><TrashIcon /></button></td>
             </tr>;
           })}

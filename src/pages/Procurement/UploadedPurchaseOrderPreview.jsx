@@ -2,41 +2,25 @@ import React, { useEffect, useId, useState } from 'react';
 import PropTypes from 'prop-types';
 import { ArrowDownTrayIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import './UploadedPurchaseOrderPreview.css';
 
-export default function UploadedPurchaseOrderPreview({ orderId, active = true }) {
+export default function UploadedPurchaseOrderPreview({ orderId, documentId, filename: documentFilename, active = true, sourceState }) {
   const selectId = useId();
-  const [retry, setRetry] = useState(0);
   const [fileRetry, setFileRetry] = useState(0);
-  const [selectedId, setSelectedId] = useState('');
-  const [listing, setListing] = useState({ orderId: null, documents: [], loading: false, error: '' });
+  const [selection, setSelection] = useState({ orderId: '', documentId: '' });
+  const ownSources = useUploadedPurchaseOrderSources(orderId, active && !sourceState && !documentId);
+  const pendingSource = documentId ? { documents: [{ id: documentId, filename: documentFilename }], loading: false, error: '', retry: () => {} } : null;
+  const { documents, loading: listPending, error: listError, retry } = pendingSource || sourceState || ownSources;
   const [content, setContent] = useState({ key: '', url: '', loading: false, error: '' });
-  const documents = listing.orderId === orderId ? listing.documents : [];
-  const selected = documents.find(item => String(item.id) === selectedId) || documents[0];
+  const selected = documents.find(item => String(orderId) === selection.orderId && String(item.id) === selection.documentId) || documents[0];
   const candidatePath = String(selected?.content_url || '').replace(/^\/api\/v1(?=\/)/, '');
-  const contentPath = candidatePath.startsWith(`/procurement/orders/${orderId}/uploaded-documents/`) ? candidatePath : '';
+  const contentPath = documentId ? `/procurement/po-documents/${documentId}/content/` : candidatePath.startsWith(`/procurement/orders/${orderId}/uploaded-documents/`) ? candidatePath : '';
   const contentKey = `${orderId || ''}:${selected?.id || ''}:${contentPath}`;
   const currentContent = content.key === contentKey ? content : { url: '', loading: Boolean(contentPath), error: '' };
 
   useEffect(() => {
-    if (!active || !orderId) return undefined;
-    const controller = new AbortController();
-    setListing({ orderId, documents: [], loading: true, error: '' });
-    setSelectedId('');
-    apiClient.get(`/procurement/orders/${orderId}/uploaded-documents/`, {
-      signal: controller.signal, timeout: 30000, suppressErrorToast: true,
-    }).then(response => {
-      const rows = Array.isArray(response.data) ? response.data : response.data?.results;
-      if (!Array.isArray(rows)) throw new Error('Invalid document list');
-      if (!controller.signal.aborted) setListing({ orderId, documents: rows, loading: false, error: '' });
-    }).catch(() => {
-      if (!controller.signal.aborted) setListing({ orderId, documents: [], loading: false, error: 'Uploaded PO documents could not be loaded.' });
-    });
-    return () => controller.abort();
-  }, [orderId, active, retry]);
-
-  useEffect(() => {
-    if (!active || !orderId || !contentPath) return undefined;
+    if (!active || !(orderId || documentId) || !contentPath) return undefined;
     const controller = new AbortController();
     let objectUrl;
     setContent({ key: contentKey, url: '', loading: true, error: '' });
@@ -62,30 +46,27 @@ export default function UploadedPurchaseOrderPreview({ orderId, active = true })
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [orderId, active, contentKey, contentPath, fileRetry]);
+  }, [orderId, documentId, active, contentKey, contentPath, fileRetry]);
 
   if (!active) return null;
-  const listPending = Boolean(orderId && (listing.orderId !== orderId || listing.loading));
-  const listError = listing.orderId === orderId && listing.error;
   const filename = selected?.filename || 'Uploaded Purchase Order.pdf';
 
   return (
     <div className="upo-preview" aria-label="Uploaded purchase order preview">
       {listPending ? <div className="upo-state" role="status"><ArrowPathIcon className="upo-spinner" />Loading uploaded PO documents…</div>
-        : listError ? <div className="upo-state" role="alert"><DocumentTextIcon /><p>{listError}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Retry uploaded PO</button></div>
+        : listError ? <div className="upo-state" role="alert"><DocumentTextIcon /><p>{listError}</p><button type="button" onClick={retry}>Retry uploaded PO</button></div>
           : !selected ? <div className="upo-state"><DocumentTextIcon /><p>No uploaded PO PDF is linked to this order.</p></div>
             : <>
               <div className="upo-toolbar">
-                {documents.length > 1 ? <div className="upo-select"><label htmlFor={selectId}>Uploaded PO document</label><select id={selectId} value={String(selected.id)} onChange={event => setSelectedId(event.target.value)}>{documents.map(item => <option key={item.id} value={String(item.id)}>{item.filename || 'Uploaded Purchase Order.pdf'}</option>)}</select></div>
-                  : <span className="upo-filename" title={filename}>{filename}</span>}
+                {documents.length > 1 && <div className="upo-select"><label htmlFor={selectId}>Uploaded PO document</label><select id={selectId} value={String(selected.id)} onChange={event => setSelection({ orderId: String(orderId), documentId: event.target.value })}>{documents.map(item => <option key={item.id} value={String(item.id)}>{item.filename || 'Uploaded Purchase Order.pdf'}</option>)}</select></div>}
                 {currentContent.url && <div className="upo-actions">
-                  <a href={currentContent.url} download={filename}><ArrowDownTrayIcon />Download uploaded PO</a>
-                  <a href={currentContent.url} target="_blank" rel="noopener noreferrer"><ArrowTopRightOnSquareIcon />Open uploaded PO</a>
+                  <a href={currentContent.url} download={filename} aria-label="Download uploaded PO" title="Download uploaded PO"><ArrowDownTrayIcon aria-hidden="true" /></a>
+                  <a href={currentContent.url} target="_blank" rel="noopener noreferrer" aria-label="Open uploaded PO" title="Open uploaded PO"><ArrowTopRightOnSquareIcon aria-hidden="true" /></a>
                 </div>}
               </div>
               {currentContent.loading ? <div className="upo-state" role="status"><ArrowPathIcon className="upo-spinner" />Loading uploaded PO PDF…</div>
                 : currentContent.error ? <div className="upo-state" role="alert"><DocumentTextIcon /><p>{currentContent.error}</p><button type="button" onClick={() => setFileRetry(value => value + 1)}>Retry uploaded PO</button></div>
-                  : currentContent.url ? <iframe title={`Uploaded PO PDF: ${filename}`} src={`${currentContent.url}#page=1&view=FitH&toolbar=1&navpanes=0`} />
+                  : currentContent.url ? <iframe title={`Uploaded PO PDF: ${filename}`} src={`${currentContent.url}#page=1&view=FitH&toolbar=0&navpanes=0`} />
                     : <div className="upo-state" role="alert"><p>The uploaded PO PDF is unavailable.</p></div>}
             </>}
     </div>
@@ -94,5 +75,13 @@ export default function UploadedPurchaseOrderPreview({ orderId, active = true })
 
 UploadedPurchaseOrderPreview.propTypes = {
   orderId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  documentId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  filename: PropTypes.string,
   active: PropTypes.bool,
+  sourceState: PropTypes.shape({
+    documents: PropTypes.array.isRequired,
+    loading: PropTypes.bool.isRequired,
+    error: PropTypes.string,
+    retry: PropTypes.func.isRequired,
+  }),
 };

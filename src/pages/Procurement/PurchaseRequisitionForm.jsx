@@ -20,7 +20,9 @@ import apiClient from '../../services/api.service';
 import { uploadSignedRequisitionPdf, validateSignedRequisitionPdf } from './PurchaseRequisitionPdfImport';
 import RecommendationPreviewPane from './RecommendationPreviewPane';
 import RecommendationSupplierPricing from './RecommendationSupplierPricing';
+import RecordedApprovalHistory from './RecordedApprovalHistory';
 import { prepareRecommendationPayload } from './recommendationFormPayload';
+import { hydrateRecommendationReferences, preserveRecordedApprovalWorkflow, recommendationLineError } from './recommendationFormState';
 import './PurchaseRequisitionForm.css';
 import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
 import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
@@ -47,18 +49,16 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
 
 const normalizeApiErrors = (payload) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
-  return Object.fromEntries(Object.entries(payload).map(([field, value]) => {
-    if (Array.isArray(value)) return [field, value.map(String).join(' ')];
-    if (value && typeof value === 'object') {
-      return [field, Object.values(value).flat(Infinity).map(String).join(' ')];
-    }
-    return [field, String(value)];
-  }));
+  const message = value => Array.isArray(value) ? value.map(message).join(' ')
+    : value && typeof value === 'object' ? Object.entries(value).map(([key, detail]) => `${key}: ${message(detail)}`).join(' ')
+      : String(value);
+  return Object.fromEntries(Object.entries(payload).map(([field, value]) => [field, message(value)]));
 };
 
 const firstApiError = (errors) => {
   const labels = {
     po_number_reference: 'PO Number',
+    items: 'Line items',
     approval_workflow_config: 'Approval Workflow',
     management_approval_evidence_file: 'Evidence of Approval',
     non_field_errors: 'Submission',
@@ -183,9 +183,11 @@ ActiveEmployeePicker.propTypes = {
   hideLabel: PropTypes.bool,
 };
 
-const buildInitialFormData = (editData) => ({
+const buildInitialFormData = (editData) => {
+  const references = hydrateRecommendationReferences(editData || {});
+  return ({
   pr_number: editData?.pr_number || '',
-  issued_date: editData?.issued_date || new Date().toISOString().split('T')[0],
+  issued_date: editData ? editData.issued_date || '' : new Date().toISOString().split('T')[0],
   supplier_name: editData?.supplier_name || '',
   supplier_business_id: editData?.supplier_business_id || '',
   product_service: editData?.product_service || '',
@@ -193,34 +195,35 @@ const buildInitialFormData = (editData) => ({
   description_reason: editData?.description_reason || '',
   preferred_supplier_if_any: editData?.preferred_supplier_if_any || '',
   price_description: editData?.price_description || editData?.description_reason || '',
-  total_price: editData?.total_price || '',
+  total_price: editData?.total_price ?? '',
   currency: editData?.currency || 'AED',
   estimated_budget: editData?.estimated_budget ?? '',
-  price_remarks: editData?.price_remarks || editData?.price_remarks_data?.negotiation_remarks || '',
-  net_total_excl_vat: editData?.net_total_excl_vat || '',
+  price_remarks: editData?.price_remarks ?? editData?.price_remarks_data?.negotiation_remarks ?? '',
+  net_total_excl_vat: editData?.net_total_excl_vat ?? '',
   po_number_reference: editData?.po_number_reference || '',
-  purchase_recommendation: editData?.purchase_recommendation || editData?.special_notes || '',
+  purchase_recommendation: editData?.purchase_recommendation ?? editData?.special_notes ?? '',
   vendor: editData?.vendor || null,
   vendor_selection_reason: editData?.vendor_selection_reason || '',
-  selected_vendors: Array.isArray(editData?.selected_vendors) ? editData.selected_vendors : [],
+  selected_vendors: references.selected_vendors,
   single_source_justification: editData?.single_source_justification || '',
-  project_details: Array.isArray(editData?.project_details) ? editData.project_details : [],
+  project_details: references.project_details,
   approval_workflow_config: editData?.approval_workflow_config || [],
   price_remarks_data: editData?.price_remarks_data || {},
-  items: Array.isArray(editData?.items) ? editData.items.map((item, index) => ({
+  items: references.items.map((item, index) => ({
     ...item,
     ...Object.fromEntries(['vat_rate', 'vendor_id', 'budget'].flatMap(key => {
       const value = editData?.price_remarks_data?.line_details?.[index]?.[key];
       return value === undefined ? [] : [[key, value]];
     })),
-  })) : [],
+  })),
   requisition_type: editData?.requisition_type || 'project',
   priority: editData?.priority || 'normal',
   po_applicable: Boolean(editData?.po_applicable),
   management_approval: editData?.management_approval ?? null,
   management_approval_remarks: editData?.management_approval_remarks || '',
   management_approval_evidence: Array.isArray(editData?.management_approval_evidence) ? editData.management_approval_evidence : [],
-});
+  });
+};
 
 const selectedApproversFromWorkflow = (workflow = []) => {
   const selection = {
@@ -388,7 +391,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const [uploadProgress, setUploadProgress] = useState(0);
 
   // Form state - all 23 fields from PDF template
-  const [formData, setFormData] = useState(() => buildInitialFormData(editData));
+  const [formData, setFormDataState] = useState(() => buildInitialFormData(editData));
+  const [savedApprovalRecord, setSavedApprovalRecord] = useState(null);
+  const [approvalRecordEditing, setApprovalRecordEditing] = useState(false);
+  const approvalRecord = savedApprovalRecord?.id === editData?.id ? savedApprovalRecord : editData;
+  const userEditedRef = useRef(false);
+  const linePricingEditedRef = useRef(false);
+  const preserveApprovalWorkflow = preserveRecordedApprovalWorkflow(approvalRecord);
+  const setFormData = useCallback(update => {
+    userEditedRef.current = true;
+    setFormDataState(update);
+  }, []);
 
   const [files, setFiles] = useState([]);
   const [approvedPdfFile, setApprovedPdfFile] = useState(null);
@@ -412,6 +425,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const approvalWorkflowRef = useRef(editData?.approval_workflow_config || []);
   const submissionInFlightRef = useRef(false);
   const lastAutoSaveFingerprintRef = useRef('');
+  const failedAutoSaveFingerprintRef = useRef('');
   const priceDescriptionEditedRef = useRef(Boolean(editData?.price_description));
   const lastTotalPriceRef = useRef(editData?.total_price || '');
   const workspaceRef = useRef(null);
@@ -500,7 +514,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     if (!isOpen) return;
 
     const initialData = buildInitialFormData(editData);
-    setFormData(initialData);
+    setSavedApprovalRecord(null);
+    setApprovalRecordEditing(false);
+    setFormDataState(initialData);
+    userEditedRef.current = false;
+    linePricingEditedRef.current = false;
     priceDescriptionEditedRef.current = Boolean(editData?.price_description);
     lastTotalPriceRef.current = initialData.total_price;
     formDataRef.current = initialData;
@@ -509,6 +527,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     autoSaveInFlightRef.current = null;
     submissionInFlightRef.current = false;
     lastAutoSaveFingerprintRef.current = JSON.stringify(initialData);
+    failedAutoSaveFingerprintRef.current = '';
     const initialApprovers = selectedApproversFromWorkflow(editData?.approval_workflow_config || []);
     const savedApprovalLabels = editData?.price_remarks_data?.approval_table_labels || {};
     setSelectedApprovers(initialApprovers);
@@ -648,7 +667,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         vp_operations: vpDefault?.id || null,
         general_manager: generalManagerDefault?.id || null,
       });
-      setSelectedApprovers(previous => ({
+      if (!preserveApprovalWorkflow) setSelectedApprovers(previous => ({
         ...previous,
         procurement: previous.procurement || procurementDefault?.id || null,
         // Do not preserve a stale requester/administrator in the locked
@@ -673,6 +692,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const handleApproverChange = (role, userId) => {
+    userEditedRef.current = true;
     setSelectedApprovers(prev => ({ ...prev, [role]: normalizeUserId(userId) }));
     if (errors.approval_workflow_config) {
       setErrors(prev => ({ ...prev, approval_workflow_config: null }));
@@ -680,6 +700,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const addLevelOneApprover = (userId) => {
+    userEditedRef.current = true;
     const normalizedUserId = normalizeUserId(userId);
     setSelectedApprovers(prev => {
       const selected = prev.level_one || [];
@@ -696,6 +717,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const removeLevelOneApprover = (userId) => {
+    userEditedRef.current = true;
     setSelectedApprovers(prev => {
       const next = (prev.level_one || []).filter(id => String(id) !== String(userId));
       return { ...prev, level_one: next, project_manager: next[0] || null };
@@ -708,14 +730,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const changeLevelOneLabel = (userId, value) => {
+    userEditedRef.current = true;
     setLevelOneLabels(previous => ({ ...previous, [userId]: value.slice(0, 20) }));
   };
 
   const changeStageLabel = (stage, value) => {
+    userEditedRef.current = true;
     setStageLabels(previous => ({ ...previous, [stage]: value.slice(0, 20) }));
   };
 
   const changeLevelOneCount = (rawValue) => {
+    userEditedRef.current = true;
     const count = Math.max(1, Math.min(20, Number(rawValue) || 1));
     setLevelOneApproverCount(count);
     setSelectedApprovers(prev => {
@@ -1068,16 +1093,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   useEffect(() => {
     if (String(lastTotalPriceRef.current) === String(formData.total_price)) return;
     lastTotalPriceRef.current = formData.total_price;
-    setFormData(prev => ({
+    setFormDataState(prev => ({
       ...prev,
-      net_total_excl_vat: prev.total_price || ''
+      net_total_excl_vat: prev.total_price ?? ''
     }));
   }, [formData.total_price]);
 
   useEffect(() => {
+    if (!userEditedRef.current) return;
     const convertedTotal = convertToAed(formData.net_total_excl_vat, formData.currency);
     const exchangeRate = AED_EXCHANGE_RATES[formData.currency];
-    setFormData(prev => {
+    setFormDataState(prev => {
       const priceRemarksData = prev.price_remarks_data || {};
       const nextTotal = convertedTotal === null ? '' : convertedTotal.toFixed(2);
       if (
@@ -1098,7 +1124,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
   useEffect(() => {
     if (priceDescriptionEditedRef.current) return;
-    setFormData(prev => {
+    setFormDataState(prev => {
       const purchaseDescription = prev.description_reason || '';
       if (prev.price_description === purchaseDescription) return prev;
       return { ...prev, price_description: purchaseDescription };
@@ -1106,7 +1132,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   }, [formData.description_reason]);
 
   useEffect(() => {
-    if (!formData.items?.length) return;
+    if (!linePricingEditedRef.current || !formData.items?.length) return;
+    const savedItems = prepareRecommendationPayload({ items: formData.items }).items;
+    if (recommendationLineError(savedItems)) return;
     const itemsTotal = formData.items.reduce(
       (sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)),
       0
@@ -1116,7 +1144,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       0
     ).toFixed(2);
     const hasLineBudgets = formData.items.some(item => item.budget !== '' && item.budget != null);
-    setFormData(prev => ({ ...prev, total_price: itemsTotal, ...(hasLineBudgets ? { estimated_budget: itemsBudget } : {}) }));
+    setFormDataState(prev => ({ ...prev, total_price: itemsTotal, ...(hasLineBudgets ? { estimated_budget: itemsBudget } : {}) }));
   }, [formData.items]);
 
   useEffect(() => {
@@ -1125,7 +1153,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   }, [formData]);
 
   const handleAutoSave = useCallback(async () => {
-    if (submissionInFlightRef.current) return null;
+    if (submissionInFlightRef.current || !userEditedRef.current || preserveApprovalWorkflow) return null;
     if (autoSaveInFlightRef.current) {
       return autoSaveInFlightRef.current;
     }
@@ -1135,8 +1163,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       approval_workflow_config: approvalWorkflowRef.current,
     };
     const fingerprint = JSON.stringify(currentDraft);
-    if (fingerprint === lastAutoSaveFingerprintRef.current) return null;
+    if (fingerprint === lastAutoSaveFingerprintRef.current || fingerprint === failedAutoSaveFingerprintRef.current) return null;
     const autoSavePayload = prepareRecommendationPayload(currentDraft, approvalWorkflowRef.current);
+    const lineError = recommendationLineError(autoSavePayload.items);
+    if (lineError) {
+      setErrors(previous => ({ ...previous, items: lineError }));
+      setSaveError(lineError);
+      return null;
+    }
 
     const saveOperation = (async () => {
       setAutoSaving(true);
@@ -1148,8 +1182,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
         draftIdRef.current = response.data.id;
         lastAutoSaveFingerprintRef.current = fingerprint;
+        failedAutoSaveFingerprintRef.current = '';
         if (response.data.pr_number) {
-          setFormData(prev => (
+          setFormDataState(prev => (
             prev.pr_number
               ? prev
               : { ...prev, pr_number: response.data.pr_number }
@@ -1159,7 +1194,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         setSaveError('');
         return response.data;
       } catch (error) {
-        setSaveError('Draft could not be saved. Please retry.');
+        // A rejected payload needs an edit, not another identical timed PATCH.
+        // Explicit Save remains available to retry after an external correction.
+        if (error.response?.status === 400) failedAutoSaveFingerprintRef.current = fingerprint;
+        const apiErrors = normalizeApiErrors(error.response?.data);
+        setServerErrors(apiErrors);
+        setErrors(previous => ({ ...previous, ...apiErrors }));
+        setSaveError(apiErrors.error || apiErrors.detail || firstApiError(apiErrors) || 'Draft could not be saved. Please retry.');
         console.error('Auto-save failed:', error);
         throw error;
       } finally {
@@ -1170,7 +1211,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
     autoSaveInFlightRef.current = saveOperation;
     return saveOperation;
-  }, [editData]);
+  }, [editData, preserveApprovalWorkflow]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -1255,13 +1296,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const updateLineItem = (index, field, value) => {
+    if (['quantity', 'unit_price', 'budget'].includes(field)) linePricingEditedRef.current = true;
     setFormData(prev => {
       const items = prev.items.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         const updated = { ...item, [field]: value };
-        updated.total = (
-          (parseFloat(updated.quantity) || 0) * (parseFloat(updated.unit_price) || 0)
-        ).toFixed(2);
+        if (field === 'quantity' || field === 'unit_price') {
+          updated.total = (
+            (parseFloat(updated.quantity) || 0) * (parseFloat(updated.unit_price) || 0)
+          ).toFixed(2);
+        }
         return updated;
       });
       return { ...prev, items, ...(field === 'budget' && !items.some(item => item.budget !== '' && item.budget != null) ? { estimated_budget: '' } : {}), price_remarks_data: { ...prev.price_remarks_data,
@@ -1275,6 +1319,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const removeLineItem = (index) => {
+    linePricingEditedRef.current = true;
     setFormData(prev => {
       const items = prev.items.filter((_, itemIndex) => itemIndex !== index);
       const removedBudget = prev.items[index]?.budget;
@@ -1300,6 +1345,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     } else if (prNumberStatus.available === false) {
       newErrors.pr_number = 'This PR number already exists';
     }
+    const lineError = recommendationLineError(prepareRecommendationPayload(formData).items);
+    if (lineError) newErrors.items = lineError;
+    // Signed evidence and completed workflows are historical records. Editing
+    // their descriptive fields must not demand a new draft's routing/shortlist.
+    if (preserveApprovalWorkflow) return newErrors;
     if (!formData.product_service?.trim()) {
       newErrors.product_service = 'Product/Service description is required';
     }
@@ -1346,16 +1396,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       }
     }
 
-    const invalidItemIndex = (formData.items || []).findIndex(item => (
-      !item.description?.trim()
-      || !(parseFloat(item.quantity) > 0)
-      || parseFloat(item.unit_price) < 0
-      || Number.isNaN(parseFloat(item.unit_price))
-    ));
-    if (invalidItemIndex >= 0) {
-      newErrors.items = `Line item ${invalidItemIndex + 1} requires a description, positive quantity, and valid unit price.`;
-    }
-
     const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount;
     if (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations
       || (formData.requisition_type === 'project' && !selectedApprovers.manager_projects)
@@ -1373,13 +1413,20 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
   const handleSubmit = async (e, submitForApproval = false, stayOnPage = false) => {
     e.preventDefault();
-    if (submissionInFlightRef.current) return;
+    if (submissionInFlightRef.current || approvalRecordEditing) return;
     if (!formData.pr_number?.trim() || prNumberStatus.available === false) {
       setErrors(prev => ({ ...prev, pr_number: prNumberStatus.available === false ? 'This PR number already exists' : 'Enter the PR number manually' }));
       setActiveStep(0);
       return;
     }
     if (submitForApproval && !validateForm()) {
+      return;
+    }
+    const lineError = recommendationLineError(prepareRecommendationPayload(formData).items);
+    if (!approvedPdfFile && lineError) {
+      setErrors(previous => ({ ...previous, items: lineError }));
+      setSaveError(lineError);
+      setActiveStep(1);
       return;
     }
 
@@ -1398,12 +1445,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         );
         toast.success(`Success full Recorded [${approvedPdfResult.pr_number || formData.pr_number}]!`);
         if (onSuccess) onSuccess(approvedPdfResult);
-        if (onClose) onClose();
+        else if (onClose) onClose();
         return;
       }
 
       const submitData = new FormData();
-      const approvalWorkflow = buildApprovalWorkflow({
+      const approvalWorkflow = preserveApprovalWorkflow ? (approvalRecord?.approval_workflow_config || []) : buildApprovalWorkflow({
         selectedApprovers,
         levelOneApproverCount,
         requisitionType: formData.requisition_type,
@@ -1433,10 +1480,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         return;
       }
 
-      const formDataWithWorkflow = prepareRecommendationPayload(formData, approvalWorkflow);
+      const formDataWithWorkflow = prepareRecommendationPayload(formData, preserveApprovalWorkflow ? undefined : approvalWorkflow);
+      // Even resending an unchanged historic workflow invokes assignment
+      // validation. Leave it entirely out of an ordinary edit to its record.
+      if (preserveApprovalWorkflow) delete formDataWithWorkflow.approval_workflow_config;
       Object.keys(formDataWithWorkflow).forEach(key => {
-        if (formDataWithWorkflow[key] !== null && formDataWithWorkflow[key] !== undefined && formDataWithWorkflow[key] !== '') {
-          if (typeof formDataWithWorkflow[key] === 'object') {
+        if (formDataWithWorkflow[key] !== undefined) {
+          if (formDataWithWorkflow[key] === null) {
+            submitData.append(key, '');
+          } else if (typeof formDataWithWorkflow[key] === 'object') {
             submitData.append(key, JSON.stringify(formDataWithWorkflow[key]));
           } else {
             submitData.append(key, formDataWithWorkflow[key]);
@@ -1470,6 +1522,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
       draftIdRef.current = response.data.id;
       lastAutoSaveFingerprintRef.current = JSON.stringify({ ...formDataRef.current, approval_workflow_config: approvalWorkflow });
+      failedAutoSaveFingerprintRef.current = '';
 
       const responseStatus = String(response.data.status || '').toLowerCase();
       const shouldSubmitForApproval = submitForApproval && responseStatus === 'draft';
@@ -1488,14 +1541,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
       setLastSavedAt(new Date());
       setSavedAttachments(response.data.attachments || savedAttachments);
+      if (preserveApprovalWorkflow) handleApprovalRecordSaved(response.data);
       setFiles([]);
       if (response.data.management_approval_evidence) {
-        setFormData(previous => ({ ...previous, management_approval_evidence: response.data.management_approval_evidence }));
+        setFormDataState(previous => ({ ...previous, management_approval_evidence: response.data.management_approval_evidence }));
         setManagementEvidenceFile(null);
       }
       if (!stayOnPage || shouldSubmitForApproval) {
         if (onSuccess) onSuccess(response.data);
-        if (onClose) onClose();
+        else if (onClose) onClose();
       }
     } catch (error) {
       console.error('Error submitting PR:', error);
@@ -1516,6 +1570,31 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     }
   };
 
+  const handleApprovalRecordSaved = updated => {
+    if (String(updated?.id) !== String(draftIdRef.current)) return;
+    const sourceKeys = ['signed_document_verification', 'signed_approval_evidence', 'manual_ocr_review', 'source_approval_reviews'];
+    const mergeEvidence = previous => ({
+      ...previous,
+      approval_workflow_config: updated.approval_workflow_config || [],
+      price_remarks_data: {
+        ...previous.price_remarks_data,
+        ...Object.fromEntries(sourceKeys.filter(key => Object.prototype.hasOwnProperty.call(updated.price_remarks_data || {}, key))
+          .map(key => [key, updated.price_remarks_data[key]])),
+      },
+    });
+    // Updating editData would remount/reset the editor and discard unsaved
+    // commercial fields. Merge only the independently saved source evidence.
+    setSavedApprovalRecord(updated);
+    const merged = mergeEvidence(formDataRef.current);
+    formDataRef.current = merged;
+    approvalWorkflowRef.current = updated.approval_workflow_config || [];
+    setFormDataState(merged);
+    setSavedAttachments(updated.attachments || savedAttachments);
+    if (lastAutoSaveFingerprintRef.current) {
+      lastAutoSaveFingerprintRef.current = JSON.stringify(mergeEvidence(JSON.parse(lastAutoSaveFingerprintRef.current)));
+    }
+  };
+
   if (!isOpen) return null;
 
   const normalizedProjectSearch = projectSearch.trim().toLowerCase();
@@ -1525,7 +1604,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       .some(value => String(value).trim().toLowerCase() === normalizedProjectSearch)
   ));
 
-  const liveApprovalWorkflow = buildApprovalWorkflow({
+  const liveApprovalWorkflow = preserveApprovalWorkflow ? (approvalRecord?.approval_workflow_config || []) : buildApprovalWorkflow({
     selectedApprovers,
     levelOneApproverCount,
     requisitionType: formData.requisition_type,
@@ -1540,10 +1619,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     savedWorkflow: editData?.approval_workflow_config || [],
   });
   approvalWorkflowRef.current = liveApprovalWorkflow;
-  const canSubmitForApproval = !editData
-    || String(editData.status || 'draft').toLowerCase() === 'draft';
+  const canSubmitForApproval = !preserveApprovalWorkflow && (!editData
+    || String(approvalRecord?.status || 'draft').toLowerCase() === 'draft');
   const livePreviewRequisition = {
+    ...(preserveApprovalWorkflow ? approvalRecord : {}),
     ...formData,
+    id: editData?.id || draftIdRef.current,
     issued_by_name: editData?.issued_by_name || sessionUserName,
     approval_workflow_config: liveApprovalWorkflow,
     attachments: [
@@ -1565,7 +1646,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     approval_workflow_config: 4, attachments: 3, approved_pdf: 3,
   };
   const validationErrors = getValidationErrors();
-  const unsavedChanges = files.length > 0 || Boolean(managementEvidenceFile) || JSON.stringify({ ...formData, approval_workflow_config: liveApprovalWorkflow }) !== lastAutoSaveFingerprintRef.current;
+  const unsavedChanges = files.length > 0 || Boolean(managementEvidenceFile) || (userEditedRef.current && JSON.stringify({ ...formData, approval_workflow_config: liveApprovalWorkflow }) !== lastAutoSaveFingerprintRef.current);
   const issues = Object.entries({ ...validationErrors, ...serverErrors, ...Object.fromEntries(Object.entries(errors).filter(([field, message]) => message && (fieldSteps[field] === undefined || ['attachments', 'approved_pdf'].includes(field)))) })
     .map(([field, message]) => ({ field, message, step: fieldSteps[field] ?? 4 }));
   const goToStep = (step) => {
@@ -1605,8 +1686,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             <div className="prf-title-row">
               <div><h1>{editData ? 'Edit purchase recommendation' : 'Create purchase recommendation'}</h1><p>Define the requirement, compare suppliers and route the recommendation for approval.</p></div>
               <div className="prf-header-actions">
-                <span role="status" className={`prf-save-state ${saveError ? 'prf-save-error' : ''}`}><CheckCircleIcon />{autoSaving || submitLoading ? 'Saving draft...' : saveError ? 'Changes not saved' : unsavedChanges ? (editData || lastSavedAt ? 'Unsaved changes' : 'Unsaved draft') : lastSavedAt ? 'Draft saved' : editData ? 'Existing draft' : 'Unsaved draft'}</span>
-                <button type="button" className="prf-button" onClick={event => handleSubmit(event, false, true)} disabled={submitLoading || autoSaving}><SaveIcon />Save draft</button>
+                <span role="status" className={`prf-save-state ${saveError ? 'prf-save-error' : ''}`}><CheckCircleIcon />{autoSaving || submitLoading ? 'Saving changes...' : saveError ? 'Changes not saved' : unsavedChanges ? (editData || lastSavedAt ? 'Unsaved changes' : 'Unsaved draft') : lastSavedAt ? (preserveApprovalWorkflow ? 'Changes saved' : 'Draft saved') : editData ? (preserveApprovalWorkflow ? 'Existing recommendation' : 'Existing draft') : 'Unsaved draft'}</span>
+                <button type="button" className="prf-button" onClick={event => handleSubmit(event, false, true)} disabled={submitLoading || autoSaving || approvalRecordEditing}><SaveIcon />{preserveApprovalWorkflow ? 'Save changes' : 'Save draft'}</button>
                 {canSubmitForApproval && <button type="button" className="prf-button prf-primary" onClick={reviewSubmission}>Review & submit<ArrowRightIcon /></button>}
               </div>
             </div>
@@ -2056,7 +2137,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   </label>
                 </div>
               )}
-              {(editData.attachments || []).filter((attachment) => (
+              {savedAttachments.filter((attachment) => (
                 attachment?.type === 'signed_purchase_requisition_pdf'
                 || attachment?.document_type === 'signed_purchase_requisition_pdf'
               )).map((attachment) => (
@@ -2137,7 +2218,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             </div>
           </div>{savedAttachments.length > 0 && <section className="prf-card"><h2>Attached documents</h2>{savedAttachments.map((file,index) => <a className="prf-file-link" key={file.id || index} href={file.url || file.s3_url} target="_blank" rel="noreferrer"><PaperClipIcon />{file.filename || file.name || 'Document'}</a>)}</section>}</div>}
               {activeStep === 4 && <div className="prf-step-panel" aria-label="Approval and submit">
-                <section className="prf-card prf-review-checks"><h2>Review before submission</h2><p>{issues.length ? 'Complete the items below to route this recommendation for approval.' : 'The required information is complete. Review the document and approval route, then submit.'}</p>{issues.map(issue => <button key={issue.field} type="button" onClick={() => revealIssue(issue)}><ExclamationCircleIcon /><span>{issue.message}</span><ArrowRightIcon /></button>)}</section>
+                <section className="prf-card prf-review-checks"><h2>{preserveApprovalWorkflow ? 'Review changes' : 'Review before submission'}</h2><p>{preserveApprovalWorkflow ? 'Save edits to this recommendation. Recorded approval evidence remains part of its history.' : issues.length ? 'Complete the items below to route this recommendation for approval.' : 'The required information is complete. Review the document and approval route, then submit.'}</p>{issues.map(issue => <button key={issue.field} type="button" onClick={() => revealIssue(issue)}><ExclamationCircleIcon /><span>{issue.message}</span><ArrowRightIcon /></button>)}</section>
                 {formData.currency === 'AED' && parseFloat(formData.total_price || 0) > 100000 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-4">
               <div>
@@ -2165,9 +2246,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           )}{/* Section 9: Approval Workflow Section */}
           <div className="prf-card prf-legacy-card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              Approval Workflow
+              {preserveApprovalWorkflow ? 'Recorded approval history' : 'Approval Workflow'}
             </h3>
-            <div className="space-y-4">
+            {preserveApprovalWorkflow ? <RecordedApprovalHistory
+              key={approvalRecord.id}
+              requisition={{ ...approvalRecord, price_remarks_data: formData.price_remarks_data, attachments: savedAttachments }}
+              disabled={submitLoading || autoSaving}
+              onSaved={handleApprovalRecordSaved}
+              onEditingChange={setApprovalRecordEditing}
+            /> : <div className="space-y-4">
               <p className="text-sm text-gray-600">
                 {formData.requisition_type === 'project'
                   ? `Project workflow: Procurement Level 0 → Level 1 → optional Level 2 → Level 3 → default Level 4${formData.po_applicable ? '.' : ' → default Level 5 CEO.'}`
@@ -2229,14 +2316,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   <strong>Sequential routing:</strong> each level becomes active only after the previous level is approved.
                 </p>
               </div>
-            </div>
+            </div>}
           </div>
               </div>}
             </div>
             <footer className="prf-action-bar">
               <button type="button" className="prf-button prf-cancel" onClick={onClose}>Cancel</button>
               <button type="button" className={`prf-required ${issues.length ? '' : 'is-ready'}`} onClick={reviewSubmission}><ExclamationCircleIcon />{requiredMessage}</button>
-              <div className="prf-bottom-actions">{activeStep > 0 && activeStep !== 1 && <button type="button" className="prf-button prf-back" onClick={() => goToStep(activeStep - 1)}><ArrowLeftIcon />Back</button>}<button type="button" className="prf-button" disabled={submitLoading || autoSaving} onClick={event => handleSubmit(event, false, true)}>{approvedPdfFile ? 'Record signed PDF' : 'Save draft'}</button>
+              <div className="prf-bottom-actions">{activeStep > 0 && activeStep !== 1 && <button type="button" className="prf-button prf-back" onClick={() => goToStep(activeStep - 1)}><ArrowLeftIcon />Back</button>}<button type="button" className="prf-button" disabled={submitLoading || autoSaving || approvalRecordEditing} onClick={event => handleSubmit(event, false, true)}>{approvedPdfFile ? 'Record signed PDF' : preserveApprovalWorkflow ? 'Save changes' : 'Save draft'}</button>
               {activeStep < 4 ? <button type="button" className="prf-button prf-primary" onClick={continueStep}>Continue to {['supplier & pricing', 'business justification', 'documents', 'approval'][activeStep]}<ArrowRightIcon /></button> : !approvedPdfFile && canSubmitForApproval && <button type="submit" className="prf-button prf-primary" disabled={submitLoading || autoSaving}>{submitLoading ? 'Submitting...' : 'Submit for approval'}<ArrowRightIcon /></button>}</div>
             </footer>
           </form>

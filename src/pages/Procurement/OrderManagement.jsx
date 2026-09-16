@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { ArrowDownTrayIcon, PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import * as XLSX from 'xlsx';
 import { usePageControls } from '../../hooks/usePageControls';
@@ -19,6 +18,7 @@ import { employeeDisplayName } from '../../utils/employeeDisplayName';
 import ProcurementRegister from './ProcurementRegister';
 import { pendingPurchaseOrderDocument } from './procurementRegisterModel';
 import PurchaseRecommendations from './PurchaseRecommendations';
+import { getOriginalRecommendationDocuments, getOriginalRecommendationUrl } from './recommendationSourceDocuments';
 
 const PR_REGISTER_COLUMNS = [
   ['SN', 8],
@@ -177,14 +177,14 @@ const OrderManagement = () => {
   const [poDocumentEditMode, setPoDocumentEditMode] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedRequisition, setSelectedRequisition] = useState(null);
-  const [prPrintPreview, setPrPrintPreview] = useState(null);
   const [prPrintPreviewLoadingId, setPrPrintPreviewLoadingId] = useState(null);
-  const prPdfFrameRef = useRef(null);
+  const prPreviewRequest = useRef(0);
   const [currentUser, setCurrentUser] = useState(null);
   const [vendors, setVendors] = useState([]);
   const [projects, setProjects] = useState([]);  // Smart project lookup for PO creation
   // Soft-coded edit state - track which record is being edited
   const [editingOrder, setEditingOrder] = useState(null);
+  const editOrderRequest = useRef(0);
 
   const pageControls = usePageControls({
     autoRefreshInterval: 60,
@@ -194,21 +194,23 @@ const OrderManagement = () => {
   const currentUserData = currentUser?.user || currentUser || {};
   const currentUserId = currentUserData.id || currentUser?.user_id;
   const currentUserRolesRaw = currentUser?.roles || currentUserData.roles;
-  const currentUserModulesRaw = currentUser?.modules || currentUserData.modules;
   const currentUserRoles = Array.isArray(currentUserRolesRaw) ? currentUserRolesRaw : [];
-  const currentUserModules = Array.isArray(currentUserModulesRaw) ? currentUserModulesRaw : [];
   const isCurrentUserAdmin = Boolean(
     currentUserData.is_superuser
     || currentUserRoles.some(role => role?.code === 'super_admin' || role?.code === 'admin')
   );
-  const hasPurchaseOrderAccess = isCurrentUserAdmin || currentUserModules.some(
-    module => (typeof module === 'string' ? module : module?.code) === 'procurement_orders'
-  );
+  const moduleAction = (module, action) => {
+    if (isCurrentUserAdmin) return true;
+    const actions = currentUser?.module_actions || currentUserData.module_actions;
+    return Boolean(actions?.[module]?.includes(action));
+  };
   const canModifyRequisition = (requisition) => Boolean(
-    isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId))
+    moduleAction('procurement_requisitions', 'update')
+    && (isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId)))
   );
   const canDeleteRequisition = (requisition) => Boolean(
-    isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId))
+    moduleAction('procurement_requisitions', 'delete')
+    && (isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId)))
   );
 
   const fetchOrders = async () => {
@@ -375,6 +377,20 @@ const OrderManagement = () => {
     }
   };
 
+  const refreshAfterMutation = async () => {
+    const orderRegisterActive = activeTab === 'purchaseOrders';
+    const tasks = [orderRegisterActive ? fetchOrders() : fetchRequisitions()];
+    const otherModule = orderRegisterActive ? 'procurement_requisitions' : 'procurement_orders';
+    if (moduleAction(otherModule, 'read')) {
+      const endpoint = orderRegisterActive ? '/procurement/requisitions/' : '/procurement/orders/';
+      const updateCount = orderRegisterActive ? setRecommendationCount : setPurchaseOrderCount;
+      tasks.push(apiClient.get(endpoint, { params: { page_size: 1 }, suppressErrorToast: true })
+        .then(({ data }) => updateCount(Array.isArray(data) ? data.length : data?.count ?? null))
+        .catch(() => updateCount(null)));
+    }
+    await Promise.all(tasks);
+  };
+
   const handleOpenApproval = (requisition) => {
     if (!requisition?.id) return;
     navigate(`/procurement/requisitions/${requisition.id}`, {
@@ -407,16 +423,18 @@ const OrderManagement = () => {
   }, [pageControls.isRefreshing, activeTab]);
 
   useEffect(() => {
+    const otherModule = activeTab === 'purchaseOrders' ? 'procurement_requisitions' : 'procurement_orders';
+    if (!currentUser || !moduleAction(otherModule, 'read')) return undefined;
     let current = true;
     const controller = new AbortController();
     const otherEndpoint = activeTab === 'purchaseOrders' ? '/procurement/requisitions/' : '/procurement/orders/';
     const updateCount = activeTab === 'purchaseOrders' ? setRecommendationCount : setPurchaseOrderCount;
-    apiClient.get(otherEndpoint, { params: { page_size: 1 }, signal: controller.signal })
+    apiClient.get(otherEndpoint, { params: { page_size: 1 }, signal: controller.signal, suppressErrorToast: true })
       .then(response => {
         if (current) updateCount(Array.isArray(response.data) ? response.data.length : response.data?.count ?? null);
       }).catch(() => { if (current) updateCount(null); });
     return () => { current = false; controller.abort(); };
-  }, [activeTab]);
+  }, [activeTab, currentUser]);
 
   useEffect(() => {
     if (!requisitionRouteId || activeTab !== 'purchaseRequisitions') return undefined;
@@ -523,17 +541,28 @@ const OrderManagement = () => {
     if (!order?.id || orderPdfBusy) return;
     setOrderPdfBusy(true);
     try {
-      const response = await apiClient.get(`/procurement/orders/${order.id}/export-pdf/`, { responseType: 'blob', timeout: 120000 });
-      const url = URL.createObjectURL(response.data);
+      const { data } = await apiClient.get(`/procurement/orders/${order.id}/uploaded-documents/`, { suppressErrorToast: true });
+      const documents = Array.isArray(data) ? data : data?.results;
+      if (!Array.isArray(documents)) throw new Error('The uploaded PO documents could not be checked.');
+      const original = documents[0];
+      const prefix = `/procurement/orders/${order.id}/uploaded-documents/`;
+      const path = String(original?.content_url || '').replace(/^\/api\/v1(?=\/)/, '');
+      if (original && !path.startsWith(prefix)) throw new Error('The original PO PDF is unavailable.');
+      const response = await apiClient.get(original ? path : `/procurement/orders/${order.id}/export-pdf/`, {
+        responseType: 'blob', timeout: 120000, suppressErrorToast: true,
+      });
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
+      if (!(await blob.slice(0, 1024).text()).trimStart().startsWith('%PDF-')) throw new Error('The saved file is not a PDF.');
+      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = buildProcurementPdfFilename(order.po_number || `PO-${order.id}`, 'po', order.po_date);
+      link.download = original?.filename || buildProcurementPdfFilename(order.po_number || `PO-${order.id}`, 'po', order.po_date);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (problem) {
-      toast.error(problem.response?.data?.detail || 'The purchase order PDF could not be prepared.');
+      toast.error(problem.response?.data?.detail || problem.message || 'The purchase order PDF could not be prepared.');
     } finally {
       setOrderPdfBusy(false);
     }
@@ -603,9 +632,17 @@ const OrderManagement = () => {
       return;
     }
     
-    // Set the order to edit and open the form
-    setEditingOrder(order);
-    setShowPOForm(true);
+    const request = ++editOrderRequest.current;
+    try {
+      const { data } = await apiClient.get(`/procurement/orders/${order.id}/`);
+      if (request !== editOrderRequest.current) return;
+      if (String(data?.id) !== String(order.id)) throw new Error('The selected purchase order could not be loaded.');
+      if (data.status === 'completed') { toast.info('Completed purchase orders are read-only.'); return; }
+      setEditingOrder(data);
+      setShowPOForm(true);
+    } catch (problem) {
+      if (request === editOrderRequest.current) toast.error(problem.response?.data?.detail || problem.message || 'The purchase order could not be loaded for editing.');
+    }
   };
 
   /**
@@ -628,13 +665,14 @@ const OrderManagement = () => {
    */
   const handleDeletePendingDocument = async (document) => {
     if (!document?.is_pending_document || !document.po_document_id) return;
-    if (!await radaiConfirm(`Delete uploaded purchase order ${document.po_number || document.source_filename}?\n\nThis removes the saved PDF entry from this register.`)) return;
+    if (!await radaiConfirm(`Delete uploaded purchase order ${document.po_number || document.source_filename}?\n\nThis permanently deletes the uploaded document and its saved PDF. This cannot be undone.`)) return;
     try {
       setLoading(true);
-      await apiClient.delete(`/procurement/po-documents/${document.po_document_id}/`);
+      await apiClient.delete(`/procurement/po-documents/${document.po_document_id}/`, { suppressErrorToast: true });
       await fetchOrders();
+      toast.success('Uploaded purchase order deleted.');
     } catch (problem) {
-      await radaiAlert(problem.response?.data?.detail || problem.response?.data?.error || 'The uploaded PDF could not be deleted.');
+      toast.error(problem.response?.data?.detail || problem.response?.data?.error || 'The uploaded PDF could not be deleted.');
     } finally {
       setLoading(false);
     }
@@ -650,9 +688,9 @@ const OrderManagement = () => {
     const confirmed = (await radaiConfirm(
       `Are you sure you want to delete this Purchase Order?\n\n` +
       `PO Number: ${order.po_number || 'N/A'}\n` +
-      `Supplier: ${order.supplier_name || 'N/A'}\n` +
+      `Supplier: ${order.vendor_name || order.supplier_name || 'N/A'}\n` +
       `Total: ${order.currency || ''} ${order.total_amount?.toLocaleString() || '0'}\n\n` +
-      `This action cannot be undone.`
+      `This permanently deletes the order and its uploaded source documents. The linked purchase recommendation is retained. This cannot be undone.`
     ));
 
     if (!confirmed) {
@@ -661,18 +699,17 @@ const OrderManagement = () => {
 
     try {
       setLoading(true);
-      await apiClient.delete(`/procurement/orders/${order.id}/`);
+      await apiClient.delete(`/procurement/orders/${order.id}/`, { suppressErrorToast: true });
       
       // Refresh orders list
-      await fetchOrders();
-      
-      await radaiAlert(`Purchase Order ${order.po_number || order.id} deleted successfully.`);
+      await refreshAfterMutation();
+      toast.success(`Purchase Order ${order.po_number || order.id} deleted successfully.`);
     } catch (error) {
       console.error('Error deleting order:', error);
       const errorMsg = error.response?.data?.detail || 
                        error.response?.data?.error || 
                        'Failed to delete purchase order. Please try again.';
-      await radaiAlert(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -704,18 +741,17 @@ const OrderManagement = () => {
 
     try {
       setLoading(true);
-      await apiClient.delete(`/procurement/requisitions/${requisition.id}/`);
+      await apiClient.delete(`/procurement/requisitions/${requisition.id}/`, { suppressErrorToast: true });
       
       // Refresh requisitions list
-      await fetchRequisitions();
-      
-      await radaiAlert(`Purchase Requisition ${requisition.pr_number || requisition.id} deleted successfully.`);
+      await refreshAfterMutation();
+      toast.success(`Purchase Requisition ${requisition.pr_number || requisition.id} deleted successfully.`);
     } catch (error) {
       console.error('Error deleting requisition:', error);
       const errorMsg = error.response?.data?.detail || 
                        error.response?.data?.error || 
                        'Failed to delete purchase requisition. Please try again.';
-      await radaiAlert(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -749,84 +785,84 @@ const OrderManagement = () => {
       );
 
       // Soft-coded success notification
-      await radaiAlert(`Γ£à Requisition ${requisition.pr_number || requisition.id} converted to ${createdPoNumber || 'a Purchase Order'} successfully!`);
+      toast.success(`Requisition ${requisition.pr_number || requisition.id} converted to ${createdPoNumber || 'a Purchase Order'} successfully.`);
       
       // Refresh data
-      await fetchRequisitions();
-      await fetchOrders();
+      await refreshAfterMutation();
     } catch (error) {
       console.error('Error converting requisition:', error);
       // Soft-coded error handling
-      await radaiAlert(`Γ¥î Failed to convert: ${error.response?.data?.error || error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to convert: ${error.response?.data?.error || error.response?.data?.detail || error.message}`);
     }
   };
 
-  useEffect(() => () => {
-    if (prPrintPreview?.url) window.URL.revokeObjectURL(prPrintPreview.url);
-  }, [prPrintPreview?.url]);
-
-  const closePRPrintPreview = () => setPrPrintPreview(null);
+  useEffect(() => () => { prPreviewRequest.current += 1; }, []);
 
   const handlePrintPreviewPR = async (requisition) => {
-    if (!requisition || !requisition.id) {
-      console.error('Invalid requisition data for print preview');
-      return;
-    }
-
+    if (!requisition?.id) return;
+    const request = ++prPreviewRequest.current;
     setPrPrintPreviewLoadingId(requisition.id);
     try {
-      const response = await apiClient.get(`/procurement/requisitions/${requisition.id}/export_pdf/`, {
-        responseType: 'blob',
-      });
-
-      const headerValue = response.headers?.['content-disposition'] || '';
-      const match = headerValue.match(/filename="?([^";]+)"?/i);
-      const fallbackName = buildProcurementPdfFilename(
-        requisition.pr_number || `PR-${requisition.id}`,
-        'pr',
-        requisition.issued_date || requisition.created_at,
-      );
-      const filename = (match && match[1]) ? match[1] : fallbackName;
-
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      setPrPrintPreview({
-        url,
-        filename,
-        prNumber: requisition.pr_number || `PR-${requisition.id}`,
-      });
-    } catch (error) {
-      console.error('Error loading requisition print preview:', error);
-      const errorMsg =
-        error.response?.data?.error ||
-        error.response?.data?.detail ||
-        'Failed to load requisition print preview.';
-      await radaiAlert(errorMsg);
+      const { data: current } = await apiClient.get(`/procurement/requisitions/${requisition.id}/`, { params: { _fresh: Date.now() } });
+      if (request !== prPreviewRequest.current) return;
+      if (String(current?.id) !== String(requisition.id)) throw new Error('The recommendation could not be loaded.');
+      const original = getOriginalRecommendationDocuments(current.attachments)[0];
+      let blob;
+      let filename;
+      if (original) {
+        const path = String(original.content_url || '').replace(/^\/api\/v1(?=\/)/, '');
+        const prefix = `/procurement/requisitions/${requisition.id}/uploaded-documents/`;
+        if (path.startsWith(prefix) && /^\d+\/content\/$/.test(path.slice(prefix.length))) {
+          const response = await apiClient.get(path, { responseType: 'blob', timeout: 60000 });
+          blob = response.data;
+        } else {
+          const url = getOriginalRecommendationUrl(original);
+          if (!url) throw new Error('The original PR PDF is unavailable.');
+          const response = await fetch(url, { credentials: 'same-origin' });
+          if (!response.ok) throw new Error('The original PR PDF could not be downloaded.');
+          blob = await response.blob();
+        }
+        filename = original.filename || `${current.pr_number}.pdf`;
+      } else {
+        const response = await apiClient.get(`/procurement/requisitions/${requisition.id}/export_pdf/`, { responseType: 'blob' });
+        blob = response.data;
+        filename = response.headers?.['content-disposition']?.match(/filename="?([^";]+)"?/i)?.[1]
+          || buildProcurementPdfFilename(current.pr_number, 'pr', current.issued_date || current.created_at);
+      }
+      if (request !== prPreviewRequest.current) return;
+      if (!(blob instanceof Blob)) blob = new Blob([blob]);
+      if (!(await blob.slice(0, 1024).text()).trimStart().startsWith('%PDF-')) throw new Error('The downloaded file is not a PDF.');
+      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (problem) {
+      if (request === prPreviewRequest.current) toast.error(problem.response?.data?.detail || problem.message || 'The PR PDF could not be downloaded.');
     } finally {
-      setPrPrintPreviewLoadingId(null);
+      if (request === prPreviewRequest.current) setPrPrintPreviewLoadingId(null);
     }
   };
 
-  const printRequisitionPreview = () => {
-    const frameWindow = prPdfFrameRef.current?.contentWindow;
-    if (!frameWindow) return;
-    frameWindow.focus();
-    frameWindow.print();
-  };
+  if (activeTab === 'purchaseOrders' && showPOForm && editingOrder) {
+    return <PurchaseOrderForm key={editingOrder.id} isOpen pageMode editData={editingOrder}
+      onClose={() => { setShowPOForm(false); setEditingOrder(null); }}
+      onSuccess={() => { setShowPOForm(false); setEditingOrder(null); refreshAfterMutation(); }} />;
+  }
 
-  const downloadRequisitionPreview = () => {
-    if (!prPrintPreview?.url) return;
-    const link = document.createElement('a');
-    link.href = prPrintPreview.url;
-    link.download = prPrintPreview.filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
+  if (activeTab === 'purchaseOrders' && showPOPdfImport && poPreviewDocumentId && poDocumentEditMode) {
+    return <PurchaseOrderPdfImport key={poPreviewDocumentId} isOpen pageMode documentId={poPreviewDocumentId} editMode
+      canReconcile={moduleAction('procurement_orders', 'create')}
+      onClose={() => { setShowPOPdfImport(false); setPoPreviewDocumentId(null); }}
+      onImported={refreshAfterMutation} />;
+  }
 
   return (
-    <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-container' : 'min-h-screen bg-gray-50'} style={pageControls.styles.container}>
-      <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-content' : 'pb-3'} style={pageControls.styles.content}>
+    <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-container' : 'pow-page-container bg-gray-50'} style={pageControls.styles.container}>
+      <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-content' : 'pow-page-content'} style={pageControls.styles.content}>
         {activeTab === 'purchaseOrders' ? <ProcurementRegister
           orders={orders} loading={loading} error={error} pendingUploadError={pendingUploadError} currentUserId={currentUserId}
           requisitionCount={recommendationCount} onRefresh={fetchOrders}
@@ -837,6 +873,9 @@ const OrderManagement = () => {
           onDeleteDocument={handleDeletePendingDocument}
           onExport={exportOrdersToExcel} onOpen={handleViewOrderDetails} onEdit={handleEditOrder}
           onDelete={handleDeleteOrder} onIssue={handleSendOrder} onPdf={handleOrderPdf}
+          canCreate={moduleAction('procurement_orders', 'create')}
+          canEdit={moduleAction('procurement_orders', 'update')}
+          canDelete={moduleAction('procurement_orders', 'delete')}
           onAcknowledge={handleAcknowledgeOrder} pdfBusy={orderPdfBusy}
         /> : <PurchaseRecommendations
           requisitions={requisitions} loading={loading} error={error} currentUserId={currentUserId}
@@ -847,9 +886,10 @@ const OrderManagement = () => {
           onExport={exportRequisitionRowsToExcel} onOpen={id => handleOpenApproval({ id })}
           onEdit={handleEditRequisition} onDelete={handleDeleteRequisition}
           onConvert={handleConvertToPO} onPdf={handlePrintPreviewPR}
-          canLinkPurchaseOrder={hasPurchaseOrderAccess}
+          canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
+          canCreate={moduleAction('procurement_requisitions', 'create')}
           canModify={canModifyRequisition} canDelete={canDeleteRequisition}
-          canConvert={requisition => hasPurchaseOrderAccess && requisition.status === 'approved' && !requisition.linked_po_id}
+          canConvert={requisition => moduleAction('procurement_orders', 'create') && requisition.status === 'approved' && !requisition.linked_po_id}
           canApprove={requisition => !['draft', 'approved', 'rejected', 'converted', 'cancelled'].includes(requisition.status) && Boolean(activeAssignedStage(requisition))}
           onApproveSelected={approveSelectedRequisitions} pdfBusyId={prPrintPreviewLoadingId} batchBusy={batchActionLoading}
         />}
@@ -864,46 +904,26 @@ const OrderManagement = () => {
         />
       )}
 
-      {/* Purchase Order Form Modal */}
-      {showPOForm && (
-        <PurchaseOrderForm
-          isOpen={showPOForm}
-          onClose={() => {
-            setShowPOForm(false);
-            setEditingOrder(null);  // Clear editing state on close
-          }}
-          onSuccess={() => {
-            setShowPOForm(false);
-            setEditingOrder(null);  // Clear editing state on success
-            fetchOrders();  // Refresh orders to show updated data
-          }}
-          editData={editingOrder}  // Pass the order being edited
-        />
-      )}
-
       <PurchaseRequisitionExcelImport
         isOpen={showPRExcelImport}
         onClose={() => setShowPRExcelImport(false)}
-        onImported={() => fetchRequisitions()}
+        onImported={refreshAfterMutation}
         onAttachPdf={requisition => { setPdfAttachmentPrNumber(requisition.pr_number); setShowPRPdfImport(true); }}
-        canLinkPurchaseOrder={hasPurchaseOrderAccess}
+        canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
       />
 
       <PurchaseRequisitionPdfImport
         isOpen={showPRPdfImport}
         onClose={() => setShowPRPdfImport(false)}
-        onImported={() => fetchRequisitions()}
+        onImported={refreshAfterMutation}
         expectedPrNumber={pdfAttachmentPrNumber}
-        canLinkPurchaseOrder={hasPurchaseOrderAccess}
+        canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
       />
 
       <PurchaseOrderExcelImport
         isOpen={showPOExcelImport}
         onClose={() => setShowPOExcelImport(false)}
-        onImported={() => {
-          fetchOrders();
-          fetchRequisitions();
-        }}
+        onImported={refreshAfterMutation}
       />
 
       <PurchaseOrderPdfImport
@@ -911,36 +931,8 @@ const OrderManagement = () => {
         documentId={poPreviewDocumentId}
         editMode={poDocumentEditMode}
         onClose={() => setShowPOPdfImport(false)}
-        onImported={() => {
-          fetchOrders();
-          fetchRequisitions();
-        }}
+        onImported={refreshAfterMutation}
       />
-
-      {prPrintPreview && (
-        <div className="fixed inset-0 z-[80] flex flex-col bg-slate-950/90" role="dialog" aria-modal="true" aria-labelledby="pr-print-preview-title">
-          <div className="flex items-center justify-between border-b border-white/10 bg-slate-900 px-5 py-3 text-white">
-            <div>
-              <h2 id="pr-print-preview-title" className="font-semibold">Print Preview · {prPrintPreview.prNumber}</h2>
-              <p className="text-xs text-slate-300">Preview only — no file is downloaded automatically.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={printRequisitionPreview} className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500">
-                <PrinterIcon className="h-4 w-4" /> Print
-              </button>
-              <button type="button" onClick={downloadRequisitionPreview} className="inline-flex items-center gap-2 rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600">
-                <ArrowDownTrayIcon className="h-4 w-4" /> Download PDF
-              </button>
-              <button type="button" onClick={closePRPrintPreview} className="rounded-md border border-white/20 p-2 text-slate-200 hover:bg-white/10" aria-label="Close print preview">
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 p-4">
-            <iframe ref={prPdfFrameRef} src={`${prPrintPreview.url}#toolbar=0&navpanes=0&scrollbar=1`} title={`${prPrintPreview.filename} print preview`} className="h-full w-full rounded-lg bg-white shadow-2xl" />
-          </div>
-        </div>
-      )}
 
       {/* Purchase Requisition Approval Modal */}
       <PurchaseRequisitionApproval

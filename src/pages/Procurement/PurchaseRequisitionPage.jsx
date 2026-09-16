@@ -12,35 +12,40 @@ const PurchaseRequisitionPage = () => {
   const [editData, setEditData] = useState(null);
   const [loading, setLoading] = useState(Boolean(id));
   const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    if (!id) return undefined;
+    setEditData(null);
+    setError('');
+    if (!id) { setLoading(false); return undefined; }
 
-    let cancelled = false;
+    const controller = new AbortController();
     const loadRequisition = async () => {
       setLoading(true);
       setError('');
       try {
         const response = await apiClient.get(`/procurement/requisitions/${id}/`, {
           params: { _fresh: Date.now() },
+          signal: controller.signal,
         });
-        if (!cancelled) setEditData(response.data);
+        if (String(response.data?.id) !== String(id)) throw new Error('The loaded recommendation does not match the selected record.');
+        if (!controller.signal.aborted) setEditData(response.data);
       } catch (loadError) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setError(loadError.response?.data?.detail || 'The Purchase Recommendation could not be loaded.');
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     loadRequisition();
-    return () => { cancelled = true; };
-  }, [id]);
+    return () => controller.abort();
+  }, [id, retry]);
 
   const returnToRegister = () => navigate(REGISTER_PATH);
 
-  if (loading) {
+  if (loading || (id && !error && String(editData?.id) !== String(id))) {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-slate-100">
         <div className="text-center">
@@ -58,6 +63,7 @@ const PurchaseRequisitionPage = () => {
           <ExclamationTriangleIcon className="h-9 w-9 text-red-500" />
           <h1 className="mt-3 text-lg font-bold text-slate-900">Unable to open Purchase Recommendation</h1>
           <p className="mt-2 text-sm text-slate-600">{error}</p>
+          <button type="button" onClick={() => setRetry(value => value + 1)} className="mt-5 mr-3 rounded-lg border border-purple-300 px-4 py-2 text-sm font-semibold text-purple-700">Retry</button>
           <button type="button" onClick={returnToRegister} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700">
             <ArrowLeftIcon className="h-4 w-4" /> Back to register
           </button>
@@ -68,9 +74,10 @@ const PurchaseRequisitionPage = () => {
 
   return (
     <PurchaseRequisitionForm
+      key={id || 'new'}
       isOpen
       pageMode
-      editData={editData}
+      editData={id ? editData : null}
       onClose={returnToRegister}
       onSuccess={returnToRegister}
     />

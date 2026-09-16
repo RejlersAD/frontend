@@ -21,6 +21,10 @@ const isBlankLine = (item) => {
 export function prepareRecommendationPayload(formData, approvalWorkflow) {
   const metadata = { ...(formData.price_remarks_data || {}) };
   const payload = { ...formData, price_remarks_data: metadata };
+  // JSON autosaves and multipart saves must clear optional values alike.
+  for (const field of ['issued_date', 'total_price', 'net_total_excl_vat', 'estimated_budget', 'vendor']) {
+    if (payload[field] === '') payload[field] = null;
+  }
 
   if (Array.isArray(formData.items)) {
     const savedDetails = Array.isArray(metadata.line_details) ? metadata.line_details : [];
