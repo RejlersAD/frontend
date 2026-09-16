@@ -39,12 +39,15 @@ export async function orderFormHarness(page, options = {}) {
     recommendation: { ...orderFormRecommendation, ...options.recommendation },
     record: null, orders: [], requests: [], unknown: [], pageErrors: [], reserveError: null,
     saveError: null, sendError: null, acceptedWrites: [],
+    uploadedDocuments: [], uploadedDocumentsError: null, uploadedContent: {}, generatedPdf: null,
     projects: [{ id: 17, project_number: formProject.project_number, project_name: formProject.project_name, source: 'procurement', status: 'active', client_name: 'ADNOC' }],
     vendors: formVendors.map(vendor => ({ ...vendor, email: 'supplier@example.test', contact_person: 'Synthetic Supplier Contact', phone: '+971500000000', address: 'Abu Dhabi, UAE', is_active: true })),
   }
   options.prepare?.(state)
   await page.clock.setFixedTime(new Date('2026-09-15T08:00:00Z'))
   await page.addInitScript(user => {
+    // Native PDF viewer frames do not expose the app's local storage.
+    if (window !== window.top) return
     localStorage.setItem('radai_access_token', 'isolated-order-form-fixture-token')
     localStorage.setItem('radai_user_data', JSON.stringify(user))
     localStorage.setItem('radai.sidebar.collapsed', 'false')
@@ -77,6 +80,18 @@ export async function orderFormHarness(page, options = {}) {
     if (path === '/api/v1/procurement/orders/reserve-number/' && method === 'POST') return reply(route, state.reserveError || { po_number: orderFormNumber }, state.reserveError ? 400 : 200)
     if (path === '/api/v1/procurement/orders/' && method === 'GET') return reply(route, { count: state.orders.length, next: null, results: state.orders })
     if (path === '/api/v1/procurement/po-documents/' && method === 'GET') return reply(route, { count: 0, next: null, results: [] })
+    if (path === `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/` && method === 'GET') {
+      return reply(route, state.uploadedDocumentsError || { count: state.uploadedDocuments.length, results: state.uploadedDocuments }, state.uploadedDocumentsError ? 503 : 200)
+    }
+    if (state.uploadedContent[path] && method === 'GET') {
+      const content = state.uploadedContent[path]
+      state.requests[state.requests.length - 1].authorization = request.headers().authorization
+      if (content.status) return reply(route, { detail: 'Synthetic inaccessible upload.' }, content.status)
+      return route.fulfill({ status: 200, contentType: content.contentType || 'application/pdf', body: content.body })
+    }
+    if (path === `/api/v1/procurement/orders/${orderFormId}/export-pdf/` && method === 'GET' && state.generatedPdf) {
+      return route.fulfill({ status: 200, contentType: 'application/pdf', body: state.generatedPdf, headers: { 'content-disposition': 'inline; filename="Generated-PO.pdf"' } })
+    }
     if (path === `/api/v1/procurement/orders/${orderFormId}/` && method === 'GET') return reply(route, state.record)
     if ((path === '/api/v1/procurement/orders/' && method === 'POST') || (path === `/api/v1/procurement/orders/${orderFormId}/` && method === 'PATCH')) {
       const error = body?.status === 'sent' ? state.sendError || state.saveError : state.saveError
@@ -89,6 +104,6 @@ export async function orderFormHarness(page, options = {}) {
     state.unknown.push({ path, method })
     return reply(route, { detail: 'Unexpected isolated purchase order form test request.' }, 400)
   })
-  await page.goto('/procurement/orders/new', { waitUntil: 'domcontentloaded' })
+  await page.goto(options.path || '/procurement/orders/new', { waitUntil: 'domcontentloaded' })
   return state
 }
