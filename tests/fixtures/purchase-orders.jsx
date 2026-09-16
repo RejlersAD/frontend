@@ -18,7 +18,7 @@ function Harness() {
     fetch('/api/v1/__purchase-orders-fixture__/').then(response => response.json()).then(setProps)
   }, [])
   if (!props) return <main><p role="status">Loading isolated fixture</p></main>
-  if (parameters.get('integration') === 'true') return <main><Suspense fallback={<p role="status">Loading order management</p>}><OrderManagement /></Suspense></main>
+  if (parameters.get('integration') === 'true') return <main style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: 0 }}><Suspense fallback={<p role="status">Loading order management</p>}><OrderManagement /></Suspense></main>
   return <main className={parameters.get('shell') === 'true' ? 'purchase-order-test-shell' : undefined}>
     <ProcurementRegister {...props} onRefresh={action('refresh')} onCreate={action('create')}
       onImportPdf={action('importPdf')} onImportExcel={action('importExcel')} onExport={action('export')}

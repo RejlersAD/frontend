@@ -161,6 +161,7 @@ const OrderManagement = () => {
   // Purchase Orders state
   const [orders, setOrders] = useState([]);
   const [pendingUploadError, setPendingUploadError] = useState('');
+  const [pendingUploadLoading, setPendingUploadLoading] = useState(false);
   const [orderPdfBusy, setOrderPdfBusy] = useState(false);
   const [recommendationCount, setRecommendationCount] = useState(null);
   const [purchaseOrderCount, setPurchaseOrderCount] = useState(null);
@@ -191,6 +192,7 @@ const OrderManagement = () => {
   // Soft-coded edit state - track which record is being edited
   const [editingOrder, setEditingOrder] = useState(null);
   const editOrderRequest = useRef(0);
+  const orderRegisterRequest = useRef(null);
 
   const pageControls = usePageControls({
     autoRefreshInterval: 60,
@@ -220,88 +222,106 @@ const OrderManagement = () => {
   );
 
   const fetchOrders = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const urlFilters = new URLSearchParams(window.location.search);
-      const requestParams = {
-        page_size: 10000,
-        enterprise_project: urlFilters.get('enterprise_project') || undefined,
-        legacy_project: urlFilters.get('legacy_project') || undefined,
-      };
-      const response = await apiClient.get('/procurement/orders/', { params: requestParams });
-      
-      // Soft-coded data normalization - ensure array
-      let normalizedData = [];
-      const data = response.data;
-      if (Array.isArray(data)) {
-        normalizedData = data;
-      } else if (data && Array.isArray(data.results)) {
-        normalizedData = data.results;
-      } else if (data && typeof data === 'object') {
-        throw new Error('The purchase order register returned an unexpected response.');
+    orderRegisterRequest.current?.abort();
+    const controller = new AbortController();
+    orderRegisterRequest.current = controller;
+    const isCurrent = () => orderRegisterRequest.current === controller && !controller.signal.aborted;
+    const requestConfig = { signal: controller.signal, suppressErrorToast: true };
+    setLoading(true);
+    setError(null);
+    setPendingUploadError('');
+    setOrders([]);
+
+    const urlFilters = new URLSearchParams(window.location.search);
+    const requestParams = {
+      page_size: 10000,
+      enterprise_project: urlFilters.get('enterprise_project') || undefined,
+      legacy_project: urlFilters.get('legacy_project') || undefined,
+    };
+    const includePendingDocuments = !requestParams.enterprise_project && !requestParams.legacy_project;
+    setPendingUploadLoading(includePendingDocuments);
+    let orderRows = [];
+    let pendingRows = [];
+    const publishRows = () => {
+      if (isCurrent()) setOrders([...orderRows, ...pendingRows]);
+    };
+
+    const loadOrders = async () => {
+      try {
+        const response = await apiClient.get('/procurement/orders/', { ...requestConfig, params: requestParams });
+        const data = response.data;
+        const normalizedData = Array.isArray(data) ? [...data] : Array.isArray(data?.results) ? [...data.results] : null;
+        if (!normalizedData) throw new Error('The purchase order register returned an unexpected response.');
+        let next = data?.next;
+        const visitedPages = new Set(['1']);
+        while (next && isCurrent()) {
+          const nextPage = new URL(next, window.location.origin).searchParams.get('page');
+          if (!nextPage || visitedPages.has(nextPage)) throw new Error('The purchase order register pagination could not be completed.');
+          visitedPages.add(nextPage);
+          const following = await apiClient.get('/procurement/orders/', { ...requestConfig, params: { ...requestParams, page: nextPage } });
+          if (!Array.isArray(following.data?.results)) throw new Error('The purchase order register returned an incomplete page.');
+          normalizedData.push(...following.data.results);
+          next = following.data.next;
+        }
+        if (!isCurrent()) return;
+        normalizedData.sort((a, b) => {
+          const aCreated = a?.created_at ? new Date(a.created_at).getTime() : 0;
+          const bCreated = b?.created_at ? new Date(b.created_at).getTime() : 0;
+          if (aCreated !== bCreated) return bCreated - aCreated;
+          return (b.po_number || '').localeCompare(a.po_number || '', undefined, { numeric: true, sensitivity: 'base' });
+        });
+        orderRows = normalizedData;
+        setPurchaseOrderCount(orderRows.length);
+        publishRows();
+      } catch (problem) {
+        if (!isCurrent()) return;
+        console.error('Error fetching orders:', problem);
+        setError({
+          type: 'network',
+          message: `Failed to load purchase orders: ${problem.response?.data?.detail || problem.message}`,
+          action: () => fetchOrders(),
+        });
+        setPurchaseOrderCount(null);
+      } finally {
+        // Orders become usable as soon as their own listing finishes.
+        if (isCurrent()) setLoading(false);
       }
-      let next = data?.next;
-      const visitedPages = new Set(['1']);
-      while (next) {
-        const nextPage = new URL(next, window.location.origin).searchParams.get('page');
-        if (!nextPage || visitedPages.has(nextPage)) throw new Error('The purchase order register pagination could not be completed.');
-        visitedPages.add(nextPage);
-        const following = await apiClient.get('/procurement/orders/', { params: { ...requestParams, page: nextPage } });
-        if (!Array.isArray(following.data?.results)) throw new Error('The purchase order register returned an incomplete page.');
-        normalizedData.push(...following.data.results);
-        next = following.data.next;
-      }
-      
-      normalizedData.sort((a, b) => {
-        const aCreated = a?.created_at ? new Date(a.created_at).getTime() : 0;
-        const bCreated = b?.created_at ? new Date(b.created_at).getTime() : 0;
-        if (aCreated !== bCreated) return bCreated - aCreated;
-        return (b.po_number || '').localeCompare(a.po_number || '', undefined, { numeric: true, sensitivity: 'base' });
-      });
-      
-      setPurchaseOrderCount(normalizedData.length);
-      setPendingUploadError('');
-      let pendingDocuments = [];
+    };
+
+    const loadPendingDocuments = async () => {
       // Unreconciled PDFs do not yet have a verified project association.
-      if (!requestParams.enterprise_project && !requestParams.legacy_project) {
+      if (includePendingDocuments) {
         try {
           const documentParams = { pending_reconciliation: true, page_size: 10000 };
-          const pending = await apiClient.get('/procurement/po-documents/', { params: documentParams });
+          const pending = await apiClient.get('/procurement/po-documents/', { ...requestConfig, params: documentParams });
           const payload = pending.data;
           if (!Array.isArray(payload) && !Array.isArray(payload?.results)) throw new Error('Unexpected uploaded document response.');
-          pendingDocuments = Array.isArray(payload) ? payload : payload.results;
+          const pendingDocuments = [...(Array.isArray(payload) ? payload : payload.results)];
           let nextDocumentPage = payload?.next;
           const documentPages = new Set(['1']);
-          while (nextDocumentPage) {
+          while (nextDocumentPage && isCurrent()) {
             const page = new URL(nextDocumentPage, window.location.origin).searchParams.get('page');
             if (!page || documentPages.has(page)) throw new Error('Uploaded document pagination could not be completed.');
             documentPages.add(page);
-            const following = await apiClient.get('/procurement/po-documents/', { params: { ...documentParams, page } });
+            const following = await apiClient.get('/procurement/po-documents/', { ...requestConfig, params: { ...documentParams, page } });
             if (!Array.isArray(following.data?.results)) throw new Error('Uploaded document response was incomplete.');
             pendingDocuments.push(...following.data.results);
             nextDocumentPage = following.data.next;
           }
+          if (!isCurrent()) return;
+          pendingRows = [...new Map(pendingDocuments.filter(document => !document.confirmed_po).map(document => [document.id, document])).values()]
+            .map(pendingPurchaseOrderDocument);
+          publishRows();
         } catch (problem) {
+          if (!isCurrent()) return;
           setPendingUploadError(problem.response?.data?.detail || problem.message || 'Uploaded PDFs could not be loaded.');
+        } finally {
+          if (isCurrent()) setPendingUploadLoading(false);
         }
       }
-      const pendingRows = [...new Map(pendingDocuments.filter(document => !document.confirmed_po).map(document => [document.id, document])).values()]
-        .map(pendingPurchaseOrderDocument);
-      setOrders([...normalizedData, ...pendingRows]);
-      
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-      setError({ 
-        type: 'network', 
-        message: `Failed to load purchase orders: ${error.response?.data?.detail || error.message}`,
-        action: () => fetchOrders()
-      });
-      setOrders([]); // Ensure array even on error
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    await Promise.all([loadOrders(), loadPendingDocuments()]);
   };
 
   const fetchVendors = async () => {
@@ -426,6 +446,7 @@ const OrderManagement = () => {
     fetchVendors();
     fetchProjects();
     fetchCurrentUser();
+    return () => orderRegisterRequest.current?.abort();
   }, [pageControls.isRefreshing, activeTab]);
 
   useEffect(() => {
@@ -860,7 +881,7 @@ const OrderManagement = () => {
     <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-container' : 'pow-page-container bg-gray-50'} style={pageControls.styles.container}>
       <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-content' : 'pow-page-content'} style={pageControls.styles.content}>
         {activeTab === 'purchaseOrders' ? <ProcurementRegister
-          orders={orders} loading={loading} error={error} pendingUploadError={pendingUploadError} currentUserId={currentUserId}
+          orders={orders} loading={loading} error={error} pendingUploadError={pendingUploadError} pendingUploadLoading={pendingUploadLoading} currentUserId={currentUserId}
           requisitionCount={recommendationCount} onRefresh={fetchOrders}
           onCreate={() => navigate('/procurement/orders/new')}
           onImportPdf={() => { setPoPreviewDocumentId(null); setPoDocumentEditMode(false); setShowPOPdfImport(true); }} onImportExcel={() => setShowPOExcelImport(true)}

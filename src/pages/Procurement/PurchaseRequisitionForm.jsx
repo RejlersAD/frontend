@@ -23,11 +23,11 @@ import RecommendationSupplierPricing from './RecommendationSupplierPricing';
 import RecordedApprovalHistory from './RecordedApprovalHistory';
 import { prepareRecommendationPayload } from './recommendationFormPayload';
 import { hydrateRecommendationReferences, preserveRecordedApprovalWorkflow, recommendationLineError } from './recommendationFormState';
-import { confirmedRecommendationVat, recommendationVat, recommendationLineDiscount } from './recommendationVat';
+import { confirmedRecommendationVat, hasCompleteRecommendationPricing, recommendationVat, recommendationLineDiscount } from './recommendationVat';
 import { calculateProcurementVat, procurementLineNet, sumProcurementMoney } from '../../utils/procurementVat';
 import './PurchaseRequisitionForm.css';
 import useOrganizationCatalog from '../../hooks/useOrganizationCatalog';
-import { approvalPositionsFromWorkflow, missingApprovalPosition, vicePresidentPositionFromWorkflow } from './recommendationApprovalPositions';
+import { missingApprovalPosition, vicePresidentPositionFromWorkflow } from './recommendationApprovalPositions';
 import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
 import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
 import {
@@ -302,7 +302,6 @@ const buildApprovalWorkflow = ({
   vpOperations,
   activeEmployees,
   levelOneLabels,
-  levelOnePositions,
   vicePresidentPosition,
   poApplicable,
   stageLabels,
@@ -327,7 +326,6 @@ const buildApprovalWorkflow = ({
       step: step++, level: 1, stage: `Level 1 - Approver ${index + 1} of ${levelOneApproverCount}`,
       role: 'Level 1 Approver', approval_label: levelOneLabels?.[userId] || `L1-${index + 1}`,
       approval_group: 'level_1', group_mode: 'all', user_id: userId,
-      business_position: levelOnePositions?.[userId] || '',
       user_name: employeeDisplayName(user, savedApproverName(savedWorkflow, userId)), status: 'pending', approved_at: null,
     });
   });
@@ -462,9 +460,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const [levelOneSearch, setLevelOneSearch] = useState('');
   const [approvalDefaults, setApprovalDefaults] = useState({ procurement: null, vp_operations: null, general_manager: null });
   const [levelOneLabels, setLevelOneLabels] = useState({});
-  const [levelOnePositions, setLevelOnePositions] = useState({});
   const [vicePresidentPosition, setVicePresidentPosition] = useState('');
-  const { catalog, error: catalogError, reload: reloadCatalog } = useOrganizationCatalog({ enabled: isOpen && !preserveApprovalWorkflow });
+  const { catalog, error: catalogError, reload: reloadCatalog } = useOrganizationCatalog({ enabled: isOpen && !preserveApprovalWorkflow && formData.requisition_type === 'general' });
   const [stageLabels, setStageLabels] = useState(() => stageLabelsFromWorkflow(
     editData?.approval_workflow_config || [],
     editData?.price_remarks_data?.approval_table_labels || {},
@@ -542,7 +539,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     const initialApprovers = selectedApproversFromWorkflow(editData?.approval_workflow_config || []);
     const savedApprovalLabels = editData?.price_remarks_data?.approval_table_labels || {};
     setSelectedApprovers(initialApprovers);
-    setLevelOnePositions(approvalPositionsFromWorkflow(editData?.approval_workflow_config || []));
     setVicePresidentPosition(vicePresidentPositionFromWorkflow(editData?.approval_workflow_config || []));
     setLevelOneLabels(Object.fromEntries(
       (editData?.approval_workflow_config || [])
@@ -725,7 +721,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       ...previous,
       [normalizedUserId]: previous[normalizedUserId] || `L1-${(selectedApprovers.level_one || []).length + 1}`,
     }));
-    setLevelOnePositions(previous => ({ ...previous, [normalizedUserId]: '' }));
     setLevelOneSearch('');
     if (errors.approval_workflow_config) setErrors(prev => ({ ...prev, approval_workflow_config: null }));
   };
@@ -1138,8 +1133,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
   useEffect(() => {
     if (!linePricingEditedRef.current || !formData.items?.length) return;
-    const savedItems = prepareRecommendationPayload({ items: formData.items }).items;
-    if (recommendationLineError(savedItems)) return;
+    const savedItems = prepareRecommendationPayload({
+      items: formData.items,
+      price_remarks_data: { line_details: formData.price_remarks_data?.line_details },
+    }).items;
+    if (!savedItems.length || !savedItems.every(hasCompleteRecommendationPricing) || recommendationLineError(savedItems)) return;
     const itemsTotal = sumProcurementMoney(savedItems.map(item => procurementLineNet(item.quantity, item.unit_price, recommendationLineDiscount(item))));
     const amounts = confirmedRecommendationVat(formData.vat_basis)
       ? calculateProcurementVat(itemsTotal, formData.price_remarks_data?.discount_amount ?? 0, { basis: formData.vat_basis })
@@ -1150,7 +1148,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     ).toFixed(2);
     const hasLineBudgets = formData.items.some(item => item.budget !== '' && item.budget != null);
     setFormDataState(prev => ({ ...prev, _vatPricingChanged: true, _vatEnteredAmount: itemsTotal, net_total_excl_vat: amounts.netAmount.toFixed(2), total_price: amounts.totalAmount.toFixed(2), ...(hasLineBudgets ? { estimated_budget: itemsBudget } : {}) }));
-  }, [formData.items, formData.vat_basis, formData.price_remarks_data?.discount_amount]);
+  }, [formData.items, formData.vat_basis, formData.price_remarks_data?.discount_amount, formData.price_remarks_data?.line_details]);
 
   useEffect(() => {
     formDataRef.current = formData;
@@ -1247,7 +1245,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     isOpen,
     levelOneApproverCount,
     levelOneLabels,
-    levelOnePositions,
     vicePresidentPosition,
     selectedApprovers,
     stageLabels,
@@ -1308,12 +1305,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       const items = prev.items.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         const updated = { ...item, [field]: value };
-        if (field === 'quantity' || field === 'unit_price') {
-          updated.total = (procurementLineNet(updated.quantity || 0, updated.unit_price || 0, recommendationLineDiscount(updated)) ?? 0).toFixed(2);
+        if ((field === 'quantity' || field === 'unit_price') && hasCompleteRecommendationPricing(updated)) {
+          updated.total = procurementLineNet(updated.quantity, updated.unit_price, recommendationLineDiscount(updated)).toFixed(2);
         }
         return updated;
       });
-      return { ...prev, items, ...(field === 'budget' ? { estimated_budget: items.some(item => item.budget !== '' && item.budget != null) ? sumProcurementMoney(items.map(item => item.budget || 0)).toFixed(2) : '' } : {}), price_remarks_data: { ...prev.price_remarks_data,
+      return { ...prev, items, ...(['quantity', 'unit_price'].includes(field) ? { _vatPricingChanged: true, _vatEnteredAmount: '' } : {}), ...(field === 'budget' ? { estimated_budget: items.some(item => item.budget !== '' && item.budget != null) ? sumProcurementMoney(items.map(item => item.budget || 0)).toFixed(2) : '' } : {}), price_remarks_data: { ...prev.price_remarks_data,
         line_details: items.map((item, itemIndex) => ({
           ...(prev.price_remarks_data?.line_details?.[itemIndex] || {}),
           ...Object.fromEntries(['vat_rate', 'vendor_id', 'budget'].filter(key => item[key] !== undefined).map(key => [key, item[key]])),
@@ -1384,9 +1381,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     if (!formData.vendor) {
       newErrors.vendor = 'Select the supplier from the shortlisted vendors';
     }
-    if (formData.vendor && !formData.vendor_selection_reason?.trim()) {
-      newErrors.vendor_selection_reason = 'Provide the reason for supplier selection';
-    }
     if ((formData.selected_vendors || []).length === 1 && !formData.single_source_justification?.trim()) {
       newErrors.single_source_justification = 'Single source justification is required';
     }
@@ -1404,8 +1398,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       }
     }
 
-    const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount
-      && (selectedApprovers.level_one || []).every(userId => levelOnePositions[userId]);
+    const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount;
     if ((formData.requisition_type === 'general' && !vicePresidentPosition) || !selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations
       || (formData.requisition_type === 'project' && !selectedApprovers.manager_projects)
       || (!formData.po_applicable && !selectedApprovers.general_manager)) {
@@ -1426,11 +1419,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     if (!formData.pr_number?.trim() || prNumberStatus.available === false) {
       setErrors(prev => ({ ...prev, pr_number: prNumberStatus.available === false ? 'This PR number already exists' : 'Enter the PR number manually' }));
       setActiveStep(0);
-      return;
-    }
-    if (!approvedPdfFile && !preserveApprovalWorkflow && (selectedApprovers.level_one || []).some(userId => !levelOnePositions[userId])) {
-      setErrors(previous => ({ ...previous, approval_workflow_config: 'Select the designated business position for every Level 1 approver.' }));
-      setActiveStep(4);
       return;
     }
     if (!approvedPdfFile && !preserveApprovalWorkflow && formData.requisition_type === 'general' && selectedApprovers.vp_operations && !vicePresidentPosition) {
@@ -1486,15 +1474,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         vpOperations,
         activeEmployees: projectManagers,
         levelOneLabels,
-        levelOnePositions,
         vicePresidentPosition,
         poApplicable: formData.po_applicable,
         stageLabels,
         savedWorkflow: editData?.approval_workflow_config || [],
       });
 
-      const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount
-      && (selectedApprovers.level_one || []).every(userId => levelOnePositions[userId]);
+      const levelOneComplete = (selectedApprovers.level_one || []).length === levelOneApproverCount;
       const requiredApproversMissing = formData.requisition_type === 'general'
         ? (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.vp_operations || (!formData.po_applicable && !selectedApprovers.general_manager))
         : (!selectedApprovers.procurement || !levelOneComplete || !selectedApprovers.manager_projects || !selectedApprovers.vp_operations || (!formData.po_applicable && !selectedApprovers.general_manager));
@@ -1643,7 +1629,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     vpOperations,
     activeEmployees: projectManagers,
     levelOneLabels,
-    levelOnePositions,
     vicePresidentPosition,
     poApplicable: formData.po_applicable,
     stageLabels,
@@ -2287,14 +2272,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               onSaved={handleApprovalRecordSaved}
               onEditingChange={setApprovalRecordEditing}
             /> : <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                {formData.requisition_type === 'project'
-                  ? `Project workflow: Procurement Level 0 → Level 1 → optional Level 2 → Level 3 → default Level 4${formData.po_applicable ? '.' : ' → default Level 5 CEO.'}`
-                  : `Internal workflow: Procurement Level 0 → Level 1 Department Manager → selectable Level 2 Vice President${formData.po_applicable ? '.' : ' → default Level 5 CEO.'}`}
-              </p>
-
-              <p className="text-xs text-gray-500">Select the business position required for each Level 1 assignment and the general Vice President stage. The assigned employee must hold that official position and have approval access.</p>
-              {catalogError && <p className="text-sm text-amber-700">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry positions</button></p>}
+              {formData.requisition_type === 'general' && catalogError && <p className="text-sm text-amber-700">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry positions</button></p>}
               <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
                 <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_100px] md:items-end">
                   <div><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Level 1 required</label><input type="number" min="1" max="20" value={levelOneApproverCount} aria-label="Level 1 required" onChange={(event) => changeLevelOneCount(event.target.value)} className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" /></div>
@@ -2309,7 +2287,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                   <tbody className="divide-y divide-gray-200">
                     <tr className="bg-blue-50/50"><td className="p-3 align-top"><input aria-label="procurement approval label" value={stageLabels.procurement} onChange={(event) => changeStageLabel('procurement', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Procurement Department</p><p className="mt-1 text-xs text-gray-500">Level 0 · Required</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Procurement Department Approval" value={selectedApprovers.procurement || ''} employees={projectManagers} onChange={(value) => handleApproverChange('procurement', value)} required disabled /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Default</span></td></tr>
 
-                    {(selectedApprovers.level_one || []).length ? (selectedApprovers.level_one || []).map((userId, index) => { const user = findEmployeeById(projectManagers, userId); const displayName = employeeDisplayName(user, savedApproverName(editData?.approval_workflow_config, userId)); return <tr key={userId}><td className="p-3"><input value={levelOneLabels[userId] ?? `L1-${index + 1}`} onChange={(event) => changeLevelOneLabel(userId, event.target.value)} maxLength={20} aria-label={`Approval table level for ${displayName}`} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3"><p className="font-semibold text-gray-900">Level 1 Approver {index + 1}</p><p className="mt-1 text-xs text-gray-500">All Level 1 approvers must approve</p><label className="mt-2 block text-xs font-semibold text-gray-600">Designated business position<select aria-label={`Business position for ${displayName}`} value={levelOnePositions[userId] || ''} onChange={event => { userEditedRef.current = true; setLevelOnePositions(previous => ({ ...previous, [userId]: event.target.value })); setErrors(previous => ({ ...previous, approval_workflow_config: null })); }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs"><option value="">Select position</option>{levelOnePositions[userId] && !(catalog?.organizational_roles || []).some(role => role.code === levelOnePositions[userId]) && <option value={levelOnePositions[userId]}>{levelOnePositions[userId]} (saved position)</option>}{(catalog?.organizational_roles || []).map(role => <option key={role.code} value={role.code}>{role.label}</option>)}</select></label></td><td className="p-3"><p className="font-semibold text-gray-900">{displayName}</p><p className="text-xs text-gray-500">{user?.job_title || user?.department || savedApproverById(editData?.approval_workflow_config, userId)?.job_title || 'Active employee'}</p></td><td className="p-3 text-center"><button type="button" onClick={() => removeLevelOneApprover(userId)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button></td></tr>; }) : <tr><td className="p-3 text-center font-semibold text-purple-700">L1</td><td className="p-3"><p className="font-semibold">Level 1 Approvers</p><p className="text-xs text-gray-500">Required</p></td><td className="p-3 text-gray-500">Use the search box above to add approvers.</td><td className="p-3 text-center text-xs font-semibold text-amber-700">0 selected</td></tr>}
+                    {(selectedApprovers.level_one || []).length ? (selectedApprovers.level_one || []).map((userId, index) => { const user = findEmployeeById(projectManagers, userId); const displayName = employeeDisplayName(user, savedApproverName(editData?.approval_workflow_config, userId)); return <tr key={userId}><td className="p-3"><input value={levelOneLabels[userId] ?? `L1-${index + 1}`} onChange={(event) => changeLevelOneLabel(userId, event.target.value)} maxLength={20} aria-label={`Approval table level for ${displayName}`} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3"><p className="font-semibold text-gray-900">Level 1 Approver {index + 1}</p><p className="mt-1 text-xs text-gray-500">All Level 1 approvers must approve</p></td><td className="p-3"><p className="font-semibold text-gray-900">{displayName}</p><p className="text-xs text-gray-500">{user?.job_title || user?.department || savedApproverById(editData?.approval_workflow_config, userId)?.job_title || 'Active employee'}</p></td><td className="p-3 text-center"><button type="button" onClick={() => removeLevelOneApprover(userId)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button></td></tr>; }) : <tr><td className="p-3 text-center font-semibold text-purple-700">L1</td><td className="p-3"><p className="font-semibold">Level 1 Approvers</p><p className="text-xs text-gray-500">Required</p></td><td className="p-3 text-gray-500">Use the search box above to add approvers.</td><td className="p-3 text-center text-xs font-semibold text-amber-700">0 selected</td></tr>}
 
                     {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input aria-label="engineering manager approval label" value={stageLabels.engineering_manager} onChange={(event) => changeStageLabel('engineering_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Engineering (MoE)</p><p className="mt-1 text-xs text-gray-500">Level 2 · Optional</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Engineering (MoE)" value={selectedApprovers.engineering_manager || ''} employees={engineeringManagers} onChange={(value) => handleApproverChange('engineering_manager', value)} disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">Optional</span></td></tr>}
 

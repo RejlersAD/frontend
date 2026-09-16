@@ -83,7 +83,7 @@ test('new request adds supplier shortlist, updates pricing and keeps draft saves
     await page.locator('.prf-sp-vendor-options').getByRole('button', { name: new RegExp(name) }).click()
   }
   await page.getByRole('combobox', { name: /^Preferred supplier/ }).selectOption('21')
-  await page.getByRole('textbox', { name: /^Reason for supplier selection/ }).fill('Best overall value, proven experience with similar projects, and compliant commercial terms.')
+  await expect(page.getByRole('textbox', { name: /^Reason for supplier selection/ })).toHaveCount(0)
   await page.getByRole('combobox', { name: 'Currency', exact: true }).selectOption('AED')
   await page.getByRole('button', { name: 'Add line item', exact: true }).click()
   await page.getByRole('textbox', { name: 'Line item 1 description', exact: true }).fill('Value Engineering Services - Package 1 & 2')

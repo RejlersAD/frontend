@@ -2,20 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
-import http from 'http'
-
-// Soft-coded: disable HTTP keep-alive so the proxy re-resolves the backend
-// hostname on every request.  Without this, Node caches the old container IP
-// after a backend restart, causing 503 "connect ECONNREFUSED" errors until
-// the frontend container is also restarted.
-//
-// NOTE: the custom `agent` option does not always propagate cleanly through
-// Vite's bundled http-proxy in dev mode and has been observed to silently
-// stall requests (proxyReq event never fires).  It is therefore opt-in via
-// `VITE_PROXY_DISABLE_KEEPALIVE=1` rather than always-on.
-const PROXY_AGENT = process.env.VITE_PROXY_DISABLE_KEEPALIVE === '1'
-  ? new http.Agent({ keepAlive: false })
-  : undefined
+import { createProxyAgent } from './scripts/vite-proxy-agent.mjs'
 
 // Soft-coded proxy timeouts (override via env vars when needed)
 // Default raised to 20 min to accommodate long-running AI extractions on
@@ -31,6 +18,10 @@ const PROXY_UPSTREAM_TIMEOUT_MS = Number(process.env.VITE_PROXY_UPSTREAM_TIMEOUT
 export default defineConfig(({ mode }) => {
   // Load environment variables for this mode
   const env = loadEnv(mode, process.cwd(), '')
+  const requestedWatchInterval = Number(env.VITE_WATCH_INTERVAL_MS)
+  const watchInterval = Number.isFinite(requestedWatchInterval) && requestedWatchInterval > 0
+    ? requestedWatchInterval
+    : 3000
   
   // Smart API URL detection (soft-coded for Docker and production)
   // Priority: VITE_API_PROXY_TARGET env var → fallback to localhost:8000
@@ -42,6 +33,12 @@ export default defineConfig(({ mode }) => {
   let apiUrl = env.VITE_API_PROXY_TARGET || 'http://localhost:8000'
   const apiUrlObj = new URL(apiUrl)
   const targetHost = apiUrlObj.host // dynamic: 'localhost:8000' OR 'aiflowbackend-production.up.railway.app'
+  // Docker DNS must not queue behind the file polling/source transforms that
+  // share Node's native lookup worker pool. Other environments retain their
+  // usual resolver. Fresh connections also pick up backend container changes.
+  const proxyAgent = createProxyAgent(apiUrl, {
+    disableKeepAlive: env.VITE_PROXY_DISABLE_KEEPALIVE === '1',
+  })
 
   // Soft-coded: detect when pointing at production so we can warn in the browser
   const IS_PROD_BACKEND = !apiUrl.includes('localhost') && !apiUrl.includes('127.0.0.1') && !apiUrl.includes('backend_local') && !apiUrl.includes('aiflow_backend')
@@ -186,7 +183,21 @@ export default defineConfig(({ mode }) => {
       port: 5173, // Use port 5173 for local development
       watch: {
         usePolling: true, // Required for Docker on Windows (no native FS events through bind mounts)
-        interval: 1000,
+        // Leave worker-pool capacity for API hostname resolution and source
+        // transforms on Windows bind mounts. A one-second poll across this
+        // application can saturate the pool even when no files change.
+        interval: watchInterval,
+        binaryInterval: watchInterval,
+        // Polling generated reports competes with proxy DNS lookups for Node's
+        // filesystem worker pool. Keep those outputs out of the watcher so API
+        // requests stay responsive as local test artifacts accumulate.
+        ignored: [
+          '**/artifacts/**',
+          '**/coverage/**',
+          '**/dev-dist/**',
+          '**/playwright-report/**',
+          '**/test-results*/**',
+        ],
       },
       proxy: {
         // Local signed procurement documents use Django's MEDIA_URL. Proxy
@@ -195,6 +206,7 @@ export default defineConfig(({ mode }) => {
           target: apiUrl,
           changeOrigin: true,
           secure: false,
+          ...(proxyAgent ? { agent: proxyAgent } : {}),
         },
         // Default legend symbol pictures (repo static files, served under
         // Django's STATIC_URL) — same relative-URL-from-a-different-origin
@@ -203,6 +215,7 @@ export default defineConfig(({ mode }) => {
           target: apiUrl,
           changeOrigin: true,
           secure: false,
+          ...(proxyAgent ? { agent: proxyAgent } : {}),
         },
         '/api': {
           target: apiUrl,
@@ -213,8 +226,7 @@ export default defineConfig(({ mode }) => {
           // 504 rather than hanging the browser request indefinitely.
           timeout: PROXY_TIMEOUT_MS,
           proxyTimeout: PROXY_UPSTREAM_TIMEOUT_MS,
-          // Optional fresh-DNS agent — only enabled when explicitly requested.
-          ...(PROXY_AGENT ? { agent: PROXY_AGENT } : {}),
+          ...(proxyAgent ? { agent: proxyAgent } : {}),
           configure: (proxy, options) => {
             proxy.on('error', (err, req, res) => {
               // SOFT-CODED: send a proper JSON 503 instead of a silent empty 500

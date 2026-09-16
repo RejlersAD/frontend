@@ -2,7 +2,7 @@ import { procurementLineNet } from '../../utils/procurementVat.js';
 import { recommendationLineDiscount } from './recommendationVat.js';
 
 const absent = value => value === undefined || value === null || value === '';
-const finiteAmount = value => !absent(value) && Number.isFinite(Number(value));
+const finiteAmount = value => !absent(value) && Number.isFinite(Number(value)) && procurementLineNet(value, 1) !== null;
 
 // Older signed imports recorded a quoted lump sum, without quantity/unit-price
 // columns. Represent that same amount explicitly; never repair an inconsistent
@@ -20,7 +20,7 @@ export function hydrateRecommendationItem(item) {
     ...(total !== undefined ? { total } : {}),
     ...(item.unit || item.uom ? { unit: item.unit || item.uom } : {}),
   };
-  if (absent(quantity) && absent(unitPrice) && finiteAmount(total) && Number(total) >= 0) {
+  if (!['quantity', 'qty', 'unit_price', 'price'].some(key => Object.hasOwn(item, key)) && finiteAmount(total) && Number(total) >= 0) {
     return { ...normalized, quantity: '1', unit: normalized.unit || 'LS', unit_price: String(total) };
   }
   return normalized;
@@ -56,15 +56,21 @@ export function preserveRecordedApprovalWorkflow(record) {
 
 export function recommendationLineError(items = []) {
   for (const [index, item] of items.entries()) {
-    if (!item || !String(item.description || '').trim()
-      || !finiteAmount(item.quantity) || Number(item.quantity) <= 0
-      || !finiteAmount(item.unit_price) || Number(item.unit_price) < 0) {
-      return `Line item ${index + 1} requires a description, positive quantity, and valid unit price.`;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return `Line item ${index + 1} must contain valid item details.`;
+    if (!absent(item.quantity) && (!finiteAmount(item.quantity) || Number(item.quantity) < 0)) {
+      return `Line item ${index + 1} quantity must be a valid non-negative number.`;
     }
-    const quantity = Number(Number(item.quantity).toFixed(4));
-    const price = Number(Number(item.unit_price).toFixed(2));
+    if (!absent(item.unit_price) && (!finiteAmount(item.unit_price) || Number(item.unit_price) < 0)) {
+      return `Line item ${index + 1} unit price must be a valid non-negative number.`;
+    }
+    if (!absent(item.total) && (!finiteAmount(item.total) || Number(item.total) < 0)) {
+      return `Line item ${index + 1} total must be a valid non-negative number.`;
+    }
     const discount = recommendationLineDiscount(item);
     if (!finiteAmount(discount) || Number(discount) < 0) return `Line item ${index + 1} requires a valid non-negative discount.`;
+    if (absent(item.quantity) || absent(item.unit_price)) continue;
+    const quantity = Number(Number(item.quantity).toFixed(4));
+    const price = Number(Number(item.unit_price).toFixed(2));
     const calculatedCents = Math.round(procurementLineNet(quantity, price, discount) * 100);
     if (!absent(item.total) && (!finiteAmount(item.total)
       || Math.round(Number(item.total) * 100) !== calculatedCents)) {

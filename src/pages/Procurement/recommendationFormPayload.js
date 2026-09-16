@@ -3,17 +3,30 @@ import { confirmedRecommendationVat, recommendationEnteredAmount, recommendation
 
 const LINE_DETAIL_FIELDS = ['vat_rate', 'vendor_id', 'budget'];
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+const meaningfulDetail = value => {
+  if (value == null || value === '') return false;
+  if (typeof value === 'string') return Boolean(value.trim());
+  if (typeof value === 'object') return Object.values(value).some(meaningfulDetail);
+  return true;
+};
+const zeroAmount = value => ['number', 'string'].includes(typeof value) && String(value).trim() !== '' && Number(value) === 0;
 
 // Match the blank-row omission in requisition_validation.normalize_line_items.
 // Nonblank invalid rows remain in the payload so server validation can report them.
-const isBlankLine = (item) => {
+const isBlankLine = (item, details = {}) => {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
   const description = String(item.description || item.item || item.name || '').trim();
   const quantity = has(item, 'quantity') ? item.quantity : has(item, 'qty') ? item.qty : 1;
   const unitPrice = has(item, 'unit_price') ? item.unit_price : has(item, 'price') ? item.price : 0;
   const blankQuantity = quantity == null || quantity === '' || quantity === 1 || quantity === '1' || quantity === true;
   const blankPrice = unitPrice == null || unitPrice === '' || unitPrice === 0 || unitPrice === '0' || unitPrice === false;
-  return !description && blankQuantity && blankPrice;
+  const total = item.total ?? item.line_total;
+  const blankTotal = total == null || total === '' || zeroAmount(total);
+  const code = String(item.code || item.sku || '').trim();
+  const unit = String(item.unit || item.uom || '').trim();
+  const hasDiscount = ['discount', 'line_discount', 'discount_amount'].some(key => item[key] != null && item[key] !== '' && !zeroAmount(item[key]));
+  return !description && blankQuantity && blankPrice && blankTotal && !code
+    && (!unit || unit.toUpperCase() === 'EA') && !hasDiscount && !meaningfulDetail(details);
 };
 
 /**
@@ -39,7 +52,6 @@ export function prepareRecommendationPayload(formData, approvalWorkflow) {
     const items = [];
     const lineDetails = [];
     formData.items.forEach((item, index) => {
-      if (isBlankLine(item)) return;
       const priorDetails = savedDetails[index];
       const details = priorDetails && typeof priorDetails === 'object' && !Array.isArray(priorDetails)
         ? { ...priorDetails } : {};
@@ -49,6 +61,7 @@ export function prepareRecommendationPayload(formData, approvalWorkflow) {
           if (item[field] !== undefined) details[field] = item[field];
           delete savedItem[field];
         });
+        if (isBlankLine(item, details)) return;
         items.push(savedItem);
       } else {
         items.push(item);

@@ -62,7 +62,7 @@ test('PR delete cancellation and protected errors retain the record; successful 
   clean(state);
 });
 
-test('signed PR explicit save persists cleared optional text and does not alter recorded approval evidence', async ({ page }) => {
+test('signed PR save clears optional text and preserves historical supplier reason and approval evidence', async ({ page }) => {
   const verification = { signed_off: true, source_approval_rows: [] };
   const state = await recommendationFormHarness(page, { edit: true, record: {
     status: 'approved', price_remarks: 'Old negotiation text', vendor_selection_reason: 'Old supplier reason',
@@ -71,11 +71,11 @@ test('signed PR explicit save persists cleared optional text and does not alter 
   await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible();
   await page.getByRole('navigation', { name: 'Recommendation steps' }).getByRole('button', { name: /Supplier & pricing/ }).click();
   await page.getByRole('textbox', { name: /^Negotiation outcome/ }).fill('');
-  await page.getByRole('textbox', { name: /^Reason for supplier selection/ }).fill('');
+  await expect(page.getByRole('textbox', { name: /^Reason for supplier selection/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
   await expect.poll(() => state.requests.filter(request => request.method === 'PATCH').length).toBe(1);
   expect(state.record.price_remarks).toBe('');
-  expect(state.record.vendor_selection_reason).toBe('');
+  expect(state.record.vendor_selection_reason).toBe('Old supplier reason');
   expect(state.record.status).toBe('approved');
   expect(state.record.price_remarks_data.signed_document_verification).toEqual(verification);
   expect(state.submissions).toEqual([]);
@@ -83,7 +83,7 @@ test('signed PR explicit save persists cleared optional text and does not alter 
   await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible();
   await page.getByRole('navigation', { name: 'Recommendation steps' }).getByRole('button', { name: /Supplier & pricing/ }).click();
   await expect(page.getByRole('textbox', { name: /^Negotiation outcome/ })).toHaveValue('');
-  await expect(page.getByRole('textbox', { name: /^Reason for supplier selection/ })).toHaveValue('');
+  await expect(page.getByRole('textbox', { name: /^Reason for supplier selection/ })).toHaveCount(0);
   clean(state);
 });
 
