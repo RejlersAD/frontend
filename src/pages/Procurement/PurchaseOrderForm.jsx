@@ -2854,7 +2854,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
             </footer>
           </form>
         </section>
-        <PurchaseOrderPreviewPane formData={formData} vendor={selectedVendor} files={attachmentSlots.filter(slot => slot.file || slot.existingAttachment)} issues={validationIssues} onIssueClick={openValidationIssue} />
+        <PurchaseOrderPreviewPane formData={formData} vendor={selectedVendor} files={attachmentSlots.filter(slot => slot.file || slot.existingAttachment)} issues={validationIssues} onIssueClick={openValidationIssue} orderId={editData?.id || draftId} />
       </div>
     </div>
   );

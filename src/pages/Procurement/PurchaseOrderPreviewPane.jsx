@@ -11,6 +11,7 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
+import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import './PurchaseOrderPreviewPane.css';
 
 // Keep the existing PO template's natural width so its typography and pagination
@@ -18,11 +19,12 @@ import './PurchaseOrderPreviewPane.css';
 const PAPER_WIDTH = 560;
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
-export default function PurchaseOrderPreviewPane({ formData, vendor, files = [], issues = [], onIssueClick }) {
+export default function PurchaseOrderPreviewPane({ formData, vendor, files = [], issues = [], onIssueClick, orderId }) {
   const paneRef = useRef(null);
   const viewportRef = useRef(null);
   const documentRef = useRef(null);
   const documentTabRef = useRef(null);
+  const uploadedTabRef = useRef(null);
   const validationTabRef = useRef(null);
   const instanceId = useId();
   const [tab, setTab] = useState('document');
@@ -68,6 +70,14 @@ export default function PurchaseOrderPreviewPane({ formData, vendor, files = [],
   useEffect(() => {
     updateCurrentPage();
   }, [scale, tab]);
+
+  useEffect(() => {
+    setDownloadError('');
+  }, [tab]);
+
+  useEffect(() => {
+    setTab('document');
+  }, [orderId]);
 
   useEffect(() => {
     const onFullscreenChange = () => setExpanded(document.fullscreenElement === paneRef.current);
@@ -151,9 +161,11 @@ export default function PurchaseOrderPreviewPane({ formData, vendor, files = [],
   const onTabKeyDown = (event) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const next = event.key === 'Home' ? 'document' : event.key === 'End' ? 'validation' : tab === 'document' ? 'validation' : 'document';
+    const tabs = ['document', 'uploaded', 'validation'];
+    const next = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs[2]
+      : tabs[(tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
     setTab(next);
-    (next === 'document' ? documentTabRef : validationTabRef).current?.focus();
+    ({ document: documentTabRef, uploaded: uploadedTabRef, validation: validationTabRef })[next].current?.focus();
   };
 
   return (
@@ -161,26 +173,27 @@ export default function PurchaseOrderPreviewPane({ formData, vendor, files = [],
       <header className="pop-heading">
         <div className="pop-title-row">
           <h2>Purchase order preview</h2>
-          <span className="pop-current"><span /> Up to date</span>
+          {tab === 'document' && <span className="pop-current"><span /> Up to date</span>}
         </div>
         <div className="pop-toolbar" aria-label="Purchase order preview controls">
-          <span className="pop-page-number">Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
+          {tab !== 'uploaded' && <><span className="pop-page-number">Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
           <div className="pop-zoom-controls">
             <button type="button" aria-label="Zoom out preview" onClick={() => changeZoom(-0.1)} disabled={scale <= 0.2}><MinusIcon /></button>
             <output aria-label="Preview zoom">{Math.round(scale * 100)}%</output>
             <button type="button" aria-label="Zoom in preview" onClick={() => changeZoom(0.1)} disabled={scale >= 1.5}><PlusIcon /></button>
           </div>
-          <button type="button" className="pop-tool" aria-pressed={fitWidth} onClick={() => setFitWidth(true)}>Fit width</button>
+          <button type="button" className="pop-tool" aria-pressed={fitWidth} onClick={() => setFitWidth(true)}>Fit width</button></>}
           <button type="button" className="pop-tool pop-icon-tool" aria-label={expanded ? 'Exit expanded preview' : 'Expand preview'} onClick={toggleFullscreen}>
             {expanded ? <ArrowsPointingInIcon /> : <ArrowsPointingOutIcon />}
           </button>
-          <button type="button" className="pop-tool pop-download" disabled={downloading} onClick={downloadPdf}>
+          {tab !== 'uploaded' && <button type="button" className="pop-tool pop-download" disabled={downloading} onClick={downloadPdf}>
             <ArrowDownTrayIcon />{downloading ? 'Preparing PDF...' : 'Download PDF'}
-          </button>
+          </button>}
         </div>
       </header>
       <div className="pop-tabs" role="tablist" aria-label="Purchase order preview views" onKeyDown={onTabKeyDown}>
         <button type="button" ref={documentTabRef} role="tab" id={`${instanceId}-document-tab`} aria-controls={`${instanceId}-document-panel`} aria-selected={tab === 'document'} tabIndex={tab === 'document' ? 0 : -1} onClick={() => setTab('document')}>Document</button>
+        <button type="button" ref={uploadedTabRef} role="tab" id={`${instanceId}-uploaded-tab`} aria-controls={`${instanceId}-uploaded-panel`} aria-selected={tab === 'uploaded'} tabIndex={tab === 'uploaded' ? 0 : -1} onClick={() => setTab('uploaded')}>Uploaded PO</button>
         <button type="button" ref={validationTabRef} role="tab" id={`${instanceId}-validation-tab`} aria-controls={`${instanceId}-validation-panel`} aria-selected={tab === 'validation'} tabIndex={tab === 'validation' ? 0 : -1} onClick={() => setTab('validation')}>Validation{issues.length > 0 && <span className="pop-issue-count">{issues.length}</span>}</button>
       </div>
       {downloadError && <div className="pop-error" role="alert">{downloadError}</div>}
@@ -191,6 +204,9 @@ export default function PurchaseOrderPreviewPane({ formData, vendor, files = [],
           </div>
         </div>
       </div>
+      <section className="pop-uploaded" role="tabpanel" id={`${instanceId}-uploaded-panel`} aria-labelledby={`${instanceId}-uploaded-tab`} hidden={tab !== 'uploaded'} tabIndex={0}>
+        <UploadedPurchaseOrderPreview orderId={orderId} active={tab === 'uploaded'} />
+      </section>
       <section className="pop-validation" role="tabpanel" id={`${instanceId}-validation-panel`} aria-labelledby={`${instanceId}-validation-tab`} hidden={tab !== 'validation'} tabIndex={0}>
         <h3>{issues.length ? 'Complete the required information' : 'Ready for review'}</h3>
         <p>{issues.length ? 'Select an item to return to the relevant form section.' : 'All required form fields are complete. Review the purchase order before saving.'}</p>
@@ -212,6 +228,7 @@ export default function PurchaseOrderPreviewPane({ formData, vendor, files = [],
 PurchaseOrderPreviewPane.propTypes = {
   formData: PropTypes.object.isRequired,
   vendor: PropTypes.object,
+  orderId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   files: PropTypes.arrayOf(PropTypes.object),
   issues: PropTypes.arrayOf(PropTypes.shape({
     field: PropTypes.string,

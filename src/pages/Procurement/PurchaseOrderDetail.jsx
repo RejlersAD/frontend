@@ -1,5 +1,5 @@
 import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -24,6 +24,7 @@ import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 import PurchaseOrderForm from './PurchaseOrderForm';
+import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
 
 const formatDate = (value) => {
@@ -96,6 +97,26 @@ const PurchaseOrderDetail = () => {
   const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
   const [pdfPreviewError, setPdfPreviewError] = useState('');
   const [pdfPreviewRetryKey, setPdfPreviewRetryKey] = useState(0);
+  const [pdfPreviewTab, setPdfPreviewTab] = useState('generated');
+  const pdfPreviewId = useId();
+
+  useEffect(() => {
+    setPdfPreviewTab('generated');
+  }, [id]);
+
+  const handlePreviewTabKeyDown = (event) => {
+    const tabs = ['generated', 'uploaded'];
+    const currentIndex = tabs.indexOf(pdfPreviewTab);
+    let nextIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex + tabs.length - 1) % tabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    setPdfPreviewTab(tabs[nextIndex]);
+    event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[nextIndex]?.focus();
+  };
 
   const handlePrintPurchaseOrder = async () => {
     try {
@@ -1030,11 +1051,11 @@ const PurchaseOrderDetail = () => {
                       <DocumentTextIcon className="mr-2 h-5 w-5 shrink-0 text-indigo-600" />
                       PDF Preview
                     </h2>
-                    {pdfPreviewFilename && (
+                    {pdfPreviewTab === 'generated' && pdfPreviewFilename && (
                       <p className="mt-0.5 truncate text-xs text-gray-500" title={pdfPreviewFilename}>{pdfPreviewFilename}</p>
                     )}
                   </div>
-                  {pdfPreviewUrl && (
+                  {pdfPreviewTab === 'generated' && pdfPreviewUrl && (
                     <a
                       href={pdfPreviewUrl}
                       download={pdfPreviewFilename}
@@ -1046,35 +1067,76 @@ const PurchaseOrderDetail = () => {
                     </a>
                   )}
                 </header>
-
-                {pdfPreviewLoading && (
-                  <div className="flex h-[800px] items-center justify-center gap-2 bg-slate-50 text-sm text-gray-500">
-                    <ArrowPathIcon className="h-5 w-5 animate-spin" /> Generating PDF preview…
-                  </div>
-                )}
-
-                {!pdfPreviewLoading && pdfPreviewError && (
-                  <div className="flex h-[800px] flex-col items-center justify-center bg-slate-50 px-8 text-center">
-                    <DocumentTextIcon className="h-12 w-12 text-gray-300" />
-                    <p className="mt-4 text-sm font-semibold text-gray-800">PDF preview unavailable</p>
-                    <p className="mt-1 text-xs text-gray-500">{pdfPreviewError}</p>
+                <div role="tablist" aria-label="Purchase order PDF source" className="flex border-b border-gray-200 px-4">
+                  {[
+                    ['generated', 'Generated PO'],
+                    ['uploaded', 'Uploaded PO'],
+                  ].map(([value, label]) => (
                     <button
+                      key={value}
                       type="button"
-                      onClick={() => setPdfPreviewRetryKey((value) => value + 1)}
-                      className="mt-4 inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700"
+                      role="tab"
+                      id={`${pdfPreviewId}-${value}-tab`}
+                      aria-controls={`${pdfPreviewId}-${value}-panel`}
+                      aria-selected={pdfPreviewTab === value}
+                      tabIndex={pdfPreviewTab === value ? 0 : -1}
+                      onClick={() => setPdfPreviewTab(value)}
+                      onKeyDown={handlePreviewTabKeyDown}
+                      className={`border-b-2 px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${pdfPreviewTab === value ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
                     >
-                      <ArrowPathIcon className="mr-1.5 h-4 w-4" /> Retry preview
+                      {label}
                     </button>
-                  </div>
-                )}
+                  ))}
+                </div>
+                <div
+                  role="tabpanel"
+                  id={`${pdfPreviewId}-generated-panel`}
+                  aria-labelledby={`${pdfPreviewId}-generated-tab`}
+                  hidden={pdfPreviewTab !== 'generated'}
+                  tabIndex={0}
+                  className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                >
+                  {pdfPreviewLoading && (
+                    <div className="flex h-[800px] items-center justify-center gap-2 bg-slate-50 text-sm text-gray-500">
+                      <ArrowPathIcon className="h-5 w-5 animate-spin" /> Generating PDF preview…
+                    </div>
+                  )}
 
-                {!pdfPreviewLoading && pdfPreviewUrl && (
-                  <iframe
-                    title={`Purchase Order ${order.po_number || order.id} PDF preview`}
-                    src={`${pdfPreviewUrl}#page=1&view=FitH&toolbar=1&navpanes=0`}
-                    className="h-[800px] w-full bg-slate-100"
-                  />
-                )}
+                  {!pdfPreviewLoading && pdfPreviewError && (
+                    <div className="flex h-[800px] flex-col items-center justify-center bg-slate-50 px-8 text-center">
+                      <DocumentTextIcon className="h-12 w-12 text-gray-300" />
+                      <p className="mt-4 text-sm font-semibold text-gray-800">PDF preview unavailable</p>
+                      <p className="mt-1 text-xs text-gray-500">{pdfPreviewError}</p>
+                      <button
+                        type="button"
+                        onClick={() => setPdfPreviewRetryKey((value) => value + 1)}
+                        className="mt-4 inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700"
+                      >
+                        <ArrowPathIcon className="mr-1.5 h-4 w-4" /> Retry preview
+                      </button>
+                    </div>
+                  )}
+
+                  {!pdfPreviewLoading && pdfPreviewUrl && (
+                    <iframe
+                      title={`Purchase Order ${order.po_number || order.id} PDF preview`}
+                      src={`${pdfPreviewUrl}#page=1&view=FitH&toolbar=1&navpanes=0`}
+                      className="h-[800px] w-full bg-slate-100"
+                    />
+                  )}
+                </div>
+                <div
+                  role="tabpanel"
+                  id={`${pdfPreviewId}-uploaded-panel`}
+                  aria-labelledby={`${pdfPreviewId}-uploaded-tab`}
+                  hidden={pdfPreviewTab !== 'uploaded'}
+                  tabIndex={0}
+                  className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                >
+                  <div className="h-[800px] max-h-[80vh] min-h-[320px]">
+                    <UploadedPurchaseOrderPreview orderId={id} active={pdfPreviewTab === 'uploaded'} />
+                  </div>
+                </div>
               </section>
 
             </div>

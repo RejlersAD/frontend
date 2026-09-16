@@ -36,7 +36,8 @@
 .pop-tabs > button[aria-selected="true"] { border-bottom-color: #075bff; background: #f8fbff; color: #075bff; font-weight: 650; }
 .pop-issue-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 1px 4px; border-radius: 8px; background: #d53049; color: #fff; font-size: 9px; line-height: 14px; }
 .pop-document-viewport { flex: 1; min-height: 160px; padding: 12px 14px; overflow: auto; overscroll-behavior: contain; border: 1px solid #bac8d7; background: #c5d0dc; scrollbar-color: #94a8bd #cfdae4; scrollbar-width: thin; }
-.pop-document-viewport[hidden], .pop-validation[hidden] { display: none; }
+.pop-document-viewport[hidden], .pop-validation[hidden], .pop-uploaded[hidden] { display: none; }
+.pop-uploaded { flex: 1; min-height: 160px; overflow: hidden; border: 1px solid #bac8d7; }
 .pop-paper-frame { position: relative; margin: 0 auto; }
 .pop-document { position: relative; width: 560px; transform-origin: top left; }
 .pop-document .po-template-pages { display: flex; flex-direction: column; gap: 18px; }
