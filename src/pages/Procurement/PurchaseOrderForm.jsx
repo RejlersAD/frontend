@@ -466,7 +466,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     // Financial
     total_amount: prReference?.total_price || editData?.total_amount || '',
     currency: prReference?.currency || editData?.currency || 'USD',
-    vat_percentage: editData?.vat_percentage || 5.00,
+    vat_percentage: editData?.vat_percentage ?? 5.00,
     tax_amount: editData?.tax_amount || 0,
     discount_amount: editData?.discount_amount || 0,
     
@@ -501,8 +501,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     },
     
     // Approval Section
-    approved_by_name: (prReference?.id || editData?.pr_reference) ? '' : (editData?.approved_by_name || PROJECT_FINAL_APPROVER),
-    approved_by_title: editData?.approved_by_title || FINAL_APPROVER_TITLE,
+    approved_by_name: editData ? (editData.approved_by_name || '') : prReference?.id ? '' : PROJECT_FINAL_APPROVER,
+    approved_by_title: editData ? (editData.approved_by_title || '') : FINAL_APPROVER_TITLE,
     approved_date: editData?.approved_date || '',
     approved_at: editData?.approved_at || '',
     approval_signature: editData?.approval_signature || '',
@@ -539,9 +539,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     liquidated_damages: editData?.liquidated_damages || '',
     technical_approver: editData?.technical_approver || '',
     financial_approver: editData?.financial_approver || '',
-    management_approver: (prReference?.id || editData?.pr_reference) ? '' : (editData?.management_approver || PROJECT_FINAL_APPROVER),
-    approval_log: (prReference?.id || editData?.pr_reference)
-      ? (editData?.approval_log || [])
+    management_approver: editData ? (editData.management_approver || '') : prReference?.id ? '' : PROJECT_FINAL_APPROVER,
+    approval_log: editData ? (editData.approval_log || []) : prReference?.id
+      ? []
         .filter((entry) => entry.stage !== 'Final Management Sign-off')
         .map((entry) => ({ ...entry, approver: nameOnly(entry.approver) }))
       : mergeApprovalLog(editData?.approval_log),
@@ -560,6 +560,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     existingAttachment: attachment,
   })));
   const files = attachmentSlots.map((slot) => slot.file).filter(Boolean);
+  const initialAttachmentSlots = useRef(attachmentSlots);
   const [errors, setErrors] = useState({});
   const [popupError, setPopupError] = useState('');
   const [autoSaving, setAutoSaving] = useState(false);
@@ -571,6 +572,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [approvalEmployees, setApprovalEmployees] = useState([]);
   const [approversLoading, setApproversLoading] = useState(false);
   const [approverLoadError, setApproverLoadError] = useState('');
+  const initialFormData = useRef(formData);
+  const initialPricing = useRef({ items: formData.items, vat: formData.vat_percentage });
+  const pricingChanged = useRef(false);
+  const submittingRef = useRef(false);
 
   useLayoutEffect(() => {
     if (!isOpen || pageMode) return undefined;
@@ -598,6 +603,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   }, [isOpen, pageMode]);
 
   useEffect(() => {
+    // Master-data defaults belong to creation. Opening an existing PO must not
+    // rewrite its buyer references or recorded approval evidence.
+    if (editData) return;
     if (approvalEmployees.length === 0) return;
     const jarmo = approvalEmployees.find((employee) =>
       String(employee.full_name || '').trim().toLowerCase() === 'jarmo suominen'
@@ -661,7 +669,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       fetchVendors();
       fetchProjects();
       fetchPOApprovers();
-      if (!editData) fetchAvailableRequisitions();
+      if (!editData?.pr_reference) fetchAvailableRequisitions();
     }
   }, [isOpen, pageMode, editData]);
 
@@ -982,6 +990,16 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   const handleRequisitionSelect = (requisition) => {
     if (!requisition) return;
+    if (editData) {
+      // Reconciling a legacy order adds its PR link without replacing the
+      // existing PO identity, commercial values, or signed approval evidence.
+      setSelectedRequisition(requisition);
+      setPrSearch(requisition.pr_number || '');
+      setShowPRChoices(false);
+      setFormData(previous => ({ ...previous, pr_reference: requisition.id }));
+      setErrors(previous => ({ ...previous, pr_reference: null }));
+      return;
+    }
     const totalAmount = requisition.total_price
       || requisition.net_total_excl_vat
       || requisition.estimated_budget
@@ -1075,7 +1093,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     setCurrentSection(1);
     poNumberRequestRef.current += 1;
     setPONumberLoading(false);
-    setFormData((prev) => ({ ...prev, pr_reference: null, po_number: '' }));
+    setFormData((prev) => ({ ...prev, pr_reference: null, ...(!editData ? { po_number: '' } : {}) }));
   };
 
   const handleChange = (e) => {
@@ -1344,10 +1362,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   const calculateSubtotal = () => {
+    if (editData && !formData.items?.length && formData.items === initialPricing.current.items) {
+      return Number(initialFormData.current.total_amount || 0) - Number(initialFormData.current.tax_amount || 0);
+    }
     return (formData.items || []).reduce((sum, item) => sum + calculateItemTotal(item), 0);
   };
 
   const calculateTaxAmount = (subtotal) => {
+    if (editData && !formData.items?.length && !pricingChanged.current) return Number(formData.tax_amount || 0);
     const vatPct = Number(formData.vat_percentage || 0);
     return Number(((subtotal * vatPct) / 100).toFixed(2));
   };
@@ -1357,6 +1379,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   useEffect(() => {
+    if (editData && !pricingChanged.current) {
+      if (formData.items === initialPricing.current.items && formData.vat_percentage === initialPricing.current.vat) return;
+      pricingChanged.current = true;
+    }
     const subtotal = calculateSubtotal();
     const taxAmount = calculateTaxAmount(subtotal);
     const totalAmount = calculateGrandTotal(subtotal, taxAmount);
@@ -1381,7 +1407,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const getValidationErrors = (requireSummary = false) => {
     const newErrors = {};
     
-    if (!formData.pr_reference) newErrors.pr_reference = 'An existing Purchase Requisition is required';
+    if (!formData.pr_reference && (!editData || requireSummary)) newErrors.pr_reference = 'An existing Purchase Requisition is required';
     if (!formData.po_number?.trim()) {
       newErrors.po_number = 'PO number is required';
     } else if (!/^RAD-(GEN|PRJ)-PUR-\d{4,}_(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)?\d{4})$/.test(formData.po_number.trim())) {
@@ -1402,6 +1428,15 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     if (requireSummary && !formData.summary?.trim()) newErrors.summary = 'Summary is required before sending to vendor';
     if (requireSummary && missingApprovalStages.length) {
       newErrors.approval_log = `Select an active employee for: ${missingApprovalStages.join(', ')}`;
+    }
+    if (editData && !requireSummary) {
+      // A partial metadata correction must not require repairing unrelated
+      // missing fields on an older imported order before it can be saved.
+      for (const field of Object.keys(newErrors)) {
+        const deliveryTypeChanged = ['start_date', 'end_date'].includes(field)
+          && formData.contact_persons?.delivery_date_type !== initialFormData.current.contact_persons?.delivery_date_type;
+        if (!deliveryTypeChanged && JSON.stringify(formData[field]) === JSON.stringify(initialFormData.current[field])) delete newErrors[field];
+      }
     }
     
     return newErrors;
@@ -1438,6 +1473,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   const handleSubmit = async (e, sendToVendor = false) => {
     e.preventDefault();
+    if (submittingRef.current) return;
 
     if (!validateForm(sendToVendor)) {
       const validationMessage = !formData.pr_reference
@@ -1461,42 +1497,53 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       return;
     }
 
+    submittingRef.current = true;
     setSubmitLoading(true);
     
     try {
       const preparedFormData = {
         ...formData,
-        payment_milestones: [],
+        payment_milestones: formData.payment_milestones || [],
         attachments: attachmentSlots
           .filter((slot) => slot.existingAttachment && !slot.file)
-          .map((slot) => ({
-            ...slot.existingAttachment,
-            title: slot.title.trim(),
-            description: slot.description.trim(),
-          })),
+          .map((slot) => {
+            const initial = initialAttachmentSlots.current.find(item => item.existingAttachment === slot.existingAttachment);
+            return initial && slot.title === initial.title && slot.description === initial.description
+              ? slot.existingAttachment
+              : { ...slot.existingAttachment, title: slot.title.trim(), description: slot.description.trim() };
+          }),
         contact_persons: {
           ...(formData.contact_persons || {}),
-          attachment_details: attachmentSlots
+          ...(files.length ? { attachment_details: attachmentSlots
             .filter((slot) => slot.file)
-            .map(({ title, description }) => ({ title: title.trim(), description: description.trim() })),
+            .map(({ title, description }) => ({ title: title.trim(), description: description.trim() })) } : {}),
         },
       };
-      const payload = buildPurchaseOrderPayload(
-        preparedFormData,
-        sendToVendor ? 'sent' : (editData?.status || 'draft')
-      );
+      // Existing records are partial updates: preserve untouched imported
+      // values and approval history, while allowing users to clear a field.
+      const payload = editData ? Object.fromEntries(
+        Object.entries(preparedFormData).filter(([key, value]) => (
+          !READ_ONLY_PO_FIELDS.has(key)
+          && JSON.stringify(value) !== JSON.stringify(initialFormData.current[key])
+        )),
+      ) : buildPurchaseOrderPayload(preparedFormData, 'draft');
+      for (const field of ['project', 'enterprise_project', 'pr_reference']) {
+        if (payload[field] === '') payload[field] = null;
+      }
+      if (sendToVendor) payload.status = 'sent';
       let submitData = payload;
-      let config;
+      let config = { suppressErrorToast: true };
 
       // Use the normal JSON API for ordinary PO creation. Multipart is only
       // required when the user actually attaches files.
       if (files.length) {
         submitData = new FormData();
         Object.entries(payload).forEach(([key, value]) => {
-          submitData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+          submitData.append(key, value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : value);
         });
         files.forEach((file) => submitData.append('attachments_files', file));
         config = {
+          suppressErrorToast: true,
           onUploadProgress: (progressEvent) => {
             if (!progressEvent.total) return;
             setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
@@ -1525,7 +1572,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       }
       
       if (onSuccess) onSuccess(response.data);
-      if (onClose) onClose();
+      else if (onClose) onClose();
     } catch (error) {
       console.error('Error submitting PO:', error);
       const fieldErrors = normalizeApiErrors(error.response?.data);
@@ -1535,6 +1582,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       toast.error(apiErrorMessage);
       setTimeout(() => setPopupError(''), 8000);
     } finally {
+      submittingRef.current = false;
       setSubmitLoading(false);
       setUploadProgress(0);
     }
@@ -1578,7 +1626,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     { id: 4, name: 'Attachments', icon: PaperClipIcon },
   ];
 
-  const validationErrors = formData.pr_reference ? getValidationErrors(true) : { pr_reference: 'Select an existing purchase recommendation to continue.' };
+  const validationErrors = editData ? getValidationErrors(false) : formData.pr_reference ? getValidationErrors(true) : { pr_reference: 'Select an existing purchase recommendation to continue.' };
   const validationIssues = Object.entries(validationErrors).map(([field, message]) => ({ id: field, field, message, title: message }));
   const busy = submitLoading || autoSaving;
 
@@ -1654,7 +1702,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   )}
                 </div>
 
-                {isNewOrder ? (
+                {isNewOrder || !editData.pr_reference ? (
                   <div className="relative mt-3">
                     <input
                       id="po-pr-search"

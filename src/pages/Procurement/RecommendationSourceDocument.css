@@ -1,0 +1,18 @@
+.prr-source-document { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: #e2e8f0; color: #26364c; font-size: .875rem; line-height: 1.25rem; }
+.prr-source-document > iframe { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; }
+.prr-source-controls { position: absolute; z-index: 1; top: 8px; right: 8px; left: 8px; display: flex; justify-content: flex-end; align-items: center; gap: 6px; pointer-events: none; }
+.prr-source-controls > * { pointer-events: auto; }
+.prr-source-controls a { display: inline-flex; width: 32px; height: 32px; flex: 0 0 32px; align-items: center; justify-content: center; border: 1px solid #c7d6eb; border-radius: 4px; background: #fff; color: #0751e0; }
+.prr-source-controls a:hover { background: #eff6ff; }
+.prr-source-select { min-width: 0; max-width: calc(100% - 76px); margin-right: auto; }
+.prr-source-select select { width: 100%; min-width: 0; min-height: 32px; padding: 4px 8px; border: 1px solid #c7d6eb; border-radius: 4px; background: #fff; color: #26364c; font: inherit; }
+.prr-source-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.prr-source-state { display: flex; height: 100%; min-height: 180px; flex-direction: column; justify-content: center; align-items: center; gap: 12px; padding: 48px 24px; text-align: center; }
+.prr-source-state p { margin: 0; overflow-wrap: anywhere; }
+.prr-source-state button { padding: 6px 10px; border: 1px solid #c7d6eb; border-radius: 4px; background: #fff; color: #0751e0; font: inherit; cursor: pointer; }
+.prr-source-document :focus-visible { outline: 2px solid #0751ff; outline-offset: 2px; }
+
+.pr-approval-preview { display: flex; flex-direction: column; min-width: 0; height: min(56rem, calc(100dvh - 10rem)); min-height: 24rem; }
+.pr-approval-preview-header { flex: 0 0 auto; }
+.pr-approval-preview-viewport { position: relative; display: grid; flex: 1; min-width: 0; min-height: 0; place-items: center; overflow: hidden; background: #1e293b; }
+.pr-approval-preview-viewport > iframe { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; }

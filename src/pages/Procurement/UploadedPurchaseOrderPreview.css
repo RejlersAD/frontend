@@ -1,17 +1,19 @@
-.upo-preview { display: flex; flex-direction: column; height: 100%; min-height: 240px; min-width: 0; overflow: hidden; background: #f4f7fb; color: #294565; font-size: 12px; }
-.upo-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex-shrink: 0; padding: 10px; border-bottom: 1px solid #cbd7e7; background: #f8fbfe; }
-.upo-filename { flex: 1 1 160px; overflow-wrap: anywhere; }
-.upo-select { flex: 1 1 180px; min-width: 0; }
-.upo-select label { display: block; margin-bottom: 4px; font-size: 11px; }
-.upo-select select { width: 100%; min-width: 0; border: 1px solid #cbd7e7; padding: 6px; border-radius: 4px; background: #fff; color: inherit; }
-.upo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.upo-preview { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; background: #f4f7fb; color: #294565; font-size: 12px; }
+.upo-toolbar { position: absolute; z-index: 1; top: 8px; right: 8px; left: 8px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; pointer-events: none; }
+.upo-toolbar > * { pointer-events: auto; }
+.upo-select { flex: 0 1 240px; min-width: 0; margin-right: auto; }
+.upo-select label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.upo-select select { width: 100%; min-width: 0; height: 32px; border: 1px solid #cbd7e7; padding: 5px; border-radius: 4px; background: #fff; color: inherit; }
+.upo-actions { display: flex; flex: none; gap: 6px; }
 .upo-actions a, .upo-state button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #cbd7e7; border-radius: 4px; background: #fff; color: #075bff; font: inherit; text-decoration: none; cursor: pointer; }
+.upo-actions a { justify-content: center; width: 32px; height: 32px; padding: 6px; box-shadow: 0 1px 4px #16324f1a; }
 .upo-actions svg { width: 15px; height: 15px; }
-.upo-preview iframe { display: block; flex: 1; width: 100%; min-height: 160px; border: 0; background: #c5d0dc; }
+.upo-preview iframe { display: block; flex: 1; width: 100%; height: 100%; min-height: 0; border: 0; background: #c5d0dc; }
 .upo-state { display: flex; flex: 1; flex-direction: column; justify-content: center; align-items: center; gap: 10px; min-height: 200px; padding: 24px; text-align: center; }
 .upo-state > svg { width: 28px; height: 28px; }
 .upo-state > p { margin: 0; }
 .upo-spinner { animation: upo-spin 1s linear infinite; }
 .upo-preview :is(a, button, select):focus-visible { outline: 2px solid #075bff; outline-offset: 2px; }
 @keyframes upo-spin { to { transform: rotate(360deg); } }
+@media (max-width: 480px) { .upo-actions a, .upo-select select { height: 40px; } .upo-actions a { width: 40px; } }
 @media (prefers-reduced-motion: reduce) { .upo-spinner { animation: none; } }

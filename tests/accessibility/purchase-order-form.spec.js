@@ -232,16 +232,17 @@ test('editing an order stays inside the application content when the sidebar col
   await selectPR(page)
   await clickSave(page)
   await expect(page).toHaveURL(/\/procurement\/orders$/)
-  await page.getByRole('region', { name: 'Purchase order register', exact: true }).getByRole('button', { name: 'Edit', exact: true }).click()
+  await page.getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
   await expect(workspace(page).getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
   const measurements = []
   const checkBounds = async (label, desktop) => {
-    await expect.poll(async () => page.evaluate(() => {
+    await expect.poll(async () => page.evaluate(includeHeight => {
       const bounds = selector => document.querySelector(selector).getBoundingClientRect()
       const content = bounds('#application-content > main')
       const form = bounds('.purchase-order-form-workspace')
-      return Math.max(Math.abs(form.left - content.left), Math.abs(form.top - content.top), Math.abs(form.right - content.right), Math.abs(form.bottom - content.bottom))
-    }), { message: `${label}: edit form must stay within the page below its header and beside its sidebar` }).toBeLessThan(2)
+      return Math.max(Math.abs(form.left - content.left), Math.abs(form.top - content.top), Math.abs(form.right - content.right), includeHeight ? Math.abs(form.bottom - content.bottom) : 0)
+    }, desktop), { message: `${label}: edit page must stay within the shell, with vertical scrolling on smaller screens` }).toBeLessThan(2)
     const result = await page.evaluate(() => {
       const box = selector => {
         const { x, y, right, bottom, width, height } = document.querySelector(selector).getBoundingClientRect()

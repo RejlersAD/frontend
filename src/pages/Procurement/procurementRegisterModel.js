@@ -1,3 +1,5 @@
+import { recommendationSourceApprovals } from './recommendationApprovalEvidence.js';
+
 const DAY = 86400000;
 const CLOSED = new Set(['completed', 'cancelled', 'rejected', 'converted']);
 const REVIEW = new Set(['submitted', 'in_review', 'under_review', 'pending']);
@@ -183,8 +185,10 @@ function recommendationFields(record, currentUserId, now) {
     incomplete: incompleteFields.length > 0, incompleteFields, staleDraft, inactiveDays,
     exceptionReasons, hasException: exceptionReasons.length > 0,
     approvalSteps: steps,
-    approvalHistory: steps.filter(step => APPROVAL_COMPLETE.has(step.status) || ['rejected', 'not_recorded'].includes(step.status)).map(step => ({
+    approvalHistory: steps.length ? steps.filter(step => APPROVAL_COMPLETE.has(step.status) || ['rejected', 'not_recorded'].includes(step.status)).map(step => ({
       label: step.label, assignee: firstText(step.raw.approved_by_name, step.raw.rejected_by_name, step.assignee), status: step.status, date: step.date,
+    })) : recommendationSourceApprovals(raw).map(step => ({
+      label: firstText(step.stage, step.role), assignee: firstText(step.user_name, step.approver_name, 'Not recorded'), status: step.status, date: step.approved_at || null,
     })),
     approvalRecovery,
     approvalSummary: status === 'converted' ? approvalRecovery ? 'evidence_requested' : missingHistory ? 'not_recorded' : allApproved ? 'approved' : 'not_recorded'

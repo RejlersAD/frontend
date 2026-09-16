@@ -55,16 +55,16 @@ async function open(page, { detail = false, documents = [firstDocument], prepare
     },
   })
   if (detail) {
-    await expect(page.getByRole('heading', { name: 'PDF Preview', exact: true })).toBeVisible({ timeout: 90000 })
-    await expect(page.locator('iframe[title^="Purchase Order"]')).toHaveAttribute('src', /^blob:/)
+    await expect(page.getByRole('region', { name: 'Purchase order PDF preview', exact: true })).toBeVisible({ timeout: 90000 })
   } else {
     await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible({ timeout: 90000 })
-    await page.getByRole('region', { name: 'Purchase order register', exact: true }).getByRole('button', { name: 'Edit', exact: true }).click()
+    await page.getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
   }
-  const tabs = page.getByRole('tablist', { name: detail ? 'Purchase order PDF source' : 'Purchase order preview views', exact: true })
-  await expect(tabs.getByRole('tab', { name: 'Uploaded PO', exact: true })).toBeVisible()
-  expect(documentRequests(state)).toEqual([])
+  const tabs = page.getByRole('tablist', { name: 'Purchase order preview views', exact: true })
+  await expect(page.getByRole('tab', { name: /^(Uploaded|Generated) PO$/ })).toHaveCount(0)
+  if (!detail) await expect(tabs.getByRole('tab', { name: 'Document', exact: true })).toHaveAttribute('aria-selected', 'true')
   return { state, tabs }
 }
 
@@ -76,52 +76,62 @@ async function downloadOriginal(page, expected, filename) {
   expect(await readFile(await download.path())).toEqual(expected)
 }
 
-test('edit preview lazily opens authenticated original PDF, supports keyboard tabs and downloads exact uploaded bytes', async ({ page }) => {
+async function expectFrameFillsPanel(frame, panel) {
+  await expect.poll(async () => {
+    const frameBounds = await frame.boundingBox()
+    const panelBounds = await panel.boundingBox()
+    return Math.max(Math.abs(frameBounds.x - panelBounds.x), Math.abs(frameBounds.y - panelBounds.y), Math.abs(frameBounds.width - panelBounds.width), Math.abs(frameBounds.height - panelBounds.height))
+  }, { message: 'The PDF must fill its panel after the source and responsive layout settle.' }).toBeLessThanOrEqual(2)
+  await expect(frame).toHaveAttribute('src', /view=FitH&toolbar=0/)
+}
+
+test('edit preview defaults to authenticated original PDF and downloads exact uploaded bytes', async ({ page }) => {
   const { state, tabs } = await open(page)
-  const documentTab = tabs.getByRole('tab', { name: 'Document', exact: true })
-  await documentTab.focus()
-  await documentTab.press('ArrowRight')
-  const uploaded = tabs.getByRole('tab', { name: 'Uploaded PO', exact: true })
-  await expect(uploaded).toBeFocused()
-  await expect(uploaded).toHaveAttribute('aria-selected', 'true')
   const frame = uploads(page).locator('iframe')
   await expect(frame).toHaveAttribute('src', /^blob:/)
   await expect(frame).toHaveAttribute('title', `Uploaded PO PDF: ${firstDocument.filename}`)
+  await expectFrameFillsPanel(frame, page.locator('.pop-uploaded'))
+  await expect(uploads(page)).not.toContainText(firstDocument.filename)
+  await expect(uploads(page).getByRole('link', { name: 'Download uploaded PO', exact: true })).toHaveText('')
   await expect(uploads(page).getByRole('link', { name: 'Open uploaded PO', exact: true })).toHaveAttribute('href', /^blob:/)
-  await page.screenshot({ path: '../artifacts/po-uploaded-preview-edit-desktop.png' })
+  await expect(page.locator('.pop-document')).toHaveCount(0)
   expect(documentRequests(state).filter(({ path }) => path.endsWith('/content/'))[0].authorization).toBe('Bearer isolated-order-form-fixture-token')
   await downloadOriginal(page, original, firstDocument.filename)
   expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toEqual([])
+  await page.screenshot({ path: '../artifacts/po-original-preview-edit-desktop.png' })
   await page.setViewportSize({ width: 390, height: 844 })
   await uploads(page).scrollIntoViewIfNeeded()
-  await page.screenshot({ path: '../artifacts/po-uploaded-preview-edit-mobile.png' })
+  await expectFrameFillsPanel(frame, page.locator('.pop-uploaded'))
+  await page.screenshot({ path: '../artifacts/po-original-preview-edit-mobile.png' })
   await page.setViewportSize({ width: 1910, height: 945 })
-  await uploaded.press('ArrowRight')
+  const documentTab = tabs.getByRole('tab', { name: 'Document', exact: true })
+  await documentTab.focus()
+  await documentTab.press('ArrowRight')
   await expect(tabs.getByRole('tab', { name: /^Validation/ })).toBeFocused()
   await tabs.getByRole('tab', { name: /^Validation/ }).press('Home')
   await expect(documentTab).toBeFocused()
-  await expect(page.locator('.pop-document:visible')).toContainText(orderFormNumber)
+  await expect(uploads(page).locator('iframe')).toHaveAttribute('title', `Uploaded PO PDF: ${firstDocument.filename}`)
   assertReadOnly(state)
 })
 
-test('uploaded tab gives an empty state and retries a failed document list without creating a PO', async ({ page }) => {
-  const { state, tabs } = await open(page, { documents: [], prepare: fixture => { fixture.uploadedDocumentsError = { detail: 'Synthetic temporary outage.' } } })
-  await tabs.getByRole('tab', { name: 'Uploaded PO', exact: true }).click()
+test('source discovery failure stays explicit until retry confirms there is no uploaded original', async ({ page }) => {
+  const { state } = await open(page, { documents: [], prepare: fixture => { fixture.uploadedDocumentsError = { detail: 'Synthetic temporary outage.' } } })
   await expect(uploads(page).getByRole('alert')).toContainText('Uploaded PO documents could not be loaded.')
+  await expect(page.locator('.pop-document')).toHaveCount(0)
+  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toEqual([])
   state.uploadedDocumentsError = null
   await uploads(page).getByRole('button', { name: 'Retry uploaded PO', exact: true }).click()
-  await expect(uploads(page)).toContainText('No uploaded PO PDF is linked to this order.')
-  await expect(uploads(page).locator('iframe')).toHaveCount(0)
-  await expect(uploads(page).getByRole('link', { name: 'Download uploaded PO', exact: true })).toHaveCount(0)
+  await expect(page.locator('.pop-document:visible')).toContainText(orderFormNumber)
+  await expect(uploads(page)).toHaveCount(0)
   expect(documentRequests(state).filter(({ path }) => path.endsWith('/content/'))).toEqual([])
   assertReadOnly(state)
 })
 
-test('missing original content can be retried and multiple uploaded PDFs remain distinct', async ({ page }) => {
-  const { state, tabs } = await open(page, { documents: [firstDocument, secondDocument], prepare: fixture => { fixture.uploadedContent[firstDocument.content_url] = { status: 404 } } })
-  await tabs.getByRole('tab', { name: 'Uploaded PO', exact: true }).click()
+test('missing original content stays explicit and multiple uploaded PDFs remain distinct', async ({ page }) => {
+  const { state } = await open(page, { documents: [firstDocument, secondDocument], prepare: fixture => { fixture.uploadedContent[firstDocument.content_url] = { status: 404 } } })
   await expect(uploads(page).getByRole('alert')).toContainText('The uploaded PO PDF is no longer available.')
   await expect(uploads(page).getByRole('link', { name: 'Download uploaded PO', exact: true })).toHaveCount(0)
+  await expect(page.locator('.pop-document')).toHaveCount(0)
   state.uploadedContent[firstDocument.content_url] = { body: original }
   await uploads(page).getByRole('button', { name: 'Retry uploaded PO', exact: true }).click()
   await expect(uploads(page).locator('iframe')).toHaveAttribute('title', `Uploaded PO PDF: ${firstDocument.filename}`)
@@ -134,26 +144,83 @@ test('missing original content can be retried and multiple uploaded PDFs remain 
   assertReadOnly(state)
 })
 
-test('saved order PDF panel separates generated and uploaded PDFs and remains usable on mobile', async ({ page }) => {
-  const { state, tabs } = await open(page, { detail: true })
-  const generatedCount = state.requests.filter(({ path }) => path.endsWith('/export-pdf/')).length
-  const generatedTab = tabs.getByRole('tab', { name: 'Generated PO', exact: true })
-  await generatedTab.focus()
-  await generatedTab.press('End')
-  await expect(tabs.getByRole('tab', { name: 'Uploaded PO', exact: true })).toBeFocused()
+test('saved order defaults to its original without generating another PDF and fits mobile', async ({ page }) => {
+  const { state } = await open(page, { detail: true })
   await expect(uploads(page).locator('iframe')).toHaveAttribute('src', /^blob:/)
+  await expect(page.getByRole('tablist', { name: 'Purchase order PDF source' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Print PDF', exact: true })).toHaveCount(0)
+  await expect(page.locator('iframe[title^="Purchase Order"]')).toHaveCount(0)
+  await expectFrameFillsPanel(uploads(page).locator('iframe'), page.locator('.po-detail-pdf-preview'))
+  await expect(uploads(page)).not.toContainText(firstDocument.filename)
   await downloadOriginal(page, original, firstDocument.filename)
-  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toHaveLength(generatedCount)
-  await page.screenshot({ path: '../artifacts/po-uploaded-preview-saved-desktop.png' })
+  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toEqual([])
+  await page.screenshot({ path: '../artifacts/po-original-preview-saved-desktop.png' })
   await page.setViewportSize({ width: 390, height: 844 })
   await uploads(page).scrollIntoViewIfNeeded()
+  await expectFrameFillsPanel(uploads(page).locator('iframe'), page.locator('.po-detail-pdf-preview'))
   const bounds = await uploads(page).boundingBox()
   expect(bounds.width).toBeGreaterThan(200)
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(390)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-  await page.screenshot({ path: '../artifacts/po-uploaded-preview-saved-mobile.png' })
-  await tabs.getByRole('tab', { name: 'Uploaded PO', exact: true }).press('Home')
-  await expect(generatedTab).toBeFocused()
-  await expect(page.locator('iframe[title^="Purchase Order"]')).toBeVisible()
+  await page.screenshot({ path: '../artifacts/po-original-preview-saved-mobile.png' })
+  assertReadOnly(state)
+})
+
+test('saved order generates a preview only after source discovery confirms no original', async ({ page }) => {
+  let release
+  const pending = new Promise(resolve => { release = resolve })
+  const { state } = await open(page, { detail: true, documents: [], prepare: fixture => { fixture.uploadedDocumentsDeferred = pending } })
+  await expect(uploads(page)).toContainText('Loading uploaded PO documents')
+  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toEqual([])
+  release()
+  await expect(page.locator('iframe[title^="Purchase Order"]')).toHaveAttribute('src', /^blob:/)
+  await expectFrameFillsPanel(page.locator('iframe[title^="Purchase Order"]'), page.locator('.po-detail-pdf-preview'))
+  await expect(page.getByRole('link', { name: 'Open Purchase Order PDF', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Print PDF', exact: true })).toBeVisible()
+  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toHaveLength(1)
+  await expect(uploads(page)).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator('.po-detail-pdf-preview').scrollIntoViewIfNeeded()
+  await expectFrameFillsPanel(page.locator('iframe[title^="Purchase Order"]'), page.locator('.po-detail-pdf-preview'))
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  assertReadOnly(state)
+})
+
+test('saved order source errors never trigger a generated replacement', async ({ page }) => {
+  const { state } = await open(page, { detail: true, prepare: fixture => { fixture.uploadedDocumentsError = { detail: 'Synthetic source outage.' } } })
+  await expect(uploads(page).getByRole('alert')).toContainText('Uploaded PO documents could not be loaded.')
+  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toEqual([])
+  state.uploadedDocumentsError = null
+  await uploads(page).getByRole('button', { name: 'Retry uploaded PO', exact: true }).click()
+  await expect(uploads(page).locator('iframe')).toHaveAttribute('src', /^blob:/)
+  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toEqual([])
+  assertReadOnly(state)
+})
+
+test('changing saved orders discards a late source response from the previous order', async ({ page }) => {
+  let release
+  const pending = new Promise(resolve => { release = resolve })
+  const { state } = await open(page, { detail: true, prepare: fixture => { fixture.uploadedDocumentsDeferred = pending } })
+  await expect(uploads(page)).toContainText('Loading uploaded PO documents')
+  const nextId = '00000000-0000-4000-8000-000000009003'
+  const nextDocument = { ...secondDocument, content_url: `/api/v1/procurement/orders/${nextId}/uploaded-documents/attachment-0/content/` }
+  await page.route(`**/api/v1/procurement/orders/${nextId}/**`, async route => {
+    const path = new URL(route.request().url()).pathname
+    state.requests.push({ path, method: route.request().method() })
+    if (path.endsWith('/uploaded-documents/')) return route.fulfill({ json: { results: [nextDocument] } })
+    if (path.endsWith('/content/')) return route.fulfill({ contentType: 'application/pdf', body: revision })
+    if (path.endsWith(`/${nextId}/`)) return route.fulfill({ json: { ...state.record, id: nextId, po_number: 'PO-NEXT-SYNTHETIC' } })
+    state.unknown.push({ path })
+    return route.fulfill({ status: 400, json: {} })
+  })
+  await page.evaluate(next => {
+    window.history.pushState({}, '', `/procurement/orders/${next}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, nextId)
+  await expect(uploads(page).locator('iframe')).toHaveAttribute('title', `Uploaded PO PDF: ${secondDocument.filename}`)
+  release()
+  await downloadOriginal(page, revision, secondDocument.filename)
+  await expect(uploads(page)).not.toContainText(firstDocument.filename)
+  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toEqual([])
   assertReadOnly(state)
 })

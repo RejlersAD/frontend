@@ -36,10 +36,13 @@ function parseBody(request) {
 
 export async function orderFormHarness(page, options = {}) {
   const state = {
+    actor: options.actor || formActor,
     recommendation: { ...orderFormRecommendation, ...options.recommendation },
-    record: null, orders: [], requests: [], unknown: [], pageErrors: [], reserveError: null,
+    record: null, orders: [], pendingDocuments: [], documentRecords: {}, requests: [], unknown: [], pageErrors: [], reserveError: null,
     saveError: null, sendError: null, acceptedWrites: [],
     uploadedDocuments: [], uploadedDocumentsError: null, uploadedContent: {}, generatedPdf: null,
+    poPdfPreviews: {}, poPdfPreviewDelivered: {}, approvalEmployees: [], approvalEmployeesError: null,
+    poPdfImportResult: null, poPdfImportError: null,
     projects: [{ id: 17, project_number: formProject.project_number, project_name: formProject.project_name, source: 'procurement', status: 'active', client_name: 'ADNOC' }],
     vendors: formVendors.map(vendor => ({ ...vendor, email: 'supplier@example.test', contact_person: 'Synthetic Supplier Contact', phone: '+971500000000', address: 'Abu Dhabi, UAE', is_active: true })),
   }
@@ -52,7 +55,7 @@ export async function orderFormHarness(page, options = {}) {
     localStorage.setItem('radai_user_data', JSON.stringify(user))
     localStorage.setItem('radai.sidebar.collapsed', 'false')
     localStorage.setItem('radai_theme', 'light')
-  }, formActor)
+  }, state.actor)
   page.on('pageerror', error => state.pageErrors.push(error.message))
   await page.route('**/assets/images/sidebar-industrial-dusk.png', route => route.fulfill({
     path: fileURLToPath(new URL('../../public/assets/images/sidebar-industrial-dusk.png', import.meta.url)),
@@ -60,7 +63,7 @@ export async function orderFormHarness(page, options = {}) {
   }))
   await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method(), body = parseBody(request)
-    state.requests.push({ path, method, body })
+    state.requests.push({ path, method, body, query: Object.fromEntries(url.searchParams) })
     if (path === '/api/v1/health/') return reply(route, { status: 'ok' })
     if (path === '/api/v1/users/check-first-login/') return reply(route, { must_reset_password: false })
     if (path === '/api/v1/rbac/users/me/profile-completeness/') return reply(route, { is_complete: true, percentage: 100, missing_fields: [] })
@@ -70,7 +73,7 @@ export async function orderFormHarness(page, options = {}) {
     if (path === '/api/v1/users/employees/my-profile-photo/') return route.fulfill({ status: 204, body: '' })
     if (path.endsWith('/pending-for-me/')) return reply(route, { count: 0, results: [] })
     if (path.startsWith('/api/v1/ai-champion/') || path.startsWith('/api/v1/rbac/ai-champion/')) return reply(route, { success: true })
-    if (path === '/api/v1/rbac/users/me/') return reply(route, formActor)
+    if (path === '/api/v1/rbac/users/me/') return reply(route, state.actor)
     if (path === '/api/v1/users/employees/my-signature/') return reply(route, { signature: '' })
     if (path === '/api/v1/procurement/requisitions/get_approvers/') return reply(route, { users: employees })
     if (path === '/api/v1/procurement/vendors/' && method === 'GET') return reply(route, { count: state.vendors.length, next: null, results: state.vendors })
@@ -79,8 +82,58 @@ export async function orderFormHarness(page, options = {}) {
     if (path === `/api/v1/procurement/requisitions/${state.recommendation.id}/` && method === 'GET') return reply(route, state.recommendation)
     if (path === '/api/v1/procurement/orders/reserve-number/' && method === 'POST') return reply(route, state.reserveError || { po_number: orderFormNumber }, state.reserveError ? 400 : 200)
     if (path === '/api/v1/procurement/orders/' && method === 'GET') return reply(route, { count: state.orders.length, next: null, results: state.orders })
-    if (path === '/api/v1/procurement/po-documents/' && method === 'GET') return reply(route, { count: 0, next: null, results: [] })
+    if (path === '/api/v1/procurement/po-documents/' && method === 'GET') return reply(route, { count: state.pendingDocuments.length, next: null, results: state.pendingDocuments })
+    const reconciliationMatch = path.match(/^\/api\/v1\/procurement\/po-documents\/([^/]+)\/reconcile\/$/)
+    if (reconciliationMatch && method === 'POST') {
+      if (state.poReconcileError) return reply(route, state.poReconcileError, 409)
+      const document = state.documentRecords[reconciliationMatch[1]]
+      const fields = document.extracted_data
+      state.record = { ...fields, id: orderFormId, title: fields.summary, total_amount: fields.gross_amount || fields.total_amount, pr_reference: body.pr_id, pr_number: state.recommendation.pr_number, vendor: body.vendor_id, vendor_name: state.vendors.find(vendor => String(vendor.id) === String(body.vendor_id))?.name, status: 'draft', created_at: document.created_at, items: [] }
+      state.orders = [state.record]
+      document.confirmed_po = orderFormId
+      const contentUrl = `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/${document.id}/content/`
+      state.uploadedDocuments = [{ id: document.id, filename: document.original_filename, content_url: contentUrl }]
+      state.uploadedContent[contentUrl] = state.uploadedContent[`/api/v1/procurement/po-documents/${document.id}/content/`]
+      state.acceptedWrites.push({ path, method, body })
+      return reply(route, { success: true, operation: 'created', purchase_order_id: orderFormId, confirmed_po: orderFormId, document_id: document.id })
+    }
+    const pendingMatch = path.match(/^\/api\/v1\/procurement\/po-documents\/([^/]+)\/$/)
+    if (pendingMatch && state.documentRecords[pendingMatch[1]]) {
+      const key = pendingMatch[1]
+      if (method === 'GET') return reply(route, state.documentRecords[key])
+      if (method === 'PATCH') {
+        state.documentRecords[key].extracted_data = { ...state.documentRecords[key].extracted_data, ...body }
+        state.acceptedWrites.push({ path, method, body })
+        return reply(route, state.documentRecords[key])
+      }
+      if (method === 'DELETE') {
+        delete state.documentRecords[key]
+        state.pendingDocuments = state.pendingDocuments.filter(document => document.id !== key)
+        state.acceptedWrites.push({ path, method, body })
+        return route.fulfill({ status: 204, body: '' })
+      }
+    }
+    if (path === '/api/v1/procurement/po-documents/approval-employees/' && method === 'GET') {
+      if (state.approvalEmployeesError) return reply(route, state.approvalEmployeesError, 503)
+      const search = String(url.searchParams.get('search') || '').toLowerCase()
+      const results = state.approvalEmployees.filter(employee => `${employee.name} ${employee.position} ${employee.employee_number}`.toLowerCase().includes(search))
+      return reply(route, { count: results.length, results })
+    }
+    if (path === '/api/v1/procurement/po-documents/preview_signed_pdf/' && method === 'POST') {
+      const filename = body?.file?.filename
+      const preview = state.poPdfPreviews[filename] || { data: { approval_evidence: {} } }
+      if (preview.wait) await preview.wait
+      await reply(route, preview.error || preview.data, preview.error ? preview.status || 503 : 200)
+      state.poPdfPreviewDelivered[filename] = true
+      return
+    }
+    if (path === '/api/v1/procurement/po-documents/import_signed_pdf/' && method === 'POST') {
+      if (state.poPdfImportError) return reply(route, state.poPdfImportError, 400)
+      state.acceptedWrites.push({ path, method, body })
+      return reply(route, state.poPdfImportResult || { document_id: 'synthetic-signed-po-document', po_number: 'PO-PDF-TEST-001', reconciliation_required: true, operation: 'created' })
+    }
     if (path === `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/` && method === 'GET') {
+      if (state.uploadedDocumentsDeferred) await state.uploadedDocumentsDeferred
       return reply(route, state.uploadedDocumentsError || { count: state.uploadedDocuments.length, results: state.uploadedDocuments }, state.uploadedDocumentsError ? 503 : 200)
     }
     if (state.uploadedContent[path] && method === 'GET') {
@@ -93,10 +146,18 @@ export async function orderFormHarness(page, options = {}) {
       return route.fulfill({ status: 200, contentType: 'application/pdf', body: state.generatedPdf, headers: { 'content-disposition': 'inline; filename="Generated-PO.pdf"' } })
     }
     if (path === `/api/v1/procurement/orders/${orderFormId}/` && method === 'GET') return reply(route, state.record)
+    if (path === `/api/v1/procurement/orders/${orderFormId}/` && method === 'DELETE') {
+      if (state.deleteError) return reply(route, state.deleteError, 409)
+      state.orders = []
+      state.record = null
+      state.uploadedDocuments = []
+      state.acceptedWrites.push({ path, method, body })
+      return route.fulfill({ status: 204, body: '' })
+    }
     if ((path === '/api/v1/procurement/orders/' && method === 'POST') || (path === `/api/v1/procurement/orders/${orderFormId}/` && method === 'PATCH')) {
       const error = body?.status === 'sent' ? state.sendError || state.saveError : state.saveError
       if (error) return reply(route, error, 400)
-      state.record = { ...state.record, ...body, id: orderFormId, created_by: formActor.id, created_by_name: formActor.full_name, vendor_name: state.vendors.find(vendor => String(vendor.id) === String(body.vendor))?.name, pr_number: state.recommendation.pr_number, created_at: '2026-09-15T08:00:00Z', updated_at: '2026-09-15T08:00:00Z' }
+      state.record = { ...state.record, ...body, id: orderFormId, created_by: formActor.id, created_by_name: formActor.full_name, vendor_name: body.vendor === undefined ? state.record?.vendor_name : state.vendors.find(vendor => String(vendor.id) === String(body.vendor))?.name, pr_number: (Object.hasOwn(body, 'pr_reference') ? body.pr_reference : state.record?.pr_reference) ? state.recommendation.pr_number : '', created_at: '2026-09-15T08:00:00Z', updated_at: '2026-09-15T08:00:00Z' }
       state.orders = [state.record]
       state.acceptedWrites.push({ path, method, body })
       return reply(route, state.record, method === 'POST' ? 201 : 200)

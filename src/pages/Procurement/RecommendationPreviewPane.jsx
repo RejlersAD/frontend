@@ -11,6 +11,8 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
+import RecommendationSourceDocument from './RecommendationSourceDocument';
+import { getOriginalRecommendationDocuments } from './recommendationSourceDocuments';
 import './RecommendationPreviewPane.css';
 
 const PAPER_WIDTH = 740;
@@ -34,6 +36,7 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const hasOriginal = getOriginalRecommendationDocuments(requisition.attachments).length > 0;
   const scale = fitWidth ? clamp(availableWidth / PAPER_WIDTH, 0.25, 1.5) : zoom;
   const pageCount = Math.max(1, Math.ceil(documentHeight / PAPER_HEIGHT));
   const issueLabel = `${issues.length} required ${issues.length === 1 ? 'item' : 'items'} remaining`;
@@ -51,7 +54,7 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
     observer.observe(viewport);
     observer.observe(paper);
     return () => observer.disconnect();
-  }, []);
+  }, [hasOriginal]);
 
   useEffect(() => {
     const onFullscreenChange = () => setExpanded(document.fullscreenElement === paneRef.current);
@@ -147,27 +150,27 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
   };
 
   return (
-    <aside className="rpp-preview" ref={paneRef} aria-label="Live purchase recommendation preview">
+    <aside className={`rpp-preview${hasOriginal ? ' has-original' : ''}`} ref={paneRef} aria-label="Live purchase recommendation preview">
       <header className="rpp-heading">
         <div className="rpp-title-row">
-          <h2>Live Purchase Recommendation Preview</h2>
-          <span className="rpp-current"><span /> Up to date</span>
+          <h2>{hasOriginal ? 'Purchase Recommendation Preview' : 'Live Purchase Recommendation Preview'}</h2>
+          {!hasOriginal && <span className="rpp-current"><span /> Up to date</span>}
         </div>
-        <p>Updates as fields are completed</p>
+        {!hasOriginal && <p>Updates as fields are completed</p>}
         <div className="rpp-toolbar" aria-label="Document preview controls">
-          <span className="rpp-page-number">Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
+          {!hasOriginal && <><span className="rpp-page-number">Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
           <div className="rpp-zoom-controls">
             <button type="button" aria-label="Zoom out preview" onClick={() => changeZoom(-0.1)} disabled={scale <= 0.25}><MinusIcon /></button>
             <output aria-label="Preview zoom">{Math.round(scale * 100)}%</output>
             <button type="button" aria-label="Zoom in preview" onClick={() => changeZoom(0.1)} disabled={scale >= 1.5}><PlusIcon /></button>
           </div>
-          <button type="button" className="rpp-tool" aria-pressed={fitWidth} onClick={() => setFitWidth(true)}>Fit width</button>
+          <button type="button" className="rpp-tool" aria-pressed={fitWidth} onClick={() => setFitWidth(true)}>Fit width</button></>}
           <button type="button" className="rpp-tool rpp-icon-tool" aria-label={expanded ? 'Exit expanded preview' : 'Expand preview'} onClick={toggleFullscreen}>
             {expanded ? <ArrowsPointingInIcon /> : <ArrowsPointingOutIcon />}
           </button>
-          <button type="button" className="rpp-tool rpp-download" disabled={downloading} onClick={downloadPdf}>
+          {!hasOriginal && <button type="button" className="rpp-tool rpp-download" disabled={downloading} onClick={downloadPdf}>
             <ArrowDownTrayIcon />{downloading ? 'Preparing PDF...' : 'Download PDF'}
-          </button>
+          </button>}
         </div>
       </header>
       <div className="rpp-tabs" role="tablist" aria-label="Preview views" onKeyDown={onTabKeyDown}>
@@ -175,7 +178,9 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
         <button type="button" ref={validationTabRef} role="tab" id={`${instanceId}-validation-tab`} aria-controls={`${instanceId}-validation-panel`} aria-selected={tab === 'validation'} tabIndex={tab === 'validation' ? 0 : -1} onClick={() => setTab('validation')}>Validation{issues.length > 0 && <span className="rpp-issue-count">{issues.length}</span>}</button>
       </div>
       {downloadError && <div className="rpp-error" role="alert">{downloadError}</div>}
-      <div
+      {hasOriginal ? <section className="rpp-original" role="tabpanel" id={`${instanceId}-document-panel`} aria-labelledby={`${instanceId}-document-tab`} hidden={tab !== 'document'} tabIndex={0}>
+        <RecommendationSourceDocument key={requisition.id || requisition.pr_number} requisitionId={requisition.id} attachments={requisition.attachments} embedded />
+      </section> : <div
         className="rpp-document-viewport"
         ref={viewportRef}
         role="tabpanel"
@@ -190,7 +195,7 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
             <PurchaseRequisitionDocumentPreview requisition={requisition} live documentOnly />
           </div>
         </div>
-      </div>
+      </div>}
       <section className="rpp-validation" role="tabpanel" id={`${instanceId}-validation-panel`} aria-labelledby={`${instanceId}-validation-tab`} hidden={tab !== 'validation'} tabIndex={0}>
         <h3>{issues.length ? 'Complete the required information' : 'Ready for review'}</h3>
         <p>{issues.length ? 'Select an item to return to the relevant form section.' : 'All required form fields are complete. Review the recommendation before submitting it for approval.'}</p>

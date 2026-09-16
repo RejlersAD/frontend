@@ -1,0 +1,72 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { hydrateRecommendationItem, hydrateRecommendationReferences, preserveRecordedApprovalWorkflow, recommendationLineError } from '../src/pages/Procurement/recommendationFormState.js';
+import { prepareRecommendationPayload } from '../src/pages/Procurement/recommendationFormPayload.js';
+
+test('a signed import lump sum retains its total and source evidence while becoming editable', () => {
+  const source = { description: 'Software credits', total: '2052.00', currency: 'USD', remarks: 'Recorded budget' };
+  const item = hydrateRecommendationItem(source);
+  assert.deepEqual(item, { ...source, quantity: '1', unit: 'LS', unit_price: '2052.00' });
+  assert.equal(recommendationLineError([item]), '');
+  assert.equal(source.quantity, undefined);
+});
+
+test('incomplete or inconsistent explicit pricing is preserved for review, never silently repaired', () => {
+  for (const source of [
+    { description: 'Credits', quantity: '2', total: '2052.00' },
+    { description: 'Credits', unit_price: '1000', total: '2052.00' },
+    { description: 'Credits', quantity: '2', unit_price: '1000', total: '2052.00' },
+  ]) {
+    assert.deepEqual(hydrateRecommendationItem(source), source);
+    assert.ok(recommendationLineError([hydrateRecommendationItem(source)]));
+  }
+});
+
+test('legacy aliases hydrate without changing the original item or amount', () => {
+  assert.deepEqual(hydrateRecommendationItem({ item: 'Service', qty: 2, price: '3.00', line_total: '6.00', uom: 'HR' }), {
+    item: 'Service', qty: 2, price: '3.00', line_total: '6.00', uom: 'HR',
+    description: 'Service', quantity: 2, unit_price: '3.00', total: '6.00', unit: 'HR',
+  });
+  assert.equal(hydrateRecommendationItem({ description: 'Service', total: 'invalid' }).unit_price, undefined);
+});
+
+test('recorded project and supplier names are not assigned fabricated master IDs', () => {
+  const references = hydrateRecommendationReferences({ project_department: '5901142-Recorded project', supplier_name: 'Recorded supplier', vendor: null, selected_vendors: [], project_details: [] });
+  assert.deepEqual(references.project_details, [{ value: '5901142-Recorded project', label: '5901142-Recorded project', source: 'recorded', type: 'project' }]);
+  assert.deepEqual(references.selected_vendors, []);
+  assert.deepEqual(hydrateRecommendationReferences({ vendor: 12, supplier_name: 'Known supplier' }).selected_vendors, [{ vendor_id: 12, name: 'Known supplier' }]);
+});
+
+test('canonical references win and metadata price lines are a fallback only when items are empty', () => {
+  const project = { project_id: 17, label: 'Selected project' };
+  const vendor = { vendor_id: 12, name: 'Selected supplier' };
+  const line = { description: 'Recorded service', total: '2052.00' };
+  const record = { project_details: [project], selected_vendors: [vendor], items: [], price_remarks_data: { price_lines: [line] } };
+  const hydrated = hydrateRecommendationReferences(record);
+  assert.deepEqual(hydrated.project_details, [project]);
+  assert.deepEqual(hydrated.selected_vendors, [vendor]);
+  assert.equal(hydrated.items[0].unit_price, '2052.00');
+  assert.deepEqual(record.items, []);
+});
+
+test('signed partial drafts and completed workflows preserve recorded approval data', () => {
+  assert.equal(preserveRecordedApprovalWorkflow({ id: 'a', status: 'approved' }), true);
+  assert.equal(preserveRecordedApprovalWorkflow({ id: 'a', status: 'draft', price_remarks_data: { import_source: 'signed_pr_pdf' } }), true);
+  assert.equal(preserveRecordedApprovalWorkflow({ id: 'a', status: 'draft', approval_workflow_config: [{ external: true }] }), true);
+  assert.equal(preserveRecordedApprovalWorkflow({ id: 'a', status: 'draft' }), false);
+  assert.equal(preserveRecordedApprovalWorkflow(null), false);
+  const workflow = [{ role: 'PM', user_name: 'Recorded approver', status: 'approved', external: true, approved_at: '2026-01-29' }];
+  const metadata = { approval_table_labels: { 12: 'PM' }, signed_approval_evidence: { signatures: { pm: true } } };
+  const saved = prepareRecommendationPayload({ approval_workflow_config: workflow, price_remarks_data: metadata });
+  assert.deepEqual(saved.approval_workflow_config, workflow);
+  assert.deepEqual(saved.price_remarks_data, metadata);
+});
+
+test('line validation rejects saved total mismatches but allows omitted totals and blank-row omission', () => {
+  const item = { description: 'Service', quantity: '2', unit_price: '1026.00', total: '2052.00' };
+  assert.equal(recommendationLineError([item]), '');
+  assert.match(recommendationLineError([{ ...item, total: '1.00' }]), /total must equal/);
+  assert.equal(recommendationLineError([{ ...item, total: '' }]), '');
+  const payload = prepareRecommendationPayload({ items: [{ description: '', quantity: '1', unit_price: '', total: '0.00' }, item] });
+  assert.equal(recommendationLineError(payload.items), '');
+});

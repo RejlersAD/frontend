@@ -151,7 +151,7 @@ test('menus preserve keyboard focus and delegate create import edit delete and P
   await page.getByRole('button', { name: `Actions for ${number(7)}`, exact: true }).click()
   await page.getByRole('menuitem', { name: 'Delete recommendation', exact: true }).click()
   await page.getByRole('button', { name: `Actions for ${number(4)}`, exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Preview signed PDF', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Download PDF', exact: true }).click()
   expect((await actions(page)).map(value => [value.name, value.value?.id])).toEqual([
     ['importExcel', undefined], ['create', undefined], ['edit', id(207)], ['delete', id(207)], ['pdf', id(204)],
   ])
@@ -252,7 +252,7 @@ test('mobile layout and open menus remain accessible with local table scrolling'
   await accessibility(page); await page.keyboard.press('Escape'); clean(state)
 })
 
-test('OrderManagement preserves imports PDF preview Excel export refresh and purchase orders navigation', async ({ page }) => {
+test('OrderManagement preserves imports PDF download Excel export refresh and purchase orders navigation', async ({ page }) => {
   const state = await recommendationHarness(page, { integration: true }); await loaded(page)
   await expect(register(page).getByRole('row')).toHaveCount(9)
   await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click()
@@ -267,9 +267,10 @@ test('OrderManagement preserves imports PDF preview Excel export refresh and pur
   await page.getByRole('button', { name: 'Export', exact: true }).click()
   expect((await download).suggestedFilename()).toMatch(/\.xlsx$/)
   await page.getByRole('button', { name: `Actions for ${number(4)}`, exact: true }).click()
-  await page.getByRole('menuitem', { name: 'Preview signed PDF', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: new RegExp(`Print Preview.*${number(4)}`) })).toBeVisible()
-  await page.getByRole('button', { name: 'Close print preview', exact: true }).click()
+  const pdfDownload = page.waitForEvent('download')
+  await page.getByRole('menuitem', { name: 'Download PDF', exact: true }).click()
+  expect((await pdfDownload).suggestedFilename()).toMatch(/\.pdf$/)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   const before = state.requests.filter(request => request.path === '/api/v1/procurement/requisitions/').length
   await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await loaded(page)
   expect(state.requests.filter(request => request.path === '/api/v1/procurement/requisitions/')).toHaveLength(before + 2)
@@ -288,7 +289,6 @@ test('OrderManagement conversion requires confirmation and posts only the chosen
   await details(page).getByRole('button', { name: 'Create purchase order', exact: true }).click()
   dialog = page.getByRole('dialog', { name: 'Confirm action' })
   await dialog.getByRole('button', { name: 'Confirm', exact: true }).click()
-  await page.getByRole('dialog', { name: 'Notification' }).getByRole('button', { name: 'OK', exact: true }).click()
   await loaded(page)
   await expect(details(page)).toContainText('Purchase order created')
   expect(state.requests.filter(request => request.method !== 'GET')).toEqual([{ path: `/api/v1/procurement/requisitions/${id(204)}/convert_to_po/`, method: 'POST', body: null }])
@@ -299,7 +299,7 @@ test('OrderManagement opens the original approval record and preserves new recom
   const state = await recommendationHarness(page, { integration: true }); await loaded(page)
   await details(page).getByRole('button', { name: 'View approval record', exact: true }).click()
   await expect.poll(() => page.evaluate(() => window.recommendationRoute)).toBe(`/procurement/requisitions/${id(201)}`)
-  await expect(page.getByRole('heading', { name: number(1), exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: number(1), exact: true, level: 1 })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Approval history', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Back to Purchase Recommendations', exact: true }).click()
   await loaded(page)

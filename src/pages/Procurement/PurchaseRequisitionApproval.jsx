@@ -10,11 +10,16 @@ import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
  * - Digital signature support
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useId } from 'react';
 import PropTypes from 'prop-types';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../services/api.service';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
+import RecommendationSourceDocument from './RecommendationSourceDocument';
+import { getOriginalRecommendationDocuments } from './recommendationSourceDocuments';
+import { recommendationSourceApprovals } from './recommendationApprovalEvidence';
+import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
+import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
 import {
@@ -87,6 +92,14 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const [linkedPoPreviewRetryKey, setLinkedPoPreviewRetryKey] = useState(0);
   const pdfFrameRef = useRef(null);
   const pdfSourceRef = useRef(null);
+  const previewId = useId();
+  const hasOriginalPr = getOriginalRecommendationDocuments(requisition?.attachments).length > 0;
+  const linkedPoSources = useUploadedPurchaseOrderSources(requisition?.linked_po_id, isOpen && activePreview === 'po');
+  const useOriginalLinkedPo = linkedPoSources.loading || Boolean(linkedPoSources.error) || linkedPoSources.documents.length > 0;
+
+  useEffect(() => {
+    setActivePreview('pr');
+  }, [isOpen, requisition?.id]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -109,7 +122,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   useEffect(() => {
     if (!isOpen || !requisition?.linked_po_id) {
       setLinkedOrder(null);
-      setActivePreview('pr');
+      setActivePreview(previous => previous === 'po' ? 'pr' : previous);
       return undefined;
     }
 
@@ -128,7 +141,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   }, [isOpen, requisition?.linked_po_id]);
 
   useEffect(() => {
-    if (!isOpen || !requisition?.id) return undefined;
+    if (!isOpen || !requisition?.id || hasOriginalPr) return undefined;
 
     let active = true;
     let objectUrl = '';
@@ -206,11 +219,11 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       window.clearTimeout(generationTimer);
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [isOpen, requisition?.id, requisition?.pr_number, requisition?.issued_date, requisition?.created_at, pdfPreviewRetryKey]);
+  }, [isOpen, requisition?.id, requisition?.pr_number, requisition?.issued_date, requisition?.created_at, hasOriginalPr, pdfPreviewRetryKey]);
 
   useEffect(() => {
     const linkedOrderId = requisition?.linked_po_id;
-    if (!isOpen || activePreview !== 'po' || !linkedOrderId) return undefined;
+    if (!isOpen || activePreview !== 'po' || !linkedOrderId || useOriginalLinkedPo) return undefined;
 
     let active = true;
     let objectUrl = '';
@@ -251,7 +264,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [activePreview, isOpen, requisition?.linked_po_id, requisition?.po_number_reference, linkedPoPreviewRetryKey]);
+  }, [activePreview, isOpen, requisition?.linked_po_id, requisition?.po_number_reference, linkedOrder?.po_number, linkedOrder?.po_date, linkedOrder?.created_at, useOriginalLinkedPo, linkedPoPreviewRetryKey]);
 
   if (!isOpen || !requisition) return null;
 
@@ -300,6 +313,11 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     rawApprovalHierarchy,
     requisition.po_number_reference,
   );
+  const sourceApprovalHistory = recommendationSourceApprovals(requisition);
+  const showingSourceHistory = approvalHierarchy.length === 0 && sourceApprovalHistory.length > 0;
+  const displayedApprovalHistory = showingSourceHistory
+    ? displayApprovalWorkflow(sourceApprovalHistory, requisition.po_number_reference)
+    : approvalHierarchy;
 
   // Active stage determination
   const pendingStages = approvalHierarchy.filter((entry) => {
@@ -602,10 +620,29 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   const showingLinkedPo = activePreview === 'po' && Boolean(requisition.linked_po_id);
-  const activePdfUrl = showingLinkedPo ? linkedPoPreviewUrl : pdfPreviewUrl;
+  const showingOriginal = showingLinkedPo ? useOriginalLinkedPo : hasOriginalPr;
+  const activePdfUrl = showingOriginal ? '' : showingLinkedPo ? linkedPoPreviewUrl : pdfPreviewUrl;
   const activePdfFilename = showingLinkedPo ? linkedPoPreviewFilename : pdfPreviewFilename;
   const activePdfLoading = showingLinkedPo ? linkedPoPreviewLoading : pdfPreviewLoading;
   const activePdfError = showingLinkedPo ? linkedPoPreviewError : pdfPreviewError;
+  const previewTabs = [
+    { key: 'pr', label: 'PR Preview', Icon: DocumentTextIcon },
+    ...(requisition.linked_po_id ? [{ key: 'po', label: 'Linked PO', Icon: LinkIcon }] : []),
+  ];
+
+  const handlePreviewTabKeyDown = event => {
+    const currentIndex = previewTabs.findIndex(tab => tab.key === activePreview);
+    let nextIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % previewTabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + previewTabs.length) % previewTabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = previewTabs.length - 1;
+    else return;
+    event.preventDefault();
+    const nextTab = previewTabs[nextIndex].key;
+    setActivePreview(nextTab);
+    event.currentTarget.parentElement.querySelector(`[data-preview-tab="${nextTab}"]`)?.focus();
+  };
 
   const downloadPdf = () => {
     if (!activePdfUrl) return;
@@ -654,11 +691,11 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   return (
     <>
-      <div className="pointer-events-none fixed left-[-10000px] top-0 w-[794px] bg-white p-4" aria-hidden="true">
+      {!hasOriginalPr && <div className="pointer-events-none fixed left-[-10000px] top-0 w-[794px] bg-white p-4" aria-hidden="true">
         <div ref={pdfSourceRef} className="bg-white p-3">
           <PurchaseRequisitionDocumentPreview requisition={requisition} live documentOnly />
         </div>
-      </div>
+      </div>}
       <div className={pageMode ? 'min-h-[calc(100vh-4rem)] bg-slate-50' : 'fixed inset-0 z-50 overflow-y-auto bg-slate-50'}>
         <div className="mx-auto min-h-full w-full max-w-[1680px] px-4 py-5 sm:px-6 lg:px-8">
           
@@ -678,8 +715,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                 </div>
               </div>
               <section className="min-w-0 flex-1 xl:mx-6" aria-label="Approval history">
+                {showingSourceHistory && <p className="mb-1 text-xs text-slate-600">Approvals recorded on uploaded PR{!requisition.price_remarks_data?.signed_document_verification?.signed_off && ' · Signature verification incomplete'}</p>}
                 <div className="flex min-w-0 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50" role="list" aria-label="Approval workflow progress">
-                  {approvalHierarchy.length > 0 ? approvalHierarchy.map((stage, index) => {
+                  {displayedApprovalHistory.length > 0 ? displayedApprovalHistory.map((stage, index) => {
                     const stageStatus = approvalDisplayStatus(stage);
                     const stageTimestamp = stage.approved_at || stage.rejected_at || stage.evidence_requested_at;
                     return (
@@ -687,19 +725,21 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                           <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border ${getStatusColor(stage)}`}>
                             {stageStatus === 'approved' ? <CheckCircleIcon className="h-4 w-4" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
                           </span>
-                          <div className="min-w-0"><p className="truncate text-[11px] font-bold text-slate-800">{stage.role || stage.stage || `Stage ${index + 1}`}</p><p className="truncate text-[10px] text-slate-500">{nameOnly(stage.user_name) || approvalStatusLabel(stage)}</p><p className="mt-0.5 truncate text-[9px] font-medium text-slate-400">{stageTimestamp ? formatTimestamp(stageTimestamp) : 'Pending'}</p></div>
+                          <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-800">{stage.role || stage.stage || `Stage ${index + 1}`}</p><p className="truncate text-sm text-slate-700">{nameOnly(stage.user_name) || 'Name not recorded'}</p><p className="mt-0.5 truncate text-xs text-slate-500">{approvalStatusLabel(stage)}{stageTimestamp ? ` · ${formatTimestamp(stageTimestamp)}` : stageStatus === 'approved' ? ' · Date not recorded' : showingSourceHistory && stageStatus === 'not_recorded' ? ' · Signature not verified' : ''}</p></div>
                       </div>
                     );
-                  }) : <p className="text-xs text-slate-500">Approval workflow has not been configured.</p>}
+                  }) : <p className="px-3 py-2 text-xs text-slate-500">{hasOriginalPr ? 'Uploaded approval evidence needs verification.' : 'Approval workflow has not been configured.'}</p>}
                 </div>
               </section>
               <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label="Purchase Recommendation actions">
+                {!showingOriginal && <>
                 <button type="button" onClick={printPdf} disabled={!activePdfUrl} aria-label={`Print ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} preview`} title={`Print ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} preview`} className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
                   <PrinterIcon className="h-4 w-4" />
                 </button>
                 <button type="button" onClick={downloadPdf} disabled={!activePdfUrl} aria-label={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`} title={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`} className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
                   <ArrowDownTrayIcon className="h-4 w-4" />
                 </button>
+                </>}
                 {isDraft && (isCurrentUserIssuer || isSuperAdmin) && (
                   <button type="button" onClick={() => navigate(`/procurement/requisitions/${requisition.id}/edit`)} className="inline-flex h-9 items-center rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
                     <PencilSquareIcon className="mr-2 h-4 w-4" /> Edit
@@ -870,40 +910,33 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                 </div>
               </div>
               {/* Right Column - Dynamic Approval History & Action Controls */}
-              <aside className="space-y-6 xl:col-span-2">
-                <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Procurement document preview">
-                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2.5">
-                    <div className="inline-flex min-w-0 rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Available documents">
+              <aside className="min-w-0 space-y-6 xl:col-span-2">
+                <section className="pr-approval-preview overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Procurement document preview">
+                  {previewTabs.length > 1 && <div className="pr-approval-preview-header flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-2 py-1">
+                    <div className="inline-flex min-w-0 max-w-full flex-wrap rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Available documents">
+                      {previewTabs.map(({ key, label, Icon }) => (
                       <button
+                        key={key}
+                        id={`${previewId}-${key}-tab`}
                         type="button"
                         role="tab"
-                        aria-selected={activePreview === 'pr'}
-                        aria-controls="procurement-document-preview"
-                        onClick={() => setActivePreview('pr')}
-                        className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activePreview === 'pr' ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
+                        aria-selected={activePreview === key}
+                        aria-controls={`${previewId}-panel`}
+                        tabIndex={activePreview === key ? 0 : -1}
+                        data-preview-tab={key}
+                        onClick={() => setActivePreview(key)}
+                        onKeyDown={handlePreviewTabKeyDown}
+                        className={`inline-flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activePreview === key ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
+                        title={key === 'po' ? linkedOrder?.po_number || requisition.po_number_reference || 'Linked Purchase Order' : undefined}
                       >
-                        <DocumentTextIcon className="h-4 w-4 shrink-0" />
-                        <span>PR Preview</span>
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="min-w-0 text-left">
+                          <span className="block">{label}</span>
+                        </span>
                       </button>
-                      {requisition.linked_po_id && (
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={activePreview === 'po'}
-                          aria-controls="procurement-document-preview"
-                          onClick={() => setActivePreview('po')}
-                          className={`inline-flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activePreview === 'po' ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
-                          title={linkedOrder?.po_number || requisition.po_number_reference || 'Linked Purchase Order'}
-                        >
-                          <LinkIcon className="h-4 w-4 shrink-0" />
-                          <span className="min-w-0 text-left">
-                            <span className="block">Linked PO</span>
-                            <span className="block max-w-32 truncate text-[10px] font-medium text-slate-500">{linkedOrder?.po_number || requisition.po_number_reference || 'Purchase Order'}</span>
-                          </span>
-                        </button>
-                      )}
+                      ))}
                     </div>
-                    <button
+                    {!showingOriginal && <button
                       type="button"
                       onClick={downloadPdf}
                       disabled={!activePdfUrl}
@@ -912,12 +945,16 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"
                     >
                       <ArrowDownTrayIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div id="procurement-document-preview" className="grid h-[800px] place-items-center bg-slate-800" role="tabpanel">
+                    </button>}
+                  </div>}
+                  <div id={`${previewId}-panel`} className="pr-approval-preview-viewport" role="tabpanel" aria-labelledby={previewTabs.length > 1 ? `${previewId}-${activePreview}-tab` : undefined} aria-label={previewTabs.length === 1 ? 'PR Preview' : undefined} tabIndex={0}>
+                    {showingOriginal ? (showingLinkedPo
+                      ? <UploadedPurchaseOrderPreview key={requisition.linked_po_id} orderId={requisition.linked_po_id} sourceState={linkedPoSources} />
+                      : <RecommendationSourceDocument key={requisition.id} requisitionId={requisition.id} attachments={requisition.attachments} embedded />) : <>
                     {activePdfLoading && <div className="text-center text-white"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-500 border-t-white" /><p className="mt-3 text-sm">{showingLinkedPo ? 'Loading linked Purchase Order…' : 'Creating PDF from the live preview…'}</p></div>}
                     {!activePdfLoading && activePdfError && <div className="max-w-sm px-6 text-center text-white"><ExclamationTriangleIcon className="mx-auto h-9 w-9 text-amber-300" /><p className="mt-3 text-sm">{activePdfError}</p><button type="button" onClick={() => showingLinkedPo ? setLinkedPoPreviewRetryKey((key) => key + 1) : setPdfPreviewRetryKey((key) => key + 1)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800"><ArrowPathIcon className="h-4 w-4" /> Retry preview</button></div>}
                     {!activePdfLoading && activePdfUrl && <iframe key={`${activePreview}-${activePdfUrl}`} ref={pdfFrameRef} src={`${activePdfUrl}#page=1&zoom=page-width&view=FitH&toolbar=0&navpanes=0&scrollbar=1`} title={`${activePdfFilename || (showingLinkedPo ? 'Linked Purchase Order' : 'Purchase Recommendation')} preview`} className="h-full w-full bg-white" />}
+                    </>}
                   </div>
                 </section>
                 

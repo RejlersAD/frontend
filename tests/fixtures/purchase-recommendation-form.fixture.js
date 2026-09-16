@@ -1,6 +1,7 @@
 // Synthetic records only. Every API request is intercepted before the actual
 // App mounts; unknown requests fail locally and never touch the live database.
 import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 
 export const formRecordId = '00000000-0000-4000-8000-000000009001'
 export const formActor = {
@@ -71,12 +72,15 @@ function parseBody(request) {
 export async function recommendationFormHarness(page, options = {}) {
   const state = {
     record: formReference(options.record), records: [], vendors: formVendors, requests: [], unknown: [], pageErrors: [], submissions: [],
-    saveError: null, submitError: null,
+    saveError: null, submitError: null, originalContent: {}, sourceApprovalError: null, saveSourceApproval: null,
   }
   if (options.edit) state.records.push(state.record)
   options.prepare?.(state)
   await page.clock.setFixedTime(new Date('2026-09-15T08:00:00Z'))
   await page.addInitScript(user => {
+    // Browser PDF frames do not expose the app's storage. Authenticate only
+    // the top-level fixture, leaving embedded original documents untouched.
+    if (window !== window.top) return
     localStorage.setItem('radai_access_token', 'isolated-form-fixture-token')
     localStorage.setItem('radai_user_data', JSON.stringify(user))
     localStorage.setItem('radai.sidebar.collapsed', 'false')
@@ -93,6 +97,7 @@ export async function recommendationFormHarness(page, options = {}) {
   await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method(), body = parseBody(request)
     state.requests.push({ path, method, body })
+    if (Object.hasOwn(state.originalContent, path) && method === 'GET') return route.fulfill({ contentType: 'application/pdf', ...state.originalContent[path] })
     if (path === '/api/v1/health/') return reply(route, { status: 'ok' })
     if (path === '/api/v1/users/check-first-login/') return reply(route, { must_reset_password: false })
     if (path === '/api/v1/rbac/users/me/profile-completeness/') return reply(route, { is_complete: true, percentage: 100, missing_fields: [] })
@@ -121,9 +126,24 @@ export async function recommendationFormHarness(page, options = {}) {
     if (path === '/api/v1/procurement/requisitions/check-pr-number/') return reply(route, { available: true, exists: false, message: 'PR number is available' })
     if (path === '/api/v1/procurement/requisitions/' && method === 'GET') return reply(route, { count: state.records.length, next: null, results: state.records })
     if (path === `/api/v1/procurement/requisitions/${formRecordId}/` && method === 'GET') return reply(route, state.record)
+    if (path === `/api/v1/procurement/requisitions/${formRecordId}/source-approvals/` && method === 'POST') {
+      if (state.sourceApprovalError === 'network') return route.abort('failed')
+      if (state.sourceApprovalError) return reply(route, state.sourceApprovalError.body, state.sourceApprovalError.status || 400)
+      const currentRow = state.record.price_remarks_data?.signed_document_verification?.source_approval_rows?.[body.row_index]
+      if (!isDeepStrictEqual(body.expected_row, currentRow)) return reply(route, { detail: 'This approval record changed. Reload it before editing.' }, 409)
+      if (!state.saveSourceApproval) return reply(route, { detail: 'No isolated source-approval response configured.' }, 400)
+      const record = await state.saveSourceApproval(body, state.record)
+      state.record = record
+      state.records = [record]
+      return reply(route, record)
+    }
     if ((path === '/api/v1/procurement/requisitions/' && method === 'POST') || (path === `/api/v1/procurement/requisitions/${formRecordId}/` && method === 'PATCH')) {
       if (state.saveError) return reply(route, state.saveError, 400)
-      const record = { ...(method === 'POST' ? {} : state.record), ...body, id: formRecordId, pr_number: body.pr_number || 'RAD-PRJ-PR-9001_2026', status: 'draft', issued_by: 7, issued_by_name: 'Maya Hassan', updated_at: '2026-09-15T08:00:00Z' }
+      // DRF's multipart nullable fields map a submitted blank value to null.
+      for (const key of ['vendor', 'issued_date', 'total_price', 'net_total_excl_vat', 'estimated_budget', 'management_approval']) {
+        if (body[key] === '') body[key] = null
+      }
+      const record = { ...(method === 'POST' ? {} : state.record), ...body, id: formRecordId, pr_number: body.pr_number || 'RAD-PRJ-PR-9001_2026', status: method === 'POST' ? 'draft' : state.record.status, issued_by: 7, issued_by_name: 'Maya Hassan', updated_at: '2026-09-15T08:00:00Z' }
       state.record = record
       state.records = [record]
       return reply(route, record, method === 'POST' ? 201 : 200)

@@ -5,6 +5,17 @@ import { prepareRecommendationPayload } from '../src/pages/Procurement/recommend
 const blankLine = () => ({ description: '', quantity: '1', unit: 'EA', unit_price: '', total: '0.00' });
 const pricedLine = (description, overrides = {}) => ({ description, quantity: '2', unit: 'EA', unit_price: '100.00', total: '200.00', ...overrides });
 
+test('cleared optional values persist as null while blank text and zero amounts remain explicit', () => {
+  const payload = prepareRecommendationPayload({
+    issued_date: '', total_price: '', net_total_excl_vat: '', estimated_budget: '', vendor: '',
+    price_remarks: '', supplier_name: '', vendor_selection_reason: '', po_number_reference: '',
+  });
+  for (const key of ['issued_date', 'total_price', 'net_total_excl_vat', 'estimated_budget', 'vendor']) assert.equal(payload[key], null);
+  for (const key of ['price_remarks', 'supplier_name', 'vendor_selection_reason', 'po_number_reference']) assert.equal(payload[key], '');
+  assert.equal(prepareRecommendationPayload({ total_price: 0 }).total_price, 0);
+  assert.equal(prepareRecommendationPayload({ total_price: '0.00' }).total_price, '0.00');
+});
+
 test('omits a blank row and keeps VAT, supplier and budget aligned to the retained row', () => {
   const result = prepareRecommendationPayload({
     items: [blankLine(), pricedLine('Engineering services')],

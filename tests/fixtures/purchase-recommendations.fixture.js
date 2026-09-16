@@ -38,10 +38,13 @@ export function recommendationRecords() {
 export async function recommendationHarness(page, options = {}) {
   const requisitions = recommendationRecords()
   const state = {
+    actor: structuredClone(actor),
     props: { requisitions, loading: false, error: null, currentUserId: 7, orderCount: 4, pdfBusyId: null, batchBusy: false, permissions: Object.fromEntries(requisitions.map((row, index) => [row.id, { modify: row.status === 'draft' && row.issued_by === 7, delete: true, convert: row.status === 'approved', approve: index < 2 }])) },
     details: Object.fromEntries(requisitions.map(row => [row.id, { ...row, items: [{ id: `line-${row.id}`, description: `${row.product_service} scope line`, quantity: '4', unit: 'EA', unit_price: '250', total: '1000' }] }])),
     orders: [{ id: '101', po_number: 'PO-TEST-001', status: 'draft', title: 'Converted specialist instruments', currency: 'USD', total_amount: '22500', items: [] }],
+    uploadedDocuments: {}, uploadedDocumentErrors: {}, uploadedContent: {},
     requests: [], unknown: [], pageErrors: [], detailErrors: {}, deferred: {}, pending: {}, delivered: {}, listError: false,
+    deleteErrors: {}, deleted: [],
   }
   options.prepare?.(state)
   page.on('pageerror', error => state.pageErrors.push(error.message))
@@ -53,7 +56,7 @@ export async function recommendationHarness(page, options = {}) {
       localStorage.setItem('radai_user_data', JSON.stringify(user))
       localStorage.setItem('radai.sidebar.collapsed', 'false')
       localStorage.setItem('radai_theme', 'light')
-    }, actor)
+    }, state.actor)
   }
   await page.route(options.realApp ? '**/api/**' : '**/api/v1/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method()
@@ -82,7 +85,7 @@ export async function recommendationHarness(page, options = {}) {
       if (path === '/api/v1/procurement/requisitions/get_approvers/') return reply(route, { users: [actor, { id: 8, first_name: 'Samir', last_name: 'Ali', full_name: 'Samir Ali' }] })
       if (path === '/api/v1/procurement/orders/') return reply(route, { count: state.orders.length, next: null, results: state.orders })
       if (path === '/api/v1/procurement/po-documents/' && method === 'GET') return reply(route, { count: 0, next: null, results: [] })
-      if (path === '/api/v1/rbac/users/me/') return reply(route, actor)
+      if (path === '/api/v1/rbac/users/me/') return reply(route, state.actor)
       if (path === '/api/v1/users/employees/my-signature/') return reply(route, { signature: '' })
       if (['/api/v1/procurement/vendors/', '/api/v1/procurement/projects/'].includes(path)) return reply(route, { count: 0, next: null, results: [] })
       const conversion = path.match(/\/requisitions\/([^/]+)\/convert_to_po\/$/)
@@ -96,9 +99,27 @@ export async function recommendationHarness(page, options = {}) {
         return reply(route, { purchase_order: order }, 201)
       }
       if (/\/requisitions\/[^/]+\/export_pdf\/$/.test(path)) return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'content-disposition': 'attachment; filename="PR-TEST.pdf"' }, body: '%PDF-1.4\n% Synthetic isolated PDF\n%%EOF' })
+      const uploadedList = path.match(/^\/api\/v1\/procurement\/orders\/([^/]+)\/uploaded-documents\/$/)
+      if (uploadedList && method === 'GET') {
+        const error = state.uploadedDocumentErrors[uploadedList[1]]
+        return error ? reply(route, { detail: error }, 503) : reply(route, { results: state.uploadedDocuments[uploadedList[1]] || [] })
+      }
+      if (/\/orders\/[^/]+\/uploaded-documents\/[^/]+\/content\/$/.test(path) && method === 'GET') {
+        const content = state.uploadedContent[path]
+        return route.fulfill({ status: content?.status || (content?.body ? 200 : 404), contentType: 'application/pdf', body: content?.body || '' })
+      }
+      if (/\/orders\/[^/]+\/export-pdf\/$/.test(path) && method === 'GET') return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'content-disposition': 'attachment; filename="PO-TEST-001.pdf"' }, body: '%PDF-1.4\n% Generated linked PO fixture\n%%EOF' })
       if (/\/orders\/(101|102)\/$/.test(path)) return reply(route, state.orders.find(order => path.endsWith(`/${order.id}/`)))
     }
     const match = path.match(/^\/api\/v1\/procurement\/requisitions\/([^/]+)\/$/)
+    if (match && method === 'DELETE') {
+      const id = match[1]
+      if (state.deleteErrors[id]) return reply(route, { detail: state.deleteErrors[id] }, 409)
+      state.deleted.push(id)
+      state.props.requisitions = state.props.requisitions.filter(record => record.id !== id)
+      delete state.details[id]
+      return route.fulfill({ status: 204, body: '' })
+    }
     if (match && method === 'GET') {
       const id = match[1]
       if (state.deferred[id]) await new Promise(resolve => { state.pending[id] = resolve })
