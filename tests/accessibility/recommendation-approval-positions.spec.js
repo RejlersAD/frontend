@@ -53,7 +53,7 @@ test('any active employee can join multiple Level 1 approvers without the organi
   await page.screenshot({ path: '../artifacts/procurement-level-one-any-employee.png' })
   await page.getByRole('button', { name: 'Submit for approval', exact: true }).click()
   await expect.poll(() => state.submissions.length).toBe(1)
-  expect(state.submissions[0].vendor_selection_reason).toBe('')
+  expect(state.record.vendor_selection_reason).toBe('')
   const levelOne = state.submissions[0].approval_workflow_config.filter(stage => Number(stage.level) === 1)
   expect(levelOne.map(stage => String(stage.user_id))).toEqual(['8', '12'])
   for (const stage of levelOne) {
