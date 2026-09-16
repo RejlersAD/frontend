@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import apiClient from '../../services/api.service';
 
 const InvoiceApproval = () => {
   const { token } = useParams();
@@ -24,32 +24,32 @@ const InvoiceApproval = () => {
   const [comments, setComments] = useState('');
   const [success, setSuccess] = useState(null);
 
-  // Fetch approval details on mount
+  // A changed link must not retain the previous token's decision rights.
   useEffect(() => {
-    fetchApprovalDetails();
+    let active = true;
+    setLoading(true);
+    setApproval(null);
+    setInvoice(null);
+    setError(null);
+    setSuccess(null);
+    apiClient.get(`/finance/approval/${token}/details/`).then(({ data }) => {
+      if (!active) return;
+      setApproval(data.approval);
+      setInvoice(data.invoice);
+    }).catch(err => {
+      if (active) setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to load approval details');
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [token]);
 
-  const fetchApprovalDetails = async () => {
-    try {
-      const response = await axios.get(
-        `/api/v1/finance/approval/${token}/details/`
-      );
-      setApproval(response.data.approval);
-      setInvoice(response.data.invoice);
-      setLoading(false);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to load approval details');
-      setLoading(false);
-    }
-  };
-
   const handleApprovalDecision = async (decision) => {
+    if (submitting || approval?.can_approve !== true || approval.already_decided) return;
     setSubmitting(true);
     setError(null);
 
     try {
-      const response = await axios.post(
-        `/api/v1/finance/approval/${token}/submit/`,
+      const response = await apiClient.post(
+        `/finance/approval/${token}/submit/`,
         {
           decision: decision,
           comments: comments
@@ -68,6 +68,7 @@ const InvoiceApproval = () => {
       }, 3000);
 
     } catch (err) {
+      setApproval(current => current ? { ...current, can_approve: false } : current);
       if (err.response?.data?.error === 'already_processed') {
         setError(`This approval has already been ${err.response.data.status}.`);
       } else {
@@ -253,7 +254,8 @@ const InvoiceApproval = () => {
 
         {/* Approval Form */}
         <div className="bg-white rounded-b-xl shadow-lg p-8">
-          <h2 className="text-xl font-bold text-gray-800 mb-6">Your Decision</h2>
+          <h2 className="text-xl font-bold text-gray-800 mb-6">{approval.can_approve === true ? 'Your Decision' : 'Approval status'}</h2>
+          {approval.can_approve !== true && <p role="status" className="mb-6 text-gray-600">This approval is not assigned to your account at the current stage.</p>}
           
           {/* Comments */}
           <div className="mb-6">
@@ -266,7 +268,7 @@ const InvoiceApproval = () => {
               rows="4"
               className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none resize-none"
               placeholder="Add any comments about your decision..."
-              disabled={submitting}
+              disabled={submitting || approval.can_approve !== true}
             />
           </div>
 
@@ -278,7 +280,7 @@ const InvoiceApproval = () => {
           )}
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4">
+          {approval.can_approve === true && <div className="flex flex-col sm:flex-row gap-4">
             <button
               onClick={() => handleApprovalDecision('approve')}
               disabled={submitting}
@@ -302,7 +304,7 @@ const InvoiceApproval = () => {
             >
               {submitting ? 'Processing...' : '✗ REJECT'}
             </button>
-          </div>
+          </div>}
 
           <p className="text-center text-sm text-gray-500 mt-6">
             Your decision will be recorded and the next level will be notified automatically.

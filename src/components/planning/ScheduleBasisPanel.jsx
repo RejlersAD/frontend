@@ -216,7 +216,7 @@ export default function ScheduleBasisPanel({ projectId, intelligenceRunId }) {
           <div><h4 className={`text-sm font-semibold ${readiness.ready ? 'text-emerald-900' : 'text-amber-900'}`}>{readiness.ready ? 'Schedule Basis is ready' : 'Schedule Basis is not ready'}</h4>
             {(readiness.blockers || []).map(message => <p key={message} className="mt-1 text-xs text-amber-800">• {message}</p>)}
           </div>
-          {!immutable && <button type="button" disabled={working || !readiness.ready} onClick={() => run(() => planningIntelligenceService.approveScheduleBasis(basis.id), 'Could not approve the Schedule Basis.')} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Approve Schedule Basis</button>}
+          {!immutable && <button type="button" disabled={working || !readiness.ready || basis.can_approve !== true} onClick={() => run(() => planningIntelligenceService.approveScheduleBasis(basis.id), 'Could not approve the Schedule Basis.')} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Approve Schedule Basis</button>}
         </div>
       </div>
     </section>
