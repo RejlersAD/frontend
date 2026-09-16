@@ -38,7 +38,7 @@ test('compacts blank rows between and after complete rows, including old item al
   assert.deepEqual(result.price_remarks_data.line_details, [{ note: 'first' }, { note: 'second' }]);
 });
 
-test('live line details override saved details, including zero tax and explicitly cleared values', () => {
+test('unconfirmed VAT preserves legacy zero tax while supplier and budget clearing stay explicit', () => {
   const result = prepareRecommendationPayload({
     items: [pricedLine('Zero-rated service', { vat_rate: '0', vendor_id: '', budget: null })],
     price_remarks_data: { line_details: [{ vat_rate: '5', vendor_id: 'old', budget: '500', evidence: 'quote.pdf' }] },
@@ -70,7 +70,7 @@ test('recognizes the backend blank-row cases without treating zero quantity as b
   assert.deepEqual(result.items, [{ quantity: 0, unit_price: 0 }]);
 });
 
-test('preserves a legacy lump recommendation with no items, including amounts and budget', () => {
+test('preserves unconfirmed legacy financial values, budget and evidence exactly', () => {
   const legacy = {
     pr_number: 'LEGACY-001', items: [], total_price: '6180.00', net_total_excl_vat: '6000.00',
     estimated_budget: '10000.00', currency: 'AED',
@@ -84,7 +84,7 @@ test('preserves a legacy lump recommendation with no items, including amounts an
   assert.deepEqual(result.price_remarks_data, { ...legacy.price_remarks_data, line_details: [] });
 });
 
-test('does not recompute pre-VAT totals or convert currencies when VAT metadata is present', () => {
+test('does not infer confirmation from legacy line VAT metadata', () => {
   const result = prepareRecommendationPayload({
     items: [pricedLine('Service', { vat_rate: '5' })], total_price: '200.00',
     net_total_excl_vat: '200.00', estimated_budget: '300.00', currency: 'USD',

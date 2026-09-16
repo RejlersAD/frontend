@@ -39,7 +39,7 @@ test('reviews the provided PR scan with its extracted values without saving a re
     ['currency', 'Currency'], ['project_number', 'Project Number'], ['po_reference', 'PO Reference'],
     ['special_notes', 'Special Notes'], ['price_remarks', 'Price Remarks / Sales Budget'],
   ]) await expect(inputFor(label)).toHaveValue(String(expected[field] ?? ''))
-  for (const [field, label] of [['net_total', 'Total Price'], ['budget_in_aed', 'Budget in AED'], ['net_total_aed', 'Net Total in AED']]) {
+  for (const [field, label] of [['net_total', 'Entered price'], ['budget_in_aed', 'Budget in AED'], ['net_total_aed', 'Net Total in AED']]) {
     const input = inputFor(label)
     if (expected[field] == null || expected[field] === '') await expect(input).toHaveValue('')
     else expect(Number(await input.inputValue())).toBe(Number(expected[field]))
@@ -65,7 +65,7 @@ test('reviews the provided PR scan with its extracted values without saving a re
   // Chromium paints the native PDF viewer outside the ordinary page DOM.
   await page.waitForTimeout(5000)
   await page.screenshot({ path: '../artifacts/pr-actual-scan-review.png' })
-  await inputFor('Total Price').scrollIntoViewIfNeeded()
+  await inputFor('Entered price').scrollIntoViewIfNeeded()
   await page.screenshot({ path: '../artifacts/pr-actual-scan-pricing.png' })
   expect(state.previewRequests).toHaveLength(1)
   expect(state.previewRequests[0]).toMatchObject({ preview_only: 'true', file: { filename: basename(scanPath) } })

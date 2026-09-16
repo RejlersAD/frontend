@@ -1,3 +1,6 @@
+import { procurementLineNet } from '../../utils/procurementVat.js';
+import { recommendationLineDiscount } from './recommendationVat.js';
+
 const absent = value => value === undefined || value === null || value === '';
 const finiteAmount = value => !absent(value) && Number.isFinite(Number(value));
 
@@ -60,10 +63,12 @@ export function recommendationLineError(items = []) {
     }
     const quantity = Number(Number(item.quantity).toFixed(4));
     const price = Number(Number(item.unit_price).toFixed(2));
-    const calculatedCents = Math.round((quantity * price + Number.EPSILON) * 100);
+    const discount = recommendationLineDiscount(item);
+    if (!finiteAmount(discount) || Number(discount) < 0) return `Line item ${index + 1} requires a valid non-negative discount.`;
+    const calculatedCents = Math.round(procurementLineNet(quantity, price, discount) * 100);
     if (!absent(item.total) && (!finiteAmount(item.total)
       || Math.round(Number(item.total) * 100) !== calculatedCents)) {
-      return `Line item ${index + 1} total must equal quantity multiplied by unit price.`;
+      return `Line item ${index + 1} total must equal quantity multiplied by unit price${Number(discount) ? ' minus discount' : ''}.`;
     }
   }
   return '';

@@ -76,6 +76,11 @@
 .prf-sp .prf-sp-single-source { margin-top: 9px; }
 .prf-sp .prf-sp-currency { display: inline-flex; align-items: center; gap: 10px; color: #244266; font-size: 10px; }
 .prf-sp .prf-sp-currency select { width: 82px; min-height: 25px; font-weight: 600; font-size: 10px; }
+.prf-sp .prf-sp-commercial-heading { flex-wrap: wrap; }
+.prf-sp .prf-sp-pricing-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.prf-sp .prf-sp-vat-basis { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; color: #244266; font-size: 10px; }
+.prf-sp .prf-sp-vat-basis select { width: 164px; min-height: 25px; font-size: 10px; }
+.prf-sp .prf-sp-commercial > .prf-sp-muted { color: #536982; }
 .prf-sp .prf-sp-table-scroll { position: relative; width: 100%; overflow-x: auto; margin-top: 7px; border: 1px solid #dbe5f0; border-radius: 3px; }
 .prf-sp .prf-sp-items { width: 100%; table-layout: fixed; border-collapse: collapse; color: #163454; font-size: 10px; }
 .prf-sp .prf-sp-items th { height: 28px; padding: 4px 6px; border-right: 1px solid #dbe5f0; border-bottom: 1px solid #dbe5f0; text-align: left; background: #f0f5fa; font-weight: 600; font-size: 9px; line-height: 13px; }

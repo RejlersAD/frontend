@@ -19,6 +19,7 @@ import ProcurementRegister from './ProcurementRegister';
 import { pendingPurchaseOrderDocument } from './procurementRegisterModel';
 import PurchaseRecommendations from './PurchaseRecommendations';
 import { getOriginalRecommendationDocuments, getOriginalRecommendationUrl } from './recommendationSourceDocuments';
+import { procurementVatExportValue } from './procurementVatExport';
 
 const PR_REGISTER_COLUMNS = [
   ['SN', 8],
@@ -67,6 +68,8 @@ const PO_REGISTER_COLUMNS = [
 ];
 
 const getPORegisterValue = (order, column) => {
+  const reviewedValue = procurementVatExportValue(order, column, 'po');
+  if (reviewedValue !== undefined) return reviewedValue;
   const attachments = order?.attachments || [];
   const source = (
     attachments.find(item => item?.type === 'signed_purchase_order_pdf' && item?.procurement_register)
@@ -97,6 +100,8 @@ const getPORegisterValue = (order, column) => {
 };
 
 const getPRRegisterValue = (requisition, column, rowIndex = 0) => {
+  const reviewedValue = procurementVatExportValue(requisition, column, 'pr');
+  if (reviewedValue !== undefined) return reviewedValue;
   const register = requisition?.price_remarks_data?.procurement_register || {};
   if (register[column] !== undefined && register[column] !== null && register[column] !== '') {
     return register[column];

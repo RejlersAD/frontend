@@ -70,3 +70,13 @@ test('line validation rejects saved total mismatches but allows omitted totals a
   const payload = prepareRecommendationPayload({ items: [{ description: '', quantity: '1', unit_price: '', total: '0.00' }, item] });
   assert.equal(recommendationLineError(payload.items), '');
 });
+
+
+test('recorded line discounts survive validation and malformed discounts need correction', () => {
+  for (const key of ['discount', 'line_discount', 'discount_amount']) {
+    assert.equal(recommendationLineError([{ description: 'Discounted service', quantity: '2', unit_price: '100.00', total: '180.00', [key]: '20.00' }]), '');
+    assert.match(recommendationLineError([{ description: 'Discounted service', quantity: '2', unit_price: '100.00', total: '200.00', [key]: '20.00' }]), /minus discount/);
+  }
+  assert.match(recommendationLineError([{ description: 'Service', quantity: 1, unit_price: 100, discount: -1 }]), /non-negative discount/);
+  assert.equal(recommendationLineError([{ description: 'Service', quantity: 1, unit_price: 100, total: 100, discount: '' }]), '');
+});

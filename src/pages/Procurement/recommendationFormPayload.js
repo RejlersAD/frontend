@@ -1,3 +1,6 @@
+import { PROCUREMENT_VAT_RATE } from '../../utils/procurementVat.js';
+import { confirmedRecommendationVat, recommendationEnteredAmount, recommendationVat } from './recommendationVat.js';
+
 const LINE_DETAIL_FIELDS = ['vat_rate', 'vendor_id', 'budget'];
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
@@ -14,13 +17,18 @@ const isBlankLine = (item) => {
 };
 
 /**
- * Prepare a save without changing the live editing state or monetary contract.
+ * Prepare a save without changing the live editing state.
  * The backend removes blank rows and only retains its canonical item fields.
  * Compact the parallel presentation metadata with those rows before saving it.
  */
 export function prepareRecommendationPayload(formData, approvalWorkflow) {
   const metadata = { ...(formData.price_remarks_data || {}) };
   const payload = { ...formData, price_remarks_data: metadata };
+  const recalculateVat = confirmedRecommendationVat(formData.vat_basis) && formData._vatPricingChanged !== false;
+  delete payload._vatPricingChanged;
+  delete payload._vatEnteredAmount;
+  delete payload.entered_amount;
+  if (!recalculateVat) delete payload.vat_basis;
   // JSON autosaves and multipart saves must clear optional values alike.
   for (const field of ['issued_date', 'total_price', 'net_total_excl_vat', 'estimated_budget', 'vendor']) {
     if (payload[field] === '') payload[field] = null;
@@ -45,10 +53,17 @@ export function prepareRecommendationPayload(formData, approvalWorkflow) {
       } else {
         items.push(item);
       }
-      lineDetails.push(details);
+      lineDetails.push(recalculateVat ? { ...details, vat_rate: String(formData.vat_basis === 'none' ? 0 : PROCUREMENT_VAT_RATE) } : details);
     });
     payload.items = items;
     metadata.line_details = lineDetails;
+  }
+
+  const amounts = recommendationVat(payload, { recalculate: recalculateVat });
+  if (recalculateVat && amounts.netAmount !== null) {
+    payload.entered_amount = recommendationEnteredAmount({ ...formData, items: payload.items });
+    payload.net_total_excl_vat = amounts.netAmount.toFixed(2);
+    payload.total_price = amounts.totalAmount.toFixed(2);
   }
 
   if (approvalWorkflow !== undefined) {

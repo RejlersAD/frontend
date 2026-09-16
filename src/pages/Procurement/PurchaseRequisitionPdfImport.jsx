@@ -10,6 +10,7 @@ import {
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { employeeDisplayName } from '../../utils/employeeDisplayName';
+import { calculateProcurementVat, PROCUREMENT_VAT_OPTIONS } from '../../utils/procurementVat';
 
 const ROLE_LABELS = { pm: 'Project Manager', moe: 'Manager of Engineering', mop: 'Manager of Projects', vp: 'VP Operations' };
 const MAX_SIGNED_PR_PDF_SIZE = 15 * 1024 * 1024;
@@ -24,7 +25,7 @@ const EDITABLE_FIELDS = [
   ['project_number', 'Project Number', 'text', false],
   ['description_reason', 'Description and Reason', 'textarea', true],
   ['preferred_supplier', 'Preferred Supplier', 'text', false],
-  ['net_total', 'Total Price', 'number', true],
+  ['net_total', 'Entered price', 'number', true],
   ['currency', 'Currency', 'select', true],
   ['price_remarks', 'Price Remarks / Sales Budget', 'textarea', false],
   ['budget_in_aed', 'Budget in AED', 'number', false],
@@ -156,6 +157,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       setRecordCheck({ number: String(extracted.pr_number || data.pr_number || '').trim().toUpperCase(), exists: data.database_match });
       setEdits({
         ...extracted,
+        vat_basis: 'unconfirmed',
         approval_date: data.approval_detection?.approval_date || '',
         pm_name: approvers.pm || '',
         moe_name: approvers.moe || '',
@@ -200,6 +202,10 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       const manualOverrides = attachmentNumber ? {} : Object.fromEntries(
         EDITABLE_FIELDS.map(([key]) => [key, edits[key] ?? '']),
       );
+      if (!attachmentNumber && edits.vat_basis !== 'unconfirmed') {
+        manualOverrides.vat_basis = edits.vat_basis;
+        manualOverrides.entered_amount = edits.net_total;
+      }
       if (!attachmentNumber && edits.price_lines?.length) manualOverrides.price_lines = edits.price_lines;
       const manualSignatureOverrides = Object.fromEntries(
         Object.entries(manualSignatures).filter(([, verified]) => verified),
@@ -236,6 +242,8 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const comparisonIssues = (preview?.document_comparison?.fields || []).filter(field => field.status === 'mismatch' || (field.status === 'missing' && field.missing_in !== 'both' && [field.current_value, field.pdf_value].some(value => value != null && String(value).trim() !== '')));
   const confidence = preview?.extracted_data?.field_confidence || {};
   const originalPriceLines = preview?.extracted_data?.price_lines || [];
+  const reviewedAmounts = calculateProcurementVat(edits.net_total, 0, { basis: edits.vat_basis || 'unconfirmed' });
+  const reviewedMoney = amount => amount === null ? '\u2014' : `${edits.currency || ''} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`.trim();
   const allIssues = [...new Set([
     ...((result || preview)?.mapping_issues || []),
     ...((result || preview)?.workflow_issues || []),
@@ -326,6 +334,14 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                     })}
                   </div>}
 
+                  {!attachmentNumber && <label className="block text-xs font-semibold text-gray-700">Does this price include VAT?<select aria-label="VAT price basis" value={edits.vat_basis || 'unconfirmed'} onChange={event => setEdits(previous => ({ ...previous, vat_basis: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"><option value="unconfirmed" disabled>Confirm VAT treatment</option>{PROCUREMENT_VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
+                  {!attachmentNumber && edits.vat_basis === 'unconfirmed' && <p className="text-sm text-gray-600">VAT is not confirmed. The captured amounts will be kept unless you select a VAT treatment.</p>}
+                  {!attachmentNumber && edits.vat_basis !== 'unconfirmed' && <dl aria-label="Reviewed recommendation totals" className="grid gap-3 rounded-xl border border-gray-200 p-3 text-sm sm:grid-cols-3">
+                    <div><dt className="text-gray-600">Net excluding VAT</dt><dd className="mt-1 font-semibold">{reviewedMoney(reviewedAmounts.netAmount)}</dd></div>
+                    <div><dt className="text-gray-600">{reviewedAmounts.vatRate === 0 ? 'No VAT' : 'VAT (5%)'}</dt><dd className="mt-1 font-semibold">{reviewedMoney(reviewedAmounts.taxAmount)}</dd></div>
+                    <div><dt className="text-gray-600">Total</dt><dd className="mt-1 font-semibold">{reviewedMoney(reviewedAmounts.totalAmount)}</dd></div>
+                  </dl>}
+
                   {!attachmentNumber && originalPriceLines.length > 0 && <div className="rounded-xl border border-gray-200 p-3">
                     <h3 className="text-sm font-semibold text-gray-800">Price breakdown</h3>
                     <div className="mt-2 overflow-x-auto">
@@ -393,6 +409,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
 
             {result && (
               <div className="space-y-4">
+                {result.financial_values_preserved && !attachmentNumber && <p className="text-sm text-gray-600">Existing financial values were kept. Confirm the VAT treatment in Edit before changing them.</p>}
                 <div className="flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                   <CheckCircleIcon className="h-5 w-5 flex-none" />
                   <div><strong>{result.pr_number}</strong>{attachmentNumber ? ' has the signed PDF attached' : ` was ${result.created ? 'created from the reviewed PDF' : 'updated from the reviewed PDF'}`}. {attachmentNumber ? 'Existing recommendation values were kept.' : 'The source PDF is attached.'} Status: <strong>{result.status}</strong>.</div>

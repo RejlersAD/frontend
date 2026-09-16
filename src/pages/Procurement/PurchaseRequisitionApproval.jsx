@@ -18,6 +18,7 @@ import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPre
 import RecommendationSourceDocument from './RecommendationSourceDocument';
 import { getOriginalRecommendationDocuments } from './recommendationSourceDocuments';
 import { recommendationSourceApprovals } from './recommendationApprovalEvidence';
+import { recommendationVat } from './recommendationVat';
 import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
@@ -661,12 +662,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     }
   };
 
-  const totalPrice = Number(requisition.total_price || 0);
-  const hasExplicitNetPrice = requisition.net_total_excl_vat !== null
-    && requisition.net_total_excl_vat !== undefined
-    && requisition.net_total_excl_vat !== '';
-  const netPrice = hasExplicitNetPrice ? Number(requisition.net_total_excl_vat) : totalPrice;
-  const taxAmount = Math.max(0, totalPrice - netPrice);
+  const { netAmount: netPrice, taxAmount, totalAmount: totalPrice, vatRate } = recommendationVat(requisition);
   const vendor = requisition.vendor_details || {};
   const selectedVendor = (requisition.selected_vendors || [])[0] || {};
   const vendorName = requisition.vendor_name || requisition.supplier_name || selectedVendor.name || '—';
@@ -772,8 +768,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                   <h2 className="mb-5 text-base font-semibold text-slate-900">Financial Details</h2>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net Amount</p><p className="mt-2 text-lg font-bold text-slate-950">{formatCurrency(netPrice, requisition.currency)}</p></div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">VAT / Tax</p><p className="mt-2 text-lg font-bold text-slate-950">{formatCurrency(taxAmount, requisition.currency)}</p></div>
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Total Price</p><p className="mt-2 text-xl font-bold text-emerald-700">{formatCurrency(totalPrice, requisition.currency)}</p></div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{vatRate === null ? 'VAT not confirmed' : vatRate === 0 ? 'No VAT' : 'VAT (5%)'}</p><p className="mt-2 text-lg font-bold text-slate-950">{formatCurrency(taxAmount, requisition.currency)}</p></div>
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{vatRate === null ? 'Recorded total' : 'Total'}</p><p className="mt-2 text-xl font-bold text-emerald-700">{formatCurrency(totalPrice, requisition.currency)}</p></div>
                   </div>
                 </section>
 
@@ -871,12 +867,16 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                         <p className="text-lg font-bold text-indigo-600">{requisition.currency}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-500">Total Price</p>
-                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(requisition.total_price, requisition.currency)}</p>
+                        <p className="text-sm text-gray-500">{vatRate === null ? 'Recorded total' : 'Total'}</p>
+                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(totalPrice, requisition.currency)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-500">Net Total (excl VAT)</p>
-                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(requisition.net_total_excl_vat, requisition.currency)}</p>
+                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(netPrice, requisition.currency)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">{vatRate === null ? 'VAT not confirmed' : vatRate === 0 ? 'No VAT' : 'VAT (5%)'}</p>
+                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(taxAmount, requisition.currency)}</p>
                       </div>
                     </div>
                   </div>
