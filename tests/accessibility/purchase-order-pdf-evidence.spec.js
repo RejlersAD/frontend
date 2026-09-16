@@ -184,3 +184,107 @@ test('late extraction of the selected PDF does not overwrite fields already edit
   noPersistentWrite(state);
   isolated(state);
 });
+
+const failedImports = [
+  {
+    name: 'HTML server failure', status: 500, contentType: 'text/html',
+    body: '<html><title>Server Error (500)</title><body>Internal Server Error</body></html>',
+    expected: 'The server could not complete the PDF import.',
+  },
+  {
+    name: 'HTML gateway failure', status: 502, contentType: 'text/html',
+    body: '<html><body>Bad Gateway</body></html>',
+    expected: 'The server could not complete the PDF import.',
+  },
+  {
+    name: 'HTML gateway timeout', status: 504, contentType: 'text/html',
+    body: '<html><body>Gateway Timeout</body></html>',
+    expected: 'PDF import timed out before completion could be confirmed.',
+  },
+  {
+    name: 'oversized gateway rejection', status: 413, contentType: 'text/html',
+    body: '<html><body>Request Entity Too Large</body></html>',
+    expected: 'The server rejected the PDF because it is too large.',
+  },
+  {
+    name: 'structured validation details', status: 400, contentType: 'application/json',
+    body: JSON.stringify({ detail: { approved_date: ['A valid date is required.'] } }),
+    expected: 'Approval date: A valid date is required.',
+  },
+  {
+    name: 'field validation details', status: 400, contentType: 'application/json',
+    body: JSON.stringify({ approved_by_name: ['Select an approver.'] }),
+    expected: 'Approver name: Select an approver.',
+  },
+  {
+    name: 'server support reference', status: 500, contentType: 'application/json',
+    body: JSON.stringify({ error: 'PDF import failed. Contact support with reference po-import-test.' }),
+    expected: 'PDF import failed. Contact support with reference po-import-test.',
+  },
+  {
+    name: 'wrapped connection failure', network: true,
+    expected: 'The connection was interrupted before the import could be confirmed.',
+  },
+  {
+    name: 'wrapped request timeout', timeout: true,
+    expected: 'PDF import timed out before completion could be confirmed.',
+  },
+];
+
+for (const failure of failedImports) {
+  test(`signed PO import explains ${failure.name}, retains the PDF and evidence, and allows retry`, async ({ page }) => {
+    const state = await open(page, state => {
+      state.poPdfPreviews['retry-po.pdf'] = { data: candidates() };
+    });
+    await choose(page, 'retry-po.pdf');
+    await expect(approver(page)).toHaveValue('Extracted source reviewer');
+    await signature(page).check();
+    await stamp(page).check();
+    const previewUrl = await modal(page).locator('iframe').getAttribute('src');
+    if (failure.timeout) {
+      // Shorten only the import's native XHR deadline. Axios and the application's
+      // real response interceptor still produce the wrapped timeout error.
+      await page.evaluate(() => {
+        const descriptor = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'timeout');
+        let shortened = false;
+        Object.defineProperty(XMLHttpRequest.prototype, 'timeout', {
+          ...descriptor,
+          set(value) {
+            if (value === 180000 && !shortened) {
+              shortened = true;
+              descriptor.set.call(this, 50);
+            } else descriptor.set.call(this, value);
+          },
+        });
+      });
+    }
+    let pendingRoute;
+    const failImport = async route => {
+      if (failure.timeout) { pendingRoute = route; return; }
+      if (failure.network) return route.abort('connectionfailed');
+      return route.fulfill({ status: failure.status, contentType: failure.contentType, body: failure.body });
+    };
+    const importUrl = `**${importPath}`;
+    await page.route(importUrl, failImport);
+    await modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true }).click();
+    await expect(modal(page).getByRole('alert')).toContainText(failure.expected);
+    await expect(page.locator('.Toastify__toast--error')).toHaveCount(0);
+    await expect(modal(page).locator('iframe')).toHaveAttribute('src', previewUrl);
+    await expect(approver(page)).toHaveValue('Extracted source reviewer');
+    await expect(approvalDate(page)).toHaveValue('2026-01-29');
+    await expect(signature(page)).toBeChecked();
+    await expect(stamp(page)).toBeChecked();
+    await expect(modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true })).toBeEnabled();
+    noPersistentWrite(state);
+    if (pendingRoute) await pendingRoute.abort();
+    await page.unroute(importUrl, failImport);
+    await modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true }).click();
+    await expect(modal(page)).toContainText('Signed PO PDF saved');
+    expect(state.acceptedWrites).toHaveLength(1);
+    expect(state.acceptedWrites[0].body).toMatchObject({
+      file: { filename: 'retry-po.pdf' }, approved_by_name: 'Extracted source reviewer',
+      approved_date: '2026-01-29', signature_verified: true, stamp_verified: true,
+    });
+    isolated(state);
+  });
+}

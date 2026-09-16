@@ -202,3 +202,81 @@ test('reviewed signed upload explicitly reconciles with a master supplier and ke
   expect(state.requests.filter(item => item.path.endsWith('/import_signed_pdf/') || item.path.endsWith('/export-pdf/'))).toHaveLength(0)
   isolated(state)
 })
+
+
+test('a signed legacy order changes financial values only after explicit VAT confirmation and Save', async ({ page }) => {
+  const state = await openNative(page)
+  await menu(page, 'Edit order')
+  await expect(page.locator('[name="total_amount"]')).toHaveValue('6489.00')
+  await expect(page.getByRole('combobox', { name: 'Price basis', exact: true })).toHaveValue('unconfirmed')
+  await page.locator('[name="currency"]').selectOption('AED')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Confirm whether these prices include VAT' })).toBeVisible()
+  expect(state.acceptedWrites).toEqual([])
+  await page.getByRole('button', { name: 'Dismiss error' }).click()
+  await page.locator('[name="currency"]').selectOption('USD')
+  await page.getByRole('spinbutton', { name: 'Price before order discount', exact: true }).fill('100')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Confirm whether these prices include VAT' })).toBeVisible()
+  expect(state.acceptedWrites).toEqual([])
+  await page.getByRole('button', { name: 'Dismiss error' }).click()
+  await page.getByRole('combobox', { name: 'Price basis', exact: true }).selectOption('inclusive')
+  await expect(page.locator('[name="tax_amount"]')).toHaveValue('4.76')
+  await expect(page.locator('[name="total_amount"]')).toHaveValue('100')
+  expect(state.acceptedWrites).toEqual([])
+  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click()
+  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  expect(state.acceptedWrites).toHaveLength(1)
+  expect(state.acceptedWrites[0].body).toMatchObject({ vat_basis: 'inclusive', entered_amount: 100, net_amount: 95.24, tax_amount: 4.76, total_amount: 100, vat_percentage: 5 })
+  expect(state.record.approval_log).toEqual(record().approval_log)
+  expect(state.acceptedWrites[0].body).not.toHaveProperty('attachments')
+  await menu(page, 'Edit order')
+  await expect(page.getByRole('spinbutton', { name: 'Price before order discount', exact: true })).toHaveValue('100')
+  await page.locator('[name="title"]').fill('Only a description edit')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click()
+  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  expect(state.acceptedWrites[1].body).toEqual({ title: 'Only a description edit' })
+  isolated(state)
+})
+
+test('pending PDF VAT review preserves extracted financial evidence and submits only the explicit treatment', async ({ page }) => {
+  const id = 'pending-po-vat-review'
+  const source = { po_number: orderFormNumber, summary: 'Source order', vendor_name: 'Original supplier', currency: 'USD', total_amount: '100', tax_amount: '0', gross_amount: '100', po_date: '2026-07-01' }
+  const state = await orderFormHarness(page, { path: '/procurement/orders', prepare: fixture => {
+    const document = { id, original_filename: 'Signed-PO.pdf', confirmed_po: null, created_at: '2026-09-15T08:00:00Z', extraction_status: 'completed', extracted_data: { ...source } }
+    fixture.pendingDocuments = [document]
+    fixture.documentRecords[id] = document
+    fixture.uploadedContent[`/api/v1/procurement/po-documents/${id}/content/`] = { body: Buffer.from('%PDF-1.4 signed original remains unchanged') }
+  } })
+  await menu(page, 'Edit uploaded PDF')
+  await expect(page.getByRole('spinbutton', { name: 'VAT amount', exact: true })).toHaveValue('0')
+  await page.getByRole('combobox', { name: 'Price basis', exact: true }).selectOption('inclusive')
+  await expect(page.getByRole('spinbutton', { name: 'VAT amount', exact: true })).toHaveValue('4.76')
+  await expect(page.getByRole('spinbutton', { name: 'Gross amount', exact: true })).toHaveValue('100')
+  expect(state.acceptedWrites).toEqual([])
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Changes saved' })).toBeVisible()
+  expect(state.acceptedWrites).toHaveLength(1)
+  expect(state.acceptedWrites[0].body).toMatchObject({ vat_basis: 'inclusive', entered_amount: '100' })
+  for (const key of ['total_amount', 'tax_amount', 'gross_amount']) {
+    expect(state.acceptedWrites[0].body).not.toHaveProperty(key)
+    expect(state.documentRecords[id].extracted_data[key]).toBe(source[key])
+  }
+  // Model the API's saved review separately from the unchanged source evidence.
+  state.documentRecords[id].extracted_data.canonical_financials = {
+    entered_amount: '100.00', vat_basis: 'inclusive', net_amount: '95.24',
+    tax_amount: '4.76', total_amount: '100.00', vat_percentage: '5.00',
+  }
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await menu(page, 'Edit uploaded PDF')
+  await expect(page.getByRole('spinbutton', { name: 'VAT amount', exact: true })).toHaveValue('4.76')
+  await expect(page.getByRole('combobox', { name: 'Price basis', exact: true })).toHaveValue('unconfirmed')
+  await page.getByLabel('Supplier name', { exact: true }).fill('Corrected reviewed supplier')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Changes saved' })).toBeVisible()
+  expect(state.acceptedWrites).toHaveLength(2)
+  for (const key of ['total_amount', 'tax_amount', 'gross_amount', 'entered_amount', 'vat_basis', 'canonical_financials']) {
+    expect(state.acceptedWrites[1].body).not.toHaveProperty(key)
+  }
+  isolated(state)
+})

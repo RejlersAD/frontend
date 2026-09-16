@@ -13,20 +13,62 @@ import {
 import apiClient from '../../services/api.service';
 import { toast } from 'react-toastify';
 import ProcurementApprovalEmployeeSearch from './ProcurementApprovalEmployeeSearch';
+import { calculateProcurementVat, PROCUREMENT_VAT_OPTIONS } from '../../utils/procurementVat';
 
 const emptyEvidence = () => ({ signatureVerified: false, stampVerified: false, approvedByName: '', approvedByTitle: '', approvedDate: '' });
+
+const importDetailText = detail => {
+  if (typeof detail === 'string') return detail.trim();
+  if (Array.isArray(detail)) return detail.map(importDetailText).filter(Boolean).join(' ');
+  if (!detail || typeof detail !== 'object') return '';
+  const labels = { approved_by_name: 'Approver name', approved_by_title: 'Approver title', approved_date: 'Approval date', file: 'PDF file' };
+  return Object.entries(detail).map(([field, value]) => {
+    const message = importDetailText(value);
+    if (!message) return '';
+    return field === 'non_field_errors' ? message : `${labels[field] || field.replaceAll('_', ' ')}: ${message}`;
+  }).filter(Boolean).join(' ');
+};
+
+const importErrorMessage = problem => {
+  const original = problem.originalError || problem;
+  const response = problem.response || original.response;
+  const status = response?.status;
+  const details = response?.data;
+  const message = details && typeof details === 'object'
+    ? importDetailText(details.error || details.detail || details.message || details.errors
+      || ([400, 422].includes(status) ? details : null))
+    : '';
+  if (message) return message;
+  if (problem.isTimeout || ['ECONNABORTED', 'ETIMEDOUT'].includes(original.code) || [408, 504].includes(status)) {
+    return 'PDF import timed out before completion could be confirmed. Check the purchase order register before retrying; the upload may have completed.';
+  }
+  if (problem.isNetworkError || original.code === 'ERR_NETWORK') {
+    return 'The connection was interrupted before the import could be confirmed. Check your connection and the purchase order register before retrying.';
+  }
+  if (status === 413) return 'The server rejected the PDF because it is too large. Choose a smaller PDF and try again.';
+  if (status >= 500) {
+    return 'The server could not complete the PDF import. Check the purchase order register before retrying; the upload may have completed.';
+  }
+  return 'The signed PO PDF could not be imported. Please try again.';
+};
 
 const DOCUMENT_FIELDS = [
   ['po_number', 'PO number', 'text'], ['summary', 'Description', 'textarea'],
   ['vendor_name', 'Supplier name', 'text'], ['currency', 'Currency', 'currency'],
-  ['total_amount', 'Net amount', 'number'], ['tax_amount', 'VAT amount', 'number'],
+  ['total_amount', 'Price amount', 'number'], ['tax_amount', 'VAT amount', 'number'],
   ['gross_amount', 'Gross amount', 'number'], ['po_date', 'Order date', 'date'],
   ['expected_delivery', 'Expected delivery', 'date'],
 ];
-const editableDocument = result => ({
-  ...Object.fromEntries(DOCUMENT_FIELDS.map(([field]) => [field, result?.[field] == null ? '' : String(result[field])])),
-  pr_id: result?.pr_id || '', pr_number: result?.pr_number || '',
-});
+const editableDocument = result => {
+  return {
+    ...Object.fromEntries(DOCUMENT_FIELDS.map(([field]) => [field, result?.[field] == null ? '' : String(result[field])])),
+    total_amount: result?.canonical_financials?.entered_amount ?? result?.entered_amount ?? result?.total_amount ?? '',
+    tax_amount: result?.canonical_financials?.tax_amount ?? result?.tax_amount ?? '',
+    gross_amount: result?.canonical_financials?.total_amount ?? result?.gross_amount ?? '',
+    vat_basis: 'unconfirmed',
+    pr_id: result?.pr_id || '', pr_number: result?.pr_number || '',
+  };
+};
 
 const IssueList = ({ title, items, tone = 'amber' }) => {
   if (!items?.length) return null;
@@ -152,7 +194,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
         const fields = saved.extracted_data || {};
         setDocumentName(saved.original_filename || 'Signed purchase order.pdf');
         setSelectedVendorId(fields.vendor_id ? String(fields.vendor_id) : '');
-        setResult({ ...fields, document_id: saved.id, purchase_order_id: saved.confirmed_po || null, operation: 'saved' });
+        setResult({ ...fields, canonical_financials: saved.canonical_financials ?? fields.canonical_financials, document_id: saved.id, purchase_order_id: saved.confirmed_po || null, operation: 'saved' });
         if (saved.extraction_error) issues.push(saved.extraction_error);
       } else issues.push('The saved document details could not be loaded.');
       if (content.status === 'fulfilled') setSavedPdf(content.value.data);
@@ -245,24 +287,44 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
   };
 
   const updateDocumentField = (field, value) => {
-    setDocumentEdits(current => ({ ...current, [field]: value }));
+    setDocumentEdits(current => {
+      const next = { ...current, [field]: value };
+      if (['total_amount', 'vat_basis'].includes(field)) {
+        const pricing = calculateProcurementVat(next.total_amount, 0, { basis: next.vat_basis });
+        const recorded = editableDocument(result);
+        next.tax_amount = next.vat_basis === 'unconfirmed' ? recorded.tax_amount : pricing.taxAmount ?? '';
+        next.gross_amount = next.vat_basis === 'unconfirmed' ? recorded.gross_amount : pricing.totalAmount ?? '';
+      }
+      return next;
+    });
     setFieldErrors(current => ({ ...current, [field]: '' }));
     setChangesSaved(false);
   };
 
   const saveDocument = async () => {
     if (!documentId || saving || loading) return;
+    if (documentEdits.vat_basis === 'unconfirmed' && (
+      String(documentEdits.total_amount) !== String(editableDocument(result).total_amount)
+      || documentEdits.currency !== editableDocument(result).currency
+    )) {
+      setError('Confirm whether this price includes VAT, excludes VAT, or has no VAT before saving.');
+      return;
+    }
     setSaving(true);
     setChangesSaved(false);
     setError('');
     setFieldErrors({});
-    const payload = Object.fromEntries(DOCUMENT_FIELDS.map(([field, , type]) => [field, ['date', 'number'].includes(type) ? documentEdits[field] || null : documentEdits[field] ?? '']));
+    const payload = Object.fromEntries(DOCUMENT_FIELDS.filter(([field]) => !['total_amount', 'tax_amount', 'gross_amount'].includes(field)).map(([field, , type]) => [field, ['date', 'number'].includes(type) ? documentEdits[field] || null : documentEdits[field] ?? '']));
+    if (documentEdits.vat_basis && documentEdits.vat_basis !== 'unconfirmed') {
+      payload.vat_basis = documentEdits.vat_basis;
+      payload.entered_amount = documentEdits.total_amount;
+    }
     payload.pr_id = documentEdits.pr_id || null;
     try {
       const response = await apiClient.patch(`/procurement/po-documents/${documentId}/`, payload, { suppressErrorToast: true });
       const saved = response.data;
       const fields = saved.extracted_data || saved;
-      setResult(current => ({ ...current, ...fields, document_id: saved.id || documentId, purchase_order_id: saved.confirmed_po ?? current.purchase_order_id }));
+      setResult(current => ({ ...current, ...fields, canonical_financials: saved.canonical_financials ?? fields.canonical_financials, document_id: saved.id || documentId, purchase_order_id: saved.confirmed_po ?? current.purchase_order_id }));
       setChangesSaved(true);
       onImported?.(saved);
       return saved;
@@ -324,17 +386,13 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
       const response = await apiClient.post('/procurement/po-documents/import_signed_pdf/', body, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 180000,
+        suppressErrorToast: true,
+        silentTimeout: true,
       });
       setResult(response.data);
       onImported?.(response.data);
     } catch (requestError) {
-      setError(
-        requestError.response?.data?.error
-        || requestError.response?.data?.detail
-        || (requestError.code === 'ECONNABORTED'
-          ? 'PDF extraction timed out. Please try again or use a clearer scan.'
-          : 'The signed PO PDF could not be imported.'),
-      );
+      setError(importErrorMessage(requestError));
     } finally {
       setLoading(false);
     }
@@ -436,12 +494,19 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
 
             {documentId && editMode && result && <section aria-label="Edit saved purchase order" className="space-y-4 rounded-xl border border-gray-200 p-4">
               <h3 className="text-sm font-semibold text-gray-800">Purchase order details</h3>
+              <label className="block text-xs font-semibold text-gray-700">Price basis
+                <select aria-label="Price basis" value={documentEdits.vat_basis || 'unconfirmed'} onChange={event => updateDocumentField('vat_basis', event.target.value)} disabled={saving || reconciling} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                  <option value="unconfirmed">Confirm VAT treatment</option>
+                  {PROCUREMENT_VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 {DOCUMENT_FIELDS.map(([field, label, type]) => {
                   const inputProps = {
                     'aria-label': label, 'aria-invalid': Boolean(fieldErrors[field]),
                     'aria-describedby': fieldErrors[field] ? `saved-po-${field}-error` : undefined,
                     value: documentEdits[field] ?? '', disabled: saving || reconciling,
+                    ...(['tax_amount', 'gross_amount'].includes(field) ? { readOnly: true } : {}),
                     onChange: event => updateDocumentField(field, event.target.value),
                     className: `mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal ${fieldErrors[field] ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}`,
                   };

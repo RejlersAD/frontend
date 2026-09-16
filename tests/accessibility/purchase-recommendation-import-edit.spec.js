@@ -86,13 +86,16 @@ for (const status of ['draft', 'approved']) {
   });
 }
 
-test('an ordinary draft does not autosave on mount, but user pricing edits still autosave', async ({ page }) => {
+test('a draft preserves financial values until VAT is confirmed and explicitly saved', async ({ page }) => {
   const state = await open(page);
   await page.clock.runFor(35000);
   expect(saves(state)).toEqual([]);
   await step(page, 'Supplier & pricing');
   await page.getByRole('spinbutton', { name: 'Line item 1 quantity', exact: true }).fill('2');
+  await page.getByRole('combobox', { name: 'VAT price basis' }).selectOption('none');
   await page.clock.runFor(1500);
+  expect(saves(state)).toEqual([]);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click();
   await expect.poll(() => saves(state).length).toBe(1);
   expect(Number(state.record.total_price)).toBe(800000);
   expect(Number(state.record.items[0].total)).toBe(800000);
@@ -109,6 +112,8 @@ test('inconsistent saved line arithmetic stays visible and is never autosaved un
   expect(saves(state)).toEqual([]);
   await expect(page.locator('.prf-error-banner')).toContainText('Line item 1 total must equal quantity multiplied by unit price.');
   await page.getByRole('spinbutton', { name: 'Line item 1 unit price', exact: true }).fill('1026');
+  await page.getByRole('combobox', { name: 'VAT price basis' }).selectOption('none');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click();
   await page.clock.runFor(1500);
   await expect.poll(() => saves(state).length).toBe(1);
   expect(Number(state.record.total_price)).toBe(2052);

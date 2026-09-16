@@ -29,6 +29,7 @@ import PurchaseOrderForm from './PurchaseOrderForm';
 import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
+import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -50,6 +51,7 @@ const formatTimestamp = (value) => {
 };
 
 const formatMoney = (value, currency = 'USD') => {
+  if (value === null || value === undefined || value === '') return 'Not recorded';
   const amount = Number(value || 0);
   try {
     return new Intl.NumberFormat('en-US', {
@@ -371,13 +373,13 @@ const PurchaseOrderDetail = () => {
   }
 
   const currency = order.currency || 'USD';
-  const fallbackSubtotal = Number(order.total_amount || 0)
-    - Number(order.tax_amount || 0)
-    + Number(order.discount_amount || 0);
+  const pricing = purchaseOrderVat(order);
+  const fallbackSubtotal = pricing.subtotal ?? 0;
   const printableItems = Array.isArray(order.items) && order.items.length > 0
     ? order.items.map((item, index) => {
         const quantity = Number(item.quantity ?? item.qty ?? 1) || 0;
-        const unitPrice = Number(item.unit_price ?? item.price ?? 0) || 0;
+        const lineNet = purchaseOrderLineNet(item) ?? 0;
+        const unitPrice = Number(item.unit_price ?? item.price ?? (quantity ? (lineNet + Number(item.discount || 0)) / quantity : 0)) || 0;
         return {
           id: item.id || index + 1,
           lineCode: item.line_code || item.lineCode || item.item_code || item.code || '',
@@ -386,7 +388,7 @@ const PurchaseOrderDetail = () => {
           quantity,
           unit: item.unit || item.uom || item.unit_of_measure || 'EA',
           unitPrice,
-          total: Number(item.total ?? item.line_total ?? quantity * unitPrice) || 0,
+          total: Number(item.total ?? item.line_total ?? purchaseOrderLineNet(item) ?? 0),
         };
       })
     : [{
@@ -399,10 +401,10 @@ const PurchaseOrderDetail = () => {
         unitPrice: fallbackSubtotal,
         total: fallbackSubtotal,
       }];
-  const itemSubtotal = printableItems.reduce((sum, item) => sum + item.total, 0);
-  const discountAmount = Number(order.discount_amount || 0);
-  const taxAmount = Number(order.tax_amount || 0);
-  const grandTotal = Number(order.total_amount || itemSubtotal - discountAmount + taxAmount);
+  const itemSubtotal = pricing.netAmount;
+  const discountAmount = pricing.discountAmount ?? 0;
+  const taxAmount = pricing.taxAmount;
+  const grandTotal = pricing.totalAmount;
   const invoicingEmails = Array.isArray(order.invoicing_emails)
     ? order.invoicing_emails.join(', ')
     : order.invoicing_emails;
@@ -649,9 +651,9 @@ const PurchaseOrderDetail = () => {
         <div className="po-print-block mt-2 flex justify-end">
           <table className="w-[46%] text-[8.5px]">
             <tbody>
-              <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Subtotal</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(itemSubtotal, currency)}</td></tr>
-              {discountAmount > 0 && <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Discount</th><td className="border border-gray-400 px-2 py-1.5 text-right">− {formatMoney(discountAmount, currency)}</td></tr>}
-              <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">VAT / Tax ({Number(order.vat_percentage || 0)}%)</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(taxAmount, currency)}</td></tr>
+              <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Net amount after discounts</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(itemSubtotal, currency)}</td></tr>
+              {discountAmount > 0 && <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Order discount (included)</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(discountAmount, currency)}</td></tr>}
+              <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">VAT / Tax{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(taxAmount, currency)}</td></tr>
               <tr className="font-bold"><th className="border border-gray-900 bg-gray-900 px-2 py-2 text-left text-white">Grand Total</th><td className="border border-gray-900 px-2 py-2 text-right text-[10px]">{formatMoney(grandTotal, currency)}</td></tr>
             </tbody>
           </table>
@@ -890,7 +892,7 @@ const PurchaseOrderDetail = () => {
                     <dd className="mt-1 text-lg font-bold text-slate-900">{formatMoney(itemSubtotal, currency)}</dd>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-4">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">VAT / Tax</dt>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">VAT / Tax{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}</dt>
                     <dd className="mt-1 text-lg font-bold text-slate-900">{formatMoney(taxAmount, currency)}</dd>
                   </div>
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">

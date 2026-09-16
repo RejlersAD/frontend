@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, ArrowRight, BarChart3, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, ExternalLink, FileCheck2, FileText, Filter, Home, Plus, RefreshCw, Search, ShieldCheck, ShoppingCart, Unlink, Users, X, XCircle } from 'lucide-react'
 import apiClient from '../../services/api.service'
+import { procurementVatLabel } from '../../utils/procurementVat'
 import { Field, KeyValues, Menu } from './ProcurementRegister'
 import { filterRegisterRecords, formatRegisterDate as date, formatRegisterMoney as money, normalizeRegisterRecord, registerMetrics } from './procurementRegisterModel'
 import { recommendationPresentation, recommendationWorkload } from './recommendationPresentation'
@@ -56,7 +57,7 @@ function RecommendationDetails({ panelRef, record, loading, error, onRetry, onOp
           <div><dt>Buyer</dt><dd>{record.buyer}</dd></div>
         </dl>
         <KeyValues rows={[
-          ['Total', money(record.amount, record.currency)], ['Created', date(record.createdAt)], ['Required by', date(record.deliveryDate)],
+          ['Total', money(record.amount, record.currency)], ['VAT treatment', procurementVatLabel(raw.vat_basis)], ['Created', date(record.createdAt)], ['Required by', date(record.deliveryDate)],
         ]} />
       </div>
       <ol className="prw-timeline" tabIndex={0} aria-label="Recommendation lifecycle">

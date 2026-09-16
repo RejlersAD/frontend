@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { AlertTriangle, ArrowRight, BarChart3, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Database, Download, ExternalLink, FileCheck2, FileText, Filter, History, Home, Link2, MoreHorizontal, Plus, RefreshCw, Search, Send, ShoppingCart, Truck, Unlink, X } from 'lucide-react'
 import apiClient from '../../services/api.service'
+import { procurementVatLabel } from '../../utils/procurementVat'
 import { filterRegisterRecords, formatRegisterDate as date, formatRegisterMoney as money, normalizeRegisterRecord, registerMetrics } from './procurementRegisterModel'
 import './ProcurementRegister.css'
 import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview'
@@ -123,7 +124,7 @@ function OrderDetails({ record, loading, error, onOpen, onEdit, onPdf, onAcknowl
         <CheckRow label="Delivery date" ready={Boolean(record.deliveryDate)} value={record.deliveryDate ? 'Recorded' : 'Not set'} />
         <CheckRow label="Payment terms" ready={Boolean(raw.payment_terms)} value={raw.payment_terms ? 'Recorded' : 'Not set'} />
       </div></section><section><h4>Financial & fulfilment</h4><KeyValues rows={[
-        ['Ordered', money(record.amount, record.currency)], ['VAT', raw.tax_amount == null ? 'Not available' : money(raw.tax_amount, record.currency)],
+        ['Ordered', money(record.amount, record.currency)], ['VAT', raw.tax_amount == null ? 'Not available' : money(raw.tax_amount, record.currency)], ['VAT treatment', procurementVatLabel(raw.vat_basis)],
         ['Receipt progress', record.receiptPercent == null ? 'Not available' : `${record.receiptPercent}%`], ['Invoice matching', record.invoiceMatch || 'Not available'], ['No. of lines', items.length || 'Not recorded'],
       ]} /></section></div>
       <section className="prw-items"><h4>Line items</h4><div className="prw-table-scroll" tabIndex={0} role="region" aria-label="Purchase order line items"><table className="prw-table" data-table-typography="preserve"><thead><tr><th scope="col">#</th><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Total</th></tr></thead><tbody>{items.length ? items.map((item, index) => <tr key={item.id || index}><td>{String(index + 1).padStart(3, '0')}</td><td>{item.description || item.item_description || item.name || 'Not recorded'}</td><td>{item.quantity ?? item.qty ?? '—'}</td><td>{item.unit || item.unit_of_measure || '—'}</td><td>{money(item.total ?? item.total_amount ?? item.total_price ?? item.amount, record.currency)}</td></tr>) : <tr><td colSpan={5} className="prw-secondary">{loading ? 'Loading line items…' : 'No line items recorded.'}</td></tr>}</tbody></table></div></section>

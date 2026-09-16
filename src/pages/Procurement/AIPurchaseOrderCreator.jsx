@@ -6,6 +6,8 @@ import {
   CalendarIcon, ArrowPathIcon, BuildingOfficeIcon, ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import { calculateProcurementVat, PROCUREMENT_VAT_OPTIONS } from '../../utils/procurementVat';
+import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 
 const EXTRACTION_STAGES = [
   { id: 'upload',   label: 'Uploading to secure storage...',   pct: 20  },
@@ -58,7 +60,7 @@ const emptyForm = () => ({
   category: 'engineering_services',
   
   // Financial
-  currency: 'USD', total_amount: '', tax_amount: '', discount_amount: '',
+  currency: 'USD', total_amount: '', tax_amount: '', discount_amount: '', vat_basis: 'unconfirmed',
   
   // Dates
   po_date: '', start_date: '', end_date: '', expected_delivery: '',
@@ -143,10 +145,10 @@ const ItemRow = ({ item, onChange, onRemove }) => {
   const handleField = (field, value) => {
     const updated = { ...item, [field]: value };
     if (field === 'quantity' || field === 'unit_price')
-      updated.total = (parseFloat(updated.quantity) || 0) * (parseFloat(updated.unit_price) || 0);
+      updated.total = purchaseOrderLineNet(updated) ?? 0;
     onChange(updated);
   };
-  const total = ((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)).toFixed(2);
+  const total = (purchaseOrderLineNet(item) ?? 0).toFixed(2);
   return (
     <div className="grid grid-cols-12 gap-2 items-start py-2 border-b border-gray-100 last:border-0">
       <div className="col-span-5">
@@ -197,7 +199,9 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
   if (!isOpen) return null;
 
   const setField = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
-  const totalOrderValue = items.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+  const pricing = items.length
+    ? purchaseOrderVat({ items, discount_amount: formData.discount_amount, vat_basis: formData.vat_basis }, { preferItems: true })
+    : calculateProcurementVat(formData.total_amount || 0, formData.discount_amount || 0, { basis: formData.vat_basis });
   const updateItem = (u) => setItems((prev) => prev.map((i) => (i.id === u.id ? u : i)));
   const removeItem = (id) => setItems((prev) => prev.filter((i) => i.id !== id));
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
@@ -270,6 +274,7 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
       total_amount:         set('total_amount', data.total_amount) || '',
       tax_amount:           set('tax_amount', data.tax_amount) || '',
       discount_amount:      '',
+      vat_basis:            'unconfirmed',
       
       // Dates
       po_date:              set('po_date', data.po_date) || '',
@@ -318,7 +323,9 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
         description: it.description || '',
         quantity:    parseFloat(it.quantity) || 1,
         unit:        it.unit || 'unit',
-        unit_price:  parseFloat(it.unit_price) || 0,
+        unit_price:  it.unit_price == null || it.unit_price === ''
+          ? ((parseFloat(it.total) || 0) + (parseFloat(it.discount) || 0)) / (parseFloat(it.quantity) || 1)
+          : parseFloat(it.unit_price) || 0,
         discount:    parseFloat(it.discount) || 0,
         total:       parseFloat(it.total) || (parseFloat(it.quantity) || 1) * (parseFloat(it.unit_price) || 0),
       })));
@@ -354,6 +361,10 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.vat_basis || formData.vat_basis === 'unconfirmed') {
+      setSubmitError('Confirm whether these prices include VAT, exclude VAT, or have no VAT before saving.');
+      return;
+    }
     
     // Smart validation with helpful messages
     if (vendors.length === 0) { 
@@ -367,7 +378,12 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
     
     setSubmitting(true); setSubmitError(null);
     try {
-      const payload = { ...formData, items, total_amount: totalOrderValue > 0 ? totalOrderValue : (parseFloat(formData.total_amount) || 0) };
+      const payload = {
+        ...formData, items: items.map(item => ({ ...item, total: purchaseOrderLineNet(item) ?? 0 })),
+        net_amount: pricing.netAmount, tax_amount: pricing.taxAmount,
+        total_amount: pricing.totalAmount, vat_percentage: pricing.vatRate,
+        entered_amount: pricing.subtotal,
+      };
       delete payload.vendor_name_hint;
       const resp = await apiClient.post('/procurement/orders/', payload);
       const created = resp.data;
@@ -536,7 +552,7 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
                       {aiExtractedFields.has('project') && <ExtractedBadge value={true} />}
                       {!aiExtractedFields.has('project') && formData.project_number && (
                         <span className="ml-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                          AI found: "{formData.project_number}" — select from list below
+                          AI found: &quot;{formData.project_number}&quot; — select from list below
                         </span>
                       )}
                     </h3>
@@ -632,7 +648,7 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
                       {aiExtractedFields.has('vendor') && <ExtractedBadge value={true} />}
                       {!aiExtractedFields.has('vendor') && formData.vendor_name_hint && (
                         <span className="ml-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                          AI found: "{formData.vendor_name_hint}" — select from list below
+                          AI found: &quot;{formData.vendor_name_hint}&quot; — select from list below
                         </span>
                       )}
                     </h3>
@@ -703,7 +719,16 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
                         {CURRENCY_OPTIONS.map((c) => <option key={c}>{c}</option>)}
                       </select>
                     </Field>
-                    <Field label="Tax Amount" name="tax_amount" type="number" aiKey="tax_amount" />
+                    {!items.length && <Field label="Price before order discount" name="total_amount" type="number" />}
+                    <Field label="Price basis" name="vat_basis">
+                      <select aria-label="Price basis" value={formData.vat_basis || 'unconfirmed'} onChange={event => setField('vat_basis', event.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        <option value="unconfirmed">Confirm VAT treatment</option>
+                        {PROCUREMENT_VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="VAT amount" name="tax_amount">
+                      <input aria-label="VAT amount" type="number" value={formData.vat_basis === 'unconfirmed' ? formData.tax_amount : pricing.taxAmount ?? ''} readOnly className="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-sm" />
+                    </Field>
                     <Field label="Discount Amount" name="discount_amount" type="number" />
                     <Field label="Payment Terms" name="payment_terms" aiKey="payment_terms" />
                   </div>
@@ -756,10 +781,10 @@ const AIPurchaseOrderCreator = ({ isOpen, onClose, onOrderCreated, vendors = [],
                       ))}
                       <div className="flex justify-end mt-3 pt-3 border-t border-gray-200">
                         <div className="text-sm text-gray-600 space-y-1 text-right">
-                          <div>Subtotal: <span className="font-semibold">{formData.currency} {totalOrderValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                          {parseFloat(formData.tax_amount) > 0 && <div>Tax: <span className="font-semibold">{formData.currency} {parseFloat(formData.tax_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>}
+                          <div>Net amount after discounts: <span className="font-semibold">{pricing.netAmount == null ? 'Confirm VAT treatment' : `${formData.currency} ${pricing.netAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span></div>
+                          <div>VAT{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}: <span className="font-semibold">{pricing.taxAmount == null ? 'Confirm VAT treatment' : `${formData.currency} ${pricing.taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span></div>
                           <div className="text-base font-bold text-gray-900 border-t pt-1">
-                            Total: {formData.currency} {(totalOrderValue + (parseFloat(formData.tax_amount) || 0) - (parseFloat(formData.discount_amount) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            Total: {pricing.totalAmount == null ? 'Confirm VAT treatment' : `${formData.currency} ${pricing.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                           </div>
                         </div>
                       </div>

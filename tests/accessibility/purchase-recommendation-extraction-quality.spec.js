@@ -76,7 +76,7 @@ async function save(page, state) {
 
 test('shows business values and genuine conflicts without extraction details or optional-field warnings', async ({ page }) => {
   const state = await preview(page)
-  await expect(field(page, 'Total Price')).toHaveValue('225608.00')
+  await expect(field(page, 'Entered price')).toHaveValue('225608.00')
   await expect(field(page, 'Currency')).toHaveValue('USD')
   await expect(field(page, 'Project Number')).toHaveValue('5901056')
   await expect(field(page, 'PO Reference')).toHaveValue('RAD-PRJ-PUR-0002_JAN2026')
@@ -90,7 +90,7 @@ test('shows business values and genuine conflicts without extraction details or 
   }
   await expect(field(page, 'Supplier Name')).toHaveAttribute('aria-invalid', 'true')
   await expect(labelFor(page, 'Supplier Name')).toContainText('Conflicting values. Check this field against the PDF.')
-  for (const label of ['Issued By', 'Project Number', 'Total Price', 'Budget in AED', 'Net Total in AED', 'Supplier Business ID']) {
+  for (const label of ['Issued By', 'Project Number', 'Entered price', 'Budget in AED', 'Net Total in AED', 'Supplier Business ID']) {
     await expect(field(page, label)).toHaveAttribute('aria-invalid', 'false')
     await expect(field(page, label)).not.toHaveClass(/bg-(?:amber|red)-/)
     await expect(labelFor(page, label)).not.toContainText(/Enter |Conflicting values/)
@@ -104,7 +104,7 @@ test('shows business values and genuine conflicts without extraction details or 
   await expect(modal(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(4)
   await expect(modal(page)).not.toContainText('Source row requires signature review')
   expect(state.saveRequests).toEqual([])
-  await field(page, 'Total Price').scrollIntoViewIfNeeded()
+  await field(page, 'Entered price').scrollIntoViewIfNeeded()
   await modal(page).screenshot({ path: '../artifacts/purchase-recommendation-extraction-quality.png' })
   await modal(page).getByRole('button', { name: 'Cancel', exact: true }).click()
   expect(state.saveRequests).toEqual([])
@@ -138,7 +138,7 @@ test('reviewing multiple price rows preserves each description, amount and remar
   const state = await preview(page, { price_lines: original })
   await modal(page).getByRole('spinbutton', { name: 'Price line 2 amount', exact: true }).fill('75610.00')
   await modal(page).getByRole('textbox', { name: 'Price line 2 remarks', exact: true }).fill('Corrected against the signed site quotation')
-  await field(page, 'Total Price').fill('225610.00')
+  await field(page, 'Entered price').fill('225610.00')
   const payload = await save(page, state)
   expect(payload.net_total).toBe('225610.00')
   expect(payload.currency).toBe('USD')
@@ -151,15 +151,15 @@ test('reviewing multiple price rows preserves each description, amount and remar
 
 test('missing total and currency show only actionable errors and clear when corrected', async ({ page }) => {
   const state = await preview(page, { net_total: '', currency: '', special_notes: '' })
-  await expect(field(page, 'Total Price')).toHaveAttribute('aria-invalid', 'true')
-  await expect(labelFor(page, 'Total Price')).toContainText('Enter total price.')
+  await expect(field(page, 'Entered price')).toHaveAttribute('aria-invalid', 'true')
+  await expect(labelFor(page, 'Entered price')).toContainText('Enter entered price.')
   await expect(field(page, 'Currency')).toHaveAttribute('aria-invalid', 'true')
   await expect(labelFor(page, 'Currency')).toContainText('Enter currency.')
   await expect(field(page, 'Special Notes')).toHaveAttribute('aria-invalid', 'false')
   await expect(labelFor(page, 'Special Notes')).not.toContainText('Enter')
-  await field(page, 'Total Price').fill('225610.00')
+  await field(page, 'Entered price').fill('225610.00')
   await field(page, 'Currency').selectOption('USD')
-  await expect(field(page, 'Total Price')).toHaveAttribute('aria-invalid', 'false')
+  await expect(field(page, 'Entered price')).toHaveAttribute('aria-invalid', 'false')
   await expect(field(page, 'Currency')).toHaveAttribute('aria-invalid', 'false')
   const payload = await save(page, state)
   expect(payload.net_total).toBe('225610.00')

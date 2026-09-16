@@ -20,6 +20,8 @@ import './PurchaseOrderForm.css';
 import { Save as SaveIcon, ArrowRight, ArrowLeft, AlertCircle, X } from 'lucide-react';
 import PurchaseOrderPriceSpreadsheet from './PurchaseOrderPriceSpreadsheet';
 import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
+import { PROCUREMENT_VAT_OPTIONS, sumProcurementMoney } from '../../utils/procurementVat';
+import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -343,6 +345,7 @@ const READ_ONLY_PO_FIELDS = new Set([
   'pr_number',
   'project_name',
   'project_display',
+  'price_amount',
 ]);
 
 const buildPurchaseOrderPayload = (formData, status) => Object.fromEntries(
@@ -357,8 +360,8 @@ const buildPurchaseOrderPayload = (formData, status) => Object.fromEntries(
 const normalizeRequisitionItems = (requisition) => {
   const title = requisition?.product_service || requisition?.title || requisition?.price_description || 'Purchase requisition item';
   const requisitionAmount = Number(
-    requisition?.total_price
-    || requisition?.net_total_excl_vat
+    (requisition?.vat_basis === 'exclusive' ? requisition?.net_total_excl_vat : requisition?.total_price)
+    || requisition?.total_price || requisition?.net_total_excl_vat
     || requisition?.estimated_budget
     || 0
   );
@@ -404,6 +407,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     : DEFAULT_INVOICE_EMAILS;
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [pricingConfirmed, setPricingConfirmed] = useState(false);
+  const [pricingEdited, setPricingEdited] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [vendors, setVendors] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
@@ -465,8 +470,11 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     
     // Financial
     total_amount: prReference?.total_price || editData?.total_amount || '',
+    net_amount: editData?.net_amount ?? '',
+    price_amount: editData ? purchaseOrderVat(editData).subtotal ?? sumProcurementMoney([editData.total_amount || 0, editData.discount_amount || 0]) : 0,
+    vat_basis: editData?.vat_basis || 'unconfirmed',
     currency: prReference?.currency || editData?.currency || 'USD',
-    vat_percentage: editData?.vat_percentage ?? 5.00,
+    vat_percentage: editData?.vat_percentage ?? '',
     tax_amount: editData?.tax_amount || 0,
     discount_amount: editData?.discount_amount || 0,
     
@@ -573,8 +581,6 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [approversLoading, setApproversLoading] = useState(false);
   const [approverLoadError, setApproverLoadError] = useState('');
   const initialFormData = useRef(formData);
-  const initialPricing = useRef({ items: formData.items, vat: formData.vat_percentage });
-  const pricingChanged = useRef(false);
   const submittingRef = useRef(false);
 
   useLayoutEffect(() => {
@@ -675,7 +681,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   // Auto-save draft every 30 seconds
   useEffect(() => {
-    if (!editData) {
+    if (!editData && !pricingEdited && !pricingConfirmed) {
       const autoSaveInterval = setInterval(() => {
         const canPersistDraft = Boolean(
           formData.pr_reference &&
@@ -690,7 +696,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       }, 30000);
       return () => clearInterval(autoSaveInterval);
     }
-  }, [formData, editData, draftId]);
+  }, [formData, editData, draftId, pricingEdited, pricingConfirmed]);
 
   const normalizeApiArray = (data) => {
     if (Array.isArray(data)) return data;
@@ -929,12 +935,15 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     const persistedOrderId = editData?.id || draftId || persistedOrderIdRef.current;
     // Do not race the user's first explicit Create request with a background
     // POST. Auto-save starts after the PO has a server-side draft ID.
-    if (!persistedOrderId) return;
+    if (!persistedOrderId || pricingEdited || pricingConfirmed) return;
     if (autoSaveRequestRef.current) return;
     autoSaveRequestRef.current = true;
     setAutoSaving(true);
     try {
       const payload = buildPurchaseOrderPayload(formData, 'draft');
+      // Financial changes require an explicit VAT choice and Save. Draft
+      // background updates only preserve the existing recorded amounts.
+      ['vat_basis', 'net_amount', 'tax_amount', 'total_amount', 'vat_percentage', 'discount_amount', 'currency', 'items'].forEach(field => delete payload[field]);
       await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, payload);
     } catch (error) {
       console.error('Auto-save failed:', error);
@@ -1021,6 +1030,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     ));
 
     setSelectedRequisition(requisition);
+    setPricingConfirmed(false);
+    setPricingEdited(false);
     setPrSearch(requisition.pr_number || '');
     setProjectSearch(linkedProject
       ? `${linkedProject.project_number} — ${linkedProject.project_name}`
@@ -1037,6 +1048,11 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       summary: prev.summary || title,
       category: requisition.category || prev.category,
       total_amount: totalAmount,
+      net_amount: requisition.net_total_excl_vat ?? '',
+      tax_amount: requisition.tax_amount ?? 0,
+      vat_percentage: requisition.vat_percentage ?? '',
+      price_amount: totalAmount,
+      vat_basis: 'unconfirmed',
       currency: requisition.currency || prev.currency,
       project: linkedProject?.id || '',
       project_number: linkedProject?.project_number || projectReference || prev.project_number,
@@ -1098,8 +1114,13 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (['vat_basis', 'price_amount', 'discount_amount', 'currency'].includes(name)) setPricingEdited(true);
+    if (name === 'vat_basis') setPricingConfirmed(value !== 'unconfirmed');
     setFormData(prev => ({
       ...prev,
+      ...(name === 'vat_basis' && value === 'unconfirmed' ? Object.fromEntries(
+        ['net_amount', 'total_amount', 'tax_amount', 'vat_percentage'].map(field => [field, initialFormData.current[field]]),
+      ) : {}),
       [name]: type === 'checkbox' ? checked : value
     }));
     if (errors[name]) {
@@ -1203,6 +1224,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   const addItem = () => {
+    setPricingEdited(true);
     setFormData(prev => ({
       ...prev,
       items: [
@@ -1222,6 +1244,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   const updateItem = (index, field, value) => {
+    if (['quantity', 'unit_price', 'discount'].includes(field)) setPricingEdited(true);
     setFormData(prev => {
       const items = [...prev.items];
       items[index] = {
@@ -1348,55 +1371,40 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   const removeItem = (index) => {
+    setPricingEdited(true);
     setFormData(prev => ({
       ...prev,
       items: prev.items.filter((_, i) => i !== index),
+      ...(prev.items.length === 1 ? { price_amount: 0 } : {}),
     }));
   };
 
-  const calculateItemTotal = (item) => {
-    const quantity = Number(item.quantity || 0);
-    const unitPrice = Number(item.unit_price || 0);
-    const discount = Number(item.discount || 0);
-    return Math.max(0, quantity * unitPrice - discount);
-  };
-
-  const calculateSubtotal = () => {
-    if (editData && !formData.items?.length && formData.items === initialPricing.current.items) {
-      return Number(initialFormData.current.total_amount || 0) - Number(initialFormData.current.tax_amount || 0);
-    }
-    return (formData.items || []).reduce((sum, item) => sum + calculateItemTotal(item), 0);
-  };
-
-  const calculateTaxAmount = (subtotal) => {
-    if (editData && !formData.items?.length && !pricingChanged.current) return Number(formData.tax_amount || 0);
-    const vatPct = Number(formData.vat_percentage || 0);
-    return Number(((subtotal * vatPct) / 100).toFixed(2));
-  };
-
-  const calculateGrandTotal = (subtotal, taxAmount) => {
-    return Number((subtotal + taxAmount).toFixed(2));
-  };
+  const calculateItemTotal = item => purchaseOrderLineNet(item) ?? 0;
+  const pricing = purchaseOrderVat(formData, { preferItems: pricingConfirmed });
+  const calculateSubtotal = () => pricing.netAmount ?? 0;
+  const calculateTaxAmount = () => pricing.taxAmount ?? 0;
+  const calculateGrandTotal = () => pricing.totalAmount ?? 0;
 
   useEffect(() => {
-    if (editData && !pricingChanged.current) {
-      if (formData.items === initialPricing.current.items && formData.vat_percentage === initialPricing.current.vat) return;
-      pricingChanged.current = true;
-    }
-    const subtotal = calculateSubtotal();
-    const taxAmount = calculateTaxAmount(subtotal);
-    const totalAmount = calculateGrandTotal(subtotal, taxAmount);
+    if (!pricingConfirmed) return;
     setFormData(prev => {
-      if (prev.total_amount === totalAmount && prev.tax_amount === taxAmount) {
+      const amounts = purchaseOrderVat(prev, { preferItems: true });
+      const netAmount = amounts.netAmount ?? 0;
+      const taxAmount = amounts.taxAmount ?? 0;
+      const totalAmount = amounts.totalAmount ?? 0;
+      if (prev.total_amount === totalAmount && prev.tax_amount === taxAmount
+          && prev.net_amount === netAmount && prev.vat_percentage === amounts.vatRate) {
         return prev;
       }
       return {
         ...prev,
         total_amount: totalAmount,
         tax_amount: taxAmount,
+        net_amount: netAmount,
+        vat_percentage: amounts.vatRate,
       };
     });
-  }, [formData.items, formData.vat_percentage]);
+  }, [formData.items, formData.price_amount, formData.discount_amount, formData.vat_basis, pricingConfirmed]);
 
   const requiredApprovalStages = formData.pr_reference ? [] : ['Final Management Sign-off'];
   const assignedApprovalStages = new Set(
@@ -1406,6 +1414,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   const getValidationErrors = (requireSummary = false) => {
     const newErrors = {};
+    if ((!editData || pricingEdited) && !pricingConfirmed) newErrors.vat_basis = 'Confirm whether these prices include VAT, exclude VAT, or have no VAT before saving.';
     
     if (!formData.pr_reference && (!editData || requireSummary)) newErrors.pr_reference = 'An existing Purchase Requisition is required';
     if (!formData.po_number?.trim()) {
@@ -1433,6 +1442,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       // A partial metadata correction must not require repairing unrelated
       // missing fields on an older imported order before it can be saved.
       for (const field of Object.keys(newErrors)) {
+        if (field === 'vat_basis') continue;
         const deliveryTypeChanged = ['start_date', 'end_date'].includes(field)
           && formData.contact_persons?.delivery_date_type !== initialFormData.current.contact_persons?.delivery_date_type;
         if (!deliveryTypeChanged && JSON.stringify(formData[field]) === JSON.stringify(initialFormData.current[field])) delete newErrors[field];
@@ -1491,7 +1501,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
               : missingApprovalStages.length
                 ? `Please select: ${missingApprovalStages.join(', ')}.`
                 : 'Please add a short summary before sending to the vendor.';
-      setPopupError(validationMessage);
+      setPopupError((!editData || pricingEdited) && !pricingConfirmed ? 'Confirm whether these prices include VAT, exclude VAT, or have no VAT before saving.' : validationMessage);
       openSection(sectionForField(Object.keys(getValidationErrors(sendToVendor))[0]));
       setTimeout(() => setPopupError(''), 6000);
       return;
@@ -1527,6 +1537,15 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
           && JSON.stringify(value) !== JSON.stringify(initialFormData.current[key])
         )),
       ) : buildPurchaseOrderPayload(preparedFormData, 'draft');
+      if (pricingConfirmed) {
+        Object.assign(payload, {
+          vat_basis: formData.vat_basis, net_amount: pricing.netAmount,
+          tax_amount: pricing.taxAmount, total_amount: pricing.totalAmount, vat_percentage: pricing.vatRate,
+          entered_amount: pricing.subtotal,
+        });
+      } else {
+        ['vat_basis', 'net_amount', 'tax_amount', 'total_amount', 'vat_percentage', 'discount_amount'].forEach(field => delete payload[field]);
+      }
       for (const field of ['project', 'enterprise_project', 'pr_reference']) {
         if (payload[field] === '') payload[field] = null;
       }
@@ -2071,7 +2090,21 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <p className="mt-1 text-xs text-gray-500">{formData.buyer_reference_email || `Default: ${DEFAULT_BUYER_REFERENCE}. Email is fetched from RADAI.`}</p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Price before order discount</label>
+                    <input type="number" step="0.01" min="0" name="price_amount" aria-label="Price before order discount"
+                      value={formData.items?.length ? sumProcurementMoney(formData.items.map(purchaseOrderLineNet)) ?? '' : formData.price_amount} readOnly={Boolean(formData.items?.length)} onChange={handleChange}
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 read-only:bg-gray-100" />
+                  </div>
+                  <label className="block text-sm font-medium text-gray-700">Price basis
+                    <select name="vat_basis" aria-label="Price basis" value={pricingConfirmed ? formData.vat_basis : 'unconfirmed'} onChange={handleChange}
+                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900">
+                      <option value="unconfirmed">Confirm VAT treatment</option>
+                      {PROCUREMENT_VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                    {errors.vat_basis && <span className="mt-1 block text-xs text-red-600">{errors.vat_basis}</span>}
+                  </label>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Total Amount *</label>
                     <input
@@ -2080,7 +2113,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       name="total_amount"
                       aria-label="Total Amount"
                       value={formData.total_amount}
-                      onChange={handleChange}
+                      readOnly
                       className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
                         errors.total_amount ? 'border-red-500' : ''
                       }`}
@@ -2096,7 +2129,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       name="vat_percentage"
                       aria-label="VAT percentage"
                       value={formData.vat_percentage}
-                      onChange={handleChange}
+                      readOnly
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
@@ -2626,7 +2659,11 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                 items={formData.items}
                 headers={formData.items_table_headers || DEFAULT_ITEMS_TABLE_HEADERS}
                 currency={formData.currency}
-                onItemsChange={(items) => setFormData((previous) => ({ ...previous, items }))}
+                onItemsChange={(items) => {
+                  const amounts = rows => rows.map(item => [item.quantity, item.unit_price, item.discount, item.total, item.line_total]);
+                  if (JSON.stringify(amounts(items)) !== JSON.stringify(amounts(formData.items))) setPricingEdited(true);
+                  setFormData(previous => ({ ...previous, items }));
+                }}
                 onHeaderChange={updateItemsTableHeader}
                 onAddColumn={addItemsTableColumn}
                 onRemoveColumn={removeItemsTableColumn}
@@ -2639,17 +2676,23 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                   <div className="space-y-3">
                     <div className="flex justify-between text-sm text-gray-500">
-                      <span>Subtotal</span>
-                      <span>{formData.currency} {calculateSubtotal().toFixed(2)}</span>
+                      <span>Net amount after discounts</span>
+                      <span>{pricing.netAmount == null ? 'Not recorded' : `${formData.currency} ${pricing.netAmount.toFixed(2)}`}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-500">
-                      <span>VAT ({formData.vat_percentage}%)</span>
+                      <span>VAT{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}</span>
                       <span>{formData.currency} {calculateTaxAmount(calculateSubtotal()).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-500">
                       <span>Discount (line items only)</span>
                       <span>{formData.currency} {(formData.items || []).reduce((sum, item) => sum + Number(item.discount || 0), 0).toFixed(2)}</span>
                     </div>
+                    <label className="flex items-center justify-between gap-3 text-sm text-gray-500">
+                      Order discount
+                      <input type="number" min="0" step="0.01" name="discount_amount" aria-label="Order discount"
+                        value={formData.discount_amount} onChange={handleChange}
+                        className="w-32 rounded border border-gray-300 px-2 py-1 text-right read-only:bg-gray-100" />
+                    </label>
                     <div className="border-t pt-3 flex justify-between text-base font-semibold text-gray-900">
                       <span>Grand Total</span>
                       <span>{formData.currency} {calculateGrandTotal(calculateSubtotal(), calculateTaxAmount(calculateSubtotal())).toFixed(2)}</span>

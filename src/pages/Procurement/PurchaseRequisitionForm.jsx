@@ -23,6 +23,8 @@ import RecommendationSupplierPricing from './RecommendationSupplierPricing';
 import RecordedApprovalHistory from './RecordedApprovalHistory';
 import { prepareRecommendationPayload } from './recommendationFormPayload';
 import { hydrateRecommendationReferences, preserveRecordedApprovalWorkflow, recommendationLineError } from './recommendationFormState';
+import { confirmedRecommendationVat, recommendationVat, recommendationLineDiscount } from './recommendationVat';
+import { calculateProcurementVat, procurementLineNet, sumProcurementMoney } from '../../utils/procurementVat';
 import './PurchaseRequisitionForm.css';
 import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
 import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
@@ -196,6 +198,8 @@ const buildInitialFormData = (editData) => {
   preferred_supplier_if_any: editData?.preferred_supplier_if_any || '',
   price_description: editData?.price_description || editData?.description_reason || '',
   total_price: editData?.total_price ?? '',
+  vat_basis: confirmedRecommendationVat(editData?.vat_basis) ? editData.vat_basis : 'unconfirmed',
+  _vatPricingChanged: false,
   currency: editData?.currency || 'AED',
   estimated_budget: editData?.estimated_budget ?? '',
   price_remarks: editData?.price_remarks ?? editData?.price_remarks_data?.negotiation_remarks ?? '',
@@ -427,7 +431,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const lastAutoSaveFingerprintRef = useRef('');
   const failedAutoSaveFingerprintRef = useRef('');
   const priceDescriptionEditedRef = useRef(Boolean(editData?.price_description));
-  const lastTotalPriceRef = useRef(editData?.total_price || '');
   const workspaceRef = useRef(null);
   const [formPanePercent, setFormPanePercent] = useState(58);
   const [activeStep, setActiveStep] = useState(0);
@@ -520,7 +523,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     userEditedRef.current = false;
     linePricingEditedRef.current = false;
     priceDescriptionEditedRef.current = Boolean(editData?.price_description);
-    lastTotalPriceRef.current = initialData.total_price;
     formDataRef.current = initialData;
     approvalWorkflowRef.current = editData?.approval_workflow_config || [];
     draftIdRef.current = editData?.id || null;
@@ -1091,15 +1093,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   useEffect(() => {
-    if (String(lastTotalPriceRef.current) === String(formData.total_price)) return;
-    lastTotalPriceRef.current = formData.total_price;
-    setFormDataState(prev => ({
-      ...prev,
-      net_total_excl_vat: prev.total_price ?? ''
-    }));
-  }, [formData.total_price]);
-
-  useEffect(() => {
     if (!userEditedRef.current) return;
     const convertedTotal = convertToAed(formData.net_total_excl_vat, formData.currency);
     const exchangeRate = AED_EXCHANGE_RATES[formData.currency];
@@ -1135,17 +1128,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     if (!linePricingEditedRef.current || !formData.items?.length) return;
     const savedItems = prepareRecommendationPayload({ items: formData.items }).items;
     if (recommendationLineError(savedItems)) return;
-    const itemsTotal = formData.items.reduce(
-      (sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)),
-      0
-    ).toFixed(2);
+    const itemsTotal = sumProcurementMoney(savedItems.map(item => procurementLineNet(item.quantity, item.unit_price, recommendationLineDiscount(item))));
+    const amounts = confirmedRecommendationVat(formData.vat_basis)
+      ? calculateProcurementVat(itemsTotal, formData.price_remarks_data?.discount_amount ?? 0, { basis: formData.vat_basis })
+      : { netAmount: itemsTotal, totalAmount: itemsTotal };
     const itemsBudget = formData.items.reduce(
       (sum, item) => sum + (parseFloat(item.budget) || 0),
       0
     ).toFixed(2);
     const hasLineBudgets = formData.items.some(item => item.budget !== '' && item.budget != null);
-    setFormDataState(prev => ({ ...prev, total_price: itemsTotal, ...(hasLineBudgets ? { estimated_budget: itemsBudget } : {}) }));
-  }, [formData.items]);
+    setFormDataState(prev => ({ ...prev, _vatPricingChanged: true, _vatEnteredAmount: itemsTotal, net_total_excl_vat: amounts.netAmount.toFixed(2), total_price: amounts.totalAmount.toFixed(2), ...(hasLineBudgets ? { estimated_budget: itemsBudget } : {}) }));
+  }, [formData.items, formData.vat_basis, formData.price_remarks_data?.discount_amount]);
 
   useEffect(() => {
     formDataRef.current = formData;
@@ -1153,7 +1146,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   }, [formData]);
 
   const handleAutoSave = useCallback(async () => {
-    if (submissionInFlightRef.current || !userEditedRef.current || preserveApprovalWorkflow) return null;
+    if (submissionInFlightRef.current || !userEditedRef.current || preserveApprovalWorkflow || formDataRef.current._vatPricingChanged) return null;
     if (autoSaveInFlightRef.current) {
       return autoSaveInFlightRef.current;
     }
@@ -1296,19 +1289,17 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
   const updateLineItem = (index, field, value) => {
-    if (['quantity', 'unit_price', 'budget'].includes(field)) linePricingEditedRef.current = true;
+    if (['quantity', 'unit_price'].includes(field)) linePricingEditedRef.current = true;
     setFormData(prev => {
       const items = prev.items.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         const updated = { ...item, [field]: value };
         if (field === 'quantity' || field === 'unit_price') {
-          updated.total = (
-            (parseFloat(updated.quantity) || 0) * (parseFloat(updated.unit_price) || 0)
-          ).toFixed(2);
+          updated.total = (procurementLineNet(updated.quantity || 0, updated.unit_price || 0, recommendationLineDiscount(updated)) ?? 0).toFixed(2);
         }
         return updated;
       });
-      return { ...prev, items, ...(field === 'budget' && !items.some(item => item.budget !== '' && item.budget != null) ? { estimated_budget: '' } : {}), price_remarks_data: { ...prev.price_remarks_data,
+      return { ...prev, items, ...(field === 'budget' ? { estimated_budget: items.some(item => item.budget !== '' && item.budget != null) ? sumProcurementMoney(items.map(item => item.budget || 0)).toFixed(2) : '' } : {}), price_remarks_data: { ...prev.price_remarks_data,
         line_details: items.map((item, itemIndex) => ({
           ...(prev.price_remarks_data?.line_details?.[itemIndex] || {}),
           ...Object.fromEntries(['vat_rate', 'vendor_id', 'budget'].filter(key => item[key] !== undefined).map(key => [key, item[key]])),
@@ -1326,9 +1317,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       const clearedLastBudget = removedBudget !== '' && removedBudget != null
         && !items.some(item => item.budget !== '' && item.budget != null);
       return {
-        ...prev, items,
+        ...prev, items, _vatPricingChanged: true,
         ...(clearedLastBudget ? { estimated_budget: '' } : {}),
-        ...(items.length === 0 ? { total_price: '', net_total_excl_vat: '', estimated_budget: '' } : {}),
+        ...(items.length === 0 ? { total_price: '', net_total_excl_vat: '', estimated_budget: '', _vatEnteredAmount: '' } : {}),
         price_remarks_data: { ...prev.price_remarks_data,
           line_details: prev.items.flatMap((item, itemIndex) => itemIndex === index ? [] : [
             prev.price_remarks_data?.line_details?.[itemIndex] || Object.fromEntries(['vat_rate', 'vendor_id', 'budget'].filter(key => item[key] !== undefined).map(key => [key, item[key]])),
@@ -1347,6 +1338,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     }
     const lineError = recommendationLineError(prepareRecommendationPayload(formData).items);
     if (lineError) newErrors.items = lineError;
+    if (formData._vatPricingChanged && !confirmedRecommendationVat(formData.vat_basis)) {
+      newErrors.vat_basis = 'Confirm whether the entered price includes VAT, excludes VAT, or has no VAT.';
+    }
     // Signed evidence and completed workflows are historical records. Editing
     // their descriptive fields must not demand a new draft's routing/shortlist.
     if (preserveApprovalWorkflow) return newErrors;
@@ -1388,7 +1382,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     if (formData.po_applicable && !formData.po_number_reference?.trim()) {
       newErrors.po_number_reference = 'Enter a completed PO number';
     }
-    if (formData.currency === 'AED' && parseFloat(formData.total_price) > 100000) {
+    if (formData.currency === 'AED' && recommendationVat(formData).netAmount > 100000) {
       if (formData.management_approval !== true) newErrors.management_approval = 'Management Approval must be Yes';
       if (!formData.management_approval_remarks?.trim()) newErrors.management_approval_remarks = 'Approval remarks are required';
       if (!managementEvidenceFile && !(formData.management_approval_evidence || []).length) {
@@ -1420,6 +1414,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       return;
     }
     if (submitForApproval && !validateForm()) {
+      return;
+    }
+    if (!approvedPdfFile && formData._vatPricingChanged && !confirmedRecommendationVat(formData.vat_basis)) {
+      const message = 'Confirm whether the entered price includes VAT, excludes VAT, or has no VAT.';
+      setErrors(previous => ({ ...previous, vat_basis: message }));
+      setSaveError(message);
+      setActiveStep(1);
       return;
     }
     const lineError = recommendationLineError(prepareRecommendationPayload(formData).items);
@@ -1624,6 +1625,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const livePreviewRequisition = {
     ...(preserveApprovalWorkflow ? approvalRecord : {}),
     ...formData,
+    tax_amount: formData._vatPricingChanged ? recommendationVat(formData).taxAmount : editData?.tax_amount,
     id: editData?.id || draftIdRef.current,
     issued_by_name: editData?.issued_by_name || sessionUserName,
     approval_workflow_config: liveApprovalWorkflow,
@@ -1639,7 +1641,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const stepLabels = ['Request', 'Supplier & pricing', 'Business justification', 'Documents', 'Approval & submit'];
   const fieldSteps = {
     pr_number: 0, product_service: 0, project_department: 0, issued_date: 0,
-    total_price: 1, selected_vendors: 1, vendor: 1, vendor_selection_reason: 1,
+    total_price: 1, vat_basis: 1, selected_vendors: 1, vendor: 1, vendor_selection_reason: 1,
     single_source_justification: 1, items: 1, price_description: 2,
     description_reason: 2, purchase_recommendation: 2, po_number_reference: 2,
     management_approval: 4, management_approval_remarks: 4, management_approval_evidence: 4,
@@ -2219,7 +2221,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           </div>{savedAttachments.length > 0 && <section className="prf-card"><h2>Attached documents</h2>{savedAttachments.map((file,index) => <a className="prf-file-link" key={file.id || index} href={file.url || file.s3_url} target="_blank" rel="noreferrer"><PaperClipIcon />{file.filename || file.name || 'Document'}</a>)}</section>}</div>}
               {activeStep === 4 && <div className="prf-step-panel" aria-label="Approval and submit">
                 <section className="prf-card prf-review-checks"><h2>{preserveApprovalWorkflow ? 'Review changes' : 'Review before submission'}</h2><p>{preserveApprovalWorkflow ? 'Save edits to this recommendation. Recorded approval evidence remains part of its history.' : issues.length ? 'Complete the items below to route this recommendation for approval.' : 'The required information is complete. Review the document and approval route, then submit.'}</p>{issues.map(issue => <button key={issue.field} type="button" onClick={() => revealIssue(issue)}><ExclamationCircleIcon /><span>{issue.message}</span><ArrowRightIcon /></button>)}</section>
-                {formData.currency === 'AED' && parseFloat(formData.total_price || 0) > 100000 && (
+                {formData.currency === 'AED' && recommendationVat(formData).netAmount > 100000 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-4">
               <div>
                 <h4 className="text-sm font-bold text-amber-900">Management Approval Required</h4>

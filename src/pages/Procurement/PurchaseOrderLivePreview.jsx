@@ -2,6 +2,7 @@ import PropTypes from 'prop-types';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentBranding.config';
 import { nameOnly } from '../../utils/employeeDisplayName';
+import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 
 const text = (value, fallback = '—') => String(value ?? '').trim() || fallback;
 const date = (value) => {
@@ -19,12 +20,13 @@ const dateTime = (value) => {
     : date(value);
 };
 const money = (value, currency) => {
+  if (value === null || value === undefined || value === '') return 'Not recorded';
   const amount = Number(value || 0);
   try { return new Intl.NumberFormat('en-AE', { style: 'currency', currency: currency || 'AED', minimumFractionDigits: 2 }).format(amount); }
   catch { return `${currency || 'AED'} ${amount.toFixed(2)}`; }
 };
-const amountWithCurrency = (value, currency) => `${Number(value || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || 'AED'}`;
-const itemTotal = (item) => Math.max(0, Number(item.quantity || 0) * Number(item.unit_price || 0) - Number(item.discount || 0));
+const amountWithCurrency = (value, currency) => value == null ? 'Not recorded' : `${Number(value).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || 'AED'}`;
+const itemTotal = item => purchaseOrderLineNet(item) ?? 0;
 const sanitizeRichHtml = (value) => {
   if (typeof window === 'undefined') return String(value || '').replace(/<[^>]+>/g, ' ');
   const documentValue = new DOMParser().parseFromString(String(value || ''), 'text/html');
@@ -332,17 +334,18 @@ SectionTitle.propTypes = { children: PropTypes.node.isRequired };
 
 const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly = false }) => {
   const recordedItems = Array.isArray(formData.items) ? formData.items : [];
-  const fallbackSubtotal = Math.max(0, Number(formData.total_amount || 0) - Number(formData.tax_amount || 0) + Number(formData.discount_amount || 0));
+  const pricing = purchaseOrderVat(formData);
+  const fallbackSubtotal = pricing.subtotal ?? 0;
   const sourceItems = recordedItems.length ? recordedItems : fallbackSubtotal > 0 ? [{ description: formData.title || formData.description, quantity: 1, unit_price: fallbackSubtotal, uom: 'LOT' }] : [];
   const items = sourceItems.map((item, index) => {
     const quantity = Number(item.quantity ?? item.qty ?? 1) || 0;
     const recordedTotal = Number(item.total ?? item.line_total ?? 0) || 0;
-    return { ...item, line_code: item.line_code || item.lineCode || item.item_code || item.code || String(index + 1), description: item.description || item.item || item.name || formData.title, specification: item.specification, comments: item.comment || item.comments || item.remarks || item.notes, quantity, uom: item.uom || item.unit || item.unit_of_measure || 'EA', unit_price: Number(item.unit_price ?? item.price ?? (quantity ? recordedTotal / quantity : 0)) || 0, discount: Number(item.discount || 0) || 0 };
+    return { ...item, line_code: item.line_code || item.lineCode || item.item_code || item.code || String(index + 1), description: item.description || item.item || item.name || formData.title, specification: item.specification, comments: item.comment || item.comments || item.remarks || item.notes, quantity, uom: item.uom || item.unit || item.unit_of_measure || 'EA', unit_price: Number(item.unit_price ?? item.price ?? (quantity ? (recordedTotal + Number(item.discount || 0)) / quantity : 0)) || 0, discount: Number(item.discount || 0) || 0 };
   });
-  const subtotal = items.reduce((sum, item) => sum + itemTotal(item), 0);
+  const subtotal = pricing.netAmount;
   const lineDiscount = items.reduce((sum, item) => sum + Number(item.discount || 0), 0);
-  const tax = Number(formData.tax_amount || (subtotal * Number(formData.vat_percentage || 0)) / 100);
-  const total = Number(formData.total_amount || subtotal + tax);
+  const tax = pricing.taxAmount;
+  const total = pricing.totalAmount;
   const approvals = Array.isArray(formData.approval_log) ? formData.approval_log : [];
   const finalApproval = approvals.find((approval) => approval.stage === FINAL_MANAGEMENT_STAGE);
   const finalApprovalDisplay = finalApproval || { stage: FINAL_MANAGEMENT_STAGE, approver: formData.approved_by_name || FINAL_APPROVER, status: 'Pending' };
@@ -400,7 +403,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
           <div><b>Purchase Summary:</b><p className="mt-1 font-bold">{text(formData.summary || formData.title)}</p></div>
           <div className="space-y-1">
             <div className="grid grid-cols-[1fr_auto] gap-3"><b>Total Purchase Price:</b><span>{amountWithCurrency(subtotal, formData.currency)}</span></div>
-            <div className="grid grid-cols-[1fr_auto] gap-3"><b>VAT ({Number(formData.vat_percentage || 0)}%):</b><span>{amountWithCurrency(tax, formData.currency)}</span></div>
+            <div className="grid grid-cols-[1fr_auto] gap-3"><b>VAT{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}:</b><span>{amountWithCurrency(tax, formData.currency)}</span></div>
             <div className="grid grid-cols-[1fr_auto] gap-3 font-bold"><b>Total Sum:</b><span>{amountWithCurrency(total, formData.currency)}</span></div>
           </div>
         </div>
@@ -437,7 +440,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
         return <Page key={`summary-${pageIndex}`} data={formData} page={2 + middlePageCount + pageIndex} finalApproval={finalApproval}>
           <SectionTitle>Summary of Prices {summaryChunks.length > 1 ? `(${pageIndex + 1}/${summaryChunks.length})` : ''}</SectionTitle>
           {itemColumns.length > 0 && <table className="mt-4 w-full border-collapse"><thead><tr className="border-y-2 border-slate-600">{itemColumns.map((column) => <th key={column.key} className={`p-1 ${column.numeric ? 'text-right' : 'text-left'}`}>{headers[column.key]}</th>)}</tr></thead><tbody>{pageItems.length ? pageItems.map((item, index) => <tr key={`summary-${offset + index}`} className="align-top">{itemColumns.map((column) => <td key={column.key} className={`px-2 py-3 ${column.numeric ? 'text-right' : 'text-left'} ${column.key === 'description' || column.key === 'total_price' ? 'font-bold' : ''}`}>{column.render(item, offset + index)}</td>)}</tr>) : <tr><td colSpan={itemColumns.length} className="py-16 text-center italic text-slate-400">Price summary will appear when items are added.</td></tr>}</tbody></table>}
-          {last && <div className="mt-8 ml-auto w-[230px] border-2 border-slate-600 p-2 text-[10px]"><div className="flex justify-between"><b>Total Price:</b><b>{money(subtotal, formData.currency)}</b></div>{lineDiscount > 0 && <div className="flex justify-between"><b>Discount:</b><span>{money(lineDiscount, formData.currency)}</span></div>}<div className="flex justify-between"><b>VAT ({Number(formData.vat_percentage || 0)}%):</b><b>{money(tax, formData.currency)}</b></div><div className="flex justify-between"><b>Total Sum:</b><b>{money(total, formData.currency)}</b></div></div>}
+          {last && <div className="mt-8 ml-auto w-[230px] border-2 border-slate-600 p-2 text-[10px]"><div className="flex justify-between"><b>Total Price:</b><b>{money(subtotal, formData.currency)}</b></div>{lineDiscount > 0 && <div className="flex justify-between"><b>Discount:</b><span>{money(lineDiscount, formData.currency)}</span></div>}<div className="flex justify-between"><b>VAT{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}:</b><b>{money(tax, formData.currency)}</b></div><div className="flex justify-between"><b>Total Sum:</b><b>{money(total, formData.currency)}</b></div></div>}
         </Page>;
       })}
 
