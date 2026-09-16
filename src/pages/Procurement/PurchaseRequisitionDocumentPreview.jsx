@@ -5,6 +5,7 @@ import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentB
 import { convertToAed } from '../../config/procurement.config';
 import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
 import { recommendationVat } from './recommendationVat';
+import { approvalSignatureEvidence } from '../../utils/procurementApproval';
 
 const valueOrDash = (value) => (value === null || value === undefined || value === '' ? '—' : value);
 
@@ -92,10 +93,11 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
           approval_label: stage.approval_label || savedApprovalLabels[stage.user_id || stage.approver_id],
         }, index),
         nameOnly(stage.user_name || stage.approver_name || stage.approver),
-        stage.signature,
+        approvalSignatureEvidence(stage).signature,
         stage.status,
         stage.approved_at || stage.decided_at,
         stage.evidence_requested_at,
+        approvalSignatureEvidence(stage),
       ]);
     })
     : persistedApprovalRows;
@@ -216,7 +218,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
             <div className="border-r border-gray-700 px-2 py-1">Status</div>
             <div className="px-2 py-1">Approval Timestamp</div>
           </div>
-          {approvalRows.map(([role, name, signature, status, approvedAt, evidenceRequestedAt], index) => {
+          {approvalRows.map(([role, name, signature, status, approvedAt, evidenceRequestedAt, evidence], index) => {
             const approved = String(status || '').toLowerCase() === 'approved';
             const notRecorded = String(requisition.status || '').toLowerCase() === 'converted'
               && !evidenceRequestedAt
@@ -224,9 +226,13 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
             return (
               <div key={`${role}-${index}`} className="grid min-h-[38px] grid-cols-[0.5fr_1.35fr_1fr_0.85fr_1.3fr] border-b border-gray-700 last:border-b-0">
                 <div className="px-2 py-2 font-semibold">{role}</div>
-                <div className="border-x border-gray-700 px-2 py-2">{valueOrDash(name)}</div>
+                <div className="border-x border-gray-700 px-2 py-2">{valueOrDash(name)}{evidence?.mismatch && evidence.recordedName && <p className="mt-1 text-[10px] text-amber-800">Recorded signer: {nameOnly(evidence.recordedName)}</p>}</div>
                 <div className="flex items-center justify-center border-r border-gray-700 px-2 py-2">
-                  {signature && /^(data:image\/|https?:\/\/|\/)/i.test(signature)
+                  {evidence?.mismatch
+                    ? <span className="text-[10px] font-semibold text-amber-800">Signature needs review</span>
+                    : approved && evidence && !evidence.verified
+                      ? <span className="text-[10px] text-amber-800">Signer not verified</span>
+                    : signature && /^(data:image\/|https?:\/\/|\/)/i.test(signature)
                     ? <img src={signature} alt={`${role} signature`} className="max-h-8 max-w-full object-contain" />
                     : signature || approved
                       ? <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckBadgeIcon className="h-4 w-4" /> Signed</span>

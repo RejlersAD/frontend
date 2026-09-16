@@ -17,13 +17,15 @@ import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
  * Create / edit / bulk-import flows intentionally deep-link back to
  * `/admin/users` so we keep one authoritative write surface.
  */
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, useId } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import * as HeroIcons from "@heroicons/react/24/outline";
 import { BsMicrosoftTeams } from "react-icons/bs";
 import rbacService from "../../services/rbac.service";
+import useOrganizationCatalog from "../../hooks/useOrganizationCatalog";
+import { organizationDepartmentOptions, organizationRoleLabels } from "../../utils/organizationCatalog";
 import analyticsService from "../../services/analyticsService";
 import payrollService from "../../services/payroll.service";
 import payrollEngineService from "../../services/payrollEngine.service";
@@ -1557,6 +1559,7 @@ const EditableField = ({
   options = null,
   error = null,
 }) => {
+  const suggestionId = useId();
   const {
     id,
     label,
@@ -1656,17 +1659,22 @@ const EditableField = ({
 
       {/* Text, Email, Tel, Number */}
       {["text", "email", "tel", "number"].includes(type) && (
-        <input
-          type={type}
-          value={value || ""}
-          onChange={(e) => onChange(id, e.target.value)}
-          placeholder={placeholder}
-          className={baseInputClasses}
-          min={min}
-          max={max}
-          step={step}
-          maxLength={maxLength}
-        />
+        <>
+          <input
+            type={type}
+            aria-label={label}
+            list={type === "text" && options?.length ? suggestionId : undefined}
+            value={value || ""}
+            onChange={(e) => onChange(id, e.target.value)}
+            placeholder={placeholder}
+            className={baseInputClasses}
+            min={min}
+            max={max}
+            step={step}
+            maxLength={maxLength}
+          />
+          {type === "text" && options?.length > 0 && <datalist id={suggestionId}>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</datalist>}
+        </>
       )}
 
       {/* Date */}
@@ -2878,6 +2886,7 @@ const DetailDrawer = ({
   const [roles, setRoles] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [managers, setManagers] = useState([]);
+  const { catalog: organizationCatalog } = useOrganizationCatalog({ enabled: isEditing });
 
   useEffect(() => {
     setTab(initialTab || HR_DEFAULT_DETAIL_TAB);
@@ -3371,6 +3380,8 @@ const DetailDrawer = ({
   const getFieldOptions = useCallback(
     (field) => {
       if (field.options) return field.options;
+      if (field.id === "department") return organizationDepartmentOptions(organizationCatalog);
+      if (field.id === "job_title") return organizationRoleLabels(organizationCatalog).map(label => ({ value: label, label }));
       if (field.optionsFrom === "roles") {
         if (!Array.isArray(roles)) return [];
         return roles.map((r) => ({
@@ -3395,7 +3406,7 @@ const DetailDrawer = ({
       }
       return [];
     },
-    [roles, organizations, managers, emp?.id],
+    [roles, organizations, managers, emp?.id, organizationCatalog],
   );
 
   // Get field value for display (read-only mode)

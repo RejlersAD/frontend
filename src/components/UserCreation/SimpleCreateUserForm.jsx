@@ -456,14 +456,14 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
 
               {/* Job Title - Dynamic Dropdown */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Job Title</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Organizational role / Job title</label>
                 <select
                   value={formData.job_title}
                   onChange={(e) => handleChange('job_title', e.target.value)}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
                   disabled={isLoading}
                 >
-                  <option value="">Select Job Title</option>
+                  <option value="">Select organizational role / job title</option>
                   {jobTitles.map((title) => (
                     <option key={title} value={title}>
                       {title}

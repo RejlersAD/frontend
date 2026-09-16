@@ -92,9 +92,9 @@ export const EDIT_USER_CONFIG = {
         },
         {
           name: 'job_title',
-          label: 'Job Title',
+          label: 'Organizational role / Job title',
           type: 'select',
-          placeholder: 'Select Job Title',
+          placeholder: 'Select organizational role / job title',
           required: false,
           gridCols: 'md:col-span-1',
           helpText: 'User\'s job title (from database)',

@@ -220,12 +220,16 @@ const PUBLIC_PATH_REDIRECTS = {
 const REGISTER_REDIRECT_TARGET = PUBLIC_PATH_REDIRECTS.register
 
 const ModuleAccessContext = React.createContext(null)
+function LoginRedirect() {
+  const location = useLocation()
+  return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}${location.hash}` }} />
+}
 function ModuleProtectedRoute({ children, moduleCode }) {
   const { isAuthenticated, modulesLoaded, userModules } = React.useContext(ModuleAccessContext)
     const routeLocation = useLocation()
     const requiredModule = resolveRouteModule(moduleCode, routeLocation.pathname, routeLocation.search)
     if (!isAuthenticated) {
-      return <Navigate to="/login" replace />
+      return <LoginRedirect />
     }
 
     // Check if modules are loaded
@@ -367,7 +371,7 @@ function App() {
   // SOFT-CODED: useCallback ensures stable component identity across renders —
   // prevents React from unmounting/remounting children on every App re-render
   const ProtectedRoute = useCallback(({ children }) => {
-    return isAuthenticated ? children : <Navigate to="/login" replace />
+    return isAuthenticated ? children : <LoginRedirect />
   }, [isAuthenticated])
 
   // Public Route wrapper (redirect if authenticated)

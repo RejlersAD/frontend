@@ -12,6 +12,9 @@ import 'react-toastify/dist/ReactToastify.css'
 // PWA Service Worker Registration
 import { registerSW } from 'virtual:pwa-register'
 import './services/pwaInstall.service'
+import { installPushSessionListeners } from './services/pushDeviceSession'
+
+installPushSessionListeners()
 
 // Keep the PWA installable in production and on localhost. Local registration
 // can be disabled with VITE_PWA_DEV_ENABLED=false when debugging cache issues.

@@ -30,6 +30,7 @@ import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
+import { canDecideProcurement, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -274,6 +275,7 @@ const PurchaseOrderDetail = () => {
   };
 
   const handleApprovalDecision = async (decision) => {
+    if (!canDecideProcurement(order, accessProfile, 'po')) return;
     if (decision === 'reject' && approvalComment.trim().length < 3) {
       toast.error('Please enter a rejection reason.');
       return;
@@ -408,8 +410,9 @@ const PurchaseOrderDetail = () => {
   const invoicingEmails = Array.isArray(order.invoicing_emails)
     ? order.invoicing_emails.join(', ')
     : order.invoicing_emails;
-  const approvalSignatureSource = /^(data:image\/|https?:\/\/|\/)/i.test(order.approval_signature || '')
-    ? order.approval_signature
+  const signatureEvidence = purchaseOrderSignatureEvidence(order);
+  const approvalSignatureSource = /^(data:image\/|https?:\/\/|\/)/i.test(signatureEvidence.signature)
+    ? signatureEvidence.signature
     : null;
   const printableAttachments = (Array.isArray(order.attachments) ? order.attachments : [])
     .map((attachment) => {
@@ -688,8 +691,10 @@ const PurchaseOrderDetail = () => {
           </div>
           <div className="min-h-[74px] border-t border-gray-500 pt-2">
             <p className="font-bold">Approved By</p>
-            <p>{textOrDash(order.approved_by_name || order.approved_by_user_name)}</p>
+            <p>{textOrDash(signatureEvidence.recordedName || order.approved_by_name || order.approved_by_user_name)}</p>
             <p>{textOrDash(order.approved_by_title)}</p>
+            {signatureEvidence.mismatch && <p className="font-semibold text-amber-800">Signature needs review. Assigned approver: {textOrDash(signatureEvidence.stage?.approver || signatureEvidence.stage?.user_name)}</p>}
+            {!signatureEvidence.mismatch && order.approval_signature && !signatureEvidence.verified && <p className="text-amber-800">Signer not verified</p>}
             <p>Timestamp: {formatTimestamp(order.approved_at || order.approval_log?.find((entry) => String(entry.status).toLowerCase() === 'approved')?.approved_at || order.approval_log?.find((entry) => String(entry.status).toLowerCase() === 'approved')?.date || order.approved_date)}</p>
             {approvalSignatureSource && (
               <img src={approvalSignatureSource} alt="Approval signature" className="mt-1 max-h-9 max-w-[150px] object-contain object-left" />
@@ -800,7 +805,7 @@ const PurchaseOrderDetail = () => {
             </div>
           </header>
 
-          {order.can_approve && (
+          {canDecideProcurement(order, accessProfile, 'po') && (
             <section className="mb-6 rounded-xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="flex-1">

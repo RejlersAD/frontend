@@ -3,6 +3,7 @@ import { BRANDING_CONFIG } from '../../config/branding.config';
 import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentBranding.config';
 import { nameOnly } from '../../utils/employeeDisplayName';
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
+import { approvalSignatureEvidence, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
 
 const text = (value, fallback = '—') => String(value ?? '').trim() || fallback;
 const date = (value) => {
@@ -68,7 +69,7 @@ const DEFAULT_ITEMS_TABLE_HEADERS = {
   comment: 'Comments', quantity: 'Qty.', uom: 'UOM', unit_price: 'Rate',
   discount: 'Discount', total_price: 'Total Price',
 };
-const isApprovalComplete = (approval) => String(approval?.status || '').trim().toLowerCase() === 'approved';
+const isApprovalComplete = (approval) => approvalSignatureEvidence(approval).verified;
 const FIRST_NARRATIVE_PAGE_CAPACITY = 4200;
 const CONTINUATION_NARRATIVE_PAGE_CAPACITY = 4600;
 const MANUAL_PAGE_BREAK_TOKEN = '__RADAI_PO_MANUAL_PAGE_BREAK__';
@@ -346,13 +347,13 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
   const lineDiscount = items.reduce((sum, item) => sum + Number(item.discount || 0), 0);
   const tax = pricing.taxAmount;
   const total = pricing.totalAmount;
-  const approvals = Array.isArray(formData.approval_log) ? formData.approval_log : [];
-  const finalApproval = approvals.find((approval) => approval.stage === FINAL_MANAGEMENT_STAGE);
+  const finalEvidence = purchaseOrderSignatureEvidence(formData);
+  const finalApproval = finalEvidence.stage ? { ...finalEvidence.stage, signature_review_required: finalEvidence.mismatch, status: finalEvidence.verified ? 'Approved' : 'Pending' } : null;
   const finalApprovalDisplay = finalApproval || { stage: FINAL_MANAGEMENT_STAGE, approver: formData.approved_by_name || FINAL_APPROVER, status: 'Pending' };
   const finalApproverName = nameOnly(finalApprovalDisplay.approver || formData.approved_by_name) || FINAL_APPROVER;
   const finalDesignation = String(finalApproverName).trim().toLowerCase() === FINAL_APPROVER.toLowerCase()
     ? FINAL_APPROVER_TITLE
-    : finalApprovalDisplay.designation || formData.approved_by_title || FINAL_APPROVER_TITLE;
+    : finalApprovalDisplay.designation || formData.approved_by_title || 'Assigned final approver';
   const project = formData.project_number || formData.rad_project_no || 'Multiple Projects';
   const buyerReferences = formData.contact_persons?.buyer_references?.filter((reference) => reference?.name)?.length
     ? formData.contact_persons.buyer_references.filter((reference) => reference?.name)
@@ -407,7 +408,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
             <div className="grid grid-cols-[1fr_auto] gap-3 font-bold"><b>Total Sum:</b><span>{amountWithCurrency(total, formData.currency)}</span></div>
           </div>
         </div>
-        <div className="mt-5 grid min-h-[181px] flex-1 grid-cols-2 gap-5"><section className="relative flex flex-col"><b className="text-[10px]">Approved by:</b><ApprovalStamp approval={finalApproval} placement="approved-by" />{formData.approval_signature && <img src={formData.approval_signature} alt="Approval signature" className="mt-2 max-h-12 max-w-[150px] object-contain object-left" />}<div className={`mt-auto pb-2 ${isApprovalComplete(finalApproval) ? '' : formData.approval_signature ? 'pt-3' : 'pt-16'}`}><FinalSignatory name={finalApproval?.approver || formData.approved_by_name} designation={finalDesignation} signedDate={finalApproval?.approved_at || finalApproval?.date || formData.approved_at || formData.approved_date} /></div></section><section className="border-l border-slate-500 pl-3"><b className="text-[10px]">Order Confirmation:</b><p>We acknowledge receipt of your documents and will perform according to this PO.</p><div className="mt-4 space-y-2"><div className="grid grid-cols-[82px_1fr] items-end gap-2"><b className="text-slate-600">Seller Signature:</b><span className="h-5 border-b border-slate-600" /></div><Pair label="Date" value={date(formData.confirmation_date)} /><Pair label="Seller Name" value={vendor?.name} /><Pair label="Seller Ref. no" value={formData.seller_reference} /><Pair label="Contact Person" value={formData.seller_contact_person} /><Pair label="Phone Number" value={formData.seller_phone} /><Pair label="Fax" value={formData.seller_fax} /><Pair label="Email" value={formData.seller_email} /></div></section></div>
+        <div className="mt-5 grid min-h-[181px] flex-1 grid-cols-2 gap-5"><section className="relative flex flex-col"><b className="text-[10px]">Approved by:</b><ApprovalStamp approval={finalApproval} placement="approved-by" />{finalEvidence.signature && <img src={finalEvidence.signature} alt="Approval signature" className="mt-2 max-h-12 max-w-[150px] object-contain object-left" />}<div className={`mt-auto pb-2 ${isApprovalComplete(finalApproval) ? '' : finalEvidence.signature ? 'pt-3' : 'pt-16'}`}>{finalEvidence.mismatch && <p className="mb-1 font-semibold text-amber-800">Signature needs review{finalEvidence.recordedName ? `. Recorded signer: ${nameOnly(finalEvidence.recordedName)}` : ''}</p>}{!finalEvidence.mismatch && formData.approval_signature && !finalEvidence.verified && <p className="mb-1 text-amber-800">Signer not verified</p>}<FinalSignatory name={finalApproverName} designation={finalDesignation} signedDate={finalEvidence.verified ? finalApproval?.approved_at || finalApproval?.date || formData.approved_at || formData.approved_date : ''} /></div></section><section className="border-l border-slate-500 pl-3"><b className="text-[10px]">Order Confirmation:</b><p>We acknowledge receipt of your documents and will perform according to this PO.</p><div className="mt-4 space-y-2"><div className="grid grid-cols-[82px_1fr] items-end gap-2"><b className="text-slate-600">Seller Signature:</b><span className="h-5 border-b border-slate-600" /></div><Pair label="Date" value={date(formData.confirmation_date)} /><Pair label="Seller Name" value={vendor?.name} /><Pair label="Seller Ref. no" value={formData.seller_reference} /><Pair label="Contact Person" value={formData.seller_contact_person} /><Pair label="Phone Number" value={formData.seller_phone} /><Pair label="Fax" value={formData.seller_fax} /><Pair label="Email" value={formData.seller_email} /></div></section></div>
         </div>
       </Page>
 

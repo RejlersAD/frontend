@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import * as Yup from 'yup'
 import { toast } from 'react-toastify'
@@ -16,6 +16,7 @@ import {
   parseLoginError,
 } from '../config/login.config'
 import { REDIRECT_AFTER_LOGIN_KEY } from '../config/solutions.config'
+import { safeLoginReturnPath } from '../utils/loginRedirect'
 
 const loginSchema = Yup.object().shape({
   email: Yup.string().email(VALIDATION_CONFIG.email.invalid).required(VALIDATION_CONFIG.email.required),
@@ -24,6 +25,7 @@ const loginSchema = Yup.object().shape({
 
 const Login = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const dispatch = useDispatch()
   const [isLoading, setIsLoading] = useState(false)
   const [loginGate, setLoginGate] = useState(null)
@@ -40,9 +42,9 @@ const Login = () => {
       dispatch(loginSuccess(userData))
       toast.success(SUCCESS_MESSAGES.login)
 
-      const intendedPath = sessionStorage.getItem(REDIRECT_AFTER_LOGIN_KEY)
+      const intendedPath = safeLoginReturnPath(location.state?.from) || safeLoginReturnPath(sessionStorage.getItem(REDIRECT_AFTER_LOGIN_KEY))
+      sessionStorage.removeItem(REDIRECT_AFTER_LOGIN_KEY)
       if (intendedPath) {
-        sessionStorage.removeItem(REDIRECT_AFTER_LOGIN_KEY)
         navigate(intendedPath)
       } else {
         navigate(NAVIGATION.afterLogin)

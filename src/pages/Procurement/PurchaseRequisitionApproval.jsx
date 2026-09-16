@@ -5,7 +5,7 @@ import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
  * 
  * Features:
  * - Dynamic Approval History mapping over all configured workflow stages
- * - Super Admin & assigned approver permission validation
+ * - Assigned approver validation for the active workflow level
  * - Soft-coded rejection validation
  * - Digital signature support
  */
@@ -23,6 +23,7 @@ import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
+import { activeApprovalStages, approvalSignatureEvidence, canDecideProcurement, isAssignedApprover } from '../../utils/procurementApproval';
 import {
   ArrowLeftIcon,
   ArrowDownTrayIcon,
@@ -331,27 +332,18 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const hasMissingApprovalEvidence = isConverted && approvalHierarchy.some(
     stage => approvalDisplayStatus(stage) === 'not_recorded'
   );
-  const workflowLevel = (entry, fallbackIndex = 0) => {
-    const explicitLevel = Number(entry?.level);
-    return Number.isFinite(explicitLevel) ? Math.max(0, explicitLevel) : fallbackIndex + 1;
-  };
-  const activeLevel = pendingStages.length
-    ? Math.min(...pendingStages.map((entry, index) => workflowLevel(entry, approvalHierarchy.indexOf(entry) >= 0 ? approvalHierarchy.indexOf(entry) : index)))
-    : null;
-  const activeLevelStages = pendingStages.filter((entry, index) => (
-    workflowLevel(entry, approvalHierarchy.indexOf(entry) >= 0 ? approvalHierarchy.indexOf(entry) : index) === activeLevel
-  ));
+  const activeLevelStages = activeApprovalStages(rawApprovalHierarchy);
 
   const currentUserData = currentUser?.user || currentUser || {};
   const currentUserId = currentUserData?.id || currentUser?.user_id || currentUser?.id;
-  const currentStage = activeLevelStages.find(entry => String(entry?.user_id || entry?.approver_id) === String(currentUserId))
+  const currentStage = activeLevelStages.find(entry => isAssignedApprover(entry, currentUser))
     || activeLevelStages[0]
     || null;
 
   const currentStageLabel = currentStage?.stage || currentStage?.role || 'the current approver';
   const currentStageRole = `${currentStage?.role || ''} ${currentStage?.stage || ''}`.toLowerCase();
   
-  const currentStageKey = currentStageRole.includes('procurement department')
+  const currentStageKey = currentStageRole.includes('procurement department') || (currentStage && Number(currentStage.level) === 0)
     ? 'procurement'
     : currentStageRole.includes('engineering manager') || currentStageRole.includes('manager of engineering') || currentStageRole.includes('moe') || currentStageRole.includes('engineering review')
     ? 'eng_manager'
@@ -363,7 +355,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
           ? 'pm'
           : currentStageRole.includes('general manager') || currentStageRole.includes('ceo')
             ? 'general_manager'
-            : null;
+            : 'dynamic';
 
   // Authorization Evaluation
   const issuedByValue = requisition.issued_by?.id || requisition.issued_by_id || requisition.issued_by;
@@ -377,37 +369,15 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     (role) => role?.code === 'super_admin' || role?.name === 'Super Administrator'
   );
 
-  const assignedCurrentUserId = currentStage?.user_id || currentStage?.approver_id;
-  const isAssignedCurrentApprover = Boolean(
-    currentUserId && assignedCurrentUserId && String(currentUserId) === String(assignedCurrentUserId)
-  );
-
-  // Employment position is authoritative here. RBAC roles grant module access,
-  // but they do not prove that the logged-in user holds the VP Operations post.
-  const currentUserJobTitle = (currentUser?.job_title || currentUserData?.job_title || '')
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ');
-  const holdsVpOperationsPosition = [
-    'vice president of operations',
-    'vice president operations',
-    'vp operations',
-    'vp of operations',
-  ].includes(currentUserJobTitle);
-
-  // VP Operations has no administrator bypass: both assignment and position
-  // are required. Other stages retain the existing Super Admin override.
-  const canActOnCurrentStage = Boolean(
-    currentStage && (
-      currentStageKey === 'vp'
-        ? isAssignedCurrentApprover && holdsVpOperationsPosition
-        : isSuperAdmin || isAssignedCurrentApprover
-    )
-  );
+  const canActOnCurrentStage = canDecideProcurement(requisition, currentUser);
 
   const APPROVER_CONFIG = {
+    dynamic: {
+      label: currentStageLabel,
+      approveEndpoint: 'process_dynamic_approval',
+      rejectEndpoint: 'process_dynamic_rejection',
+      canApprove: isApprovalInProgress && currentStageKey === 'dynamic' && canActOnCurrentStage
+    },
     procurement: {
       label: 'Procurement Department',
       approveEndpoint: 'process_dynamic_approval',
@@ -415,7 +385,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       canApprove: isApprovalInProgress && currentStageKey === 'procurement' && canActOnCurrentStage
     },
     pm: {
-      label: activeLevel === 1 ? 'Level 1 Approver' : 'Project Manager',
+      label: Number(currentStage?.level) === 1 ? 'Level 1 Approver' : 'Project Manager',
       approveEndpoint: 'pm_approve',
       rejectEndpoint: 'pm_reject',
       canApprove: isApprovalInProgress && currentStageKey === 'pm' && canActOnCurrentStage
@@ -546,7 +516,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   const handleRejectSubmit = async () => {
     const config = APPROVER_CONFIG[currentApproverType];
-    if (!config) return;
+    if (!config?.canApprove) return;
 
     const validation = validateRejectionReason(rejectionReason);
     if (!validation.valid) {
@@ -715,13 +685,14 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                 <div className="flex min-w-0 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50" role="list" aria-label="Approval workflow progress">
                   {displayedApprovalHistory.length > 0 ? displayedApprovalHistory.map((stage, index) => {
                     const stageStatus = approvalDisplayStatus(stage);
+                    const evidence = approvalSignatureEvidence(stage);
                     const stageTimestamp = stage.approved_at || stage.rejected_at || stage.evidence_requested_at;
                     return (
                       <div key={`${stage.role || stage.stage}-${index}`} className="flex min-w-[170px] flex-1 items-center gap-2.5 border-r border-slate-200 px-3 py-2 last:border-r-0" role="listitem" title={[stage.role || stage.stage, stage.user_name, approvalStatusLabel(stage), stageTimestamp && formatTimestamp(stageTimestamp)].filter(Boolean).join(' · ')}>
                           <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border ${getStatusColor(stage)}`}>
                             {stageStatus === 'approved' ? <CheckCircleIcon className="h-4 w-4" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
                           </span>
-                          <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-800">{stage.role || stage.stage || `Stage ${index + 1}`}</p><p className="truncate text-sm text-slate-700">{nameOnly(stage.user_name) || 'Name not recorded'}</p><p className="mt-0.5 truncate text-xs text-slate-500">{approvalStatusLabel(stage)}{stageTimestamp ? ` · ${formatTimestamp(stageTimestamp)}` : stageStatus === 'approved' ? ' · Date not recorded' : showingSourceHistory && stageStatus === 'not_recorded' ? ' · Signature not verified' : ''}</p></div>
+                          <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-800">{stage.role || stage.stage || `Stage ${index + 1}`}</p><p className="truncate text-sm text-slate-700">{nameOnly(stage.user_name) || 'Name not recorded'}</p>{evidence.mismatch && <p className="mt-0.5 text-xs font-semibold text-amber-800">Signature needs review{evidence.recordedName ? `. Recorded signer: ${nameOnly(evidence.recordedName)}` : ''}</p>}<p className="mt-0.5 truncate text-xs text-slate-500">{approvalStatusLabel(stage)}{stageTimestamp ? ` · ${formatTimestamp(stageTimestamp)}` : stageStatus === 'approved' ? ' · Date not recorded' : showingSourceHistory && stageStatus === 'not_recorded' ? ' · Signature not verified' : ''}</p></div>
                       </div>
                     );
                   }) : <p className="px-3 py-2 text-xs text-slate-500">{hasOriginalPr ? 'Uploaded approval evidence needs verification.' : 'Approval workflow has not been configured.'}</p>}

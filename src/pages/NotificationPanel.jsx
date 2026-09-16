@@ -30,6 +30,7 @@ import { formatDistanceToNow } from '../utils/dateFormatter'
 import { resolveNotificationTarget } from '../utils/notificationNavigation'
 import PurchaseOrderLivePreview from './Procurement/PurchaseOrderLivePreview'
 import PurchaseRequisitionDocumentPreview from './Procurement/PurchaseRequisitionDocumentPreview'
+import { canDecideProcurement } from '../utils/procurementApproval'
 
 const FILTERS = [
   { id: 'all', label: 'All notifications' },
@@ -138,7 +139,8 @@ const categoryName = (notification) => (
 const NotificationPanel = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { isAuthenticated } = useSelector((state) => state.auth)
+  const { isAuthenticated, user } = useSelector((state) => state.auth)
+  const notificationUserId = user?.user?.id ?? user?.id
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -156,6 +158,7 @@ const NotificationPanel = () => {
 
   const previewType = searchParams.get('preview')
   const previewId = searchParams.get('id')
+  const canDecidePreview = canDecideProcurement(recordPreview.data, user, previewType)
 
   const fetchNotifications = useCallback(async ({ quiet = false } = {}) => {
     if (refreshAbortRef.current) refreshAbortRef.current.abort()
@@ -216,7 +219,7 @@ const NotificationPanel = () => {
   }, [fetchNotifications, isAuthenticated])
 
   useEffect(() => {
-    if (!['po', 'pr'].includes(previewType) || !previewId) {
+    if (!isAuthenticated || !['po', 'pr'].includes(previewType) || !previewId) {
       setRecordPreview({ loading: false, data: null, error: '' })
       setPreviewDecision({ loading: false, mode: null, reason: '', message: '', error: '' })
       return undefined
@@ -225,11 +228,12 @@ const NotificationPanel = () => {
     let cancelled = false
     const fetchRecordPreview = async () => {
       setRecordPreview({ loading: true, data: null, error: '' })
+      setPreviewDecision({ loading: false, mode: null, reason: '', message: '', error: '' })
       try {
         const endpoint = previewType === 'po'
           ? `/procurement/orders/${previewId}/`
           : `/procurement/requisitions/${previewId}/`
-        const response = await apiClient.get(endpoint)
+        const response = await apiClient.get(endpoint, { params: { _fresh: Date.now() } })
         if (!cancelled) setRecordPreview({ loading: false, data: response.data, error: '' })
       } catch (requestError) {
         console.error('[NotificationPanel] Failed to load record preview:', requestError)
@@ -245,7 +249,7 @@ const NotificationPanel = () => {
 
     fetchRecordPreview()
     return () => { cancelled = true }
-  }, [previewId, previewType])
+  }, [previewId, previewType, isAuthenticated, notificationUserId])
 
   const closeRecordPreview = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams)
@@ -255,7 +259,7 @@ const NotificationPanel = () => {
   }, [searchParams, setSearchParams])
 
   const handlePreviewDecision = async (decision) => {
-    if (!recordPreview.data || !['approve', 'reject'].includes(decision)) return
+    if (!canDecidePreview || previewDecision.loading || !recordPreview.data || !['approve', 'reject'].includes(decision)) return
 
     const reason = previewDecision.reason.trim()
     if (decision === 'reject' && reason.length < 10) {
@@ -774,7 +778,7 @@ const NotificationPanel = () => {
 
             {recordPreview.data && !recordPreview.loading && !recordPreview.error && (
               <footer className="border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-                {previewDecision.mode === 'reject' && !previewDecision.message && (
+                {canDecidePreview && previewDecision.mode === 'reject' && !previewDecision.message && (
                   <div className="mb-3">
                     <label htmlFor="notification-preview-rejection" className="mb-1.5 block text-xs font-semibold text-slate-700">Rejection reason</label>
                     <textarea
@@ -802,7 +806,7 @@ const NotificationPanel = () => {
                   </div>
                 )}
 
-                {!previewDecision.message && (
+                {canDecidePreview && !previewDecision.message && (
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     {previewDecision.mode === 'reject' && (
                       <button type="button" onClick={() => setPreviewDecision((current) => ({ ...current, mode: null, reason: '', error: '' }))} disabled={previewDecision.loading} className="h-9 rounded-md border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">Cancel</button>

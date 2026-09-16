@@ -47,6 +47,8 @@ import { CORPORATE_CAREER_LEVELS, CORPORATE_FUNCTIONS, CORPORATE_SKILLS, default
 import "../components/Profile/CareerExpertiseWorkspace.css";
 import CareerSelectionList from "../components/Profile/CareerSelectionList";
 import ReportingManagerSelect from "../components/Profile/ReportingManagerSelect";
+import useOrganizationCatalog from "../hooks/useOrganizationCatalog";
+import { organizationDepartmentOptions, organizationRoleLabels } from "../utils/organizationCatalog";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Soft-coded engineering constants
@@ -65,32 +67,6 @@ const ENGINEERING_DISCIPLINES = [
   "Materials & Corrosion",
   "Environmental",
   "Procurement",
-];
-
-// Soft-coded: Department choices for Oil & Gas engineering organization
-const DEPARTMENTS = [
-  { value: "process", label: "Process Engineering" },
-  { value: "piping", label: "Piping Engineering" },
-  { value: "instrument", label: "Instrument & Control" },
-  { value: "electrical", label: "Electrical Engineering" },
-  { value: "mechanical", label: "Mechanical Engineering" },
-  { value: "civil", label: "Civil & Structural Engineering" },
-  { value: "safety", label: "Safety & HSE" },
-  { value: "project_controls", label: "Project Controls" },
-  { value: "commissioning", label: "Commissioning" },
-  { value: "materials", label: "Materials & Corrosion" },
-  { value: "environmental", label: "Environmental Engineering" },
-  { value: "procurement", label: "Procurement" },
-  { value: "operations", label: "Operations" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "quality", label: "Quality Assurance" },
-  { value: "finance", label: "Finance" },
-  { value: "sales", label: "Sales" },
-  { value: "hr", label: "Human Resources" },
-  { value: "it", label: "Information Technology" },
-  { value: "admin", label: "Administration" },
-  { value: "management", label: "Management" },
-  { value: "radai", label: "RadAI" },
 ];
 
 const EXPERTISE_LEVELS = [
@@ -363,6 +339,7 @@ const DEFAULT_EP = {
 const Profile = ({ embedded = false }) => {
   const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
+  const { catalog: organizationCatalog, error: catalogError, reload: reloadCatalog } = useOrganizationCatalog();
 
   const [activeTab, setActiveTab] = useState("personal");
   const [isLoading, setIsLoading] = useState(false);
@@ -403,6 +380,8 @@ const Profile = ({ embedded = false }) => {
     job_title: "",
     manager_id: "",
   });
+  const departmentOptions = organizationDepartmentOptions(organizationCatalog, formData.department);
+  const organizationalRoleTitles = organizationRoleLabels(organizationCatalog);
 
   // Managers list for the Reporting Manager dropdown
   const [managers, setManagers] = useState([]);
@@ -996,7 +975,7 @@ const Profile = ({ embedded = false }) => {
                     )}
                     {formData.department && (
                       <span className="text-gray-500">
-                        {DEPARTMENTS.find(
+                        {departmentOptions.find(
                           (d) => d.value === formData.department,
                         )?.label || formData.department}
                       </span>
@@ -1169,7 +1148,7 @@ const Profile = ({ embedded = false }) => {
                         className={`${inputCls} pl-10 appearance-none cursor-pointer`}
                       >
                         <option value="">Select department...</option>
-                        {DEPARTMENTS.map((dept) => (
+                        {departmentOptions.map((dept) => (
                           <option key={dept.value} value={dept.value}>
                             {dept.label}
                           </option>
@@ -1191,14 +1170,15 @@ const Profile = ({ embedded = false }) => {
                         </svg>
                       </div>
                     </div>
-
+                    {catalogError && <p className="mt-2 text-xs text-amber-700">Department suggestions unavailable. <button type="button" onClick={reloadCatalog} className="underline">Retry</button></p>}
                   </div>
                 </div></fieldset>
                 <fieldset className="career-form-panel career-form-group"><legend><h2>Employment details</h2></legend><div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div className="career-input-field">
-                    <label htmlFor="career-field-job-title" className="sr-only">Job Title</label>
+                    <label htmlFor="career-field-job-title" className="sr-only">Organizational role / Job title</label>
                     <input id="career-field-job-title"
                       type="text"
+                      list="career-organizational-roles"
                       value={formData.job_title}
                       onChange={(e) =>
                         setFormData((p) => ({
@@ -1207,8 +1187,9 @@ const Profile = ({ embedded = false }) => {
                         }))
                       }
                       className={inputCls}
-                      placeholder="Job title"
+                      placeholder="Organizational role / Job title"
                     />
+                    <datalist id="career-organizational-roles">{organizationalRoleTitles.map(title => <option key={title} value={title} />)}</datalist>
                   </div>
                   <div>
                     <ReportingManagerSelect

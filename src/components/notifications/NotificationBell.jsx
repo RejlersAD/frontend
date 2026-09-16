@@ -26,7 +26,8 @@ const POLL_CONFIG = {
 }
 
 const NotificationBell = () => {
-  const { isAuthenticated } = useSelector((state) => state.auth)
+  const { isAuthenticated, user } = useSelector((state) => state.auth)
+  const pushUserId = user?.user?.id ?? user?.id
   const [unreadCount, setUnreadCount] = useState(0)
   const [showDropdown, setShowDropdown] = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -54,7 +55,7 @@ const NotificationBell = () => {
       .then((status) => active && setPushState((previous) => ({ ...previous, ...status, error: '' })))
       .catch((error) => active && setPushState((previous) => ({ ...previous, error: error.message })))
     return () => { active = false }
-  }, [isAuthenticated])
+  }, [isAuthenticated, pushUserId])
 
   // Fetch unread count on mount and every 2 minutes (optimized from 60s) - only if authenticated
   useEffect(() => {
