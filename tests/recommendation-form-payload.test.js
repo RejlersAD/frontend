@@ -20,7 +20,7 @@ test('omits a blank row and keeps VAT, supplier and budget aligned to the retain
   const result = prepareRecommendationPayload({
     items: [blankLine(), pricedLine('Engineering services')],
     price_remarks_data: { line_details: [
-      { vat_rate: '15', vendor_id: 'unused', budget: '1000' },
+      { vat_rate: '', vendor_id: '', budget: null },
       { vat_rate: '5', vendor_id: 'selected', budget: '250' },
     ] },
   });
@@ -32,7 +32,7 @@ test('omits a blank row and keeps VAT, supplier and budget aligned to the retain
 test('compacts blank rows between and after complete rows, including old item aliases', () => {
   const result = prepareRecommendationPayload({
     items: [pricedLine('First'), { item: ' ', qty: 1, price: 0 }, pricedLine('Second'), {}],
-    price_remarks_data: { line_details: [{ note: 'first' }, { note: 'unused' }, { note: 'second' }, { note: 'unused' }] },
+    price_remarks_data: { line_details: [{ note: 'first' }, {}, { note: 'second' }, {}] },
   });
   assert.deepEqual(result.items.map((item) => item.description), ['First', 'Second']);
   assert.deepEqual(result.price_remarks_data.line_details, [{ note: 'first' }, { note: 'second' }]);
@@ -49,16 +49,50 @@ test('unconfirmed VAT preserves legacy zero tax while supplier and budget cleari
   assert.equal('budget' in result.items[0], false);
 });
 
-test('does not drop a meaningful invalid row that needs backend validation', () => {
-  const invalidItems = [
+test('does not drop partial rows or malformed rows that need backend validation', () => {
+  const retainedItems = [
     { description: '', quantity: '2', unit_price: '' },
     { description: '', quantity: '1', unit_price: '5' },
     { description: '', quantity: '1.0', unit_price: '0' },
     { description: '', quantity: '1', unit_price: '0.00' },
     { description: 'A required service', quantity: '', unit_price: '' },
+    { description: '', quantity: '1', unit_price: '', total: '2052.00' },
+    { description: '', quantity: '', unit_price: '', total: 'invalid' },
     null, 'invalid item', [],
   ];
-  assert.deepEqual(prepareRecommendationPayload({ items: invalidItems }).items, invalidItems);
+  assert.deepEqual(prepareRecommendationPayload({ items: retainedItems }).items, retainedItems);
+});
+
+test('partial pricing preserves blank fields and recorded line and request amounts', () => {
+  const record = { items: [{ description: '', quantity: '', unit_price: '100.00', total: '2052.00' }],
+    total_price: '2154.60', net_total_excl_vat: '2052.00', vat_basis: 'exclusive', _vatPricingChanged: false };
+  const payload = prepareRecommendationPayload(record);
+  assert.deepEqual(payload.items, record.items);
+  assert.equal(payload.total_price, record.total_price);
+  assert.equal(payload.net_total_excl_vat, record.net_total_excl_vat);
+  assert.equal('vat_basis' in payload, false);
+});
+
+test('meaningful unit, code, discount and line metadata preserve rows and metadata alignment', () => {
+  const retained = [
+    { ...blankLine(), code: 'SERVICE-001' },
+    { ...blankLine(), sku: 'SERVICE-002' },
+    { ...blankLine(), unit: 'LS' },
+    { ...blankLine(), discount: '5.00' },
+    { ...blankLine(), line_discount: 'invalid' },
+    { ...blankLine(), discount_amount: '-1' },
+    { ...blankLine(), budget: 0, vendor_id: '21', vat_rate: '0' },
+    { ...blankLine() },
+  ];
+  const payload = prepareRecommendationPayload({ items: [blankLine(), ...retained], price_remarks_data: {
+    line_details: [{}, ...retained.map((_, index) => index === retained.length - 1 ? { budget: '25', note: 'Awaiting quote' } : {})],
+  } });
+  assert.equal(payload.items.length, retained.length);
+  assert.equal(payload.items[0].code, 'SERVICE-001');
+  assert.deepEqual(payload.price_remarks_data.line_details[6], { budget: 0, vendor_id: '21', vat_rate: '0' });
+  assert.deepEqual(payload.price_remarks_data.line_details[7], { budget: '25', note: 'Awaiting quote' });
+  assert.equal(payload.items[7].quantity, '1');
+  assert.equal(payload.items[7].unit_price, '');
 });
 
 test('recognizes the backend blank-row cases without treating zero quantity as blank', () => {
@@ -100,7 +134,7 @@ test('does not infer confirmation from legacy line VAT metadata', () => {
 test('keeps amounts if all editing rows are blank and omits orphaned line metadata', () => {
   const result = prepareRecommendationPayload({
     items: [blankLine()], total_price: '900.00', net_total_excl_vat: '900.00', estimated_budget: '1500',
-    price_remarks_data: { line_details: [{ vendor_id: 'unused' }, { stale: true }] },
+    price_remarks_data: { line_details: [{ vendor_id: '' }, { stale: true }] },
   });
   assert.deepEqual(result.items, []);
   assert.deepEqual(result.price_remarks_data.line_details, []);
@@ -137,7 +171,7 @@ test('does not mutate editing state, metadata or workflow supplied by the caller
     items: Object.freeze([Object.freeze(blankLine()), Object.freeze(pricedLine('Retained', { vat_rate: '5' }))]),
     price_remarks_data: Object.freeze({
       selection_type: 'single_source',
-      line_details: Object.freeze([Object.freeze({ budget: '20' }), Object.freeze({ budget: '300' })]),
+      line_details: Object.freeze([Object.freeze({ budget: '' }), Object.freeze({ budget: '300' })]),
     }),
   });
   const before = JSON.stringify(source);

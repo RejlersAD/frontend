@@ -7,9 +7,14 @@ export const recommendationLineDiscount = item => {
   return value === '' ? 0 : value;
 };
 
+export const hasCompleteRecommendationPricing = item => Boolean(item
+  && present(item.quantity) && present(item.unit_price)
+  && Number(item.quantity) >= 0 && Number(item.unit_price) >= 0
+  && procurementLineNet(item.quantity, item.unit_price, recommendationLineDiscount(item)) !== null);
+
 export function recommendationEnteredAmount(record = {}) {
   if (present(record._vatEnteredAmount)) return record._vatEnteredAmount;
-  if (Array.isArray(record.items) && record.items.length) {
+  if (Array.isArray(record.items) && record.items.length && record.items.every(hasCompleteRecommendationPricing)) {
     return sumProcurementMoney(record.items.map(item => procurementLineNet(item.quantity, item.unit_price, recommendationLineDiscount(item))));
   }
   const amount = record.vat_basis === 'inclusive' ? record.total_price

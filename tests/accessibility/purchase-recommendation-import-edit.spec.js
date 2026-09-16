@@ -34,6 +34,105 @@ const open = async (page, record, prepare) => {
 };
 const assertIsolated = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]); };
 
+test('partial line details save and submit without changing recorded amounts', async ({ page }) => {
+  const item = { description: '', quantity: '', unit_price: '', total: '2052.00' };
+  const state = await open(page, { total_price: '2052.00', net_total_excl_vat: '2052.00', items: [item] });
+  await step(page, 'Supplier & pricing');
+  await expect(page.getByRole('textbox', { name: 'Line item 1 description', exact: true })).toHaveValue('');
+  await expect(page.getByRole('spinbutton', { name: 'Line item 1 quantity', exact: true })).toHaveValue('');
+  await expect(page.getByRole('spinbutton', { name: 'Line item 1 unit price', exact: true })).toHaveValue('');
+  await expect(page.locator('.prf-sp-line-total')).toHaveText('2,052.00');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click();
+  await expect.poll(() => saves(state).length).toBe(1);
+  expect(state.record.items[0]).toEqual(item);
+  expect(Number(state.record.total_price)).toBe(2052);
+  await page.getByRole('button', { name: 'Review & submit', exact: true }).click();
+  await expect(page.getByText(/Project workflow:|Internal workflow:|Select any active RADAI employee as a Level 1 approver/)).toHaveCount(0);
+  await expect(page.locator('.prf-required')).toHaveText('Ready for review');
+  await page.getByRole('button', { name: 'Submit for approval', exact: true }).click();
+  await expect.poll(() => state.submissions.length).toBe(1);
+  expect(state.record.items[0]).toEqual(item);
+  expect(Number(state.record.total_price)).toBe(2052);
+  assertIsolated(state);
+});
+
+test('clearing quantity preserves amounts until explicitly saved and zero quantity can be submitted', async ({ page }) => {
+  const state = await open(page, { vat_basis: 'none', total_price: '1050.00', net_total_excl_vat: '1050.00', items: [
+    { description: 'Optional quantity', quantity: '1', unit_price: '1000.00', total: '1000.00' },
+    { description: 'Retained service', quantity: '1', unit_price: '50.00', total: '50.00' },
+  ] });
+  await step(page, 'Supplier & pricing');
+  const quantity = page.getByRole('spinbutton', { name: 'Line item 1 quantity', exact: true });
+  await quantity.fill('');
+  await page.clock.runFor(1500);
+  expect(saves(state)).toEqual([]);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click();
+  await expect.poll(() => saves(state).length).toBe(1);
+  expect(saves(state)[0].body.vat_basis).toBe('none');
+  expect(saves(state)[0].body.entered_amount).toBe(1050);
+  expect(state.record.items[0]).toMatchObject({ quantity: '', total: '1000.00' });
+  expect(Number(state.record.total_price)).toBe(1050);
+  await expect(page.locator('.prf-sp-grand-total')).toContainText('1,050.00');
+  await quantity.fill('0');
+  await page.getByRole('textbox', { name: 'Line item 1 description', exact: true }).fill('');
+  await page.getByRole('combobox', { name: 'VAT price basis' }).selectOption('none');
+  await expect(quantity).toHaveAttribute('min', '0');
+  await expect(page.locator('.prf-sp-grand-total')).toContainText('50.00');
+  await page.getByRole('button', { name: 'Review & submit', exact: true }).click();
+  await expect(page.locator('.prf-required')).toHaveText('Ready for review');
+  await page.getByRole('button', { name: 'Submit for approval', exact: true }).click();
+  await expect.poll(() => state.submissions.length).toBe(1);
+  expect(state.record.items[0]).toMatchObject({ description: '', quantity: '0', total: '0.00' });
+  expect(Number(state.record.total_price)).toBe(50);
+  assertIsolated(state);
+});
+
+test('editing an incomplete price explicitly saves confirmed VAT and preserves the discounted header', async ({ page }) => {
+  const state = await open(page, {
+    vat_basis: 'exclusive', total_price: '105.00', net_total_excl_vat: '100.00',
+    price_remarks_data: { discount_amount: '10.00' },
+    items: [{ description: 'Quantity pending', quantity: '', unit_price: '25.00', total: '' }],
+  });
+  await step(page, 'Supplier & pricing');
+  await page.getByRole('spinbutton', { name: 'Line item 1 unit price', exact: true }).fill('30');
+  await expect(page.locator('.prf-sp-grand-total')).toContainText('105.00');
+  await page.clock.runFor(35000);
+  expect(saves(state)).toEqual([]);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click();
+  await expect.poll(() => saves(state).length).toBe(1);
+  expect(saves(state)[0].body).toMatchObject({
+    vat_basis: 'exclusive', entered_amount: 110, total_price: 105, net_total_excl_vat: 100,
+  });
+  expect(state.record.items[0]).toMatchObject({ quantity: '', unit_price: '30', total: '' });
+  expect(Number(state.record.total_price)).toBe(105);
+  expect(Number(state.record.net_total_excl_vat)).toBe(100);
+  await expect(page.locator('.prf-save-state')).toHaveText('Draft saved');
+  assertIsolated(state);
+});
+
+test('clearing the final optional line keeps recorded header money instead of totaling an empty list', async ({ page }) => {
+  const state = await open(page, {
+    vat_basis: 'exclusive', total_price: '105.00', net_total_excl_vat: '100.00',
+    price_remarks_data: { discount_amount: '10.00' },
+    items: [{ description: '', quantity: '2', unit_price: '', total: '' }],
+  });
+  await step(page, 'Supplier & pricing');
+  await page.getByRole('spinbutton', { name: 'Line item 1 quantity', exact: true }).fill('');
+  await expect(page.locator('.prf-sp-grand-total')).toContainText('105.00');
+  await page.clock.runFor(35000);
+  expect(saves(state)).toEqual([]);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).first().click();
+  await expect.poll(() => saves(state).length).toBe(1);
+  expect(saves(state)[0].body).toMatchObject({
+    vat_basis: 'exclusive', entered_amount: 110, total_price: 105, net_total_excl_vat: 100, items: [],
+  });
+  expect(state.record.items).toEqual([]);
+  expect(Number(state.record.total_price)).toBe(105);
+  expect(Number(state.record.net_total_excl_vat)).toBe(100);
+  await expect(page.locator('.prf-save-state')).toHaveText('Draft saved');
+  assertIsolated(state);
+});
+
 for (const status of ['draft', 'approved']) {
   test(`a signed ${status} import keeps recorded fields and approvals without mount autosave`, async ({ page }) => {
     const record = imported(status);

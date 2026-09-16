@@ -215,3 +215,139 @@ test('OrderManagement wrapper loads the new register and retains imports export 
   await expect(page.getByRole('heading', { name: 'Purchase Recommendations', exact: true })).toBeVisible()
   noWrites(state)
 })
+
+test('orders are usable while uploaded PDFs are slow, and a PDF failure can be retried independently', async ({ page }) => {
+  await page.setViewportSize({ width: 1672, height: 941 })
+  let releaseDocuments
+  const slowDocuments = {
+    wait: new Promise(resolve => { releaseDocuments = resolve }),
+    status: 503, body: { detail: 'Uploaded PDF listing temporarily unavailable.' },
+  }
+  const state = await purchaseOrderHarness(page, { integration: true, prepare: fixture => {
+    fixture.listResponses['/api/v1/procurement/po-documents/'] = [slowDocuments]
+  } })
+  try {
+    await loaded(page)
+    await expect(register(page).getByRole('row')).toHaveCount(9)
+    await expect(page.getByRole('button', { name: 'Export register', exact: true })).toBeEnabled()
+    await expect(page.getByRole('status')).toContainText('Loading uploaded PDFs')
+    expect(state.requests.some(request => request.path === '/api/v1/procurement/po-documents/')).toBeTruthy()
+    expect(slowDocuments.delivered).not.toBeTruthy()
+
+    releaseDocuments()
+    await expect(page.getByRole('alert').filter({ hasText: 'Uploaded PDFs could not be loaded' })).toContainText('temporarily unavailable')
+    await expect(page.getByRole('alert').filter({ hasText: 'Purchase orders could not be loaded' })).toHaveCount(0)
+    await expect(register(page).getByRole('row')).toHaveCount(9)
+    await loaded(page)
+
+    state.listResponses['/api/v1/procurement/po-documents/'] = [{ body: {
+      count: 1, next: null, results: [{ id: 'pending-recovered', original_filename: 'recovered.pdf', extracted_data: { source_po_number: 'PO-PDF-RECOVERED' }, created_at: '2026-09-01T08:00:00Z' }],
+    } }]
+    await page.getByRole('button', { name: 'Retry', exact: true }).click()
+    await loaded(page)
+    await expect(register(page).getByRole('row')).toHaveCount(10)
+    await expect(page.getByRole('button', { name: 'Select PO-PDF-RECOVERED', exact: true })).toBeVisible()
+    await expect(page.getByRole('alert').filter({ hasText: 'could not be loaded' })).toHaveCount(0)
+    noWrites(state)
+  } finally {
+    releaseDocuments()
+  }
+})
+
+test('retry cancels an older order request and its late failure cannot replace the recovered register', async ({ page }) => {
+  let releaseOrders
+  const staleOrders = {
+    wait: new Promise(resolve => { releaseOrders = resolve }),
+    status: 503, body: { detail: 'Stale purchase order failure.' },
+  }
+  const canceled = []
+  page.on('requestfailed', request => canceled.push(new URL(request.url()).pathname))
+  const state = await purchaseOrderHarness(page, { integration: true, prepare: fixture => {
+    fixture.listResponses['/api/v1/procurement/orders/'] = [staleOrders]
+    fixture.listResponses['/api/v1/procurement/po-documents/'] = [{ status: 503, body: { detail: 'First PDF request failed.' } }]
+  } })
+  try {
+    await expect(page.getByRole('alert').filter({ hasText: 'First PDF request failed.' })).toBeVisible()
+    await page.getByRole('button', { name: 'Retry', exact: true }).click()
+    await loaded(page)
+    await expect(register(page).getByRole('row')).toHaveCount(9)
+    await expect.poll(() => canceled).toContain('/api/v1/procurement/orders/')
+    releaseOrders()
+    await expect.poll(() => staleOrders.delivered).toBeTruthy()
+    await expect(page.getByRole('alert').filter({ hasText: 'could not be loaded' })).toHaveCount(0)
+    await loaded(page)
+    noWrites(state)
+  } finally {
+    releaseOrders()
+  }
+})
+
+test('refresh cancels a pending PDF listing so late source rows cannot return to the register', async ({ page }) => {
+  let releaseDocuments
+  const staleDocuments = {
+    wait: new Promise(resolve => { releaseDocuments = resolve }),
+    body: { count: 1, next: null, results: [{ id: 'stale-document', original_filename: 'stale.pdf', extracted_data: { source_po_number: 'PO-PDF-STALE' } }] },
+  }
+  const canceled = []
+  page.on('requestfailed', request => canceled.push(new URL(request.url()).pathname))
+  const state = await purchaseOrderHarness(page, { integration: true, prepare: fixture => {
+    fixture.listResponses['/api/v1/procurement/po-documents/'] = [staleDocuments]
+  } })
+  try {
+    await loaded(page)
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+    await loaded(page)
+    await expect.poll(() => canceled).toContain('/api/v1/procurement/po-documents/')
+    releaseDocuments()
+    await expect.poll(() => staleDocuments.delivered).toBeTruthy()
+    await expect(register(page).getByRole('row')).toHaveCount(9)
+    await expect(page.getByRole('button', { name: 'Select PO-PDF-STALE', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('alert').filter({ hasText: 'could not be loaded' })).toHaveCount(0)
+    noWrites(state)
+  } finally {
+    releaseDocuments()
+  }
+})
+
+test('uploaded PDFs remain selectable and previewable when the order listing fails', async ({ page }) => {
+  await page.setViewportSize({ width: 1672, height: 941 })
+  const state = await purchaseOrderHarness(page, { integration: true, prepare: fixture => {
+    fixture.listResponses['/api/v1/procurement/orders/'] = [{ status: 503, body: { detail: 'Purchase order listing temporarily unavailable.' } }]
+    fixture.listResponses['/api/v1/procurement/po-documents/'] = [{ body: {
+      count: 1, next: null, results: [{ id: 'available-document', original_filename: 'available.pdf', extracted_data: { source_po_number: 'PO-PDF-AVAILABLE' } }],
+    } }]
+    fixture.documentContent['/api/v1/procurement/po-documents/available-document/content/'] = '%PDF-1.4\n% Synthetic uploaded purchase order\n%%EOF'
+  } })
+  await expect(page.getByRole('alert').filter({ hasText: 'Purchase orders could not be loaded' })).toContainText('temporarily unavailable')
+  await page.getByRole('button', { name: 'Select PO-PDF-AVAILABLE', exact: true }).click()
+  const pendingDetails = page.getByRole('complementary', { name: 'Uploaded purchase order details', exact: true })
+  await expect(pendingDetails).toContainText('available.pdf')
+  await expect(pendingDetails.getByRole('link', { name: 'Download uploaded PO', exact: true })).toBeVisible()
+  await expect(pendingDetails.locator('iframe')).toHaveAttribute('title', 'Uploaded PO PDF: available.pdf')
+  await expect(page.getByRole('alert').filter({ hasText: 'Uploaded PDFs could not be loaded' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await loaded(page)
+  await expect(register(page).getByRole('row')).toHaveCount(9)
+  await expect(page.getByRole('alert').filter({ hasText: 'could not be loaded' })).toHaveCount(0)
+  noWrites(state)
+})
+
+test('an empty order list waits for source discovery before declaring the whole register empty', async ({ page }) => {
+  let releaseDocuments
+  const slowDocuments = { wait: new Promise(resolve => { releaseDocuments = resolve }), body: { count: 0, next: null, results: [] } }
+  const state = await purchaseOrderHarness(page, { integration: true, prepare: fixture => {
+    fixture.props.orders = []
+    fixture.listResponses['/api/v1/procurement/po-documents/'] = [slowDocuments]
+  } })
+  try {
+    await expect(register(page)).toContainText('Checking uploaded PDFs')
+    await expect(page.getByRole('heading', { name: 'No purchase orders yet', exact: true })).toHaveCount(0)
+    releaseDocuments()
+    await expect(page.getByRole('heading', { name: 'No purchase orders yet', exact: true })).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: 'Loading uploaded PDFs' })).toHaveCount(0)
+    noWrites(state)
+  } finally {
+    releaseDocuments()
+  }
+})
