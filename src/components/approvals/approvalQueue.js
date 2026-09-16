@@ -68,7 +68,7 @@ export function normalizeApproval(raw, config, now = Date.now()) {
   item._canDecide = config.id === 'leave' ? raw.can_review === true
     : config.id === 'purchase_order' ? raw.can_approve === true
       : config.id === 'procurement' ? raw.can_approve === true
-        : config.id === 'profile_document'
+        : config.id === 'profile_document' && raw.can_review === true
   item._details = approvalDetails(item, now)
   return item
 }

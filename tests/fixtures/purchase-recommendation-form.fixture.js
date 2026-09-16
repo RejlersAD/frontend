@@ -43,7 +43,7 @@ export function formReference(overrides = {}) {
     po_number_reference: '', po_applicable: false, management_approval: false, management_approval_remarks: '', management_approval_evidence: [],
     approval_workflow_config: [
       { level: 0, role: 'Procurement', stage: 'Level 0 - Procurement', user_id: 9, user_name: 'Richa Hannah Thomas', status: 'pending', approval_label: 'L0- PRO' },
-      { level: 1, role: 'Project Manager', stage: 'Level 1 - Approver 1', user_id: 8, user_name: 'Samir Ali', status: 'pending', approval_label: 'L1- PM' },
+      { level: 1, business_position: 'project_manager', role: 'Project Manager', stage: 'Level 1 - Approver 1', user_id: 8, user_name: 'Samir Ali', status: 'pending', approval_label: 'L1- PM' },
       { level: 3, role: 'Manager of Projects', stage: 'Level 3', user_id: 7, user_name: 'Maya Hassan', status: 'pending', approval_label: 'L3 MoP' },
       { level: 4, role: 'Vice President', stage: 'Level 4', user_id: 10, user_name: 'Mohamad El-Ghawanmeh', status: 'pending', approval_label: 'L4 VOP/VP' },
       { level: 5, role: 'CEO', stage: 'Level 5', user_id: 11, user_name: 'Jarmo Suominen', status: 'pending', approval_label: 'CEO' },
@@ -111,6 +111,7 @@ export async function recommendationFormHarness(page, options = {}) {
     if (path === '/api/v1/users/employees/my-signature/') return reply(route, { signature: '' })
     if (path === '/api/v1/procurement/orders/') return reply(route, { count: 0, next: null, results: [] })
     if (['/api/v1/procurement/vendors/', '/api/v1/procurement/projects/'].includes(path)) return reply(route, { count: 0, next: null, results: [] })
+    if (path === '/api/v1/rbac/users/organization-catalog/') return reply(route, { source: {}, departments: [], organizational_roles: [{ code: 'project_manager', label: 'Project Manager' }, { code: 'hr_manager', label: 'HR Manager' }, { code: 'cfo', label: 'CFO' }] })
     if (path === '/api/v1/procurement/requisitions/get_approvers/') {
       const role = url.searchParams.get('role')
       return reply(route, { users: role === 'procurement_head' ? [employees[2]] : role === 'vp_operations' ? [employees[3]] : employees })

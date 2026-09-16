@@ -302,6 +302,7 @@ export const APPROVAL_TYPES = {
 
   PROFILE_DOCUMENT: {
     id: 'profile_document',
+    moduleCode: 'user_mgmt',
     label: 'ID Verification',
     pluralLabel: 'Profile Documents',
     icon: 'DocumentTextIcon',

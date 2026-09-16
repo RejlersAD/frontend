@@ -1,4 +1,5 @@
 import React, { forwardRef } from 'react'
+import { canDecideOffboardingNotification } from '../../utils/approvalCapabilities'
 import { Link } from 'react-router-dom'
 import { 
   CheckCircleIcon, 
@@ -219,7 +220,7 @@ const NotificationDropdown = forwardRef(({
 
                     {/* Action Button */}
                     {notification.metadata?.action_type === 'offboarding_project_manager_decision' && (
-                      notification.metadata?.decision_status === 'pending' ? (
+                      canDecideOffboardingNotification(notification) ? (
                         <div className="mt-3 flex gap-2">
                           <button
                             type="button"
@@ -244,7 +245,7 @@ const NotificationDropdown = forwardRef(({
                             ? 'text-emerald-600'
                             : 'text-rose-600'
                         }`}>
-                          Exit process {notification.metadata?.decision_status}
+                          {notification.metadata?.decision_status === 'pending' ? 'View the exit request for its current approval status.' : `Exit process ${notification.metadata?.decision_status}`}
                         </div>
                       )
                     )}

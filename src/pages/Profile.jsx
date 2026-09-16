@@ -586,7 +586,7 @@ const Profile = ({ embedded = false }) => {
         localStorage.getItem("access");
       const fd = new FormData();
       Object.entries(formData).forEach(([k, v]) => {
-        if (v !== undefined) fd.append(k, v);
+        if (v !== undefined && !['job_title', 'department', 'manager_id'].includes(k)) fd.append(k, v);
       });
       if (selectedFile) {
         fd.append("profile_photo", selectedFile);
@@ -1138,6 +1138,7 @@ const Profile = ({ embedded = false }) => {
                     <div className="relative">
                       <Building2 className="absolute left-3 top-3 w-4 h-4 text-gray-400 pointer-events-none" />
                       <select id="career-field-department"
+                        disabled
                         value={formData.department}
                         onChange={(e) =>
                           setFormData((p) => ({
@@ -1174,9 +1175,11 @@ const Profile = ({ embedded = false }) => {
                   </div>
                 </div></fieldset>
                 <fieldset className="career-form-panel career-form-group"><legend><h2>Employment details</h2></legend><div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <p className="sm:col-span-2 text-sm text-gray-500">Your department, organizational role, and reporting manager are maintained by HR. Contact HR to request a correction.</p>
                   <div className="career-input-field">
                     <label htmlFor="career-field-job-title" className="sr-only">Organizational role / Job title</label>
                     <input id="career-field-job-title"
+                      readOnly
                       type="text"
                       list="career-organizational-roles"
                       value={formData.job_title}
@@ -1193,6 +1196,7 @@ const Profile = ({ embedded = false }) => {
                   </div>
                   <div>
                     <ReportingManagerSelect
+                      disabled
                       compact
                       employees={managers}
                       value={formData.manager_id}

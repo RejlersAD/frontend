@@ -5,6 +5,7 @@ import { APPROVAL_ACTIONS, APPROVAL_TYPES } from '../../config/approvalsSystem.c
 import apiClient from '../../services/api.service'
 import LeaveApprovalReview from './LeaveApprovalReview'
 import ProcurementApprovalPreviewModal from './ProcurementApprovalPreviewModal'
+import { canReviewProfileDocument } from '../../utils/approvalCapabilities'
 
 const errorText = value => {
   if (typeof value === 'string') return value
@@ -25,8 +26,18 @@ function ProfileDocumentReview({ item, onClose, onDecision, initialAction }) {
   const [actionId, setActionId] = useState(['approve', 'reject'].includes(initialAction) ? initialAction : null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [reviewDocument, setReviewDocument] = useState(null)
   const config = APPROVAL_TYPES.PROFILE_DOCUMENT
-  const canDecide = item._canDecide === true && item.verification_status === 'pending'
+  const canDecide = canReviewProfileDocument(reviewDocument)
+
+  useEffect(() => {
+    let active = true
+    setReviewDocument(null)
+    apiClient.get(`/rbac/profile-documents/${item.id}/`, { suppressErrorToast: true })
+      .then(({ data }) => { if (active) setReviewDocument(data) })
+      .catch(() => { if (active) setError('Unable to confirm your current review eligibility. Please reopen this document.') })
+    return () => { active = false }
+  }, [item.id])
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -53,6 +64,7 @@ function ProfileDocumentReview({ item, onClose, onDecision, initialAction }) {
       const endpoint = `/rbac/profile-documents/${item.id}/${actionId === 'approve' ? 'verify' : 'reject'}/`
       await apiClient.post(endpoint, actionId === 'reject' ? { reason: comment.trim() } : { note: comment.trim(), signature: '' }, { suppressErrorToast: true })
     } catch (requestError) {
+      setReviewDocument(null)
       setError(await reviewError(requestError, `Unable to ${actionId} this document.`))
       setSubmitting(false)
       return

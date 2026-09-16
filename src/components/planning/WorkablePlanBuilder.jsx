@@ -104,6 +104,7 @@ export default function WorkablePlanBuilder({ projectId, intelligenceRunId, onOp
   })
 
   const approveBaseline = async () => {
+    if (result.can_approve !== true || result.state !== 'ready_for_approval') return
     setApproving(true)
     setError('')
     try {
@@ -157,7 +158,7 @@ export default function WorkablePlanBuilder({ projectId, intelligenceRunId, onOp
 
       {scheduleBlockers.length > 0 && <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4"><h4 className="font-bold text-rose-900">The generated plan has critical scheduling exceptions</h4>{scheduleBlockers.map((item, index) => <p key={`${item.code}-${index}`} className="mt-2 text-sm text-rose-800">• {item.message}</p>)}<button type="button" onClick={onOpenPlanner} className="mt-4 rounded-xl bg-rose-700 px-4 py-2.5 text-sm font-bold text-white">Open Plan to Resolve Exceptions</button></div>}
 
-      {result.state === 'ready_for_approval' && !baseline && <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4"><h4 className="font-bold text-emerald-900">Workable plan ready</h4><div className="mt-3 grid gap-3 text-sm sm:grid-cols-4"><div><span className="block text-emerald-700">Activities</span><b>{result.summary?.activity_count}</b></div><div><span className="block text-emerald-700">Relationships</span><b>{result.summary?.relationship_count}</b></div><div><span className="block text-emerald-700">Forecast finish</span><b>{result.summary?.forecast_finish || '—'}</b></div><div><span className="block text-emerald-700">Contract finish</span><b>{result.summary?.contractual_finish || '—'}</b></div></div><button type="button" disabled={approving} onClick={approveBaseline} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-40">{approving ? 'Approving…' : 'Approve Plan as Baseline'}</button></div>}
+      {result.state === 'ready_for_approval' && !baseline && <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4"><h4 className="font-bold text-emerald-900">Workable plan ready</h4><div className="mt-3 grid gap-3 text-sm sm:grid-cols-4"><div><span className="block text-emerald-700">Activities</span><b>{result.summary?.activity_count}</b></div><div><span className="block text-emerald-700">Relationships</span><b>{result.summary?.relationship_count}</b></div><div><span className="block text-emerald-700">Forecast finish</span><b>{result.summary?.forecast_finish || '—'}</b></div><div><span className="block text-emerald-700">Contract finish</span><b>{result.summary?.contractual_finish || '—'}</b></div></div><button type="button" disabled={approving || result.can_approve !== true} onClick={approveBaseline} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-40">{approving ? 'Approving…' : 'Approve Plan as Baseline'}</button></div>}
 
       {baseline && <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50 p-4"><h4 className="font-bold text-violet-900">Plan approved as baseline</h4><p className="mt-1 text-sm text-violet-700">{baseline.name} is now the controlled project baseline.</p><button type="button" onClick={onOpenPlanner} className="mt-3 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-bold text-white">Open Project Plan</button></div>}
     </section>

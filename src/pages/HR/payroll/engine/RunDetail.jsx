@@ -14,6 +14,7 @@ import PayrollApprovalDialog from './PayrollApprovalDialog'
 import ComparisonPanel from './ComparisonPanel'
 import ExternalUploadPanel from './ExternalUploadPanel'
 import './payrollTable.css'
+import { payrollApprovalTransitions } from '../../../../utils/approvalCapabilities'
 
 function formatDateTime(iso) {
   if (!iso) return '—'
@@ -33,12 +34,6 @@ function formatDate(iso) {
     })
   } catch { return iso }
 }
-
-const TRANSITION_BUTTONS = [
-  { status: WORKFLOW_STATUS.HR_APPROVED,      label: 'HR Approve',      fn: 'hrApproveRun',      tone: 'blue' },
-  { status: WORKFLOW_STATUS.FINANCE_APPROVED, label: 'Finance Approve', fn: 'financeApproveRun', tone: 'amber' },
-  { status: WORKFLOW_STATUS.RELEASED,         label: 'Release',         fn: 'releaseRun',        tone: 'green' },
-]
 
 const TONE_CLASS = {
   blue:  'bg-blue-600 hover:bg-blue-700 text-white',
@@ -124,9 +119,19 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
   }, [payslips, canvasMode])
 
   const handleTransition = async (note) => {
-    await payrollEngineService[approvalAction.fn](run.id, note)
-    setApprovalAction(null)
-    await load()
+    const current = await payrollEngineService.getRun(run.id)
+    setRun(current)
+    if (!payrollApprovalTransitions(current).some(action => action.fn === approvalAction?.fn)) {
+      setApprovalAction(null)
+      setError('This approval is no longer available to you at the current stage.')
+      return
+    }
+    try {
+      await payrollEngineService[approvalAction.fn](run.id, note)
+      setApprovalAction(null)
+    } finally {
+      await load()
+    }
   }
 
   const handleRevert = async () => {
@@ -240,15 +245,7 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
     </div>
   )
 
-  const nextStatuses = {
-    [WORKFLOW_STATUS.DRAFT]: [WORKFLOW_STATUS.HR_APPROVED],
-    [WORKFLOW_STATUS.HR_APPROVED]: [WORKFLOW_STATUS.FINANCE_APPROVED],
-    [WORKFLOW_STATUS.FINANCE_APPROVED]: [WORKFLOW_STATUS.RELEASED],
-    [WORKFLOW_STATUS.RELEASED]: [],
-  }
-  const availableTransitions = TRANSITION_BUTTONS.filter(
-    (b) => nextStatuses[run.status]?.includes(b.status)
-  )
+  const availableTransitions = payrollApprovalTransitions(run)
 
   return (
     <div className="space-y-4">

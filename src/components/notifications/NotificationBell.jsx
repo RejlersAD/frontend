@@ -7,6 +7,7 @@ import notificationService from '../../services/notification.service'
 import notificationAlertService from '../../services/notificationAlert.service'
 import pushNotificationService from '../../services/pushNotification.service'
 import NotificationDropdown from './NotificationDropdown'
+import { canDecideOffboardingNotification } from '../../utils/approvalCapabilities'
 
 /**
  * NotificationBell Component
@@ -95,6 +96,8 @@ const NotificationBell = () => {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Exit decisions use a modal mounted beside the dropdown in document.body.
+      if (event.target.closest?.('.radai-dialog')) return
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target) &&
@@ -290,7 +293,7 @@ const NotificationBell = () => {
 
   const handleOffboardingDecision = async (notification, decision) => {
     const offboardingId = notification.metadata?.offboarding_id
-    if (!offboardingId) return
+    if (!offboardingId || !canDecideOffboardingNotification(notification) || decisionLoadingId) return
 
     let note = ''
     if (decision === 'rejected') {
@@ -307,6 +310,13 @@ const NotificationBell = () => {
     setDecisionLoadingId(notification.id)
     setDecisionMessage('')
     try {
+      const current = await notificationService.getOffboardingReview(offboardingId)
+      if (current.can_project_manager_decide !== true) {
+        setNotifications(prev => prev.map(item => item.id === notification.id
+          ? { ...item, metadata: { ...item.metadata, requires_action: false } } : item))
+        setDecisionMessage('This exit approval is no longer available to you at the current stage.')
+        return
+      }
       const result = await notificationService.decideOffboarding(offboardingId, decision, note.trim())
       setNotifications(prev => prev.map(item => (
         item.metadata?.offboarding_id === offboardingId &&
@@ -314,7 +324,7 @@ const NotificationBell = () => {
           ? {
               ...item,
               is_read: true,
-              metadata: { ...item.metadata, decision_status: result.decision },
+              metadata: { ...item.metadata, decision_status: result.decision, requires_action: false },
             }
           : item
       )))
@@ -326,6 +336,8 @@ const NotificationBell = () => {
         error.response?.data?.decision ||
         'Unable to record the Project Manager decision.'
       )
+      setNotifications(prev => prev.map(item => item.id === notification.id
+        ? { ...item, metadata: { ...item.metadata, requires_action: false } } : item))
     } finally {
       setDecisionLoadingId(null)
     }
