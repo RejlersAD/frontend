@@ -47,7 +47,6 @@ const TERMS_TEMPLATES = {
 
 const PROJECT_FINAL_APPROVER = 'Jarmo Suominen';
 const FINAL_APPROVER_TITLE = 'Sr. Vice President, Middle East\nCEO, Rejlers Abu Dhabi';
-const USD_TO_AED_RATE = 3.6725;
 const DEFAULT_INVOICE_CONTACT = 'Mr. Aneef Thadikkarantavida';
 const DEFAULT_INVOICE_EMAIL = 'aneef.thadikkarantavida@rejlers.ae';
 const DEFAULT_INVOICE_EMAILS = [
@@ -2607,12 +2606,6 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       <span>Grand Total</span>
                       <span>{formData.currency} {calculateGrandTotal(calculateSubtotal(), calculateTaxAmount(calculateSubtotal())).toFixed(2)}</span>
                     </div>
-                    {String(formData.currency || '').toUpperCase() === 'USD' && (
-                      <div className="flex justify-between text-sm font-semibold text-blue-700">
-                        <span>Grand Total USD in AED</span>
-                        <span>AED {(calculateGrandTotal(calculateSubtotal(), calculateTaxAmount(calculateSubtotal())) * USD_TO_AED_RATE).toFixed(2)}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
