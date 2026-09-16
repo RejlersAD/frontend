@@ -494,8 +494,8 @@ function App() {
           }
         />
 
-        {/* Finance Approval - Public Route */}
-        <Route path="finance/approve/:token" element={<InvoiceApproval />} />
+        {/* Approval links preserve their destination through sign-in. */}
+        <Route path="finance/approve/:token" element={<ProtectedRoute><InvoiceApproval /></ProtectedRoute>} />
 
         <Route path="terms-of-service" element={<TermsOfService />} />
         <Route path="privacy-policy" element={<PrivacyPolicy />} />

@@ -28,7 +28,7 @@ export async function purchaseOrderHarness(page, options = {}) {
   const state = {
     props: { orders, loading: false, error: null, currentUserId: 7, requisitionCount: 12, pdfBusy: false },
     details: Object.fromEntries(orders.map(row => [row.id, { ...row, items: [{ id: `line-${row.id}`, description: `${row.title} delivery line`, quantity: '4', unit: 'EA', unit_price: '250', total: '1000' }] }])),
-    requests: [], unknown: [], pageErrors: [], detailErrors: {}, deferred: {}, pending: {}, delivered: {},
+    requests: [], unknown: [], pageErrors: [], detailErrors: {}, deferred: {}, pending: {}, delivered: {}, listResponses: {}, documentContent: {},
   }
   options.prepare?.(state)
   page.on('pageerror', error => state.pageErrors.push(error.message))
@@ -38,6 +38,14 @@ export async function purchaseOrderHarness(page, options = {}) {
     state.requests.push({ path, method: request.method() })
     if (path === '/api/v1/__purchase-orders-fixture__/') return reply(route, state.props)
     if (options.integration && request.method() === 'GET') {
+      if (state.documentContent[path]) return route.fulfill({ contentType: 'application/pdf', body: state.documentContent[path] })
+      const planned = state.listResponses[path]?.shift()
+      if (planned) {
+        if (planned.wait) await planned.wait
+        await reply(route, planned.body, planned.status || 200)
+        planned.delivered = true
+        return
+      }
       if (path === '/api/v1/procurement/orders/') {
         const pageNumber = Number(new URL(request.url()).searchParams.get('page') || 1)
         return reply(route, { count: state.props.orders.length, next: pageNumber === 1 ? '/api/v1/procurement/orders/?page=2' : null, results: pageNumber === 1 ? state.props.orders.slice(0, 4) : state.props.orders.slice(4) })

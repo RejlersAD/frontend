@@ -1,7 +1,7 @@
 import React, { useId, useState, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
 
-export default function ReportingManagerSelect({ employees, value, selectedEmployee, onChange, loading, error, inputClassName, compact = false }) {
+export default function ReportingManagerSelect({ employees, value, selectedEmployee, onChange, loading, error, inputClassName, compact = false, disabled = false }) {
   const id = useId();
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
@@ -44,11 +44,11 @@ export default function ReportingManagerSelect({ employees, value, selectedEmplo
       <label htmlFor={id} className="sr-only">Reporting Manager</label>
       <button ref={trigger} id={id} type="button" className={`manager-dropdown-trigger ${inputClassName}`}
         aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? `${id}-popup` : undefined}
-        disabled={loading || Boolean(error)} onClick={() => { setSearch(''); setOpen(previous => !previous); }}>
+        disabled={disabled || loading || Boolean(error)} onClick={() => { setSearch(''); setOpen(previous => !previous); }}>
         <span>{value ? `${selected?.name || 'Current reporting manager'}${selected?.employee_id ? ` · ${selected.employee_id}` : ''}` : 'Select reporting manager'}</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m6 9 6 6 6-6" strokeWidth="2" /></svg>
       </button>
-      {open && <div id={`${id}-popup`} role="dialog" aria-label="Choose reporting manager" className="manager-dropdown-popup">
+      {open && !disabled && <div id={`${id}-popup`} role="dialog" aria-label="Choose reporting manager" className="manager-dropdown-popup">
         <input ref={searchInput} type="search" aria-label="Search reporting manager employees"
           placeholder="Search name, email, ID, department or title"
           value={search} onChange={event => setSearch(event.target.value)} className={inputClassName}
@@ -83,10 +83,10 @@ export default function ReportingManagerSelect({ employees, value, selectedEmplo
       type="search" aria-label="Search reporting manager employees"
       placeholder={compact ? 'Search employees…' : 'Search by name, email, employee ID, department or job title'}
       value={search} onChange={event => setSearch(event.target.value)}
-      className={`${inputClassName} mb-2`} disabled={loading || Boolean(error)}
+      className={`${inputClassName} mb-2`} disabled={disabled || loading || Boolean(error)}
       aria-describedby={`${id}-status`}
     />
-    <select id={id} value={value || ''} onChange={event => onChange(event.target.value)} className={inputClassName} disabled={loading || Boolean(error)}>
+    <select id={id} value={value || ''} onChange={event => onChange(event.target.value)} className={inputClassName} disabled={disabled || loading || Boolean(error)}>
       <option value="">No reporting manager assigned</option>
       {options.map(employee => <option key={employee.id} value={employee.id}>
         {employee.name}{employee.employee_id ? ` · ${employee.employee_id}` : ''}{employee.email ? ` · ${employee.email}` : ''}{employee.job_title ? ` · ${employee.job_title}` : ''}
@@ -103,5 +103,5 @@ ReportingManagerSelect.propTypes = {
   employees: PropTypes.array.isRequired, value: PropTypes.string,
   selectedEmployee: PropTypes.object, onChange: PropTypes.func.isRequired,
   loading: PropTypes.bool, error: PropTypes.string, inputClassName: PropTypes.string,
-  compact: PropTypes.bool,
+  compact: PropTypes.bool, disabled: PropTypes.bool,
 };

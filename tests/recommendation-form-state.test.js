@@ -11,15 +11,27 @@ test('a signed import lump sum retains its total and source evidence while becom
   assert.equal(source.quantity, undefined);
 });
 
-test('incomplete or inconsistent explicit pricing is preserved for review, never silently repaired', () => {
+test('incomplete explicit pricing is optional and remains unchanged', () => {
   for (const source of [
     { description: 'Credits', quantity: '2', total: '2052.00' },
     { description: 'Credits', unit_price: '1000', total: '2052.00' },
-    { description: 'Credits', quantity: '2', unit_price: '1000', total: '2052.00' },
+    { description: '', quantity: '', unit_price: '', total: '2052.00' },
+    { description: '', quantity: null, unit_price: null, total: '2052.00' },
+    { description: '', quantity: '0', unit_price: '1000', total: '0.00' },
   ]) {
     assert.deepEqual(hydrateRecommendationItem(source), source);
-    assert.ok(recommendationLineError([hydrateRecommendationItem(source)]));
+    assert.equal(recommendationLineError([hydrateRecommendationItem(source)]), '');
   }
+});
+
+test('provided numbers must still be finite and non-negative even when other fields are omitted', () => {
+  for (const field of ['quantity', 'unit_price', 'total', 'discount']) {
+    for (const value of [-1, 'invalid', Infinity, 'Infinity', NaN, true, [], ' ']) {
+      assert.ok(recommendationLineError([{ [field]: value }]), `${field}: ${String(value)}`);
+    }
+  }
+  assert.ok(recommendationLineError([null]));
+  assert.ok(recommendationLineError([[]]));
 });
 
 test('legacy aliases hydrate without changing the original item or amount', () => {

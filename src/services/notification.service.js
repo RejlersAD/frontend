@@ -171,6 +171,11 @@ export const notificationService = {
     }
   },
 
+  getOffboardingReview: async (offboardingId) => {
+    const response = await apiClient.get(`/onboarding/offboarding/${offboardingId}/`)
+    return response.data
+  },
+
   decideOffboarding: async (offboardingId, decision, note = '') => {
     const response = await apiClient.post(
       `/onboarding/offboarding/${offboardingId}/project-manager-decision/`,

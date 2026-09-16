@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recommendationEnteredAmount, recommendationVat } from '../src/pages/Procurement/recommendationVat.js';
+import { hasCompleteRecommendationPricing, recommendationEnteredAmount, recommendationVat } from '../src/pages/Procurement/recommendationVat.js';
 import { prepareRecommendationPayload } from '../src/pages/Procurement/recommendationFormPayload.js';
 
 test('unconfirmed records retain recorded amounts even when they imply a different VAT rate', () => {
@@ -54,6 +54,32 @@ test('confirmation uses the entered subtotal without removing a legacy discount 
   assert.equal(recommendationEnteredAmount({ total_price: '100.00', net_total_excl_vat: null }), 100);
   assert.equal(recommendationEnteredAmount({ net_total_excl_vat: '90.00', price_remarks_data: { discount_amount: '10.00' } }), 100);
   assert.equal(recommendationEnteredAmount({ vat_basis: 'inclusive', total_price: '100.00', net_total_excl_vat: '95.24' }), 100);
+});
+
+test('partial line pricing falls back to the recorded request amount without treating blanks as zero', () => {
+  for (const items of [
+    [{ quantity: '', unit_price: 100, total: '2052.00' }],
+    [{ quantity: 1, unit_price: '', total: '2052.00' }],
+    [{ quantity: 1, unit_price: 100, total: '100.00' }, { quantity: '', unit_price: '', total: '1952.00' }],
+  ]) {
+    assert.equal(items.every(hasCompleteRecommendationPricing), false);
+    assert.equal(recommendationEnteredAmount({ items, net_total_excl_vat: '2052.00', total_price: '2154.60' }), 2052);
+    assert.equal(recommendationEnteredAmount({ items, vat_basis: 'inclusive', net_total_excl_vat: '2052.00', total_price: '2154.60' }), 2154.6);
+    assert.equal(recommendationEnteredAmount({ items }), null);
+  }
+  assert.equal(hasCompleteRecommendationPricing({ quantity: 0, unit_price: 100 }), true);
+  assert.equal(recommendationEnteredAmount({ items: [{ quantity: 0, unit_price: 100 }] }), 0);
+});
+
+test('editing operands to partial pricing resends a confirmed VAT basis and preserves request amounts', () => {
+  const record = { items: [{ description: '', quantity: '', unit_price: '100.00', total: '2052.00' }],
+    vat_basis: 'exclusive', _vatPricingChanged: true, net_total_excl_vat: '2052.00', total_price: '2154.60' };
+  const payload = prepareRecommendationPayload(record);
+  assert.equal(payload.vat_basis, 'exclusive');
+  assert.equal(payload.entered_amount, 2052);
+  assert.equal(payload.net_total_excl_vat, '2052.00');
+  assert.equal(payload.total_price, '2154.60');
+  assert.deepEqual(payload.items, record.items);
 });
 
 test('VAT confirmation leaves original PDF references and signed approval evidence intact', () => {
