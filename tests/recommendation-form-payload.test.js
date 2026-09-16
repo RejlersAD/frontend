@@ -31,7 +31,7 @@ test('omits a blank row and keeps VAT, supplier and budget aligned to the retain
 
 test('compacts blank rows between and after complete rows, including old item aliases', () => {
   const result = prepareRecommendationPayload({
-    items: [pricedLine('First'), { item: ' ', qty: 1, price: 0 }, pricedLine('Second'), {}],
+    items: [pricedLine('First'), { item: ' ', qty: 1, price: 0, unit: ' ea ' }, pricedLine('Second'), {}],
     price_remarks_data: { line_details: [{ note: 'first' }, {}, { note: 'second' }, {}] },
   });
   assert.deepEqual(result.items.map((item) => item.description), ['First', 'Second']);

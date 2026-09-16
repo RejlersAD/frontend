@@ -26,7 +26,7 @@ const isBlankLine = (item, details = {}) => {
   const unit = String(item.unit || item.uom || '').trim();
   const hasDiscount = ['discount', 'line_discount', 'discount_amount'].some(key => item[key] != null && item[key] !== '' && !zeroAmount(item[key]));
   return !description && blankQuantity && blankPrice && blankTotal && !code
-    && (!unit || unit === 'EA') && !hasDiscount && !meaningfulDetail(details);
+    && (!unit || unit.toUpperCase() === 'EA') && !hasDiscount && !meaningfulDetail(details);
 };
 
 /**
