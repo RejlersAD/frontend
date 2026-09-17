@@ -83,7 +83,39 @@
 .purchase-order-form-workspace .pof-empty-requisition svg { height: 30px; width: 30px; margin-bottom: 4px; color: #bd7600; }
 .purchase-order-form-workspace .pof-empty-requisition p { margin-top: 2px; color: #815c2a; }
 .purchase-order-form-workspace .pof-empty-requisition h3 { font-size: 13px; }
-.purchase-order-form-workspace .pof-section-panel [contenteditable] { min-height: 340px; font-size: 12px; }
+.purchase-order-form-workspace .pof-section-panel .po-narrative-document {
+  min-height: 340px;
+  width: 100%;
+  /* A4 minus PDF margins/frame padding, plus this editor's horizontal padding.
+     Desktop authoring wraps at the printable width; small screens stay usable. */
+  max-width: calc(210mm - 32mm - 12pt + 4rem);
+  margin-inline: auto;
+  font-family: Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.3;
+  font-weight: 400;
+  color: #000;
+}
+/* Document defaults match po_rich_content.py. Author formatting stays in the
+   saved HTML; application table typography must never override this content. */
+.purchase-order-form-workspace .po-narrative-document :where(p, div) { margin: 0 0 4pt; }
+.purchase-order-form-workspace .pof-section-panel .po-narrative-document :where(h1, h2, h3, h4, h5, h6) { margin: 8pt 0 5pt; font-weight: 700; line-height: 1.3; color: inherit; }
+.purchase-order-form-workspace .pof-section-panel .po-narrative-document h1 { font-size: 24pt; }
+.purchase-order-form-workspace .pof-section-panel .po-narrative-document h2 { font-size: 20pt; }
+.purchase-order-form-workspace .pof-section-panel .po-narrative-document h3 { font-size: 16pt; }
+.purchase-order-form-workspace .pof-section-panel .po-narrative-document h4 { font-size: 14pt; }
+.purchase-order-form-workspace .pof-section-panel .po-narrative-document h5 { font-size: 12pt; }
+.purchase-order-form-workspace .pof-section-panel .po-narrative-document h6 { font-size: 10.5pt; }
+.purchase-order-form-workspace .po-narrative-document :where(a) { color: #1d4ed8; text-decoration: underline; }
+.purchase-order-form-workspace .po-narrative-document :where(blockquote) { margin-left: 18pt; font-style: italic; }
+.purchase-order-form-workspace .po-narrative-document :where(table) { width: 100%; border-collapse: collapse; margin: 0 0 6pt; font: inherit; color: inherit; }
+.purchase-order-form-workspace .po-narrative-document :where(td, th) { border: 0.5pt solid #64748b; padding: 6pt; vertical-align: top; }
+.purchase-order-form-workspace .po-narrative-document :where(th) { font-weight: 700; text-align: center; }
+.purchase-order-form-workspace .po-narrative-document :where(ol, ul) { margin: 0; padding-left: 18pt; }
+.purchase-order-form-workspace .po-narrative-document :where(ol) { list-style-type: decimal; }
+.purchase-order-form-workspace .po-narrative-document :where(ul) { list-style-type: disc; }
+.purchase-order-form-workspace .po-narrative-document :where(li) { margin: 0 0 4pt; }
+.purchase-order-form-workspace .po-narrative-document :where(img) { max-width: 100%; height: auto; }
 .purchase-order-form-workspace .pof-section-panel input[type=file]:focus-visible + label { outline: 2px solid var(--pof-blue); outline-offset: 5px; }
 .purchase-order-form-workspace .pof-section-panel [role=option][data-highlighted=true] { background: #e8f1ff; outline: 1px solid #a7c6ff; outline-offset: -1px; }
 

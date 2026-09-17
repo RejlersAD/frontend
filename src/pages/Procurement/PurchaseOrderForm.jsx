@@ -77,6 +77,9 @@ const RichTextEditor = ({ value, onChange }) => {
   const [tableRows, setTableRows] = useState(3);
   const [tableColumns, setTableColumns] = useState(3);
   const [tableHeaderRow, setTableHeaderRow] = useState(true);
+  const [selectedFont, setSelectedFont] = useState('Arial');
+  const [selectedSize, setSelectedSize] = useState(10.5);
+  const fontSizes = { 1: 7.5, 2: 9.75, 3: 12, 4: 13.5, 5: 18, 6: 24, 7: 36 };
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== (value || '')) {
@@ -88,6 +91,12 @@ const RichTextEditor = ({ value, onChange }) => {
     const selection = window.getSelection();
     if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode)) {
       savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+      const node = selection.focusNode?.nodeType === Node.ELEMENT_NODE ? selection.focusNode : selection.focusNode?.parentElement;
+      if (node) {
+        const style = window.getComputedStyle(node);
+        setSelectedFont(style.fontFamily.split(',')[0].replaceAll(/["']/g, '').trim());
+        setSelectedSize(Math.round(Number.parseFloat(style.fontSize) * 0.75 * 100) / 100);
+      }
     }
   };
 
@@ -99,7 +108,7 @@ const RichTextEditor = ({ value, onChange }) => {
   };
 
   const runCommand = (command, commandValue = null) => {
-    editorRef.current?.focus();
+    editorRef.current?.focus({ preventScroll: true });
     restoreSelection();
     document.execCommand(command, false, commandValue);
     rememberSelection();
@@ -118,7 +127,7 @@ const RichTextEditor = ({ value, onChange }) => {
   };
 
   const changeIndent = (direction) => {
-    editorRef.current?.focus();
+    editorRef.current?.focus({ preventScroll: true });
     restoreSelection();
     let blocks = selectedBlocks();
     if (!blocks.length) {
@@ -207,8 +216,8 @@ const RichTextEditor = ({ value, onChange }) => {
           </div>
           <div className="flex flex-col justify-between border-r border-slate-300 pr-2">
             <div className="flex gap-1">
-              <select aria-label="Font family" defaultValue="Arial" onChange={(event) => runCommand('fontName', event.target.value)} className="h-7 w-36 rounded border-slate-300 bg-white px-2 py-0 text-xs"><option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option></select>
-              <select aria-label="Font size" defaultValue="3" onChange={(event) => runCommand('fontSize', event.target.value)} className="h-7 w-16 rounded border-slate-300 bg-white px-1 py-0 text-xs"><option value="1">8</option><option value="2">10</option><option value="3">12</option><option value="4">14</option><option value="5">18</option><option value="6">24</option><option value="7">36</option></select>
+              <select aria-label="Font family" value={selectedFont} onChange={(event) => runCommand('fontName', event.target.value)} className="h-7 w-36 rounded border-slate-300 bg-white px-2 py-0 text-xs">{!['Arial', 'Calibri', 'Georgia', 'Times New Roman', 'Verdana'].includes(selectedFont) && <option>{selectedFont}</option>}<option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option></select>
+              <select aria-label="Font size" value={Object.keys(fontSizes).find(key => fontSizes[key] === selectedSize) || 'current'} onChange={(event) => runCommand('fontSize', event.target.value)} className="h-7 w-16 rounded border-slate-300 bg-white px-1 py-0 text-xs">{!Object.values(fontSizes).includes(selectedSize) && <option value="current" disabled>{selectedSize}</option>}{Object.entries(fontSizes).map(([value, size]) => <option key={value} value={value}>{size}</option>)}</select>
             </div>
             <div className="flex items-center gap-0.5">
               {ribbonButton('B', 'bold', null, 'font-black')}{ribbonButton('I', 'italic', null, 'italic')}{ribbonButton('U', 'underline', null, 'underline')}{ribbonButton('x₂', 'subscript')}{ribbonButton('x²', 'superscript')}
@@ -252,7 +261,7 @@ const RichTextEditor = ({ value, onChange }) => {
         </div>
       </div>}
 
-      <div ref={editorRef} contentEditable role="textbox" aria-label="PO Narrative" aria-multiline="true" suppressContentEditableWarning onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={(event) => { rememberSelection(); onChange(event.currentTarget.innerHTML); }} className="min-h-80 rounded-b-lg bg-white px-8 py-6 font-sans text-sm leading-6 outline-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)] [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_img]:my-2 [&_img]:max-w-full [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-7 [&_table]:my-3 [&_table]:w-full [&_td]:border [&_td]:border-gray-400 [&_td]:p-2 [&_ul]:list-disc [&_ul]:pl-7" data-placeholder="Enter the complete PO narrative..." />
+      <div ref={editorRef} contentEditable data-table-typography="preserve" role="textbox" aria-label="PO Narrative" aria-multiline="true" suppressContentEditableWarning onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={(event) => { rememberSelection(); onChange(event.currentTarget.innerHTML); }} className="po-narrative-document min-h-80 rounded-b-lg bg-white px-8 py-6 outline-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)]" data-placeholder="Enter the complete PO narrative..." />
     </div>
   );
 };
