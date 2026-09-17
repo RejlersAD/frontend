@@ -179,14 +179,10 @@ test('invalid optional PO preserves selections and removing it restores the unch
   clean(state)
 })
 
-test('PO signature verification requires its own signer/date and changed price requires its own VAT confirmation', async ({ page }) => {
+test('changed PO price requires VAT confirmation while complete independent approval evidence stays intact', async ({ page }) => {
   const state = await pairedImportHarness(page)
   await previewPair(page)
   await dialog(page).getByLabel('PO approval signature is visible', { exact: true }).check()
-  await dialog(page).getByLabel('PO Approver name', { exact: true }).fill('')
-  await save(page).click()
-  await expect(dialog(page).getByRole('alert')).toContainText('PO approver name and approval date')
-  expect(state.pairSaves).toEqual([])
   await dialog(page).getByLabel('PO Approver name', { exact: true }).fill('Reviewed PO Signer')
   await dialog(page).getByLabel('PO Entered price', { exact: true }).fill('10000')
   await save(page).click()
@@ -196,6 +192,50 @@ test('PO signature verification requires its own signer/date and changed price r
   await save(page).click()
   await expect(dialog(page)).toContainText('Both source PDFs are attached.')
   expect(JSON.parse(state.pairSaves[0].po_reviewed_fields)).toMatchObject({ entered_amount: '10000', vat_basis: 'none' })
+  expect(state.pairSaves[0]).toMatchObject({ po_signature_verified: 'true', po_approved_by_name: 'Reviewed PO Signer', po_approved_date: '2026-09-12', approval_date: '2026-09-15' })
+  clean(state)
+})
+
+for (const existing of [false, true]) test(`incomplete PO approval evidence saves and links in one request when ${existing ? 'attaching to an existing PR' : 'creating PR and PO'}`, async ({ page }) => {
+  const warning = 'PO approval evidence needs review: the approver name or approval date is missing.'
+  const state = await pairedImportHarness(page, { existing, poEvidence: { approved_by_name: '', approved_date: '' }, poWorkflowIssues: [warning] })
+  await previewPair(page)
+  const signature = dialog(page).getByLabel('PO approval signature is visible', { exact: true })
+  const name = dialog(page).getByLabel('PO Approver name', { exact: true })
+  const date = dialog(page).getByLabel('PO Approval date', { exact: true })
+  await expect(signature).not.toBeChecked()
+  await expect(name).toHaveValue('')
+  await expect(date).toHaveValue('')
+  await expect(dialog(page)).toContainText('The PR approval date and PO order date are separate.')
+  await signature.check()
+  if (existing) await name.fill('Source PO signer retained')
+  else await date.fill('2026-09-12')
+  await dialog(page).getByLabel('PO Approver title', { exact: true }).fill('Source title retained')
+  const notice = dialog(page).getByRole('status', { name: 'PO approval evidence warning', exact: true })
+  await expect(notice).toContainText(existing ? 'Missing PO approval date.' : 'Missing PO approver name.')
+  await expect(notice).toContainText('You can save now.')
+  await expect(save(page)).toBeEnabled()
+  if (existing) {
+    await notice.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: '../artifacts/po-approval-evidence-warning.png' })
+  }
+  await save(page).click()
+  await expect(dialog(page)).toContainText('Both source PDFs are attached.')
+  await expect(dialog(page)).toContainText(`PO: ${warning}`)
+  expect(state.pairSaves).toHaveLength(1)
+  expect(state.pairWrites).toHaveLength(1)
+  expect(state.pairSaves[0]).toMatchObject({ po_signature_verified: 'true', po_approved_by_title: 'Source title retained', approval_date: '2026-09-15' })
+  if (existing) {
+    expect(state.pairSaves[0]).toMatchObject({ attach_only: 'true', po_approved_by_name: 'Source PO signer retained' })
+    expect(state.pairSaves[0]).not.toHaveProperty('po_approved_date')
+  } else {
+    expect(state.pairSaves[0]).toMatchObject({ po_approved_date: '2026-09-12' })
+    expect(state.pairSaves[0]).not.toHaveProperty('po_approved_by_name')
+  }
+  expect(state.pairSaves[0].file.filename).toBe(syntheticApprovedPdf.name)
+  expect(state.pairSaves[0].po_file.filename).toBe(syntheticPoPdf.name)
+  expect(state.requests.filter(request => ['PATCH', 'PUT'].includes(request.method))).toEqual([])
+  await expect(page.getByRole('dialog', { name: 'Edit Signed Purchase Order PDF', exact: true })).toHaveCount(0)
   clean(state)
 })
 
