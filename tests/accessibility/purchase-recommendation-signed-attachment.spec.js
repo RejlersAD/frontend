@@ -38,7 +38,7 @@ test('three signed source roles require no fourth role or new approval and an un
   await expect(modal(page).getByRole('checkbox')).toHaveCount(0)
   await expect(modal(page)).toContainText('Enter the approval date shown in the PDF.')
   await expect(modal(page).getByRole('button', { name: 'Create reviewed PR', exact: true })).toBeEnabled()
-  await modal(page).getByLabel('Approval Date', { exact: true }).fill('2026-01-20')
+  await modal(page).getByLabel('PR Approval date', { exact: true }).fill('2026-01-20')
   await expect(modal(page)).not.toContainText('Enter the approval date shown in the PDF.')
   await modal(page).getByRole('button', { name: 'Create reviewed PR', exact: true }).click()
   await expect(modal(page)).toContainText('Status: approved')

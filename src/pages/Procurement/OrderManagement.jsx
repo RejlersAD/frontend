@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
+import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
 import * as XLSX from 'xlsx';
 import PurchaseRequisitionApproval from './PurchaseRequisitionApproval';
 import PurchaseRequisitionExcelImport from './PurchaseRequisitionExcelImport';
@@ -545,28 +546,9 @@ const OrderManagement = () => {
     if (!order?.id || orderPdfBusy) return;
     setOrderPdfBusy(true);
     try {
-      const { data } = await apiClient.get(`/procurement/orders/${order.id}/uploaded-documents/`, { suppressErrorToast: true });
-      const documents = Array.isArray(data) ? data : data?.results;
-      if (!Array.isArray(documents)) throw new Error('The uploaded PO documents could not be checked.');
-      const original = documents[0];
-      const prefix = `/procurement/orders/${order.id}/uploaded-documents/`;
-      const path = String(original?.content_url || '').replace(/^\/api\/v1(?=\/)/, '');
-      if (original && !path.startsWith(prefix)) throw new Error('The original PO PDF is unavailable.');
-      const response = await apiClient.get(original ? path : `/procurement/orders/${order.id}/export-pdf/`, {
-        responseType: 'blob', timeout: 120000, suppressErrorToast: true,
-      });
-      const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
-      if (!(await blob.slice(0, 1024).text()).trimStart().startsWith('%PDF-')) throw new Error('The saved file is not a PDF.');
-      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = original?.filename || buildProcurementPdfFilename(order.po_number || `PO-${order.id}`, 'po', order.po_date);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadPurchaseOrderDocument(await fetchPurchaseOrderDocument(order));
     } catch (problem) {
-      toast.error(problem.response?.data?.detail || problem.message || 'The purchase order PDF could not be prepared.');
+      toast.error(await purchaseOrderDocumentError(problem));
     } finally {
       setOrderPdfBusy(false);
     }

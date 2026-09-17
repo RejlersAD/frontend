@@ -76,14 +76,14 @@ test('row and menu Preview open the clicked completed PO instead of the selected
     } else await menu(page, 'Preview')
     await expect(page).toHaveURL(new RegExp(`/procurement/orders/${orderFormId}$`))
     await expect(page.getByRole('heading', { name: orderFormNumber, level: 1, exact: true })).toBeVisible()
-    const viewer = page.getByRole('region', { name: 'Uploaded PO PDF: Clicked-PO-original.pdf', exact: true })
+    const viewer = page.getByRole('region', { name: `Purchase Order ${orderFormNumber} PDF preview`, exact: true })
     await expect(viewer.getByRole('img')).toBeVisible({ timeout: 30000 })
     await expect(page.getByRole('heading', { name: other.po_number, level: 1, exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Back to purchase orders', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
   }
   expect(state.acceptedWrites).toEqual([])
-  expect(state.requests.filter(request => request.path.endsWith('/export-pdf/'))).toEqual([])
+  expect(state.requests.filter(request => request.path.endsWith('/export-pdf/'))).toHaveLength(2)
   isolated(state)
 })
 
@@ -129,7 +129,7 @@ test('legacy order can save an unrelated correction and link a PR without replac
   isolated(state)
 })
 
-test('register PDF download prefers exact original bytes and never substitutes a generated file on source failure', async ({ page }) => {
+test('register PDF download uses the canonical saved document even when an original upload exists', async ({ page }) => {
   const original = Buffer.from('%PDF-1.4\n% SIGNED ORIGINAL SOURCE\n%%EOF')
   const path = `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/source-one/content/`
   const state = await openNative(page, fixture => {
@@ -137,16 +137,14 @@ test('register PDF download prefers exact original bytes and never substitutes a
     fixture.uploadedDocuments = [{ id: 'source-one', filename: 'Signed-original.pdf', content_url: path }]
     fixture.uploadedContent[path] = { body: original }
   })
-  await menu(page, 'Download PDF')
-  await expect(page.getByRole('alert').filter({ hasText: 'Original source lookup unavailable.' })).toBeVisible()
-  expect(state.requests.filter(item => item.path.endsWith('/export-pdf/'))).toHaveLength(0)
-  state.uploadedDocumentsError = null
   const downloadEvent = page.waitForEvent('download')
   await menu(page, 'Download PDF')
   const download = await downloadEvent
-  expect(download.suggestedFilename()).toBe('Signed-original.pdf')
-  expect(await readFile(await download.path())).toEqual(original)
-  expect(state.requests.filter(item => item.path.endsWith('/export-pdf/'))).toHaveLength(0)
+  expect(download.suggestedFilename()).toBe('Generated-PO.pdf')
+  expect(await readFile(await download.path())).toEqual(state.generatedPdf)
+  expect(state.requests.filter(item => item.path.endsWith('/export-pdf/'))).toHaveLength(1)
+  expect(state.requests.filter(item => item.path.includes('/uploaded-documents/'))).toEqual([])
+  expect(state.acceptedWrites).toEqual([])
   isolated(state)
 })
 
@@ -239,8 +237,13 @@ test('reviewed signed upload explicitly reconciles with a master supplier and ke
   expect(state.acceptedWrites.filter(item => item.path.endsWith('/reconcile/'))).toHaveLength(1)
   const event = page.waitForEvent('download')
   await menu(page, 'Download PDF')
-  expect(await readFile(await (await event).path())).toEqual(original)
-  expect(state.requests.filter(item => item.path.endsWith('/import_signed_pdf/') || item.path.endsWith('/export-pdf/'))).toHaveLength(0)
+  expect(await readFile(await (await event).path())).toEqual(state.generatedPdf)
+  await menu(page, 'Preview')
+  await page.getByRole('tab', { name: 'Original source', exact: true }).click()
+  const originalEvent = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Download uploaded PO', exact: true }).click()
+  expect(await readFile(await (await originalEvent).path())).toEqual(original)
+  expect(state.requests.filter(item => item.path.endsWith('/import_signed_pdf/'))).toHaveLength(0)
   isolated(state)
 })
 

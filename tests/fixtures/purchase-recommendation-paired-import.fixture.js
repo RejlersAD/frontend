@@ -60,6 +60,7 @@ export async function pairedImportHarness(page, options = {}) {
         mapping_issues: [], workflow_issues: [],
         po_preview: { extracted_data: poFields, reconciliation_issues: options.poPreviewIssues || [], approval_evidence: {
           signature_detected: true, stamp_detected: true, approved_by_name: 'PO Approver Only', approved_by_title: 'PO Director', approved_date: '2026-09-12', issues: [],
+          ...options.poEvidence,
         } },
       })
     }
@@ -75,7 +76,7 @@ export async function pairedImportHarness(page, options = {}) {
     const response = {
       success: true, created: !previous, requisition_id: prId, pr_number: number, status: 'converted',
       document_signed_off: true, approval_detection: approval, po_link: poLink, purchase_order_id: poId,
-      purchase_order: { purchase_order_id: poId, po_number: poLink.po_number, pr_id: prId, po_link: poLink, operation: options.poOperation || 'created', reconciliation_issues: options.poIssues || [] }, mapping_issues: [], workflow_issues: [],
+      purchase_order: { purchase_order_id: poId, po_number: poLink.po_number, pr_id: prId, po_link: poLink, operation: options.poOperation || 'created', reconciliation_issues: options.poIssues || [], workflow_issues: options.poWorkflowIssues || [] }, mapping_issues: [], workflow_issues: [],
     }
     if (state.incompleteResponse) return reply(route, { ...response, purchase_order_id: null, purchase_order: null, po_link: { status: 'not_linked', manual_link_required: true } })
     const record = { ...(previous || state.props.requisitions[0]), ...(body.attach_only ? {} : fields), id: prId, pr_number: number, status: 'converted', linked_po_id: poId, price_remarks_data: { po_link: poLink } }

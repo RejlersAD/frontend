@@ -65,6 +65,27 @@ test('PO-only permissions allow review/save without PR-file requirements or PR-o
   clean(state)
 })
 
+test('PO-only upload saves visible signature evidence with missing signer and date for review', async ({ page }) => {
+  const warning = 'PO approval evidence needs review: the approver name and approval date are missing.'
+  const state = await open(page, { prepare: fixture => {
+    fixture.poPdfPreviews[syntheticPoPdf.name] = { data: { approval_evidence: { signature_detected: true, approved_by_name: '', approved_date: '' } } }
+    fixture.poPdfImportResult = { success: true, purchase_order_id: orderFormId, po_number: orderFormNumber, operation: 'created', signature_visible: true, signature_verified: false, approval_evidence_complete: false, workflow_issues: [warning] }
+  } })
+  await review(page)
+  await expect(modal(page).getByLabel('PO approval signature is visible', { exact: true })).not.toBeChecked()
+  await modal(page).getByLabel('PO approval signature is visible', { exact: true }).check()
+  await modal(page).getByLabel('PO Approver title', { exact: true }).fill('Visible source title')
+  await expect(modal(page).getByRole('status', { name: 'PO approval evidence warning', exact: true })).toContainText('Missing PO approver name and PO approval date.')
+  await save(page).click()
+  await expect(modal(page)).toContainText('The original PO PDF is attached.')
+  await expect(modal(page)).toContainText(warning)
+  expect(state.acceptedWrites).toHaveLength(1)
+  expect(state.acceptedWrites[0].body).toMatchObject({ signature_verified: true, approved_by_name: '', approved_date: '', approved_by_title: 'Visible source title', file: { filename: syntheticPoPdf.name } })
+  expect(documentCalls(state)).toEqual([])
+  await expect(page.getByRole('dialog', { name: 'Edit Signed Purchase Order PDF', exact: true })).toHaveCount(0)
+  clean(state)
+})
+
 test('PO-only upload retains its PDF and edits until a missing or invalid amount is corrected', async ({ page }) => {
   const actor = { ...formActor, is_superuser: false, modules: [{ code: 'procurement_orders' }], module_actions: { procurement_orders: ['read', 'create'], procurement_requisitions: [] } }
   const state = await open(page, { actor, prepare: fixture => {

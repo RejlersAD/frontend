@@ -328,9 +328,6 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       String(poEdits.entered_amount) !== String(editablePoFields(preview.po_preview).entered_amount)
       || poEdits.currency !== editablePoFields(preview.po_preview).currency
     )) return setError('Confirm the PO VAT treatment before changing its price or currency.');
-    if (poFile && poEvidence.signatureVerified && (!poEvidence.approvedByName.trim() || !poEvidence.approvedDate)) {
-      return setError('Enter the PO approver name and approval date when the PO signature is verified.');
-    }
     setLoading(true);
     setError('');
     try {
@@ -423,15 +420,19 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const allIssues = [...new Set([
     ...((result || preview)?.mapping_issues || []),
     ...((result || preview)?.workflow_issues || []),
-    ...(result?.purchase_order?.reconciliation_issues || []).map(issue => `PO: ${issue}`),
-    ...(result?.purchase_order?.mapping_issues || []).map(issue => `PO: ${issue}`),
-    ...(result?.purchase_order?.workflow_issues || []).map(issue => `PO: ${issue}`),
+    ...(result?.purchase_order?.reconciliation_issues || []).map(issue => file ? `PO: ${issue}` : issue),
+    ...(result?.purchase_order?.mapping_issues || []).map(issue => file ? `PO: ${issue}` : issue),
+    ...(result?.purchase_order?.workflow_issues || []).map(issue => file ? `PO: ${issue}` : issue),
   ])];
   const poCaptureIssues = [...new Set([
     ...(preview?.po_preview?.reconciliation_issues || []),
     ...(preview?.po_preview?.mapping_issues || []),
     ...(preview?.po_preview?.approval_evidence?.issues || []),
   ])];
+  const missingPoApprovalFields = [
+    !poEvidence.approvedByName.trim() && 'PO approver name',
+    !poEvidence.approvedDate && 'PO approval date',
+  ].filter(Boolean);
 
   return createPortal(
     <div className="fixed inset-0 z-[70] overflow-y-auto">
@@ -600,7 +601,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                         );
                       })}
                       <label className="text-xs font-semibold text-gray-700 sm:col-span-2">
-                        Approval Date
+                        PR Approval date
                         <input aria-invalid={Boolean(detection.approval_date_evidence?.review_required && !edits.approval_date)} type="date" value={edits.approval_date || ''} onChange={(event) => setEdits((current) => ({ ...current, approval_date: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                       </label>
                       {detection.approval_date_evidence?.review_required && !edits.approval_date && <p className="text-xs text-red-700 sm:col-span-2">Enter the approval date shown in the PDF.</p>}
@@ -636,6 +637,8 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                         <label className="text-xs font-semibold text-gray-700">PO Approval date<input type="date" value={poEvidence.approvedDate} onChange={event => setPoEvidence(current => ({ ...current, approvedDate: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" /></label>
                         <label className="text-xs font-semibold text-gray-700 sm:col-span-2">PO Approver title<input value={poEvidence.approvedByTitle} onChange={event => setPoEvidence(current => ({ ...current, approvedByTitle: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" /></label>
                       </div>
+                      <p className="text-xs text-gray-600">Use the signature date shown on the PO. The PR approval date and PO order date are separate.</p>
+                      {poEvidence.signatureVerified && missingPoApprovalFields.length > 0 && <div role="status" aria-label="PO approval evidence warning" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"><p className="font-semibold">Missing {missingPoApprovalFields.join(' and ')}.</p><p className="mt-1">You can save now. The PO approval evidence will be kept for review.</p></div>}
                     </fieldset>
                     {poCaptureIssues.length > 0 && <div className="space-y-1 text-xs text-amber-800"><p className="font-semibold">Captured extraction notes</p><p>These describe the original PDF capture. Your reviewed values will be checked when saved.</p><ul className="list-disc space-y-1 pl-5">{poCaptureIssues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}
                   </section>}
