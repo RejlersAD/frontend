@@ -183,12 +183,11 @@ export default function ProcurementRegister({ orders, loading, error, pendingUpl
   const approvals = records.filter(row => row.awaitingApproval).length
   const upcoming = filterRegisterRecords(actualOrders, { ...INITIAL_FILTERS, delivery: 'next14' }, currentUserId).length
   const preview = row => {
-    setSelectedId(row.id)
-    window.requestAnimationFrame(() => {
-      const panel = document.querySelector('.purchase-orders-workspace .prw-details')
-      panel?.focus({ preventScroll: true })
-      if (window.matchMedia('(max-width: 1100px)').matches) panel?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    })
+    if (row.isPendingDocument) {
+      onPreviewDocument(row.raw.po_document_id)
+      return
+    }
+    onOpen(row.id)
   }
   const sortBy = key => setSort(previous => ({ key, direction: previous.key === key && previous.direction === 'asc' ? 'desc' : 'asc' }))
   const beginLink = order => { setLinkNotice(''); setLinkOrder(order) }
