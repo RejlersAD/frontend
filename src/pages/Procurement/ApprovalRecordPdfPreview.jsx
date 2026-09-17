@@ -38,7 +38,6 @@ export default function ApprovalRecordPdfPreview({ requisitionId, requisitionNum
         if (controller.signal.aborted) return;
         objectUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
         setContent({ key: contentKey, url: objectUrl, loading: false, error: '',
-          prSource: headers?.['x-approval-record-pr-source'], poSource: headers?.['x-approval-record-po-source'],
           attachmentWarnings: Number(headers?.['x-po-attachment-warnings']) || 0 });
       } catch (problem) {
         if (controller.signal.aborted) return;
@@ -93,14 +92,6 @@ export default function ApprovalRecordPdfPreview({ requisitionId, requisitionNum
   };
 
   return <><section className="prr-source-document prr-approval-record is-embedded" aria-label="Combined PR and PO documents">
-    <div className="prr-source-controls">
-      <span className="mr-auto rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700">PR first, then PO</span>
-      {current.url && [['PR', current.prSource], ['PO', current.poSource]].map(([label, source]) => (
-        ['radai_generated', 'uploaded_original'].includes(source) && <span key={label} className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700">
-          {label}: {source === 'radai_generated' ? 'RADAI-generated' : 'Uploaded original'}
-        </span>
-      ))}
-    </div>
     {current.url && current.attachmentWarnings > 0 && <p role="status" className="shrink-0 border-y border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       The PO is included. {current.attachmentWarnings} supporting attachment{current.attachmentWarnings === 1 ? '' : 's'} could not be added to this preview.
     </p>}

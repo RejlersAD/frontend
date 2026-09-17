@@ -72,8 +72,6 @@ test('View approval record opens the combined originals and downloads both while
   expect(await bytes(page, frame)).toBe(combinedPdf)
   await expect(combinedViewer(page).getByRole('img', { name: 'Combined PR and PO PDF, page 1 of 2', exact: true })).toBeVisible({ timeout: 30000 })
   await assertRendererWidth(panel(page), combinedViewer(page))
-  await expect(panel(page)).toContainText('PR first, then PO')
-  await expect(panel(page)).toContainText('PO: Uploaded original')
   const downloading = page.waitForEvent('download')
   await panel(page).getByRole('link', { name: 'Download combined PR and PO PDF' }).click()
   const download = await downloading
@@ -113,8 +111,6 @@ for (const attachmentWarnings of [0, 1]) test(`a PO created in RADAI appears wit
   } })
   await open(page)
   expect(await bytes(page, combinedSource(page))).toBe(generatedPo)
-  await expect(panel(page)).toContainText('PR: Uploaded original')
-  await expect(panel(page)).toContainText('PO: RADAI-generated')
   if (attachmentWarnings) await expect(panel(page).getByRole('status')).toContainText('The PO is included. 1 supporting attachment could not be added')
   else await expect(panel(page).getByRole('status')).toHaveCount(0)
   await expect(panel(page).getByRole('alert')).toHaveCount(0)
