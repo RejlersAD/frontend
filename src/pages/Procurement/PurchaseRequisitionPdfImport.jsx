@@ -15,7 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { employeeDisplayName } from '../../utils/employeeDisplayName';
-import { calculateProcurementVat, PROCUREMENT_VAT_OPTIONS } from '../../utils/procurementVat';
+import { calculateProcurementVat, PROCUREMENT_VAT_OPTIONS, roundProcurementMoney } from '../../utils/procurementVat';
 
 const ROLE_LABELS = { pm: 'Project Manager', moe: 'Manager of Engineering', mop: 'Manager of Projects', vp: 'VP Operations' };
 const MAX_SIGNED_PR_PDF_SIZE = 15 * 1024 * 1024;
@@ -117,6 +117,7 @@ const errorMessage = (requestError, fallback) => {
 const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrNumber = '', canLinkPurchaseOrder = true, canUploadPurchaseOrder = false, primaryDocument = 'pr', requisitionId = null, canImportRequisition = true }) => {
   const inputRef = useRef(null);
   const poInputRef = useRef(null);
+  const poAmountRef = useRef(null);
   const previewVersionRef = useRef(0);
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState('');
@@ -124,6 +125,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const [poFileUrl, setPoFileUrl] = useState('');
   const [sourceKind, setSourceKind] = useState(primaryDocument);
   const [poEdits, setPoEdits] = useState({});
+  const [poAmountError, setPoAmountError] = useState('');
   const [poEvidence, setPoEvidence] = useState(emptyPoEvidence);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -200,6 +202,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setPoFile(null);
     setSourceKind(primaryDocument);
     setPoEdits({});
+    setPoAmountError('');
     setPoEvidence(emptyPoEvidence());
     setError('');
     setPreview(null);
@@ -228,6 +231,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setEdits({});
     setManualSignatures({});
     setPoEdits({});
+    setPoAmountError('');
     setPoEvidence(emptyPoEvidence());
     setError('');
     setRecordCheck(null);
@@ -313,6 +317,13 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const saveReviewed = async () => {
     if (numberNeedsCheck || expectedMismatch || missingBoundRecord) return;
     if (poFile && (!preview?.po_preview?.extracted_data || !canUploadPurchaseOrder)) return;
+    if (poFile && !(roundProcurementMoney(poEdits.entered_amount) > 0)) {
+      setError('');
+      setPoAmountError('Enter a PO amount greater than zero from the original PDF, then confirm its VAT treatment.');
+      poAmountRef.current?.focus();
+      poAmountRef.current?.scrollIntoView({ block: 'center' });
+      return;
+    }
     if (poFile && poEdits.vat_basis === 'unconfirmed' && (
       String(poEdits.entered_amount) !== String(editablePoFields(preview.po_preview).entered_amount)
       || poEdits.currency !== editablePoFields(preview.po_preview).currency
@@ -415,6 +426,11 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     ...(result?.purchase_order?.reconciliation_issues || []).map(issue => `PO: ${issue}`),
     ...(result?.purchase_order?.mapping_issues || []).map(issue => `PO: ${issue}`),
     ...(result?.purchase_order?.workflow_issues || []).map(issue => `PO: ${issue}`),
+  ])];
+  const poCaptureIssues = [...new Set([
+    ...(preview?.po_preview?.reconciliation_issues || []),
+    ...(preview?.po_preview?.mapping_issues || []),
+    ...(preview?.po_preview?.approval_evidence?.issues || []),
   ])];
 
   return createPortal(
@@ -598,7 +614,8 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                         {label}
                         {type === 'textarea' ? <textarea aria-label={label} value={poEdits[key] ?? ''} disabled={loading} onChange={event => setPoEdits(current => ({ ...current, [key]: event.target.value }))} rows={3} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" />
                           : type === 'select' ? <select aria-label={label} value={poEdits[key] ?? ''} disabled={loading} onChange={event => setPoEdits(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"><option value="">Select currency</option>{[...new Set(['AED', 'USD', 'EUR', 'GBP', poEdits.currency].filter(Boolean))].map(currency => <option key={currency} value={currency}>{currency}</option>)}</select>
-                            : <input aria-label={label} value={poEdits[key] ?? ''} type={type} step={type === 'number' ? '0.01' : undefined} disabled={loading} onChange={event => setPoEdits(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" />}
+                            : <input ref={key === 'entered_amount' ? poAmountRef : undefined} aria-label={label} aria-invalid={key === 'entered_amount' ? Boolean(poAmountError) : undefined} aria-describedby={key === 'entered_amount' && poAmountError ? 'po-entered-price-error' : undefined} value={poEdits[key] ?? ''} type={type} step={type === 'number' ? '0.01' : undefined} disabled={loading} onChange={event => { setPoEdits(current => ({ ...current, [key]: event.target.value })); if (key === 'entered_amount') setPoAmountError(''); }} className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm font-normal ${key === 'entered_amount' && poAmountError ? 'border-red-500' : 'border-gray-300'}`} />}
+                        {key === 'entered_amount' && poAmountError && <span id="po-entered-price-error" role="alert" className="mt-1 block text-xs font-normal text-red-700">{poAmountError}</span>}
                       </label>)}
                       <label className="text-xs font-semibold text-gray-700 sm:col-span-2">PO VAT price basis<select aria-label="PO VAT price basis" value={poEdits.vat_basis || 'unconfirmed'} disabled={loading} onChange={event => setPoEdits(current => ({ ...current, vat_basis: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"><option value="unconfirmed">Keep captured PO amounts</option>{PROCUREMENT_VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
                     </div>
@@ -620,7 +637,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                         <label className="text-xs font-semibold text-gray-700 sm:col-span-2">PO Approver title<input value={poEvidence.approvedByTitle} onChange={event => setPoEvidence(current => ({ ...current, approvedByTitle: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" /></label>
                       </div>
                     </fieldset>
-                    {[...(preview.po_preview.reconciliation_issues || []), ...(preview.po_preview.mapping_issues || []), ...(preview.po_preview.approval_evidence?.issues || [])].length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">{[...new Set([...(preview.po_preview.reconciliation_issues || []), ...(preview.po_preview.mapping_issues || []), ...(preview.po_preview.approval_evidence?.issues || [])])].map(issue => <li key={issue}>{issue}</li>)}</ul>}
+                    {poCaptureIssues.length > 0 && <div className="space-y-1 text-xs text-amber-800"><p className="font-semibold">Captured extraction notes</p><p>These describe the original PDF capture. Your reviewed values will be checked when saved.</p><ul className="list-disc space-y-1 pl-5">{poCaptureIssues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}
                   </section>}
                 </div>
               </div>

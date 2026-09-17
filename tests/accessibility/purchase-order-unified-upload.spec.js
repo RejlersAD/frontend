@@ -65,6 +65,42 @@ test('PO-only permissions allow review/save without PR-file requirements or PR-o
   clean(state)
 })
 
+test('PO-only upload retains its PDF and edits until a missing or invalid amount is corrected', async ({ page }) => {
+  const actor = { ...formActor, is_superuser: false, modules: [{ code: 'procurement_orders' }], module_actions: { procurement_orders: ['read', 'create'], procurement_requisitions: [] } }
+  const state = await open(page, { actor, prepare: fixture => {
+    fixture.poPdfPreviews[syntheticPoPdf.name] = { data: {
+      extracted_data: { total_amount: null, gross_amount: null },
+      reconciliation_issues: ['The purchase amount could not be confirmed. Review and save the amount from the original PDF.'],
+    } }
+  } })
+  await review(page)
+  await modal(page).getByLabel('Vendor email', { exact: true }).fill('retained@example.test')
+  const source = modal(page).getByRole('link', { name: 'Open PO PDF in new tab', exact: true })
+  const sourceUrl = await source.getAttribute('href')
+  const amount = modal(page).getByLabel('PO Entered price', { exact: true })
+  await expect(amount).toHaveValue('')
+  for (const value of ['', '-10']) {
+    await amount.fill(value)
+    await save(page).click()
+    await expect(amount).toBeFocused()
+    await expect(amount).toHaveAttribute('aria-invalid', 'true')
+    await expect(modal(page).getByRole('alert')).toContainText('Enter a PO amount greater than zero')
+  }
+  expect(state.requests.filter(request => request.path.endsWith('/import_signed_pdf/'))).toEqual([])
+  expect(state.acceptedWrites).toEqual([])
+  await expect(source).toHaveAttribute('href', sourceUrl)
+  await expect(modal(page).getByLabel('Vendor email', { exact: true })).toHaveValue('retained@example.test')
+  await amount.fill('7654.32')
+  await modal(page).getByLabel('PO VAT price basis', { exact: true }).selectOption('none')
+  await save(page).click()
+  await expect(modal(page)).toContainText('The original PO PDF is attached.')
+  expect(state.requests.filter(request => request.path.endsWith('/import_signed_pdf/'))).toHaveLength(1)
+  expect(state.acceptedWrites).toHaveLength(1)
+  expect(state.acceptedWrites[0].body).toMatchObject({ file: { filename: syntheticPoPdf.name }, reviewed_fields: { entered_amount: '7654.32', vat_basis: 'none', seller_email: 'retained@example.test' } })
+  expect(documentCalls(state)).toEqual([])
+  clean(state)
+})
+
 test('vendor permission failure retains reviewed details and selecting an existing vendor retries the same final save', async ({ page }) => {
   const state = await open(page)
   await review(page)
