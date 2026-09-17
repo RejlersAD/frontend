@@ -61,7 +61,7 @@ export default function UploadedPurchaseOrderPreview({ orderId, documentId, file
               {documents.length > 1 && <div className="upo-toolbar"><div className="upo-select"><label htmlFor={selectId}>Uploaded PO document</label><select id={selectId} value={String(selected.id)} onChange={event => setSelection({ orderId: String(orderId), documentId: event.target.value })}>{documents.map(item => <option key={item.id} value={String(item.id)}>{item.filename || 'Uploaded Purchase Order.pdf'}</option>)}</select></div></div>}
               {currentContent.loading ? <div className="upo-state" role="status"><ArrowPathIcon className="upo-spinner" />Loading uploaded PO PDF…</div>
                 : currentContent.error ? <div className="upo-state" role="alert"><DocumentTextIcon /><p>{currentContent.error}</p><button type="button" onClick={() => setFileRetry(value => value + 1)}>Retry uploaded PO</button></div>
-                  : currentContent.url ? <PdfDocumentPreview title={`Uploaded PO PDF: ${filename}`} url={currentContent.url} className="min-h-0 flex-1" actions={<div className="upo-actions">
+                  : currentContent.url ? <PdfDocumentPreview continuous title={`Uploaded PO PDF: ${filename}`} url={currentContent.url} className="min-h-0 flex-1" actions={<div className="upo-actions">
                     <a href={currentContent.url} download={filename} aria-label="Download uploaded PO" title="Download uploaded PO"><ArrowDownTrayIcon aria-hidden="true" /></a>
                     <a href={currentContent.url} target="_blank" rel="noopener noreferrer" aria-label="Open uploaded PO" title="Open uploaded PO"><ArrowTopRightOnSquareIcon aria-hidden="true" /></a>
                   </div>} />

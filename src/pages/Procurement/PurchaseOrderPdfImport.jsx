@@ -335,7 +335,7 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId, 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
               <section aria-label="Signed PO document preview" className="min-w-0 overflow-hidden rounded-xl border border-gray-300 bg-gray-100">
                 <div className="flex min-h-10 items-center gap-2 border-b border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700"><DocumentTextIcon className="h-4 w-4 flex-none" /><span className="truncate">{documentName || 'PDF preview'}</span></div>
-                {previewUrl ? <div className="h-[64vh] min-h-[420px] w-full"><PdfDocumentPreview url={previewUrl} title="Signed purchase order PDF preview" /></div> : <div className="flex min-h-[320px] items-center justify-center p-6 text-sm text-gray-500">{loading ? 'Loading saved PDF...' : 'PDF preview unavailable.'}</div>}
+                {previewUrl ? <div className="h-[64vh] min-h-[420px] w-full"><PdfDocumentPreview continuous url={previewUrl} title="Signed purchase order PDF preview" /></div> : <div className="flex min-h-[320px] items-center justify-center p-6 text-sm text-gray-500">{loading ? 'Loading saved PDF...' : 'PDF preview unavailable.'}</div>}
               </section>
               <div className="min-w-0 space-y-4">
             {editMode && result && <section aria-label="Edit saved purchase order" className="space-y-4 rounded-xl border border-gray-200 p-4">

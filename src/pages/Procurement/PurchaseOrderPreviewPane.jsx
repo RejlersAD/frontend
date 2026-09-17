@@ -151,7 +151,7 @@ export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles,
     {tab === 'document' && apiError && <div className="pop-error" role="alert"><p>{apiError}</p><button type="button" className="pop-tool" onClick={() => setAttempt(value => value + 1)}>Retry preview</button></div>}
     {tab === 'document' && pageError && <button type="button" className="pop-tool" onClick={() => setAttempt(value => value + 1)}>Retry preview</button>}
     <section className="pop-uploaded" role="tabpanel" id={`${instanceId}-document-panel`} aria-labelledby={`${instanceId}-document-tab`} hidden={tab !== 'document'} tabIndex={0}>
-      {displayed?.url ? <PdfDocumentPreview url={displayed.url} documentKey={documentIdentity} title="Current purchase order PDF preview" className="h-full" refreshing={!ready && !apiError && !pageError} onReady={previewReady} onError={previewFailed} />
+      {displayed?.url ? <PdfDocumentPreview continuous url={displayed.url} documentKey={documentIdentity} title="Current purchase order PDF preview" className="h-full" refreshing={!ready && !apiError && !pageError} onReady={previewReady} onError={previewFailed} />
         : !apiError && <div className="upo-state" role="status">Updating purchase order PDF preview…</div>}
     </section>
     {orderId && <section className="pop-uploaded" role="tabpanel" id={`${instanceId}-original-panel`} aria-labelledby={`${instanceId}-original-tab`} hidden={tab !== 'original'} tabIndex={0}>

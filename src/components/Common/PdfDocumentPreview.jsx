@@ -1,15 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-
-let pdfLibrary;
-const loadPdfLibrary = () => {
-  if (!pdfLibrary) pdfLibrary = import('pdfjs-dist/build/pdf.mjs').then(library => {
-    library.GlobalWorkerOptions.workerSrc = workerUrl;
-    return library;
-  }).catch(error => { pdfLibrary = null; throw error; });
-  return pdfLibrary;
-};
+import ContinuousPdfPreview from './ContinuousPdfPreview';
+import { loadPdfLibrary } from './pdfDocumentLibrary';
 
 // Fit the current page, not the widest page in a mixed-size document. Only one
 // page is rendered at a time, including when a source contains hundreds of pages.
@@ -167,11 +159,12 @@ function PdfPages({ url, title, actions, refreshing, onReady, onError }) {
   </>;
 }
 
-export default function PdfDocumentPreview({ url, title, actions, className = '', documentKey = url, refreshing = false, onReady, onError }) {
+export default function PdfDocumentPreview({ url, title, actions, className = '', documentKey = url, refreshing = false, onReady, onError, continuous = false }) {
+  const Pages = continuous ? ContinuousPdfPreview : PdfPages;
   return <section role="region" aria-label={title} className={`flex h-full w-full min-h-0 min-w-0 flex-col overflow-hidden ${className}`}>
-    <PdfPages key={documentKey} url={url} title={title} actions={actions} refreshing={refreshing} onReady={onReady} onError={onError} />
+    <Pages key={documentKey} url={url} title={title} actions={actions} refreshing={refreshing} onReady={onReady} onError={onError} />
   </section>;
 }
 
 PdfPages.propTypes = { url: PropTypes.string.isRequired, title: PropTypes.string.isRequired, actions: PropTypes.node, refreshing: PropTypes.bool, onReady: PropTypes.func, onError: PropTypes.func };
-PdfDocumentPreview.propTypes = { ...PdfPages.propTypes, className: PropTypes.string, documentKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) };
+PdfDocumentPreview.propTypes = { ...PdfPages.propTypes, className: PropTypes.string, documentKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), continuous: PropTypes.bool };
