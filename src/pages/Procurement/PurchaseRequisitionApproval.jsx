@@ -625,10 +625,19 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   const { netAmount: netPrice, taxAmount, totalAmount: totalPrice, vatRate } = recommendationVat(requisition);
   const vendor = requisition.vendor_details || {};
-  const selectedVendor = (requisition.selected_vendors || [])[0] || {};
-  const vendorName = requisition.vendor_name || requisition.supplier_name || selectedVendor.name || '—';
-  const vendorContact = vendor.contact_person || selectedVendor.contact_person || '—';
-  const vendorEmail = vendor.email || selectedVendor.email || '—';
+  const vendorId = requisition.vendor?.id ?? requisition.vendor ?? vendor.id;
+  const recordedVendorName = requisition.vendor_name || requisition.supplier_name || vendor.name || '';
+  const normalizeVendorName = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const matchingVendors = (requisition.selected_vendors || []).filter(candidate => {
+    const candidateId = candidate.vendor_id ?? candidate.id;
+    if (vendorId) return candidateId != null && String(vendorId) === String(candidateId);
+    return recordedVendorName && normalizeVendorName(candidate.vendor_name || candidate.name) === normalizeVendorName(recordedVendorName);
+  });
+  const selectedVendor = matchingVendors.length === 1 ? matchingVendors[0] : {};
+  const effectiveSupplier = requisition.supplier_contact_details;
+  const vendorName = (effectiveSupplier ? effectiveSupplier.vendor_name : recordedVendorName || selectedVendor.vendor_name || selectedVendor.name) || '—';
+  const vendorContact = (effectiveSupplier ? effectiveSupplier.contact_person : vendor.contact_person || selectedVendor.contact_person) || '—';
+  const vendorEmail = (effectiveSupplier ? effectiveSupplier.email : vendor.email || selectedVendor.email) || '—';
 
   const getStatusColor = (stageOrStatus) => {
     const normalized = approvalDisplayStatus(stageOrStatus);
