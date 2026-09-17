@@ -86,6 +86,7 @@
 .rpp-preview:fullscreen .rpp-document-viewport { padding-top: 18px; }
 .rpp-preview.rpp-export-host { position: fixed; top: 0; left: -10000px; z-index: -1; display: block; width: 740px; height: auto; min-height: 0; padding: 0; border: 0; background: #fff; }
 .rpp-export-host .rpp-document { transform: none !important; }
+.rpp-validation button.rpp-warning { color: #925c0b; }
 
 @media (max-width: 1250px) {
   .rpp-preview { padding: 12px; }

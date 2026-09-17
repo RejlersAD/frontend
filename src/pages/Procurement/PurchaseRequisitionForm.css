@@ -94,6 +94,7 @@
 .recommendation-form-workspace .prf-review-checks > button { display: flex; width: 100%; align-items: center; gap: 9px; padding: 9px 0; border: 0; border-top: 1px solid #e8edf5; text-align: left; color: #a52840; background: #fff; }
 .recommendation-form-workspace .prf-review-checks > button svg { width: 15px; height: 15px; }
 .recommendation-form-workspace .prf-review-checks > button span { flex: 1; }
+.recommendation-form-workspace .prf-review-checks > button.prf-warning { color: #925c0b; }
 @media (min-width: 1100px) { #application-content > main.main-content:has(.recommendation-form-workspace.prf-page) { overflow: hidden; } }
 @media (max-width: 1510px) and (min-width: 1100px) {
   .recommendation-form-workspace .prf-header-actions .prf-save-state { position: absolute; top: -22px; right: 0; }

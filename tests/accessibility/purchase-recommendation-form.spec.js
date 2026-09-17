@@ -51,7 +51,7 @@ const fillRequest = async page => {
   await expect(page.getByRole('heading', { name: 'Supplier selection', exact: true })).toBeVisible()
 }
 
-test('new request validates required fields and preview issues return to the relevant step', async ({ page }) => {
+test('new request validates its identifier and preview warnings return to the relevant step', async ({ page }) => {
   const state = await open(page)
   await page.evaluate(() => document.fonts.ready)
   await page.screenshot({ path: '../artifacts/purchase-recommendation-form-new-request.png' })
@@ -60,8 +60,8 @@ test('new request validates required fields and preview issues return to the rel
   await expect(editor(page)).toContainText('Enter the PR number manually')
   expect(saves(state)).toEqual([])
   await preview(page).getByRole('tab', { name: /^Validation/ }).click()
-  await expect(preview(page).getByRole('tabpanel', { name: /^Validation/ })).toContainText('Product/Service description is required')
-  await preview(page).getByRole('button', { name: 'Product/Service description is required', exact: true }).click()
+  await expect(preview(page).getByRole('tabpanel', { name: /^Validation/ })).toContainText('Product/service description is missing.')
+  await preview(page).getByRole('button', { name: 'Product/service description is missing.', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Product / service', exact: true })).toBeFocused()
   await preview(page).getByRole('tab', { name: /^Validation/ }).focus()
   await page.keyboard.press('ArrowLeft')
@@ -170,15 +170,30 @@ test('edit keeps saved request fields, supplier changes update the document and 
   verifyIsolation(state)
 })
 
-test('high-value approval remains blocked without management approval and evidence', async ({ page }) => {
+test('high-value registration warns and submits without management approval and evidence', async ({ page }) => {
   const state = await open(page, { edit: true })
   await page.getByRole('button', { name: 'Review & submit', exact: true }).click()
-  await expect(editor(page)).toContainText('Management Approval Required')
-  await page.getByRole('button', { name: 'Submit for approval', exact: true }).click()
-  await expect(editor(page)).toContainText('Attach evidence of management approval')
-  expect(state.submissions).toEqual([])
+  await expect(editor(page)).toContainText('Management approval evidence is missing.')
   await preview(page).getByRole('tab', { name: /^Validation/ }).click()
-  await expect(preview(page).getByRole('tabpanel', { name: /^Validation/ })).toContainText('Management Approval must be Yes')
+  await expect(preview(page).getByRole('tabpanel', { name: /^Validation/ })).toContainText('Management approval is not confirmed for a PR above AED 100,000.')
+  await page.getByRole('button', { name: 'Submit for approval', exact: true }).click()
+  await expect.poll(() => state.submissions.length).toBe(1)
+  verifyIsolation(state)
+})
+
+test('a new PR registers with only its identifier while business details remain warnings', async ({ page }) => {
+  const state = await open(page)
+  await page.getByRole('textbox', { name: 'PR number', exact: true }).fill('RAD-PRJ-PR-9001_2026')
+  await page.getByRole('button', { name: 'Continue to supplier & pricing', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Supplier selection', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Review & submit', exact: true }).click()
+  await expect(page.locator('.prf-review-checks')).toContainText('No vendors are shortlisted.')
+  await expect(page.locator('.prf-review-checks')).toContainText('Purchase recommendation is missing.')
+  await page.getByRole('button', { name: 'Submit for approval', exact: true }).click()
+  await expect.poll(() => state.submissions.length).toBe(1)
+  await expect(page).toHaveURL(/\/procurement\/requisitions$/)
+  expect(state.record.product_service).toBe('')
+  expect(state.record.vendor).toBeNull()
   verifyIsolation(state)
 })
 
