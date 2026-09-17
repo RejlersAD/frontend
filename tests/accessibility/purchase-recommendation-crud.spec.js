@@ -125,3 +125,30 @@ test('a read-only PR owner can preview but cannot create, edit, delete, or conve
   await expect(details(page).getByRole('button', { name: 'Create purchase order', exact: true })).toHaveCount(0);
   clean(state);
 });
+
+test('PR update permission opens another issuer’s editor without granting deletion, and explicit update denial hides Edit', async ({ page }) => {
+  const number = 'RAD-PRJ-PR-0003_2026';
+  const state = await recommendationHarness(page, { realApp: true, prepare: state => {
+    state.actor.is_superuser = false;
+    state.actor.module_actions = { procurement_requisitions: ['read', 'update', 'delete'], procurement_orders: ['read'] };
+  } });
+  await load(page);
+  expect(state.details[id(203)].issued_by).not.toBe(state.actor.id);
+  await page.getByRole('button', { name: `Actions for ${number}`, exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Edit recommendation', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Delete recommendation', exact: true })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: 'Edit recommendation', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/procurement/requisitions/${id(203)}/edit$`));
+  await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible();
+
+  // Effective action grants remain authoritative even for an administrator.
+  state.actor.is_superuser = true;
+  state.actor.module_actions.procurement_requisitions = ['read'];
+  await page.goto('/procurement/requisitions', { waitUntil: 'domcontentloaded' });
+  await load(page);
+  await page.getByRole('button', { name: `Actions for ${number}`, exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Preview recommendation', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Edit recommendation', exact: true })).toHaveCount(0);
+  expect(state.requests.filter(request => request.path.startsWith('/api/v1/procurement/') && request.method !== 'GET')).toEqual([]);
+  clean(state);
+});

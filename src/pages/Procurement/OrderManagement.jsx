@@ -205,10 +205,12 @@ const OrderManagement = () => {
     const actions = currentUser?.module_actions || currentUser?.user?.module_actions;
     return Boolean(actions?.[module]?.includes(action));
   }, [currentUser, isCurrentUserAdmin]);
-  const canModifyRequisition = (requisition) => Boolean(
-    moduleAction('procurement_requisitions', 'update')
-    && (isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId)))
-  );
+  const canModifyRequisition = () => {
+    const actions = currentUser?.module_actions || currentUser?.user?.module_actions;
+    return actions
+      ? Boolean(actions.procurement_requisitions?.includes('update'))
+      : moduleAction('procurement_requisitions', 'update');
+  };
   const canDeleteRequisition = (requisition) => Boolean(
     moduleAction('procurement_requisitions', 'delete')
     && (isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId)))

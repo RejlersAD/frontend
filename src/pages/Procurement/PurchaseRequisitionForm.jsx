@@ -21,6 +21,7 @@ import { uploadSignedRequisitionPdf, validateSignedRequisitionPdf } from './Purc
 import RecommendationPreviewPane from './RecommendationPreviewPane';
 import RecommendationSupplierPricing from './RecommendationSupplierPricing';
 import RecordedApprovalHistory from './RecordedApprovalHistory';
+import PendingApprovalAssignments, { approvalReassignmentCommands, retainCurrentApprovalAssignments } from './PendingApprovalAssignments';
 import { prepareRecommendationPayload } from './recommendationFormPayload';
 import { hydrateRecommendationReferences, preserveRecordedApprovalWorkflow, recommendationLineError } from './recommendationFormState';
 import { confirmedRecommendationVat, hasCompleteRecommendationPricing, recommendationVat, recommendationLineDiscount } from './recommendationVat';
@@ -66,6 +67,7 @@ const firstApiError = (errors) => {
     po_number_reference: 'PO Number',
     items: 'Line items',
     approval_workflow_config: 'Approval Workflow',
+    approval_reassignments: 'Pending approvers',
     management_approval_evidence_file: 'Evidence of Approval',
     non_field_errors: 'Submission',
   };
@@ -404,6 +406,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const [formData, setFormDataState] = useState(() => buildInitialFormData(editData));
   const [savedApprovalRecord, setSavedApprovalRecord] = useState(null);
   const [approvalRecordEditing, setApprovalRecordEditing] = useState(false);
+  const [pendingAssignments, setPendingAssignments] = useState({});
+  const [assignmentNotice, setAssignmentNotice] = useState('');
   const approvalRecord = savedApprovalRecord?.id === editData?.id ? savedApprovalRecord : editData;
   const userEditedRef = useRef(false);
   const linePricingEditedRef = useRef(false);
@@ -530,6 +534,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     const initialData = buildInitialFormData(editData);
     setSavedApprovalRecord(null);
     setApprovalRecordEditing(false);
+    setPendingAssignments({});
+    setAssignmentNotice('');
     setFormDataState(initialData);
     userEditedRef.current = false;
     linePricingEditedRef.current = false;
@@ -643,8 +649,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     try {
       const [employeeResponse, vpResponse, procurementResponse] = await Promise.all([
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'vp_operations' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'procurement_head' } }),
+        ...(!preserveApprovalWorkflow ? [
+          apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'vp_operations' } }),
+          apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'procurement_head' } }),
+        ] : []),
       ]);
 
       const usersFrom = (response) => {
@@ -1345,6 +1353,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     });
   };
 
+  const reassignmentKeepsPricing = () => {
+    if (!preserveApprovalWorkflow || !Object.keys(pendingAssignments).length || formData._vatPricingChanged) return false;
+    const current = prepareRecommendationPayload(formData);
+    const saved = prepareRecommendationPayload(buildInitialFormData(approvalRecord));
+    return ['items', 'total_price', 'net_total_excl_vat', 'estimated_budget', 'currency']
+      .every(key => JSON.stringify(current[key]) === JSON.stringify(saved[key]));
+  };
+
   const getValidationErrors = () => {
     const newErrors = {};
     if (!formData.pr_number?.trim()) {
@@ -1352,7 +1368,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     } else if (prNumberStatus.available === false) {
       newErrors.pr_number = 'This PR number already exists';
     }
-    const lineError = recommendationLineError(prepareRecommendationPayload(formData).items);
+    const lineError = reassignmentKeepsPricing() ? '' : recommendationLineError(prepareRecommendationPayload(formData).items);
     if (lineError) newErrors.items = lineError;
     if (formData._vatPricingChanged && !confirmedRecommendationVat(formData.vat_basis)) {
       newErrors.vat_basis = 'Confirm whether the entered price includes VAT, excludes VAT, or has no VAT.';
@@ -1444,7 +1460,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       setActiveStep(1);
       return;
     }
-    const lineError = recommendationLineError(prepareRecommendationPayload(formData).items);
+    const lineError = reassignmentKeepsPricing() ? '' : recommendationLineError(prepareRecommendationPayload(formData).items);
     if (!approvedPdfFile && lineError) {
       setErrors(previous => ({ ...previous, items: lineError }));
       setSaveError(lineError);
@@ -1488,10 +1504,19 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         savedWorkflow: editData?.approval_workflow_config || [],
       });
 
-      const formDataWithWorkflow = prepareRecommendationPayload(formData, preserveApprovalWorkflow ? undefined : approvalWorkflow);
+      let formDataWithWorkflow = prepareRecommendationPayload(formData, preserveApprovalWorkflow ? undefined : approvalWorkflow);
       // Even resending an unchanged historic workflow invokes assignment
       // validation. Leave it entirely out of an ordinary edit to its record.
       if (preserveApprovalWorkflow) delete formDataWithWorkflow.approval_workflow_config;
+      const reassignmentCommands = approvalReassignmentCommands(pendingAssignments);
+      if (preserveApprovalWorkflow && reassignmentCommands.length) {
+        const baseline = prepareRecommendationPayload(buildInitialFormData(approvalRecord));
+        // Reassignment-only saves must not resend unchanged source evidence or
+        // commercial fields. Concurrent changes are checked by each snapshot.
+        formDataWithWorkflow = Object.fromEntries(Object.entries(formDataWithWorkflow)
+          .filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(baseline[key])));
+        formDataWithWorkflow.approval_reassignments = reassignmentCommands;
+      }
       Object.keys(formDataWithWorkflow).forEach(key => {
         if (formDataWithWorkflow[key] !== undefined) {
           if (formDataWithWorkflow[key] === null) {
@@ -1556,6 +1581,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
       setLastSavedAt(new Date());
       setSavedAttachments(response.data.attachments || savedAttachments);
+      setPendingAssignments({});
+      setAssignmentNotice('');
       if (preserveApprovalWorkflow) handleApprovalRecordSaved(response.data);
       setFiles([]);
       if (response.data.management_approval_evidence) {
@@ -1587,7 +1614,14 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
   const handleApprovalRecordSaved = updated => {
     if (String(updated?.id) !== String(draftIdRef.current)) return;
-    const sourceKeys = ['signed_document_verification', 'signed_approval_evidence', 'manual_ocr_review', 'source_approval_reviews'];
+    const retainedAssignments = retainCurrentApprovalAssignments(pendingAssignments, updated);
+    if (!submissionInFlightRef.current) {
+      setPendingAssignments(retainedAssignments);
+      if (Object.keys(retainedAssignments).length < Object.keys(pendingAssignments).length) {
+        setAssignmentNotice('Queued reassignment changes were cleared because the approval record changed. Review the current approvers before saving.');
+      }
+    }
+    const sourceKeys = ['signed_document_verification', 'signed_approval_evidence', 'manual_ocr_review', 'source_approval_reviews', 'approval_reassignment_history'];
     const mergeEvidence = previous => ({
       ...previous,
       approval_workflow_config: updated.approval_workflow_config || [],
@@ -1660,11 +1694,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     single_source_justification: 1, items: 1, price_description: 2,
     description_reason: 2, purchase_recommendation: 2, po_number_reference: 2,
     management_approval: 4, management_approval_remarks: 4, management_approval_evidence: 4,
-    approval_workflow_config: 4, approval_position: 4, attachments: 3, approved_pdf: 3,
+    approval_workflow_config: 4, approval_reassignments: 4, approval_position: 4, attachments: 3, approved_pdf: 3,
   };
   const validationErrors = getValidationErrors();
   const registrationWarnings = getRegistrationWarnings();
-  const unsavedChanges = files.length > 0 || Boolean(managementEvidenceFile) || (userEditedRef.current && JSON.stringify({ ...formData, approval_workflow_config: liveApprovalWorkflow }) !== lastAutoSaveFingerprintRef.current);
+  const unsavedChanges = Object.keys(pendingAssignments).length > 0 || files.length > 0 || Boolean(managementEvidenceFile) || (userEditedRef.current && JSON.stringify({ ...formData, approval_workflow_config: liveApprovalWorkflow }) !== lastAutoSaveFingerprintRef.current);
   const blockingIssues = Object.entries({ ...validationErrors, ...serverErrors, ...Object.fromEntries(Object.entries(errors).filter(([field, message]) => message && (fieldSteps[field] === undefined || ['attachments', 'approved_pdf'].includes(field)))) })
     .map(([field, message]) => ({ field, message, step: fieldSteps[field] ?? 4 }));
   const warningIssues = [
@@ -2273,13 +2307,21 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               {preserveApprovalWorkflow ? 'Recorded approval history' : 'Approval Workflow'}
             </h3>
-            {preserveApprovalWorkflow ? <RecordedApprovalHistory
+            {preserveApprovalWorkflow ? <><RecordedApprovalHistory
               key={approvalRecord.id}
               requisition={{ ...approvalRecord, price_remarks_data: formData.price_remarks_data, attachments: savedAttachments }}
               disabled={submitLoading || autoSaving}
               onSaved={handleApprovalRecordSaved}
               onEditingChange={setApprovalRecordEditing}
-            /> : <div className="space-y-4">
+              hidePendingAssignments={Boolean(approvalRecord.can_reassign_approvers)}
+            />{assignmentNotice && <p role="status" className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{assignmentNotice}</p>}
+            <PendingApprovalAssignments requisition={approvalRecord} assignments={pendingAssignments} employees={projectManagers}
+              loading={loadingApprovers} error={approverLoadError} disabled={submitLoading || autoSaving || approvalRecordEditing}
+              onRetry={fetchApprovers} onChange={(index, assignment) => {
+                userEditedRef.current = true;
+                setAssignmentNotice('');
+                setPendingAssignments(previous => { const next = { ...previous }; if (assignment) next[index] = assignment; else delete next[index]; return next; });
+              }} /></> : <div className="space-y-4">
               {formData.requisition_type === 'general' && catalogError && <p className="text-sm text-amber-700">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry positions</button></p>}
               <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
                 <p className="mb-3 text-xs text-amber-800">Missing approvers or business positions generate warnings. You can save or submit and update this route before any approval decision is recorded.</p>

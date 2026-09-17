@@ -11,7 +11,7 @@ const sourceRow = row => row?.external === true && row.source === 'signed_purcha
 const errorText = value => Array.isArray(value) ? value.map(errorText).join(' ')
   : value && typeof value === 'object' ? Object.values(value).map(errorText).join(' ') : String(value || '');
 
-export default function RecordedApprovalHistory({ requisition, disabled = false, onSaved, onEditingChange }) {
+export default function RecordedApprovalHistory({ requisition, disabled = false, onSaved, onEditingChange, hidePendingAssignments = false }) {
   const [editingIndex, setEditingIndex] = useState(null);
   const [reviewSnapshot, setReviewSnapshot] = useState(null);
   const [draft, setDraft] = useState({ name: '', date: '', verified: false });
@@ -75,6 +75,8 @@ export default function RecordedApprovalHistory({ requisition, disabled = false,
 
   return <div className="space-y-3" aria-label="Recorded approval history">
     {rows.length ? rows.map((row, index) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+      if (hidePendingAssignments && !useSourceRows && row.reassignment_snapshot) return null;
       const role = row.role || row.stage || 'Approval';
       const editable = useSourceRows && !rejectedSourceHistory && sourceRow(row) && original && verification.document_sha256
         && (!String(row.user_name || '').trim() || !approved(row));
@@ -124,4 +126,5 @@ RecordedApprovalHistory.propTypes = {
   disabled: PropTypes.bool,
   onSaved: PropTypes.func.isRequired,
   onEditingChange: PropTypes.func.isRequired,
+  hidePendingAssignments: PropTypes.bool,
 };
