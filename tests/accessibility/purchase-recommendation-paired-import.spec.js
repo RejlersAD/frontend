@@ -30,7 +30,11 @@ test('reviews separate source PDFs and saves both linked records with independen
   await previewPair(page)
   const prSource = dialog(page).getByTitle('Approved PR source PDF', { exact: true })
   const poSource = dialog(page).getByTitle('Approved PO source PDF', { exact: true })
-  const urls = [await prSource.getAttribute('src'), await poSource.getAttribute('src')]
+  await expect(dialog(page).locator('iframe')).toHaveCount(1)
+  await dialog(page).getByRole('tab', { name: 'PR PDF', exact: true }).click()
+  const prUrl = await prSource.getAttribute('src')
+  await dialog(page).getByRole('tab', { name: 'PO PDF', exact: true }).click()
+  const urls = [prUrl, await poSource.getAttribute('src')]
   expect(urls[0]).not.toEqual(urls[1])
   const texts = await page.evaluate(async sources => Promise.all(sources.map(source => fetch(source.split('#')[0]).then(response => response.text()))), urls)
   expect(texts[0]).toBe(syntheticApprovedPdf.buffer.toString())

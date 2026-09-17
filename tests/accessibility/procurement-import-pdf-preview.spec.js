@@ -1,0 +1,71 @@
+import { test, expect } from '@playwright/test'
+import { pairedImportHarness, syntheticApprovedPdf, syntheticPoPdf } from '../fixtures/purchase-recommendation-paired-import.fixture'
+
+test.use({ serviceWorkers: 'block' })
+test.setTimeout(90000)
+const modal = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor', exact: true })
+const source = page => modal(page).getByRole('region', { name: 'Source PDF preview', exact: true })
+async function open(page) {
+  const state = await pairedImportHarness(page)
+  await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click()
+  await modal(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(syntheticApprovedPdf)
+  await modal(page).getByLabel('Select signed or approved PO PDF', { exact: true }).setInputFiles(syntheticPoPdf)
+  return state
+}
+async function pdfBytes(page, kind) {
+  const iframe = source(page).getByTitle(`Approved ${kind} source PDF`, { exact: true })
+  await expect(iframe).toHaveAttribute('src', /#page=1&zoom=page-width/)
+  return page.evaluate(async url => (await fetch(url.split('#')[0])).text(), await iframe.getAttribute('src'))
+}
+
+test('switching source tabs shows one full-height PDF without OCR, lookup or save requests', async ({ page }) => {
+  await page.setViewportSize({ width: 1192, height: 907 })
+  const state = await open(page)
+  await expect(source(page).getByRole('tab', { name: 'PO PDF', exact: true })).toHaveAttribute('aria-selected', 'true')
+  expect(await pdfBytes(page, 'PO')).toBe(syntheticPoPdf.buffer.toString())
+  const calls = state.requests.length
+  await source(page).getByRole('tab', { name: 'PR PDF', exact: true }).click()
+  expect(await pdfBytes(page, 'PR')).toBe(syntheticApprovedPdf.buffer.toString())
+  await expect(source(page).locator('iframe')).toHaveCount(1)
+  await source(page).getByRole('tab', { name: 'PR PDF', exact: true }).press('ArrowRight')
+  expect(await pdfBytes(page, 'PO')).toBe(syntheticPoPdf.buffer.toString())
+  await expect(source(page).getByRole('tab', { name: 'PO PDF', exact: true })).toBeFocused()
+  await expect(source(page).getByRole('link', { name: 'Open PO PDF in new tab' })).toHaveAttribute('href', /^blob:/)
+  expect(state.requests).toHaveLength(calls)
+  expect(state.pairPreviews).toEqual([])
+  expect(state.pairWrites).toEqual([])
+  const frame = await source(page).locator('iframe').boundingBox()
+  const action = await modal(page).getByRole('button', { name: 'Preview OCR', exact: true }).boundingBox()
+  expect(frame.height).toBeGreaterThan(400)
+  expect(frame.y + frame.height).toBeLessThanOrEqual(action.y)
+  expect(action.y + action.height).toBeLessThan(907)
+  await page.screenshot({ path: '../artifacts/unified-upload-preview-desktop.png' })
+  await modal(page).getByRole('button', { name: 'Remove PO PDF', exact: true }).click()
+  expect(await pdfBytes(page, 'PR')).toBe(syntheticApprovedPdf.buffer.toString())
+  await expect(source(page).getByRole('tab')).toHaveCount(1)
+  expect(state.unknown).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
+
+test('mobile source viewer fits the dialog and document replacement selects the new source', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const state = await open(page)
+  await source(page).scrollIntoViewIfNeeded()
+  expect(await pdfBytes(page, 'PO')).toBe(syntheticPoPdf.buffer.toString())
+  const bounds = await modal(page).boundingBox()
+  const frame = await source(page).locator('iframe').boundingBox()
+  expect(bounds.x).toBeGreaterThanOrEqual(0)
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390)
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(844)
+  expect(frame.width).toBeGreaterThan(250)
+  expect(frame.height).toBeGreaterThan(350)
+  await expect(modal(page).getByRole('button', { name: 'Preview OCR', exact: true })).toBeVisible()
+  await page.screenshot({ path: '../artifacts/unified-upload-preview-mobile.png' })
+  await modal(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles({ ...syntheticApprovedPdf, name: 'replacement-pr.pdf' })
+  await expect(source(page)).toContainText('replacement-pr.pdf')
+  expect(await pdfBytes(page, 'PR')).toBe(syntheticApprovedPdf.buffer.toString())
+  await expect(source(page).locator('iframe')).toHaveCount(1)
+  expect(state.pairWrites).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
