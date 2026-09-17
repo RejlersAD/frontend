@@ -30,7 +30,7 @@ import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
-import { canDecideProcurement, isSourceApproval, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
+import { canDecideProcurement, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -67,9 +67,6 @@ const formatMoney = (value, currency = 'USD') => {
 };
 
 const textOrDash = (value) => String(value || '').trim() || '—';
-const COMPANY_APPROVAL_STAMP = '/assets/procurement/commercial-license-stamp.png';
-const artworkImage = value => /^(data:image\/|https?:\/\/|\/)/i.test(String(value || ''))
-  && !/\.pdf(?:[?#]|$)|#page=/i.test(value) ? value : '';
 const purchaseOrderPdfRequests = new Map();
 const purchaseOrderRevision = order => `${order.id}:${order.updated_at || JSON.stringify(order)}`;
 
@@ -95,10 +92,13 @@ const PurchaseOrderDetail = () => {
   const { id } = useParams();
   const activeOrderId = useRef(id);
   activeOrderId.current = id;
+  const exportAttempt = useRef(0);
   const navigate = useNavigate();
   
   // Soft-coded state management
   const [order, setOrder] = useState(null);
+  const currentOrder = useRef(order);
+  currentOrder.current = order;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -126,17 +126,26 @@ const PurchaseOrderDetail = () => {
   };
 
   const handleExportPurchaseOrder = async (format) => {
+    const attempt = ++exportAttempt.current;
+    const revision = purchaseOrderRevision(order);
     try {
       setExportLoading(format);
       const result = format === 'pdf'
         ? pdfDocument?.revision === purchaseOrderRevision(order) ? pdfDocument : await requestPurchaseOrderPdf(order)
         : await fetchPurchaseOrderDocument(order, format);
+      if (activeOrderId.current !== id || exportAttempt.current !== attempt) return;
+      if (!currentOrder.current || purchaseOrderRevision(currentOrder.current) !== revision) {
+        toast.info('The purchase order changed while the document was being prepared. Download the updated document.');
+        return;
+      }
       downloadPurchaseOrderDocument(result);
     } catch (exportError) {
+      if (activeOrderId.current !== id || exportAttempt.current !== attempt) return;
       console.error(`Failed to export Purchase Order as ${format}:`, exportError);
-      await radaiAlert(await purchaseOrderDocumentError(exportError));
+      const message = await purchaseOrderDocumentError(exportError);
+      if (activeOrderId.current === id && exportAttempt.current === attempt) await radaiAlert(message);
     } finally {
-      setExportLoading('');
+      if (activeOrderId.current === id && exportAttempt.current === attempt) setExportLoading('');
     }
   };
 
@@ -145,11 +154,13 @@ const PurchaseOrderDetail = () => {
    */
   useEffect(() => {
     const controller = new AbortController();
+    exportAttempt.current += 1;
     const fetchOrderDetails = async () => {
       try {
         setLoading(true);
         setError(null);
         setActionLoading(false);
+        setExportLoading('');
         
         const response = await apiClient.get(`/procurement/orders/${id}/`, { signal: controller.signal });
         if (controller.signal.aborted || activeOrderId.current !== id) return;
@@ -180,7 +191,10 @@ const PurchaseOrderDetail = () => {
     if (id) {
       fetchOrderDetails();
     }
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      exportAttempt.current += 1;
+    };
   }, [id, navigate]);
 
   useEffect(() => {
@@ -402,11 +416,9 @@ const PurchaseOrderDetail = () => {
     ? order.invoicing_emails.join(', ')
     : order.invoicing_emails;
   const signatureEvidence = purchaseOrderSignatureEvidence(order);
-  const approvalSignatureSource = artworkImage(signatureEvidence.signature);
-  const canUseCompanyStamp = signatureEvidence.verified && !isSourceApproval(signatureEvidence.stage)
-    && /^data:image\//i.test(approvalSignatureSource);
-  const approvalStampSource = signatureEvidence.verified
-    ? artworkImage(order.approval_stamp) || (!order.approval_stamp && canUseCompanyStamp ? COMPANY_APPROVAL_STAMP : '') : '';
+  const approvalSignatureSource = /^(data:image\/|https?:\/\/|\/)/i.test(signatureEvidence.signature)
+    ? signatureEvidence.signature
+    : null;
   return (
     <>
 
@@ -838,21 +850,6 @@ const PurchaseOrderDetail = () => {
                   <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Currency</dt><dd className="mt-1 text-sm font-semibold text-slate-900">{currency}</dd></div>
                   <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment Terms</dt><dd className="mt-1 text-sm text-slate-900">{order.payment_terms || 'Not specified'}</dd></div>
                 </dl>
-              </section>
-
-              <section aria-label="Recorded purchase order approval" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                <h2 className="text-base font-semibold text-slate-900">Recorded approval</h2>
-                {signatureEvidence.verified ? <>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{textOrDash(signatureEvidence.recordedName || order.approved_by_name || signatureEvidence.stage?.approver)}</p>
-                  {order.approved_by_title && <p className="text-sm text-slate-600">{order.approved_by_title}</p>}
-                  <p className="mt-1 text-xs text-slate-500">{formatTimestamp(order.approved_at || signatureEvidence.stage?.approved_at || signatureEvidence.stage?.date || order.approved_date)}</p>
-                  <div className="mt-4 flex flex-wrap items-center gap-6">
-                    {approvalSignatureSource && <img src={approvalSignatureSource} alt="Recorded approval signature" className="max-h-20 max-w-[220px] object-contain opacity-100" />}
-                    {approvalStampSource && <img src={approvalStampSource} alt="Recorded approval stamp" className="h-[42mm] w-[42mm] object-contain opacity-100" />}
-                    {!approvalSignatureSource && /^(https?:\/\/|\/)/i.test(signatureEvidence.signature || '') && <a href={signatureEvidence.signature} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-indigo-700 underline">Open recorded signature evidence</a>}
-                    {!approvalStampSource && artworkImage(order.approval_stamp) === '' && /^(https?:\/\/|\/)/i.test(order.approval_stamp || '') && <a href={order.approval_stamp} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-indigo-700 underline">Open recorded stamp evidence</a>}
-                  </div>
-                </> : <p className="mt-2 text-sm text-amber-800">{signatureEvidence.mismatch ? 'Signature needs review. The recorded approval does not match its assigned signer.' : 'Verified approval evidence is not recorded. Completing the order does not add a signature or stamp.'}</p>}
               </section>
 
               <div className="grid gap-4 sm:grid-cols-2">
