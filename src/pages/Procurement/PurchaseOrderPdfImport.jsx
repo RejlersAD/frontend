@@ -217,7 +217,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
     const controller = new AbortController();
     setPrLoading(true);
     setPrError('');
-    apiClient.get('/procurement/requisitions/', { params: { search: prQuery, page_size: 100 }, signal: controller.signal })
+    apiClient.get('/procurement/orders/available-requisitions/', { params: { search: prQuery, limit: 100 }, signal: controller.signal })
       .then(response => {
         if (controller.signal.aborted) return;
         const rows = Array.isArray(response.data) ? response.data : response.data?.results;
