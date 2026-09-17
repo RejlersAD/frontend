@@ -13,7 +13,7 @@ const loadPdfLibrary = () => {
 
 // Fit the current page, not the widest page in a mixed-size document. Only one
 // page is rendered at a time, including when a source contains hundreds of pages.
-function PdfPages({ url, title, actions }) {
+function PdfPages({ url, title, actions, refreshing, onReady, onError }) {
   const viewportRef = useRef(null);
   const canvasHostRef = useRef(null);
   const [pdf, setPdf] = useState(null);
@@ -22,19 +22,36 @@ function PdfPages({ url, title, actions }) {
   const [pageInput, setPageInput] = useState('1');
   const [zoom, setZoom] = useState(1);
   const [rendering, setRendering] = useState(true);
+  const [hasCanvas, setHasCanvas] = useState(false);
   const [error, setError] = useState('');
+  const pageRef = useRef(pageNumber);
+  pageRef.current = pageNumber;
+  const resetScroll = useRef(false);
+  const callbacks = useRef({ onReady, onError });
+  callbacks.current = { onReady, onError };
+  const currentPdf = pdf?.url === url ? pdf.document : null;
 
   useEffect(() => {
     let disposed = false;
     let loadingTask;
+    setError('');
     loadPdfLibrary().then(library => {
       if (disposed) return null;
       loadingTask = library.getDocument({ url, isEvalSupported: false, useSystemFonts: true });
       return loadingTask.promise;
     }).then(document => {
-      if (!disposed && document) setPdf(document);
+      if (!disposed && document) {
+        const nextPage = Math.min(pageRef.current, document.numPages);
+        setPageNumber(nextPage);
+        setPageInput(String(nextPage));
+        setPdf({ url, document });
+      }
     }).catch(() => {
-      if (!disposed) setError('This PDF could not be displayed. You can open the original PDF below.');
+      if (!disposed) {
+        const message = 'This PDF could not be displayed. You can open the original PDF below.';
+        setError(message);
+        callbacks.current.onError?.(url, message);
+      }
     });
     return () => {
       disposed = true;
@@ -53,15 +70,13 @@ function PdfPages({ url, title, actions }) {
   }, []);
 
   useEffect(() => {
-    if (!pdf || !width) return undefined;
+    if (!currentPdf || !width) return undefined;
     let disposed = false;
     let renderTask;
     const host = canvasHostRef.current;
     setRendering(true);
     setError('');
-    host.replaceChildren();
-    viewportRef.current.scrollTo(0, 0);
-    pdf.getPage(pageNumber).then(page => {
+    currentPdf.getPage(pageNumber).then(page => {
       if (disposed) return;
       const natural = page.getViewport({ scale: 1 });
       const viewport = page.getViewport({ scale: width / natural.width * zoom });
@@ -78,61 +93,73 @@ function PdfPages({ url, title, actions }) {
       canvas.style.display = 'block';
       canvas.style.margin = '0 auto';
       canvas.setAttribute('role', 'img');
-      canvas.setAttribute('aria-label', `${title}, page ${pageNumber} of ${pdf.numPages}`);
+      canvas.setAttribute('aria-label', `${title}, page ${pageNumber} of ${currentPdf.numPages}`);
       // Each render owns its canvas, so cancellation never races with a new
       // page or a resized viewport rendering into the same canvas.
       renderTask = page.render({ canvasContext: canvas.getContext('2d'), viewport,
         transform: [density, 0, 0, density, 0, 0] });
       return renderTask.promise.then(() => {
         if (!disposed) {
+          const scroll = viewportRef.current;
+          const left = resetScroll.current ? 0 : scroll.scrollLeft;
+          const top = resetScroll.current ? 0 : scroll.scrollTop;
           host.replaceChildren(canvas);
+          scroll.scrollTo(left, top);
+          resetScroll.current = false;
+          setHasCanvas(true);
           setRendering(false);
+          callbacks.current.onReady?.(url);
         }
       });
     }).catch(renderError => {
       if (!disposed && renderError.name !== 'RenderingCancelledException') {
-        setError('This page could not be displayed. You can open the original PDF below.');
+        const message = 'This page could not be displayed. You can open the original PDF below.';
+        setError(message);
         setRendering(false);
+        callbacks.current.onError?.(url, message);
       }
     });
     return () => {
       disposed = true;
       renderTask?.cancel();
-      host.replaceChildren();
     };
-  }, [pdf, width, pageNumber, zoom, title]);
+  }, [currentPdf, url, width, pageNumber, zoom, title]);
 
   const goToPage = value => {
+    if (!currentPdf) return;
     const parsed = Number(value);
-    const next = Number.isFinite(parsed) ? Math.max(1, Math.min(pdf?.numPages || 1, Math.trunc(parsed))) : pageNumber;
+    const next = Number.isFinite(parsed) ? Math.max(1, Math.min(currentPdf.numPages, Math.trunc(parsed))) : pageNumber;
     setPageNumber(next);
     setPageInput(String(next));
-    if (next !== pageNumber) setZoom(1);
+    if (next !== pageNumber) {
+      resetScroll.current = true;
+      setZoom(1);
+    }
   };
   const controlClass = 'rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 hover:bg-gray-100 disabled:cursor-default disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600';
 
   return <>
     <div className="flex w-full shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-300 bg-gray-50 p-2" role="group" aria-label="PDF controls">
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <button type="button" className={controlClass} aria-label="Previous page" disabled={!pdf || pageNumber <= 1} onClick={() => goToPage(pageNumber - 1)}>‹</button>
+      <button type="button" className={controlClass} aria-label="Previous page" disabled={!currentPdf || pageNumber <= 1} onClick={() => goToPage(pageNumber - 1)}>‹</button>
       <label className="flex items-center gap-1 text-xs text-gray-700">Page
-        <input type="number" aria-label="Page number" min="1" max={pdf?.numPages || 1} value={pageInput} disabled={!pdf}
+        <input type="number" aria-label="Page number" min="1" max={currentPdf?.numPages || pdf?.document.numPages || 1} value={pageInput} disabled={!currentPdf}
           onChange={event => setPageInput(event.target.value)} onBlur={() => goToPage(pageInput)}
           onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); goToPage(pageInput); } }}
           className="w-14 rounded border border-gray-300 bg-white px-1 py-1 text-center text-gray-900" />
-        <span>of {pdf?.numPages || '…'}</span>
+        <span>of {currentPdf?.numPages || pdf?.document.numPages || '…'}</span>
       </label>
-      <button type="button" className={controlClass} aria-label="Next page" disabled={!pdf || pageNumber >= pdf.numPages} onClick={() => goToPage(pageNumber + 1)}>›</button>
-      <button type="button" className={controlClass} aria-label="Zoom out" disabled={!pdf || zoom <= 0.5} onClick={() => setZoom(value => Math.max(0.5, value - 0.25))}>−</button>
-      <button type="button" className={controlClass} onClick={() => setZoom(1)} disabled={!pdf}>Fit width</button>
-      <button type="button" className={controlClass} aria-label="Zoom in" disabled={!pdf || zoom >= 3} onClick={() => setZoom(value => Math.min(3, value + 0.25))}>+</button>
+      <button type="button" className={controlClass} aria-label="Next page" disabled={!currentPdf || pageNumber >= currentPdf.numPages} onClick={() => goToPage(pageNumber + 1)}>›</button>
+      <button type="button" className={controlClass} aria-label="Zoom out" disabled={!currentPdf || zoom <= 0.5} onClick={() => setZoom(value => Math.max(0.5, value - 0.25))}>−</button>
+      <button type="button" className={controlClass} onClick={() => setZoom(1)} disabled={!currentPdf}>Fit width</button>
+      <button type="button" className={controlClass} aria-label="Zoom in" disabled={!currentPdf || zoom >= 3} onClick={() => setZoom(value => Math.min(3, value + 0.25))}>+</button>
       </div>
       {actions && <div className="ml-auto flex shrink-0 items-center gap-1.5">{actions}</div>}
-      <span className="sr-only" aria-label="PDF pages" aria-live="polite">Page {pageNumber} of {pdf?.numPages || '…'}</span>
+      <span className="sr-only" aria-label="PDF pages" aria-live="polite">Page {pageNumber} of {currentPdf?.numPages || pdf?.document.numPages || '…'}</span>
     </div>
-    <div ref={viewportRef} tabIndex={0} className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-gray-700 p-3 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500" style={{ scrollbarGutter: 'stable' }} aria-busy={!error && rendering}>
-      {!error && rendering && <p role="status" className="p-4 text-center text-sm text-white">Loading PDF page…</p>}
-      {error && <div role="alert" className="rounded bg-white p-4 text-sm text-gray-800">
+    <div ref={viewportRef} tabIndex={0} className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-gray-700 p-3 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500" style={{ scrollbarGutter: 'stable' }} aria-busy={!error && (refreshing || !currentPdf || rendering)}>
+      {!error && (refreshing || !currentPdf || rendering) && <p role="status" className="pointer-events-none sticky top-0 z-10 m-0 h-0 overflow-visible text-center text-xs text-white"><span className="inline-block rounded bg-gray-800/90 px-3 py-2">{hasCanvas ? 'Updating preview…' : 'Loading PDF page…'}</span></p>}
+      {error && <div role="alert" className="sticky top-0 z-10 rounded bg-white p-4 text-sm text-gray-800">
         <p>{error}</p><a href={url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-indigo-700 underline">Open original PDF</a>
       </div>}
       <div ref={canvasHostRef} />
@@ -140,11 +167,11 @@ function PdfPages({ url, title, actions }) {
   </>;
 }
 
-export default function PdfDocumentPreview({ url, title, actions, className = '' }) {
+export default function PdfDocumentPreview({ url, title, actions, className = '', documentKey = url, refreshing = false, onReady, onError }) {
   return <section role="region" aria-label={title} className={`flex h-full w-full min-h-0 min-w-0 flex-col overflow-hidden ${className}`}>
-    <PdfPages key={url} url={url} title={title} actions={actions} />
+    <PdfPages key={documentKey} url={url} title={title} actions={actions} refreshing={refreshing} onReady={onReady} onError={onError} />
   </section>;
 }
 
-PdfPages.propTypes = { url: PropTypes.string.isRequired, title: PropTypes.string.isRequired, actions: PropTypes.node };
-PdfDocumentPreview.propTypes = { ...PdfPages.propTypes, className: PropTypes.string };
+PdfPages.propTypes = { url: PropTypes.string.isRequired, title: PropTypes.string.isRequired, actions: PropTypes.node, refreshing: PropTypes.bool, onReady: PropTypes.func, onError: PropTypes.func };
+PdfDocumentPreview.propTypes = { ...PdfPages.propTypes, className: PropTypes.string, documentKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) };
