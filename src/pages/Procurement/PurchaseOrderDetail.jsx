@@ -1,5 +1,5 @@
 import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -30,7 +30,7 @@ import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
-import { canDecideProcurement, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
+import { canDecideProcurement, isSourceApproval, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -67,6 +67,9 @@ const formatMoney = (value, currency = 'USD') => {
 };
 
 const textOrDash = (value) => String(value || '').trim() || '—';
+const COMPANY_APPROVAL_STAMP = '/assets/procurement/commercial-license-stamp.png';
+const artworkImage = value => /^(data:image\/|https?:\/\/|\/)/i.test(String(value || ''))
+  && !/\.pdf(?:[?#]|$)|#page=/i.test(value) ? value : '';
 const purchaseOrderPdfRequests = new Map();
 const purchaseOrderRevision = order => `${order.id}:${order.updated_at || JSON.stringify(order)}`;
 
@@ -90,6 +93,8 @@ const PurchaseOrderDetail = () => {
     || accessProfile?.roles?.some(role => ['super_admin', 'admin'].includes(role.code))
     || (accessProfile?.module_actions || accessUser?.module_actions)?.procurement_orders?.includes('update'));
   const { id } = useParams();
+  const activeOrderId = useRef(id);
+  activeOrderId.current = id;
   const navigate = useNavigate();
   
   // Soft-coded state management
@@ -139,14 +144,19 @@ const PurchaseOrderDetail = () => {
    * Soft-coded data fetching with error handling
    */
   useEffect(() => {
+    const controller = new AbortController();
     const fetchOrderDetails = async () => {
       try {
         setLoading(true);
         setError(null);
+        setActionLoading(false);
         
-        const response = await apiClient.get(`/procurement/orders/${id}/`);
+        const response = await apiClient.get(`/procurement/orders/${id}/`, { signal: controller.signal });
+        if (controller.signal.aborted || activeOrderId.current !== id) return;
+        if (String(response.data?.id) !== String(id)) throw new Error('The returned purchase order does not match this page. Reload the record.');
         setOrder(response.data);
       } catch (error) {
+        if (controller.signal.aborted || activeOrderId.current !== id) return;
         console.error('Error fetching order details:', error);
         const statusCode = error.response?.status;
         const backendMessage =
@@ -163,13 +173,14 @@ const PurchaseOrderDetail = () => {
           action: () => navigate('/procurement/orders')
         });
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted && activeOrderId.current === id) setLoading(false);
       }
     };
 
     if (id) {
       fetchOrderDetails();
     }
+    return () => controller.abort();
   }, [id, navigate]);
 
   useEffect(() => {
@@ -210,20 +221,21 @@ const PurchaseOrderDetail = () => {
    */
   const handleSendOrder = async () => {
     const confirmed = (await radaiConfirm(`Send Purchase Order ${order.po_number} to vendor?`));
-    if (!confirmed) return;
+    if (!confirmed || activeOrderId.current !== id) return;
 
     try {
       setActionLoading(true);
-      await apiClient.patch(`/procurement/orders/${id}/`, { status: 'sent' });
-      
-      // Update local state
-      setOrder(prev => ({ ...prev, status: 'sent' }));
+      const response = await apiClient.patch(`/procurement/orders/${id}/`, { status: 'sent' });
+      if (activeOrderId.current !== id) return;
+      if (String(response.data?.id) !== String(id)) throw new Error('The saved purchase order could not be confirmed. Reload the record.');
+      setOrder(response.data);
       toast.success('Purchase Order sent successfully.');
     } catch (error) {
+      if (activeOrderId.current !== id) return;
       console.error('Error sending order:', error);
       toast.error(`Failed to send order: ${error.response?.data?.detail || error.message}`);
     } finally {
-      setActionLoading(false);
+      if (activeOrderId.current === id) setActionLoading(false);
     }
   };
 
@@ -232,19 +244,21 @@ const PurchaseOrderDetail = () => {
    */
   const handleMarkComplete = async () => {
     const confirmed = (await radaiConfirm(`Mark Purchase Order ${order.po_number} as completed?`));
-    if (!confirmed) return;
+    if (!confirmed || activeOrderId.current !== id) return;
 
     try {
       setActionLoading(true);
-      await apiClient.patch(`/procurement/orders/${id}/`, { status: 'completed' });
-      
-      setOrder(prev => ({ ...prev, status: 'completed' }));
+      const response = await apiClient.patch(`/procurement/orders/${id}/`, { status: 'completed' });
+      if (activeOrderId.current !== id) return;
+      if (String(response.data?.id) !== String(id)) throw new Error('The saved purchase order could not be confirmed. Reload the record.');
+      setOrder(response.data);
       toast.success('Purchase Order marked as completed.');
     } catch (error) {
+      if (activeOrderId.current !== id) return;
       console.error('Error updating order:', error);
       toast.error(`Failed to update order: ${error.response?.data?.detail || error.message}`);
     } finally {
-      setActionLoading(false);
+      if (activeOrderId.current === id) setActionLoading(false);
     }
   };
 
@@ -260,14 +274,17 @@ const PurchaseOrderDetail = () => {
         approval_stage: order.current_approval?.stage,
         note: approvalComment.trim(),
       });
+      if (activeOrderId.current !== id) return;
+      if (String(response.data?.purchase_order?.id) !== String(id)) throw new Error('The saved purchase order could not be confirmed. Reload the record.');
       setOrder(response.data.purchase_order);
       setApprovalComment('');
       window.dispatchEvent(new Event('procurement-approval-updated'));
       toast.success(`Purchase Order ${decision === 'approve' ? 'approved' : 'rejected'} successfully.`);
     } catch (decisionError) {
+      if (activeOrderId.current !== id) return;
       toast.error(decisionError.response?.data?.detail || decisionError.response?.data?.error || `Failed to ${decision} Purchase Order.`);
     } finally {
-      setActionLoading(false);
+      if (activeOrderId.current === id) setActionLoading(false);
     }
   };
 
@@ -292,7 +309,7 @@ const PurchaseOrderDetail = () => {
   };
 
   // Loading state - soft-coded
-  if (loading) {
+  if (loading || (!error && order && String(order.id) !== String(id))) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -385,9 +402,11 @@ const PurchaseOrderDetail = () => {
     ? order.invoicing_emails.join(', ')
     : order.invoicing_emails;
   const signatureEvidence = purchaseOrderSignatureEvidence(order);
-  const approvalSignatureSource = /^(data:image\/|https?:\/\/|\/)/i.test(signatureEvidence.signature)
-    ? signatureEvidence.signature
-    : null;
+  const approvalSignatureSource = artworkImage(signatureEvidence.signature);
+  const canUseCompanyStamp = signatureEvidence.verified && !isSourceApproval(signatureEvidence.stage)
+    && /^data:image\//i.test(approvalSignatureSource);
+  const approvalStampSource = signatureEvidence.verified
+    ? artworkImage(order.approval_stamp) || (!order.approval_stamp && canUseCompanyStamp ? COMPANY_APPROVAL_STAMP : '') : '';
   return (
     <>
 
@@ -651,7 +670,7 @@ const PurchaseOrderDetail = () => {
               {useGeneratedPreview && <button
                 type="button"
                 onClick={handlePrintPurchaseOrder}
-                disabled={pdfPreviewLoading || !pdfPreviewUrl}
+                disabled={actionLoading || pdfPreviewLoading || !pdfPreviewUrl}
                   aria-label="Print PDF"
                   title="Print PDF"
                   className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
@@ -662,7 +681,7 @@ const PurchaseOrderDetail = () => {
               <button
                 type="button"
                 onClick={() => handleExportPurchaseOrder('pdf')}
-                disabled={Boolean(exportLoading)}
+                disabled={actionLoading || Boolean(exportLoading)}
                 aria-label={exportLoading === 'pdf' ? 'Preparing PDF document' : 'Download PDF'}
                 title="Download PDF"
                 className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
@@ -672,7 +691,7 @@ const PurchaseOrderDetail = () => {
               <button
                 type="button"
                 onClick={() => handleExportPurchaseOrder('word')}
-                disabled={Boolean(exportLoading)}
+                disabled={actionLoading || Boolean(exportLoading)}
                   aria-label={exportLoading === 'word' ? 'Preparing Word document' : 'Export Word document'}
                   title={exportLoading === 'word' ? 'Preparing Word document' : 'Export Word document'}
                   className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
@@ -819,6 +838,21 @@ const PurchaseOrderDetail = () => {
                   <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Currency</dt><dd className="mt-1 text-sm font-semibold text-slate-900">{currency}</dd></div>
                   <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment Terms</dt><dd className="mt-1 text-sm text-slate-900">{order.payment_terms || 'Not specified'}</dd></div>
                 </dl>
+              </section>
+
+              <section aria-label="Recorded purchase order approval" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="text-base font-semibold text-slate-900">Recorded approval</h2>
+                {signatureEvidence.verified ? <>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{textOrDash(signatureEvidence.recordedName || order.approved_by_name || signatureEvidence.stage?.approver)}</p>
+                  {order.approved_by_title && <p className="text-sm text-slate-600">{order.approved_by_title}</p>}
+                  <p className="mt-1 text-xs text-slate-500">{formatTimestamp(order.approved_at || signatureEvidence.stage?.approved_at || signatureEvidence.stage?.date || order.approved_date)}</p>
+                  <div className="mt-4 flex flex-wrap items-center gap-6">
+                    {approvalSignatureSource && <img src={approvalSignatureSource} alt="Recorded approval signature" className="max-h-20 max-w-[220px] object-contain opacity-100" />}
+                    {approvalStampSource && <img src={approvalStampSource} alt="Recorded approval stamp" className="h-[42mm] w-[42mm] object-contain opacity-100" />}
+                    {!approvalSignatureSource && /^(https?:\/\/|\/)/i.test(signatureEvidence.signature || '') && <a href={signatureEvidence.signature} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-indigo-700 underline">Open recorded signature evidence</a>}
+                    {!approvalStampSource && artworkImage(order.approval_stamp) === '' && /^(https?:\/\/|\/)/i.test(order.approval_stamp || '') && <a href={order.approval_stamp} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-indigo-700 underline">Open recorded stamp evidence</a>}
+                  </div>
+                </> : <p className="mt-2 text-sm text-amber-800">{signatureEvidence.mismatch ? 'Signature needs review. The recorded approval does not match its assigned signer.' : 'Verified approval evidence is not recorded. Completing the order does not add a signature or stamp.'}</p>}
               </section>
 
               <div className="grid gap-4 sm:grid-cols-2">
