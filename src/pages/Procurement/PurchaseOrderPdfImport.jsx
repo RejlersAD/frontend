@@ -1,23 +1,19 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
 import {
-  ArrowUpTrayIcon,
   CheckCircleIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
   LinkIcon,
-  ShieldCheckIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import { toast } from 'react-toastify';
-import ProcurementApprovalEmployeeSearch from './ProcurementApprovalEmployeeSearch';
 import { calculateProcurementVat, PROCUREMENT_VAT_OPTIONS } from '../../utils/procurementVat';
 import PurchaseRequisitionPdfImport from './PurchaseRequisitionPdfImport';
-import { importDetailText, importErrorMessage } from './procurementPdfImportErrors';
-
-const emptyEvidence = () => ({ signatureVerified: false, stampVerified: false, approvedByName: '', approvedByTitle: '', approvedDate: '' });
+import { importDetailText } from './procurementPdfImportErrors';
 
 const DOCUMENT_FIELDS = [
   ['po_number', 'PO number', 'text'], ['summary', 'Description', 'textarea'],
@@ -58,12 +54,7 @@ IssueList.propTypes = {
   tone: PropTypes.oneOf(['amber', 'red']),
 };
 
-const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: requestedDocumentId = null, editMode: requestedEditMode = false, pageMode = false, canReconcile = false, canEditDocument = true, requisitionId = null }) => {
-  const [importedDocumentId, setImportedDocumentId] = useState(null);
-  const documentId = requestedDocumentId || importedDocumentId;
-  const editMode = requestedEditMode || Boolean(importedDocumentId);
-  const inputRef = useRef(null);
-  const [file, setFile] = useState(null);
+const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId, editMode = false, pageMode = false, canReconcile = false, canEditDocument = true, requisitionId = null }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -88,69 +79,23 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
   const [supplierReload, setSupplierReload] = useState(0);
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [reconciling, setReconciling] = useState(false);
-  const [evidence, setEvidence] = useState(emptyEvidence);
-  const [approvalDetection, setApprovalDetection] = useState(null);
-  const [approvalLoading, setApprovalLoading] = useState(false);
-  const [approvalError, setApprovalError] = useState('');
-  const [approvalReload, setApprovalReload] = useState(0);
-  const [selectedFileVersion, setSelectedFileVersion] = useState(0);
-  const approvalEditsRef = useRef({});
-  const approvalRequestRef = useRef(0);
   const originatingRequisitionId = requisitionId || result?.originating_pr_id || null;
+  const savedDetailsReady = Boolean(result && String(result.document_id) === String(documentId));
+  const canChooseRequisition = isOpen && savedDetailsReady && editMode && canEditDocument && !originatingRequisitionId;
+  const canChooseSupplier = isOpen && savedDetailsReady && editMode && canEditDocument && canReconcile && !result.purchase_order_id;
 
   useEffect(() => {
-    if (!isOpen || documentId || !file || file.size > 15 * 1024 * 1024) return undefined;
-    const controller = new AbortController();
-    const requestVersion = ++approvalRequestRef.current;
-    setApprovalLoading(true);
-    setApprovalError('');
-    const body = new FormData();
-    body.append('file', file);
-    apiClient.post('/procurement/po-documents/preview_signed_pdf/', body, {
-      headers: { 'Content-Type': 'multipart/form-data' }, signal: controller.signal,
-      timeout: 120000, suppressErrorToast: true,
-    }).then(({ data }) => {
-      if (controller.signal.aborted || requestVersion !== approvalRequestRef.current) return;
-      const detected = data?.approval_evidence;
-      if (!detected || typeof detected !== 'object') throw new Error('Approval details were not returned.');
-      setApprovalDetection(detected);
-      setEvidence(current => ({
-        ...current,
-        ...Object.fromEntries([
-          ['approvedByName', detected.approved_by_name],
-          ['approvedByTitle', detected.approved_by_title],
-          ['approvedDate', detected.approved_date],
-        ].filter(([field, value]) => !approvalEditsRef.current[field] && typeof value === 'string' && value.trim() !== '')),
-      }));
-    }).catch(problem => {
-      if (controller.signal.aborted || requestVersion !== approvalRequestRef.current) return;
-      const message = problem.response?.data?.error || problem.response?.data?.detail;
-      setApprovalError(typeof message === 'string' ? message : 'Approval details could not be read. Search HR Master or enter them manually.');
-    }).finally(() => {
-      if (!controller.signal.aborted && requestVersion === approvalRequestRef.current) setApprovalLoading(false);
-    });
-    return () => controller.abort();
-  }, [isOpen, documentId, file, approvalReload, selectedFileVersion]);
-
-  const updateEvidence = changes => {
-    Object.keys(changes).forEach(field => { approvalEditsRef.current[field] = true; });
-    setEvidence(current => ({ ...current, ...changes }));
-  };
-
-  useEffect(() => {
-    const source = file || savedPdf;
-    if (!isOpen || !source) { setPreviewUrl(''); return undefined; }
-    const url = window.URL.createObjectURL(source);
+    if (!isOpen || !savedPdf) { setPreviewUrl(''); return undefined; }
+    const url = window.URL.createObjectURL(savedPdf);
     setPreviewUrl(url);
     return () => window.URL.revokeObjectURL(url);
-  }, [file, savedPdf, isOpen]);
+  }, [savedPdf, isOpen]);
 
   useEffect(() => {
     if (!isOpen || !documentId) return undefined;
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    setFile(null);
     setSavedPdf(null);
     setDocumentName('');
     setResult(null);
@@ -184,7 +129,7 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
   }, [documentId, result, originatingRequisitionId]);
 
   useEffect(() => {
-    if (!isOpen || !documentId || !editMode) return undefined;
+    if (!canChooseRequisition) return undefined;
     const controller = new AbortController();
     setPrLoading(true);
     setPrError('');
@@ -198,10 +143,10 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
       .catch(() => { if (!controller.signal.aborted) setPrError('Purchase recommendations could not be loaded. The current link is retained.'); })
       .finally(() => { if (!controller.signal.aborted) setPrLoading(false); });
     return () => controller.abort();
-  }, [isOpen, documentId, editMode, prQuery, prReload]);
+  }, [canChooseRequisition, documentId, prQuery, prReload]);
 
   useEffect(() => {
-    if (!isOpen || !documentId || !editMode || !canReconcile) return undefined;
+    if (!canChooseSupplier) return undefined;
     const controller = new AbortController();
     setSupplierLoading(true);
     setSupplierError('');
@@ -217,11 +162,11 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
         .finally(() => { if (!controller.signal.aborted) setSupplierLoading(false); });
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [isOpen, documentId, editMode, canReconcile, supplierSearch, supplierReload]);
+  }, [canChooseSupplier, documentId, supplierSearch, supplierReload]);
 
   if (!isOpen) return null;
 
-  const originPendingReview = Boolean(originatingRequisitionId && documentId && editMode && result && !result.purchase_order_id);
+  const originPendingReview = Boolean(originatingRequisitionId && editMode && result && !result.purchase_order_id);
   const reconciliationPending = Boolean(result && (result.reconciliation_required || !result.pr_id || !result.vendor_id));
   const reconciliationIssues = result?.reconciliation_issues?.length
     ? result.reconciliation_issues
@@ -231,9 +176,8 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
     ].filter(Boolean) : [];
 
   const resetAndClose = () => {
-    if (saving || reconciling || (loading && !documentId)) return;
+    if (saving || reconciling) return;
     setLoading(false);
-    setFile(null);
     setSavedPdf(null);
     setDocumentName('');
     setResult(null);
@@ -241,7 +185,6 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
     setFieldErrors({});
     setChangesSaved(false);
     setDocumentEdits({});
-    setImportedDocumentId(null);
     setPrSearch('');
     setPrQuery('');
     setPrOptions([]);
@@ -250,12 +193,6 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
     setSupplierOptions([]);
     setSelectedVendorId('');
     setSupplierError('');
-    approvalRequestRef.current += 1;
-    approvalEditsRef.current = {};
-    setApprovalLoading(false);
-    setApprovalError('');
-    setApprovalDetection(null);
-    setEvidence(emptyEvidence());
     onClose();
   };
 
@@ -380,47 +317,6 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
     } finally { setReconciling(false); }
   };
 
-  const importPdf = async () => {
-    if (loading || approvalLoading) return;
-    if (!file) {
-      setError('Select a signed Purchase Order PDF first.');
-      return;
-    }
-    if (evidence.signatureVerified && (!evidence.approvedByName.trim() || !evidence.approvedDate)) {
-      setError('Enter the approver name and approval date when the signature is verified.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setResult(null);
-    try {
-      const body = new FormData();
-      body.append('file', file);
-      body.append('signature_verified', String(evidence.signatureVerified));
-      body.append('stamp_verified', String(evidence.stampVerified));
-      body.append('approved_by_name', evidence.approvedByName);
-      body.append('approved_by_title', evidence.approvedByTitle);
-      body.append('approved_date', evidence.approvedDate);
-      if (requisitionId) body.append('pr_id', String(requisitionId));
-      const response = await apiClient.post('/procurement/po-documents/import_signed_pdf/', body, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 180000,
-        suppressErrorToast: true,
-        silentTimeout: true,
-      });
-      setResult(response.data);
-      onImported?.(response.data);
-      if (requisitionId && response.data.document_id && !response.data.purchase_order_id) {
-        setImportedDocumentId(response.data.document_id);
-      }
-    } catch (requestError) {
-      setError(importErrorMessage(requestError));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const content = (
     <div className={pageMode ? 'min-h-screen bg-slate-50' : 'fixed inset-0 z-[70] overflow-y-auto'}>
       <div className={pageMode ? 'px-2 py-3' : 'flex min-h-screen items-center justify-center px-4 py-8'}>
@@ -428,10 +324,9 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
         <div role={pageMode ? 'region' : 'dialog'} aria-modal={pageMode ? undefined : true} aria-labelledby="signed-po-pdf-title" className={`relative w-full overflow-hidden rounded-2xl bg-white ${pageMode ? 'border border-slate-200' : 'max-w-7xl shadow-2xl'}`}>
           <div className="flex items-start justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
             <div>
-              <h2 id="signed-po-pdf-title" className="text-lg font-bold text-white">{documentId ? editMode ? 'Edit Signed Purchase Order PDF' : 'Signed Purchase Order PDF' : 'Import Signed Purchase Order PDF'}</h2>
-              {!documentId && <p className="mt-1 text-xs text-indigo-100">{requisitionId ? 'Save the signed PO and link it to this purchase recommendation. The supplier is matched or registered from the PDF.' : 'Upload the signed PDF now. Link any missing recommendation or supplier records later.'}</p>}
+              <h2 id="signed-po-pdf-title" className="text-lg font-bold text-white">{editMode ? 'Edit Signed Purchase Order PDF' : 'Signed Purchase Order PDF'}</h2>
             </div>
-            <button type="button" aria-label="Close PDF dialog" onClick={resetAndClose} disabled={saving || reconciling || (loading && !documentId)} className="text-white hover:text-indigo-100">
+            <button type="button" aria-label="Close PDF dialog" onClick={resetAndClose} disabled={saving || reconciling} className="text-white hover:text-indigo-100">
               <XMarkIcon className="h-6 w-6" />
             </button>
           </div>
@@ -439,83 +334,11 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
           <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-6">
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
               <section aria-label="Signed PO document preview" className="min-w-0 overflow-hidden rounded-xl border border-gray-300 bg-gray-100">
-                <div className="flex min-h-10 items-center gap-2 border-b border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700"><DocumentTextIcon className="h-4 w-4 flex-none" /><span className="truncate">{file?.name || documentName || 'PDF preview'}</span></div>
-                {previewUrl ? <iframe src={`${previewUrl}#toolbar=1&navpanes=0`} title="Signed purchase order PDF preview" className="h-[64vh] min-h-[420px] w-full" /> : <div className="flex min-h-[320px] items-center justify-center p-6 text-sm text-gray-500">{documentId ? loading ? 'Loading saved PDF...' : 'PDF preview unavailable.' : 'Choose a PDF to preview it here.'}</div>}
+                <div className="flex min-h-10 items-center gap-2 border-b border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700"><DocumentTextIcon className="h-4 w-4 flex-none" /><span className="truncate">{documentName || 'PDF preview'}</span></div>
+                {previewUrl ? <div className="h-[64vh] min-h-[420px] w-full"><PdfDocumentPreview url={previewUrl} title="Signed purchase order PDF preview" /></div> : <div className="flex min-h-[320px] items-center justify-center p-6 text-sm text-gray-500">{loading ? 'Loading saved PDF...' : 'PDF preview unavailable.'}</div>}
               </section>
               <div className="min-w-0 space-y-4">
-            {!documentId && !result && <>
-            <div className="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-5">
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".pdf,application/pdf"
-                className="hidden"
-                onChange={(event) => {
-                  const selected = event.target.files?.[0] || null;
-                  approvalRequestRef.current += 1;
-                  approvalEditsRef.current = {};
-                  setEvidence(emptyEvidence());
-                  setApprovalDetection(null);
-                  setApprovalError('');
-                  setApprovalLoading(Boolean(selected && selected.size <= 15 * 1024 * 1024));
-                  setSelectedFileVersion(current => current + 1);
-                  setFile(selected);
-                  setResult(null);
-                  setError(selected && selected.size > 15 * 1024 * 1024 ? 'PDF file must not exceed 15 MB.' : '');
-                }}
-              />
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <DocumentTextIcon className="h-9 w-9 text-indigo-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{file?.name || 'Select a signed PO document'}</p>
-                    <p className="mt-1 text-xs text-gray-500">PDF only, maximum 15 MB. OCR processing can take up to three minutes.</p>
-                  </div>
-                </div>
-                <button type="button" disabled={loading} onClick={() => inputRef.current?.click()} className="h-9 rounded-lg border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">
-                  <ArrowUpTrayIcon className="mr-1.5 inline h-4 w-4" /> Choose PDF
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-gray-200 p-4">
-              <div className="flex items-center gap-2">
-                <ShieldCheckIcon className="h-5 w-5 text-indigo-600" />
-                <h3 className="text-sm font-semibold text-gray-800">Visual approval evidence</h3>
-              </div>
-              <p className="mt-1 text-xs text-gray-500">Select these only after visually confirming them in the signed document.</p>
-              {approvalLoading && <p role="status" className="mt-3 text-sm text-blue-700">Reading approval details from PDF…</p>}
-              {approvalError && <div role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{approvalError} <button type="button" disabled={loading || approvalLoading} onClick={() => setApprovalReload(current => current + 1)} className="font-medium underline">Retry approval detection</button></div>}
-              {approvalDetection && <div className="mt-3 space-y-1 rounded-lg bg-blue-50 p-3 text-sm text-blue-900" aria-label="Detected approval evidence">
-                <p>{approvalDetection.signature_detected ? `Signature candidate found${approvalDetection.page ? ` on page ${approvalDetection.page}` : ''}. Confirm it in the PDF.` : 'Signature not detected automatically. Check the PDF before confirming.'}</p>
-                <p>{approvalDetection.stamp_detected ? `Company stamp candidate found${approvalDetection.page ? ` on page ${approvalDetection.page}` : ''}. Confirm it in the PDF.` : 'Company stamp not detected automatically. Check the PDF before confirming.'}</p>
-                {Array.isArray(approvalDetection.issues) && approvalDetection.issues.map(issue => <p key={issue} className="text-xs">{issue}</p>)}
-              </div>}
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input type="checkbox" checked={evidence.signatureVerified} disabled={loading} onChange={(event) => updateEvidence({ signatureVerified: event.target.checked })} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
-                  Approval signature is visible
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input type="checkbox" checked={evidence.stampVerified} disabled={loading} onChange={(event) => updateEvidence({ stampVerified: event.target.checked })} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
-                  Company stamp is visible
-                </label>
-                <ProcurementApprovalEmployeeSearch key={selectedFileVersion} value={evidence.approvedByName} disabled={loading}
-                  onChange={(name, clearPosition) => updateEvidence({ approvedByName: name, ...(clearPosition ? { approvedByTitle: '' } : {}) })}
-                  onSelect={employee => updateEvidence({ approvedByName: employee.name, approvedByTitle: employee.position || '' })} />
-                <label className="text-xs font-semibold text-gray-600">
-                  Approval date
-                  <input type="date" value={evidence.approvedDate} disabled={loading} onChange={(event) => updateEvidence({ approvedDate: event.target.value })} className="mt-1 block h-10 w-full rounded-lg border border-gray-300 px-3 text-sm font-normal" />
-                </label>
-                <label className="text-xs font-semibold text-gray-600 sm:col-span-2">
-                  Approver title
-                  <input type="text" value={evidence.approvedByTitle} disabled={loading} onChange={(event) => updateEvidence({ approvedByTitle: event.target.value })} className="mt-1 block h-10 w-full rounded-lg border border-gray-300 px-3 text-sm font-normal" placeholder="Position or role" />
-                </label>
-              </div>
-            </div>
-            </>}
-
-            {documentId && editMode && result && <section aria-label="Edit saved purchase order" className="space-y-4 rounded-xl border border-gray-200 p-4">
+            {editMode && result && <section aria-label="Edit saved purchase order" className="space-y-4 rounded-xl border border-gray-200 p-4">
               {!canEditDocument && <p className="text-sm text-amber-800">This PDF is saved for review. A user with Purchase Orders update access must review the saved details before completing reconciliation.</p>}
               <fieldset disabled={!canEditDocument} className="space-y-4"><legend className="sr-only">Saved purchase order fields</legend>
               <h3 className="text-sm font-semibold text-gray-800">Purchase order details</h3>
@@ -567,7 +390,7 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
             {error && (
               <div role="alert" className="flex flex-wrap gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 <ExclamationTriangleIcon className="h-5 w-5 flex-none" /> <span className="min-w-0 flex-1">{error}</span>
-                {documentId && !originPendingReview && <button type="button" disabled={loading} onClick={() => setReload(value => value + 1)} className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-semibold">Retry</button>}
+                {!originPendingReview && <button type="button" disabled={loading} onClick={() => setReload(value => value + 1)} className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-semibold">Retry</button>}
               </div>
             )}
 
@@ -600,15 +423,10 @@ const SavedPurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: 
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
-            <button type="button" onClick={resetAndClose} disabled={saving || reconciling || (loading && !documentId)} className="h-9 rounded-lg border border-gray-300 bg-white px-4 text-xs font-semibold text-gray-700">{result || documentId ? 'Close' : 'Cancel'}</button>
-            {documentId && editMode && result && !originPendingReview && <button type="button" onClick={saveDocument} disabled={!canEditDocument || saving || loading || reconciling} className="h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save changes'}</button>}
+            <button type="button" onClick={resetAndClose} disabled={saving || reconciling} className="h-9 rounded-lg border border-gray-300 bg-white px-4 text-xs font-semibold text-gray-700">Close</button>
+            {editMode && result && !originPendingReview && <button type="button" onClick={saveDocument} disabled={!canEditDocument || saving || loading || reconciling} className="h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save changes'}</button>}
             {originPendingReview && <button type="button" onClick={savePurchaseOrder} disabled={!canReconcile || !canEditDocument || saving || loading || reconciling} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{reconciling ? 'Saving PO...' : 'Save PO'}</button>}
-            {documentId && editMode && result && !originPendingReview && canReconcile && !result.purchase_order_id && <button type="button" onClick={completeReconciliation} disabled={saving || loading || reconciling || supplierLoading} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{reconciling ? 'Completing...' : 'Complete reconciliation'}</button>}
-            {!documentId && !result && (
-              <button type="button" disabled={!file || file.size > 15 * 1024 * 1024 || loading || approvalLoading} onClick={importPdf} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">
-                {requisitionId ? loading ? 'Saving PO...' : 'Save PO' : loading ? 'Uploading and extracting...' : 'Upload signed PDF'}
-              </button>
-            )}
+            {editMode && result && !originPendingReview && canReconcile && !result.purchase_order_id && <button type="button" onClick={completeReconciliation} disabled={saving || loading || reconciling || supplierLoading} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{reconciling ? 'Completing...' : 'Complete reconciliation'}</button>}
           </div>
         </div>
       </div>

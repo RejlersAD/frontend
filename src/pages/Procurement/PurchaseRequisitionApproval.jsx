@@ -14,6 +14,7 @@ import React, { useEffect, useState, useRef, useId } from 'react';
 import PropTypes from 'prop-types';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../services/api.service';
+import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
 import RecommendationSourceDocument from './RecommendationSourceDocument';
 import ApprovalRecordPdfPreview from './ApprovalRecordPdfPreview';
@@ -87,7 +88,6 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const [pdfPreviewError, setPdfPreviewError] = useState('');
   const [pdfPreviewRetryKey, setPdfPreviewRetryKey] = useState(0);
   const [previewSelection, setPreviewSelection] = useState({ context: '', tab: 'pr' });
-  const [linkedOrder, setLinkedOrder] = useState(null);
   const [linkedPoPreviewUrl, setLinkedPoPreviewUrl] = useState('');
   const [linkedPoPreviewFilename, setLinkedPoPreviewFilename] = useState('');
   const [linkedPoPreviewLoading, setLinkedPoPreviewLoading] = useState(false);
@@ -125,26 +125,6 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       .finally(() => { if (active) setSignatureLoading(false); });
     return () => { active = false; };
   }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen || !requisition?.linked_po_id) {
-      setLinkedOrder(null);
-      return undefined;
-    }
-
-    let active = true;
-    apiClient.get(`/procurement/orders/${requisition.linked_po_id}/`, {
-      params: { _fresh: Date.now() },
-      suppressErrorToast: true,
-    })
-      .then((response) => { if (active) setLinkedOrder(response.data); })
-      .catch((error) => {
-        if (!active) return;
-        console.error('Failed to load linked Purchase Order details:', error);
-        setLinkedOrder(null);
-      });
-    return () => { active = false; };
-  }, [isOpen, requisition?.linked_po_id]);
 
   useEffect(() => {
     if (!isOpen || !requisition?.id || hasOriginalPr) return undefined;
@@ -244,9 +224,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
         objectUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
         setLinkedPoPreviewFilename(filenameMatch?.[1] || buildProcurementPdfFilename(
-          linkedOrder?.po_number || requisition.po_number_reference || `PO-${linkedOrderId}`,
+          requisition.po_number_reference || `PO-${linkedOrderId}`,
           'po',
-          linkedOrder?.po_date || linkedOrder?.created_at,
         ));
         setLinkedPoPreviewUrl(objectUrl);
       })
@@ -262,7 +241,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
             // Preserve the safe fallback for non-JSON upstream responses.
           }
         }
-        setLinkedPoPreviewError(serviceMessage || 'The linked Purchase Order PDF is unavailable.');
+        if (active) setLinkedPoPreviewError(serviceMessage || 'The linked Purchase Order PDF is unavailable.');
       })
       .finally(() => { if (active) setLinkedPoPreviewLoading(false); });
 
@@ -270,7 +249,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [activePreview, isOpen, requisition?.linked_po_id, requisition?.po_number_reference, linkedOrder?.po_number, linkedOrder?.po_date, linkedOrder?.created_at, useOriginalLinkedPo, linkedPoPreviewRetryKey]);
+  }, [activePreview, isOpen, requisition?.linked_po_id, requisition?.po_number_reference, useOriginalLinkedPo, linkedPoPreviewRetryKey]);
 
   if (!isOpen || !requisition) return null;
 
@@ -636,7 +615,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   const printPdf = () => {
-    if (pdfFrameRef.current?.contentWindow) {
+    if (showingLinkedPo && activePdfUrl) {
+      window.open(activePdfUrl, '_blank', 'noopener,noreferrer');
+    } else if (pdfFrameRef.current?.contentWindow) {
       pdfFrameRef.current.contentWindow.focus();
       pdfFrameRef.current.contentWindow.print();
     }
@@ -686,7 +667,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                   <div className="flex flex-wrap items-center gap-2">
                     <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{requisition.pr_number || `PR-${requisition.id}`}</h1>
                     <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getRecordStatusColor()}`}>{requisition.status_display || requisition.status || 'Draft'}</span>
-                    {requisition.linked_po_id && <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700" title={linkedOrder?.po_number || requisition.po_number_reference || 'Linked Purchase Order'}><LinkIcon className="h-3.5 w-3.5" /> Linked PO</span>}
+                    {requisition.linked_po_id && <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700" title={requisition.po_number_reference || 'Linked Purchase Order'}><LinkIcon className="h-3.5 w-3.5" /> Linked PO</span>}
                   </div>
                 </div>
               </div>
@@ -908,7 +889,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                         onClick={() => setActivePreview(key)}
                         onKeyDown={handlePreviewTabKeyDown}
                         className={`inline-flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activePreview === key ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
-                        title={key === 'po' ? linkedOrder?.po_number || requisition.po_number_reference || 'Linked Purchase Order' : undefined}
+                        title={key === 'po' ? requisition.po_number_reference || 'Linked Purchase Order' : undefined}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                         <span className="min-w-0 text-left">
@@ -936,7 +917,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       : <RecommendationSourceDocument key={requisition.id} requisitionId={requisition.id} attachments={requisition.attachments} documentSha={requisition.price_remarks_data?.signed_document_verification?.document_sha256} embedded />) : <>
                     {activePdfLoading && <div className="text-center text-white"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-500 border-t-white" /><p className="mt-3 text-sm">{showingLinkedPo ? 'Loading linked Purchase Order…' : 'Creating PDF from the live preview…'}</p></div>}
                     {!activePdfLoading && activePdfError && <div className="max-w-sm px-6 text-center text-white"><ExclamationTriangleIcon className="mx-auto h-9 w-9 text-amber-300" /><p className="mt-3 text-sm">{activePdfError}</p><button type="button" onClick={() => showingLinkedPo ? setLinkedPoPreviewRetryKey((key) => key + 1) : setPdfPreviewRetryKey((key) => key + 1)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800"><ArrowPathIcon className="h-4 w-4" /> Retry preview</button></div>}
-                    {!activePdfLoading && activePdfUrl && <iframe key={`${activePreview}-${activePdfUrl}`} ref={pdfFrameRef} src={`${activePdfUrl}#page=1&zoom=page-width&view=FitH&toolbar=0&navpanes=0&scrollbar=1`} title={`${activePdfFilename || (showingLinkedPo ? 'Linked Purchase Order' : 'Purchase Recommendation')} preview`} className="h-full w-full bg-white" />}
+                    {!activePdfLoading && activePdfUrl && (showingLinkedPo
+                      ? <PdfDocumentPreview url={activePdfUrl} title={`${activePdfFilename || 'Linked Purchase Order'} preview`} className="w-full bg-white" />
+                      : <iframe key={`${activePreview}-${activePdfUrl}`} ref={pdfFrameRef} src={`${activePdfUrl}#page=1&zoom=page-width&view=FitH&toolbar=0&navpanes=0&scrollbar=1`} title={`${activePdfFilename || 'Purchase Recommendation'} preview`} className="h-full w-full bg-white" />)}
                     </>}
                   </div>
                 </section>

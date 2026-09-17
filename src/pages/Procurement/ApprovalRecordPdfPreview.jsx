@@ -1,24 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Download, ExternalLink, RefreshCw, Upload } from 'lucide-react';
 import apiClient from '../../services/api.service';
+import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import PurchaseRequisitionPdfImport from './PurchaseRequisitionPdfImport';
 import './RecommendationSourceDocument.css';
 
 export default function ApprovalRecordPdfPreview({ requisitionId, requisitionNumber, linkedOrderId, sourceVersion = '', canUploadPurchaseOrder = false, canImportRequisition = false, onSourceUploaded, onShowOriginalPr }) {
   const [retry, setRetry] = useState(0);
   const [upload, setUpload] = useState(null);
+  const [refreshingSource, setRefreshingSource] = useState('');
+  const uploadAttempt = useRef(0);
   const [content, setContent] = useState({ key: '', url: '', loading: true, error: '' });
+  const recordKey = `${requisitionId}:${linkedOrderId}`;
   const contentKey = `${requisitionId}:${linkedOrderId}:${sourceVersion}`;
-  const current = content.key === contentKey ? content : { url: '', loading: true, error: '' };
+  const sourceRefreshPending = refreshingSource === recordKey;
+  const current = !sourceRefreshPending && content.key === contentKey ? content : { url: '', loading: true, error: '' };
   const filename = `${requisitionNumber || 'Purchase-requisition'}-PR-PO.pdf`;
   const missingSource = current.code === 'approval_record_source_missing' ? current.source : '';
   const canUploadMissing = missingSource === 'po' ? canUploadPurchaseOrder : missingSource === 'pr' && canImportRequisition;
 
   useEffect(() => { setUpload(null); }, [contentKey]);
+  useEffect(() => () => { uploadAttempt.current += 1; }, [recordKey]);
 
   useEffect(() => {
-    if (!requisitionId || !linkedOrderId) return undefined;
+    if (!requisitionId || !linkedOrderId || sourceRefreshPending) return undefined;
     const controller = new AbortController();
     let objectUrl;
     setContent({ key: contentKey, url: '', loading: true, error: '' });
@@ -66,12 +72,24 @@ export default function ApprovalRecordPdfPreview({ requisitionId, requisitionNum
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [requisitionId, linkedOrderId, contentKey, retry]);
+  }, [requisitionId, linkedOrderId, contentKey, retry, sourceRefreshPending]);
 
-  const uploaded = data => {
+  const uploaded = async data => {
+    const attempt = ++uploadAttempt.current;
     setUpload(null);
-    setRetry(value => value + 1);
-    onSourceUploaded?.(data);
+    setRefreshingSource(recordKey);
+    try {
+      // The parent refresh may change sourceVersion. Wait for it before loading
+      // the PDF so one upload produces one request with the refreshed context.
+      await onSourceUploaded?.(data);
+    } catch {
+      // The saved PDF remains available even if refreshing record details fails.
+    } finally {
+      if (uploadAttempt.current === attempt) {
+        setRetry(value => value + 1);
+        setRefreshingSource('');
+      }
+    }
   };
 
   return <><section className="prr-source-document prr-approval-record is-embedded" aria-label="Combined PR and PO documents">
@@ -82,10 +100,6 @@ export default function ApprovalRecordPdfPreview({ requisitionId, requisitionNum
           {label}: {source === 'radai_generated' ? 'RADAI-generated' : 'Uploaded original'}
         </span>
       ))}
-      {current.url && <>
-        <a href={current.url} target="_blank" rel="noopener noreferrer" aria-label="Open combined PR and PO PDF" title="Open combined PR and PO PDF"><ExternalLink size={17} aria-hidden="true" /></a>
-        <a href={current.url} download={filename} aria-label="Download combined PR and PO PDF" title="Download combined PR and PO PDF"><Download size={17} aria-hidden="true" /></a>
-      </>}
     </div>
     {current.url && current.attachmentWarnings > 0 && <p role="status" className="shrink-0 border-y border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       The PO is included. {current.attachmentWarnings} supporting attachment{current.attachmentWarnings === 1 ? '' : 's'} could not be added to this preview.
@@ -101,7 +115,10 @@ export default function ApprovalRecordPdfPreview({ requisitionId, requisitionNum
           <button type="button" onClick={() => setRetry(value => value + 1)}>Retry combined PDF</button>
         </div>
       </div>
-        : current.url && <iframe src={`${current.url}#page=1&zoom=page-width&view=FitH&toolbar=0&navpanes=0`} title="Combined PR and PO PDF" />}
+        : current.url && <PdfDocumentPreview url={current.url} title="Combined PR and PO PDF" className="min-h-0 flex-1" actions={<>
+          <a href={current.url} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-300 bg-white text-blue-700" aria-label="Open combined PR and PO PDF" title="Open combined PR and PO PDF"><ExternalLink size={17} aria-hidden="true" /></a>
+          <a href={current.url} download={filename} className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-300 bg-white text-blue-700" aria-label="Download combined PR and PO PDF" title="Download combined PR and PO PDF"><Download size={17} aria-hidden="true" /></a>
+        </>} />}
   </section>
     {upload?.key === contentKey && <PurchaseRequisitionPdfImport isOpen onClose={() => setUpload(null)} onImported={uploaded}
       primaryDocument={upload.source === 'pr' ? 'pr' : 'po'} requisitionId={requisitionId}

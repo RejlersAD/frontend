@@ -1,8 +1,9 @@
 import React, { useId } from 'react';
 import PropTypes from 'prop-types';
 import { ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
+import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 
-/** One native PDF viewer; inactive documents retain their file URLs without loading a second viewer. */
+/** One page-fitted PDF viewer; inactive documents retain their original file URLs. */
 export default function ProcurementImportPdfPreview({ documents, selectedKind, onSelect }) {
   const id = useId();
   const selected = documents.find(document => document.kind === selectedKind) || documents[0];
@@ -36,8 +37,7 @@ export default function ProcurementImportPdfPreview({ documents, selectedKind, o
       <p className="w-full truncate text-xs text-gray-600" title={selected.name}>{selected.name}</p>
     </div>
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${selected.kind}-tab`} className="min-h-0 flex-1">
-      {selected.url && <iframe key={`${selected.kind}:${selected.url}`} src={`${selected.url}#page=1&zoom=page-width&view=FitH&toolbar=1&navpanes=0`}
-        title={`Approved ${selected.kind.toUpperCase()} source PDF`} className="block h-full w-full border-0" />}
+      {selected.url && <PdfDocumentPreview url={selected.url} title={`Approved ${selected.kind.toUpperCase()} source PDF`} />}
     </div>
   </section>;
 }

@@ -176,7 +176,7 @@ export default function PurchaseRecommendations({ requisitions = [], loading = f
     </div>
     <dialog ref={linkDialog} className="prr-link-dialog" aria-labelledby="prr-link-title" onCancel={() => setLinkRecord(null)}>
       <div className="prr-link-dialog-header"><h2 id="prr-link-title">Link purchase order</h2><button type="button" className="prw-button prw-icon-button" aria-label="Close purchase order linking" onClick={() => setLinkRecord(null)}><X size={18} /></button></div>
-      {linkRecord && <PurchaseOrderLinkReview key={linkRecord.id} requisitionId={linkRecord.id} poLink={{ status: 'not_found', manual_link_required: true, message: `Select the purchase order for ${linkRecord.number}.` }} canLink={canLinkPurchaseOrder} canUpload={canUploadPurchaseOrder} canImportRequisition={canCreate} onUploadOpenChange={setLinkUploadOpen} onLinked={() => { setLinkRecord(null); setDetailRevision(value => value + 1); onRefresh?.() }} />}
+      {linkRecord && <PurchaseOrderLinkReview key={linkRecord.id} requisitionId={linkRecord.id} poLink={{ status: 'not_found', manual_link_required: true, message: `Select the purchase order for ${linkRecord.number}.` }} canLink={canLinkPurchaseOrder} canUpload={canUploadPurchaseOrder} canImportRequisition={canCreate} onUploadOpenChange={setLinkUploadOpen} onLinked={() => { setLinkRecord(null); if (onRefresh) onRefresh(); else setDetailRevision(value => value + 1) }} />}
     </dialog>
   </section>
 }

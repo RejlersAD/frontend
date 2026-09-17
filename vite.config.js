@@ -257,6 +257,15 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
+      rollupOptions: {
+        output: {
+          // Keep the module worker bytes unchanged, but use the JS extension
+          // covered by nginx MIME rules and the existing PWA precache glob.
+          assetFileNames: asset => asset.name === 'pdf.worker.min.mjs'
+            ? 'assets/pdf.worker.min-[hash].js'
+            : 'assets/[name]-[hash][extname]',
+        },
+      },
       // Production source maps more than doubled peak build memory for this
       // large application and exhausted Node's default 4 GB heap. Enable them
       // explicitly only in CI environments that upload maps to secure storage.

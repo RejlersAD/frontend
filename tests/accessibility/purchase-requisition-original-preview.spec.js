@@ -7,6 +7,13 @@ const details = page => page.getByRole('complementary', { name: 'Recommendation 
 const preview = page => page.getByRole('region', { name: 'Procurement document preview', exact: true })
 const prPanel = page => preview(page).getByRole('tabpanel', { name: 'PR Preview', exact: true })
 const poPanel = page => preview(page).getByRole('tabpanel', { name: /^Linked PO/ })
+const assertRendererWidth = async (panel, viewer) => {
+  await expect.poll(async () => {
+    const outer = await panel.boundingBox()
+    const inner = await viewer.boundingBox()
+    return Math.max(Math.abs(outer.x - inner.x), Math.abs(outer.width - inner.width))
+  }, { message: 'The PDF viewer must use the full approval preview panel width.' }).toBeLessThanOrEqual(2)
+}
 const source = (filename, fields = {}) => ({ type: 'signed_purchase_requisition_pdf', filename, url: `/__approval-source-fixture__/${filename}`, ...fields })
 function pdfFile(label) {
   const stream = `BT /F1 14 Tf 40 750 Td (${label}) Tj ET`
@@ -33,7 +40,7 @@ const openApprovalRecord = async (page, index = 1) => {
   await page.getByRole('button', { name: `Select ${number(index)}`, exact: true }).click()
   await expect(details(page)).toHaveAttribute('aria-busy', 'false')
   await details(page).getByRole('button', { name: 'View approval record', exact: true }).click()
-  await expect.poll(() => page.evaluate(() => window.recommendationRoute)).toBe(`/procurement/requisitions/${id(index + 200)}`)
+  await expect.poll(() => page.evaluate(() => window.recommendationRoute || window.location.pathname)).toBe(`/procurement/requisitions/${id(index + 200)}`)
   await expect(page.getByRole('heading', { name: number(index), level: 1, exact: true })).toBeVisible()
   if (await preview(page).getByRole('tab', { name: 'PR + PO', exact: true }).count()) {
     await preview(page).getByRole('tab', { name: 'PR Preview', exact: true }).click()
@@ -59,7 +66,7 @@ const mockSources = async page => {
 const clean = state => {
   expect(state.unknown).toEqual([])
   expect(state.pageErrors).toEqual([])
-  expect(state.requests.filter(request => request.method !== 'GET')).toEqual([])
+  expect(state.requests.filter(request => request.method !== 'GET' && request.path !== '/api/v1/rbac/ai-champion/track/activity/')).toEqual([])
 }
 const exports = state => state.requests.filter(request => /\/(export_pdf|export-pdf)\/$/.test(request.path))
 const pdfBytes = async (page, frame) => {
@@ -86,7 +93,7 @@ test('View approval record defaults both document tabs to uploaded originals wit
   await page.setViewportSize({ width: 1672, height: 1040 })
   const files = await mockSources(page)
   const contentUrl = `/api/v1/procurement/requisitions/${id(201)}/uploaded-documents/0/content/`
-  const state = await recommendationHarness(page, { integration: true, prepare: state => {
+  const state = await recommendationHarness(page, { realApp: true, prepare: state => {
     update(state, 1, { status: 'converted', linked_po_id: '101', po_number_reference: 'PO-TEST-001', attachments: [source('signed-original.pdf', { content_url: contentUrl })] })
     state.uploadedDocuments['101'] = [linkedDocument]
     state.uploadedContent[linkedDocument.content_url] = { body: originalPo }
@@ -112,7 +119,11 @@ test('View approval record defaults both document tabs to uploaded originals wit
   await expect(page.getByRole('button', { name: /^Print .* preview$/ })).toHaveCount(0)
 
   await preview(page).getByRole('tab', { name: /^Linked PO/ }).click()
-  await expect(poPanel(page).locator('iframe')).toHaveAttribute('title', `Uploaded PO PDF: ${linkedDocument.filename}`)
+  await expect(poPanel(page).getByRole('img', { name: `Uploaded PO PDF: ${linkedDocument.filename}, page 1 of 1`, exact: true })).toBeVisible({ timeout: 30000 })
+  const linkedViewer = () => poPanel(page).getByRole('region', { name: `Uploaded PO PDF: ${linkedDocument.filename}`, exact: true })
+  await assertRendererWidth(poPanel(page), linkedViewer())
+  await preview(page).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: '../artifacts/original-document-preview/approval-po-controlled.png' })
   const download = page.waitForEvent('download')
   await poPanel(page).getByRole('link', { name: 'Download uploaded PO', exact: true }).click()
   const saved = await download
@@ -127,6 +138,16 @@ test('View approval record defaults both document tabs to uploaded originals wit
   await assertCompactViewport(page, prPanel(page))
   await preview(page).scrollIntoViewIfNeeded()
   await page.screenshot({ path: '../artifacts/original-document-preview/approval-pr-compact-mobile.png' })
+  await preview(page).getByRole('tab', { name: /^Linked PO/ }).click()
+  await expect(linkedViewer().getByRole('img')).toBeVisible({ timeout: 30000 })
+  await assertRendererWidth(poPanel(page), linkedViewer())
+  await expect.poll(() => poPanel(page).evaluate(element => {
+    const bounds = element.getBoundingClientRect()
+    const footerTop = document.querySelector('footer')?.getBoundingClientRect().top ?? innerHeight
+    const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.bottom - 2)
+    return bounds.bottom <= footerTop + 1 && element.contains(hit)
+  }), { message: 'The mobile Linked PO preview must remain visible above the app footer.' }).toBe(true)
+  await page.screenshot({ path: '../artifacts/original-document-preview/approval-po-controlled-mobile.png' })
   expect(await page.evaluate(() => window.previewCanvasRenders)).toBe(0)
   expect(exports(state)).toEqual([])
   clean(state)
@@ -212,6 +233,10 @@ test('ordinary records retain generated PR preview and only generate linked PO a
     linked_po_id: '101', po_number_reference: 'PO-TEST-001',
     attachments: [{ type: 'quotation', filename: 'supplier-quote.pdf', url: '/__approval-source-fixture__/supplier-quote.pdf' }],
   }) })
+  await page.route('**/api/v1/procurement/orders/101/export-pdf/', route => {
+    state.requests.push({ path: '/api/v1/procurement/orders/101/export-pdf/', method: 'GET' })
+    return route.fulfill({ contentType: 'application/pdf', headers: { 'content-disposition': 'attachment; filename="PO-TEST-001.pdf"' }, body: pdfFile('Generated linked PO source') })
+  })
   await loaded(page)
   await openApprovalRecord(page)
   await expect(prPanel(page).locator('iframe')).toHaveAttribute('src', /^blob:/, { timeout: 45000 })
@@ -225,7 +250,7 @@ test('ordinary records retain generated PR preview and only generate linked PO a
   await page.setViewportSize({ width: 1440, height: 900 })
   await expect(preview(page).getByRole('button', { name: 'Download Purchase Recommendation PDF', exact: true })).toBeEnabled()
   await preview(page).getByRole('tab', { name: /^Linked PO/ }).click()
-  await expect(poPanel(page).locator('iframe')).toHaveAttribute('title', 'PO-TEST-001.pdf preview')
+  await expect(poPanel(page).getByRole('region', { name: 'PO-TEST-001.pdf preview', exact: true }).getByRole('img')).toBeVisible({ timeout: 30000 })
   const sourceIndex = state.requests.findIndex(request => request.path === '/api/v1/procurement/orders/101/uploaded-documents/')
   const exportIndex = state.requests.findIndex(request => request.path === '/api/v1/procurement/orders/101/export-pdf/')
   expect(sourceIndex).toBeGreaterThanOrEqual(0)
@@ -269,7 +294,7 @@ test('linked PO discovery and original content failures can retry without genera
   expect(exports(state)).toEqual([])
   state.uploadedContent[linkedDocument.content_url] = { body: originalPo }
   await poPanel(page).getByRole('button', { name: 'Retry uploaded PO', exact: true }).click()
-  await expect(poPanel(page).locator('iframe')).toHaveAttribute('title', `Uploaded PO PDF: ${linkedDocument.filename}`)
+  await expect(poPanel(page).getByRole('img', { name: `Uploaded PO PDF: ${linkedDocument.filename}, page 1 of 1`, exact: true })).toBeVisible({ timeout: 30000 })
   expect(exports(state)).toEqual([])
   expect(await page.evaluate(() => window.previewCanvasRenders)).toBe(0)
   clean(state)
