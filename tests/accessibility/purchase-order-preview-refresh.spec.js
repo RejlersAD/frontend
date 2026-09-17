@@ -3,13 +3,15 @@ import { readFile } from 'node:fs/promises'
 import { orderFormHarness, orderFormId, orderFormNumber, orderFormRecommendation } from '../fixtures/purchase-order-form.fixture'
 import { mixedSizePdf } from '../fixtures/mixed-size-pdf.fixture'
 
-test.setTimeout(120000)
-test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
+test.setTimeout(180000)
+test.use({ actionTimeout: 30000, serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
 const title = 'Current purchase order PDF preview'
 const pane = page => page.getByRole('complementary', { name: 'Live purchase order preview' })
 const viewer = page => pane(page).getByRole('region', { name: title, exact: true })
 const pdfButton = page => pane(page).getByRole('button', { name: 'Download PDF', exact: true })
-const scrollView = page => viewer(page).locator('div[tabindex="0"]')
+const scrollView = page => viewer(page).getByRole('region', { name: `${title} pages`, exact: true })
+const canvas = (page, number = 5) => scrollView(page).locator(`[data-pdf-layer="visible"] [data-pdf-page="${number}"] canvas`)
+const pageLabel = page => viewer(page).getByLabel('PDF pages', { exact: true })
 const clean = state => {
   expect(state.acceptedWrites).toEqual([])
   expect(state.unknown).toEqual([])
@@ -23,9 +25,9 @@ async function editOrder(page, number = orderFormNumber) {
   await expect(pdfButton(page)).toBeEnabled({ timeout: 30000 })
 }
 
-async function openEditor(page, secondOrder = false) {
+async function openEditor(page, secondOrder = false, pages = 8) {
   const state = await orderFormHarness(page, { path: '/procurement/orders', prepare: fixture => {
-    fixture.generatedPdf = mixedSizePdf(8)
+    fixture.generatedPdf = mixedSizePdf(pages)
     fixture.record = {
       id: orderFormId, po_number: orderFormNumber, po_date: '2026-09-15', status: 'draft',
       title: 'Formatting review', description: '<p>Review this narrative formatting</p>',
@@ -42,21 +44,31 @@ async function openEditor(page, secondOrder = false) {
   return state
 }
 
+async function scrollToPage(page, number, offset = 40) {
+  await scrollView(page).evaluate((element, target) => {
+    const slot = element.querySelector(`[data-pdf-layer="visible"] [data-pdf-page="${target.number}"]`)
+    element.scrollTo(60, slot.offsetTop + target.offset)
+  }, { number, offset })
+  await expect(canvas(page, number)).toBeVisible({ timeout: 30000 })
+}
+
 async function setReadingPosition(page) {
-  const pageInput = viewer(page).getByRole('spinbutton', { name: 'Page number' })
-  await pageInput.fill('5')
-  await pageInput.press('Enter')
-  await expect(viewer(page).getByRole('img', { name: `${title}, page 5 of 8`, exact: true })).toBeVisible()
-  const fitWidth = await viewer(page).getByRole('img').evaluate(element => element.getBoundingClientRect().width)
+  await expect(viewer(page).getByRole('spinbutton', { name: 'Page number' })).toHaveCount(0)
+  await expect(viewer(page).getByRole('button', { name: 'Next page' })).toHaveCount(0)
+  await scrollToPage(page, 5)
+  const fitWidth = await canvas(page).evaluate(element => element.getBoundingClientRect().width)
   await viewer(page).getByRole('button', { name: 'Zoom in', exact: true }).click()
   await viewer(page).getByRole('button', { name: 'Zoom in', exact: true }).click()
-  await expect.poll(() => viewer(page).getByRole('img').evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(fitWidth * 1.45)
-  await scrollView(page).evaluate(element => element.scrollTo(60, 40))
+  await expect.poll(() => canvas(page).evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(fitWidth * 1.45)
+  await scrollToPage(page, 5)
   return { fitWidth, ...await geometry(page) }
 }
 
-async function geometry(page) {
-  return scrollView(page).evaluate(element => ({ top: element.scrollTop, left: element.scrollLeft, width: element.querySelector('canvas').getBoundingClientRect().width }))
+async function geometry(page, number = 5) {
+  return scrollView(page).evaluate((element, target) => {
+    const slot = element.querySelector(`[data-pdf-layer="visible"] [data-pdf-page="${target}"]`)
+    return { top: element.scrollTop - slot.offsetTop, left: element.scrollLeft, width: slot.querySelector('canvas').getBoundingClientRect().width }
+  }, number)
 }
 
 async function selectNarrative(page) {
@@ -92,6 +104,12 @@ test('bold, underline and colour updates retain page, zoom, scroll and visible c
   })
   const state = await openEditor(page)
   const position = await setReadingPosition(page)
+  const initialRequests = state.requests.filter(request => request.path.endsWith('/preview-document/')).length
+  await pane(page).getByRole('tab', { name: 'Validation', exact: true }).click()
+  await pane(page).getByRole('tab', { name: 'Document', exact: true }).click()
+  await expect(canvas(page)).toBeVisible()
+  expect(await geometry(page)).toEqual({ top: position.top, left: position.left, width: position.width })
+  expect(state.requests.filter(request => request.path.endsWith('/preview-document/'))).toHaveLength(initialRequests)
   const waiting = []
   const outputs = [mixedSizePdf(8), mixedSizePdf(9), mixedSizePdf(3)]
   await page.route('**/api/v1/procurement/orders/preview-document/', async route => {
@@ -101,26 +119,26 @@ test('bold, underline and colour updates retain page, zoom, scroll and visible c
   })
   for (let index = 0; index < 3; index += 1) {
     const previousUrl = await page.evaluate(() => window.previewPdfUrls.created.at(-1))
-    await viewer(page).getByRole('img').evaluate(element => { element.dataset.retained = 'yes' })
+    await canvas(page).evaluate(element => { element.dataset.retained = 'yes' })
     await selectNarrative(page)
     if (index < 2) await page.getByRole('button', { name: index === 0 ? 'B' : 'U', exact: true }).click()
     else await page.getByLabel('Font colour', { exact: true }).fill('#c81e1e')
     await expect(pdfButton(page)).toBeDisabled()
     await expect(pane(page).getByRole('button', { name: 'Download Word', exact: true })).toBeDisabled()
-    await expect.poll(() => waiting.length).toBe(index + 1)
-    await expect(viewer(page).getByRole('img')).toHaveAttribute('data-retained', 'yes')
-    await expect(viewer(page).getByRole('spinbutton', { name: 'Page number' })).toHaveValue('5')
+    await expect.poll(() => waiting.length, { timeout: 15000 }).toBe(index + 1)
+    await expect(canvas(page)).toHaveAttribute('data-retained', 'yes')
+    await expect(pageLabel(page)).toContainText('Page 5 of')
     expect(await geometry(page)).toEqual({ top: position.top, left: position.left, width: position.width })
     await expect(viewer(page).getByRole('status')).toContainText('Updating preview')
     expect(await page.evaluate(() => window.previewPdfUrls.revoked)).not.toContain(previousUrl)
     if (index === 0) await page.screenshot({ path: '../artifacts/po-preview-preserves-page-during-update.png' })
-    if (index === 1) await viewer(page).getByRole('spinbutton', { name: 'Page number' }).focus()
+    if (index === 1) await scrollView(page).focus()
     waiting[index].release()
     await expect(pdfButton(page)).toBeEnabled({ timeout: 30000 })
-    await expect(viewer(page).getByRole('img')).not.toHaveAttribute('data-retained', 'yes')
+    await expect(canvas(page, index === 2 ? 3 : 5)).not.toHaveAttribute('data-retained', 'yes')
     expect(await page.evaluate(() => window.previewPdfUrls.revoked)).toContain(previousUrl)
-    await expect(viewer(page).getByRole('spinbutton', { name: 'Page number' })).toHaveValue(index === 2 ? '3' : '5')
-    expect(await geometry(page)).toEqual({ top: position.top, left: position.left, width: position.width })
+    await expect(pageLabel(page)).toContainText(index === 2 ? 'Page 3 of 3' : 'Page 5 of')
+    expect(await geometry(page, index === 2 ? 3 : 5)).toEqual({ top: position.top, left: position.left, width: position.width })
   }
   expect(waiting[0].body).toMatch(/<b>|<strong>|font-weight/)
   expect(waiting[1].body).toMatch(/<u>|underline/)
@@ -154,11 +172,11 @@ test('late responses and failed updates keep the reading position and never expo
   await replaceNarrative(page, 'Newer current edit')
   await expect(pdfButton(page)).toBeEnabled({ timeout: 30000 })
   releaseOlder()
-  await expect(viewer(page).getByRole('img')).toHaveAttribute('aria-label', `${title}, page 5 of 7`)
+  await expect(canvas(page)).toHaveAttribute('aria-label', `${title}, page 5 of 7`)
   await replaceNarrative(page, 'Current error')
   await expect(pane(page).getByRole('alert')).toContainText('Review the table width.')
-  await expect(viewer(page).getByRole('img')).toBeVisible()
-  await expect(viewer(page).getByRole('spinbutton', { name: 'Page number' })).toHaveValue('5')
+  await expect(canvas(page)).toBeVisible()
+  await expect(pageLabel(page)).toContainText('Page 5 of')
   expect(await geometry(page)).toEqual({ top: position.top, left: position.left, width: position.width })
   await expect(pdfButton(page)).toBeDisabled()
   await expect(pane(page).getByRole('button', { name: 'Download Word', exact: true })).toBeDisabled()
@@ -177,8 +195,79 @@ test('opening a different order starts at page one and fit width instead of carr
   const position = await setReadingPosition(page)
   await page.getByRole('button', { name: 'Close purchase order', exact: true }).click()
   await editOrder(page, state.orders[1].po_number)
-  await expect(viewer(page).getByRole('img')).toHaveAttribute('aria-label', `${title}, page 1 of 8`)
-  await expect(viewer(page).getByRole('spinbutton', { name: 'Page number' })).toHaveValue('1')
-  expect(await geometry(page)).toEqual({ top: 0, left: 0, width: position.fitWidth })
+  await expect(canvas(page, 1)).toHaveAttribute('aria-label', `${title}, page 1 of 8`)
+  await expect(pageLabel(page)).toContainText('Page 1 of 8')
+  expect(await geometry(page, 1)).toEqual({ top: 0, left: 0, width: position.fitWidth })
   clean(state)
+})
+
+test('continuous scrolling exposes page boundaries and lazily fits mixed-size pages while resize keeps the reading anchor', async ({ page }) => {
+  const state = await openEditor(page, false, 160)
+  const requests = state.requests.length
+  await scrollView(page).evaluate(element => {
+    const first = element.querySelector('[data-pdf-layer="visible"] [data-pdf-page="1"]')
+    element.scrollTop = first.offsetHeight - element.clientHeight / 2
+  })
+  await expect(canvas(page, 2)).toBeInViewport({ timeout: 30000 })
+  await page.screenshot({ path: '../artifacts/po-continuous-page-boundary.png' })
+  await scrollToPage(page, 90, 120)
+  await expect(pageLabel(page)).toHaveText('Page 90 of 160')
+  const fraction = () => scrollView(page).evaluate(element => {
+    const slot = element.querySelector('[data-pdf-layer="visible"] [data-pdf-page="90"]')
+    return (element.scrollTop - slot.offsetTop) / slot.offsetHeight
+  })
+  const before = await fraction()
+  const beforeWidth = await canvas(page, 90).evaluate(element => element.getBoundingClientRect().width)
+  await page.setViewportSize({ width: 1500, height: 941 })
+  await expect.poll(() => canvas(page, 90).evaluate(element => element.getBoundingClientRect().width), { timeout: 30000 }).toBeLessThan(beforeWidth)
+  await expect.poll(fraction).toBeCloseTo(before, 2)
+  await expect(pageLabel(page)).toHaveText('Page 90 of 160')
+  await expect(canvas(page, 90)).toBeInViewport()
+  await expect.poll(() => scrollView(page).locator('[data-pdf-layer="visible"] canvas').count()).toBeLessThanOrEqual(8)
+  expect(state.requests).toHaveLength(requests)
+  clean(state)
+})
+
+test('scrolling while a replacement is prepared waits for the newly visible pages before enabling its download', async ({ page }) => {
+  const state = await openEditor(page)
+  await setReadingPosition(page)
+  let release
+  let requested = false
+  const pending = new Promise(resolve => { release = resolve })
+  const replacement = mixedSizePdf(9)
+  await page.route('**/api/v1/procurement/orders/preview-document/', async route => {
+    requested = true
+    await pending
+    await route.fulfill({ contentType: 'application/pdf', body: replacement })
+  })
+  try {
+    await replaceNarrative(page, 'Updated narrative while reading another page')
+    await expect(pdfButton(page)).toBeDisabled()
+    await expect.poll(() => requested, { timeout: 15000 }).toBe(true)
+    await pane(page).evaluate(element => {
+      const button = Array.from(element.querySelectorAll('button')).find(control => control.textContent.trim() === 'Download PDF')
+      const viewport = element.querySelector('[aria-label="Current purchase order PDF preview pages"]')
+      window.unpaintedReadyPages = []
+      window.previewReadyObserver = new MutationObserver(() => {
+        if (button.disabled) return
+        const layer = viewport.querySelector('[data-pdf-layer="visible"]')
+        const needed = Array.from(layer.querySelectorAll('[data-pdf-page]')).filter(slot => slot.offsetTop + slot.offsetHeight > viewport.scrollTop && slot.offsetTop < viewport.scrollTop + viewport.clientHeight)
+        for (const slot of needed) if (!slot.querySelector('canvas')) window.unpaintedReadyPages.push(slot.dataset.pdfPage)
+      })
+      window.previewReadyObserver.observe(element, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] })
+    })
+    release()
+    await scrollToPage(page, 7)
+    await expect(pdfButton(page)).toBeEnabled({ timeout: 30000 })
+    await expect(canvas(page, 7)).toHaveAttribute('aria-label', `${title}, page 7 of 9`)
+    await expect(pageLabel(page)).toHaveText('Page 7 of 9')
+    expect(await page.evaluate(() => window.unpaintedReadyPages)).toEqual([])
+    const downloadEvent = page.waitForEvent('download')
+    await pdfButton(page).click()
+    expect(await readFile(await (await downloadEvent).path())).toEqual(replacement)
+    clean(state)
+  } finally {
+    release()
+    await page.evaluate(() => window.previewReadyObserver?.disconnect()).catch(() => {})
+  }
 })

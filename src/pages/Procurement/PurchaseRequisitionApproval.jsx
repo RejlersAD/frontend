@@ -927,7 +927,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                     {activePdfLoading && <div className="text-center text-white"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-500 border-t-white" /><p className="mt-3 text-sm">{showingLinkedPo ? 'Loading linked Purchase Order…' : 'Creating PDF from the live preview…'}</p></div>}
                     {!activePdfLoading && activePdfError && <div className="max-w-sm px-6 text-center text-white"><ExclamationTriangleIcon className="mx-auto h-9 w-9 text-amber-300" /><p className="mt-3 text-sm">{activePdfError}</p><button type="button" onClick={() => showingLinkedPo ? setLinkedPoPreviewRetryKey((key) => key + 1) : setPdfPreviewRetryKey((key) => key + 1)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800"><ArrowPathIcon className="h-4 w-4" /> Retry preview</button></div>}
                     {!activePdfLoading && activePdfUrl && (showingLinkedPo
-                      ? <PdfDocumentPreview url={activePdfUrl} title={`${activePdfFilename || 'Linked Purchase Order'} preview`} className="w-full bg-white" />
+                      ? <PdfDocumentPreview continuous url={activePdfUrl} title={`${activePdfFilename || 'Linked Purchase Order'} preview`} className="w-full bg-white" />
                       : <iframe key={`${activePreview}-${activePdfUrl}`} ref={pdfFrameRef} src={`${activePdfUrl}#page=1&zoom=page-width&view=FitH&toolbar=0&navpanes=0&scrollbar=1`} title={`${activePdfFilename || 'Purchase Recommendation'} preview`} className="h-full w-full bg-white" />)}
                     </>}
                   </div>

@@ -920,6 +920,7 @@ const PurchaseOrderDetail = () => {
 
                   {!pdfPreviewLoading && pdfPreviewUrl && (
                     <PdfDocumentPreview
+                      continuous
                       title={`Purchase Order ${order.po_number || order.id} PDF preview`}
                       url={pdfPreviewUrl}
                       className="min-h-0 flex-1"

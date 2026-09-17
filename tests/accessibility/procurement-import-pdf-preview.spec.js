@@ -100,16 +100,39 @@ async function expectWidthFittedPage(viewer, title, pageNumber, host) {
   const [bounds, area] = await Promise.all([canvas.boundingBox(), viewer.boundingBox()])
   expect(bounds.width).toBeGreaterThan(area.width * 0.8)
   expect(bounds.width).toBeLessThanOrEqual(area.width)
-  await expect(viewer.locator('canvas')).toHaveCount(1)
+  await expect.poll(() => viewer.locator('canvas').count(), {
+    message: 'A 160-page PDF must keep only a bounded viewport-sized canvas window.',
+  }).toBeLessThanOrEqual(8)
   return canvas
 }
 
-async function goToPage(viewer, number) {
-  await viewer.getByLabel('Page number', { exact: true }).fill(String(number))
-  await viewer.getByLabel('Page number', { exact: true }).press('Enter')
+const pageViewport = (viewer, title) => viewer.getByRole('region', { name: `${title} pages`, exact: true })
+
+async function scrollToPage(viewer, title, number) {
+  const viewport = pageViewport(viewer, title)
+  await expect(viewport.locator(`[data-pdf-page="${number}"]`)).toBeAttached()
+  await viewport.evaluate((element, page) => {
+    const marker = element.querySelector(`[data-pdf-page="${page}"]`)
+    element.scrollTo({ top: element.scrollTop + marker.getBoundingClientRect().top - element.getBoundingClientRect().top - 12 })
+  }, number)
+  // At the document end, native scroll clamping may leave the preceding page's
+  // footer visible when the final page is shorter than the viewport.
+  if (number < 160) await expect(viewer.getByLabel('PDF pages', { exact: true })).toHaveText(`Page ${number} of 160`)
 }
 
-test('a 160-page upload fits normal and oversized pages independently through navigation and resize', async ({ page }) => {
+async function wheelAcrossFirstPage(page, viewer, title) {
+  const viewport = pageViewport(viewer, title)
+  await viewport.hover()
+  const distance = await viewport.evaluate(element => {
+    const next = element.querySelector('[data-pdf-page="2"]')
+    return next.getBoundingClientRect().top - element.getBoundingClientRect().top + 40
+  })
+  await page.mouse.wheel(0, distance)
+  await expect(viewer.getByRole('img', { name: `${title}, page 2 of 160`, exact: true })).toBeInViewport({ ratio: .1 })
+  await expect(viewer.getByLabel('PDF pages', { exact: true })).toHaveText('Page 2 of 160')
+}
+
+test('a 160-page upload scrolls continuously and fits normal and oversized pages independently through resize', async ({ page }) => {
   await page.setViewportSize({ width: 1192, height: 907 })
   const state = await open(page)
   await modal(page).getByLabel('Select signed or approved PO PDF', { exact: true }).setInputFiles(mixedSizePoPdf)
@@ -118,31 +141,35 @@ test('a 160-page upload fits normal and oversized pages independently through na
   const host = source(page).getByRole('tabpanel', { name: 'PO PDF', exact: true })
   const fitPage = number => expectWidthFittedPage(viewer, title, number, host)
   await fitPage(1)
+  await expect(pageViewport(viewer, title).locator('[data-pdf-page]')).toHaveCount(160)
+  await expect(viewer.getByLabel('Page number', { exact: true })).toHaveCount(0)
+  await expect(viewer.getByRole('button', { name: /^(Next|Previous) page$/ })).toHaveCount(0)
   const initialRequests = documentApiRequests(state).length
-  await goToPage(viewer, 90)
+  await wheelAcrossFirstPage(page, viewer, title)
+  await fitPage(2)
+  await scrollToPage(viewer, title, 90)
   const drawing = await fitPage(90)
   const drawingBounds = await drawing.boundingBox()
   expect(drawingBounds.width / drawingBounds.height).toBeCloseTo(14400 / 10170, 1)
-  await viewer.getByRole('button', { name: 'Next page', exact: true }).click()
+  await scrollToPage(viewer, title, 91)
   await fitPage(91)
-  await viewer.getByRole('button', { name: 'Previous page', exact: true }).click()
+  await scrollToPage(viewer, title, 90)
   await fitPage(90)
-  await goToPage(viewer, 1)
+  await scrollToPage(viewer, title, 1)
   const regular = await fitPage(1)
   const beforeZoom = (await regular.boundingBox()).width
   for (let step = 0; step < 3; step += 1) await viewer.getByRole('button', { name: 'Zoom in', exact: true }).click()
   await expect.poll(async () => (await regular.boundingBox())?.width || 0).toBeCloseTo(beforeZoom * 1.75, 0)
-  await viewer.getByLabel('Page number', { exact: true }).focus()
   await viewer.getByRole('button', { name: 'Zoom in', exact: true }).click()
   await expect.poll(async () => (await regular.boundingBox())?.width || 0,
-    { message: 'Blurring an unchanged page number must preserve the current zoom before zooming again.' }).toBeCloseTo(beforeZoom * 2, 0)
+    { message: 'Continuous preview zoom must update the current page without replacing it with another page.' }).toBeCloseTo(beforeZoom * 2, 0)
   await viewer.getByRole('button', { name: 'Fit width', exact: true }).click()
   await fitPage(1)
   await page.screenshot({ path: '../artifacts/mixed-pdf-upload-desktop.png' })
   await page.setViewportSize({ width: 390, height: 844 })
   await viewer.scrollIntoViewIfNeeded()
   await fitPage(1)
-  await goToPage(viewer, 90)
+  await scrollToPage(viewer, title, 90)
   await fitPage(90)
   await page.screenshot({ path: '../artifacts/mixed-pdf-upload-mobile.png' })
   expect(documentApiRequests(state)).toHaveLength(initialRequests)
@@ -152,7 +179,7 @@ test('a 160-page upload fits normal and oversized pages independently through na
   expect(state.pageErrors).toEqual([])
 })
 
-test('saved PO detail fits every page of a mixed-size original without refetching or generating a PDF', async ({ page }) => {
+test('saved PO detail scrolls a mixed-size original without refetching or regenerating its PDF', async ({ page }) => {
   await page.setViewportSize({ width: 1512, height: 982 })
   const filename = mixedSizePoPdf.name
   const contentPath = `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/mixed-original/content/`
@@ -169,35 +196,42 @@ test('saved PO detail fits every page of a mixed-size original without refetchin
       fixture.uploadedContent[contentPath] = { body: mixedSizePoPdf.buffer }
     },
   })
+  const canonical = page.getByRole('region', { name: `Purchase Order ${orderFormNumber} PDF preview`, exact: true })
+  await expect(canonical.getByRole('img')).toBeVisible({ timeout: 30000 })
+  const generatedCalls = state.requests.filter(({ path }) => path.endsWith('/export-pdf/')).length
+  await page.getByRole('tablist', { name: 'Purchase order PDF source', exact: true }).getByRole('tab', { name: 'Original source', exact: true }).click()
   const title = `Uploaded PO PDF: ${filename}`
   const viewer = page.getByRole('region', { name: title, exact: true })
-  const host = page.getByRole('region', { name: 'Purchase order PDF preview', exact: true })
+  const host = page.locator('.po-detail-pdf-preview [role="tabpanel"]:visible')
   const fitPage = number => expectWidthFittedPage(viewer, title, number, host)
   await fitPage(1)
+  await expect(pageViewport(viewer, title).locator('[data-pdf-page]')).toHaveCount(160)
+  await expect(viewer.getByLabel('Page number', { exact: true })).toHaveCount(0)
+  await expect(viewer.getByRole('button', { name: /^(Next|Previous) page$/ })).toHaveCount(0)
   // The real App's development StrictMode replays source discovery on mount.
   // Navigation, zoom and resizing must not add any discovery/content requests.
   const initialSourceReads = state.requests.filter(({ path }) => path.includes('/uploaded-documents/')).length
-  await goToPage(viewer, 90)
+  await wheelAcrossFirstPage(page, viewer, title)
+  await fitPage(2)
+  await scrollToPage(viewer, title, 90)
   await fitPage(90)
-  await goToPage(viewer, 160)
+  await scrollToPage(viewer, title, 160)
   await fitPage(160)
-  await expect(viewer.getByRole('button', { name: 'Next page', exact: true })).toBeDisabled()
-  await goToPage(viewer, 1)
+  await scrollToPage(viewer, title, 1)
   await fitPage(1)
-  await expect(viewer.getByRole('button', { name: 'Previous page', exact: true })).toBeDisabled()
   await viewer.scrollIntoViewIfNeeded()
   await page.screenshot({ path: '../artifacts/mixed-pdf-detail-desktop.png' })
   await page.setViewportSize({ width: 390, height: 844 })
   await viewer.scrollIntoViewIfNeeded()
   await fitPage(1)
-  await goToPage(viewer, 90)
+  await scrollToPage(viewer, title, 90)
   await fitPage(90)
   await page.screenshot({ path: '../artifacts/mixed-pdf-detail-mobile.png' })
   const link = page.getByRole('link', { name: 'Open uploaded PO', exact: true })
   expect(await page.evaluate(async url => (await fetch(url)).text(), await link.getAttribute('href'))).toBe(mixedSizePoPdf.buffer.toString())
   expect(state.requests.filter(({ path }) => path === contentPath)).toHaveLength(1)
   expect(state.requests.filter(({ path }) => path.includes('/uploaded-documents/'))).toHaveLength(initialSourceReads)
-  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toEqual([])
+  expect(state.requests.filter(({ path }) => path.endsWith('/export-pdf/'))).toHaveLength(generatedCalls)
   expect(state.acceptedWrites).toEqual([])
   expect(state.unknown).toEqual([])
   expect(state.pageErrors).toEqual([])

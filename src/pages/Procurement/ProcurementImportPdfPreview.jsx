@@ -37,7 +37,7 @@ export default function ProcurementImportPdfPreview({ documents, selectedKind, o
       <p className="w-full truncate text-xs text-gray-600" title={selected.name}>{selected.name}</p>
     </div>
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${selected.kind}-tab`} className="min-h-0 flex-1">
-      {selected.url && <PdfDocumentPreview url={selected.url} title={`Approved ${selected.kind.toUpperCase()} source PDF`} />}
+      {selected.url && <PdfDocumentPreview continuous={selected.kind === 'po'} url={selected.url} title={`Approved ${selected.kind.toUpperCase()} source PDF`} />}
     </div>
   </section>;
 }
