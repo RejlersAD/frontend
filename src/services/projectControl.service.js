@@ -33,7 +33,7 @@ export const getPortfolioExceptions = (params = {}) => unwrap(apiClient.get(EP.p
 export const getEstimateVariance = (projectId, opts = {}) =>
   unwrap(apiClient.get(EP.variance, { params: { project: projectId, ...opts } }))
 export const runFinanceSync     = (projectId)       => unwrap(apiClient.post(EP.financeSync, { project: projectId }))
-export const listWbsNodes       = (projectId)       => unwrap(apiClient.get(EP.wbsNodes, { params: { project: projectId } }))
+export const listWbsNodes       = (projectId, options = {}) => unwrap(apiClient.get(EP.wbsNodes, { ...options, params: { project: projectId } }))
 export const createWbsNode      = (payload)         => unwrap(apiClient.post(EP.wbsNodes, payload))
 export const listControlAccounts = (projectId, params = {}) => unwrap(apiClient.get(EP.controlAccounts, { params: { project: projectId, ...params } }))
 export const createControlAccount = (payload) => unwrap(apiClient.post(EP.controlAccounts, payload))
@@ -56,7 +56,7 @@ export const submitApprovedHour = (id) => unwrap(apiClient.post(`${EP.approvedHo
 export const approveApprovedHour = (id) => unwrap(apiClient.post(`${EP.approvedHours}${id}/approve/`))
 export const reverseApprovedHour = (id, reason) => unwrap(apiClient.post(`${EP.approvedHours}${id}/reverse/`, { reason }))
 export const listIntegratedSnapshots = (projectId) => unwrap(apiClient.get(EP.integratedSnapshots, { params: { project: projectId } }))
-export const listBudgetAllocations = (projectId)    => unwrap(apiClient.get(EP.budgetAllocations, { params: { project: projectId } }))
+export const listBudgetAllocations = (projectId, options = {}) => unwrap(apiClient.get(EP.budgetAllocations, { ...options, params: { project: projectId } }))
 export const createBudgetAllocation = (payload)     => unwrap(apiClient.post(EP.budgetAllocations, payload))
 export const approveBudgetAllocation = (id)         => unwrap(apiClient.post(`${EP.budgetAllocations}${id}/approve/`))
 export const listCostAllocations = (projectId, params = {}) => unwrap(apiClient.get(EP.costAllocations, { params: { project: projectId, ...params } }))
