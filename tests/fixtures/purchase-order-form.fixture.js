@@ -87,6 +87,7 @@ export async function orderFormHarness(page, options = {}) {
     if (reconciliationMatch && method === 'POST') {
       if (state.poReconcileError) return reply(route, state.poReconcileError, 409)
       const document = state.documentRecords[reconciliationMatch[1]]
+      if (body.reviewed_fields) document.extracted_data = { ...document.extracted_data, ...body.reviewed_fields }
       const fields = document.extracted_data
       state.record = { ...fields, id: orderFormId, title: fields.summary, total_amount: fields.gross_amount || fields.total_amount, pr_reference: body.pr_id, pr_number: state.recommendation.pr_number, vendor: body.vendor_id, vendor_name: state.vendors.find(vendor => String(vendor.id) === String(body.vendor_id))?.name, status: 'draft', created_at: document.created_at, items: [] }
       state.orders = [state.record]
@@ -95,7 +96,7 @@ export async function orderFormHarness(page, options = {}) {
       state.uploadedDocuments = [{ id: document.id, filename: document.original_filename, content_url: contentUrl }]
       state.uploadedContent[contentUrl] = state.uploadedContent[`/api/v1/procurement/po-documents/${document.id}/content/`]
       state.acceptedWrites.push({ path, method, body })
-      return reply(route, { success: true, operation: 'created', purchase_order_id: orderFormId, confirmed_po: orderFormId, document_id: document.id })
+      return reply(route, { success: true, operation: 'created', purchase_order_id: orderFormId, confirmed_po: orderFormId, document_id: document.id, ...(fields.originating_pr_id ? { pr_id: fields.originating_pr_id, pr_number: state.recommendation.pr_number, po_link: { status: 'linked', po_id: orderFormId, po_number: fields.po_number, manual_link_required: false } } : {}) })
     }
     const pendingMatch = path.match(/^\/api\/v1\/procurement\/po-documents\/([^/]+)\/$/)
     if (pendingMatch && state.documentRecords[pendingMatch[1]]) {

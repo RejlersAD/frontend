@@ -129,6 +129,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
   const [selectedFileVersion, setSelectedFileVersion] = useState(0);
   const approvalEditsRef = useRef({});
   const approvalRequestRef = useRef(0);
+  const originatingRequisitionId = requisitionId || result?.originating_pr_id || null;
 
   useEffect(() => {
     if (!isOpen || documentId || !file || file.size > 15 * 1024 * 1024) return undefined;
@@ -210,10 +211,10 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
 
   useEffect(() => {
     if (documentId && result) {
-      setDocumentEdits({ ...editableDocument(result), ...(requisitionId ? { pr_id: String(requisitionId) } : {}) });
+      setDocumentEdits({ ...editableDocument(result), ...(originatingRequisitionId ? { pr_id: String(originatingRequisitionId) } : {}) });
       setFieldErrors({});
     }
-  }, [documentId, result, requisitionId]);
+  }, [documentId, result, originatingRequisitionId]);
 
   useEffect(() => {
     if (!isOpen || !documentId || !editMode) return undefined;
@@ -253,6 +254,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
 
   if (!isOpen) return null;
 
+  const originPendingReview = Boolean(originatingRequisitionId && documentId && editMode && result && !result.purchase_order_id);
   const reconciliationPending = Boolean(result && (result.reconciliation_required || !result.pr_id || !result.vendor_id));
   const reconciliationIssues = result?.reconciliation_issues?.length
     ? result.reconciliation_issues
@@ -291,6 +293,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
   };
 
   const updateDocumentField = (field, value) => {
+    if (field === 'vendor_name' && originatingRequisitionId) setSelectedVendorId('');
     setDocumentEdits(current => {
       const next = { ...current, [field]: value };
       if (['total_amount', 'vat_basis'].includes(field)) {
@@ -305,25 +308,34 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
     setChangesSaved(false);
   };
 
-  const saveDocument = async () => {
-    if (!documentId || !canEditDocument || saving || loading) return;
+  const validateReviewedPrice = () => {
     if (documentEdits.vat_basis === 'unconfirmed' && (
       String(documentEdits.total_amount) !== String(editableDocument(result).total_amount)
       || documentEdits.currency !== editableDocument(result).currency
     )) {
       setError('Confirm whether this price includes VAT, excludes VAT, or has no VAT before saving.');
-      return;
+      return false;
     }
-    setSaving(true);
-    setChangesSaved(false);
-    setError('');
-    setFieldErrors({});
+    return true;
+  };
+
+  const reviewedDocumentPayload = () => {
     const payload = Object.fromEntries(DOCUMENT_FIELDS.filter(([field]) => !['total_amount', 'tax_amount', 'gross_amount'].includes(field)).map(([field, , type]) => [field, ['date', 'number'].includes(type) ? documentEdits[field] || null : documentEdits[field] ?? '']));
     if (documentEdits.vat_basis && documentEdits.vat_basis !== 'unconfirmed') {
       payload.vat_basis = documentEdits.vat_basis;
       payload.entered_amount = documentEdits.total_amount;
     }
-    payload.pr_id = requisitionId || documentEdits.pr_id || null;
+    payload.pr_id = originatingRequisitionId || documentEdits.pr_id || null;
+    return payload;
+  };
+
+  const saveDocument = async () => {
+    if (!documentId || !canEditDocument || saving || loading || !validateReviewedPrice()) return;
+    setSaving(true);
+    setChangesSaved(false);
+    setError('');
+    setFieldErrors({});
+    const payload = reviewedDocumentPayload();
     try {
       const response = await apiClient.patch(`/procurement/po-documents/${documentId}/`, payload, { suppressErrorToast: true });
       const saved = response.data;
@@ -342,10 +354,46 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
     } finally { setSaving(false); }
   };
 
+  const savePurchaseOrder = async () => {
+    if (!originPendingReview || !canReconcile || !canEditDocument || loading || saving || reconciling || !validateReviewedPrice()) return;
+    if (!selectedVendorId && !documentEdits.vendor_name?.trim()) {
+      setFieldErrors(current => ({ ...current, vendor_name: 'Enter the supplier name from the signed PO or select an existing supplier.' }));
+      return;
+    }
+    setReconciling(true);
+    setError('');
+    setFieldErrors({});
+    try {
+      const { data } = await apiClient.post(`/procurement/po-documents/${documentId}/reconcile/`, {
+        pr_id: originatingRequisitionId,
+        vendor_id: selectedVendorId || null,
+        reviewed_fields: reviewedDocumentPayload(),
+      }, { suppressErrorToast: true });
+      const linked = data?.po_link;
+      if (!data?.purchase_order_id || String(data.pr_id) !== String(originatingRequisitionId)
+        || !['linked', 'already_linked'].includes(linked?.status) || linked.manual_link_required !== false
+        || String(linked.po_id) !== String(data.purchase_order_id)) {
+        setError('The purchase order link could not be confirmed. Check the purchase order register before retrying. Your reviewed details are retained here.');
+        return;
+      }
+      onImported?.(data);
+      toast.success('Purchase order saved and linked to this purchase recommendation.');
+      onClose();
+    } catch (problem) {
+      const details = problem.response?.data || {};
+      const errors = details.errors?.reviewed_fields || details.reviewed_fields || details.errors || details;
+      const extractedErrors = Object.fromEntries([...DOCUMENT_FIELDS.map(([field]) => field), 'pr_id'].filter(field => errors[field]).map(field => [field, importDetailText(errors[field])]));
+      setFieldErrors(extractedErrors);
+      setError(importDetailText(details.error || details.detail || details.po_link?.message || details.message)
+        || (Object.keys(extractedErrors).length ? 'Review the highlighted details before saving the purchase order.' : importDetailText(details.errors || details)
+          || 'The purchase order could not be saved. Your reviewed details are retained; correct the issue and try Save PO again.'));
+    } finally { setReconciling(false); }
+  };
+
   const completeReconciliation = async () => {
     if (!canReconcile || !documentId || loading || saving || reconciling) return;
     const vendorId = selectedVendorId;
-    const prId = requisitionId || documentEdits.pr_id || result?.pr_id;
+    const prId = originatingRequisitionId || documentEdits.pr_id || result?.pr_id;
     if (!prId || !vendorId) {
       setError(!prId ? 'Choose a purchase recommendation before completing reconciliation.' : 'Select the matching supplier from the supplier master.');
       return;
@@ -414,7 +462,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
           <div className="flex items-start justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
             <div>
               <h2 id="signed-po-pdf-title" className="text-lg font-bold text-white">{documentId ? editMode ? 'Edit Signed Purchase Order PDF' : 'Signed Purchase Order PDF' : 'Import Signed Purchase Order PDF'}</h2>
-              {!documentId && <p className="mt-1 text-xs text-indigo-100">{requisitionId ? 'Import the signed PO for this purchase recommendation. Review any missing supplier details before completing the link.' : 'Upload the signed PDF now. Link any missing recommendation or supplier records later.'}</p>}
+              {!documentId && <p className="mt-1 text-xs text-indigo-100">{requisitionId ? 'Save the signed PO and link it to this purchase recommendation. The supplier is matched or registered from the PDF.' : 'Upload the signed PDF now. Link any missing recommendation or supplier records later.'}</p>}
             </div>
             <button type="button" aria-label="Close PDF dialog" onClick={resetAndClose} disabled={saving || reconciling || (loading && !documentId)} className="text-white hover:text-indigo-100">
               <XMarkIcon className="h-6 w-6" />
@@ -504,6 +552,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
               {!canEditDocument && <p className="text-sm text-amber-800">This PDF is saved for review. A user with Purchase Orders update access must review the saved details before completing reconciliation.</p>}
               <fieldset disabled={!canEditDocument} className="space-y-4"><legend className="sr-only">Saved purchase order fields</legend>
               <h3 className="text-sm font-semibold text-gray-800">Purchase order details</h3>
+              {originPendingReview && <p className="text-sm text-gray-600">Review the extracted details, then select Save PO to create the purchase order and attach it to this purchase recommendation.</p>}
               <label className="block text-xs font-semibold text-gray-700">Price basis
                 <select aria-label="Price basis" value={documentEdits.vat_basis || 'unconfirmed'} onChange={event => updateDocumentField('vat_basis', event.target.value)} disabled={saving || reconciling} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
                   <option value="unconfirmed">Confirm VAT treatment</option>
@@ -528,21 +577,22 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
                 })}
               </div>
               <div className="border-t border-gray-200 pt-3">
-                <div className="flex gap-2"><label className="min-w-0 flex-1 text-xs font-semibold text-gray-700">Search recommendations<input value={prSearch} disabled={Boolean(requisitionId) || saving || reconciling} onChange={event => setPrSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); setPrQuery(prSearch.trim()); setPrReload(value => value + 1); } }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label><button type="button" disabled={Boolean(requisitionId) || prLoading || saving || reconciling} onClick={() => { setPrQuery(prSearch.trim()); setPrReload(value => value + 1); }} className="self-end rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Search</button></div>
-                <label className="mt-3 block text-xs font-semibold text-gray-700">Purchase recommendation<select aria-label="Purchase recommendation" aria-invalid={Boolean(fieldErrors.pr_id)} value={documentEdits.pr_id || ''} disabled={Boolean(requisitionId) || prLoading || saving || reconciling} onChange={event => updateDocumentField('pr_id', event.target.value)} className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal ${fieldErrors.pr_id ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}`}><option value="">Not linked</option>{documentEdits.pr_id && !prOptions.some(pr => String(pr.id) === String(documentEdits.pr_id)) && <option value={documentEdits.pr_id}>{documentEdits.pr_number || 'Current recommendation'}</option>}{prOptions.map(pr => <option key={pr.id} value={pr.id}>{pr.pr_number}{pr.product_service ? ` - ${pr.product_service}` : ''}</option>)}</select></label>
+                <div className="flex gap-2"><label className="min-w-0 flex-1 text-xs font-semibold text-gray-700">Search recommendations<input value={prSearch} disabled={Boolean(originatingRequisitionId) || saving || reconciling} onChange={event => setPrSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); setPrQuery(prSearch.trim()); setPrReload(value => value + 1); } }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label><button type="button" disabled={Boolean(originatingRequisitionId) || prLoading || saving || reconciling} onClick={() => { setPrQuery(prSearch.trim()); setPrReload(value => value + 1); }} className="self-end rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Search</button></div>
+                <label className="mt-3 block text-xs font-semibold text-gray-700">Purchase recommendation<select aria-label="Purchase recommendation" aria-invalid={Boolean(fieldErrors.pr_id)} value={documentEdits.pr_id || ''} disabled={Boolean(originatingRequisitionId) || prLoading || saving || reconciling} onChange={event => updateDocumentField('pr_id', event.target.value)} className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal ${fieldErrors.pr_id ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}`}><option value="">Not linked</option>{documentEdits.pr_id && !prOptions.some(pr => String(pr.id) === String(documentEdits.pr_id)) && <option value={documentEdits.pr_id}>{documentEdits.pr_number || 'Current recommendation'}</option>}{prOptions.map(pr => <option key={pr.id} value={pr.id}>{pr.pr_number}{pr.product_service ? ` - ${pr.product_service}` : ''}</option>)}</select></label>
                 {fieldErrors.pr_id && <p className="mt-1 text-xs text-red-700">{fieldErrors.pr_id}</p>}
                 {prError && <p className="mt-2 text-xs text-red-700">{prError}</p>}
               </div>
               {canReconcile && !result.purchase_order_id && <div className="space-y-3 border-t border-gray-200 pt-3">
-                <h4 className="text-sm font-semibold text-gray-800">Match supplier</h4>
+                <h4 className="text-sm font-semibold text-gray-800">{originPendingReview ? 'Supplier' : 'Match supplier'}</h4>
+                {originPendingReview && <p className="text-xs text-gray-600">Save PO reuses the matching supplier or registers a missing supplier using the reviewed Supplier name and PDF details. You can select an existing supplier below instead.</p>}
                 <label className="block text-xs font-semibold text-gray-700">Search supplier master<input value={supplierSearch} onChange={event => setSupplierSearch(event.target.value)} disabled={saving || reconciling} placeholder="Search supplier name or code" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label>
                 <label className="block text-xs font-semibold text-gray-700">Matched supplier<select value={selectedVendorId} onChange={event => setSelectedVendorId(event.target.value)} disabled={supplierLoading || saving || reconciling} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal">
-                  <option value="">{supplierLoading ? 'Loading suppliers...' : 'Select matching supplier'}</option>
+                  <option value="">{originPendingReview ? 'Match or register supplier from signed PO' : supplierLoading ? 'Loading suppliers...' : 'Select matching supplier'}</option>
                   {selectedVendorId && !supplierOptions.some(supplier => String(supplier.id) === selectedVendorId) && <option value={selectedVendorId}>{result.vendor_name || 'Current supplier selection'}</option>}
                   {supplierOptions.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}{supplier.vendor_code ? ` (${supplier.vendor_code})` : ''}</option>)}
                 </select></label>
                 {supplierError && <p role="alert" className="text-xs text-red-700">{supplierError} <button type="button" onClick={() => setSupplierReload(value => value + 1)} className="font-semibold underline">Retry suppliers</button></p>}
-                <p className="text-xs text-gray-600">Complete reconciliation saves these details and links the original signed PDF to the purchase order.</p>
+                <p className="text-xs text-gray-600">{originPendingReview ? 'Save PO saves the reviewed details, supplier and purchase order together, with the original signed PDF attached.' : 'Complete reconciliation saves these details and links the original signed PDF to the purchase order.'}</p>
               </div>}
               </fieldset>
             </section>}
@@ -550,7 +600,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
             {error && (
               <div role="alert" className="flex flex-wrap gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 <ExclamationTriangleIcon className="h-5 w-5 flex-none" /> <span className="min-w-0 flex-1">{error}</span>
-                {documentId && <button type="button" disabled={loading} onClick={() => setReload(value => value + 1)} className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-semibold">Retry</button>}
+                {documentId && !originPendingReview && <button type="button" disabled={loading} onClick={() => setReload(value => value + 1)} className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-semibold">Retry</button>}
               </div>
             )}
 
@@ -584,11 +634,12 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: reque
 
           <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
             <button type="button" onClick={resetAndClose} disabled={saving || reconciling || (loading && !documentId)} className="h-9 rounded-lg border border-gray-300 bg-white px-4 text-xs font-semibold text-gray-700">{result || documentId ? 'Close' : 'Cancel'}</button>
-            {documentId && editMode && result && <button type="button" onClick={saveDocument} disabled={!canEditDocument || saving || loading || reconciling} className="h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save changes'}</button>}
-            {documentId && editMode && result && canReconcile && !result.purchase_order_id && <button type="button" onClick={completeReconciliation} disabled={saving || loading || reconciling || supplierLoading} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{reconciling ? 'Completing...' : 'Complete reconciliation'}</button>}
+            {documentId && editMode && result && !originPendingReview && <button type="button" onClick={saveDocument} disabled={!canEditDocument || saving || loading || reconciling} className="h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save changes'}</button>}
+            {originPendingReview && <button type="button" onClick={savePurchaseOrder} disabled={!canReconcile || !canEditDocument || saving || loading || reconciling} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{reconciling ? 'Saving PO...' : 'Save PO'}</button>}
+            {documentId && editMode && result && !originPendingReview && canReconcile && !result.purchase_order_id && <button type="button" onClick={completeReconciliation} disabled={saving || loading || reconciling || supplierLoading} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{reconciling ? 'Completing...' : 'Complete reconciliation'}</button>}
             {!documentId && !result && (
               <button type="button" disabled={!file || file.size > 15 * 1024 * 1024 || loading || approvalLoading} onClick={importPdf} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">
-                {loading ? 'Uploading and extracting...' : 'Upload signed PDF'}
+                {requisitionId ? loading ? 'Saving PO...' : 'Save PO' : loading ? 'Uploading and extracting...' : 'Upload signed PDF'}
               </button>
             )}
           </div>
