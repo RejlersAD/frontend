@@ -12,7 +12,7 @@ import { radaiPrompt } from '../../services/radaiDialog'
  * - Vendor confirmation tracking
  */
 
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import PurchaseOrderPreviewPane from './PurchaseOrderPreviewPane';
@@ -346,7 +346,13 @@ const READ_ONLY_PO_FIELDS = new Set([
   'project_name',
   'project_display',
   'price_amount',
+  'summary',
 ]);
+
+const contactPersonsWithSummary = (formData, includeSummary) => ({
+  ...(formData.contact_persons || {}),
+  ...(includeSummary ? { purchase_summary: formData.summary || '' } : {}),
+});
 
 const buildPurchaseOrderPayload = (formData, status) => Object.fromEntries(
   Object.entries({ ...formData, status }).filter(([key, value]) => (
@@ -557,7 +563,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     notes: editData?.notes || '',
     attachments: editData?.attachments || [],
     // Short summary that is sent to vendor with the PO
-    summary: editData?.summary || '',
+    summary: editData?.summary || editData?.contact_persons?.purchase_summary || '',
     status: editData?.status || 'draft',
   });
   
@@ -566,7 +572,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     description: attachment.description || '',
     file: null,
     existingAttachment: attachment,
+    existingAttachmentIndex: index,
   })));
+  const previewFiles = useMemo(() => attachmentSlots.filter(slot => slot.file || slot.existingAttachment), [attachmentSlots]);
   const files = attachmentSlots.map((slot) => slot.file).filter(Boolean);
   const initialAttachmentSlots = useRef(attachmentSlots);
   const [errors, setErrors] = useState({});
@@ -940,7 +948,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     autoSaveRequestRef.current = true;
     setAutoSaving(true);
     try {
-      const payload = buildPurchaseOrderPayload(formData, 'draft');
+      const payload = buildPurchaseOrderPayload({ ...formData, contact_persons: contactPersonsWithSummary(formData, !editData || formData.summary !== initialFormData.current.summary) }, 'draft');
       // Financial changes require an explicit VAT choice and Save. Draft
       // background updates only preserve the existing recorded amounts.
       ['vat_basis', 'net_amount', 'tax_amount', 'total_amount', 'vat_percentage', 'discount_amount', 'currency', 'items'].forEach(field => delete payload[field]);
@@ -1523,7 +1531,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
               : { ...slot.existingAttachment, title: slot.title.trim(), description: slot.description.trim() };
           }),
         contact_persons: {
-          ...(formData.contact_persons || {}),
+          ...contactPersonsWithSummary(formData, !editData || formData.summary !== initialFormData.current.summary),
           ...(files.length ? { attachment_details: attachmentSlots
             .filter((slot) => slot.file)
             .map(({ title, description }) => ({ title: title.trim(), description: description.trim() })) } : {}),
@@ -2945,7 +2953,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
             </footer>
           </form>
         </section>
-        <PurchaseOrderPreviewPane formData={formData} vendor={selectedVendor} files={attachmentSlots.filter(slot => slot.file || slot.existingAttachment)} issues={validationIssues} onIssueClick={openValidationIssue} orderId={editData?.id || draftId} />
+        <PurchaseOrderPreviewPane formData={formData} files={previewFiles} issues={validationIssues} onIssueClick={openValidationIssue} orderId={editData?.id || draftId} />
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 // Synthetic records never reach the live database, including number reservation.
 import { formActor, formProject, formReference, formVendors } from './purchase-recommendation-form.fixture'
 import { fileURLToPath } from 'node:url'
+import { mixedSizePdf } from './mixed-size-pdf.fixture'
 
 export const orderFormId = '00000000-0000-4000-8000-000000009002'
 export const orderFormNumber = 'RAD-PRJ-PUR-9002_SEP2026'
@@ -40,7 +41,8 @@ export async function orderFormHarness(page, options = {}) {
     recommendation: { ...orderFormRecommendation, ...options.recommendation },
     record: null, orders: [], pendingDocuments: [], documentRecords: {}, requests: [], unknown: [], pageErrors: [], reserveError: null,
     saveError: null, sendError: null, acceptedWrites: [],
-    uploadedDocuments: [], uploadedDocumentsError: null, uploadedContent: {}, generatedPdf: null,
+    uploadedDocuments: [], uploadedDocumentsError: null, uploadedContent: {}, generatedPdf: mixedSizePdf(1),
+    generatedWord: 'Synthetic editable Word document', previewError: null,
     poPdfPreviews: {}, poPdfPreviewDelivered: {}, approvalEmployees: [], approvalEmployeesError: null,
     poPdfImportResult: null, poPdfImportError: null,
     projects: [{ id: 17, project_number: formProject.project_number, project_name: formProject.project_name, source: 'procurement', status: 'active', client_name: 'ADNOC' }],
@@ -82,6 +84,10 @@ export async function orderFormHarness(page, options = {}) {
     if (path === `/api/v1/procurement/requisitions/${state.recommendation.id}/` && method === 'GET') return reply(route, state.recommendation)
     if (path === '/api/v1/procurement/orders/reserve-number/' && method === 'POST') return reply(route, state.reserveError || { po_number: orderFormNumber }, state.reserveError ? 400 : 200)
     if (path === '/api/v1/procurement/orders/' && method === 'GET') return reply(route, { count: state.orders.length, next: null, results: state.orders })
+    if (path === '/api/v1/procurement/orders/preview-document/' && method === 'POST') {
+      if (state.previewError) return reply(route, state.previewError, 400)
+      return route.fulfill({ status: 200, contentType: body.format === 'word' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf', body: body.format === 'word' ? state.generatedWord : state.generatedPdf, headers: { 'content-disposition': `inline; filename="Current-PO.${body.format === 'word' ? 'docx' : 'pdf'}"` } })
+    }
     if (path === '/api/v1/procurement/po-documents/' && method === 'GET') return reply(route, { count: state.pendingDocuments.length, next: null, results: state.pendingDocuments })
     const reconciliationMatch = path.match(/^\/api\/v1\/procurement\/po-documents\/([^/]+)\/reconcile\/$/)
     if (reconciliationMatch && method === 'POST') {
@@ -154,6 +160,9 @@ export async function orderFormHarness(page, options = {}) {
     }
     if (path === `/api/v1/procurement/orders/${orderFormId}/export-pdf/` && method === 'GET' && state.generatedPdf) {
       return route.fulfill({ status: 200, contentType: 'application/pdf', body: state.generatedPdf, headers: { 'content-disposition': 'inline; filename="Generated-PO.pdf"' } })
+    }
+    if (path === `/api/v1/procurement/orders/${orderFormId}/export-word/` && method === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: state.generatedWord, headers: { 'content-disposition': 'attachment; filename="Generated-PO.docx"' } })
     }
     if (path === `/api/v1/procurement/orders/${orderFormId}/` && method === 'GET') return reply(route, state.record)
     if (path === `/api/v1/procurement/orders/${orderFormId}/` && method === 'DELETE') {

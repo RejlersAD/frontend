@@ -130,7 +130,7 @@ function PdfPages({ url, title, actions }) {
       {actions && <div className="ml-auto flex shrink-0 items-center gap-1.5">{actions}</div>}
       <span className="sr-only" aria-label="PDF pages" aria-live="polite">Page {pageNumber} of {pdf?.numPages || '…'}</span>
     </div>
-    <div ref={viewportRef} className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-gray-700 p-3" style={{ scrollbarGutter: 'stable' }} aria-busy={!error && rendering}>
+    <div ref={viewportRef} tabIndex={0} className="relative min-h-0 min-w-0 flex-1 overflow-auto bg-gray-700 p-3 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500" style={{ scrollbarGutter: 'stable' }} aria-busy={!error && rendering}>
       {!error && rendering && <p role="status" className="p-4 text-center text-sm text-white">Loading PDF page…</p>}
       {error && <div role="alert" className="rounded bg-white p-4 text-sm text-gray-800">
         <p>{error}</p><a href={url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-indigo-700 underline">Open original PDF</a>

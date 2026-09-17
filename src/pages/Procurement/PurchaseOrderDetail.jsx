@@ -25,11 +25,10 @@ import apiClient from '../../services/api.service';
 import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
-import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
-import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
+import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 import { canDecideProcurement, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
 
@@ -69,17 +68,15 @@ const formatMoney = (value, currency = 'USD') => {
 
 const textOrDash = (value) => String(value || '').trim() || '—';
 const purchaseOrderPdfRequests = new Map();
+const purchaseOrderRevision = order => `${order.id}:${order.updated_at || JSON.stringify(order)}`;
 
-const requestPurchaseOrderPdf = (id) => {
-  if (!purchaseOrderPdfRequests.has(id)) {
-    const request = apiClient.get(`/procurement/orders/${id}/export-pdf/`, {
-      responseType: 'blob',
-      timeout: 120000,
-      suppressErrorToast: true,
-    }).finally(() => purchaseOrderPdfRequests.delete(id));
-    purchaseOrderPdfRequests.set(id, request);
+const requestPurchaseOrderPdf = (order) => {
+  const key = purchaseOrderRevision(order);
+  if (!purchaseOrderPdfRequests.has(key)) {
+    const request = fetchPurchaseOrderDocument(order).finally(() => purchaseOrderPdfRequests.delete(key));
+    purchaseOrderPdfRequests.set(key, request);
   }
-  return purchaseOrderPdfRequests.get(id);
+  return purchaseOrderPdfRequests.get(key);
 };
 
 /**
@@ -104,12 +101,15 @@ const PurchaseOrderDetail = () => {
   const [showEditForm, setShowEditForm] = useState(false);
   const [approvalComment, setApprovalComment] = useState('');
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState('');
+  const [pdfDocument, setPdfDocument] = useState(null);
   const [pdfPreviewFilename, setPdfPreviewFilename] = useState('');
   const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
   const [pdfPreviewError, setPdfPreviewError] = useState('');
   const [pdfPreviewRetryKey, setPdfPreviewRetryKey] = useState(0);
-  const uploadedSources = useUploadedPurchaseOrderSources(id);
-  const useGeneratedPreview = !uploadedSources.loading && !uploadedSources.error && uploadedSources.documents.length === 0;
+  const [previewSelection, setPreviewSelection] = useState({ id, tab: 'document' });
+  const previewTab = previewSelection.id === id ? previewSelection.tab : 'document';
+  const uploadedSources = useUploadedPurchaseOrderSources(id, previewTab === 'original');
+  const useGeneratedPreview = previewTab === 'document';
 
   const handlePrintPurchaseOrder = () => {
     try {
@@ -123,32 +123,13 @@ const PurchaseOrderDetail = () => {
   const handleExportPurchaseOrder = async (format) => {
     try {
       setExportLoading(format);
-      const response = await apiClient.get(`/procurement/orders/${id}/export-${format}/`, {
-        responseType: 'blob',
-        timeout: 120000,
-      });
-      const fallbackPdfName = buildProcurementPdfFilename(
-        order?.po_number || `PO-${id}`,
-        'po',
-        order?.po_date,
-      );
-      const fallbackName = format === 'word'
-        ? fallbackPdfName.replace(/\.pdf$/i, '.docx')
-        : fallbackPdfName;
-      const disposition = response.headers?.['content-disposition'] || '';
-      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
-      const filename = filenameMatch?.[1] || fallbackName;
-      const downloadUrl = URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(downloadUrl);
+      const result = format === 'pdf'
+        ? pdfDocument?.revision === purchaseOrderRevision(order) ? pdfDocument : await requestPurchaseOrderPdf(order)
+        : await fetchPurchaseOrderDocument(order, format);
+      downloadPurchaseOrderDocument(result);
     } catch (exportError) {
       console.error(`Failed to export Purchase Order as ${format}:`, exportError);
-      await radaiAlert(`Failed to export the Purchase Order as ${format === 'word' ? 'Word' : 'PDF'}.`);
+      await radaiAlert(await purchaseOrderDocumentError(exportError));
     } finally {
       setExportLoading('');
     }
@@ -192,27 +173,22 @@ const PurchaseOrderDetail = () => {
   }, [id, navigate]);
 
   useEffect(() => {
-    if (!id || !order || String(order.id) !== String(id) || !useGeneratedPreview) return undefined;
+    if (!id || !order || String(order.id) !== String(id)) return undefined;
 
     let active = true;
     let objectUrl = '';
     setPdfPreviewLoading(true);
     setPdfPreviewError('');
     setPdfPreviewUrl('');
+    setPdfDocument(null);
 
-    requestPurchaseOrderPdf(id)
+    requestPurchaseOrderPdf(order)
       .then((response) => {
         if (!active) return;
-        const fallbackFilename = buildProcurementPdfFilename(
-          order.po_number || `PO-${id}`,
-          'po',
-          order.po_date,
-        );
-        const disposition = response.headers?.['content-disposition'] || '';
-        const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
-        objectUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-        setPdfPreviewFilename(filenameMatch?.[1] || fallbackFilename);
+        objectUrl = URL.createObjectURL(response.blob);
+        setPdfPreviewFilename(response.filename);
         setPdfPreviewUrl(objectUrl);
+        setPdfDocument({ ...response, revision: purchaseOrderRevision(order) });
       })
       .catch((previewError) => {
         if (!active) return;
@@ -227,7 +203,7 @@ const PurchaseOrderDetail = () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [id, order, pdfPreviewRetryKey, useGeneratedPreview]);
+  }, [id, order, pdfPreviewRetryKey]);
 
   /**
    * Soft-coded action handler: Send Order
@@ -412,83 +388,9 @@ const PurchaseOrderDetail = () => {
   const approvalSignatureSource = /^(data:image\/|https?:\/\/|\/)/i.test(signatureEvidence.signature)
     ? signatureEvidence.signature
     : null;
-  const printableAttachments = (Array.isArray(order.attachments) ? order.attachments : [])
-    .map((attachment) => {
-      if (typeof attachment === 'string') {
-        return { name: attachment.split('/').pop() || attachment };
-      }
-      return {
-        ...attachment,
-        name: attachment.name || attachment.file_name || attachment.filename || 'Attachment',
-      };
-    });
-  const printableVendor = {
-    name: order.vendor_name,
-    address: order.vendor_address || order.seller_address,
-    country: order.vendor_country || order.country,
-  };
   return (
     <>
-      {createPortal(
-        <section className="po-print-document" aria-label="Printable purchase order">
-          <style>{`
-            .po-print-document { display: none; }
-            @page { size: A4 portrait; margin: 0; }
-            @media print {
-              html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #fff !important;
-                color: #111827 !important;
-                height: auto !important;
-                overflow: visible !important;
-              }
-              body > * { display: none !important; }
-              body > .po-print-document {
-                display: block !important;
-                width: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow: visible !important;
-              }
-              .po-print-document, .po-print-document * {
-                box-sizing: border-box;
-                visibility: visible !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              .po-template-document, .po-template-pages { margin: 0 !important; padding: 0 !important; }
-              .po-template-page {
-                width: 210mm !important;
-                max-width: none !important;
-                min-height: 297mm !important;
-                height: 297mm !important;
-                margin: 0 !important;
-                padding: 14mm 16mm 10mm !important;
-                border: 0 !important;
-                box-shadow: none !important;
-                break-after: page;
-                page-break-after: always;
-                overflow: hidden !important;
-              }
-              .po-template-page:last-child {
-                break-after: auto;
-                page-break-after: auto;
-              }
-              .po-template-page table { border-collapse: collapse; }
-              .po-template-page tr { break-inside: avoid; page-break-inside: avoid; }
-              a { color: inherit !important; text-decoration: none !important; }
-            }
-          `}</style>
-          <PurchaseOrderLivePreview
-            formData={order}
-            vendor={printableVendor}
-            files={printableAttachments}
-            documentOnly
-          />
-        </section>,
-        document.body
-      )}
+
 
       {false && createPortal(
         <>
@@ -759,6 +661,16 @@ const PurchaseOrderDetail = () => {
 
               <button
                 type="button"
+                onClick={() => handleExportPurchaseOrder('pdf')}
+                disabled={Boolean(exportLoading)}
+                aria-label={exportLoading === 'pdf' ? 'Preparing PDF document' : 'Download PDF'}
+                title="Download PDF"
+                className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
                 onClick={() => handleExportPurchaseOrder('word')}
                 disabled={Boolean(exportLoading)}
                   aria-label={exportLoading === 'word' ? 'Preparing Word document' : 'Export Word document'}
@@ -980,6 +892,10 @@ const PurchaseOrderDetail = () => {
             {/* Right Column - PDF Preview */}
             <div className="space-y-6 xl:col-span-2">
               <section aria-label="Purchase order PDF preview" className="po-detail-pdf-preview relative flex min-h-[360px] h-[calc(100dvh-240px)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
+                <div className="pop-tabs" role="tablist" aria-label="Purchase order PDF source">
+                  {['document', 'original'].map(tab => <button key={tab} id={`po-${tab}-tab`} type="button" role="tab" aria-selected={previewTab === tab} aria-controls={previewTab === tab ? `po-${tab}-panel` : undefined} onClick={() => setPreviewSelection({ id, tab })}>{tab === 'document' ? 'Document' : 'Original source'}</button>)}
+                </div>
+                <div id={`po-${previewTab}-panel`} role="tabpanel" aria-labelledby={`po-${previewTab}-tab`} className="flex min-h-0 flex-1 flex-col">
                 {useGeneratedPreview ? <>
                   {pdfPreviewLoading && (
                     <div className="flex h-full items-center justify-center gap-2 bg-slate-50 text-sm text-gray-500">
@@ -1014,6 +930,7 @@ const PurchaseOrderDetail = () => {
                     />
                   )}
                 </> : <UploadedPurchaseOrderPreview orderId={id} sourceState={uploadedSources} />}
+                </div>
               </section>
 
             </div>
