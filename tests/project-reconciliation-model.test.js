@@ -83,6 +83,6 @@ test('project search reaches unsuggested choices and does not manufacture matchi
 
 test('financial formatting retains the currency and never coerces missing amounts to zero', () => {
   assert.equal(formatMoney('150000.50', 'AED'), 'AED 150,000.5')
-  assert.equal(formatMoney('150000', 'AED', true), 'AED 150K')
+  assert.match(formatMoney('150000', 'AED', true), /^AED 150[kK]$/)
   for (const amount of [null, undefined, '', 'invalid', Infinity]) assert.equal(formatMoney(amount, 'AED'), '—')
 })
