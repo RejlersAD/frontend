@@ -46,6 +46,7 @@ import UnifiedHRWorkspacePanel from '../../components/HR/UnifiedHRWorkspacePanel
 import HRAssistantPanel from '../../components/HR/HRAssistantPanel'
 import EmployeeTabLoading from '../../components/HR/EmployeeTabLoading'
 import MySignaturePanel from '../../components/HR/MySignaturePanel'
+import MyDigitalStampPanel from '../../components/HR/MyDigitalStampPanel'
 import Profile from '../Profile'
 import DocumentUploadSection from '../../components/Profile/DocumentUploadSection'
 import ProfileOverviewWorkspace, { ProfileWorkspaceNavigation } from '../../components/HR/ProfileOverviewWorkspace'
@@ -3738,7 +3739,7 @@ export default function EmployeeSelfService() {
         return <Profile embedded />
 
       case 'signature':
-        return <MySignaturePanel />
+        return <div className="space-y-5"><MySignaturePanel /><MyDigitalStampPanel /></div>
 
       case 'leave':
         return (
