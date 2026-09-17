@@ -83,6 +83,16 @@ test('line validation rejects saved total mismatches but allows omitted totals a
   assert.equal(recommendationLineError(payload.items), '');
 });
 
+test('pending registration routes can be repaired until approval evidence is recorded', () => {
+  for (const status of ['draft', 'submitted', 'in_review']) {
+    assert.equal(preserveRecordedApprovalWorkflow({ id: 'a', status, approval_workflow_config: [] }), false);
+    assert.equal(preserveRecordedApprovalWorkflow({ id: 'a', status, approval_workflow_config: [{ status: 'pending' }, { status: 'in_review' }] }), false);
+    for (const stage of [{ status: 'approved' }, { status: 'rejected' }, { status: 'pending', approved_at: '2026-09-17' }, { status: 'pending', signature: 'recorded-signature' }]) {
+      assert.equal(preserveRecordedApprovalWorkflow({ id: 'a', status, approval_workflow_config: [stage] }), true);
+    }
+  }
+});
+
 
 test('recorded line discounts survive validation and malformed discounts need correction', () => {
   for (const key of ['discount', 'line_discount', 'discount_amount']) {

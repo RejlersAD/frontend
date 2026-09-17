@@ -48,10 +48,13 @@ export function hydrateRecommendationReferences(record = {}) {
 
 export function preserveRecordedApprovalWorkflow(record) {
   if (!record?.id) return false;
-  return String(record.status || 'draft').toLowerCase() !== 'draft'
+  return !['draft', 'submitted', 'in_review', 'pending_approval'].includes(String(record.status || 'draft').toLowerCase())
     || record.price_remarks_data?.import_source === 'signed_pr_pdf'
+    || Boolean(record.price_remarks_data?.signed_document_verification?.signed_off)
     || (record.approval_workflow_config || []).some(stage => stage?.external
-      || stage?.source === 'signed_purchase_requisition_pdf');
+      || stage?.source === 'signed_purchase_requisition_pdf'
+      || !['pending', 'in_review'].includes(String(stage?.status || 'pending').toLowerCase())
+      || stage?.approved_at || stage?.rejected_at || stage?.signature || stage?.approved_by_id);
 }
 
 export function recommendationLineError(items = []) {

@@ -39,7 +39,10 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
   const hasOriginal = getOriginalRecommendationDocuments(requisition.attachments).length > 0;
   const scale = fitWidth ? clamp(availableWidth / PAPER_WIDTH, 0.25, 1.5) : zoom;
   const pageCount = Math.max(1, Math.ceil(documentHeight / PAPER_HEIGHT));
-  const issueLabel = `${issues.length} required ${issues.length === 1 ? 'item' : 'items'} remaining`;
+  const errorCount = issues.filter(issue => issue.severity !== 'warning').length;
+  const warningCount = issues.length - errorCount;
+  const issueLabel = [errorCount && `${errorCount} error${errorCount === 1 ? '' : 's'} to correct`,
+    warningCount && `${warningCount} warning${warningCount === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -197,12 +200,12 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
         </div>
       </div>}
       <section className="rpp-validation" role="tabpanel" id={`${instanceId}-validation-panel`} aria-labelledby={`${instanceId}-validation-tab`} hidden={tab !== 'validation'} tabIndex={0}>
-        <h3>{issues.length ? 'Complete the required information' : 'Ready for review'}</h3>
-        <p>{issues.length ? 'Select an item to return to the relevant form section.' : 'All required form fields are complete. Review the recommendation before submitting it for approval.'}</p>
+        <h3>{errorCount ? 'Correct the form errors' : warningCount ? 'Registration warnings' : 'Ready for review'}</h3>
+        <p>{issues.length ? 'Warnings do not prevent saving or submitting. Select an item to return to the relevant form section.' : 'Review the recommendation before submitting it for approval.'}</p>
         {issues.length > 0 ? (
           <ul>{issues.map((issue, index) => (
             <li key={`${issue.field || issue.step}-${index}`}>
-              <button type="button" onClick={() => onIssueClick?.(issue)}>
+              <button type="button" className={issue.severity === 'warning' ? 'rpp-warning' : ''} onClick={() => onIssueClick?.(issue)}>
                 <ExclamationCircleIcon /><span>{issue.message}</span><ArrowRightIcon />
               </button>
             </li>
@@ -225,6 +228,7 @@ RecommendationPreviewPane.propTypes = {
   issues: PropTypes.arrayOf(PropTypes.shape({
     field: PropTypes.string,
     message: PropTypes.string.isRequired,
+    severity: PropTypes.oneOf(['warning', 'error']),
     step: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   })),
   onIssueClick: PropTypes.func,
