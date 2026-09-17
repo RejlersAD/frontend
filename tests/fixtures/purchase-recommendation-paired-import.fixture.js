@@ -47,6 +47,7 @@ export async function pairedImportHarness(page, options = {}) {
       po_number: pairedPoNumber, vendor_name: 'PO Supplier Ltd', summary: 'PO scope from its own PDF',
       currency: 'USD', total_amount: '9000.00', tax_amount: '0.00', gross_amount: '9000.00', po_date: '2026-09-12', expected_delivery: '2026-10-20',
       vendor_license_no: 'SOURCE-001', seller_email: 'source@example.test', seller_contact_person: 'Source seller contact', seller_phone: '', seller_address: 'Source supplier address', seller_country: '',
+      ...options.poFields,
     }
     const approval = { signatures: { pm: true, moe: true, mop: true, vp: true }, approver_names: { pm: 'PR Signature Only' }, approval_date: '2026-09-15' }
     if (body.preview_only === 'true') {
@@ -57,7 +58,7 @@ export async function pairedImportHarness(page, options = {}) {
         database_match: state.props.requisitions.some(row => row.pr_number === extracted.pr_number),
         extracted_data: extracted, approval_detection: approval, document_signed_off: true,
         mapping_issues: [], workflow_issues: [],
-        po_preview: { extracted_data: poFields, reconciliation_issues: [], approval_evidence: {
+        po_preview: { extracted_data: poFields, reconciliation_issues: options.poPreviewIssues || [], approval_evidence: {
           signature_detected: true, stamp_detected: true, approved_by_name: 'PO Approver Only', approved_by_title: 'PO Director', approved_date: '2026-09-12', issues: [],
         } },
       })
