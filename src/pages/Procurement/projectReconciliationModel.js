@@ -6,6 +6,7 @@ export const TYPE_LABELS = {
 };
 
 export const ISSUE_LABELS = {
+  exact_match_available: 'Exact code ready for review',
   no_exact_match: 'No exact project-code match',
   multiple_projects: 'Multiple project references',
   missing_po_match: 'No verified PO match',
@@ -68,15 +69,27 @@ export function reconciliationSummary(data, sessionLinked = 0) {
   };
 }
 
-export function projectCandidates(record, projects = [], search = '') {
+export function projectCandidates(record, projects = [], search = '', { includeAll = false } = {}) {
   const suggestions = record?.suggested_projects || [];
   const byId = new Map(projects.map(project => [String(project.id), project]));
   for (const suggestion of suggestions) {
     byId.set(String(suggestion.id), { ...byId.get(String(suggestion.id)), ...suggestion });
   }
   const query = search.trim().toLocaleLowerCase();
-  if (!query && suggestions.length) return suggestions.map(project => byId.get(String(project.id))).slice(0, 3);
+  if (!query && !includeAll && suggestions.length) return [...new Set(suggestions.map(project => String(project.id)))].slice(0, 3).map(id => byId.get(id));
+  const searchRank = project => {
+    const code = String(project.code || '').toLocaleLowerCase();
+    const name = String(project.name || '').toLocaleLowerCase();
+    if (code === query) return 0;
+    if (code.startsWith(query)) return 1;
+    if (code.includes(query)) return 2;
+    if (name.startsWith(query)) return 3;
+    if (name.includes(query)) return 4;
+    return 5;
+  };
   return [...byId.values()].filter(project => !query || [project.code, project.name, project.client_name]
     .some(value => String(value || '').toLocaleLowerCase().includes(query)))
-    .sort((a, b) => String(a.code).localeCompare(String(b.code))).slice(0, 12);
+    .sort((a, b) => (query ? searchRank(a) - searchRank(b) : 0)
+      || String(a.code || '').localeCompare(String(b.code || ''))
+      || String(a.id).localeCompare(String(b.id)));
 }

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { recordKey, formatMoney, filterReconciliationRecords, reconciliationSummary, projectCandidates } from '../src/pages/Procurement/projectReconciliationModel.js'
+import { ISSUE_LABELS, recordKey, formatMoney, filterReconciliationRecords, reconciliationSummary, projectCandidates } from '../src/pages/Procurement/projectReconciliationModel.js'
 import { reconciliationProjects, reconciliationRows, reconciliationReport } from './fixtures/project-reconciliation.fixture.js'
 
 test('record identity includes the source type so unrelated numeric IDs cannot collide', () => {
@@ -85,4 +85,53 @@ test('financial formatting retains the currency and never coerces missing amount
   assert.equal(formatMoney('150000.50', 'AED'), 'AED 150,000.5')
   assert.match(formatMoney('150000', 'AED', true), /^AED 150[kK]$/)
   for (const amount of [null, undefined, '', 'invalid', Infinity]) assert.equal(formatMoney(amount, 'AED'), '—')
+})
+
+test('all projects includes every registered choice beyond twelve while preserving suggestion evidence', () => {
+  const projects = Array.from({ length: 25 }, (_, index) => ({ id: index + 1, code: `P-${String(index + 1).padStart(3, '0')}`, name: `Plant ${index + 1}`, currency: 'AED' }))
+  const record = { suggested_projects: [{ id: '25', code: 'P-025', name: 'Plant 25', match_strength: 'high', reasons: ['Exact source code.'] }] }
+  const before = structuredClone({ record, projects })
+  assert.deepEqual(projectCandidates(record, projects).map(project => project.id), ['25'])
+  const all = projectCandidates(record, projects, '', { includeAll: true })
+  assert.equal(all.length, 25)
+  assert.equal(all.at(-1).id, '25')
+  assert.equal(all.at(-1).currency, 'AED')
+  assert.deepEqual(all.at(-1).reasons, ['Exact source code.'])
+  assert.equal(all.filter(project => Object.hasOwn(project, 'match_strength')).length, 1)
+  assert.deepEqual({ record, projects }, before)
+})
+
+test('default suggestions preserve server order and show only three distinct real candidates', () => {
+  const suggestions = [4, 2, '4', 1, 3].map(id => ({ id, code: `P-${id}`, match_strength: 'medium', reasons: ['Recorded evidence.'] }))
+  assert.deepEqual(projectCandidates({ suggested_projects: suggestions }, []).map(project => String(project.id)), ['4', '2', '1'])
+  assert.equal(projectCandidates({ suggested_projects: suggestions }, [], '', { includeAll: true }).length, 4)
+})
+
+test('search includes all matches without a hidden result cap even when suggestions exist', () => {
+  const projects = Array.from({ length: 30 }, (_, index) => ({ id: index, code: `P-${String(index).padStart(3, '0')}`, name: `Shared project ${index}`, client_name: 'Regional Client' }))
+  const record = { suggested_projects: [projects[0]] }
+  for (const options of [{}, { includeAll: true }]) {
+    assert.equal(projectCandidates(record, projects, ' shared ', options).length, 30)
+    assert.equal(projectCandidates(record, projects, 'regional CLIENT', options).length, 30)
+    assert.deepEqual(projectCandidates(record, projects, 'P-029', options).map(project => project.id), [29])
+  }
+  assert.equal(projectCandidates(null, projects).length, 30)
+  assert.deepEqual(projectCandidates(record, projects, 'not present'), [])
+})
+
+test('project search ranks exact and partial codes before name and client matches', () => {
+  const projects = [
+    { id: 'client', code: '0001', name: 'Station', client_name: 'Client 590' },
+    { id: 'name', code: '0002', name: 'Station 590' },
+    { id: 'code-partial', code: '1590', name: 'Other' },
+    { id: 'code-prefix', code: '5901', name: 'Other' },
+    { id: 'exact', code: '590', name: 'Other' },
+  ]
+  assert.deepEqual(projectCandidates(null, projects, '590').map(project => project.id), ['exact', 'code-prefix', 'code-partial', 'name', 'client'])
+})
+
+test('exact-code records are described as needing review and remain in the filtered queue', () => {
+  assert.equal(ISSUE_LABELS.exact_match_available, 'Exact code ready for review')
+  const row = { id: 'exact', record_type: 'purchase_order', reason: 'exact_match_available', suggested_projects: [{ id: '17', match_strength: 'high', reasons: ['Exact source project code.'] }] }
+  assert.deepEqual(filterReconciliationRecords([row], { issue: 'exact_match_available' }), [row])
 })

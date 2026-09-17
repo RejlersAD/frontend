@@ -118,8 +118,8 @@ export async function reconciliationHarness(page, options = {}) {
       refreshSummary()
       return reply(route, { ...state.invoiceResult, allocation_id: 'invoice-allocation-1' })
     }
-    if (path === '/api/v1/project-control/wbs-nodes/' && method === 'GET') return reply(route, [{ id: 201, project: '17', code: '01', name: 'Engineering' }])
-    if (path === '/api/v1/project-control/budget-allocations/' && method === 'GET') return reply(route, [{ id: 301, project: '17', wbs_node: 201, code: 'BUD-ENG', name: 'Engineering control budget', status: 'approved' }, { id: 302, project: '17', wbs_node: 201, code: 'BUD-DRAFT', name: 'Unapproved allowance', status: 'draft' }])
+    if (path === '/api/v1/project-control/wbs-nodes/' && method === 'GET') return reply(route, state.wbsError || [{ id: 201, project: '17', code: '01', name: 'Engineering' }], state.wbsError ? 503 : 200)
+    if (path === '/api/v1/project-control/budget-allocations/' && method === 'GET') return reply(route, state.budgetError || [{ id: 301, project: '17', wbs_node: 201, code: 'BUD-ENG', name: 'Engineering control budget', status: 'approved' }, { id: 302, project: '17', wbs_node: 201, code: 'BUD-DRAFT', name: 'Unapproved allowance', status: 'draft' }], state.budgetError ? 503 : 200)
     if (path === '/api/v1/project-control/cost-allocations/' && method === 'POST') {
       const draft = { ...body, id: 401, status: 'draft' }
       state.allocations.push(draft)
