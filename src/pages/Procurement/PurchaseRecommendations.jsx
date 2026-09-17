@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, BarChart3, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, ExternalLink, FileCheck2, FileText, Filter, Home, Plus, RefreshCw, Search, ShieldCheck, ShoppingCart, Unlink, Users, X, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowRight, BarChart3, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, ExternalLink, FileCheck2, FileText, Filter, Plus, RefreshCw, Search, ShieldCheck, ShoppingCart, Unlink, Users, X, XCircle } from 'lucide-react'
 import apiClient from '../../services/api.service'
 import { procurementVatLabel } from '../../utils/procurementVat'
 import { Field, KeyValues, Menu } from './ProcurementRegister'
@@ -85,13 +85,7 @@ function RecommendationDetails({ panelRef, record, loading, error, onRetry, onOp
 
 export default function PurchaseRecommendations({ requisitions = [], loading = false, error = null, currentUserId, orderCount, onRefresh, onCreate, onImportPdf, onImportExcel, onExport, onOpen, onEdit, onDelete, onConvert, onPdf, onAttachPdf, onApproveSelected, canLinkPurchaseOrder = false, canUploadPurchaseOrder = false, canModify = deny, canDelete = deny, canConvert = deny, canApprove = deny, pdfBusyId, batchBusy = false, canCreate = true }) {
   const previewPanelRef = useRef(null)
-  const previewRecord = row => {
-    setSelectedId(row.id)
-    window.requestAnimationFrame(() => {
-      previewPanelRef.current?.focus({ preventScroll: true })
-      previewPanelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    })
-  }
+  const previewRecord = row => onOpen(row.id)
   const [linkRecord, setLinkRecord] = useState(null)
   const [linkUploadOpen, setLinkUploadOpen] = useState(false)
   const linkDialog = useRef(null)
