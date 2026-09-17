@@ -73,7 +73,7 @@ const errorMessage = (requestError, fallback) => (
     : requestError.message || fallback)
 );
 
-const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrNumber = '', canLinkPurchaseOrder = true }) => {
+const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrNumber = '', canLinkPurchaseOrder = true, canUploadPurchaseOrder = false }) => {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState('');
@@ -423,7 +423,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                     </div>
                   ))}
                 </div>
-                <PurchaseOrderLinkReview requisitionId={result.requisition_id || result.pr_id} poLink={result.po_link} canLink={canLinkPurchaseOrder} onOpen={close} onLinked={poLink => { const updated = { ...result, po_link: poLink }; setResult(updated); onImported?.(updated); }} />
+                <PurchaseOrderLinkReview requisitionId={result.requisition_id || result.pr_id} poLink={result.po_link} canLink={canLinkPurchaseOrder} canUpload={canUploadPurchaseOrder} onOpen={close} onLinked={poLink => { const updated = { ...result, po_link: poLink }; setResult(updated); onImported?.(updated); }} />
               </div>
             )}
 
@@ -456,6 +456,7 @@ PurchaseRequisitionPdfImport.propTypes = {
   onImported: PropTypes.func,
   expectedPrNumber: PropTypes.string,
   canLinkPurchaseOrder: PropTypes.bool,
+  canUploadPurchaseOrder: PropTypes.bool,
 };
 
 export default PurchaseRequisitionPdfImport;

@@ -904,6 +904,7 @@ const OrderManagement = () => {
           onEdit={handleEditRequisition} onDelete={handleDeleteRequisition}
           onConvert={handleConvertToPO} onPdf={handlePrintPreviewPR}
           canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
+          canUploadPurchaseOrder={moduleAction('procurement_orders', 'create')}
           canCreate={moduleAction('procurement_requisitions', 'create')}
           canModify={canModifyRequisition} canDelete={canDeleteRequisition}
           canConvert={requisition => moduleAction('procurement_orders', 'create') && requisition.status === 'approved' && !requisition.linked_po_id}
@@ -927,6 +928,7 @@ const OrderManagement = () => {
         onImported={refreshAfterMutation}
         onAttachPdf={requisition => { setPdfAttachmentPrNumber(requisition.pr_number); setShowPRPdfImport(true); }}
         canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
+        canUploadPurchaseOrder={moduleAction('procurement_orders', 'create')}
       />
 
       <PurchaseRequisitionPdfImport
@@ -935,6 +937,7 @@ const OrderManagement = () => {
         onImported={refreshAfterMutation}
         expectedPrNumber={pdfAttachmentPrNumber}
         canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
+        canUploadPurchaseOrder={moduleAction('procurement_orders', 'create')}
       />
 
       <PurchaseOrderExcelImport

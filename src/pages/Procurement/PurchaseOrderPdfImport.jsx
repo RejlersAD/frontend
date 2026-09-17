@@ -91,7 +91,10 @@ IssueList.propTypes = {
   tone: PropTypes.oneOf(['amber', 'red']),
 };
 
-const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null, editMode = false, pageMode = false, canReconcile = false }) => {
+const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId: requestedDocumentId = null, editMode: requestedEditMode = false, pageMode = false, canReconcile = false, canEditDocument = true, requisitionId = null }) => {
+  const [importedDocumentId, setImportedDocumentId] = useState(null);
+  const documentId = requestedDocumentId || importedDocumentId;
+  const editMode = requestedEditMode || Boolean(importedDocumentId);
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -207,10 +210,10 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
 
   useEffect(() => {
     if (documentId && result) {
-      setDocumentEdits(editableDocument(result));
+      setDocumentEdits({ ...editableDocument(result), ...(requisitionId ? { pr_id: String(requisitionId) } : {}) });
       setFieldErrors({});
     }
-  }, [documentId, result]);
+  }, [documentId, result, requisitionId]);
 
   useEffect(() => {
     if (!isOpen || !documentId || !editMode) return undefined;
@@ -269,6 +272,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
     setFieldErrors({});
     setChangesSaved(false);
     setDocumentEdits({});
+    setImportedDocumentId(null);
     setPrSearch('');
     setPrQuery('');
     setPrOptions([]);
@@ -302,7 +306,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
   };
 
   const saveDocument = async () => {
-    if (!documentId || saving || loading) return;
+    if (!documentId || !canEditDocument || saving || loading) return;
     if (documentEdits.vat_basis === 'unconfirmed' && (
       String(documentEdits.total_amount) !== String(editableDocument(result).total_amount)
       || documentEdits.currency !== editableDocument(result).currency
@@ -319,7 +323,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
       payload.vat_basis = documentEdits.vat_basis;
       payload.entered_amount = documentEdits.total_amount;
     }
-    payload.pr_id = documentEdits.pr_id || null;
+    payload.pr_id = requisitionId || documentEdits.pr_id || null;
     try {
       const response = await apiClient.patch(`/procurement/po-documents/${documentId}/`, payload, { suppressErrorToast: true });
       const saved = response.data;
@@ -341,7 +345,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
   const completeReconciliation = async () => {
     if (!canReconcile || !documentId || loading || saving || reconciling) return;
     const vendorId = selectedVendorId;
-    const prId = documentEdits.pr_id || result?.pr_id;
+    const prId = requisitionId || documentEdits.pr_id || result?.pr_id;
     if (!prId || !vendorId) {
       setError(!prId ? 'Choose a purchase recommendation before completing reconciliation.' : 'Select the matching supplier from the supplier master.');
       return;
@@ -383,6 +387,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
       body.append('approved_by_name', evidence.approvedByName);
       body.append('approved_by_title', evidence.approvedByTitle);
       body.append('approved_date', evidence.approvedDate);
+      if (requisitionId) body.append('pr_id', String(requisitionId));
       const response = await apiClient.post('/procurement/po-documents/import_signed_pdf/', body, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 180000,
@@ -391,6 +396,9 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
       });
       setResult(response.data);
       onImported?.(response.data);
+      if (requisitionId && response.data.document_id && !response.data.purchase_order_id) {
+        setImportedDocumentId(response.data.document_id);
+      }
     } catch (requestError) {
       setError(importErrorMessage(requestError));
     } finally {
@@ -406,7 +414,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
           <div className="flex items-start justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
             <div>
               <h2 id="signed-po-pdf-title" className="text-lg font-bold text-white">{documentId ? editMode ? 'Edit Signed Purchase Order PDF' : 'Signed Purchase Order PDF' : 'Import Signed Purchase Order PDF'}</h2>
-              {!documentId && <p className="mt-1 text-xs text-indigo-100">Upload the signed PDF now. Link any missing recommendation or supplier records later.</p>}
+              {!documentId && <p className="mt-1 text-xs text-indigo-100">{requisitionId ? 'Import the signed PO for this purchase recommendation. Review any missing supplier details before completing the link.' : 'Upload the signed PDF now. Link any missing recommendation or supplier records later.'}</p>}
             </div>
             <button type="button" aria-label="Close PDF dialog" onClick={resetAndClose} disabled={saving || reconciling || (loading && !documentId)} className="text-white hover:text-indigo-100">
               <XMarkIcon className="h-6 w-6" />
@@ -493,6 +501,8 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
             </>}
 
             {documentId && editMode && result && <section aria-label="Edit saved purchase order" className="space-y-4 rounded-xl border border-gray-200 p-4">
+              {!canEditDocument && <p className="text-sm text-amber-800">This PDF is saved for review. A user with Purchase Orders update access must review the saved details before completing reconciliation.</p>}
+              <fieldset disabled={!canEditDocument} className="space-y-4"><legend className="sr-only">Saved purchase order fields</legend>
               <h3 className="text-sm font-semibold text-gray-800">Purchase order details</h3>
               <label className="block text-xs font-semibold text-gray-700">Price basis
                 <select aria-label="Price basis" value={documentEdits.vat_basis || 'unconfirmed'} onChange={event => updateDocumentField('vat_basis', event.target.value)} disabled={saving || reconciling} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
@@ -518,8 +528,8 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
                 })}
               </div>
               <div className="border-t border-gray-200 pt-3">
-                <div className="flex gap-2"><label className="min-w-0 flex-1 text-xs font-semibold text-gray-700">Search recommendations<input value={prSearch} disabled={saving || reconciling} onChange={event => setPrSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); setPrQuery(prSearch.trim()); setPrReload(value => value + 1); } }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label><button type="button" disabled={prLoading || saving || reconciling} onClick={() => { setPrQuery(prSearch.trim()); setPrReload(value => value + 1); }} className="self-end rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Search</button></div>
-                <label className="mt-3 block text-xs font-semibold text-gray-700">Purchase recommendation<select aria-label="Purchase recommendation" aria-invalid={Boolean(fieldErrors.pr_id)} value={documentEdits.pr_id || ''} disabled={prLoading || saving || reconciling} onChange={event => updateDocumentField('pr_id', event.target.value)} className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal ${fieldErrors.pr_id ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}`}><option value="">Not linked</option>{documentEdits.pr_id && !prOptions.some(pr => String(pr.id) === String(documentEdits.pr_id)) && <option value={documentEdits.pr_id}>{documentEdits.pr_number || 'Current recommendation'}</option>}{prOptions.map(pr => <option key={pr.id} value={pr.id}>{pr.pr_number}{pr.product_service ? ` - ${pr.product_service}` : ''}</option>)}</select></label>
+                <div className="flex gap-2"><label className="min-w-0 flex-1 text-xs font-semibold text-gray-700">Search recommendations<input value={prSearch} disabled={Boolean(requisitionId) || saving || reconciling} onChange={event => setPrSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); setPrQuery(prSearch.trim()); setPrReload(value => value + 1); } }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label><button type="button" disabled={Boolean(requisitionId) || prLoading || saving || reconciling} onClick={() => { setPrQuery(prSearch.trim()); setPrReload(value => value + 1); }} className="self-end rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Search</button></div>
+                <label className="mt-3 block text-xs font-semibold text-gray-700">Purchase recommendation<select aria-label="Purchase recommendation" aria-invalid={Boolean(fieldErrors.pr_id)} value={documentEdits.pr_id || ''} disabled={Boolean(requisitionId) || prLoading || saving || reconciling} onChange={event => updateDocumentField('pr_id', event.target.value)} className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal ${fieldErrors.pr_id ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}`}><option value="">Not linked</option>{documentEdits.pr_id && !prOptions.some(pr => String(pr.id) === String(documentEdits.pr_id)) && <option value={documentEdits.pr_id}>{documentEdits.pr_number || 'Current recommendation'}</option>}{prOptions.map(pr => <option key={pr.id} value={pr.id}>{pr.pr_number}{pr.product_service ? ` - ${pr.product_service}` : ''}</option>)}</select></label>
                 {fieldErrors.pr_id && <p className="mt-1 text-xs text-red-700">{fieldErrors.pr_id}</p>}
                 {prError && <p className="mt-2 text-xs text-red-700">{prError}</p>}
               </div>
@@ -534,6 +544,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
                 {supplierError && <p role="alert" className="text-xs text-red-700">{supplierError} <button type="button" onClick={() => setSupplierReload(value => value + 1)} className="font-semibold underline">Retry suppliers</button></p>}
                 <p className="text-xs text-gray-600">Complete reconciliation saves these details and links the original signed PDF to the purchase order.</p>
               </div>}
+              </fieldset>
             </section>}
 
             {error && (
@@ -573,7 +584,7 @@ const PurchaseOrderPdfImport = ({ isOpen, onClose, onImported, documentId = null
 
           <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
             <button type="button" onClick={resetAndClose} disabled={saving || reconciling || (loading && !documentId)} className="h-9 rounded-lg border border-gray-300 bg-white px-4 text-xs font-semibold text-gray-700">{result || documentId ? 'Close' : 'Cancel'}</button>
-            {documentId && editMode && result && <button type="button" onClick={saveDocument} disabled={saving || loading || reconciling} className="h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save changes'}</button>}
+            {documentId && editMode && result && <button type="button" onClick={saveDocument} disabled={!canEditDocument || saving || loading || reconciling} className="h-9 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Saving...' : 'Save changes'}</button>}
             {documentId && editMode && result && canReconcile && !result.purchase_order_id && <button type="button" onClick={completeReconciliation} disabled={saving || loading || reconciling || supplierLoading} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{reconciling ? 'Completing...' : 'Complete reconciliation'}</button>}
             {!documentId && !result && (
               <button type="button" disabled={!file || file.size > 15 * 1024 * 1024 || loading || approvalLoading} onClick={importPdf} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">
@@ -596,6 +607,8 @@ PurchaseOrderPdfImport.propTypes = {
   editMode: PropTypes.bool,
   pageMode: PropTypes.bool,
   canReconcile: PropTypes.bool,
+  canEditDocument: PropTypes.bool,
+  requisitionId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };
 
 export default PurchaseOrderPdfImport;
