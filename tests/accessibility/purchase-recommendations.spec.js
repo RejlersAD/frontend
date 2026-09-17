@@ -261,7 +261,7 @@ test('OrderManagement preserves imports PDF download Excel export refresh and pu
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Import Approved PR PDF', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Upload PR, PO and Vendor', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export', exact: true }).click()

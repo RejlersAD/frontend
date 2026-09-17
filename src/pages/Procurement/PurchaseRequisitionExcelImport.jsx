@@ -11,7 +11,7 @@ import PurchaseOrderLinkReview from './PurchaseOrderLinkReview';
 
 const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm'];
 
-const PurchaseRequisitionExcelImport = ({ isOpen, onClose, onImported, onAttachPdf, canLinkPurchaseOrder = true }) => {
+const PurchaseRequisitionExcelImport = ({ isOpen, onClose, onImported, onAttachPdf, canLinkPurchaseOrder = true, canUploadPurchaseOrder = false, canImportRequisition = false }) => {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -204,7 +204,7 @@ const PurchaseRequisitionExcelImport = ({ isOpen, onClose, onImported, onAttachP
 
                 {importComplete && (preview.created || []).map(record => <section key={record.id} aria-label={`Imported ${record.pr_number}`} className="space-y-3 rounded-lg border border-gray-200 p-3">
                   <div className="flex items-center justify-between gap-3"><strong className="text-sm text-gray-800">{record.pr_number}</strong><div className="flex gap-2">{record.po_link?.manual_link_required && <button type="button" onClick={() => setActiveLinkId(current => current === record.id ? null : record.id)} aria-expanded={activeLinkId === record.id} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Link purchase order</button>}{onAttachPdf && <button type="button" onClick={() => { resetAndClose(); onAttachPdf(record); }} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700">Attach signed PDF</button>}</div></div>
-                  {activeLinkId === record.id ? <PurchaseOrderLinkReview requisitionId={record.id} poLink={record.po_link} canLink={canLinkPurchaseOrder} onOpen={resetAndClose} onLinked={poLink => { setPreview(current => ({ ...current, created: current.created.map(item => item.id === record.id ? { ...item, po_link: poLink } : item) })); onImported?.({ requisition_id: record.id, po_link: poLink }); }} /> : record.po_link?.manual_link_required ? <p className="text-xs text-amber-800">{record.po_link.message}</p> : record.po_link?.po_number ? <p className="text-xs text-gray-700">Linked purchase order: {record.po_link.po_number}</p> : null}
+                  {activeLinkId === record.id ? <PurchaseOrderLinkReview requisitionId={record.id} poLink={record.po_link} canLink={canLinkPurchaseOrder} canUpload={canUploadPurchaseOrder} canImportRequisition={canImportRequisition} onOpen={resetAndClose} onLinked={poLink => { setPreview(current => ({ ...current, created: current.created.map(item => item.id === record.id ? { ...item, po_link: poLink } : item) })); onImported?.({ requisition_id: record.id, po_link: poLink }); }} /> : record.po_link?.manual_link_required ? <p className="text-xs text-amber-800">{record.po_link.message}</p> : record.po_link?.po_number ? <p className="text-xs text-gray-700">Linked purchase order: {record.po_link.po_number}</p> : null}
                 </section>)}
 
                 <div className="overflow-hidden rounded-xl border border-gray-200">
@@ -303,6 +303,8 @@ PurchaseRequisitionExcelImport.propTypes = {
   onImported: PropTypes.func,
   onAttachPdf: PropTypes.func,
   canLinkPurchaseOrder: PropTypes.bool,
+  canUploadPurchaseOrder: PropTypes.bool,
+  canImportRequisition: PropTypes.bool,
 };
 
 export default PurchaseRequisitionExcelImport;

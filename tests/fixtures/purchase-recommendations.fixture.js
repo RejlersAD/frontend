@@ -42,7 +42,7 @@ export async function recommendationHarness(page, options = {}) {
     props: { requisitions, loading: false, error: null, currentUserId: 7, orderCount: 4, pdfBusyId: null, batchBusy: false, permissions: Object.fromEntries(requisitions.map((row, index) => [row.id, { modify: row.status === 'draft' && row.issued_by === 7, delete: true, convert: row.status === 'approved', approve: index < 2 }])) },
     details: Object.fromEntries(requisitions.map(row => [row.id, { ...row, items: [{ id: `line-${row.id}`, description: `${row.product_service} scope line`, quantity: '4', unit: 'EA', unit_price: '250', total: '1000' }] }])),
     orders: [{ id: '101', po_number: 'PO-TEST-001', status: 'draft', title: 'Converted specialist instruments', currency: 'USD', total_amount: '22500', items: [] }],
-    uploadedDocuments: {}, uploadedDocumentErrors: {}, uploadedContent: {},
+    uploadedDocuments: {}, uploadedDocumentErrors: {}, uploadedContent: {}, approvalRecords: {},
     requests: [], unknown: [], pageErrors: [], detailErrors: {}, deferred: {}, pending: {}, delivered: {}, listError: false,
     deleteErrors: {}, deleted: [],
   }
@@ -99,6 +99,12 @@ export async function recommendationHarness(page, options = {}) {
         return reply(route, { purchase_order: order }, 201)
       }
       if (/\/requisitions\/[^/]+\/export_pdf\/$/.test(path)) return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'content-disposition': 'attachment; filename="PR-TEST.pdf"' }, body: '%PDF-1.4\n% Synthetic isolated PDF\n%%EOF' })
+      const approvalRecord = path.match(/\/requisitions\/([^/]+)\/approval-record-pdf\/$/)
+      if (approvalRecord && method === 'GET') {
+        const content = state.approvalRecords[approvalRecord[1]]
+        if (content?.wait) await content.wait
+        return route.fulfill({ status: content?.status || (content?.body ? 200 : 404), contentType: content?.contentType || 'application/pdf', headers: content?.headers || {}, body: content?.body || '' })
+      }
       const uploadedList = path.match(/^\/api\/v1\/procurement\/orders\/([^/]+)\/uploaded-documents\/$/)
       if (uploadedList && method === 'GET') {
         const error = state.uploadedDocumentErrors[uploadedList[1]]

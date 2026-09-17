@@ -6,7 +6,7 @@ import {
 test.setTimeout(150000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
 
-const modal = page => page.getByRole('dialog', { name: 'Import Approved PR PDF' })
+const modal = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor' })
 const field = (page, label) => modal(page).getByLabel(new RegExp(`^${label}`))
 const labelFor = (page, label) => field(page, label).locator('..')
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
@@ -55,7 +55,7 @@ async function preview(page, overrides) {
   await expect(page.getByRole('complementary', { name: 'Recommendation details' })).toHaveAttribute('aria-busy', 'false')
   await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click()
-  await modal(page).locator('input[type="file"]').setInputFiles(syntheticApprovedPdf)
+  await modal(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(syntheticApprovedPdf)
   await modal(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
   await expect(field(page, 'PR Number')).toHaveValue(missingImportNumber)
   expect(state.previewRequests).toHaveLength(1)

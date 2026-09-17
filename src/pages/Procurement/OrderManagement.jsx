@@ -178,6 +178,7 @@ const OrderManagement = () => {
   const [showPRExcelImport, setShowPRExcelImport] = useState(false);
   const [showPRPdfImport, setShowPRPdfImport] = useState(false);
   const [pdfAttachmentPrNumber, setPdfAttachmentPrNumber] = useState('');
+  const [pdfAttachmentPrId, setPdfAttachmentPrId] = useState(null);
   const [showPOExcelImport, setShowPOExcelImport] = useState(false);
   const [showPOPdfImport, setShowPOPdfImport] = useState(false);
   const [poPreviewDocumentId, setPoPreviewDocumentId] = useState(null);
@@ -432,6 +433,20 @@ const OrderManagement = () => {
     setShowApprovalModal(false);
     setSelectedRequisition(null);
     if (requisitionRouteId) navigate('/procurement/requisitions', { replace: true });
+  };
+
+  const handleApprovalSourceUploaded = async () => {
+    const requisitionId = selectedRequisition?.id;
+    await Promise.all([
+      refreshAfterMutation(),
+      requisitionId ? apiClient.get(`/procurement/requisitions/${requisitionId}/`, { suppressErrorToast: true })
+        .then(({ data }) => {
+          setSelectedRequisition(current => current?.id === requisitionId ? data : current);
+        })
+        .catch(() => {
+          toast.error('The documents were saved, but the approval record could not be refreshed. Reopen the record to view them.');
+        }) : Promise.resolve(),
+    ]);
   };
 
   useEffect(() => {
@@ -898,12 +913,13 @@ const OrderManagement = () => {
           requisitions={requisitions} loading={loading} error={error} currentUserId={currentUserId}
           orderCount={purchaseOrderCount} onRefresh={fetchRequisitions}
           onCreate={() => navigate('/procurement/requisitions/new')}
-          onImportPdf={() => { setPdfAttachmentPrNumber(''); setShowPRPdfImport(true); }} onImportExcel={() => setShowPRExcelImport(true)}
-          onAttachPdf={requisition => { setPdfAttachmentPrNumber(requisition.pr_number); setShowPRPdfImport(true); }}
+          onImportPdf={() => { setPdfAttachmentPrNumber(''); setPdfAttachmentPrId(null); setShowPRPdfImport(true); }} onImportExcel={() => setShowPRExcelImport(true)}
+          onAttachPdf={requisition => { setPdfAttachmentPrNumber(requisition.pr_number); setPdfAttachmentPrId(requisition.id || requisition.requisition_id || null); setShowPRPdfImport(true); }}
           onExport={exportRequisitionRowsToExcel} onOpen={id => handleOpenApproval({ id })}
           onEdit={handleEditRequisition} onDelete={handleDeleteRequisition}
           onConvert={handleConvertToPO} onPdf={handlePrintPreviewPR}
           canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
+          canUploadPurchaseOrder={moduleAction('procurement_orders', 'create')}
           canCreate={moduleAction('procurement_requisitions', 'create')}
           canModify={canModifyRequisition} canDelete={canDeleteRequisition}
           canConvert={requisition => moduleAction('procurement_orders', 'create') && requisition.status === 'approved' && !requisition.linked_po_id}
@@ -925,8 +941,10 @@ const OrderManagement = () => {
         isOpen={showPRExcelImport}
         onClose={() => setShowPRExcelImport(false)}
         onImported={refreshAfterMutation}
-        onAttachPdf={requisition => { setPdfAttachmentPrNumber(requisition.pr_number); setShowPRPdfImport(true); }}
+        onAttachPdf={requisition => { setPdfAttachmentPrNumber(requisition.pr_number); setPdfAttachmentPrId(requisition.id || requisition.requisition_id || null); setShowPRPdfImport(true); }}
         canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
+        canUploadPurchaseOrder={moduleAction('procurement_orders', 'create')}
+        canImportRequisition={moduleAction('procurement_requisitions', 'create')}
       />
 
       <PurchaseRequisitionPdfImport
@@ -934,7 +952,9 @@ const OrderManagement = () => {
         onClose={() => setShowPRPdfImport(false)}
         onImported={refreshAfterMutation}
         expectedPrNumber={pdfAttachmentPrNumber}
+        requisitionId={pdfAttachmentPrId}
         canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
+        canUploadPurchaseOrder={moduleAction('procurement_orders', 'create')}
       />
 
       <PurchaseOrderExcelImport
@@ -947,6 +967,9 @@ const OrderManagement = () => {
         isOpen={showPOPdfImport}
         documentId={poPreviewDocumentId}
         editMode={poDocumentEditMode}
+        canEditDocument={moduleAction('procurement_orders', 'update')}
+        canUploadPurchaseOrder={moduleAction('procurement_orders', 'create')}
+        canImportRequisition={moduleAction('procurement_requisitions', 'create')}
         onClose={() => setShowPOPdfImport(false)}
         onImported={refreshAfterMutation}
       />
@@ -962,6 +985,7 @@ const OrderManagement = () => {
         requisition={selectedRequisition}
         currentUser={currentUser}
         onApprovalComplete={handleApprovalComplete}
+        onSourceUploaded={handleApprovalSourceUploaded}
       />
       </div>
     </div>

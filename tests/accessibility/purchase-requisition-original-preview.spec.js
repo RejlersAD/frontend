@@ -35,6 +35,9 @@ const openApprovalRecord = async (page, index = 1) => {
   await details(page).getByRole('button', { name: 'View approval record', exact: true }).click()
   await expect.poll(() => page.evaluate(() => window.recommendationRoute)).toBe(`/procurement/requisitions/${id(index + 200)}`)
   await expect(page.getByRole('heading', { name: number(index), level: 1, exact: true })).toBeVisible()
+  if (await preview(page).getByRole('tab', { name: 'PR + PO', exact: true }).count()) {
+    await preview(page).getByRole('tab', { name: 'PR Preview', exact: true }).click()
+  }
 }
 const mockSources = async page => {
   const files = []
@@ -96,7 +99,7 @@ test('View approval record defaults both document tabs to uploaded originals wit
   await loaded(page)
   await openApprovalRecord(page)
   const prTab = preview(page).getByRole('tab', { name: 'PR Preview', exact: true })
-  await expect(preview(page).getByRole('tab')).toHaveCount(2)
+  await expect(preview(page).getByRole('tab')).toHaveCount(3)
   await expect(preview(page).getByRole('tab', { name: 'Uploaded PR', exact: true })).toHaveCount(0)
   await expect(prTab).toHaveAttribute('aria-selected', 'true')
   await expect(prPanel(page).locator('iframe')).toHaveAttribute('title', 'Original uploaded PR: signed-original.pdf')
@@ -167,6 +170,7 @@ test('default original PR supports multiple files, keyboard document tabs, mobil
   await openApprovalRecord(page)
   const prTab = preview(page).getByRole('tab', { name: 'PR Preview', exact: true })
   const linkedTab = preview(page).getByRole('tab', { name: /^Linked PO/ })
+  const combinedTab = preview(page).getByRole('tab', { name: 'PR + PO', exact: true })
   await expect(prPanel(page).locator('iframe')).toHaveAttribute('title', 'Original uploaded PR: first-original.pdf')
   await prPanel(page).getByRole('combobox', { name: 'Uploaded PR file', exact: true }).selectOption({ label: 'second-original.pdf' })
   await expect(prPanel(page).locator('iframe')).toHaveAttribute('title', 'Original uploaded PR: second-original.pdf')
@@ -185,11 +189,11 @@ test('default original PR supports multiple files, keyboard document tabs, mobil
   await expect(linkedTab).toHaveAttribute('tabindex', '0')
   await expect(prTab).toHaveAttribute('tabindex', '-1')
   await page.keyboard.press('Home')
-  await expect(prTab).toBeFocused()
+  await expect(combinedTab).toBeFocused()
   await page.keyboard.press('End')
   await expect(linkedTab).toBeFocused()
   await page.keyboard.press('ArrowRight')
-  await expect(prTab).toBeFocused()
+  await expect(combinedTab).toBeFocused()
   await page.keyboard.press('ArrowLeft')
   await expect(linkedTab).toBeFocused()
   await page.getByRole('button', { name: 'Back to Purchase Recommendations', exact: true }).click()

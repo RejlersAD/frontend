@@ -8,7 +8,7 @@ import {
 test.setTimeout(150000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
 
-const dialog = page => page.getByRole('dialog', { name: /Import Approved PR PDF|Attach signed PR PDF/ })
+const dialog = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor' })
 const digest = async path => createHash('sha256').update(await readFile(path)).digest('hex')
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
 const loaded = async page => {
@@ -19,7 +19,7 @@ async function openPreview(page) {
   await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click()
   await expect(dialog(page)).toBeVisible()
-  await dialog(page).locator('input[type="file"]').setInputFiles(syntheticApprovedPdf)
+  await dialog(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(syntheticApprovedPdf)
   await expect(dialog(page)).toContainText(syntheticApprovedPdf.name)
   await dialog(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
   await expect(dialog(page).getByLabel('PR Number', { exact: false })).toBeVisible()

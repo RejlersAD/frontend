@@ -11,6 +11,9 @@
 .prr-source-state p { margin: 0; overflow-wrap: anywhere; }
 .prr-source-state button { padding: 6px 10px; border: 1px solid #c7d6eb; border-radius: 4px; background: #fff; color: #0751e0; font: inherit; cursor: pointer; }
 .prr-source-document :focus-visible { outline: 2px solid #0751ff; outline-offset: 2px; }
+.prr-approval-record { display: flex; flex-direction: column; }
+.prr-approval-record > .prr-source-controls { position: static; flex: 0 0 auto; flex-wrap: wrap; padding: 8px; }
+.prr-approval-record > iframe { flex: 1; height: auto; }
 
 .pr-approval-preview { display: flex; flex-direction: column; min-width: 0; height: min(56rem, calc(100dvh - 10rem)); min-height: 24rem; }
 .pr-approval-preview-header { flex: 0 0 auto; }
