@@ -55,7 +55,7 @@ async function preview(page, overrides) {
   await expect(page.getByRole('complementary', { name: 'Recommendation details' })).toHaveAttribute('aria-busy', 'false')
   await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click()
-  await modal(page).locator('input[type="file"]').setInputFiles(syntheticApprovedPdf)
+  await modal(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(syntheticApprovedPdf)
   await modal(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
   await expect(field(page, 'PR Number')).toHaveValue(missingImportNumber)
   expect(state.previewRequests).toHaveLength(1)

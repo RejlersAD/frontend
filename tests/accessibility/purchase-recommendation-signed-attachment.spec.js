@@ -25,7 +25,7 @@ async function preview(page, number) {
   await loaded(page)
   await page.getByRole('button', { name: number ? `Actions for ${number}` : 'More recommendation actions', exact: true }).click()
   await page.getByRole('menuitem', { name: number ? 'Attach signed PDF' : 'Import signed PDF', exact: true }).click()
-  await modal(page).locator('input[type="file"]').setInputFiles(syntheticApprovedPdf)
+  await modal(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(syntheticApprovedPdf)
   await modal(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
   await expect(modal(page).getByLabel('PR Number', { exact: true })).toBeVisible()
 }
@@ -96,7 +96,8 @@ test('upload prompts manual PO linking, preserves a conflict error and permits r
   const linking = modal(page).getByRole('region', { name: 'Link an existing purchase order' })
   await expect(linking).toBeVisible()
   await expect(linking.getByRole('button', { name: 'Link purchase order', exact: true })).toBeDisabled()
-  await linking.getByLabel('Purchase order', { exact: true }).selectOption(orders[0].id)
+  await linking.getByRole('combobox', { name: 'Purchase order', exact: true }).click()
+  await linking.getByRole('option', { name: new RegExp(orders[0].po_number) }).click()
   state.linkError = 'This purchase order is already linked to another recommendation.'
   await linking.getByRole('button', { name: 'Link purchase order', exact: true }).click()
   await expect(linking.getByRole('alert')).toContainText(state.linkError)
@@ -128,7 +129,7 @@ test('Excel import completion offers PO linking and a PDF attachment bound to th
   await expect(imported.getByRole('region', { name: 'Link an existing purchase order' })).toBeVisible()
   await imported.getByRole('button', { name: 'Attach signed PDF', exact: true }).click()
   await expect(modal(page)).toContainText(record.pr_number)
-  await modal(page).locator('input[type="file"]').setInputFiles(syntheticApprovedPdf)
+  await modal(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(syntheticApprovedPdf)
   await modal(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
   await expect(modal(page).getByRole('button', { name: 'Attach signed PDF', exact: true })).toBeEnabled()
   expect(state.previewRequests[0]).toMatchObject({ expected_pr_number: record.pr_number, attach_only: 'true' })

@@ -91,7 +91,7 @@ test('signed PDF import retains source price unless the reviewer explicitly conf
   await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Import Approved PR PDF' });
-  await dialog.locator('input[type=file]').setInputFiles(syntheticApprovedPdf);
+  await dialog.getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(syntheticApprovedPdf);
   await dialog.getByRole('button', { name: 'Preview OCR', exact: true }).click();
   await expect(dialog.getByRole('combobox', { name: 'VAT price basis' })).toHaveValue('unconfirmed');
   await expect(dialog.getByRole('spinbutton', { name: 'Entered price', exact: true })).toHaveValue('100.00');

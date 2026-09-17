@@ -31,7 +31,7 @@ test('reviews the provided PR scan with its extracted values without saving a re
   await expect(page.getByRole('complementary', { name: 'Recommendation details' })).toHaveAttribute('aria-busy', 'false')
   await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click()
-  await dialog.locator('input[type="file"]').setInputFiles(scanPath)
+  await dialog.getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(scanPath)
   await dialog.getByRole('button', { name: 'Preview OCR', exact: true }).click()
   for (const [field, label] of [
     ['pr_number', 'PR Number'], ['issued_by_name', 'Issued By'], ['issued_date', 'Issued Date'],

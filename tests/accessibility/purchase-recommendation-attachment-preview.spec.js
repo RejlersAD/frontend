@@ -70,7 +70,7 @@ for (const hasOlderSource of [false, true]) {
     await page.getByRole('button', { name: `Select ${number}`, exact: true }).click()
     await expect(details(page)).toHaveAttribute('aria-busy', 'false')
     await menuAction(page, 'Attach signed PDF')
-    await importDialog(page).locator('input[type="file"]').setInputFiles({ ...syntheticApprovedPdf, buffer: Buffer.from(newestBytes) })
+    await importDialog(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles({ ...syntheticApprovedPdf, buffer: Buffer.from(newestBytes) })
     await importDialog(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
     await expect(importDialog(page).getByRole('button', { name: 'Attach signed PDF', exact: true })).toBeEnabled()
     const beforeSave = state.requests.length
