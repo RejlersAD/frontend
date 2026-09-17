@@ -82,16 +82,9 @@ for (const hasOlderSource of [false, true]) {
     expect(state.saveRequests[0]).toMatchObject({ expected_pr_number: number, attach_only: 'true' })
     expect(state.requests.slice(beforeSave).some(request => request.path === '/api/v1/procurement/requisitions/' && request.method === 'GET')).toBe(true)
     expect(state.requests.slice(beforeSave).some(request => request.path === recordPath && request.method === 'GET')).toBe(true)
-    await menuAction(page, 'Preview recommendation')
-    await expect(details(page)).toBeFocused()
-    await expect(page).toHaveURL(/\/procurement\/requisitions$/)
     await expect(details(page).locator('a[href="/__signed-attachment-test__/older.pdf"]')).toHaveCount(0)
-    const registerDownload = page.waitForEvent('download')
-    await menuAction(page, 'Download PDF')
-    const downloaded = await registerDownload
-    expect(downloaded.suggestedFilename()).toBe(newest.filename)
-    expect(await readFile(await downloaded.path(), 'utf8')).toBe(newestBytes)
-    await details(page).getByRole('button', { name: 'View approval record', exact: true }).click()
+    await menuAction(page, 'Preview recommendation')
+    await expect(page).toHaveURL(new RegExp(`/procurement/requisitions/${recordId}$`))
     await expect(page.getByRole('heading', { name: number, level: 1, exact: true })).toBeVisible()
     await expectOriginalBytes(page, newestBytes)
     if (hasOlderSource) {
@@ -103,6 +96,11 @@ for (const hasOlderSource of [false, true]) {
     }
     await page.getByRole('button', { name: 'Back to Purchase Recommendations', exact: true }).click()
     await waitRegister(page)
+    const registerDownload = page.waitForEvent('download')
+    await menuAction(page, 'Download PDF')
+    const downloaded = await registerDownload
+    expect(downloaded.suggestedFilename()).toBe(newest.filename)
+    expect(await readFile(await downloaded.path(), 'utf8')).toBe(newestBytes)
     await menuAction(page, 'Edit recommendation')
     await expect(page).toHaveURL(new RegExp(`/procurement/requisitions/${recordId}/edit$`))
     await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible()

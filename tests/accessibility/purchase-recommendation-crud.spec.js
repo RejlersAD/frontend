@@ -12,23 +12,30 @@ const load = async page => {
   await expect(details(page)).toHaveAttribute('aria-busy', 'false');
 };
 
-test('native and uploaded PR Preview selects the existing details panel without opening a page or dialog', async ({ page }) => {
-  const state = await recommendationHarness(page, { realApp: true, prepare: state => {
-    const attachments = [{ type: 'signed_purchase_requisition_pdf', filename: 'signed-pr.pdf', url: '/media/synthetic-signed-pr.pdf' }];
-    state.details[id(204)].attachments = attachments;
-    state.props.requisitions.find(record => record.id === id(204)).attachments = attachments;
-  } });
+test('row and menu Preview open the chosen approval record instead of the selected sidebar record', async ({ page }) => {
+  const state = await recommendationHarness(page, { realApp: true });
   await load(page);
-  for (const index of [7, 4, 6]) {
+  for (const [index, selected, action] of [[2, 1, 'row'], [4, 3, 'menu']]) {
     const number = `RAD-PRJ-PR-${String(index).padStart(4, '0')}_2026`;
-    const row = page.getByRole('row').filter({ has: page.getByRole('button', { name: `Select ${number}`, exact: true }) });
-    await row.getByRole('button', { name: 'Preview', exact: true }).click();
+    const selectedNumber = `RAD-PRJ-PR-${String(selected).padStart(4, '0')}_2026`;
+    await page.getByRole('button', { name: `Select ${selectedNumber}`, exact: true }).click();
     await expect(details(page)).toHaveAttribute('aria-busy', 'false');
-    await expect(details(page).getByRole('heading', { name: number, exact: true })).toBeVisible();
-    await expect(details(page)).toBeFocused();
+    await expect(details(page).getByRole('heading', { name: selectedNumber, exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/procurement\/requisitions$/);
+    if (action === 'row') {
+      const row = page.getByRole('row').filter({ has: page.getByRole('button', { name: `Select ${number}`, exact: true }) });
+      await row.getByRole('button', { name: 'Preview', exact: true }).click();
+    } else {
+      await page.getByRole('button', { name: `Actions for ${number}`, exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Preview recommendation', exact: true }).click();
+    }
+    await expect(page).toHaveURL(new RegExp(`/procurement/requisitions/${id(200 + index)}$`));
+    await expect(page.getByRole('heading', { name: number, level: 1, exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Approval history', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: selectedNumber, level: 1, exact: true })).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    if (index === 4) await expect(details(page).getByRole('link', { name: 'Open original PDF', exact: true })).toHaveAttribute('href', '/media/synthetic-signed-pr.pdf');
+    await page.getByRole('button', { name: 'Back to Purchase Recommendations', exact: true }).click();
+    await load(page);
   }
   expect(state.requests.filter(request => request.method !== 'GET' && !request.path.includes('/ai-champion/'))).toEqual([]);
   clean(state);

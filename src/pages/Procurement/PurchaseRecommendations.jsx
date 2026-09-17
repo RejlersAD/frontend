@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, BarChart3, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, ExternalLink, FileCheck2, FileText, Filter, Home, Plus, RefreshCw, Search, ShieldCheck, ShoppingCart, Unlink, Users, X, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowRight, BarChart3, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, ExternalLink, FileCheck2, FileText, Filter, Plus, RefreshCw, Search, ShieldCheck, ShoppingCart, Unlink, Users, X, XCircle } from 'lucide-react'
 import apiClient from '../../services/api.service'
 import { procurementVatLabel } from '../../utils/procurementVat'
 import { Field, KeyValues, Menu } from './ProcurementRegister'
@@ -85,13 +85,7 @@ function RecommendationDetails({ panelRef, record, loading, error, onRetry, onOp
 
 export default function PurchaseRecommendations({ requisitions = [], loading = false, error = null, currentUserId, orderCount, onRefresh, onCreate, onImportPdf, onImportExcel, onExport, onOpen, onEdit, onDelete, onConvert, onPdf, onAttachPdf, onApproveSelected, canLinkPurchaseOrder = false, canUploadPurchaseOrder = false, canModify = deny, canDelete = deny, canConvert = deny, canApprove = deny, pdfBusyId, batchBusy = false, canCreate = true }) {
   const previewPanelRef = useRef(null)
-  const previewRecord = row => {
-    setSelectedId(row.id)
-    window.requestAnimationFrame(() => {
-      previewPanelRef.current?.focus({ preventScroll: true })
-      previewPanelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    })
-  }
+  const previewRecord = row => onOpen(row.id)
   const [linkRecord, setLinkRecord] = useState(null)
   const [linkUploadOpen, setLinkUploadOpen] = useState(false)
   const linkDialog = useRef(null)
@@ -176,7 +170,7 @@ export default function PurchaseRecommendations({ requisitions = [], loading = f
     </div>
     <dialog ref={linkDialog} className="prr-link-dialog" aria-labelledby="prr-link-title" onCancel={() => setLinkRecord(null)}>
       <div className="prr-link-dialog-header"><h2 id="prr-link-title">Link purchase order</h2><button type="button" className="prw-button prw-icon-button" aria-label="Close purchase order linking" onClick={() => setLinkRecord(null)}><X size={18} /></button></div>
-      {linkRecord && <PurchaseOrderLinkReview key={linkRecord.id} requisitionId={linkRecord.id} poLink={{ status: 'not_found', manual_link_required: true, message: `Select the purchase order for ${linkRecord.number}.` }} canLink={canLinkPurchaseOrder} canUpload={canUploadPurchaseOrder} canImportRequisition={canCreate} onUploadOpenChange={setLinkUploadOpen} onLinked={() => { setLinkRecord(null); setDetailRevision(value => value + 1); onRefresh?.() }} />}
+      {linkRecord && <PurchaseOrderLinkReview key={linkRecord.id} requisitionId={linkRecord.id} poLink={{ status: 'not_found', manual_link_required: true, message: `Select the purchase order for ${linkRecord.number}.` }} canLink={canLinkPurchaseOrder} canUpload={canUploadPurchaseOrder} canImportRequisition={canCreate} onUploadOpenChange={setLinkUploadOpen} onLinked={() => { setLinkRecord(null); if (onRefresh) onRefresh(); else setDetailRevision(value => value + 1) }} />}
     </dialog>
   </section>
 }

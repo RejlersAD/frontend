@@ -1,12 +1,10 @@
 import { radaiConfirm, radaiAlert } from '../../services/radaiDialog'
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import * as XLSX from 'xlsx';
-import { usePageControls } from '../../hooks/usePageControls';
-import AIPurchaseOrderCreator from './AIPurchaseOrderCreator';
 import PurchaseRequisitionApproval from './PurchaseRequisitionApproval';
 import PurchaseRequisitionExcelImport from './PurchaseRequisitionExcelImport';
 import PurchaseRequisitionPdfImport from './PurchaseRequisitionPdfImport';
@@ -173,7 +171,6 @@ const OrderManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [batchActionLoading, setBatchActionLoading] = useState(false);
-  const [showAICreator, setShowAICreator] = useState(false);
   const [showPOForm, setShowPOForm] = useState(false);
   const [showPRExcelImport, setShowPRExcelImport] = useState(false);
   const [showPRPdfImport, setShowPRPdfImport] = useState(false);
@@ -188,17 +185,11 @@ const OrderManagement = () => {
   const [prPrintPreviewLoadingId, setPrPrintPreviewLoadingId] = useState(null);
   const prPreviewRequest = useRef(0);
   const [currentUser, setCurrentUser] = useState(null);
-  const [vendors, setVendors] = useState([]);
-  const [projects, setProjects] = useState([]);  // Smart project lookup for PO creation
   // Soft-coded edit state - track which record is being edited
   const [editingOrder, setEditingOrder] = useState(null);
   const editOrderRequest = useRef(0);
   const orderRegisterRequest = useRef(null);
-
-  const pageControls = usePageControls({
-    autoRefreshInterval: 60,
-    features: { autoRefresh: true, fullscreen: true, sidebar: true }
-  });
+  const requisitionRegisterRequest = useRef(null);
 
   const currentUserData = currentUser?.user || currentUser || {};
   const currentUserId = currentUserData.id || currentUser?.user_id;
@@ -208,11 +199,11 @@ const OrderManagement = () => {
     currentUserData.is_superuser
     || currentUserRoles.some(role => role?.code === 'super_admin' || role?.code === 'admin')
   );
-  const moduleAction = (module, action) => {
+  const moduleAction = useCallback((module, action) => {
     if (isCurrentUserAdmin) return true;
-    const actions = currentUser?.module_actions || currentUserData.module_actions;
+    const actions = currentUser?.module_actions || currentUser?.user?.module_actions;
     return Boolean(actions?.[module]?.includes(action));
-  };
+  }, [currentUser, isCurrentUserAdmin]);
   const canModifyRequisition = (requisition) => Boolean(
     moduleAction('procurement_requisitions', 'update')
     && (isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId)))
@@ -222,7 +213,7 @@ const OrderManagement = () => {
     && (isCurrentUserAdmin || (currentUserId && String(requisition?.issued_by) === String(currentUserId)))
   );
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     orderRegisterRequest.current?.abort();
     const controller = new AbortController();
     orderRegisterRequest.current = controller;
@@ -323,66 +314,55 @@ const OrderManagement = () => {
     };
 
     await Promise.all([loadOrders(), loadPendingDocuments()]);
-  };
+  }, []);
 
-  const fetchVendors = async () => {
-    try {
-      const response = await apiClient.get('/procurement/vendors/');
-      const data = response.data;
-      setVendors(Array.isArray(data.results) ? data.results : Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error fetching vendors:', error);
-      setVendors([]);
-    }
-  };
-
-  const fetchProjects = async () => {
-    try {
-      const response = await apiClient.get('/procurement/projects/');
-      const data = response.data;
-      setProjects(Array.isArray(data.results) ? data.results : Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error fetching projects:', error);
-      setProjects([]);
-    }
-  };
-
-  const fetchRequisitions = async () => {
+  const fetchRequisitions = useCallback(async () => {
+    requisitionRegisterRequest.current?.abort();
+    const controller = new AbortController();
+    requisitionRegisterRequest.current = controller;
+    const isCurrent = () => requisitionRegisterRequest.current === controller && !controller.signal.aborted;
+    const requestConfig = { signal: controller.signal, suppressErrorToast: true };
     try {
       setLoading(true);
       setError(null);
 
-      const [response, employeeResponse] = await Promise.all([
-        apiClient.get('/procurement/requisitions/', { params: { _fresh: Date.now(), page_size: 10000 } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', {
-          params: { role: 'any_active', _fresh: Date.now() },
-          silentTimeout: true,
-        }).catch(() => ({ data: { users: [] } })),
-      ]);
+      const response = await apiClient.get('/procurement/requisitions/', {
+        ...requestConfig, params: { _fresh: Date.now(), page_size: 10000 },
+      });
+      if (!isCurrent()) return;
       const data = response.data;
       
       let normalizedData = Array.isArray(data) ? data : data?.results;
       if (!Array.isArray(normalizedData)) throw new Error('The recommendation register response was invalid.');
       let nextPage = Array.isArray(data) ? null : data.next;
       const visitedPages = new Set(['1']);
-      while (nextPage) {
+      while (nextPage && isCurrent()) {
         const nextNumber = new URL(nextPage, window.location.origin).searchParams.get('page');
         if (!nextNumber || visitedPages.has(nextNumber)) throw new Error('The recommendation register could not be loaded completely.');
         visitedPages.add(nextNumber);
-        const nextResponse = await apiClient.get('/procurement/requisitions/', { params: { page: nextNumber, page_size: 10000, _fresh: Date.now() } });
+        const nextResponse = await apiClient.get('/procurement/requisitions/', { ...requestConfig, params: { page: nextNumber, page_size: 10000, _fresh: Date.now() } });
         if (!Array.isArray(nextResponse.data?.results)) throw new Error('The recommendation register response was invalid.');
         normalizedData = [...normalizedData, ...nextResponse.data.results];
         nextPage = nextResponse.data.next;
       }
 
-      const employeesById = new Map(
-        approverUsersFromResponse(employeeResponse).map(employee => [String(employee.id), employee]),
-      );
+      if (!isCurrent()) return;
+      // Current serializers include display names. Resolve employees only for
+      // older records that still have an account ID without any supplied name.
+      const employeesById = new Map();
+      if (normalizedData.some(row => !resolveRequesterName(row, employeesById) && (row.requested_by || row.issued_by))) {
+        const employeeResponse = await apiClient.get('/procurement/requisitions/get_approvers/', {
+          ...requestConfig, params: { role: 'any_active' }, silentTimeout: true,
+        }).catch(() => null);
+        if (!isCurrent()) return;
+        approverUsersFromResponse(employeeResponse).forEach(employee => employeesById.set(String(employee.id), employee));
+      }
       setRequisitions(normalizedData.map(requisition => ({
         ...requisition,
         requester_name: resolveRequesterName(requisition, employeesById),
       })));
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('Error fetching requisitions:', error);
       setError({ 
         type: 'network', 
@@ -391,18 +371,9 @@ const OrderManagement = () => {
       });
       setRequisitions([]); // Ensure array even on error
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  };
-
-  const fetchCurrentUser = async () => {
-    try {
-      const response = await apiClient.get('/rbac/users/me/');
-      setCurrentUser(response.data);
-    } catch (error) {
-      console.error('Error fetching current user:', error);
-    }
-  };
+  }, []);
 
   const refreshAfterMutation = async () => {
     const orderRegisterActive = activeTab === 'purchaseOrders';
@@ -457,12 +428,19 @@ const OrderManagement = () => {
       fetchRequisitions();
     }
     
-    // Always fetch vendors, projects, and current user for both tabs
-    fetchVendors();
-    fetchProjects();
-    fetchCurrentUser();
-    return () => orderRegisterRequest.current?.abort();
-  }, [pageControls.isRefreshing, activeTab]);
+    return () => {
+      orderRegisterRequest.current?.abort();
+      requisitionRegisterRequest.current?.abort();
+    };
+  }, [activeTab, location.search, fetchOrders, fetchRequisitions]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    apiClient.get('/rbac/users/me/', { signal: controller.signal, suppressErrorToast: true })
+      .then(({ data }) => { if (!controller.signal.aborted) setCurrentUser(data); })
+      .catch(error => { if (!controller.signal.aborted) console.error('Error fetching current user:', error); });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const otherModule = activeTab === 'purchaseOrders' ? 'procurement_requisitions' : 'procurement_orders';
@@ -476,7 +454,7 @@ const OrderManagement = () => {
         if (current) updateCount(Array.isArray(response.data) ? response.data.length : response.data?.count ?? null);
       }).catch(() => { if (current) updateCount(null); });
     return () => { current = false; controller.abort(); };
-  }, [activeTab, currentUser]);
+  }, [activeTab, currentUser, moduleAction]);
 
   useEffect(() => {
     if (!requisitionRouteId || activeTab !== 'purchaseRequisitions') return undefined;
@@ -552,12 +530,6 @@ const OrderManagement = () => {
     setBatchActionLoading(false);
     await radaiAlert(`${succeededIds.length} approved${failedCount ? `; ${failedCount} could not be approved and remain selected.` : '.'}`);
     return succeededIds;
-  };
-
-  const handleOrderCreated = async (orderData) => {
-    console.log('Creating order with AI data:', orderData);
-    // After successful creation, refresh order list
-    await fetchOrders();
   };
 
   /**
@@ -893,8 +865,8 @@ const OrderManagement = () => {
   }
 
   return (
-    <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-container' : 'pow-page-container bg-gray-50'} style={pageControls.styles.container}>
-      <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-content' : 'pow-page-content'} style={pageControls.styles.content}>
+    <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-container' : 'pow-page-container bg-gray-50'}>
+      <div className={activeTab === 'purchaseRequisitions' ? 'prr-page-content' : 'pow-page-content'}>
         {activeTab === 'purchaseOrders' ? <ProcurementRegister
           orders={orders} loading={loading} error={error} pendingUploadError={pendingUploadError} pendingUploadLoading={pendingUploadLoading} currentUserId={currentUserId}
           requisitionCount={recommendationCount} onRefresh={fetchOrders}
@@ -926,17 +898,6 @@ const OrderManagement = () => {
           canApprove={requisition => !['draft', 'approved', 'rejected', 'converted', 'cancelled'].includes(requisition.status) && Boolean(activeAssignedStage(requisition))}
           onApproveSelected={approveSelectedRequisitions} pdfBusyId={prPrintPreviewLoadingId} batchBusy={batchActionLoading}
         />}
-      {/* AI Creator Modals - Conditional based on active tab */}
-      {activeTab === 'purchaseOrders' && (
-        <AIPurchaseOrderCreator
-          isOpen={showAICreator}
-          onClose={() => setShowAICreator(false)}
-          onOrderCreated={handleOrderCreated}
-          vendors={vendors}
-          projects={projects}
-        />
-      )}
-
       <PurchaseRequisitionExcelImport
         isOpen={showPRExcelImport}
         onClose={() => setShowPRExcelImport(false)}

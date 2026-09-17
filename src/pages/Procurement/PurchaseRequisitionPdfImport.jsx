@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
 import PurchaseOrderLinkReview from './PurchaseOrderLinkReview';
 import ProcurementImportVendorReview from './ProcurementImportVendorReview';
+import ProcurementImportPdfPreview from './ProcurementImportPdfPreview';
 import ProcurementApprovalEmployeeSearch from './ProcurementApprovalEmployeeSearch';
 import { importErrorMessage } from './procurementPdfImportErrors';
 import {
@@ -121,6 +122,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const [fileUrl, setFileUrl] = useState('');
   const [poFile, setPoFile] = useState(null);
   const [poFileUrl, setPoFileUrl] = useState('');
+  const [sourceKind, setSourceKind] = useState(primaryDocument);
   const [poEdits, setPoEdits] = useState({});
   const [poEvidence, setPoEvidence] = useState(emptyPoEvidence);
   const [loading, setLoading] = useState(false);
@@ -196,6 +198,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     previewVersionRef.current += 1;
     setFile(null);
     setPoFile(null);
+    setSourceKind(primaryDocument);
     setPoEdits({});
     setPoEvidence(emptyPoEvidence());
     setError('');
@@ -219,6 +222,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     previewVersionRef.current += 1;
     if (kind === 'po') setPoFile(selectedFile || null);
     else setFile(selectedFile || null);
+    if (selectedFile) setSourceKind(kind);
     setPreview(null);
     setResult(null);
     setEdits({});
@@ -415,10 +419,10 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
 
   return createPortal(
     <div className="fixed inset-0 z-[70] overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center px-4 py-8">
+      <div className="flex min-h-[100dvh] items-center justify-center p-4">
         <button type="button" aria-label="Close document upload" className="fixed inset-0 bg-black/50" onClick={close} />
-        <div role="dialog" aria-modal="true" aria-labelledby="approved-pr-import-title" className="relative w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-          <div className="flex items-start justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 text-white">
+        <div role="dialog" aria-modal="true" aria-labelledby="approved-pr-import-title" className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex shrink-0 items-start justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 text-white">
             <div>
               <h2 id="approved-pr-import-title" className="text-lg font-bold">Upload PR, PO and Vendor</h2>
               <p className="mt-1 text-sm text-indigo-100">Upload your PDFs, review document and vendor details, then save everything here.</p>
@@ -426,7 +430,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
             <button type="button" aria-label="Close import dialog" onClick={close} disabled={loading}><XMarkIcon className="h-6 w-6" /></button>
           </div>
 
-          <div className="max-h-[78vh] space-y-5 overflow-y-auto p-6">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
             {attachmentNumber && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
                 Attach to <strong>{attachmentNumber}</strong>. Existing recommendation values will be kept.
@@ -474,15 +478,11 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
 
             {(file || poFile) && !result && (
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
-                <div className="min-w-0 space-y-4 lg:sticky lg:top-0 lg:max-h-[70vh] lg:self-start lg:overflow-y-auto">
-                  {file && <section aria-label="PR source document" className="overflow-hidden rounded-xl border border-gray-300 bg-gray-100">
-                    <h3 className="border-b border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">PR source PDF</h3>
-                    {fileUrl && <iframe src={`${fileUrl}#toolbar=0&navpanes=0`} title="Approved PR source PDF" className={`${poFile ? 'h-[42vh] min-h-[340px]' : 'h-[74vh] min-h-[680px]'} w-full`} />}
-                  </section>}
-                  {poFile && <section aria-label="PO source document" className="overflow-hidden rounded-xl border border-gray-300 bg-gray-100">
-                    <h3 className="border-b border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">PO source PDF</h3>
-                    {poFileUrl && <iframe src={`${poFileUrl}#toolbar=0&navpanes=0`} title="Approved PO source PDF" className={`${file ? 'h-[42vh] min-h-[340px]' : 'h-[70vh] min-h-[460px]'} w-full`} />}
-                  </section>}
+                <div className="min-w-0 lg:sticky lg:top-0 lg:self-start">
+                  <ProcurementImportPdfPreview documents={[
+                    ...(file ? [{ kind: 'pr', name: file.name, url: fileUrl }] : []),
+                    ...(poFile ? [{ kind: 'po', name: poFile.name, url: poFileUrl }] : []),
+                  ]} selectedKind={sourceKind} onSelect={setSourceKind} />
                 </div>
                 <div className="space-y-4">
                   {!preview && <p className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">Select Preview OCR to fill the details from your PDFs. Review and correct them on this page before saving.</p>}
@@ -656,7 +656,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
             )}
           </div>
 
-          <div className="flex justify-between gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
+          <div className="flex shrink-0 justify-between gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
             <div>
               {preview && !result && <button type="button" onClick={reset} disabled={loading} className="inline-flex h-9 items-center rounded-lg border border-gray-300 bg-white px-4 text-xs font-semibold text-gray-700"><ArrowPathIcon className="mr-1.5 h-4 w-4" />Start Over</button>}
             </div>

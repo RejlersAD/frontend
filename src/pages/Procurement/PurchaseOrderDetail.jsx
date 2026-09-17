@@ -1,5 +1,5 @@
 import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -22,6 +22,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
@@ -100,7 +101,6 @@ const PurchaseOrderDetail = () => {
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState('');
-  const pdfFrameRef = useRef(null);
   const [showEditForm, setShowEditForm] = useState(false);
   const [approvalComment, setApprovalComment] = useState('');
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState('');
@@ -113,10 +113,8 @@ const PurchaseOrderDetail = () => {
 
   const handlePrintPurchaseOrder = () => {
     try {
-      const frame = pdfFrameRef.current?.contentWindow;
-      if (!frame) return;
-      frame.focus();
-      frame.print();
+      if (!pdfPreviewUrl) return;
+      window.open(pdfPreviewUrl, '_blank', 'noopener,noreferrer');
     } catch {
       toast.error('The PDF could not be printed. Download it and print from your PDF viewer.');
     }
@@ -981,14 +979,8 @@ const PurchaseOrderDetail = () => {
 
             {/* Right Column - PDF Preview */}
             <div className="space-y-6 xl:col-span-2">
-              <section aria-label="Purchase order PDF preview" className="po-detail-pdf-preview relative min-h-[360px] h-[calc(100dvh-240px)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
+              <section aria-label="Purchase order PDF preview" className="po-detail-pdf-preview relative flex min-h-[360px] h-[calc(100dvh-240px)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
                 {useGeneratedPreview ? <>
-                  {pdfPreviewUrl && !pdfPreviewLoading && <div className="upo-toolbar">
-                    <div className="upo-actions">
-                      <a href={pdfPreviewUrl} download={pdfPreviewFilename} aria-label="Download Purchase Order PDF" title="Download Purchase Order PDF"><ArrowDownTrayIcon aria-hidden="true" /></a>
-                      <a href={pdfPreviewUrl} target="_blank" rel="noopener noreferrer" aria-label="Open Purchase Order PDF" title="Open Purchase Order PDF"><ArrowTopRightOnSquareIcon aria-hidden="true" /></a>
-                    </div>
-                  </div>}
                   {pdfPreviewLoading && (
                     <div className="flex h-full items-center justify-center gap-2 bg-slate-50 text-sm text-gray-500">
                       <ArrowPathIcon className="h-5 w-5 animate-spin" /> Generating PDF preview…
@@ -1011,11 +1003,14 @@ const PurchaseOrderDetail = () => {
                   )}
 
                   {!pdfPreviewLoading && pdfPreviewUrl && (
-                    <iframe
-                      ref={pdfFrameRef}
+                    <PdfDocumentPreview
                       title={`Purchase Order ${order.po_number || order.id} PDF preview`}
-                      src={`${pdfPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0`}
-                      className="block h-full w-full border-0 bg-slate-100"
+                      url={pdfPreviewUrl}
+                      className="min-h-0 flex-1"
+                      actions={<div className="upo-actions">
+                        <a href={pdfPreviewUrl} download={pdfPreviewFilename} aria-label="Download Purchase Order PDF" title="Download Purchase Order PDF"><ArrowDownTrayIcon aria-hidden="true" /></a>
+                        <a href={pdfPreviewUrl} target="_blank" rel="noopener noreferrer" aria-label="Open Purchase Order PDF" title="Open Purchase Order PDF"><ArrowTopRightOnSquareIcon aria-hidden="true" /></a>
+                      </div>}
                     />
                   )}
                 </> : <UploadedPurchaseOrderPreview orderId={id} sourceState={uploadedSources} />}

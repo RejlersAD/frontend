@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { orderFormHarness, orderFormId, orderFormNumber, orderFormRecommendation } from '../fixtures/purchase-order-form.fixture'
 import { purchaseOrderHarness } from '../fixtures/purchase-orders.fixture'
 import { formActor } from '../fixtures/purchase-recommendation-form.fixture'
+import { mixedSizePdf } from '../fixtures/mixed-size-pdf.fixture'
 
 test.setTimeout(90000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
@@ -31,12 +32,8 @@ const menu = async (page, action) => {
   await page.getByRole('menuitem', { name: action, exact: true }).click()
 }
 
-test('preview stays in selected details and edit saves only changed fields without damaging signed evidence or lump-sum pricing', async ({ page }) => {
+test('edit saves only changed fields without damaging signed evidence or lump-sum pricing', async ({ page }) => {
   const state = await openNative(page)
-  await register(page).getByRole('button', { name: 'Preview', exact: true }).click()
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
-  await expect(page.getByRole('complementary', { name: 'Purchase order details' })).toContainText('Signed original service order')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
   await menu(page, 'Edit order')
   await expect(page.getByRole('heading', { name: 'Edit purchase order' })).toBeVisible()
   await expect(page.locator('.purchase-order-form-workspace')).toHaveClass(/pof-page/)
@@ -53,6 +50,40 @@ test('preview stays in selected details and edit saves only changed fields witho
     expect(state.record[field]).toEqual(record()[field])
   }
   expect(state.requests.filter(item => item.path.endsWith('/reserve-number/'))).toHaveLength(0)
+  isolated(state)
+})
+
+test('row and menu Preview open the clicked completed PO instead of the selected sidebar order', async ({ page }) => {
+  const other = { ...record(), id: '00000000-0000-4000-8000-000000009003', po_number: 'RAD-PRJ-PUR-9003_SEP2026', title: 'A different selected order', created_at: '2026-09-14T08:00:00Z' }
+  const sourcePath = `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/preview-original/content/`
+  const state = await openNative(page, fixture => {
+    fixture.record.status = 'completed'
+    fixture.orders = [fixture.record, other]
+    fixture.uploadedDocuments = [{ id: 'preview-original', filename: 'Clicked-PO-original.pdf', content_url: sourcePath }]
+    fixture.uploadedContent[sourcePath] = { body: mixedSizePdf(1) }
+  })
+  await page.route(`**/api/v1/procurement/orders/${other.id}/`, route => {
+    state.requests.push({ path: new URL(route.request().url()).pathname, method: route.request().method() })
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(other) })
+  })
+  for (const action of ['row', 'menu']) {
+    await page.getByRole('button', { name: `Select ${other.po_number}`, exact: true }).click()
+    await expect(page.getByRole('complementary', { name: 'Purchase order details' })).toContainText(other.title)
+    await expect(page).toHaveURL(/\/procurement\/orders$/)
+    if (action === 'row') {
+      const row = register(page).getByRole('row').filter({ has: page.getByRole('button', { name: `Select ${orderFormNumber}`, exact: true }) })
+      await row.getByRole('button', { name: 'Preview', exact: true }).click()
+    } else await menu(page, 'Preview')
+    await expect(page).toHaveURL(new RegExp(`/procurement/orders/${orderFormId}$`))
+    await expect(page.getByRole('heading', { name: orderFormNumber, level: 1, exact: true })).toBeVisible()
+    const viewer = page.getByRole('region', { name: 'Uploaded PO PDF: Clicked-PO-original.pdf', exact: true })
+    await expect(viewer.getByRole('img')).toBeVisible({ timeout: 30000 })
+    await expect(page.getByRole('heading', { name: other.po_number, level: 1, exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Back to purchase orders', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  }
+  expect(state.acceptedWrites).toEqual([])
+  expect(state.requests.filter(request => request.path.endsWith('/export-pdf/'))).toEqual([])
   isolated(state)
 })
 
@@ -133,18 +164,28 @@ test('PO-only user deletes an order without requesting the inaccessible PR regis
   isolated(state)
 })
 
-test('pending signed upload previews in the panel and edits in a single details workspace before complete delete', async ({ page }) => {
+test('pending signed upload row and menu Preview open its PDF viewer before edit and delete', async ({ page }) => {
   const id = 'pending-po-crud'
   const state = await orderFormHarness(page, { path: '/procurement/orders', prepare: fixture => {
     const document = { id, original_filename: 'Signed-PO.pdf', confirmed_po: null, created_at: '2026-09-15T08:00:00Z', extraction_status: 'completed', extracted_data: { po_number: orderFormNumber, summary: 'Pending signed source', vendor_name: 'Original supplier', currency: 'USD', total_amount: '6489', tax_amount: '0', gross_amount: '6489', po_date: '2026-07-01', reconciliation_required: true } }
     fixture.pendingDocuments = [document]
     fixture.documentRecords[id] = document
-    fixture.uploadedContent[`/api/v1/procurement/po-documents/${id}/content/`] = { body: Buffer.from('%PDF-1.4\n% synthetic original only\n%%EOF') }
+    fixture.uploadedContent[`/api/v1/procurement/po-documents/${id}/content/`] = { body: mixedSizePdf(1) }
   } })
-  await register(page).getByRole('button', { name: 'Preview', exact: true }).click()
   const panel = page.getByRole('complementary', { name: 'Uploaded purchase order details' })
-  await expect(panel.locator('iframe')).toHaveAttribute('src', /^blob:/)
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  for (const action of ['row', 'menu']) {
+    if (action === 'row') await register(page).getByRole('button', { name: 'Preview', exact: true }).click()
+    else await menu(page, 'Preview')
+    const dialog = page.getByRole('dialog', { name: 'Signed Purchase Order PDF', exact: true })
+    await expect(dialog.getByRole('region', { name: 'Signed purchase order PDF preview', exact: true }).getByRole('img')).toBeVisible({ timeout: 30000 })
+    await expect(dialog).toContainText(orderFormNumber)
+    await expect(dialog.getByRole('button', { name: 'Save changes', exact: true })).toHaveCount(0)
+    await expect(page).toHaveURL(/\/procurement\/orders$/)
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+  }
+  expect(state.requests.filter(request => request.path === `/api/v1/procurement/po-documents/${id}/content/`).length).toBeGreaterThanOrEqual(2)
+  expect(state.acceptedWrites).toEqual([])
   await menu(page, 'Edit uploaded PDF')
   await expect(page.getByRole('region', { name: 'Edit Signed Purchase Order PDF' })).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)

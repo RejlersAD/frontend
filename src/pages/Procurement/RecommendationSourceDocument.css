@@ -17,5 +17,9 @@
 
 .pr-approval-preview { display: flex; flex-direction: column; min-width: 0; height: min(56rem, calc(100dvh - 10rem)); min-height: 24rem; }
 .pr-approval-preview-header { flex: 0 0 auto; }
-.pr-approval-preview-viewport { position: relative; display: grid; flex: 1; min-width: 0; min-height: 0; place-items: center; overflow: hidden; background: #1e293b; }
+.pr-approval-preview-viewport { position: relative; display: grid; flex: 1; min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); place-items: stretch; overflow: hidden; background: #1e293b; }
+.pr-approval-preview-viewport > .text-center { align-self: center; justify-self: center; }
 .pr-approval-preview-viewport > iframe { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; }
+@media (max-width: 767px) {
+  .pr-approval-preview { height: calc(100dvh - 12rem); min-height: 0; }
+}

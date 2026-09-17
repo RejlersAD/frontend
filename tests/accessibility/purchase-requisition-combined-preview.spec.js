@@ -6,6 +6,15 @@ import { recommendationHarness, recommendationId as id, recommendationNumber as 
 test.setTimeout(90000)
 const preview = page => page.getByRole('region', { name: 'Procurement document preview', exact: true })
 const panel = page => preview(page).getByRole('tabpanel', { name: 'PR + PO', exact: true })
+const combinedSource = page => panel(page).getByRole('link', { name: 'Download combined PR and PO PDF', exact: true })
+const combinedViewer = page => panel(page).getByRole('region', { name: 'Combined PR and PO PDF', exact: true })
+const assertRendererWidth = async (panel, viewer) => {
+  await expect.poll(async () => {
+    const outer = await panel.boundingBox()
+    const inner = await viewer.boundingBox()
+    return Math.max(Math.abs(outer.x - inner.x), Math.abs(outer.width - inner.width))
+  }, { message: 'The PDF viewer must use the full approval preview panel width.' }).toBeLessThanOrEqual(2)
+}
 const originalSource = '/__combined-preview-fixture__/original-pr.pdf'
 const update = (state, index, patch) => {
   Object.assign(state.props.requisitions[index - 1], patch)
@@ -42,8 +51,10 @@ const open = async (page, index = 1) => {
   await expect(page.getByRole('heading', { name: number(index), level: 1, exact: true })).toBeVisible()
 }
 const bytes = async (page, frame) => {
-  await expect(frame).toHaveAttribute('src', /^blob:/)
-  return page.evaluate(async url => (await fetch(url.split('#')[0])).text(), await frame.getAttribute('src'))
+  const attribute = await frame.evaluate(element => element.tagName === 'IFRAME' ? 'src' : 'href')
+  await expect(frame).toHaveAttribute(attribute, /^blob:/)
+  if (attribute === 'href') await expect(preview(page).getByRole('img')).toBeVisible({ timeout: 30000 })
+  return page.evaluate(async url => (await fetch(url.split('#')[0])).text(), await frame.getAttribute(attribute))
 }
 const clean = state => {
   expect(state.unknown).toEqual([])
@@ -57,10 +68,10 @@ test('View approval record opens the combined originals and downloads both while
   await open(page)
   await expect(preview(page).getByRole('tab', { name: 'PR + PO', exact: true })).toHaveAttribute('aria-selected', 'true')
   await expect(preview(page).getByRole('tab')).toHaveCount(3)
-  const frame = panel(page).getByTitle('Combined PR and PO PDF', { exact: true })
+  const frame = combinedSource(page)
   expect(await bytes(page, frame)).toBe(combinedPdf)
-  await expect(panel(page)).toContainText('PR first, then PO')
-  await expect(panel(page)).toContainText('PO: Uploaded original')
+  await expect(combinedViewer(page).getByRole('img', { name: 'Combined PR and PO PDF, page 1 of 2', exact: true })).toBeVisible({ timeout: 30000 })
+  await assertRendererWidth(panel(page), combinedViewer(page))
   const downloading = page.waitForEvent('download')
   await panel(page).getByRole('link', { name: 'Download combined PR and PO PDF' }).click()
   const download = await downloading
@@ -71,16 +82,23 @@ test('View approval record opens the combined originals and downloads both while
   const bounds = await panel(page).boundingBox()
   expect(bounds.x).toBeGreaterThanOrEqual(0)
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(390)
+  await assertRendererWidth(panel(page), combinedViewer(page))
+  await expect.poll(() => panel(page).evaluate(element => {
+    const bounds = element.getBoundingClientRect()
+    const footerTop = document.querySelector('footer')?.getBoundingClientRect().top ?? innerHeight
+    const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.bottom - 2)
+    return bounds.bottom <= footerTop + 1 && element.contains(hit)
+  }), { message: 'The mobile combined preview must remain visible above the app footer.' }).toBe(true)
   await page.screenshot({ path: '../artifacts/combined-pr-po-preview/mobile.png' })
   await preview(page).getByRole('tab', { name: 'PR Preview', exact: true }).click()
   expect(await bytes(page, preview(page).getByTitle('Original uploaded PR: original-pr.pdf'))).toBe(prPdf)
   await preview(page).getByRole('tab', { name: /^Linked PO/ }).click()
-  expect(await bytes(page, preview(page).getByTitle('Uploaded PO PDF: original-po.pdf'))).toBe(poPdf)
+  expect(await bytes(page, preview(page).getByRole('link', { name: 'Download uploaded PO', exact: true }))).toBe(poPdf)
   expect(state.requests.filter(request => request.path.endsWith('/approval-record-pdf/'))).toHaveLength(1)
   await page.getByRole('button', { name: 'Back to Purchase Recommendations', exact: true }).click()
   await open(page)
   await expect(preview(page).getByRole('tab', { name: 'PR + PO', exact: true })).toHaveAttribute('aria-selected', 'true')
-  expect(await bytes(page, panel(page).locator('iframe'))).toBe(combinedPdf)
+  expect(await bytes(page, combinedSource(page))).toBe(combinedPdf)
   clean(state)
 })
 
@@ -92,9 +110,7 @@ for (const attachmentWarnings of [0, 1]) test(`a PO created in RADAI appears wit
     state.approvalRecords[id(201)] = { body: generatedPo, headers: { 'X-Approval-Record-PR-Source': 'uploaded_original', 'X-Approval-Record-PO-Source': 'radai_generated', 'X-PO-Attachment-Warnings': String(attachmentWarnings) } }
   } })
   await open(page)
-  expect(await bytes(page, panel(page).getByTitle('Combined PR and PO PDF', { exact: true }))).toBe(generatedPo)
-  await expect(panel(page)).toContainText('PR: Uploaded original')
-  await expect(panel(page)).toContainText('PO: RADAI-generated')
+  expect(await bytes(page, combinedSource(page))).toBe(generatedPo)
   if (attachmentWarnings) await expect(panel(page).getByRole('status')).toContainText('The PO is included. 1 supporting attachment could not be added')
   else await expect(panel(page).getByRole('status')).toHaveCount(0)
   await expect(panel(page).getByRole('alert')).toHaveCount(0)
@@ -111,14 +127,14 @@ test('combined source failures and invalid content can retry without generated r
   } })
   await open(page)
   await expect(panel(page).getByRole('alert')).toContainText('The original linked PO PDF is unavailable.')
-  await expect(panel(page).locator('iframe')).toHaveCount(0)
+  await expect(combinedSource(page)).toHaveCount(0)
   state.approvalRecords[id(201)] = { body: '<html>Not a PDF</html>' }
   await panel(page).getByRole('button', { name: 'Retry combined PDF' }).click()
   await expect(panel(page).getByRole('alert')).toContainText('The combined PR and PO PDF could not be loaded.')
   await expect(panel(page).getByRole('link', { name: 'Download combined PR and PO PDF' })).toHaveCount(0)
   state.approvalRecords[id(201)] = { body: combinedPdf }
   await panel(page).getByRole('button', { name: 'Retry combined PDF' }).click()
-  expect(await bytes(page, panel(page).locator('iframe'))).toBe(combinedPdf)
+  expect(await bytes(page, combinedSource(page))).toBe(combinedPdf)
   clean(state)
 })
 
@@ -138,10 +154,10 @@ test('leaving an outstanding preview cannot replace the next requisition documen
     await expect.poll(() => state.requests.some(request => request.path === `/api/v1/procurement/requisitions/${id(201)}/approval-record-pdf/`)).toBeTruthy()
     await page.getByRole('button', { name: 'Back to Purchase Recommendations', exact: true }).click()
     await open(page, 2)
-    expect(await bytes(page, panel(page).locator('iframe'))).toBe(nextPdf)
+    expect(await bytes(page, combinedSource(page))).toBe(nextPdf)
     release()
     await expect(panel(page).getByRole('link', { name: 'Download combined PR and PO PDF' })).toHaveAttribute('download', `${number(2)}-PR-PO.pdf`)
-    expect(await bytes(page, panel(page).locator('iframe'))).toBe(nextPdf)
+    expect(await bytes(page, combinedSource(page))).toBe(nextPdf)
     clean(state)
   } finally { release() }
 })
@@ -159,6 +175,7 @@ test('a missing PO original can be uploaded on the unified page and restores the
     if (path.endsWith('/import_signed_pdf/')) {
       uploads.push(request.postData())
       state.approvalRecords[id(201)] = { body: combinedPdf }
+      update(state, 1, { updated_at: '2026-09-17T12:00:00Z' })
       return route.fulfill({ json: { success: true, operation: 'attached', purchase_order_id: '101', po_number: 'PO-TEST-001', pr_id: id(201), po_link: { status: 'linked', po_id: '101', manual_link_required: false } } })
     }
     return route.fallback()
@@ -172,12 +189,16 @@ test('a missing PO original can be uploaded on the unified page and restores the
   expect(uploads).toHaveLength(0)
   const detailReads = () => state.requests.filter(request => request.path === `/api/v1/procurement/requisitions/${id(201)}/` && request.method === 'GET').length
   const previousReads = detailReads()
+  const combinedReads = () => state.requests.filter(request => request.path.endsWith('/approval-record-pdf/')).length
+  expect(combinedReads()).toBe(1)
   await uploader.getByRole('button', { name: 'Save PO', exact: true }).click()
   await expect(uploader).toHaveCount(0)
-  expect(await bytes(page, panel(page).locator('iframe'))).toBe(combinedPdf)
+  expect(await bytes(page, combinedSource(page))).toBe(combinedPdf)
   expect(uploads).toHaveLength(1)
   expect(uploads[0]).toContain(`name="pr_id"\r\n\r\n${id(201)}`)
-  await expect.poll(detailReads).toBeGreaterThan(previousReads)
+  await expect.poll(detailReads).toBe(previousReads + 1)
+  await expect(combinedViewer(page).getByRole('img')).toBeVisible({ timeout: 30000 })
+  expect(combinedReads()).toBe(2)
   await expect(page.getByRole('heading', { name: number(1), level: 1, exact: true })).toBeVisible()
   await expect(page.getByRole('dialog', { name: 'Edit Signed Purchase Order PDF', exact: true })).toHaveCount(0)
   clean(state)

@@ -2,6 +2,7 @@ import React, { useEffect, useId, useState } from 'react';
 import PropTypes from 'prop-types';
 import { ArrowDownTrayIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import './UploadedPurchaseOrderPreview.css';
 
@@ -57,16 +58,13 @@ export default function UploadedPurchaseOrderPreview({ orderId, documentId, file
         : listError ? <div className="upo-state" role="alert"><DocumentTextIcon /><p>{listError}</p><button type="button" onClick={retry}>Retry uploaded PO</button></div>
           : !selected ? <div className="upo-state"><DocumentTextIcon /><p>No uploaded PO PDF is linked to this order.</p></div>
             : <>
-              <div className="upo-toolbar">
-                {documents.length > 1 && <div className="upo-select"><label htmlFor={selectId}>Uploaded PO document</label><select id={selectId} value={String(selected.id)} onChange={event => setSelection({ orderId: String(orderId), documentId: event.target.value })}>{documents.map(item => <option key={item.id} value={String(item.id)}>{item.filename || 'Uploaded Purchase Order.pdf'}</option>)}</select></div>}
-                {currentContent.url && <div className="upo-actions">
-                  <a href={currentContent.url} download={filename} aria-label="Download uploaded PO" title="Download uploaded PO"><ArrowDownTrayIcon aria-hidden="true" /></a>
-                  <a href={currentContent.url} target="_blank" rel="noopener noreferrer" aria-label="Open uploaded PO" title="Open uploaded PO"><ArrowTopRightOnSquareIcon aria-hidden="true" /></a>
-                </div>}
-              </div>
+              {documents.length > 1 && <div className="upo-toolbar"><div className="upo-select"><label htmlFor={selectId}>Uploaded PO document</label><select id={selectId} value={String(selected.id)} onChange={event => setSelection({ orderId: String(orderId), documentId: event.target.value })}>{documents.map(item => <option key={item.id} value={String(item.id)}>{item.filename || 'Uploaded Purchase Order.pdf'}</option>)}</select></div></div>}
               {currentContent.loading ? <div className="upo-state" role="status"><ArrowPathIcon className="upo-spinner" />Loading uploaded PO PDF…</div>
                 : currentContent.error ? <div className="upo-state" role="alert"><DocumentTextIcon /><p>{currentContent.error}</p><button type="button" onClick={() => setFileRetry(value => value + 1)}>Retry uploaded PO</button></div>
-                  : currentContent.url ? <iframe title={`Uploaded PO PDF: ${filename}`} src={`${currentContent.url}#page=1&view=FitH&toolbar=0&navpanes=0`} />
+                  : currentContent.url ? <PdfDocumentPreview title={`Uploaded PO PDF: ${filename}`} url={currentContent.url} className="min-h-0 flex-1" actions={<div className="upo-actions">
+                    <a href={currentContent.url} download={filename} aria-label="Download uploaded PO" title="Download uploaded PO"><ArrowDownTrayIcon aria-hidden="true" /></a>
+                    <a href={currentContent.url} target="_blank" rel="noopener noreferrer" aria-label="Open uploaded PO" title="Open uploaded PO"><ArrowTopRightOnSquareIcon aria-hidden="true" /></a>
+                  </div>} />
                     : <div className="upo-state" role="alert"><p>The uploaded PO PDF is unavailable.</p></div>}
             </>}
     </div>

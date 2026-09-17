@@ -24,13 +24,32 @@ async function previewPair(page) {
   await dialog(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
   await expect(dialog(page).getByLabel('PO Number', { exact: true })).toHaveValue(pairedPoNumber)
 }
+async function sourceUrls(page) {
+  const urls = []
+  for (const kind of ['PR', 'PO']) {
+    await dialog(page).getByRole('tab', { name: `${kind} PDF`, exact: true }).click()
+    await expect(dialog(page).getByRole('region', { name: `Approved ${kind} source PDF`, exact: true })
+      .getByRole('img', { name: `Approved ${kind} source PDF, page 1 of 1`, exact: true })).toBeVisible({ timeout: 30000 })
+    const link = dialog(page).getByRole('link', { name: `Open ${kind} PDF in new tab`, exact: true })
+    await expect(link).toHaveAttribute('href', /^blob:/)
+    urls.push(await link.getAttribute('href'))
+  }
+  return urls
+}
 
 test('reviews separate source PDFs and saves both linked records with independent PO evidence in one request', async ({ page }) => {
   const state = await pairedImportHarness(page)
   await previewPair(page)
-  const prSource = dialog(page).getByTitle('Approved PR source PDF', { exact: true })
-  const poSource = dialog(page).getByTitle('Approved PO source PDF', { exact: true })
-  const urls = [await prSource.getAttribute('src'), await poSource.getAttribute('src')]
+  const prSource = dialog(page).getByRole('region', { name: 'Approved PR source PDF', exact: true })
+  const poSource = dialog(page).getByRole('region', { name: 'Approved PO source PDF', exact: true })
+  await expect(poSource.getByRole('img', { name: 'Approved PO source PDF, page 1 of 1', exact: true })).toBeVisible({ timeout: 30000 })
+  await expect(dialog(page).locator('canvas')).toHaveCount(1)
+  await dialog(page).getByRole('tab', { name: 'PR PDF', exact: true }).click()
+  await expect(prSource.getByRole('img', { name: 'Approved PR source PDF, page 1 of 1', exact: true })).toBeVisible({ timeout: 30000 })
+  const prUrl = await dialog(page).getByRole('link', { name: 'Open PR PDF in new tab', exact: true }).getAttribute('href')
+  await dialog(page).getByRole('tab', { name: 'PO PDF', exact: true }).click()
+  await expect(poSource.getByRole('img', { name: 'Approved PO source PDF, page 1 of 1', exact: true })).toBeVisible({ timeout: 30000 })
+  const urls = [prUrl, await dialog(page).getByRole('link', { name: 'Open PO PDF in new tab', exact: true }).getAttribute('href')]
   expect(urls[0]).not.toEqual(urls[1])
   const texts = await page.evaluate(async sources => Promise.all(sources.map(source => fetch(source.split('#')[0]).then(response => response.text()))), urls)
   expect(texts[0]).toBe(syntheticApprovedPdf.buffer.toString())
@@ -99,14 +118,15 @@ test('an atomic save failure retains both files, edited mappings and PO evidence
   await previewPair(page)
   await dialog(page).getByLabel('PO Supplier name', { exact: true }).fill('Reviewed new supplier')
   await dialog(page).getByLabel('PO company stamp is visible', { exact: true }).check()
-  const sources = await dialog(page).locator('iframe').evaluateAll(frames => frames.map(frame => frame.src))
+  const sources = await sourceUrls(page)
+  expect(sources).toHaveLength(2)
   state.pairError = { status: 400, body: { po_reviewed_fields: ['PO supplier details need review. Nothing was saved.'] } }
   await save(page).click()
   await expect(dialog(page).getByRole('alert')).toContainText('Nothing was saved')
   await expect(dialog(page).getByRole('alert')).toContainText('PO details: PO supplier details need review.')
   await expect(dialog(page).getByLabel('PO Supplier name', { exact: true })).toHaveValue('Reviewed new supplier')
   await expect(dialog(page).getByLabel('PO company stamp is visible', { exact: true })).toBeChecked()
-  expect(await dialog(page).locator('iframe').evaluateAll(frames => frames.map(frame => frame.src))).toEqual(sources)
+  expect(await sourceUrls(page)).toEqual(sources)
   expect(state.pairWrites).toEqual([])
   state.pairError = null
   await save(page).click()
