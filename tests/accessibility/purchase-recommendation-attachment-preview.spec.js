@@ -10,7 +10,7 @@ const recordId = recommendationId(204)
 const number = recommendationNumber(4)
 const recordPath = `/api/v1/procurement/requisitions/${recordId}/`
 const details = page => page.getByRole('complementary', { name: 'Recommendation details', exact: true })
-const importDialog = page => page.getByRole('dialog', { name: 'Attach signed PR PDF', exact: true })
+const importDialog = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor', exact: true })
 const originalPanel = page => page.getByRole('region', { name: 'Original uploaded PR', exact: true })
 
 function pdfFile(label) {

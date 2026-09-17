@@ -6,7 +6,7 @@ import PurchaseOrderPdfImport from './PurchaseOrderPdfImport';
 
 const failureMessage = error => error.response?.data?.error || error.response?.data?.detail || error.message || 'The purchase order could not be linked.';
 
-export default function PurchaseOrderLinkReview({ requisitionId, poLink, canLink = true, canUpload = false, onLinked, onOpen, onUploadOpenChange }) {
+export default function PurchaseOrderLinkReview({ requisitionId, poLink, canLink = true, canUpload = false, canImportRequisition = false, onLinked, onOpen, onUploadOpenChange }) {
   const [search, setSearch] = useState('');
   const [showOptions, setShowOptions] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -88,7 +88,7 @@ export default function PurchaseOrderLinkReview({ requisitionId, poLink, canLink
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <button type="button" onClick={link} disabled={!selectedId || !options.some(order => String(order.id) === selectedId) || Boolean(loadError) || saving || loading} className="h-9 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white disabled:opacity-50">{saving ? 'Linking...' : 'Link purchase order'}</button>
     </> : !canUpload && <p className="text-sm text-amber-900">A user with Purchase Orders access must link this recommendation.</p>}
-    {uploadOpen && <PurchaseOrderPdfImport isOpen requisitionId={requisitionId} canReconcile={canUpload && canLink} canEditDocument={canLink} onClose={() => changeUpload(false)} onImported={imported} />}
+    {uploadOpen && <PurchaseOrderPdfImport isOpen requisitionId={requisitionId} canReconcile={canUpload && canLink} canEditDocument={canLink} canUploadPurchaseOrder={canUpload} canImportRequisition={canImportRequisition} onClose={() => changeUpload(false)} onImported={imported} />}
   </section>;
 }
 
@@ -97,6 +97,7 @@ PurchaseOrderLinkReview.propTypes = {
   poLink: PropTypes.object,
   canLink: PropTypes.bool,
   canUpload: PropTypes.bool,
+  canImportRequisition: PropTypes.bool,
   onLinked: PropTypes.func,
   onOpen: PropTypes.func,
   onUploadOpenChange: PropTypes.func,

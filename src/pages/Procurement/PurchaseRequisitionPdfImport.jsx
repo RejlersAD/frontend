@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
 import PurchaseOrderLinkReview from './PurchaseOrderLinkReview';
+import ProcurementImportVendorReview from './ProcurementImportVendorReview';
+import ProcurementApprovalEmployeeSearch from './ProcurementApprovalEmployeeSearch';
+import { importErrorMessage } from './procurementPdfImportErrors';
 import {
   ArrowPathIcon,
   ArrowUpTrayIcon,
@@ -40,6 +43,7 @@ const PO_REVIEW_FIELDS = [
   ['entered_amount', 'PO Entered price', 'number'], ['po_date', 'PO Order date', 'date'],
   ['expected_delivery', 'PO Expected delivery', 'date'],
 ];
+const VENDOR_REVIEW_FIELDS = ['vendor_id', 'vendor_license_no', 'seller_contact_person', 'seller_email', 'seller_phone', 'seller_address', 'seller_country'];
 const emptyPoEvidence = () => ({ signatureVerified: false, stampVerified: false, approvedByName: '', approvedByTitle: '', approvedDate: '' });
 const editablePoFields = data => {
   const fields = data?.extracted_data || {};
@@ -75,6 +79,8 @@ const submitSignedRequisitionPdf = async (file, payload = {}) => {
   const response = await apiClient.post('/procurement/requisitions/import-signed-pdf/', body, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 180000,
+    suppressErrorToast: true,
+    silentTimeout: true,
   });
   return response.data;
 };
@@ -107,7 +113,7 @@ const errorMessage = (requestError, fallback) => {
       : requestError.message || fallback);
 };
 
-const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrNumber = '', canLinkPurchaseOrder = true, canUploadPurchaseOrder = false }) => {
+const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrNumber = '', canLinkPurchaseOrder = true, canUploadPurchaseOrder = false, primaryDocument = 'pr', requisitionId = null, canImportRequisition = true }) => {
   const inputRef = useRef(null);
   const poInputRef = useRef(null);
   const previewVersionRef = useRef(0);
@@ -126,25 +132,31 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const [employees, setEmployees] = useState([]);
   const [employeeLoadError, setEmployeeLoadError] = useState('');
   const [recordCheck, setRecordCheck] = useState(null);
+  const [selectedPrId, setSelectedPrId] = useState('');
+  const [prSearch, setPrSearch] = useState('');
+  const [prOptions, setPrOptions] = useState([]);
+  const [prLoading, setPrLoading] = useState(false);
+  const [prSearchError, setPrSearchError] = useState('');
+  const [prSearchRetry, setPrSearchRetry] = useState(0);
   useEffect(() => {
     if (!file) {
       setFileUrl('');
       return undefined;
     }
-    const url = window.URL.createObjectURL(file);
+    const url = window.URL.createObjectURL(new Blob([file], { type: 'application/pdf' }));
     setFileUrl(url);
     return () => window.URL.revokeObjectURL(url);
   }, [file]);
 
   useEffect(() => {
     if (!poFile) { setPoFileUrl(''); return undefined; }
-    const url = window.URL.createObjectURL(poFile);
+    const url = window.URL.createObjectURL(new Blob([poFile], { type: 'application/pdf' }));
     setPoFileUrl(url);
     return () => window.URL.revokeObjectURL(url);
   }, [poFile]);
 
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!isOpen || !canImportRequisition || (primaryDocument === 'po' && !file)) return undefined;
     let active = true;
     setEmployeeLoadError('');
     apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' } })
@@ -157,7 +169,24 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
         if (active) setEmployeeLoadError('Employee search is unavailable. You can still edit signer names manually.');
       });
     return () => { active = false; };
-  }, [isOpen]);
+  }, [isOpen, canImportRequisition, primaryDocument, file]);
+
+  useEffect(() => {
+    if (!isOpen || !preview || file || !poFile || requisitionId || !canLinkPurchaseOrder || result) return undefined;
+    const controller = new AbortController();
+    setPrLoading(true);
+    setPrSearchError('');
+    const timer = window.setTimeout(() => apiClient.get('/procurement/orders/available-requisitions/', {
+      params: { search: prSearch, limit: 100 }, signal: controller.signal, suppressErrorToast: true,
+    }).then(({ data }) => {
+      if (controller.signal.aborted) return;
+      const rows = Array.isArray(data) ? data : data?.results;
+      if (!Array.isArray(rows)) throw new Error('Invalid purchase recommendations');
+      setPrOptions(rows);
+    }).catch(() => { if (!controller.signal.aborted) setPrSearchError('Purchase recommendations could not be loaded. Retry the search.'); })
+      .finally(() => { if (!controller.signal.aborted) setPrLoading(false); }), 250);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [isOpen, preview, file, poFile, requisitionId, canLinkPurchaseOrder, result, prSearch, prSearchRetry]);
 
   if (!isOpen) return null;
 
@@ -175,6 +204,9 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setEdits({});
     setManualSignatures({});
     setRecordCheck(null);
+    setSelectedPrId('');
+    setPrSearch('');
+    setPrOptions([]);
   };
 
   const close = () => {
@@ -195,21 +227,35 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setPoEvidence(emptyPoEvidence());
     setError('');
     setRecordCheck(null);
+    setSelectedPrId('');
+    setPrSearch('');
+    setPrOptions([]);
   };
 
   const capturePreview = async () => {
-    if (!file) return setError('Select an approved PR PDF first.');
+    if (!file && !poFile) return setError('Select a signed or approved PR or PO PDF first.');
     const version = ++previewVersionRef.current;
     setLoading(true);
     setError('');
     try {
       validatePairedPoPdf(poFile);
-      const data = await submitSignedRequisitionPdf(file, {
+      let data;
+      if (file) data = await submitSignedRequisitionPdf(file, {
         preview_only: 'true',
         expected_pr_number: expectedPrNumber,
         attach_only: expectedPrNumber ? 'true' : undefined,
         po_file: poFile || undefined,
+        originating_pr_id: requisitionId || undefined,
       });
+      else {
+        const body = new FormData();
+        body.append('file', poFile);
+        if (requisitionId) body.append('pr_id', requisitionId);
+        const response = await apiClient.post('/procurement/po-documents/preview_signed_pdf/', body, {
+          headers: { 'Content-Type': 'multipart/form-data' }, timeout: 180000, suppressErrorToast: true, silentTimeout: true,
+        });
+        data = { po_preview: response.data, preview_only: true };
+      }
       if (version !== previewVersionRef.current) return;
       if (poFile && !data.po_preview?.extracted_data) throw new Error('The PO PDF could not be previewed. Both selected files are retained; retry Preview OCR.');
       const extracted = data.extracted_data || {};
@@ -226,22 +272,24 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
         vp_name: approvers.vp || '',
       });
       setPoEdits(editablePoFields(data.po_preview));
+      setSelectedPrId(!file && canLinkPurchaseOrder ? String(data.po_preview?.extracted_data?.pr_id || '') : '');
       const poDetection = data.po_preview?.approval_evidence || {};
       setPoEvidence({ ...emptyPoEvidence(), approvedByName: poDetection.approved_by_name || '', approvedByTitle: poDetection.approved_by_title || '', approvedDate: poDetection.approved_date || '' });
     } catch (requestError) {
-      if (version === previewVersionRef.current) setError(errorMessage(requestError, 'The approved PR PDF could not be previewed.'));
+      if (version === previewVersionRef.current) setError(!file && (requestError.response || requestError.code || requestError.originalError) ? importErrorMessage(requestError) : errorMessage(requestError, 'The selected PDFs could not be previewed.'));
     } finally {
       setLoading(false);
     }
   };
 
   const reviewedNumber = String(edits.pr_number || '').trim().toUpperCase();
-  const numberNeedsCheck = !reviewedNumber || !recordCheck || typeof recordCheck.exists !== 'boolean' || reviewedNumber !== recordCheck.number;
+  const numberNeedsCheck = Boolean(file && (!reviewedNumber || !recordCheck || typeof recordCheck.exists !== 'boolean' || reviewedNumber !== recordCheck.number));
   const sourceNumber = String(preview?.extracted_data?.pr_number || preview?.pr_number || '').trim().toUpperCase();
-  const attachmentNumber = expectedPrNumber || (!numberNeedsCheck && recordCheck?.exists ? reviewedNumber : '');
+  const boundPrNumber = expectedPrNumber || preview?.bound_pr_number || '';
+  const attachmentNumber = file ? boundPrNumber || (!numberNeedsCheck && recordCheck?.exists ? reviewedNumber : '') : '';
   const expectedMismatch = Boolean(attachmentNumber && (sourceNumber !== attachmentNumber.trim().toUpperCase() || preview?.document_comparison?.identity_matched === false));
-  const createNew = !expectedPrNumber && !numberNeedsCheck && recordCheck.exists === false;
-  const missingBoundRecord = Boolean(expectedPrNumber && recordCheck?.exists === false);
+  const createNew = Boolean(file && !boundPrNumber && !numberNeedsCheck && recordCheck?.exists === false);
+  const missingBoundRecord = Boolean(file && boundPrNumber && recordCheck?.exists === false);
 
   const checkReviewedNumber = async () => {
     if (!reviewedNumber) return setError('Enter the PR number shown on the PDF.');
@@ -283,13 +331,36 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
         Object.entries(manualSignatures).filter(([, verified]) => verified),
       );
       const poReviewedFields = Object.fromEntries(PO_REVIEW_FIELDS.filter(([key]) => key !== 'entered_amount').map(([key, , type]) => [key, type === 'date' ? poEdits[key] || null : poEdits[key] ?? '']));
+      VENDOR_REVIEW_FIELDS.forEach(key => {
+        if (poEdits[key] !== undefined) poReviewedFields[key] = key === 'vendor_id' ? poEdits[key] || null : poEdits[key] || '';
+      });
       if (poFile && poEdits.vat_basis !== 'unconfirmed') {
         poReviewedFields.vat_basis = poEdits.vat_basis;
         poReviewedFields.entered_amount = poEdits.entered_amount;
       }
+      if (!file) {
+        const body = new FormData();
+        body.append('file', poFile);
+        body.append('reviewed_fields', JSON.stringify(poReviewedFields));
+        const linkedPrId = requisitionId || selectedPrId;
+        if (linkedPrId) body.append('pr_id', linkedPrId);
+        Object.entries({ signature_verified: String(poEvidence.signatureVerified), stamp_verified: String(poEvidence.stampVerified), approved_by_name: poEvidence.approvedByName.trim(), approved_by_title: poEvidence.approvedByTitle.trim(), approved_date: poEvidence.approvedDate }).forEach(([key, value]) => body.append(key, value));
+        const { data } = await apiClient.post('/procurement/po-documents/import_signed_pdf/', body, {
+          headers: { 'Content-Type': 'multipart/form-data' }, timeout: 180000, suppressErrorToast: true, silentTimeout: true,
+        });
+        if (!data.purchase_order_id || (linkedPrId && (
+          String(data.pr_id) !== String(linkedPrId) || data.po_link?.manual_link_required !== false
+          || !['linked', 'already_linked'].includes(data.po_link?.status)
+          || String(data.po_link?.po_id) !== String(data.purchase_order_id)
+        ))) throw new Error('The saved PO and its link could not be confirmed. Your PDF and reviewed details are retained. Check the register before retrying.');
+        setResult({ ...data, purchase_order: data });
+        onImported?.(data);
+        return;
+      }
       const data = await submitSignedRequisitionPdf(file, {
         po_file: poFile || undefined,
         po_reviewed_fields: poFile ? JSON.stringify(poReviewedFields) : undefined,
+        originating_pr_id: requisitionId || undefined,
         po_signature_verified: poFile ? String(poEvidence.signatureVerified) : undefined,
         po_stamp_verified: poFile ? String(poEvidence.stampVerified) : undefined,
         po_approved_by_name: poFile ? poEvidence.approvedByName.trim() : undefined,
@@ -321,7 +392,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       setResult(data);
       onImported?.(data);
     } catch (requestError) {
-      setError(errorMessage(requestError, 'The reviewed PR data could not be saved.'));
+      setError(!file && (requestError.response || requestError.code || requestError.originalError) ? importErrorMessage(requestError) : errorMessage(requestError, 'The reviewed document details could not be saved.'));
     } finally {
       setLoading(false);
     }
@@ -345,11 +416,12 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   return createPortal(
     <div className="fixed inset-0 z-[70] overflow-y-auto">
       <div className="flex min-h-screen items-center justify-center px-4 py-8">
-        <button type="button" aria-label="Close approved PR import" className="fixed inset-0 bg-black/50" onClick={close} />
+        <button type="button" aria-label="Close document upload" className="fixed inset-0 bg-black/50" onClick={close} />
         <div role="dialog" aria-modal="true" aria-labelledby="approved-pr-import-title" className="relative w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
           <div className="flex items-start justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 text-white">
             <div>
-              <h2 id="approved-pr-import-title" className="text-lg font-bold">{attachmentNumber ? 'Attach signed PR PDF' : 'Import Approved PR PDF'}</h2>
+              <h2 id="approved-pr-import-title" className="text-lg font-bold">Upload PR, PO and Vendor</h2>
+              <p className="mt-1 text-sm text-indigo-100">Upload your PDFs, review document and vendor details, then save everything here.</p>
             </div>
             <button type="button" aria-label="Close import dialog" onClick={close} disabled={loading}><XMarkIcon className="h-6 w-6" /></button>
           </div>
@@ -360,10 +432,11 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                 Attach to <strong>{attachmentNumber}</strong>. Existing recommendation values will be kept.
               </div>
             )}
+            {requisitionId && !file && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">The purchase order will be attached to the purchase recommendation you opened.</p>}
 
             {!result && (
-              <div className={`grid gap-3 ${canUploadPurchaseOrder ? 'md:grid-cols-2' : ''}`}>
-              <div className="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-5">
+              <div className={`grid gap-3 ${canImportRequisition && canUploadPurchaseOrder ? 'md:grid-cols-2' : ''}`}>
+              {canImportRequisition && <div className="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-5">
                 <input ref={inputRef} aria-label="Select signed or approved PR PDF" type="file" accept=".pdf,application/pdf" disabled={loading} className="hidden" onChange={(event) => chooseFile(event.target.files?.[0])} />
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -374,7 +447,8 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                     <ArrowUpTrayIcon className="mr-1.5 inline h-4 w-4" /> Choose PDF
                   </button>
                 </div>
-              </div>
+                {file && <button type="button" disabled={loading} onClick={() => { if (inputRef.current) inputRef.current.value = ''; chooseFile(null); }} className="mt-2 text-xs font-semibold text-indigo-700 underline">Remove PR PDF</button>}
+              </div>}
               {canUploadPurchaseOrder && <div className="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-5">
                 <input ref={poInputRef} aria-label="Select signed or approved PO PDF" type="file" accept=".pdf,application/pdf" disabled={loading} className="hidden" onChange={event => chooseFile(event.target.files?.[0], 'po')} />
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -388,7 +462,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
 
             {error && <div role="alert" className="flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><ExclamationTriangleIcon className="h-5 w-5 flex-none" />{error}</div>}
 
-            {preview && !result && <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900" role="status">
+            {file && preview && !result && <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900" role="status">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">{expectedMismatch ? 'PR number does not match this recommendation' : missingBoundRecord ? 'The original recommendation is no longer available' : numberNeedsCheck ? 'Check the corrected PR number' : attachmentNumber ? 'Attach the signed PDF' : recordCheck?.exists ? 'Update existing recommendation' : 'Create a recommendation from this PDF'}</p>
@@ -398,19 +472,21 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
               </div>
             </div>}
 
-            {preview && !result && (
+            {(file || poFile) && !result && (
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
-                <div className="min-w-0 space-y-4">
-                  <section aria-label="PR source document" className="overflow-hidden rounded-xl border border-gray-300 bg-gray-100">
+                <div className="min-w-0 space-y-4 lg:sticky lg:top-0 lg:max-h-[70vh] lg:self-start lg:overflow-y-auto">
+                  {file && <section aria-label="PR source document" className="overflow-hidden rounded-xl border border-gray-300 bg-gray-100">
                     <h3 className="border-b border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">PR source PDF</h3>
                     {fileUrl && <iframe src={`${fileUrl}#toolbar=0&navpanes=0`} title="Approved PR source PDF" className={`${poFile ? 'h-[42vh] min-h-[340px]' : 'h-[74vh] min-h-[680px]'} w-full`} />}
-                  </section>
+                  </section>}
                   {poFile && <section aria-label="PO source document" className="overflow-hidden rounded-xl border border-gray-300 bg-gray-100">
                     <h3 className="border-b border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">PO source PDF</h3>
-                    {poFileUrl && <iframe src={`${poFileUrl}#toolbar=0&navpanes=0`} title="Approved PO source PDF" className="h-[42vh] min-h-[340px] w-full" />}
+                    {poFileUrl && <iframe src={`${poFileUrl}#toolbar=0&navpanes=0`} title="Approved PO source PDF" className={`${file ? 'h-[42vh] min-h-[340px]' : 'h-[70vh] min-h-[460px]'} w-full`} />}
                   </section>}
                 </div>
                 <div className="space-y-4">
+                  {!preview && <p className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">Select Preview OCR to fill the details from your PDFs. Review and correct them on this page before saving.</p>}
+                  {file && preview && <>
                   {attachmentNumber && <label className="block text-xs font-semibold text-gray-700">PR Number<input aria-label="PR Number" readOnly value={sourceNumber} className="mt-1 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm" /></label>}
                   {comparisonIssues.length > 0 && <section aria-label="Differences between recommendation and PDF" className="rounded-lg border border-amber-300 bg-amber-50 p-3">
                     <h3 className="text-sm font-semibold text-amber-900">Review differences</h3>
@@ -514,10 +590,11 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                       {detection.approval_date_evidence?.review_required && !edits.approval_date && <p className="text-xs text-red-700 sm:col-span-2">Enter the approval date shown in the PDF.</p>}
                     </div>
                   </div>}
-                  {poFile && preview.po_preview && <section aria-label="Review purchase order PDF" className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/30 p-4">
-                    <div><h3 className="text-sm font-semibold text-gray-800">Review the purchase order</h3><p className="mt-1 text-xs text-gray-600">Save PR and PO creates or attaches both records and links them together. The supplier is matched or registered from the reviewed PO details.</p></div>
+                  </>}
+                  {poFile && preview?.po_preview && <section aria-label="Review purchase order PDF" className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/30 p-4">
+                    <div><h3 className="text-sm font-semibold text-gray-800">Purchase order details</h3><p className="mt-1 text-xs text-gray-600">{file ? 'Save PR and PO saves both documents and links their records.' : 'Save PO saves the reviewed order, its original PDF and vendor details.'}</p></div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {PO_REVIEW_FIELDS.map(([key, label, type]) => <label key={key} className={`text-xs font-semibold text-gray-700 ${type === 'textarea' ? 'sm:col-span-2' : ''}`}>
+                      {PO_REVIEW_FIELDS.filter(([key]) => key !== 'vendor_name').map(([key, label, type]) => <label key={key} className={`text-xs font-semibold text-gray-700 ${type === 'textarea' ? 'sm:col-span-2' : ''}`}>
                         {label}
                         {type === 'textarea' ? <textarea aria-label={label} value={poEdits[key] ?? ''} disabled={loading} onChange={event => setPoEdits(current => ({ ...current, [key]: event.target.value }))} rows={3} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" />
                           : type === 'select' ? <select aria-label={label} value={poEdits[key] ?? ''} disabled={loading} onChange={event => setPoEdits(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"><option value="">Select currency</option>{[...new Set(['AED', 'USD', 'EUR', 'GBP', poEdits.currency].filter(Boolean))].map(currency => <option key={currency} value={currency}>{currency}</option>)}</select>
@@ -525,13 +602,20 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                       </label>)}
                       <label className="text-xs font-semibold text-gray-700 sm:col-span-2">PO VAT price basis<select aria-label="PO VAT price basis" value={poEdits.vat_basis || 'unconfirmed'} disabled={loading} onChange={event => setPoEdits(current => ({ ...current, vat_basis: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"><option value="unconfirmed">Keep captured PO amounts</option>{PROCUREMENT_VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
                     </div>
+                    {!file && !requisitionId && canLinkPurchaseOrder && <section aria-label="Link purchase recommendation" className="space-y-2 border-t border-indigo-200 pt-3">
+                      <label className="block text-xs font-semibold text-gray-700">Search recommendations<input value={prSearch} disabled={loading} onChange={event => setPrSearch(event.target.value)} placeholder="Type PR number or description" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" /></label>
+                      <label className="block text-xs font-semibold text-gray-700">Purchase recommendation<select value={selectedPrId} disabled={loading} onChange={event => setSelectedPrId(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"><option value="">Match from PDF when available</option>{selectedPrId && !prOptions.some(pr => String(pr.id) === selectedPrId) && <option value={selectedPrId}>{preview.po_preview.extracted_data?.pr_number || 'Selected recommendation'}</option>}{prOptions.map(pr => <option key={pr.id} value={pr.id}>{pr.pr_number}{pr.product_service ? ` - ${pr.product_service}` : ''}</option>)}</select></label>
+                      {prLoading && <p role="status" className="text-xs text-gray-600">Loading recommendations...</p>}
+                      {prSearchError && <p role="alert" className="text-xs text-amber-800">{prSearchError} <button type="button" onClick={() => setPrSearchRetry(value => value + 1)} className="underline">Retry recommendations</button></p>}
+                    </section>}
+                    <ProcurementImportVendorReview fields={poEdits} disabled={loading} onChange={changes => setPoEdits(current => ({ ...current, ...changes }))} />
                     <fieldset className="space-y-3 border-t border-indigo-200 pt-3" disabled={loading}>
                       <legend className="px-1 text-sm font-semibold text-gray-800">PO approval evidence</legend>
                       <p className="text-xs text-gray-600">Confirm these only after checking the PO PDF. PR signatures do not confirm PO approval.</p>
                       <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={poEvidence.signatureVerified} onChange={event => setPoEvidence(current => ({ ...current, signatureVerified: event.target.checked }))} />PO approval signature is visible</label>
                       <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={poEvidence.stampVerified} onChange={event => setPoEvidence(current => ({ ...current, stampVerified: event.target.checked }))} />PO company stamp is visible</label>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="text-xs font-semibold text-gray-700">PO Approver name<input list="approved-pr-active-employees" value={poEvidence.approvedByName} onChange={event => setPoEvidence(current => ({ ...current, approvedByName: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" /></label>
+                        <ProcurementApprovalEmployeeSearch label="PO Approver name" value={poEvidence.approvedByName} disabled={loading} onChange={(value, clearTitle) => setPoEvidence(current => ({ ...current, approvedByName: value, ...(clearTitle ? { approvedByTitle: '' } : {}) }))} onSelect={employee => setPoEvidence(current => ({ ...current, approvedByName: employee.name, approvedByTitle: employee.position || '' }))} />
                         <label className="text-xs font-semibold text-gray-700">PO Approval date<input type="date" value={poEvidence.approvedDate} onChange={event => setPoEvidence(current => ({ ...current, approvedDate: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" /></label>
                         <label className="text-xs font-semibold text-gray-700 sm:col-span-2">PO Approver title<input value={poEvidence.approvedByTitle} onChange={event => setPoEvidence(current => ({ ...current, approvedByTitle: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal" /></label>
                       </div>
@@ -545,14 +629,15 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
             {result && (
               <div className="space-y-4">
                 {result.financial_values_preserved && !attachmentNumber && <p className="text-sm text-gray-600">Existing financial values were kept. Confirm the VAT treatment in Edit before changing them.</p>}
-                <div className="flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                {file && <div className="flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                   <CheckCircleIcon className="h-5 w-5 flex-none" />
                   <div><strong>{result.pr_number}</strong>{attachmentNumber ? ' has the signed PDF attached' : ` was ${result.created ? 'created from the reviewed PDF' : 'updated from the reviewed PDF'}`}. {attachmentNumber ? 'Existing recommendation values were kept.' : 'The source PDF is attached.'} Status: <strong>{result.status}</strong>.</div>
-                </div>
-                {poFile && result.purchase_order_id && <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">Purchase order <strong>{result.purchase_order?.po_number || result.po_link?.po_number}</strong> is saved and linked to this PR. Both source PDFs are attached.</p>}
+                </div>}
+                {poFile && result.purchase_order_id && <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">Purchase order <strong>{result.purchase_order?.po_number || result.po_link?.po_number}</strong> is saved{result.purchase_order?.pr_id ? ' and linked to the purchase recommendation' : ''}. {file ? 'Both source PDFs are attached.' : 'The original PO PDF is attached.'}</p>}
+                {result.purchase_order?.vendor_registered && <p className="text-sm text-emerald-800">The supplier was registered in the vendor table from the reviewed document details.</p>}
                 {result.purchase_order?.operation === 'attached' && <p className="text-sm text-gray-700">The signed PO PDF was attached to the existing purchase order. Existing PO values were kept.</p>}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {!documentSignedOff && Object.entries(ROLE_LABELS).filter(([key]) => !detection.signatures?.[key]).map(([key, label]) => (
+                  {file && !documentSignedOff && Object.entries(ROLE_LABELS).filter(([key]) => !detection.signatures?.[key]).map(([key, label]) => (
                     <div key={key} className="rounded-lg border border-gray-200 p-3">
                       <p className="text-xs text-gray-500">{label}</p>
                       <p className="mt-1 text-sm font-semibold text-gray-800">{detection.approver_names?.[key] || 'Name not detected'}</p>
@@ -560,7 +645,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                     </div>
                   ))}
                 </div>
-                <PurchaseOrderLinkReview requisitionId={result.requisition_id || result.pr_id} poLink={result.po_link} canLink={canLinkPurchaseOrder} canUpload={canUploadPurchaseOrder} onOpen={close} onLinked={poLink => { const updated = { ...result, po_link: poLink }; setResult(updated); onImported?.(updated); }} />
+                {file && <PurchaseOrderLinkReview requisitionId={result.requisition_id || result.pr_id} poLink={result.po_link} canLink={canLinkPurchaseOrder} canUpload={canUploadPurchaseOrder} canImportRequisition={canImportRequisition} onOpen={close} onLinked={poLink => { const updated = { ...result, po_link: poLink }; setResult(updated); onImported?.(updated); }} />}
               </div>
             )}
 
@@ -577,8 +662,8 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={close} disabled={loading} className="h-9 rounded-lg border border-gray-300 bg-white px-4 text-xs font-semibold text-gray-700">{result ? 'Close' : 'Cancel'}</button>
-              {!preview && !result && <button type="button" onClick={capturePreview} disabled={!file || loading} className="h-9 rounded-lg bg-indigo-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{loading ? 'Running OCR...' : 'Preview OCR'}</button>}
-              {preview && !result && <button type="button" onClick={saveReviewed} disabled={loading || numberNeedsCheck || expectedMismatch || missingBoundRecord || Boolean(poFile && !preview.po_preview?.extracted_data)} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{loading ? 'Validating and saving...' : poFile ? 'Save PR and PO' : attachmentNumber ? 'Attach signed PDF' : createNew ? 'Create reviewed PR' : 'Save Reviewed PR'}</button>}
+              {!preview && !result && <button type="button" onClick={capturePreview} disabled={(!file && !poFile) || loading} className="h-9 rounded-lg bg-indigo-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{loading ? 'Running OCR...' : 'Preview OCR'}</button>}
+              {preview && !result && <button type="button" onClick={saveReviewed} disabled={loading || numberNeedsCheck || expectedMismatch || missingBoundRecord || Boolean(poFile && !preview.po_preview?.extracted_data)} className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white disabled:opacity-50">{loading ? 'Validating and saving...' : poFile ? file ? 'Save PR and PO' : 'Save PO' : attachmentNumber ? 'Attach signed PDF' : createNew ? 'Create reviewed PR' : 'Save Reviewed PR'}</button>}
             </div>
           </div>
         </div>
@@ -594,6 +679,9 @@ PurchaseRequisitionPdfImport.propTypes = {
   expectedPrNumber: PropTypes.string,
   canLinkPurchaseOrder: PropTypes.bool,
   canUploadPurchaseOrder: PropTypes.bool,
+  primaryDocument: PropTypes.oneOf(['pr', 'po']),
+  requisitionId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  canImportRequisition: PropTypes.bool,
 };
 
 export default PurchaseRequisitionPdfImport;

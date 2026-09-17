@@ -5,7 +5,7 @@ import { recommendationNumber } from '../fixtures/purchase-recommendations.fixtu
 
 test.setTimeout(150000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
-const modal = page => page.getByRole('dialog', { name: /Import Approved PR PDF|Attach signed PR PDF/ })
+const modal = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor' })
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
 const signed = {
   documentSignedOff: true,

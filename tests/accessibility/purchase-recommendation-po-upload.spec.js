@@ -9,13 +9,15 @@ const prId = orderFormRecommendation.id
 const prNumber = orderFormRecommendation.pr_number
 const documentId = 'signed-order-from-recommendation'
 const dialog = page => page.getByRole('dialog', { name: 'Link purchase order', exact: true })
-const importer = page => page.getByRole('dialog', { name: 'Import Signed Purchase Order PDF', exact: true })
+const importer = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor', exact: true })
 const reply = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 const source = { name: 'Signed-original-PO.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n% SYNTHETIC SIGNED PO SOURCE\n%%EOF') }
 const po = () => ({ id: orderFormId, po_number: orderFormNumber, status: 'completed', vendor_name: 'Alfanar Engineering LLC', currency: 'USD', total_amount: '6489.00', title: 'Original signed scope', items: [], created_at: '2026-09-15T08:00:00Z' })
 const poLink = () => ({ status: 'linked', po_id: orderFormId, po_number: orderFormNumber, manual_link_required: false })
 const actor = actions => ({ ...formActor, is_superuser: false, modules: [{ code: 'procurement_requisitions' }, { code: 'procurement_orders' }], module_actions: { procurement_requisitions: ['read'], procurement_orders: actions } })
 const isolated = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
+const fieldValue = (body, name) => body.split(`name="${name}"`)[1]?.split('\r\n\r\n').slice(1).join('\r\n\r\n').split('\r\n--')[0]
+const reviewedFields = body => JSON.parse(fieldValue(body, 'reviewed_fields') || '{}')
 
 async function open(page, options = {}) {
   const state = await orderFormHarness(page, { path: '/procurement/requisitions', actor: options.actor, recommendation: { po_applicable: true } })
@@ -42,12 +44,6 @@ async function open(page, options = {}) {
     const body = route.request().postData()
     state.imports.push(body)
     if (state.importError) return reply(route, { error: state.importError }, 409)
-    if (state.pending) {
-      const fields = { po_number: orderFormNumber, pr_id: prId, pr_number: prNumber, originating_pr_id: prId, summary: 'Signed original awaiting supplier review', vendor_name: 'Original supplier', vendor_id: state.pendingVendorId || null, currency: 'USD', total_amount: '6489', gross_amount: '6489', tax_amount: '0', po_date: '2026-07-01', reconciliation_required: true }
-      state.documentRecords[documentId] = { id: documentId, original_filename: source.name, confirmed_po: null, extraction_status: 'completed', extracted_data: fields }
-      state.uploadedContent[`/api/v1/procurement/po-documents/${documentId}/content/`] = { body: source.buffer }
-      return reply(route, { ...fields, document_id: documentId, purchase_order_id: null, operation: 'uploaded', success: true })
-    }
     markLinked()
     return reply(route, { document_id: documentId, purchase_order_id: orderFormId, pr_id: prId, pr_number: prNumber, po_number: orderFormNumber, po_link: poLink(), operation: 'created', success: true })
   })
@@ -65,11 +61,17 @@ async function open(page, options = {}) {
   return state
 }
 
-async function upload(page) {
+async function reviewUpload(page) {
   await dialog(page).getByRole('button', { name: 'Upload Signed PO', exact: true }).click()
   await expect(importer(page)).toBeVisible()
   await expect(dialog(page)).not.toBeVisible()
-  await importer(page).locator('input[type="file"]').setInputFiles(source)
+  await importer(page).getByLabel('Select signed or approved PO PDF', { exact: true }).setInputFiles(source)
+  await importer(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
+  await expect(importer(page).getByLabel('PO Number', { exact: true })).toHaveValue(orderFormNumber)
+}
+
+async function upload(page) {
+  await reviewUpload(page)
   await importer(page).getByRole('button', { name: 'Save PO', exact: true }).click()
 }
 
@@ -110,23 +112,22 @@ test('signed PDF import carries the original PR and refreshes its saved PO link'
 
 test('Save PO persists reviewed fields and links the originating PR in one request', async ({ page }) => {
   const state = await open(page)
-  state.pending = true
-  await upload(page)
-  const editor = page.getByRole('dialog', { name: 'Edit Signed Purchase Order PDF', exact: true })
+  await reviewUpload(page)
+  const editor = importer(page)
   await expect(editor).toBeVisible()
   expect(state.orders).toEqual([])
-  await expect(editor).toContainText(prNumber)
   await expect(editor.getByRole('button', { name: 'Save changes', exact: true })).toHaveCount(0)
   await expect(editor.getByRole('button', { name: 'Complete reconciliation', exact: true })).toHaveCount(0)
-  await editor.getByLabel('Description', { exact: true }).fill('Reviewed scope from the signed source')
-  await editor.getByRole('combobox', { name: 'Matched supplier', exact: true }).selectOption('21')
+  await editor.getByLabel('PO Description', { exact: true }).fill('Reviewed scope from the signed source')
   await editor.getByRole('button', { name: 'Save PO', exact: true }).click()
   await expect(editor).not.toBeVisible()
   await expect(page.getByRole('link', { name: `Open purchase order ${orderFormNumber}`, exact: true })).toBeVisible()
-  expect(state.reconciliations).toHaveLength(1)
-  expect(state.reconciliations[0]).toMatchObject({ vendor_id: '21', pr_id: prId, reviewed_fields: { summary: 'Reviewed scope from the signed source', pr_id: prId } })
+  expect(state.reconciliations).toEqual([])
   expect(state.requests.filter(request => request.method === 'PATCH')).toEqual([])
   expect(state.imports).toHaveLength(1)
+  expect(reviewedFields(state.imports[0])).toMatchObject({ summary: 'Reviewed scope from the signed source' })
+  expect(fieldValue(state.imports[0], 'pr_id')).toBe(prId)
+  await expect(page.getByRole('dialog', { name: 'Edit Signed Purchase Order PDF', exact: true })).toHaveCount(0)
   expect(state.orders).toHaveLength(1)
   expect(state.links).toEqual([])
   isolated(state)
@@ -152,7 +153,7 @@ test('cancelling signed import returns to the same searchable link dialog withou
   const state = await open(page)
   await dialog(page).getByRole('button', { name: 'Upload Signed PO', exact: true }).click()
   await expect(importer(page)).toBeVisible()
-  await importer(page).getByRole('button', { name: 'Close PDF dialog', exact: true }).click()
+  await importer(page).getByRole('button', { name: 'Close import dialog', exact: true }).click()
   await expect(dialog(page)).toBeVisible()
   await expect(dialog(page)).toContainText(prNumber)
   expect(state.imports).toEqual([])
@@ -219,48 +220,41 @@ test('failed PO lookup shows a retry and typing another query clears stale selec
 
 test('Save PO registers an extracted supplier without requiring a master dropdown selection', async ({ page }) => {
   const state = await open(page)
-  state.pending = true
-  state.pendingVendorId = '21'
-  await upload(page)
-  const editor = page.getByRole('dialog', { name: 'Edit Signed Purchase Order PDF', exact: true })
+  await reviewUpload(page)
+  const editor = importer(page)
   await expect(editor).toBeVisible()
-  await expect(editor.getByRole('combobox', { name: 'Matched supplier', exact: true })).toHaveValue('21')
-  await editor.getByLabel('Supplier name', { exact: true }).fill('New source supplier LLC')
-  await expect(editor.getByRole('combobox', { name: 'Matched supplier', exact: true })).toHaveValue('')
+  await editor.getByLabel('PO Supplier name', { exact: true }).fill('New source supplier LLC')
   await editor.getByRole('button', { name: 'Save PO', exact: true }).click()
   await expect(editor).not.toBeVisible()
-  expect(state.reconciliations).toHaveLength(1)
-  expect(state.reconciliations[0]).toMatchObject({ pr_id: prId, reviewed_fields: { vendor_name: 'New source supplier LLC' } })
-  expect(state.reconciliations[0].vendor_id ?? null).toBeNull()
+  expect(state.reconciliations).toEqual([])
   expect(state.requests.filter(request => ['PATCH', 'PUT'].includes(request.method))).toEqual([])
   expect(state.imports).toHaveLength(1)
+  expect(reviewedFields(state.imports[0])).toMatchObject({ vendor_name: 'New source supplier LLC' })
+  expect(fieldValue(state.imports[0], 'pr_id')).toBe(prId)
   expect(state.links).toEqual([])
   expect(state.orders).toHaveLength(1)
   isolated(state)
 })
 
-test('failed combined save retains reviewed details and retries without another upload or partial save', async ({ page }) => {
+test('failed combined save retains reviewed details and retries the same source without a partial document save', async ({ page }) => {
   const state = await open(page)
-  state.pending = true
-  await upload(page)
-  const editor = page.getByRole('dialog', { name: 'Edit Signed Purchase Order PDF', exact: true })
+  await reviewUpload(page)
+  const editor = importer(page)
   await expect(editor).toBeVisible()
-  await editor.getByLabel('Description', { exact: true }).fill('Reviewed description retained on failure')
-  state.reconcileError = { detail: 'Vendor registration permission is required. Select an existing supplier instead.' }
-  state.reconcileErrorStatus = 403
+  await editor.getByLabel('PO Description', { exact: true }).fill('Reviewed description retained on failure')
+  state.importError = 'The linked PR changed while these documents were being reviewed.'
   await editor.getByRole('button', { name: 'Save PO', exact: true }).click()
-  await expect(editor.getByRole('alert')).toContainText(state.reconcileError.detail)
-  await expect(editor.getByLabel('Description', { exact: true })).toHaveValue('Reviewed description retained on failure')
-  expect(state.documentRecords[documentId].extracted_data.summary).toBe('Signed original awaiting supplier review')
+  await expect(editor.getByRole('alert')).toContainText(state.importError)
+  await expect(editor.getByLabel('PO Description', { exact: true })).toHaveValue('Reviewed description retained on failure')
+  expect(state.documentRecords).toEqual({})
   expect(state.orders).toEqual([])
   expect(state.requests.filter(request => request.method === 'PATCH')).toEqual([])
-  state.reconcileError = null
-  await editor.getByRole('combobox', { name: 'Matched supplier', exact: true }).selectOption('21')
+  state.importError = null
   await editor.getByRole('button', { name: 'Save PO', exact: true }).click()
   await expect(editor).not.toBeVisible()
-  expect(state.reconciliations).toHaveLength(2)
-  expect(state.reconciliations[1]).toMatchObject({ vendor_id: '21', reviewed_fields: { summary: 'Reviewed description retained on failure' } })
-  expect(state.imports).toHaveLength(1)
+  expect(state.reconciliations).toEqual([])
+  expect(state.imports).toHaveLength(2)
+  expect(reviewedFields(state.imports[1])).toMatchObject({ summary: 'Reviewed description retained on failure' })
   expect(state.orders).toHaveLength(1)
   isolated(state)
 })

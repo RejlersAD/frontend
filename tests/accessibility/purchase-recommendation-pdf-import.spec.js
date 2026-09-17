@@ -8,7 +8,7 @@ import {
 test.setTimeout(150000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
 
-const dialog = page => page.getByRole('dialog', { name: /Import Approved PR PDF|Attach signed PR PDF/ })
+const dialog = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor' })
 const digest = async path => createHash('sha256').update(await readFile(path)).digest('hex')
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
 const loaded = async page => {

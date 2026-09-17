@@ -2,7 +2,7 @@ import React, { useEffect, useId, useState } from 'react';
 import PropTypes from 'prop-types';
 import apiClient from '../../services/api.service';
 
-export default function ProcurementApprovalEmployeeSearch({ value, disabled, onChange, onSelect }) {
+export default function ProcurementApprovalEmployeeSearch({ value, disabled, onChange, onSelect, label = 'Approved by' }) {
   const inputId = useId();
   const listId = `${inputId}-employees`;
   const [open, setOpen] = useState(false);
@@ -64,10 +64,10 @@ export default function ProcurementApprovalEmployeeSearch({ value, disabled, onC
   return <div className="relative min-w-0" onBlur={event => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
   }}>
-    <label htmlFor={inputId} className="text-xs font-semibold text-gray-600">Approved by</label>
+    <label htmlFor={inputId} className="text-xs font-semibold text-gray-600">{label}</label>
     <input id={inputId} type="text" role="combobox" aria-autocomplete="list" aria-expanded={open && options.length > 0}
       aria-controls={open && options.length ? listId : undefined} aria-activedescendant={open && options[activeIndex] ? `${listId}-${activeIndex}` : undefined}
-      autoComplete="off" value={value} disabled={disabled} onFocus={() => setOpen(true)} onKeyDown={keyDown}
+      autoComplete="off" value={value} disabled={disabled} onFocus={() => setOpen(true)} onClick={() => setOpen(true)} onKeyDown={keyDown}
       onChange={event => {
         onChange(event.target.value, Boolean(selection));
         setSelection(null);
@@ -96,4 +96,5 @@ ProcurementApprovalEmployeeSearch.propTypes = {
   disabled: PropTypes.bool,
   onChange: PropTypes.func.isRequired,
   onSelect: PropTypes.func.isRequired,
+  label: PropTypes.string,
 };

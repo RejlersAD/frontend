@@ -34,6 +34,7 @@ function multipartFields(request) {
 export async function pairedImportHarness(page, options = {}) {
   const state = await recommendationPdfImportHarness(page, options)
   Object.assign(state, { pairPreviews: [], pairSaves: [], pairWrites: [], pairError: null, pairPreviewError: null, incompleteResponse: false })
+  await page.route('**/api/v1/procurement/po-documents/approval-employees/**', route => reply(route, { results: [] }))
   await page.route('**/api/v1/procurement/requisitions/import-signed-pdf/', async route => {
     const body = multipartFields(route.request())
     if (!body.po_file) return route.fallback()
@@ -45,6 +46,7 @@ export async function pairedImportHarness(page, options = {}) {
     const poFields = {
       po_number: pairedPoNumber, vendor_name: 'PO Supplier Ltd', summary: 'PO scope from its own PDF',
       currency: 'USD', total_amount: '9000.00', tax_amount: '0.00', gross_amount: '9000.00', po_date: '2026-09-12', expected_delivery: '2026-10-20',
+      vendor_license_no: 'SOURCE-001', seller_email: 'source@example.test', seller_contact_person: 'Source seller contact', seller_phone: '', seller_address: 'Source supplier address', seller_country: '',
     }
     const approval = { signatures: { pm: true, moe: true, mop: true, vp: true }, approver_names: { pm: 'PR Signature Only' }, approval_date: '2026-09-15' }
     if (body.preview_only === 'true') {

@@ -25,7 +25,7 @@ test('reviews the provided PR scan with its extracted values without saving a re
   // are covered separately with existing recommendation fixtures.
   state.props.requisitions = state.props.requisitions.filter(row => row.pr_number !== extracted.pr_number)
   const initialCount = state.props.requisitions.length
-  const dialog = page.getByRole('dialog', { name: 'Import Approved PR PDF' })
+  const dialog = page.getByRole('dialog', { name: 'Upload PR, PO and Vendor' })
   const inputFor = label => dialog.getByLabel(new RegExp(`^${label}(?:\\s*\\*)?$`))
   await expect(page.getByRole('heading', { name: 'Purchase Recommendations', exact: true })).toBeVisible({ timeout: 100000 })
   await expect(page.getByRole('complementary', { name: 'Recommendation details' })).toHaveAttribute('aria-busy', 'false')

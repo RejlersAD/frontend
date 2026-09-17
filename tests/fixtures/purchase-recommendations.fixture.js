@@ -103,7 +103,7 @@ export async function recommendationHarness(page, options = {}) {
       if (approvalRecord && method === 'GET') {
         const content = state.approvalRecords[approvalRecord[1]]
         if (content?.wait) await content.wait
-        return route.fulfill({ status: content?.status || (content?.body ? 200 : 404), contentType: content?.contentType || 'application/pdf', body: content?.body || '' })
+        return route.fulfill({ status: content?.status || (content?.body ? 200 : 404), contentType: content?.contentType || 'application/pdf', headers: content?.headers || {}, body: content?.body || '' })
       }
       const uploadedList = path.match(/^\/api\/v1\/procurement\/orders\/([^/]+)\/uploaded-documents\/$/)
       if (uploadedList && method === 'GET') {

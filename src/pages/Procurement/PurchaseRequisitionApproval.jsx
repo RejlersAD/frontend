@@ -68,7 +68,7 @@ const REJECTION_CONFIG = {
   }
 };
 
-const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete, pageMode = false }) => {
+const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete, onSourceUploaded, pageMode = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -372,6 +372,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const isSuperAdmin = currentUserData?.is_superuser === true || currentUserRoles.some(
     (role) => role?.code === 'super_admin' || role?.name === 'Super Administrator'
   );
+  const moduleActions = currentUser?.module_actions ?? currentUserData?.module_actions;
+  const canUploadSource = module => moduleActions
+    ? ['create', 'update'].every(action => (moduleActions[module] || []).includes(action))
+    : isSuperAdmin;
 
   const canActOnCurrentStage = canDecideProcurement(requisition, currentUser);
 
@@ -925,7 +929,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                     </button>}
                   </div>}
                   <div id={`${previewId}-panel`} className="pr-approval-preview-viewport" role="tabpanel" aria-labelledby={previewTabs.length > 1 ? `${previewId}-${activePreview}-tab` : undefined} aria-label={previewTabs.length === 1 ? 'PR Preview' : undefined} tabIndex={0}>
-                    {showingCombined ? <ApprovalRecordPdfPreview requisitionId={requisition.id} requisitionNumber={requisition.pr_number} linkedOrderId={requisition.linked_po_id} sourceVersion={`${requisition.updated_at || ''}:${requisition.price_remarks_data?.signed_document_verification?.document_sha256 || ''}`} /> : showingOriginal ? (showingLinkedPo
+                    {showingCombined ? <ApprovalRecordPdfPreview requisitionId={requisition.id} requisitionNumber={requisition.pr_number} linkedOrderId={requisition.linked_po_id} sourceVersion={`${requisition.updated_at || ''}:${requisition.price_remarks_data?.signed_document_verification?.document_sha256 || ''}`}
+                      canUploadPurchaseOrder={canUploadSource('procurement_orders')} canImportRequisition={canUploadSource('procurement_requisitions')}
+                      onSourceUploaded={onSourceUploaded} onShowOriginalPr={() => setActivePreview('pr')} /> : showingOriginal ? (showingLinkedPo
                       ? <UploadedPurchaseOrderPreview key={requisition.linked_po_id} orderId={requisition.linked_po_id} sourceState={linkedPoSources} />
                       : <RecommendationSourceDocument key={requisition.id} requisitionId={requisition.id} attachments={requisition.attachments} documentSha={requisition.price_remarks_data?.signed_document_verification?.document_sha256} embedded />) : <>
                     {activePdfLoading && <div className="text-center text-white"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-500 border-t-white" /><p className="mt-3 text-sm">{showingLinkedPo ? 'Loading linked Purchase Order…' : 'Creating PDF from the live preview…'}</p></div>}
@@ -1192,6 +1198,7 @@ PurchaseRequisitionApproval.propTypes = {
   requisition: PropTypes.object,
   currentUser: PropTypes.object,
   onApprovalComplete: PropTypes.func,
+  onSourceUploaded: PropTypes.func,
   pageMode: PropTypes.bool,
 };
 

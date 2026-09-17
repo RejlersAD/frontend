@@ -124,14 +124,23 @@ export async function orderFormHarness(page, options = {}) {
       const filename = body?.file?.filename
       const preview = state.poPdfPreviews[filename] || { data: { approval_evidence: {} } }
       if (preview.wait) await preview.wait
-      await reply(route, preview.error || preview.data, preview.error ? preview.status || 503 : 200)
+      await reply(route, preview.error || { success: true, preview_only: true, mapping_issues: [], reconciliation_issues: [], ...preview.data,
+        extracted_data: { po_number: orderFormNumber, vendor_name: 'Original supplier', summary: 'Original signed scope', currency: 'USD', total_amount: '6489', gross_amount: '6489', tax_amount: '0', po_date: '2026-07-01', seller_contact_person: 'Original Contact', seller_email: 'original@example.test', seller_phone: '+971500001111', seller_address: 'Abu Dhabi', seller_country: 'United Arab Emirates', vendor_license_no: 'ORIGINAL-LICENSE', ...(preview.data?.extracted_data || {}) },
+      }, preview.error ? preview.status || 503 : 200)
       state.poPdfPreviewDelivered[filename] = true
       return
     }
     if (path === '/api/v1/procurement/po-documents/import_signed_pdf/' && method === 'POST') {
-      if (state.poPdfImportError) return reply(route, state.poPdfImportError, 400)
+      if (state.poPdfImportError) return reply(route, state.poPdfImportError, state.poPdfImportErrorStatus || 400)
       state.acceptedWrites.push({ path, method, body })
-      return reply(route, state.poPdfImportResult || { document_id: 'synthetic-signed-po-document', po_number: 'PO-PDF-TEST-001', reconciliation_required: true, operation: 'created' })
+      const saved = state.poPdfImportResult || { success: true, document_id: 'synthetic-signed-po-document', purchase_order_id: orderFormId, po_number: orderFormNumber, operation: 'created', pr_id: body.pr_id || null,
+        ...(body.pr_id ? { po_link: { status: 'linked', po_id: orderFormId, po_number: orderFormNumber, manual_link_required: false } } : {}),
+      }
+      if (saved.purchase_order_id) {
+        state.record = { ...body.reviewed_fields, id: saved.purchase_order_id, po_number: saved.po_number, status: 'draft', title: body.reviewed_fields?.summary, vendor_name: body.reviewed_fields?.vendor_name, currency: body.reviewed_fields?.currency, total_amount: body.reviewed_fields?.entered_amount || '6489', pr_reference: saved.pr_id, items: [] }
+        state.orders = [state.record]
+      }
+      return reply(route, saved)
     }
     if (path === `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/` && method === 'GET') {
       if (state.uploadedDocumentsDeferred) await state.uploadedDocumentsDeferred

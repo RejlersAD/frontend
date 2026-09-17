@@ -7,12 +7,12 @@ test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } });
 const previewPath = '/api/v1/procurement/po-documents/preview_signed_pdf/';
 const employeePath = '/api/v1/procurement/po-documents/approval-employees/';
 const importPath = '/api/v1/procurement/po-documents/import_signed_pdf/';
-const modal = page => page.getByRole('dialog', { name: 'Import Signed Purchase Order PDF', exact: true });
-const approver = page => modal(page).getByRole('combobox', { name: 'Approved by', exact: true });
-const position = page => modal(page).getByRole('textbox', { name: 'Approver title', exact: true });
-const approvalDate = page => modal(page).getByLabel('Approval date', { exact: true });
-const signature = page => modal(page).getByRole('checkbox', { name: 'Approval signature is visible', exact: true });
-const stamp = page => modal(page).getByRole('checkbox', { name: 'Company stamp is visible', exact: true });
+const modal = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor', exact: true });
+const approver = page => modal(page).getByRole('combobox', { name: 'PO Approver name', exact: true });
+const position = page => modal(page).getByRole('textbox', { name: 'PO Approver title', exact: true });
+const approvalDate = page => modal(page).getByLabel('PO Approval date', { exact: true });
+const signature = page => modal(page).getByRole('checkbox', { name: 'PO approval signature is visible', exact: true });
+const stamp = page => modal(page).getByRole('checkbox', { name: 'PO company stamp is visible', exact: true });
 const employeeSearch = approver;
 const requestBodies = (state, path) => state.requests.filter(request => request.path === path).map(request => request.body);
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
@@ -34,7 +34,10 @@ const candidates = (name = 'Extracted source reviewer', title = 'Extracted Opera
     signature_verified: false, stamp_verified: false,
   },
 });
-const choose = (page, filename) => modal(page).locator('input[type="file"]').setInputFiles(pdfFile(filename));
+const choose = async (page, filename) => {
+  await modal(page).getByLabel('Select signed or approved PO PDF', { exact: true }).setInputFiles(pdfFile(filename));
+  await modal(page).getByRole('button', { name: 'Preview OCR', exact: true }).click();
+};
 const open = async (page, prepare) => {
   const state = await orderFormHarness(page, { path: '/procurement/orders', prepare });
   await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible();
@@ -57,10 +60,9 @@ test('PDF evidence prefill remains unconfirmed and HR selection fills the name a
   await expect(approvalDate(page)).toHaveValue('2026-01-29');
   await expect(signature(page)).not.toBeChecked();
   await expect(stamp(page)).not.toBeChecked();
-  await expect(modal(page)).toContainText('Signature candidate found on page 1. Confirm it in the PDF.');
-  await expect(modal(page)).toContainText('Company stamp candidate found on page 1. Confirm it in the PDF.');
+  await expect(modal(page)).toContainText('Confirm these only after checking the PO PDF.');
   await expect(modal(page).locator('iframe')).toHaveAttribute('src', /^blob:/);
-  for (const target of [modal(page).getByRole('heading', { name: 'Import Signed Purchase Order PDF', exact: true }), modal(page).locator('iframe')]) {
+  for (const target of [modal(page).getByRole('heading', { name: 'Upload PR, PO and Vendor', exact: true }), modal(page).locator('iframe')]) {
     const bounds = await target.boundingBox();
     const hitBelongsToDialog = await modal(page).evaluate((element, point) => element.contains(document.elementFromPoint(point.x, point.y)), { x: bounds.x + 3, y: bounds.y + Math.min(12, bounds.height / 2) });
     expect(hitBelongsToDialog, 'The dialog header and PDF left edge must remain above the application sidebar').toBe(true);
@@ -73,6 +75,9 @@ test('PDF evidence prefill remains unconfirmed and HR selection fills the name a
   await employeeSearch(page).press('Enter');
   await expect(approver(page)).toHaveValue('Nora Hassan');
   await expect(position(page)).toHaveValue('Vice President Operations');
+  await employeeSearch(page).click();
+  await expect(modal(page).getByRole('listbox', { name: 'HR Master employees', exact: true }).getByRole('option', { name: /Nora Hassan/ })).toBeVisible();
+  await employeeSearch(page).press('Escape');
   await expect(signature(page)).not.toBeChecked();
   await expect(stamp(page)).not.toBeChecked();
   expect(state.requests.some(request => request.path === employeePath && request.query.search === 'Nora')).toBe(true);
@@ -86,17 +91,17 @@ test('PDF evidence prefill remains unconfirmed and HR selection fills the name a
   await approver(page).scrollIntoViewIfNeeded();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   await page.screenshot({ path: '../artifacts/po-pdf-approval-evidence-mobile.png' });
-  await modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true }).click();
+  await modal(page).getByRole('button', { name: 'Save PO', exact: true }).click();
   await expect.poll(() => state.acceptedWrites.length).toBe(1);
   expect(state.acceptedWrites[0]).toMatchObject({ path: importPath, method: 'POST', body: {
     file: { filename: 'source-po.pdf' }, approved_by_name: 'Nora Hassan', approved_by_title: 'Vice President Operations',
     approved_date: '2026-01-29', signature_verified: true, stamp_verified: true,
   } });
-  await expect(modal(page)).toContainText('Signed PO PDF saved');
+  await expect(page.getByRole('dialog', { name: 'Edit Signed Purchase Order PDF', exact: true })).toHaveCount(0);
   isolated(state);
 });
 
-test('extraction and HR lookup errors leave manual name, position and approval import available', async ({ page }) => {
+test('failed preview retains its source for retry and HR lookup errors leave manual approval fields available', async ({ page }) => {
   const state = await open(page, state => {
     state.poPdfPreviews['unreadable-po.pdf'] = { error: { detail: 'Synthetic approval extraction unavailable.' } };
     state.approvalEmployeesError = { detail: 'Synthetic HR lookup unavailable.' };
@@ -104,6 +109,11 @@ test('extraction and HR lookup errors leave manual name, position and approval i
   await choose(page, 'unreadable-po.pdf');
   await expect.poll(() => state.poPdfPreviewDelivered['unreadable-po.pdf']).toBe(true);
   await expect(modal(page).getByRole('alert')).toContainText('Synthetic approval extraction unavailable.');
+  await expect(modal(page)).toContainText('unreadable-po.pdf');
+  noPersistentWrite(state);
+  state.poPdfPreviews['unreadable-po.pdf'] = { data: candidates() };
+  await modal(page).getByRole('button', { name: 'Preview OCR', exact: true }).click();
+  await expect(approver(page)).toHaveValue('Extracted source reviewer');
   await employeeSearch(page).fill('Manual');
   await expect.poll(() => state.requests.some(request => request.path === employeePath && request.query.search === 'Manual')).toBe(true);
   await expect(modal(page)).toContainText('HR employee search is unavailable. You can enter the name and position manually.');
@@ -121,7 +131,7 @@ test('extraction and HR lookup errors leave manual name, position and approval i
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   await page.screenshot({ path: '../artifacts/po-pdf-approval-evidence-mobile.png' });
   noPersistentWrite(state);
-  await modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true }).click();
+  await modal(page).getByRole('button', { name: 'Save PO', exact: true }).click();
   await expect.poll(() => state.acceptedWrites.length).toBe(1);
   expect(state.acceptedWrites[0].body).toMatchObject({
     approved_by_name: 'Manually confirmed source approver', approved_by_title: 'Engineering Manager',
@@ -130,14 +140,14 @@ test('extraction and HR lookup errors leave manual name, position and approval i
   isolated(state);
 });
 
-test('replacing a PDF resets prior confirmations and ignores the older extraction response', async ({ page }) => {
-  const old = deferred();
+test('replacing a reviewed PDF resets prior confirmations and source mappings before the next preview', async ({ page }) => {
   const state = await open(page, state => {
-    state.poPdfPreviews['old-po.pdf'] = { data: candidates('Old extracted approver', 'Old position', '2025-01-01'), wait: old.promise };
+    state.poPdfPreviews['old-po.pdf'] = { data: candidates('Old extracted approver', 'Old position', '2025-01-01') };
     state.poPdfPreviews['current-po.pdf'] = { data: candidates('Current source approver', 'Current position', '2026-02-10') };
   });
   await choose(page, 'old-po.pdf');
   await expect.poll(() => requestBodies(state, previewPath).length).toBe(1);
+  await expect(approver(page)).toHaveValue('Old extracted approver');
   await approver(page).fill('Confirmed old approver');
   await position(page).fill('Confirmed old position');
   await approvalDate(page).fill('2025-01-01');
@@ -149,13 +159,8 @@ test('replacing a PDF resets prior confirmations and ignores the older extractio
   await expect(approvalDate(page)).toHaveValue('2026-02-10');
   await expect(signature(page)).not.toBeChecked();
   await expect(stamp(page)).not.toBeChecked();
-  old.resolve();
-  await expect.poll(() => state.poPdfPreviewDelivered['old-po.pdf']).toBe(true);
-  await expect(approver(page)).toHaveValue('Current source approver');
-  await expect(position(page)).toHaveValue('Current position');
-  await expect(approvalDate(page)).toHaveValue('2026-02-10');
   noPersistentWrite(state);
-  await modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true }).click();
+  await modal(page).getByRole('button', { name: 'Save PO', exact: true }).click();
   await expect.poll(() => state.acceptedWrites.length).toBe(1);
   expect(state.acceptedWrites[0].body).toMatchObject({ file: { filename: 'current-po.pdf' },
     approved_by_name: 'Current source approver', approved_by_title: 'Current position', approved_date: '2026-02-10',
@@ -164,18 +169,21 @@ test('replacing a PDF resets prior confirmations and ignores the older extractio
   isolated(state);
 });
 
-test('late extraction of the selected PDF does not overwrite fields already edited manually', async ({ page }) => {
+test('a delayed preview cannot save a document before its fields are reviewed', async ({ page }) => {
   const pending = deferred();
   const state = await open(page, state => {
     state.poPdfPreviews['slow-po.pdf'] = { data: candidates(), wait: pending.promise };
   });
   await choose(page, 'slow-po.pdf');
   await expect.poll(() => requestBodies(state, previewPath).length).toBe(1);
+  await expect(modal(page).getByRole('button', { name: 'Save PO', exact: true })).toHaveCount(0);
+  noPersistentWrite(state);
+  pending.resolve();
+  await expect.poll(() => state.poPdfPreviewDelivered['slow-po.pdf']).toBe(true);
+  await expect(approver(page)).toHaveValue('Extracted source reviewer');
   await approver(page).fill('Manually reviewed approver');
   await position(page).fill('Manually reviewed position');
   await approvalDate(page).fill('2026-03-05');
-  pending.resolve();
-  await expect.poll(() => state.poPdfPreviewDelivered['slow-po.pdf']).toBe(true);
   await expect(approver(page)).toHaveValue('Manually reviewed approver');
   await expect(position(page)).toHaveValue('Manually reviewed position');
   await expect(approvalDate(page)).toHaveValue('2026-03-05');
@@ -266,7 +274,7 @@ for (const failure of failedImports) {
     };
     const importUrl = `**${importPath}`;
     await page.route(importUrl, failImport);
-    await modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true }).click();
+    await modal(page).getByRole('button', { name: 'Save PO', exact: true }).click();
     await expect(modal(page).getByRole('alert')).toContainText(failure.expected);
     await expect(page.locator('.Toastify__toast--error')).toHaveCount(0);
     await expect(modal(page).locator('iframe')).toHaveAttribute('src', previewUrl);
@@ -274,12 +282,12 @@ for (const failure of failedImports) {
     await expect(approvalDate(page)).toHaveValue('2026-01-29');
     await expect(signature(page)).toBeChecked();
     await expect(stamp(page)).toBeChecked();
-    await expect(modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true })).toBeEnabled();
+    await expect(modal(page).getByRole('button', { name: 'Save PO', exact: true })).toBeEnabled();
     noPersistentWrite(state);
     if (pendingRoute) await pendingRoute.abort();
     await page.unroute(importUrl, failImport);
-    await modal(page).getByRole('button', { name: 'Upload signed PDF', exact: true }).click();
-    await expect(modal(page)).toContainText('Signed PO PDF saved');
+    await modal(page).getByRole('button', { name: 'Save PO', exact: true }).click();
+    await expect.poll(() => state.acceptedWrites.length).toBe(1);
     expect(state.acceptedWrites).toHaveLength(1);
     expect(state.acceptedWrites[0].body).toMatchObject({
       file: { filename: 'retry-po.pdf' }, approved_by_name: 'Extracted source reviewer',
