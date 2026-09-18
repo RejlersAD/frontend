@@ -6,6 +6,9 @@
 }
 
 .project-performance-workspace .pp-header.pp-planning-header { padding: 12px 20px 0; }
+.project-performance-workspace .pp-schedule-project-row { gap: 14px; margin: 0; }
+.project-performance-workspace .pp-schedule-project-row .pp-planning-project-picker { flex: 1; min-width: 200px; }
+.project-performance-workspace .pp-schedule-project-row .pp-planning-manager { margin-left: auto; }
 .project-performance-workspace .pp-planning-header .pp-breadcrumb { margin-bottom: 3px; font-size: 12px; line-height: 19px; }
 .project-performance-workspace .pp-planning-title-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .project-performance-workspace .pp-planning-title { display: flex; align-items: center; gap: 13px; min-width: 0; }
@@ -34,6 +37,7 @@
 .project-performance-workspace .sp-planning > .sp-toolbar { min-height: 50px; padding: 8px; border-color: #dbe5f1; }
 .project-performance-workspace .sp-planning .sp-mode-switch button { min-width: 96px; min-height: 29px; padding: 4px 17px; font-size: 12px; }
 .project-performance-workspace .sp-planning > .sp-planner-container { padding: 0; }
+.project-performance-workspace .pp-master-manager-note { display: none; }
 
 @media (max-width: 900px) {
   .project-performance-workspace .pp-planning-project-row { align-items: flex-start; flex-direction: column; gap: 2px; }
@@ -52,4 +56,61 @@
   .project-performance-workspace .pp-planning-actions .pp-icon-button { width: 34px; }
   .project-performance-workspace .sp-planning .sp-mode-switch { width: auto; }
   .project-performance-workspace .sp-planning .sp-mode-switch button { min-width: 95px; }
+}
+
+/* The master canvas owns its save action and command bar. Other project views
+   and the independent inputs/approval dialogs retain their existing layout. */
+.project-performance-workspace:has(.schedule-canvas) .pp-header.pp-planning-header {
+  padding: 3px 12px;
+  border-bottom: 1px solid #dce6f3;
+}
+.project-performance-workspace:has(.schedule-canvas) .pp-schedule-project-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0;
+}
+.project-performance-workspace:has(.schedule-canvas) .pp-schedule-project-row .pp-planning-project-picker {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+.project-performance-workspace:has(.schedule-canvas) .pp-planning-manager,
+.project-performance-workspace:has(.schedule-canvas) .pp-planning-save { display: none; }
+.project-performance-workspace:has(.schedule-canvas) .pp-planning-header .pp-tabs button {
+  min-height: 32px;
+  padding-top: 4px;
+  padding-bottom: 5px;
+}
+.project-performance-workspace:has(.schedule-canvas) .pp-planning-actions { gap: 0; }
+.project-performance-workspace:has(.schedule-canvas) .pp-planning-actions .pp-icon-button {
+  width: 30px;
+  min-height: 30px;
+  padding: 3px;
+}
+.project-performance-workspace:has(.schedule-canvas) .pp-master-manager-note {
+  display: block;
+  margin: 0;
+  padding: 7px 12px;
+  border-bottom: 1px solid #e1e8f1;
+  color: #49638d;
+  font-size: 11px;
+}
+#application-content:has(.schedule-canvas) > main.main-content { padding-top: 0; }
+#application-content:has(.schedule-canvas) > .app-footer .app-footer-inner { padding-top: 2px; padding-bottom: 2px; }
+#application-content:has(.schedule-canvas) > .app-footer .app-footer-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  column-gap: 14px;
+  row-gap: 0;
+}
+#application-content:has(.schedule-canvas) > .app-footer .app-footer-copyright,
+#application-content:has(.schedule-canvas) > .app-footer .app-footer-links a { font-size: 11px; line-height: 19px; }
+#application-content:has(.schedule-canvas) > .app-footer .app-footer-links { margin-top: 0; }
+#application-content:has(.schedule-canvas) > .app-footer .app-footer-links > * + * { margin-left: 14px; }
+
+@media (max-width: 560px) {
+  .project-performance-workspace:has(.schedule-canvas) .pp-header.pp-planning-header { padding-right: 8px; padding-left: 8px; }
 }

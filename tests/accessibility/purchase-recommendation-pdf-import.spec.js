@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import {
   recommendationPdfImportHarness, syntheticApprovedPdf, missingImportNumber, existingImportNumber,
 } from '../fixtures/purchase-recommendation-pdf-import.fixture'
+import { syntheticApprovedPdf as readableApprovedPdf } from '../fixtures/purchase-recommendation-paired-import.fixture'
 
 test.setTimeout(150000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
@@ -15,12 +16,12 @@ const loaded = async page => {
   await expect(page.getByRole('heading', { name: 'Purchase Recommendations', exact: true })).toBeVisible({ timeout: 100000 })
   await expect(page.getByRole('complementary', { name: 'Recommendation details' })).toHaveAttribute('aria-busy', 'false')
 }
-async function openPreview(page) {
+async function openPreview(page, pdf = syntheticApprovedPdf) {
   await page.getByRole('button', { name: 'More recommendation actions', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click()
   await expect(dialog(page)).toBeVisible()
-  await dialog(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(syntheticApprovedPdf)
-  await expect(dialog(page)).toContainText(syntheticApprovedPdf.name)
+  await dialog(page).getByLabel('Select signed or approved PR PDF', { exact: true }).setInputFiles(pdf)
+  await expect(dialog(page)).toContainText(pdf.name)
   await dialog(page).getByRole('button', { name: 'Preview OCR', exact: true }).click()
   await expect(dialog(page).getByLabel('PR Number', { exact: false })).toBeVisible()
 }
@@ -97,8 +98,12 @@ test('corrected PR numbers are checked before saving and a rejected save preserv
   const correctedNumber = 'RAD-PRJ-PR-9012_2026'
   const state = await recommendationPdfImportHarness(page)
   await loaded(page)
-  await openPreview(page)
-  const pdfUrl = await dialog(page).locator('iframe[title="Approved PR source PDF"]').getAttribute('src')
+  // Use a valid synthetic PDF to verify the rendered source survives a retry.
+  await openPreview(page, { ...syntheticApprovedPdf, buffer: readableApprovedPdf.buffer })
+  const sourceLink = dialog(page).getByRole('link', { name: 'Open PR PDF in new tab', exact: true })
+  await expect(sourceLink).toHaveAttribute('href', /^blob:/)
+  await expect(dialog(page).getByRole('img', { name: 'Approved PR source PDF, page 1 of 1', exact: true })).toBeVisible({ timeout: 30000 })
+  const pdfUrl = await sourceLink.getAttribute('href')
   await dialog(page).getByLabel('PR Number', { exact: false }).fill(correctedNumber)
   await expect(dialog(page)).toContainText('Check the corrected PR number')
   await expect(dialog(page).getByRole('button', { name: 'Save Reviewed PR', exact: true })).toBeDisabled()
@@ -109,7 +114,7 @@ test('corrected PR numbers are checked before saving and a rejected save preserv
   await dialog(page).getByRole('button', { name: 'Create reviewed PR', exact: true }).click()
   await expect(dialog(page).getByRole('alert')).toContainText('The recommendation changed')
   await expect(dialog(page).getByLabel('PR Number', { exact: false })).toHaveValue(correctedNumber)
-  await expect(dialog(page).locator('iframe[title="Approved PR source PDF"]')).toHaveAttribute('src', pdfUrl)
+  await expect(sourceLink).toHaveAttribute('href', pdfUrl)
   await expect(dialog(page).getByRole('button', { name: 'Create reviewed PR', exact: true })).toBeEnabled()
   expect(state.saveRequests[0].create_new).toBe('true')
   state.saveError = null

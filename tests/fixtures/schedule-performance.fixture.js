@@ -117,7 +117,7 @@ export async function scheduleHarness(page, options = {}) {
   await page.clock.setFixedTime(new Date(fixedNow))
   await page.route(url => url.pathname === '/projects', route => route.fulfill({
     contentType: 'text/html',
-    body: '<!doctype html><html lang="en"><head><title>Schedule Performance interaction test</title><script type="module">import RefreshRuntime from "/@react-refresh"; RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$ = () => {}; window.$RefreshSig$ = () => (type) => type; window.__vite_plugin_react_preamble_installed__ = true;</script></head><body><div id="performance-test"></div><script type="module" src="/tests/fixtures/project-performance-harness.jsx"></script></body></html>',
+    body: `<!doctype html><html lang="en"><head><title>Schedule Performance interaction test</title><script type="module">import RefreshRuntime from "/@react-refresh"; RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$ = () => {}; window.$RefreshSig$ = () => (type) => type; window.__vite_plugin_react_preamble_installed__ = true;</script></head><body><div id="performance-test"></div><script type="module" src="${options.harnessPath || '/tests/fixtures/project-performance-harness.jsx'}"></script></body></html>`,
   }))
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url())

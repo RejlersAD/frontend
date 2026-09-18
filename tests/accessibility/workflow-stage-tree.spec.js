@@ -1,0 +1,133 @@
+import { test, expect } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import { workflowStageHarness, workflowStages } from '../fixtures/workflow-stage-tree.fixture.js'
+import { scheduleWorkspace, scheduleMenu, closeScheduleMenu, scheduleCritical } from '../fixtures/schedule-controls.js'
+
+test.setTimeout(60000)
+const grid = page => scheduleWorkspace(page).getByRole('region', { name: 'Schedule activities and Gantt', exact: true })
+const parent = (page, id) => grid(page).locator(`[data-deliverable-id="${id}"]`)
+const children = (page, id) => grid(page).locator(`[data-parent-deliverable-id="${id}"]`)
+const cell = (row, name) => row.locator(`[data-column="${name}"]`)
+const clean = state => {
+  expect(state.pageErrors).toEqual([])
+  expect(state.unknownWrites).toEqual([])
+  expect(state.unknown).toEqual([])
+  expect(state.writes).toEqual([])
+}
+async function open(page) {
+  await page.setViewportSize({ width: 1740, height: 900 })
+  const state = await workflowStageHarness(page)
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(15)
+  return state
+}
+async function aligned(page) {
+  const rows = await grid(page).locator('.p6-row[data-row-id]').evaluateAll(elements => elements.map(element => {
+    const table = element.querySelector('.p6-table-row').getBoundingClientRect()
+    const track = element.querySelector('.p6-timeline-row').getBoundingClientRect()
+    return { tableY: table.y, trackY: track.y, tableHeight: table.height, trackHeight: track.height }
+  }))
+  for (const row of rows) {
+    expect(row.tableY).toBeCloseTo(row.trackY, 1)
+    expect(row.tableHeight).toBe(16)
+    expect(row.tableHeight).toBe(row.trackHeight)
+  }
+}
+
+test('five real stage tasks nest under distinct exact-source deliverables without duplicating existing WBS parents', async ({ page }) => {
+  const state = await open(page)
+  await expect(grid(page).locator('[data-row-kind="deliverable"]')).toHaveCount(3)
+  await expect(parent(page, 'source-a')).toHaveAttribute('data-row-id', 'deliverable:source-a')
+  await expect(parent(page, 'source-b')).toHaveAttribute('data-row-id', 'deliverable:source-b')
+  await expect(parent(page, 'source-c')).toHaveAttribute('data-row-id', '203')
+  await expect(grid(page).locator('[data-row-id="deliverable:source-c"]')).toHaveCount(0)
+  for (const id of ['source-a', 'source-b', 'source-c']) {
+    await expect(parent(page, id).locator('.p6-stage-count')).toHaveText('5 tasks')
+    await expect(children(page, id)).toHaveCount(5)
+    expect(await children(page, id).evaluateAll(rows => rows.map(row => row.dataset.rowId))).toEqual(workflowStages.map(([code]) => `${id}-${code}`))
+    // The final milestone occurs on day9. Summing the four2-day tasks would
+    // incorrectly give8 instead of the actual working-calendar span.
+    await expect(cell(parent(page, id), 'duration')).toHaveText('9 d')
+    const final = grid(page).locator(`[data-row-id="${id}-FINAL_ISSUE"]`)
+    await expect(cell(final, 'duration')).toHaveText('0 d')
+    await expect(final.locator('.p6-milestone')).toHaveCount(1)
+  }
+  await expect(cell(parent(page, 'source-a'), 'activity-name')).toContainText('HVAC ADEQUEACY REPORT')
+  await expect(cell(parent(page, 'source-b'), 'activity-name')).toContainText('HVAC ADEQUEACY REPORT')
+  await expect(grid(page).locator('[data-row-id="source-a-IFR"] .p6-activity-bar')).toHaveAttribute('data-phase', 'ifr')
+  await expect(grid(page).locator('[data-row-id="source-a-COMPANY_REVIEW"] .p6-activity-bar')).toHaveAttribute('data-phase', 'company_review')
+  await expect(grid(page).locator('[data-row-id="source-a-COMPANY_REVIEW"] .p6-workflow-label')).toHaveText('Company Review')
+  await expect(grid(page).locator('.p6-dependency-link')).toHaveCount(12)
+  expect(await grid(page).locator('.p6-heading .p6-table-row > [role="columnheader"]').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width))).toEqual([30, 120, 220, 72, 80, 80, 64])
+  await aligned(page)
+  const axe = await new AxeBuilder({ page }).include('.schedule-canvas').analyze()
+  expect(axe.violations.filter(violation => ['serious', 'critical'].includes(violation.impact))).toEqual([])
+  await page.screenshot({ path: '../artifacts/workflow-stage-tree.png', animations: 'disabled' })
+  clean(state)
+})
+
+test('deliverable collapse, source-code search, critical filter and flat activities preserve child links and row alignment', async ({ page }) => {
+  const state = await open(page)
+  await parent(page, 'source-a').getByRole('button', { name: 'Collapse FAR-0 HVAC ADEQUEACY REPORT', exact: true }).click()
+  await expect(children(page, 'source-a')).toHaveCount(0)
+  await expect(children(page, 'source-b')).toHaveCount(5)
+  await expect(grid(page).locator('.p6-dependency-link')).toHaveCount(8)
+  await aligned(page)
+  const search = scheduleWorkspace(page).getByRole('textbox', { name: 'Search schedule activities', exact: true })
+  await search.fill('FAR-6')
+  await expect(parent(page, 'source-a')).toHaveCount(0)
+  await expect(parent(page, 'source-b')).toHaveCount(1)
+  await expect(children(page, 'source-b')).toHaveCount(5)
+  await expect(grid(page).locator('.p6-dependency-link')).toHaveCount(4)
+  await aligned(page)
+  await search.clear()
+  await scheduleCritical(page, true)
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(1)
+  await expect(parent(page, 'source-a')).toHaveCount(1)
+  await expect(parent(page, 'source-b')).toHaveCount(0)
+  await scheduleCritical(page, false)
+  const menu = await scheduleMenu(page, 'Schedule filters')
+  await menu.getByRole('button', { name: 'All activities', exact: true }).click()
+  await closeScheduleMenu(page, 'Schedule filters')
+  await expect(grid(page).locator('[data-row-kind="deliverable"]')).toHaveCount(0)
+  await expect(grid(page).locator('[data-row-kind="wbs"]')).toHaveCount(0)
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(15)
+  await expect(grid(page).locator('.p6-dependency-link')).toHaveCount(12)
+  await aligned(page)
+  clean(state)
+})
+
+test('220 deliverables and 1100 linked stage tasks load, scroll, collapse and filter without losing row alignment', async ({ page }) => {
+  test.setTimeout(90000)
+  await page.setViewportSize({ width: 1740, height: 950 })
+  const state = await workflowStageHarness(page, { largeDataset: true })
+  await expect(grid(page).locator('[data-row-kind="deliverable"]')).toHaveCount(220, { timeout: 30000 })
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(1100)
+  await expect(grid(page).locator('.p6-dependency-link')).toHaveCount(880)
+  await expect(grid(page).locator('[data-row-id="source-001"]')).toHaveAttribute('data-row-kind', 'task')
+  await expect(parent(page, 'source-001')).toHaveAttribute('data-row-id', 'deliverable:source-001')
+  await expect(scheduleWorkspace(page).locator('.sc-footer')).toContainText('220 deliverables')
+  await expect(scheduleWorkspace(page).locator('.sc-footer')).toContainText('1100 activities')
+  await aligned(page)
+  const viewport = grid(page).getByRole('region', { name: 'Scroll project activities and dependencies', exact: true })
+  await viewport.evaluate(element => { element.scrollTop = element.scrollHeight })
+  expect(await viewport.evaluate(element => element.scrollTop)).toBeGreaterThan(10000)
+  await parent(page, 'source-220').locator('.p6-expand').click()
+  await expect(children(page, 'source-220')).toHaveCount(0)
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(1095)
+  await expect(grid(page).locator('.p6-dependency-link')).toHaveCount(876)
+  await parent(page, 'source-220').locator('.p6-expand').click()
+  await expect(children(page, 'source-220')).toHaveCount(5)
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(1100)
+  const search = scheduleWorkspace(page).getByRole('textbox', { name: 'Search schedule activities', exact: true })
+  await search.fill('DOC-117')
+  await expect(grid(page).locator('[data-row-kind="deliverable"]')).toHaveCount(1)
+  await expect(children(page, 'source-117')).toHaveCount(5)
+  await expect(grid(page).locator('.p6-dependency-link')).toHaveCount(4)
+  await aligned(page)
+  await search.clear()
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(1100)
+  await expect(grid(page).locator('.p6-dependency-link')).toHaveCount(880)
+  await viewport.evaluate(element => { element.scrollTop = 0 })
+  await page.screenshot({ path: '../artifacts/workflow-stage-tree-1100.png', animations: 'disabled' })
+  clean(state)
+})

@@ -43,6 +43,10 @@ const PO_REVIEW_FIELDS = [
   ['summary', 'PO Description', 'textarea'], ['currency', 'PO Currency', 'select'],
   ['entered_amount', 'PO Entered price', 'number'], ['po_date', 'PO Order date', 'date'],
   ['expected_delivery', 'PO Expected delivery', 'date'],
+  ['project_number', 'PO Project number', 'text'],
+  ['payment_terms', 'PO Payment terms', 'textarea'], ['payment_mode', 'PO Payment method', 'text'],
+  ['delivery_terms', 'PO Delivery terms', 'textarea'],
+  ['seller_reference', 'PO Seller reference', 'text'], ['quote_ref', 'PO Quote reference', 'text'],
 ];
 const VENDOR_REVIEW_FIELDS = ['vendor_id', 'vendor_license_no', 'seller_contact_person', 'seller_email', 'seller_phone', 'seller_address', 'seller_country'];
 const emptyPoEvidence = () => ({ signatureVerified: false, stampVerified: false, approvedByName: '', approvedByTitle: '', approvedDate: '' });

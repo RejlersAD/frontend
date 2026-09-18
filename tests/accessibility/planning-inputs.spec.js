@@ -37,8 +37,7 @@ async function setPhase(page, value) {
 }
 
 async function loaded(page) {
-  await expect(page.getByRole('heading', { name: 'Project Planning', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Planning', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.planning-design')).toBeVisible()
   await expect(input(page, 'Scope summary')).toBeVisible()
   await expect(save(page)).toBeEnabled()
   await expect(review(page)).toBeVisible()
@@ -169,10 +168,10 @@ test('Save draft persists scope, phase, exclusions, dates and effort while proje
   clean(state)
 })
 
-test('an empty project creates its planning workspace only on Save draft using the canonical enterprise project ID', async ({ page }) => {
+test('an empty project can upload immediately and viewing it does not create a workspace before Save draft', async ({ page }) => {
   const state = await planningInputsHarness(page, { prepare: current => current.missingPlanning.add(17) })
   await loaded(page)
-  await expect(page.getByRole('button', { name: 'Upload', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Upload', exact: true })).toBeEnabled()
   await expect(page.getByText('No reference documents uploaded yet.', { exact: true })).toBeVisible()
   await expect(review(page)).toContainText('Awaiting documents')
   await expect(review(page)).not.toContainText('Inputs reviewed')

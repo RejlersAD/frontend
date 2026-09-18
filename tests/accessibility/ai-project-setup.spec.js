@@ -55,12 +55,14 @@ async function setup(page, options = {}) {
     }
     return true
   } })
-  await expect(page.getByRole('heading', { name: planning ? 'Project Planning' : 'Project Performance', exact: true })).toBeVisible()
+  if (planning) await expect(page.getByRole('navigation', { name: 'Project work areas', exact: true })).toBeVisible()
+  else await expect(page.getByRole('heading', { name: 'Project Performance', exact: true })).toBeVisible()
   if (options.entry === 'legacy') {
     await page.locator('summary').filter({ hasText: 'More project actions' }).click()
     await page.getByRole('button', { name: 'New project', exact: true }).click()
     await page.getByRole('button', { name: 'Create with AI', exact: true }).click()
   } else {
+    if (planning) await page.locator('header.pp-header summary').filter({ hasText: 'More project actions' }).click()
     const action = page.locator('header.pp-header').getByRole('button', { name: 'Create project with AI', exact: true })
     await expect(action).toBeVisible()
     await expect(action).toBeInViewport()

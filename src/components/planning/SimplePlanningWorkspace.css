@@ -1,0 +1,37 @@
+.simple-planning-workspace { min-width: 0; color: #0b2053; font: 13px/1.5 "Segoe UI", Arial, sans-serif; }
+.simple-planning-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 280px; color: #536c96; }
+.simple-schedule-dialog { position: fixed; inset: 0; margin: auto; padding: 0; width: min(1320px, calc(100vw - 40px)); max-width: none; height: fit-content; max-height: calc(100dvh - 40px); border: 1px solid #d9e4f4; border-radius: 9px; background: #f6f9fd; color: #0b2053; box-shadow: 0 24px 80px #10294c44; font: 13px/1.5 "Segoe UI", Arial, sans-serif; }
+.simple-schedule-dialog[open] { display: flex; flex-direction: column; }
+.simple-schedule-dialog::backdrop { background: #10294c77; }
+.simple-schedule-dialog.is-compact { width: min(540px, calc(100vw - 32px)); }
+.simple-schedule-dialog > header { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 16px; padding: 17px 20px; background: #fff; border-bottom: 1px solid #dce6f3; }
+.simple-schedule-dialog > header h2 { margin: 0; font-size: 18px; font-weight: 650; }
+.simple-schedule-dialog > header button { border: 0; background: transparent; color: #294974; cursor: pointer; padding: 6px; }
+.simple-schedule-dialog .ssd-body { flex: 1; min-height: 0; overflow: auto; padding: 16px; overscroll-behavior: contain; }
+.simple-schedule-dialog :focus-visible { outline: 2px solid #0751ff; outline-offset: 2px; }
+.simple-schedule-dialog button:disabled { opacity: .5; cursor: not-allowed; }
+.ssd-error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; border: 1px solid #efc2bb; padding: 10px 12px; border-radius: 5px; background: #fff5f3; color: #982d22; }
+.ssd-error button { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.ssd-rebuild { padding: 14px; margin-bottom: 14px; border: 1px solid #edc36f; border-radius: 5px; background: #fff8e8; }
+.ssd-rebuild p { margin: 7px 0; }
+.ssd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.ssd-actions button, .ssd-error button { border: 1px solid #c5d6f2; border-radius: 5px; padding: 8px 12px; background: white; color: #064ddb; cursor: pointer; font: inherit; }
+.ssd-settings { display: flex; flex-direction: column; gap: 15px; }
+.ssd-settings label { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.ssd-settings select, .ssd-settings input:not([type=checkbox]) { width: 100%; border: 1px solid #cbd9ef; border-radius: 4px; padding: 9px; background: white; font: inherit; }
+.ssd-evidence .ssd-table { overflow: auto; margin-top: 14px; }
+.ssd-evidence table { width: 100%; border-collapse: collapse; background: white; }
+.ssd-evidence th, .ssd-evidence td { padding: 10px 12px; border: 1px solid #dce6f3; text-align: left; vertical-align: top; }
+.ssd-evidence th { background: #eef4fb; }
+.ssd-evidence td:first-child { min-width: 300px; }
+.ssd-evidence small { display: block; color: #60779b; }
+.ssd-evidence blockquote { white-space: pre-wrap; margin-top: 8px; max-width: 650px; }
+.planning-inputs-simple .pln-metrics, .planning-inputs-simple .pln-date-help { display: none; }
+.simple-schedule-dialog .sp-mode-switch { display: none; }
+.simple-schedule-dialog .planning-inputs .pln-bottom-bar { bottom: -16px; padding: 12px 0; }
+@media (max-width: 720px) {
+  .simple-schedule-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .simple-schedule-dialog .ssd-body { padding: 10px; }
+  .simple-schedule-dialog > header { padding: 12px; }
+  .planning-inputs-simple .pln-bottom-bar .pln-stage-actions { display: flex; }
+}

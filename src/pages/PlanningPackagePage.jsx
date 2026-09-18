@@ -581,22 +581,26 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     }
   };
 
-  const handleUpload = async (fileList) => {
-    if (!selectedProjectId || !fileList?.length) return;
+  const handleUpload = async (fileList, options = {}) => {
+    const projectId = options.projectId || selectedProjectId;
+    if (!projectId || !fileList?.length) return;
     setUploading(true);
     try {
       for (const file of Array.from(fileList)) {
         const form = new FormData();
-        form.append('project', selectedProjectId);
+        form.append('project', projectId);
         form.append('category', uploadCategory);
         form.append('file', file);
         await apiClient.post(PLANNING_ENDPOINTS.files, form);
       }
       setBanner({ type: 'success', message: 'Upload complete. Document parsing is queued; watch each file status for completion.' });
-      await loadFiles(selectedProjectId);
-      await loadEnterpriseContract(selectedProjectId);
+      await loadFiles(projectId);
+      await loadEnterpriseContract(projectId);
     } catch (err) {
-      setBanner({ type: 'error', message: 'Upload failed for one or more files.' });
+      const detail = err.response?.data;
+      const message = typeof detail === 'string' ? detail : Object.values(detail || {}).flat().filter(value => typeof value === 'string').join(' ');
+      setBanner({ type: 'error', message: message || 'Upload failed for one or more files. Please retry.' });
+      await loadFiles(projectId);
     } finally {
       setUploading(false);
     }
@@ -1659,6 +1663,11 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   const renderIntelligenceStep = () => {
     const isEditing = editingSection === 'intelligence';
     const data = isEditing ? draftIntelligence : intelligencePreview;
+    const registerBased = data?.deliverable_source === 'register';
+    const disciplineMeta = (code) => {
+      const meta = PLANNING_DISCIPLINE_META[code] || { ...DEFAULT_DISCIPLINE_META, label: code.replaceAll('_', ' ') };
+      return { ...meta, label: data?.disciplines?.[code]?.name || meta.label };
+    };
     return (
     <div className="pln-intelligence-preview bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-5">
       <div className="flex flex-wrap items-center gap-2">
@@ -1858,8 +1867,6 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                   .filter(([_, info]) => info.in_scope !== false)
                   .map(([disc, _]) => disc)
               );
-              const allDisciplines = Object.keys(PLANNING_DISCIPLINE_META);
-              
               const toggleDiscipline = (disc) => {
                 if (isEditing) {
                   setDraftIntelligence(prev => {
@@ -1915,7 +1922,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                 <>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {availableDisciplines.map(disc => {
-                      const meta = PLANNING_DISCIPLINE_META[disc] || { ...DEFAULT_DISCIPLINE_META, label: disc.replace('_', ' ') };
+                      const meta = disciplineMeta(disc);
                       const info = data.disciplines[disc];
                       const isChecked = info.in_scope !== false;
                       return (
@@ -1965,7 +1972,9 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-sm font-semibold text-slate-600">Deliverables</h3>
               <span className="text-sm text-slate-400">
-                Tick every deliverable to include in the schedule
+                {registerBased
+                  ? `${data.register_summary?.row_count ?? Object.values(data.disciplines || {}).reduce((count, item) => count + (item.deliverables || []).length, 0)} register deliverables`
+                  : 'Tick every deliverable to include in the schedule'}
               </span>
             </div>
             {(() => {
@@ -1978,7 +1987,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                     const aiDiscovered = (info.ai_discovered || []).includes(d);
                     const excluded = info.excluded_deliverables || [];
                     const isChecked = !excluded.includes(d);
-                    const meta = PLANNING_DISCIPLINE_META[disc] || { ...DEFAULT_DISCIPLINE_META, label: disc.replace('_', ' ') };
+                    const meta = disciplineMeta(disc);
                     
                     allDeliverables.push({
                       disc,
@@ -2100,7 +2109,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                                 <span className="text-xs font-semibold text-violet-600 bg-violet-50 border border-violet-100 rounded-full px-1.5 py-0.5">AI</span>
                               )}
                             </div>
-                            <span className={`block truncate ${item.isChecked ? 'text-slate-700' : 'text-slate-400'}`}>{item.name}</span>
+                            <span className={`block whitespace-normal break-words ${item.isChecked ? 'text-slate-700' : 'text-slate-400'}`}>{item.name}</span>
                           </div>
                         </label>
                       );
@@ -2130,7 +2139,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           <div className="border-t border-slate-200 pt-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
               {Object.entries(data.disciplines || {}).map(([disc, info]) => {
-                const meta = PLANNING_DISCIPLINE_META[disc] || { ...DEFAULT_DISCIPLINE_META, label: disc.replace('_', ' ') };
+                const meta = disciplineMeta(disc);
                 const total = info.deliverables.length;
                 const mentioned = info.mentioned_in_source.length;
                 const pct = total ? Math.round((mentioned / total) * 100) : 0;
@@ -2192,7 +2201,9 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                             )
                             : isEditing
                             ? <span className="flex items-center gap-2"><span className="text-blue-600">☑️</span><strong>Check/uncheck deliverables to include or exclude them from the schedule.</strong></span>
-                            : `Full deliverable checklist for ${meta.label} — items flagged as source-mentioned were detected in your uploaded documents; the rest fall back to the standard catalogue.`}
+                            : registerBased
+                              ? `Deliverables from the uploaded register for ${meta.label}. Titles and order match the source rows.`
+                              : `Full deliverable checklist for ${meta.label} — items flagged as source-mentioned were detected in your uploaded documents; the rest fall back to the standard catalogue.`}
                         </p>
                         {info.deliverables.length === 0 && isEditing && disciplineSelectionMode === 'manual' ? (
                           <div className="mb-3 p-4 bg-violet-50 border border-violet-200 rounded-lg text-center">
@@ -2459,7 +2470,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
             </div>
           </div>
 
-          <div>
+          {!registerBased && <div>
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-sm font-semibold text-slate-600">HSE Studies</h3>
               <span className="text-sm text-slate-400">
@@ -2544,7 +2555,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                 </>
               );
             })()}
-          </div>
+          </div>}
 
           {(data.notes || []).map((n, i) => (
             <p key={i} className="text-sm text-amber-700 italic bg-amber-50 rounded-lg px-3 py-2">⚠ {n}</p>

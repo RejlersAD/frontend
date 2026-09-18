@@ -118,11 +118,13 @@ export function workBreakdownRecord(record) {
 export async function planningInputsHarness(page, options = {}) {
   return scheduleHarness(page, {
     query: options.query || 'project=17&view=plan-baseline&scheduleMode=planner&shell=true',
+    harnessPath: '/tests/fixtures/retained-planning-harness.jsx',
     prepare(state) {
       state.writes = []
       state.pageErrors = []
       state.missingPlanning = new Set()
       state.saveError = null
+      state.uploadError = null
       state.confirmError = null
       state.wbsSaveError = null
       state.wbsStatus = 409
@@ -273,6 +275,7 @@ export async function planningInputsHarness(page, options = {}) {
           state.writes.push({ method, path, data })
           record = Object.values(state.records).find(row => String(row.planningProject.id) === data.project)
           if (!record) return send({ project: ['Unknown planning workspace.'] }, 400)
+          if (state.uploadError) return send(state.uploadError, 400)
           const file = fileRecord(record.planningProject.id, { id: 850 + state.writes.length, category: data.category, original_filename: data.filename, parse_status: 'pending' })
           record.files.push(file)
           for (const run of record.runs) if (run.preview_confirmation) run.preview_confirmation.is_current = false

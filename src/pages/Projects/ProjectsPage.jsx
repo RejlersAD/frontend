@@ -101,7 +101,7 @@ export default function ProjectsPage() {
   const [compareEstimateId, setCompareEstimateId] = useState(null)
   const [scheduleBaselineId, setScheduleBaselineId] = useState('')
   const [scheduleVersionId, setScheduleVersionId] = useState('')
-  const scheduleMode = searchParams.get('scheduleMode') === 'planner' ? 'planner' : 'management'
+  const scheduleMode = 'planner'
   const commercialMode = searchParams.get('commercialMode') === 'controls' ? 'controls' : 'management'
 
   const reloadProjects = useCallback(async ({ selectId } = {}) => {

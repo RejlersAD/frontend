@@ -61,8 +61,10 @@ test('PDF evidence prefill remains unconfirmed and HR selection fills the name a
   await expect(signature(page)).not.toBeChecked();
   await expect(stamp(page)).not.toBeChecked();
   await expect(modal(page)).toContainText('Confirm these only after checking the PO PDF.');
-  await expect(modal(page).locator('iframe')).toHaveAttribute('src', /^blob:/);
-  for (const target of [modal(page).getByRole('heading', { name: 'Upload PR, PO and Vendor', exact: true }), modal(page).locator('iframe')]) {
+  const sourcePreview = modal(page).getByRole('region', { name: 'Approved PO source PDF', exact: true });
+  await expect(sourcePreview.getByRole('img', { name: 'Approved PO source PDF, page 1 of 1', exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(modal(page).getByRole('link', { name: 'Open PO PDF in new tab', exact: true })).toHaveAttribute('href', /^blob:/);
+  for (const target of [modal(page).getByRole('heading', { name: 'Upload PR, PO and Vendor', exact: true }), sourcePreview]) {
     const bounds = await target.boundingBox();
     const hitBelongsToDialog = await modal(page).evaluate((element, point) => element.contains(document.elementFromPoint(point.x, point.y)), { x: bounds.x + 3, y: bounds.y + Math.min(12, bounds.height / 2) });
     expect(hitBelongsToDialog, 'The dialog header and PDF left edge must remain above the application sidebar').toBe(true);
@@ -83,9 +85,6 @@ test('PDF evidence prefill remains unconfirmed and HR selection fills the name a
   expect(state.requests.some(request => request.path === employeePath && request.query.search === 'Nora')).toBe(true);
   await signature(page).check();
   await stamp(page).check();
-  // Chrome's native PDF compositor can paint after the iframe and form are
-  // ready; allow the original page to appear in the visual review artifact.
-  await page.waitForTimeout(1800);
   await page.screenshot({ path: '../artifacts/po-pdf-approval-evidence-desktop.png' });
   await page.setViewportSize({ width: 390, height: 844 });
   await approver(page).scrollIntoViewIfNeeded();
@@ -248,7 +247,8 @@ for (const failure of failedImports) {
     await expect(approver(page)).toHaveValue('Extracted source reviewer');
     await signature(page).check();
     await stamp(page).check();
-    const previewUrl = await modal(page).locator('iframe').getAttribute('src');
+    const sourceLink = modal(page).getByRole('link', { name: 'Open PO PDF in new tab' });
+    const previewUrl = await sourceLink.getAttribute('href');
     if (failure.timeout) {
       // Shorten only the import's native XHR deadline. Axios and the application's
       // real response interceptor still produce the wrapped timeout error.
@@ -277,7 +277,7 @@ for (const failure of failedImports) {
     await modal(page).getByRole('button', { name: 'Save PO', exact: true }).click();
     await expect(modal(page).getByRole('alert')).toContainText(failure.expected);
     await expect(page.locator('.Toastify__toast--error')).toHaveCount(0);
-    await expect(modal(page).locator('iframe')).toHaveAttribute('src', previewUrl);
+    await expect(sourceLink).toHaveAttribute('href', previewUrl);
     await expect(approver(page)).toHaveValue('Extracted source reviewer');
     await expect(approvalDate(page)).toHaveValue('2026-01-29');
     await expect(signature(page)).toBeChecked();
@@ -296,3 +296,38 @@ for (const failure of failedImports) {
     isolated(state);
   });
 }
+
+test('commercial source validation keeps the PDF and allows corrections before retrying', async ({ page }) => {
+  const source = {
+    payment_terms: 'x'.repeat(301), payment_mode: 'Bank Transfer', delivery_terms: 'Original site delivery',
+    seller_reference: 'Original seller reference', quote_ref: 'Original quote', project_number: 'PRJ-100',
+  };
+  const state = await open(page, state => {
+    state.poPdfPreviews['commercial-source.pdf'] = { data: { extracted_data: source } };
+    state.poPdfImportError = { payment_terms: ['Ensure this field has no more than 300 characters.'] };
+  });
+  await choose(page, 'commercial-source.pdf');
+  const sourceLink = modal(page).getByRole('link', { name: 'Open PO PDF in new tab' });
+  const sourceUrl = await sourceLink.getAttribute('href');
+  await expect(modal(page).getByRole('textbox', { name: 'PO Payment terms', exact: true })).toHaveValue(source.payment_terms);
+  await modal(page).getByRole('button', { name: 'Save PO', exact: true }).click();
+  await expect(modal(page).getByRole('alert')).toContainText('payment terms: Ensure this field has no more than 300 characters.');
+  noPersistentWrite(state);
+  await expect(sourceLink).toHaveAttribute('href', sourceUrl);
+  const corrections = {
+    payment_terms: ['PO Payment terms', 'Net 45 days'], payment_mode: ['PO Payment method', 'Bank Transfer'],
+    delivery_terms: ['PO Delivery terms', 'Agreed site delivery'], seller_reference: ['PO Seller reference', 'Supplier contact'],
+    quote_ref: ['PO Quote reference', 'QUOTE-123'], project_number: ['PO Project number', 'PRJ-123'],
+  };
+  for (const [label, value] of Object.values(corrections)) {
+    await modal(page).getByRole('textbox', { name: label, exact: true }).fill(value);
+  }
+  state.poPdfImportError = null;
+  await modal(page).getByRole('button', { name: 'Save PO', exact: true }).click();
+  await expect.poll(() => state.acceptedWrites.length).toBe(1);
+  expect(state.acceptedWrites[0].body.reviewed_fields).toMatchObject(
+    Object.fromEntries(Object.entries(corrections).map(([key, [, value]]) => [key, value])),
+  );
+  expect(state.acceptedWrites[0].body.file).toEqual({ filename: 'commercial-source.pdf' });
+  isolated(state);
+});

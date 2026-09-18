@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Download, FileText, MoreHorizontal, Plus, RefreshCw, Upload, Pencil, CalendarDays, LayoutGrid, CircleDollarSign, Flag, ShieldCheck, Briefcase, AlertTriangle, ChevronDown, Sparkles } from 'lucide-react'
 import { PROJECT_VIEW_MODES } from '../../../config/projectControl.config'
 import { formatDate, projectManagerName } from '../useProjectPerformance'
@@ -15,6 +15,13 @@ export default function ProjectControlHeader({
   scheduleMode = 'management',
 }) {
   const menuRef = useRef(null), addRef = useRef(null)
+  const [scheduleState, setScheduleState] = useState(null)
+  useEffect(() => {
+    setScheduleState(null)
+    const receive = event => { if (String(event.detail?.projectId) === String(selectedProjectId)) setScheduleState(event.detail) }
+    window.addEventListener('radai:master-schedule-state', receive)
+    return () => window.removeEventListener('radai:master-schedule-state', receive)
+  }, [selectedProjectId])
   useEffect(() => {
     const dismiss = event => {
       for (const ref of [menuRef, addRef]) {
@@ -59,26 +66,23 @@ export default function ProjectControlHeader({
   const exportLabel = isDocuments ? 'Export register' : isEstimates ? 'Export estimate' : isRisk ? 'Export register' : isMilestones ? 'Export milestone report' : isCommercial ? 'Export commercial' : isSchedule ? 'Export schedule' : 'Export report'
   const exportDisabled = !selectedProject || (isDocuments && (!model?.availability?.list || activePerformance?.loading)) || (isEstimates && (!model?.availability?.selected || activePerformance?.loading)) || (isRisk && (!model?.rows?.length || activePerformance?.loading)) || (isMilestones && (!model?.rows?.length || activePerformance?.loading)) || (isSchedule && (!model?.activities?.length || activePerformance?.loading)) || (isCommercial && (!model?.availability?.commercial || activePerformance?.loading))
   if (isSchedule && scheduleMode === 'planner' && selectedProject) return <header className="pp-header pp-planning-header">
-    <nav className="pp-breadcrumb" aria-label="Breadcrumb"><span>Project Control</span><span>/</span><a href="/projects">Portfolio</a><span>/</span><span aria-current="page">Plan &amp; Baseline</span></nav>
-    <div className="pp-planning-title-row">
-      <div className="pp-planning-title"><h1>Project Planning</h1><span className="pp-badge pp-neutral">Draft</span></div>
+    <div className="pp-planning-project-row pp-schedule-project-row">
+      <div className="pp-project-picker pp-planning-project-picker"><ProjectSelector compact projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} label="Active Project" /></div>
+      <span className="pp-planning-manager">Project manager: {projectManagerName(selectedProject)}</span>
       <div className="pp-planning-actions">
-        {onCreateWithAI && <button type="button" className="pp-button pp-primary" onClick={onCreateWithAI}><Sparkles size={17} aria-hidden="true" />Create project with AI</button>}
-        <button type="submit" form="project-planning-inputs-form" onClick={event => { const workBreakdownForm = document.getElementById('project-planning-work-breakdown-form'); if (workBreakdownForm) { event.preventDefault(); workBreakdownForm.requestSubmit(); } }} className="pp-button pp-planning-save" disabled={loading}>Save draft</button>
+        <button type="button" onClick={() => window.dispatchEvent(new Event('radai:save-master-schedule'))} className="pp-button pp-planning-save" disabled={loading || !scheduleState?.canSave}>Save draft</button>
         <details ref={menuRef} className="pp-menu"><summary className="pp-button pp-icon-button"><span className="sr-only">More project actions</span><MoreHorizontal size={19} /></summary><div className="pp-menu-items">
+          <p className="pp-master-manager-note">Project manager: {projectManagerName(selectedProject)}</p>
           <button type="button" disabled={loading || activePerformance?.loading} onClick={() => run(onRefresh)}><RefreshCw size={15} />Refresh project</button>
           <button type="button" disabled={exportDisabled} onClick={() => run(onExport)}><Download size={15} />Export schedule</button>
           <button type="button" onClick={() => run(onEdit)}><Pencil size={15} />Edit project details</button>
           <button type="button" onClick={() => run(onImport)}><Upload size={15} />Import from QHSE</button>
           <button type="button" onClick={() => run(onCreate)}><Plus size={15} />New project</button>
+          {onCreateWithAI && <button type="button" onClick={() => run(onCreateWithAI)}><Sparkles size={15} />Create project with AI</button>}
           {extras.map(area => <button type="button" key={area.key} onClick={() => run(() => area.route ? onNavigate(area.route) : onSelectView(area.key))}>{area.label}</button>)}
           <button type="button" className="pp-danger" onClick={() => run(onArchive)}>Delete project</button>
         </div></details>
       </div>
-    </div>
-    <div className="pp-planning-project-row">
-      <div className="pp-project-picker pp-planning-project-picker"><ProjectSelector compact projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} label="Active Project" /></div>
-      <span className="pp-planning-manager">Project manager: {projectManagerName(selectedProject)}</span>
     </div>
     <nav className="pp-tabs" aria-label="Project work areas"><ul>{areas.map(({ key, label, icon, scheduleIcon, dialog }) => { const Icon = key === 'estimates' ? Briefcase : key === 'documents' ? FileText : scheduleIcon || icon; return <li key={key}><button type="button" aria-current={!dialog && activeView === key ? 'page' : undefined} onClick={() => dialog ? onOpenDialog(dialog) : onSelectView(key)}>{Icon && <Icon size={17} aria-hidden="true" />}{label}</button></li> })}</ul></nav>
   </header>

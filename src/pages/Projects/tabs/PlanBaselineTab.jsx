@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import PlanningPackagePage from '../../PlanningPackagePage'
+import SimplePlanningWorkspace from '../../../components/planning/SimplePlanningWorkspace'
 
 const DAY = 86400000
 const numeric = value => value !== null && value !== undefined && Number.isFinite(Number(value))
@@ -96,7 +97,11 @@ function Timeline({ rows, start, end, onOpen }) {
   })}</tbody></table></ScrollTable>
 }
 
-export default function PlanBaselineTab({ project, schedulePerformance, scheduleMode = 'management', onScheduleMode, onSelectBaseline, onSelectVersion, onSelectView }) {
+export default function PlanBaselineTab(props) {
+  return <SimplePlanningWorkspace key={props.project.id} enterpriseProject={props.project} onRefreshComparison={props.schedulePerformance?.reload} comparison={<SchedulePerformancePanel {...props} scheduleMode="management" />} />
+}
+
+export function SchedulePerformancePanel({ project, schedulePerformance, scheduleMode = 'management', onScheduleMode, onSelectBaseline, onSelectVersion, onSelectView }) {
   const [chartMode, setChartMode] = useState('chart')
   const [timeRange, setTimeRange] = useState('full')
   const [showFilters, setShowFilters] = useState(false)

@@ -42,7 +42,7 @@ async function openWbs(page, options = {}) {
     prepareWbs(current, Boolean(options.complete))
     options.prepare?.(current)
   } })
-  await expect(page.getByRole('heading', { name: 'Project Planning', exact: true })).toBeVisible()
+  await expect(page.locator('.planning-design')).toBeVisible()
   await expect(page.getByRole('complementary', { name: 'AI input review', exact: true })).not.toContainText('Loading extracted inputs')
   await expect(stage(page)).toBeEnabled()
   await stage(page).click()

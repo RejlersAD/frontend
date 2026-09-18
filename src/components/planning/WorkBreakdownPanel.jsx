@@ -6,6 +6,7 @@ import planningIntelligenceService from '../../services/planningIntelligence.ser
 import useModalAccessibility from '../../hooks/useModalAccessibility'
 import PlanningEmployeePicker from './PlanningEmployeePicker'
 import PlanningEmployeeActivity from './PlanningEmployeeActivity'
+import { isScheduleMilestone } from '../../utils/primaveraSchedule'
 import './WorkBreakdownPanel.css'
 
 const hours = value => new Intl.NumberFormat('en', { maximumFractionDigits: 2 }).format(value)
@@ -30,7 +31,7 @@ const summarizeGroup = tasks => {
   return { people, completed, status, due: dueDates.at(-1), dated: dueDates.length }
 }
 
-function EmployeeActivityLink({ task, onOpen, disabled }) {
+export function EmployeeActivityLink({ task, onOpen, disabled }) {
   const name = employeeName(task)
   return <button type="button" className="wbd-owner" disabled={disabled} aria-label={`View activity for ${name}`} onClick={() => onOpen(task)}>
     <span className="wbd-person-avatar" aria-hidden="true">{name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span><span>{name}</span>
@@ -54,9 +55,11 @@ function Dialog({ title, children, onClose, footer, busy = false }) {
 }
 Dialog.propTypes = { title: PropTypes.string.isRequired, children: PropTypes.node, onClose: PropTypes.func.isRequired, footer: PropTypes.node, busy: PropTypes.bool }
 
-function TaskDialog({ projectId, task, tasks, disciplines, manual, isNew, initialField, onSave, onDelete, onClose, busy, saveError }) {
+export function TaskDialog({ projectId, task, tasks, disciplines, manual, scheduleEditing = false, isNew, initialField, onSave, onDelete, onClose, busy, saveError }) {
   const [draft, setDraft] = useState({ task_type: 'deliverable', due_date: null, priority: 'medium', assignee_id: null, reviewer_id: null, ...task, depends_on: [...task.depends_on] })
   const [error, setError] = useState('')
+  const workflowStage = task.parent_deliverable_id != null || Boolean(task.workflow_stage_code || task.metadata?.workflow_stage_code)
+  const milestone = isScheduleMilestone(task)
   useEffect(() => { if (initialField === 'owner') document.querySelector('#wbd-task-form [role="combobox"]')?.focus() }, [initialField])
   const change = (key, value) => setDraft(current => ({ ...current, [key]: value }))
   const save = event => {
@@ -65,8 +68,9 @@ function TaskDialog({ projectId, task, tasks, disciplines, manual, isNew, initia
     const value = { ...draft, title: draft.title.trim(), owner: (draft.owner || '').trim(), reviewer: (draft.reviewer || '').trim(), due_date: draft.due_date || null, effort_hours: draft.effort_hours === '' || draft.effort_hours == null ? null : Number(draft.effort_hours) }
     if (!value.title) { setError('Enter a task or deliverable name.'); return }
     if (value.effort_hours !== null && (!Number.isFinite(value.effort_hours) || value.effort_hours < 0)) { setError('Enter a valid planned effort of zero or more hours.'); return }
-    if (manual && value.planned_start_date && value.due_date && value.planned_start_date > value.due_date) { setError('Due date must be on or after the planned start.'); return }
-    if (manual && value.duration_days != null && (!Number.isFinite(value.duration_days) || value.duration_days < 0)) { setError('Enter a duration of zero or more working days.'); return }
+    if (manual && !scheduleEditing && value.planned_start_date && value.due_date && value.planned_start_date > value.due_date) { setError('Due date must be on or after the planned start.'); return }
+    if (scheduleEditing && value.due_date !== task.due_date && value.planned_start_date && value.due_date && value.planned_start_date > value.due_date) { setError('Due date must be on or after the planned start.'); return }
+    if ((manual || scheduleEditing) && value.duration_days != null && (!Number.isFinite(value.duration_days) || value.duration_days < 0)) { setError('Enter a duration of zero or more working days.'); return }
     const graph = new Map([...tasks.filter(row => row.id !== value.id), value].map(row => [row.id, row.depends_on]))
     const visiting = new Set(), visited = new Set()
     const cycle = id => { if (visiting.has(id)) return true; if (visited.has(id)) return false; visiting.add(id); if ((graph.get(id) || []).some(cycle)) return true; visiting.delete(id); visited.add(id); return false }
@@ -74,7 +78,7 @@ function TaskDialog({ projectId, task, tasks, disciplines, manual, isNew, initia
     onSave(value)
   }
   return <Dialog title={isNew ? 'Add task' : 'Edit task'} onClose={onClose} busy={busy} footer={<>
-    {!isNew && <button type="button" disabled={busy} className="wbd-button wbd-delete" onClick={() => onDelete(task.id)}><Trash2 size={15} />Remove task</button>}
+    {!isNew && !workflowStage && <button type="button" disabled={busy} className="wbd-button wbd-delete" onClick={() => onDelete(task.id)}><Trash2 size={15} />Remove task</button>}
     <button type="button" disabled={busy} className="wbd-button" onClick={onClose}>Cancel</button><button type="submit" disabled={busy} form="wbd-task-form" className="wbd-button wbd-primary">{busy ? <><Loader2 size={15} className="animate-spin" />Saving…</> : isNew ? 'Add task' : 'Save task'}</button>
   </>}>
     <form id="wbd-task-form" onSubmit={save}>
@@ -86,8 +90,9 @@ function TaskDialog({ projectId, task, tasks, disciplines, manual, isNew, initia
         <PlanningEmployeePicker projectId={projectId} label="Assigned to" value={draft.assignee} disabled={busy} legacyName={draft.assignee_id ? '' : draft.owner} onChange={employee => setDraft(current => ({ ...current, assignee: employee, assignee_id: employee?.user_id ?? null, owner: employee?.name || '' }))} />
         <PlanningEmployeePicker projectId={projectId} label="Reviewer" value={draft.reviewer_user} disabled={busy} legacyName={draft.reviewer_id ? '' : draft.reviewer} onChange={employee => setDraft(current => ({ ...current, reviewer_user: employee, reviewer_id: employee?.user_id ?? null, reviewer: employee?.name || '' }))} />
         <label>Due date<input type="date" value={draft.due_date || ''} onChange={event => change('due_date', event.target.value)} /></label>
-        {manual && <label>Planned start<input type="date" value={draft.planned_start_date || ''} onChange={event => change('planned_start_date', event.target.value || null)} /></label>}
-        {manual && <label>Duration (working days)<input type="number" min="0" step="0.25" value={draft.duration_days ?? ''} onChange={event => change('duration_days', event.target.value === '' ? null : Number(event.target.value))} placeholder="Calculated from effort if blank" /></label>}
+        {(manual || scheduleEditing) && <label>Planned start<input type="date" value={draft.planned_start_date || ''} onChange={event => change('planned_start_date', event.target.value || null)} /></label>}
+        {(manual || scheduleEditing) && <label>Duration (working days)<input type="number" min={scheduleEditing && !milestone ? '0.25' : '0'} readOnly={scheduleEditing && milestone} title={scheduleEditing && milestone ? 'Milestones have zero duration.' : undefined} step="0.25" value={draft.duration_days ?? ''} onChange={event => change('duration_days', event.target.value === '' ? null : Number(event.target.value))} placeholder="Calculated from effort if blank" /></label>}
+        {scheduleEditing && <p className="wbd-note">Finish dates recalculate from durations, dependencies and the project calendar when saved.</p>}
         <label>Priority<select value={draft.priority} onChange={event => change('priority', event.target.value)}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
         <label>Planned effort (hours)<input type="number" min="0" step="0.01" value={draft.effort_hours ?? ''} onChange={event => change('effort_hours', event.target.value)} placeholder="Enter hours" /></label>
         <div className="wbd-task-status"><span>Status</span><span className={`wbd-task-badge is-${draft.status || 'todo'}`}>{statusLabels[draft.status] || statusLabels.todo}</span></div></div>
@@ -98,7 +103,7 @@ function TaskDialog({ projectId, task, tasks, disciplines, manual, isNew, initia
     </form>
   </Dialog>
 }
-TaskDialog.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, task: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, disciplines: PropTypes.array.isRequired, manual: PropTypes.bool, isNew: PropTypes.bool, initialField: PropTypes.string, onSave: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired, busy: PropTypes.bool, saveError: PropTypes.string }
+TaskDialog.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, task: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, disciplines: PropTypes.array.isRequired, manual: PropTypes.bool, scheduleEditing: PropTypes.bool, isNew: PropTypes.bool, initialField: PropTypes.string, onSave: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired, busy: PropTypes.bool, saveError: PropTypes.string }
 
 function TemplateDialog({ disciplines, manual, onApply, onClose }) {
   const [discipline, setDiscipline] = useState(disciplines[0]?.code || 'general')
@@ -115,18 +120,19 @@ function TemplateDialog({ disciplines, manual, onApply, onClose }) {
 }
 TemplateDialog.propTypes = { disciplines: PropTypes.array.isRequired, manual: PropTypes.bool, onApply: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired }
 
-function WorkstreamDialog({ disciplines, onAdd, onClose }) {
+export function WorkstreamDialog({ disciplines, onAdd, onClose, busy = false, saveError = '' }) {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
-  return <Dialog title="Add workstream" onClose={onClose} footer={<><button type="button" className="wbd-button" onClick={onClose}>Cancel</button><button type="submit" form="wbd-workstream-form" className="wbd-button wbd-primary">Add workstream</button></>}><form id="wbd-workstream-form" onSubmit={event => {
+  return <Dialog title="Add workstream" onClose={onClose} busy={busy} footer={<><button type="button" disabled={busy} className="wbd-button" onClick={onClose}>Cancel</button><button type="submit" disabled={busy} form="wbd-workstream-form" className="wbd-button wbd-primary">{busy ? 'Saving…' : 'Add workstream'}</button></>}><form id="wbd-workstream-form" onSubmit={event => {
     event.preventDefault()
+    if (busy) return
     const trimmed = name.trim()
     if (!trimmed) { setError('Enter a workstream name.'); return }
     if (disciplines.some(row => row.name.toLowerCase() === trimmed.toLowerCase())) { setError('This workstream already exists.'); return }
     onAdd({ code: `workstream_${crypto.randomUUID().slice(0, 8)}`, name: trimmed })
-  }}>{error && <p className="wbd-error" role="alert">{error}</p>}<label>Workstream name<input autoFocus required maxLength={100} value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Development, Testing, Launch" /></label></form></Dialog>
+  }}>{(error || saveError) && <p className="wbd-error" role="alert">{error || saveError}</p>}<label>Workstream name<input autoFocus required disabled={busy} maxLength={100} value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Development, Testing, Launch" /></label></form></Dialog>
 }
-WorkstreamDialog.propTypes = { disciplines: PropTypes.array.isRequired, onAdd: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired }
+WorkstreamDialog.propTypes = { disciplines: PropTypes.array.isRequired, onAdd: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired, busy: PropTypes.bool, saveError: PropTypes.string }
 
 export default function WorkBreakdownPanel({ projectId, intelligenceRunId, previewConfirmedAt, planningMode = 'document', canEdit = true, baselinePublished = false, onBack, onContinue, onLoaded, onDirtyChanged, onSavingChanged }) {
   const manual = planningMode === 'manual'
