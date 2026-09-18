@@ -4,6 +4,8 @@ import { CheckIcon, ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/reac
 import { PROJECT_COPY } from '../../../config/projectControl.config'
 
 const projectLabel = (project) => `${project.code} — ${project.name}`
+const projectSort = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
+const searchText = value => String(value ?? '').normalize('NFKC').toLocaleLowerCase().replace(/[—–]/g, ' ')
 
 export default function ProjectSelector({ projects, value, onChange, loading, error, label = 'Active Project', compact = false }) {
   const inputId = useId()
@@ -28,17 +30,28 @@ export default function ProjectSelector({ projects, value, onChange, loading, er
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
   }, [])
 
+  const sortedProjects = useMemo(() => [...projects].sort((left, right) =>
+    projectSort.compare(String(left.code || ''), String(right.code || ''))
+      || projectSort.compare(String(left.name || ''), String(right.name || ''))
+  ), [projects])
   const filteredProjects = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase()
-    if (!normalized || query === selectedLabel) return projects
-    return projects.filter((project) => [project.code, project.name, project.client_name]
-      .filter(Boolean)
-      .some((field) => String(field).toLocaleLowerCase().includes(normalized)))
-  }, [projects, query, selectedLabel])
+    const terms = searchText(query).trim().split(/\s+/).filter(Boolean)
+    if (!terms.length || query === selectedLabel) return sortedProjects
+    return sortedProjects.filter(project => {
+      const searchable = searchText([project.code, project.name, project.client_name].filter(Boolean).join(' '))
+      return terms.every(term => searchable.includes(term))
+    })
+  }, [sortedProjects, query, selectedLabel])
 
   useEffect(() => {
     setActiveIndex((current) => Math.min(current, Math.max(filteredProjects.length - 1, 0)))
   }, [filteredProjects.length])
+
+  useEffect(() => {
+    if (open && filteredProjects[activeIndex]) {
+      document.getElementById(`${inputId}-option-${filteredProjects[activeIndex].id}`)?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [open, activeIndex, filteredProjects, inputId])
 
   const selectProject = (project) => {
     onChange(project.id)
@@ -49,14 +62,14 @@ export default function ProjectSelector({ projects, value, onChange, loading, er
   const openForSearch = () => {
     if (loading || !projects.length) return
     setOpen(true)
-    setActiveIndex(Math.max(projects.findIndex((project) => String(project.id) === String(value)), 0))
+    setActiveIndex(Math.max(filteredProjects.findIndex((project) => String(project.id) === String(value)), 0))
   }
 
   const handleKeyDown = (event) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       if (!open) openForSearch()
-      else setActiveIndex((current) => Math.min(current + 1, filteredProjects.length - 1))
+      else setActiveIndex((current) => Math.min(current + 1, Math.max(filteredProjects.length - 1, 0)))
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       if (!open) openForSearch()
@@ -93,6 +106,7 @@ export default function ProjectSelector({ projects, value, onChange, loading, er
           aria-activedescendant={open && filteredProjects[activeIndex] ? `${inputId}-option-${filteredProjects[activeIndex].id}` : undefined}
           aria-describedby={error ? `${inputId}-error` : undefined}
           value={query}
+          title={selectedLabel || undefined}
           placeholder={loading ? PROJECT_COPY.loadingProjects : 'Search by project code, name or client'}
           disabled={loading || !projects.length}
           onFocus={(event) => {
@@ -137,14 +151,15 @@ export default function ProjectSelector({ projects, value, onChange, loading, er
                   key={project.id}
                   role="option"
                   aria-selected={selected}
-                  onMouseEnter={() => setActiveIndex(index)}
+                  onMouseMove={() => setActiveIndex(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => selectProject(project)}
                   className={`flex cursor-pointer items-start gap-2 px-3 py-2.5 text-sm ${active ? 'bg-indigo-50 text-indigo-950 dark:bg-indigo-950/60 dark:text-indigo-100' : 'text-slate-700 dark:text-slate-200'}`}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block font-semibold">{project.code}</span>
-                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{project.name}{project.client_name ? ` · ${project.client_name}` : ''}</span>
+                    <span className="block whitespace-normal break-words text-xs leading-5 text-slate-700 dark:text-slate-200">{project.name}</span>
+                    {project.client_name && <span className="mt-0.5 block whitespace-normal break-words text-xs text-slate-500 dark:text-slate-400">{project.client_name}</span>}
                   </span>
                   {selected && <CheckIcon aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-indigo-600" />}
                 </li>

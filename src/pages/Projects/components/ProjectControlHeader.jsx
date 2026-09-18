@@ -12,6 +12,7 @@ export default function ProjectControlHeader({
   phaseFlags, activeView, onSelectView, onNavigate, onCreate, onEdit, onImport,
   onArchive, onRefresh, onExport, performance, lastRefreshed, onOpenDialog,
   schedulePerformance, onUpdateSchedule, commercialPerformance, onUpdateCommercial, milestoneControl, onAddMilestone, riskControl, onAddRiskRecord, estimateControl, onNewEstimate, documentControl, onAddDocument,
+  scheduleMode = 'management',
 }) {
   const menuRef = useRef(null), addRef = useRef(null)
   useEffect(() => {
@@ -57,6 +58,29 @@ export default function ProjectControlHeader({
   const primaryLabel = !selectedProject ? 'New project' : activeView === 'epc-lifecycle' ? 'Edit project details' : isMilestones ? 'Add milestone' : isCommercial ? 'Update commercial' : isSchedule ? 'Update schedule' : 'Update progress'
   const exportLabel = isDocuments ? 'Export register' : isEstimates ? 'Export estimate' : isRisk ? 'Export register' : isMilestones ? 'Export milestone report' : isCommercial ? 'Export commercial' : isSchedule ? 'Export schedule' : 'Export report'
   const exportDisabled = !selectedProject || (isDocuments && (!model?.availability?.list || activePerformance?.loading)) || (isEstimates && (!model?.availability?.selected || activePerformance?.loading)) || (isRisk && (!model?.rows?.length || activePerformance?.loading)) || (isMilestones && (!model?.rows?.length || activePerformance?.loading)) || (isSchedule && (!model?.activities?.length || activePerformance?.loading)) || (isCommercial && (!model?.availability?.commercial || activePerformance?.loading))
+  if (isSchedule && scheduleMode === 'planner' && selectedProject) return <header className="pp-header pp-planning-header">
+    <nav className="pp-breadcrumb" aria-label="Breadcrumb"><span>Project Control</span><span>/</span><a href="/projects">Portfolio</a><span>/</span><span aria-current="page">Plan &amp; Baseline</span></nav>
+    <div className="pp-planning-title-row">
+      <div className="pp-planning-title"><h1>Project Planning</h1><span className="pp-badge pp-neutral">Draft</span></div>
+      <div className="pp-planning-actions">
+        <button type="submit" form="project-planning-inputs-form" onClick={event => { const workBreakdownForm = document.getElementById('project-planning-work-breakdown-form'); if (workBreakdownForm) { event.preventDefault(); workBreakdownForm.requestSubmit(); } }} className="pp-button pp-planning-save" disabled={loading}>Save draft</button>
+        <details ref={menuRef} className="pp-menu"><summary className="pp-button pp-icon-button"><span className="sr-only">More project actions</span><MoreHorizontal size={19} /></summary><div className="pp-menu-items">
+          <button type="button" disabled={loading || activePerformance?.loading} onClick={() => run(onRefresh)}><RefreshCw size={15} />Refresh project</button>
+          <button type="button" disabled={exportDisabled} onClick={() => run(onExport)}><Download size={15} />Export schedule</button>
+          <button type="button" onClick={() => run(onEdit)}><Pencil size={15} />Edit project details</button>
+          <button type="button" onClick={() => run(onImport)}><Upload size={15} />Import from QHSE</button>
+          <button type="button" onClick={() => run(onCreate)}><Plus size={15} />New project</button>
+          {extras.map(area => <button type="button" key={area.key} onClick={() => run(() => area.route ? onNavigate(area.route) : onSelectView(area.key))}>{area.label}</button>)}
+          <button type="button" className="pp-danger" onClick={() => run(onArchive)}>Delete project</button>
+        </div></details>
+      </div>
+    </div>
+    <div className="pp-planning-project-row">
+      <div className="pp-project-picker pp-planning-project-picker"><ProjectSelector compact projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} label="Active Project" /></div>
+      <span className="pp-planning-manager">Project manager: {projectManagerName(selectedProject)}</span>
+    </div>
+    <nav className="pp-tabs" aria-label="Project work areas"><ul>{areas.map(({ key, label, icon, scheduleIcon, dialog }) => { const Icon = key === 'estimates' ? Briefcase : key === 'documents' ? FileText : scheduleIcon || icon; return <li key={key}><button type="button" aria-current={!dialog && activeView === key ? 'page' : undefined} onClick={() => dialog ? onOpenDialog(dialog) : onSelectView(key)}>{Icon && <Icon size={17} aria-hidden="true" />}{label}</button></li> })}</ul></nav>
+  </header>
   return <header className="pp-header">
     <div className="pp-header-main">
       <div className="pp-project-picker"><nav className="pp-breadcrumb" aria-label="Breadcrumb"><span>Project Control</span><span>/</span><a href="/projects">Portfolio</a><span>/</span><span aria-current="page">{activeView === 'epc-lifecycle' ? 'EPC lifecycle' : isDocuments ? 'Documents' : isEstimates ? 'Estimates' : isRisk ? 'Risks & Changes' : isMilestones ? 'Milestones' : isCommercial ? 'Cost & Commercial' : isSchedule ? 'Schedule' : 'Project performance'}</span></nav>{isPerformanceArea && <span className={isDocuments ? "dc-picker-label" : isEstimates ? "ec-picker-label" : isRisk ? "rc-picker-label" : isMilestones ? "mc-picker-label" : isSchedule ? "sp-picker-label" : "cp-picker-label"} aria-hidden="true">Active project</span>}<ProjectSelector compact projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} label="Active Project" /></div>

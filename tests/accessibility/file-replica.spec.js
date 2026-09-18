@@ -312,11 +312,87 @@ test('empty listings distinguish unscanned running incomplete and recorded inven
   await page.getByRole('button', { name: 'Server files', exact: true }).click()
   const browser = page.getByRole('region', { name: 'Server files', exact: true })
   await expect(browser).toContainText('has not been scanned with the current connection settings')
-  for (const [status, text] of [['syncing', 'The connector is still scanning'], ['incomplete', 'The latest scan is incomplete'], ['ready', 'this does not confirm that the server folder is empty']]) {
+  for (const [status, text] of [['syncing', 'The server scan is running; this view refreshes automatically'], ['incomplete', 'The latest scan is incomplete'], ['ready', 'this does not confirm that the server folder is empty']]) {
     state.source.scan_state = status
     await browser.getByRole('button', { name: 'Refresh', exact: true }).click()
     await expect(browser).toContainText(text)
   }
+  expect(state.writes).toEqual([])
+})
+
+test('an empty scanning folder refreshes automatically at the same path and stops when files appear', async ({ page }) => {
+  await page.clock.install()
+  const state = await harness(page, 'nested=true&catalogue=true')
+  state.source.scan_state = 'syncing'
+  const requests = []
+  let indexed = false
+  await page.route('**/file-replica/entries/?*', route => {
+    const query = Object.fromEntries(new URL(route.request().url()).searchParams)
+    requests.push(query)
+    return fulfil(route, pageOf(query.parent_path === scope.relative_path
+      ? [{ ...entry, id: 'reports', name: 'Reports', is_directory: true, relative_path: `${scope.relative_path}/Reports` }]
+      : indexed ? [{ ...entry, relative_path: `${scope.relative_path}/Reports/Report.txt`, parent_path: `${scope.relative_path}/Reports`, status: 'indexed', current_version: null }] : []))
+  })
+  await page.getByRole('button', { name: 'Server files', exact: true }).click()
+  const browser = page.getByRole('region', { name: 'Server files', exact: true })
+  await browser.getByRole('button', { name: 'Reports', exact: true }).click()
+  await expect(browser).toContainText('No contents are indexed in this folder yet. The server scan is running; this view refreshes automatically.')
+  const entryRequests = requests.length
+  const scopeRequests = state.requests.filter(item => item.path.endsWith('/scopes/')).length
+  await page.clock.fastForward(9000)
+  expect(requests).toHaveLength(entryRequests)
+  indexed = true
+  await page.clock.fastForward(1100)
+  await expect(browser.getByRole('button', { name: 'Report.txt', exact: true })).toBeVisible()
+  expect(requests).toHaveLength(entryRequests + 1)
+  expect(requests.at(-1)).toMatchObject({ project: '17', scope: 'scope-1', parent_path: `${scope.relative_path}/Reports`, page: '1' })
+  expect(state.requests.filter(item => item.path.endsWith('/scopes/'))).toHaveLength(scopeRequests + 1)
+  await expect(browser.getByRole('navigation', { name: 'Server folder breadcrumb' }).getByRole('button', { name: 'Reports', exact: true })).toHaveAttribute('aria-current', 'location')
+  await browser.getByRole('button', { name: 'Report.txt', exact: true }).click()
+  await expect(browser.getByRole('region', { name: 'File details: Report.txt', exact: true })).toBeVisible()
+  await page.clock.fastForward(30000)
+  expect(requests).toHaveLength(entryRequests + 1)
+  await expect(browser.getByRole('region', { name: 'File details: Report.txt', exact: true })).toBeVisible()
+  expect(state.writes).toEqual([])
+})
+
+test('empty-folder refresh cancels on navigation and unmount and stops after a listing error', async ({ page }) => {
+  await page.clock.install()
+  const state = await harness(page, 'catalogue=true')
+  state.source.scan_state = 'syncing'
+  state.scopes.push({ ...scope, id: 'scope-2', relative_path: '5900985 Second project' })
+  const requests = []
+  let fail = false
+  await page.route('**/file-replica/entries/?*', route => {
+    const query = Object.fromEntries(new URL(route.request().url()).searchParams)
+    requests.push(query)
+    return fail ? fulfil(route, { detail: 'Catalogue temporarily unavailable.' }, 503)
+      : fulfil(route, pageOf(query.scope === 'scope-2' ? [{ ...entry, id: 'another-file', name: 'Another report.txt', status: 'indexed', current_version: null }] : []))
+  })
+  await page.getByRole('button', { name: 'Server files', exact: true }).click()
+  const browser = page.getByRole('region', { name: 'Server files', exact: true })
+  await expect(browser).toContainText('this view refreshes automatically')
+  await page.clock.fastForward(5000)
+  await browser.getByRole('combobox', { name: 'Connected folder' }).selectOption('scope-2')
+  await expect(browser.getByRole('button', { name: 'Another report.txt', exact: true })).toBeVisible()
+  const afterNavigation = requests.length
+  await page.clock.fastForward(11000)
+  expect(requests).toHaveLength(afterNavigation)
+  await browser.getByRole('combobox', { name: 'Connected folder' }).selectOption('scope-1')
+  await expect(browser).toContainText('this view refreshes automatically')
+  fail = true
+  await page.clock.fastForward(10100)
+  await expect(browser.getByRole('alert')).toContainText('Catalogue temporarily unavailable.')
+  const afterError = requests.length
+  await page.clock.fastForward(30000)
+  expect(requests).toHaveLength(afterError)
+  fail = false
+  await browser.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(browser).toContainText('this view refreshes automatically')
+  await page.getByRole('button', { name: 'Management', exact: true }).click()
+  const afterUnmount = requests.length
+  await page.clock.fastForward(11000)
+  expect(requests).toHaveLength(afterUnmount)
   expect(state.writes).toEqual([])
 })
 

@@ -190,7 +190,7 @@ export default function ProjectReconciliation() {
   const distinctCurrencies = [...new Set(rows.map(row => row.currency).filter(Boolean))].sort();
   const distinctIssues = [...new Set(rows.map(row => row.reason).filter(Boolean))].sort();
   return <div className='project-reconciliation-workspace'>
-    <header className='pcr-header'><div><nav aria-label='Breadcrumb' className='pcr-breadcrumb'><Link to='/procurement'>Procurement</Link><span>/</span><Link to='/procurement/projects'>Data governance</Link><span>/</span><span>Project reconciliation</span></nav><h1>Project Reconciliation</h1><p>Review unmatched procurement records and link them to the correct project.</p></div>
+    <header className='pcr-header'><div><nav aria-label='Breadcrumb' className='pcr-breadcrumb'><Link to='/procurement'>Procurement</Link><span>/</span><Link to='/procurement/projects/reconciliation'>Project Links</Link><span>/</span><span>Project reconciliation</span></nav><h1>Project Reconciliation</h1><p>Review unmatched procurement records and link them to the correct project.</p></div>
       <div className='pcr-header-actions'><div><button className='pcr-button' type='button' onClick={() => setAuditOpen(true)}><FileClock size={16} />View audit log</button><button className='pcr-button' type='button' onClick={loadReport} disabled={loading || saving}><RefreshCw size={16} className={loading ? 'pcr-spin' : ''} />Refresh</button></div><p>{data?.generated_at ? `Updated ${dateLabel(data.generated_at)}, ${new Date(data.generated_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : loading ? 'Loading current records…' : 'Current reconciliation report'}</p></div>
     </header>
     <section className='pcr-metrics' aria-label='Reconciliation overview'>

@@ -66,6 +66,7 @@ export async function orderFormHarness(page, options = {}) {
   await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method(), body = parseBody(request)
     state.requests.push({ path, method, body, query: Object.fromEntries(url.searchParams) })
+    if (options.handleRequest && await options.handleRequest(route, state, url)) return
     if (path === '/api/v1/health/') return reply(route, { status: 'ok' })
     if (path === '/api/v1/users/check-first-login/') return reply(route, { must_reset_password: false })
     if (path === '/api/v1/rbac/users/me/profile-completeness/') return reply(route, { is_complete: true, percentage: 100, missing_fields: [] })

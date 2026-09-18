@@ -1,5 +1,5 @@
 import { radaiConfirm } from '../services/radaiDialog'
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { useNavigate, useLocation } from 'react-router-dom';
 import apiClient from '../services/api.service';
@@ -8,8 +8,12 @@ import usePlanningJob from '../hooks/usePlanningJob';
 import useModalAccessibility from '../hooks/useModalAccessibility';
 import GenerationWizard from '../components/planning/GenerationWizard';
 import WorkablePlanBuilder from '../components/planning/WorkablePlanBuilder';
+import WorkBreakdownPanel from '../components/planning/WorkBreakdownPanel';
 import PlannerWorkspacePage from './PlannerWorkspacePage';
-import { AlertTriangle, Calculator, CheckCircle2, FileText, Lock, RefreshCw, Sparkles } from 'lucide-react';
+import PlanningInputsPanel from '../components/planning/PlanningInputsPanel';
+import { calculatePlanningDuration as calculateDateRangeDuration } from '../utils/planningProjectDates';
+import { editablePlanningPreview, mergePlanningPreview, planningPreviewError, planningPreviewKey } from '../utils/planningPreview';
+import { AlertTriangle, Calculator, Check, CheckCircle2, FileText, Lock, RefreshCw, Sparkles } from 'lucide-react';
 import {
   PLANNING_ENDPOINTS,
   PLANNING_FILE_CATEGORIES,
@@ -34,7 +38,6 @@ import {
   Scatter, ZAxis, ComposedChart, Area
 } from 'recharts';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const LIFECYCLE_LABELS = {
   setup: 'Setup',
   inputs: 'Inputs collected',
@@ -119,40 +122,6 @@ const renderScheduleNarrative = narrative => {
   });
 };
 
-const parseDateOnly = value => {
-  if (!value) return null;
-  const [year, month, day] = value.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day));
-};
-
-const addCalendarMonths = (date, months) => {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth() + months;
-  const day = date.getUTCDate();
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  return new Date(Date.UTC(year, month, Math.min(day, lastDay)));
-};
-
-const calculateDateRangeDuration = (startValue, endValue) => {
-  const start = parseDateOnly(startValue);
-  const end = parseDateOnly(endValue);
-  if (!start || !end || end <= start) return null;
-
-  let wholeMonths = (end.getUTCFullYear() - start.getUTCFullYear()) * 12
-    + end.getUTCMonth() - start.getUTCMonth();
-  let anchor = addCalendarMonths(start, wholeMonths);
-  if (anchor > end) {
-    wholeMonths -= 1;
-    anchor = addCalendarMonths(start, wholeMonths);
-  }
-  const nextAnchor = addCalendarMonths(start, wholeMonths + 1);
-  const fractionalMonth = (end - anchor) / (nextAnchor - anchor);
-  return {
-    days: Math.round((end - start) / DAY_MS),
-    months: Number((wholeMonths + fractionalMonth).toFixed(4)),
-  };
-};
-
 /**
  * Small reusable "type a value + press Add" row used by the Document
  * Intelligence edit mode to append a new deliverable to a discipline's
@@ -198,7 +167,7 @@ const AddDeliverableRow = ({ onAdd }) => {
  * Deterministic extraction is augmented by the project's mandatory Claude
  * BYOK configuration. All generated outputs remain subject to planner review.
  */
-const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => {
+const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBackToPortfolio }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -225,7 +194,23 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
   const [uploading, setUploading] = useState(false);
 
   const [intelligencePreview, setIntelligencePreview] = useState(null);
+  const [intelligenceOutdated, setIntelligenceOutdated] = useState(false);
+  const [previewConfirmation, setPreviewConfirmation] = useState(null);
+  const [workBreakdownDirty, setWorkBreakdownDirty] = useState(false);
+  const [workBreakdownSaving, setWorkBreakdownSaving] = useState(false);
+  const [workBreakdownSchedule, setWorkBreakdownSchedule] = useState(null);
+  const [savingPreview, setSavingPreview] = useState(false);
+  const [previewSaveError, setPreviewSaveError] = useState('');
+  const [previewReviewState, setPreviewReviewState] = useState({ conflicts: 0, unavailable: true });
+  const [reviewRequest, setReviewRequest] = useState(0);
+  const loadedPreviewRef = useRef(null);
+  const previewSaveInFlight = useRef(false);
+  const activePreviewProjectRef = useRef(selectedProjectId);
+  activePreviewProjectRef.current = selectedProjectId;
+  const intelligenceHeadingRef = useRef(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analysisRevision, setAnalysisRevision] = useState(0);
+  const [inputsReady, setInputsReady] = useState(false);
   // Which discipline card ("Process", "Piping", ...) is expanded to show its
   // full deliverable checklist — accordion-style, one at a time.
   const [expandedDiscipline, setExpandedDiscipline] = useState(null);
@@ -291,6 +276,55 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
 
   const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
 
+  const currentPreview = editingSection === 'intelligence' ? draftIntelligence : intelligencePreview;
+  const canConfirmPreview = Boolean(currentPreview?.document_intelligence_run_id) && inputsReady
+    && !intelligenceOutdated && !previewReviewState.unavailable && !previewReviewState.conflicts;
+  const previewConfirmed = Boolean(previewConfirmation?.is_current) && canConfirmPreview
+    && planningPreviewKey(currentPreview) === planningPreviewKey(previewConfirmation.preview);
+  const openWorkBreakdown = () => setCurrentStep(previewConfirmed ? 'wbs' : 'intelligence');
+  const acceptLoadedIntelligence = useCallback((data, confirmation) => {
+    const prior = loadedPreviewRef.current;
+    loadedPreviewRef.current = data;
+    setPreviewConfirmation(confirmation);
+    setIntelligencePreview(previous => {
+      const sameRun = data && previous?.document_intelligence_run_id === data.document_intelligence_run_id;
+      return sameRun && prior && planningPreviewKey(previous) !== planningPreviewKey(prior)
+        ? mergePlanningPreview(data, previous) : data;
+    });
+  }, []);
+
+  const confirmPreview = async () => {
+    if (previewSaveInFlight.current || !canConfirmPreview) return;
+    if (previewConfirmed) { setCurrentStep('wbs'); return; }
+    const projectId = selectedProjectId;
+    previewSaveInFlight.current = true;
+    setSavingPreview(true);
+    setPreviewSaveError('');
+    try {
+      const run = await planningIntelligenceService.confirmIntelligencePreview(
+        currentPreview.document_intelligence_run_id, editablePlanningPreview(currentPreview),
+      );
+      if (activePreviewProjectRef.current !== projectId) return;
+      if (!run.preview_confirmation?.is_current) throw new Error('The preview could not be confirmed. Refresh the analysis and try again.');
+      loadedPreviewRef.current = run.intelligence;
+      setIntelligencePreview(run.intelligence);
+      setPreviewConfirmation(run.preview_confirmation);
+      setEditingSection(null);
+      setDraftIntelligence(null);
+      setAnalysisRevision(value => value + 1);
+      setBanner({ type: 'success', message: 'Document Intelligence preview confirmed and saved.' });
+      setCurrentStep('wbs');
+    } catch (error) {
+      if (activePreviewProjectRef.current === projectId) {
+        setPreviewSaveError(planningPreviewError(error));
+      }
+    } finally {
+      previewSaveInFlight.current = false;
+      if (activePreviewProjectRef.current === projectId) setSavingPreview(false);
+    }
+  };
+
+
   // ── Data loading ─────────────────────────────────────────────────────────
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
@@ -314,8 +348,16 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
   const loadFiles = useCallback(async (projectId) => {
     if (!projectId) return;
     try {
-      const res = await apiClient.get(PLANNING_ENDPOINTS.files, { params: { project: projectId } });
-      setFiles(res.data?.results ?? res.data ?? []);
+      const allFiles = [];
+      let page = 1;
+      while (page <= 1000) {
+        const res = await apiClient.get(PLANNING_ENDPOINTS.files, { params: { project: projectId, page } });
+        allFiles.push(...(res.data?.results ?? res.data ?? []));
+        if (!res.data?.next) break;
+        if (page >= 1000) throw new Error('The complete reference document list could not be loaded.');
+        page += 1;
+      }
+      setFiles(allFiles);
     } catch (err) {
       setBanner({ type: 'error', message: 'Failed to load uploaded files.' });
     }
@@ -397,9 +439,22 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
       loadAiSettings(selectedProjectId);
       if (embedded) loadEnterpriseContract(selectedProjectId);
       setIntelligencePreview(null);
+      setPreviewConfirmation(null);
+      setReviewRequest(0);
+      loadedPreviewRef.current = null;
+      setPreviewSaveError('');
+      setEditingSection(null);
+      setDraftIntelligence(null);
       setTestResult(null);
     }
   }, [embedded, selectedProjectId, loadFiles, loadLatestGeneration, loadAiSettings, loadEnterpriseContract]);
+
+  useEffect(() => {
+    if (embedded && currentStep === 'intelligence' && !showPlannerWorkspace) {
+      intelligenceHeadingRef.current?.focus({ preventScroll: true });
+      intelligenceHeadingRef.current?.scrollIntoView({ block: 'start' });
+    }
+  }, [embedded, currentStep, showPlannerWorkspace]);
 
   // Poll while any file is still pending/processing so status badges update
   // without requiring a manual refresh (Celery parses files asynchronously).
@@ -542,20 +597,26 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!selectedProjectId) return;
+  const handleAnalyze = async (options = {}) => {
+    const projectId = options.projectId || selectedProjectId;
+    if (!projectId || analyzing) return null;
     setAnalyzing(true);
     setBanner(null);
     try {
-      const job = await runPlanningJob(() => planningIntelligenceService.startAnalysis(selectedProjectId));
+      const job = await runPlanningJob(() => planningIntelligenceService.startAnalysis(projectId));
+      if (!job) return null;
       setIntelligencePreview(job.result_data?.intelligence || null);
+      setAnalysisRevision(value => value + 1);
+      setPreviewConfirmation(null);
       setCurrentStep('intelligence');
       setBanner({ type: 'success', message: 'Document intelligence completed.' });
+      return job;
     } catch (err) {
       setBanner({
         type: 'error',
         message: err.response?.data?.error || err.job?.error_message || err.message || 'Document intelligence requires at least one parsed file.',
       });
+      return null;
     } finally {
       setAnalyzing(false);
     }
@@ -635,7 +696,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
 
   const handleSaveIntelligenceEdit = () => {
     setIntelligencePreview(draftIntelligence);
-    setBanner({ type: 'success', message: 'Document Intelligence edits saved — they will be used the next time you generate the schedule.' });
+    setBanner({ type: 'info', message: embedded ? 'Preview edits applied. Confirm and save below to continue to Work breakdown.' : 'Document Intelligence edits applied for the next schedule generation.' });
     cancelEdit();
   };
 
@@ -1584,10 +1645,10 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
     const isEditing = editingSection === 'intelligence';
     const data = isEditing ? draftIntelligence : intelligencePreview;
     return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-5">
-      <div className="flex items-center gap-2">
+    <div className="pln-intelligence-preview bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xl">🧠</span>
-        <h2 className="font-semibold text-slate-800">Document Intelligence Preview</h2>
+        <h2 ref={intelligenceHeadingRef} tabIndex={-1} className="font-semibold text-slate-800">Document Intelligence Preview</h2>
         {intelligencePreview && (
           <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${intelligencePreview.ai_augmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
             {intelligencePreview.ai_augmented ? '✨ Enhanced by Claude' : '🧮 Deterministic analysis'}
@@ -1604,7 +1665,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
             >
               📊 Visualize
             </button>
-            <button onClick={() => startEdit('intelligence')}
+            <button disabled={savingPreview} onClick={() => startEdit('intelligence')}
               className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors inline-flex items-center gap-1.5">
               ✏️ Edit
             </button>
@@ -1612,11 +1673,15 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
         )}
         {isEditing && (
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={cancelEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Cancel</button>
-            <button onClick={handleSaveIntelligenceEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">Save Changes</button>
+            <button disabled={savingPreview} onClick={cancelEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Cancel</button>
+            <button disabled={savingPreview} onClick={handleSaveIntelligenceEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">{embedded ? 'Apply edits' : 'Save Changes'}</button>
           </div>
         )}
+        {embedded && intelligencePreview && <button type="button" className="pln-button" disabled={savingPreview} onClick={() => setReviewRequest(value => value + 1)}>{previewReviewState.conflicts ? 'Review clarification' : 'Review source findings'}</button>}
       </div>
+      {previewSaveError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{previewSaveError}</p>}
+      {embedded && previewReviewState.conflicts > 0 && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Resolve the source clarification before confirming this preview.</p>}
+      {embedded && intelligenceOutdated && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">Project inputs or source documents have changed. Return to Scope &amp; inputs and run Document Intelligence to refresh this preview.</p>}
       {!intelligencePreview && (
         <div className="flex items-center gap-3 bg-slate-50 rounded-xl p-4">
           <p className="text-sm text-slate-400 flex-1">Run document intelligence from the Upload step first.</p>
@@ -1626,7 +1691,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
         </div>
       )}
       {data && (
-        <>
+        <fieldset disabled={savingPreview} className="min-w-0 space-y-5 border-0 p-0">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             <div className="rounded-xl p-4 bg-gradient-to-br from-sky-50 to-white border border-sky-100">
               <div className="text-sky-600 text-sm font-semibold uppercase tracking-wide">Detected Project Name</div>
@@ -1689,11 +1754,11 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
             </div>
           )}
 
-          <WorkablePlanBuilder
+          {!embedded && <WorkablePlanBuilder
             projectId={selectedProjectId}
             intelligenceRunId={data.document_intelligence_run_id}
             onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)}
-          />
+          />}
 
           {data.ai_review && (
             <div className="rounded-xl p-4 bg-gradient-to-br from-violet-50 via-indigo-50 to-white border border-violet-100">
@@ -2470,7 +2535,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
             <p key={i} className="text-sm text-amber-700 italic bg-amber-50 rounded-lg px-3 py-2">⚠ {n}</p>
           ))}
 
-        </>
+        </fieldset>
       )}
     </div>
     );
@@ -3932,7 +3997,14 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
     switch (currentStep) {
       case 'upload': return renderUploadStep();
       case 'intelligence': return renderIntelligenceStep();
-      case 'wbs': return renderWbsStep();
+      case 'wbs': return embedded ? previewConfirmed ? <WorkBreakdownPanel
+        key={`${intelligencePreview.document_intelligence_run_id}:${previewConfirmation.confirmed_at}`}
+        projectId={selectedProjectId} intelligenceRunId={intelligencePreview.document_intelligence_run_id}
+        previewConfirmedAt={previewConfirmation.confirmed_at} baselinePublished={Boolean(enterpriseContract?.baseline_locked)}
+        onDirtyChanged={setWorkBreakdownDirty} onSavingChanged={setWorkBreakdownSaving}
+        onBack={() => setCurrentStep('upload')}
+        onContinue={result => { setWorkBreakdownSchedule(result); setCurrentStep('schedule'); setShowPlannerWorkspace(true); }}
+      /> : <p>Confirm and save the Document Intelligence Preview before building the work breakdown.</p> : renderWbsStep();
       case 'schedule': return renderScheduleStep();
       case 'eddr': return renderEddrStep();
       case 'manhours': return renderManhoursStep();
@@ -3953,18 +4025,68 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
   };
 
   // ── Main render ──────────────────────────────────────────────────────────
-  if (embedded && showPlannerWorkspace && selectedProjectId) {
-    return (
-      <PlannerWorkspacePage
-        embedded
-        planningProjectId={selectedProjectId}
-        onBack={() => setShowPlannerWorkspace(false)}
-        onOpenGenerationWizard={() => {
-          setShowPlannerWorkspace(false);
-          setShowGenerationWizard(true);
-        }}
-      />
-    );
+  if (embedded) {
+    const stages = [
+      { label: 'Scope & inputs', steps: ['upload', 'intelligence'] },
+      { label: 'Work breakdown', steps: ['wbs'] },
+      { label: 'Schedule & resources', steps: ['schedule', 'eddr', 'manhours'] },
+      { label: 'Review & approve', steps: ['validation'] },
+      { label: 'Publish baseline', steps: ['export', 'narrative', 'presentation', 'proposal'] },
+    ];
+    const selectedStage = stages.findIndex(stage => stage.steps.includes(currentStep));
+    const goToStage = async index => {
+      if (workBreakdownDirty && index !== 1 && !(await radaiConfirm('Leave Work breakdown and discard unsaved task changes?'))) return;
+      if (index === 1) openWorkBreakdown();
+      else setCurrentStep(stages[index].steps[0]);
+    };
+    const backToPortfolio = () => onBackToPortfolio ? onBackToPortfolio() : navigate(`/projects?project=${enterpriseProject?.id || ''}`);
+    const savedProject = saved => {
+      setProjects(current => current.some(item => item.id === saved.id)
+        ? current.map(item => item.id === saved.id ? saved : item) : [saved, ...current]);
+      setSelectedProjectId(saved.id);
+      loadEnterpriseContract(saved.id);
+    };
+    return <div className="planning-design" aria-label="Project planning">
+      {renderBanner()}
+      {renderAiSettingsModal()}
+      <GenerationWizard open={showGenerationWizard} project={selectedProject} files={files}
+        intelligence={intelligencePreview || generation?.intelligence} intelligenceOverrides={buildIntelligenceOverrides()}
+        onClose={() => setShowGenerationWizard(false)} onGenerate={handleGenerate}
+        onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)} />
+      {showPlannerWorkspace && selectedProjectId && <PlannerWorkspacePage embedded planningProjectId={selectedProjectId}
+        initialScheduleId={workBreakdownSchedule?.schedule_id} initialVersionId={workBreakdownSchedule?.schedule_version_id}
+        onBack={() => { setShowPlannerWorkspace(false); if (workBreakdownSchedule) setCurrentStep('wbs'); }} onOpenGenerationWizard={() => { setShowPlannerWorkspace(false); setShowGenerationWizard(true); }} />}
+      <nav aria-label="Planning stages" hidden={showPlannerWorkspace}><ol className="pln-steps">{stages.map((stage, index) => {
+        const active = index === selectedStage;
+        const available = !analyzing && !savingPreview && !workBreakdownSaving && (index === 0 || (Boolean(selectedProjectId) && (Boolean(generation) || (index === 1 && Boolean(intelligencePreview)))));
+        const complete = index === 0 && previewConfirmed && selectedStage > 0;
+        return <li key={stage.label} className={complete ? 'pln-step-complete' : undefined}><button type="button" aria-current={active ? 'step' : undefined} disabled={!available}
+          onClick={() => goToStage(index)}>
+          <span className="pln-step-number">{complete ? <Check size={21} /> : index + 1}</span><span><strong>{stage.label}</strong><small>{complete ? 'Complete' : active ? 'In progress' : index === 4 && enterpriseContract?.baseline_locked ? 'Baseline published' : generation ? 'Available' : 'Not started'}</small></span>
+        </button></li>;
+      })}</ol></nav>
+      {loadingProjects ? <div className="pln-workspace-tools" role="status"><RefreshCw size={17} className="animate-spin" />Loading project planning…</div> : <>
+        {contractError && <div className="pln-error" role="alert">{contractError.title}. <button type="button" className="pln-button" onClick={() => loadEnterpriseContract(selectedProjectId)}>Retry connection</button></div>}
+        <PlanningInputsPanel project={selectedProject} enterpriseProject={enterpriseProject} contract={enterpriseContract}
+          loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} analysisRevision={analysisRevision}
+          uploadCategory={uploadCategory} onUploadCategory={setUploadCategory} onUpload={handleUpload} onDeleteFile={handleDeleteFile}
+          onAnalyze={handleAnalyze} onSaved={savedProject} onBack={backToPortfolio}
+          onOpenIntelligencePreview={() => setCurrentStep('intelligence')}
+          onPreviewStaleChanged={setIntelligenceOutdated}
+          onReadinessChanged={setInputsReady}
+          onIntelligenceLoaded={acceptLoadedIntelligence}
+          onReviewStateChanged={setPreviewReviewState} reviewRequest={reviewRequest}
+          onAiSettings={() => { setShowAiSettingsModal(true); setTestResult(null); }} hidden={showPlannerWorkspace || currentStep !== 'upload'}
+          onRevealInputs={() => { setShowPlannerWorkspace(false); setCurrentStep('upload'); }} />
+        {!showPlannerWorkspace && currentStep !== 'upload' && <div className="pln-advanced-panel">
+          <nav className="pln-task-tabs" aria-label="Planning tasks" hidden={currentStep === 'wbs'}>{(stages[selectedStage]?.steps || []).map(id => <button type="button" key={id} aria-pressed={currentStep === id} onClick={() => setCurrentStep(id)}>{PLANNING_WORKFLOW_STEPS.find(step => step.id === id)?.label}</button>)}</nav>
+          {renderStepContent()}
+          <div className="pln-workspace-tools" hidden={currentStep === 'wbs'}><button type="button" className="pln-button" onClick={() => setCurrentStep('upload')}>Back to scope &amp; inputs</button><span>{enterpriseProject?.code} · {enterpriseProject?.name}</span><button type="button" className="pln-button pln-primary" disabled={currentStep === 'intelligence' && (!canConfirmPreview || savingPreview)} onClick={currentStep === 'intelligence' ? confirmPreview : () => openPlannerWorkspace(selectedProjectId)}>{currentStep === 'intelligence' ? savingPreview ? 'Saving confirmation…' : previewConfirmed ? 'Continue to Work breakdown' : 'Confirm & save → Work breakdown' : 'Open schedule workspace'}</button></div>
+        </div>}
+        {selectedProject && !showPlannerWorkspace && currentStep !== 'wbs' && <details className="pln-workspace-details"><summary>Planning tools &amp; workspace details</summary><div className="pln-workspace-tools"><button type="button" className="pln-button" onClick={() => setCurrentStep('intelligence')}>Document Intelligence Preview</button><span>Review the schedule basis, discipline inputs and generation plan.</span></div>{renderProjectPicker()}</details>}
+      </>}
+      {renderVisualizationModal()}
+    </div>;
   }
 
   return (
@@ -4071,6 +4193,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null }) => 
 
 PlanningPackagePage.propTypes = {
   embedded: PropTypes.bool,
+  onBackToPortfolio: PropTypes.func,
   enterpriseProject: PropTypes.shape({
     id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     name: PropTypes.string,

@@ -119,7 +119,7 @@ export async function scheduleHarness(page, options = {}) {
     contentType: 'text/html',
     body: '<!doctype html><html lang="en"><head><title>Schedule Performance interaction test</title><script type="module">import RefreshRuntime from "/@react-refresh"; RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$ = () => {}; window.$RefreshSig$ = () => (type) => type; window.__vite_plugin_react_preamble_installed__ = true;</script></head><body><div id="performance-test"></div><script type="module" src="/tests/fixtures/project-performance-harness.jsx"></script></body></html>',
   }))
-  await page.route('**/api/v1/**', route => {
+  await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url())
     const path = url.pathname
     const projectId = url.searchParams.get('enterprise_project') || url.searchParams.get('project')
@@ -130,6 +130,7 @@ export async function scheduleHarness(page, options = {}) {
     state.requests.push({ path, query: Object.fromEntries(url.searchParams), method: route.request().method(), project: record.project.id })
     const failed = [...state.failures].find(resource => path.includes(resource))
     if (failed) return reply(route, { detail: 'Schedule service temporarily unavailable: ' + failed }, 503)
+    if (await options.handleRequest?.({ route, url, path, record, state, reply })) return
     if (path.endsWith('/project-control/phase-flags/')) return reply(route, { phase_flags: flags })
     if (path.endsWith('/planning-intelligence/projects/')) return reply(route, pageOf(state.noLinked ? [] : [record.planningProject]))
     if (path.endsWith('/planning-intelligence/schedules/')) return reply(route, pageOf([record.schedule]))
@@ -149,7 +150,7 @@ export async function scheduleHarness(page, options = {}) {
     if (path.endsWith('/analytics/commercial-dashboard/')) return reply(route, { currency: 'AED', actual: '4600000.00', committed: '6800000.00', recent_events: [] })
     const support = [['/projects/tasks/', 'tasks'], ['/projects/milestones/', 'milestones'], ['/change-events/', 'changes'], ['/integrated-snapshots/', 'snapshots']].find(([suffix]) => path.endsWith(suffix))
     if (support) return reply(route, pageOf(record[support[1]]))
-    if (['/files/', '/generations/', '/jobs/', '/control-accounts/', '/reporting-periods/', '/approved-hours/', '/cost-ledger/', '/budget-allocations/', '/wbs-nodes/'].some(suffix => path.endsWith(suffix))) return reply(route, pageOf([]))
+    if (['/files/', '/generations/', '/jobs/', '/intelligence-runs/', '/intelligence-facts/', '/intelligence-conflicts/', '/control-accounts/', '/reporting-periods/', '/approved-hours/', '/cost-ledger/', '/budget-allocations/', '/wbs-nodes/'].some(suffix => path.endsWith(suffix))) return reply(route, pageOf([]))
     if (path.endsWith('/ai-settings/')) return reply(route, { enabled: false, key_configured: false, model: null })
     if (path.endsWith('/enterprise-contract/')) return reply(route, { project: record.planningProject, enterprise_project: record.project, differences: [], lifecycle: 'baselined', baseline_locked: true, baseline: record.baselines[0] || null })
     state.unknown.push(path)

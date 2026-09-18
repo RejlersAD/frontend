@@ -13,6 +13,7 @@ import { radaiPrompt } from '../../services/radaiDialog'
  */
 
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import PurchaseOrderPreviewPane from './PurchaseOrderPreviewPane';
@@ -416,7 +417,8 @@ const normalizeRequisitionItems = (requisition) => {
   });
 };
 
-const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData = null, prReference = null }) => {
+const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData = null, prReference = null, initialProject = null }) => {
+  const [projectPreset, setProjectPreset] = useState(!editData && initialProject?.id ? initialProject : null);
   const savedInvoiceEmails = Array.isArray(editData?.invoicing_emails)
     ? editData.invoicing_emails
     : DEFAULT_INVOICE_EMAILS;
@@ -430,7 +432,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [projects, setProjects] = useState([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectLoadError, setProjectLoadError] = useState('');
-  const [projectSearch, setProjectSearch] = useState(editData?.project_number || '');
+  const [projectSearch, setProjectSearch] = useState(editData?.project_number || (projectPreset ? `${projectPreset.code} — ${projectPreset.name}` : ''));
   const [showProjectChoices, setShowProjectChoices] = useState(false);
   const [activeProjectIndex, setActiveProjectIndex] = useState(-1);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
@@ -502,8 +504,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     workshop_rates: editData?.workshop_rates || {},
     
     // Project Information
-    project: editData?.project || '',
-    project_number: editData?.project_number || '',
+    project: editData?.project || projectPreset?.procurement_project_id || '',
+    enterprise_project: editData?.enterprise_project ?? projectPreset?.id ?? null,
+    project_number: editData?.project_number || projectPreset?.code || '',
     project_manager: editData?.project_manager || '',
     end_client: editData?.end_client || '',
     contractor: editData?.contractor || 'Rejlers International Engineering Solutions AB',
@@ -817,12 +820,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     }
 
     setProjectSearch(`${selectedProject.project_number} — ${selectedProject.project_name}`);
+    setProjectPreset(null);
     setShowProjectChoices(false);
     setShowNewProjectForm(false);
     setProjectCreateError('');
     setFormData((prev) => ({
       ...prev,
       project: selectedProject.id,
+      enterprise_project: selectedProject.enterprise_project ?? (project.source === 'core' ? project.source_project_id : null),
       project_number: selectedProject.project_number,
     }));
   };
@@ -841,7 +846,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       handleProjectSelect(exactProject);
       return;
     }
-    setFormData((prev) => ({ ...prev, project: '' }));
+    setProjectPreset(null);
+    setFormData((prev) => ({ ...prev, project: '', enterprise_project: null, project_number: '' }));
   };
 
   const handleCreateProject = async () => {
@@ -923,6 +929,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
           purchase_recommendation: requisition.purchase_recommendation,
           project_details: requisition.project_details,
           project: requisition.project,
+          enterprise_project: requisition.enterprise_project,
           created_at: requisition.created_at,
         }));
         setAvailableRequisitions(fallbackRows);
@@ -1016,6 +1023,22 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   const handleRequisitionSelect = (requisition) => {
     if (!requisition) return;
+    if (projectPreset) {
+      const explicitCodes = (Array.isArray(requisition.project_details) ? requisition.project_details : [])
+        .flatMap(item => [item?.project_number, item?.project_code])
+        .filter(Boolean).map(value => String(value).trim().toLowerCase());
+      const differentProject = requisition.enterprise_project
+        ? String(requisition.enterprise_project) !== String(projectPreset.id)
+        : explicitCodes.length > 0 && !explicitCodes.includes(String(projectPreset.code).trim().toLowerCase());
+      if (differentProject) {
+        const message = `This PR belongs to another project. Choose a PR for ${projectPreset.code}, or close this form and choose another project in Project Links.`;
+        setPrSearch(selectedRequisition?.pr_number || '');
+        setShowPRChoices(false);
+        setErrors(previous => ({ ...previous, pr_reference: message }));
+        setPopupError(message);
+        return;
+      }
+    }
     if (editData) {
       // Reconciling a legacy order adds its PR link without replacing the
       // existing PO identity, commercial values, or signed approval evidence.
@@ -1050,7 +1073,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     setPricingConfirmed(false);
     setPricingEdited(false);
     setPrSearch(requisition.pr_number || '');
-    setProjectSearch(linkedProject
+    setProjectSearch(projectPreset ? `${projectPreset.code} — ${projectPreset.name}` : linkedProject
       ? `${linkedProject.project_number} — ${linkedProject.project_name}`
       : String(projectReference));
     setShowPRChoices(false);
@@ -1071,8 +1094,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       price_amount: totalAmount,
       vat_basis: 'unconfirmed',
       currency: requisition.currency || prev.currency,
-      project: linkedProject?.id || '',
-      project_number: linkedProject?.project_number || projectReference || prev.project_number,
+      project: projectPreset ? (projectPreset.procurement_project_id || '') : linkedProject?.id || '',
+      enterprise_project: projectPreset?.id ?? requisition.enterprise_project ?? linkedProject?.enterprise_project ?? (linkedProject?.source === 'core' ? linkedProject.source_project_id : null),
+      project_number: projectPreset?.code || linkedProject?.project_number || projectReference || prev.project_number,
       expected_delivery: requisition.required_date || prev.expected_delivery,
       items: normalizedItems,
       scope_of_services: requisition.description_reason || prev.scope_of_services,
@@ -2966,6 +2990,21 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       </div>
     </div>
   );
+};
+
+PurchaseOrderForm.propTypes = {
+  isOpen: PropTypes.bool,
+  pageMode: PropTypes.bool,
+  onClose: PropTypes.func,
+  onSuccess: PropTypes.func,
+  editData: PropTypes.object,
+  prReference: PropTypes.object,
+  initialProject: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    code: PropTypes.string.isRequired,
+    name: PropTypes.string.isRequired,
+    procurement_project_id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  }),
 };
 
 export default PurchaseOrderForm;

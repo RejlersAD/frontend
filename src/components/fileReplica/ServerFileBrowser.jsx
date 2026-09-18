@@ -6,6 +6,7 @@ import ReplicaStatus, { dateLabel, sizeLabel } from './ReplicaStatus'
 
 const buttonStyle = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
 const fieldStyle = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
+const EMPTY_SYNC_REFRESH_MS = 10000
 const extensionOf = entry => String(entry.file_extension || entry.name?.match(/\.([^.]+)$/)?.[1] || '').replace(/^\./, '').toLowerCase()
 const typeLabel = entry => {
   if (entry.is_directory) return 'Folder'
@@ -25,9 +26,10 @@ function EntryIcon({ entry }) {
   return <Icon className={`h-5 w-5 shrink-0 ${color}`} aria-hidden="true" />
 }
 const contentLabel = entry => entry.is_directory && entry.status === 'indexed' ? 'Indexed folder' : entry.status === 'available' && entry.current_version ? 'Content available' : entry.status === 'indexed' ? 'Metadata only' : undefined
-const emptyDescription = (scope, search) => {
+const emptyDescription = (scope, search, autoRefreshing = false) => {
   if (search) return 'No matching files or folders in this project catalogue. Search includes all indexed subfolders.'
   if (scope?.in_inventory_scope === false) return 'This project folder is outside the current inventory scope. Review the included and excluded paths in the connection settings.'
+  if (autoRefreshing) return 'No contents are indexed in this folder yet. The server scan is running; this view refreshes automatically.'
   if (scope?.source_scan_state === 'discovery_only') return 'Project folders have been discovered, but their contents are not being scanned. An administrator must include the project folders in the connection settings, then run the connector.'
   if (scope?.source_scan_state === 'unscanned') return 'This folder has not been scanned with the current connection settings. Run the office connector, then refresh the catalogue.'
   if (scope?.source_scan_state === 'syncing') return 'The connector is still scanning. Refresh after synchronization to see newly catalogued files and subfolders.'
@@ -184,6 +186,7 @@ export default function ServerFileBrowser({ projectId, sourceId, initialScopeId,
   const rootPath = scope?.relative_path || ''
   const mode = scope?.source_mode || source?.mode
   const sourceStatus = scope?.source_status || source?.status
+  const scanState = scope?.source_scan_state || source?.scan_state
   const lastHeartbeat = scope?.source_last_heartbeat || source?.last_heartbeat
   const lastSuccess = scope?.source_last_success_at || source?.last_success_at
   useEffect(() => { navigationRef.current = { scopeId, parentPath } }, [scopeId, parentPath])
@@ -223,6 +226,15 @@ export default function ServerFileBrowser({ projectId, sourceId, initialScopeId,
     return () => controller.abort()
   }, [projectId, sourceId, scopeId, scopeLoading, parentPath, search, page])
 
+  const autoRefreshing = Boolean(scopeId && !scopeLoading && !scopeError && !listing.loading && !listing.error
+    && !listing.items.length && listing.count === 0 && !selected && !search && !searchInput && page === 1
+    && scope?.in_inventory_scope !== false && scanState === 'syncing' && sourceStatus !== 'offline')
+  useEffect(() => {
+    if (!autoRefreshing) return undefined
+    const timer = window.setTimeout(() => setRefresh(value => value + 1), EMPTY_SYNC_REFRESH_MS)
+    return () => window.clearTimeout(timer)
+  }, [autoRefreshing, projectId, sourceId, initialScopeId, scopeId, parentPath, revision])
+
   const navigate = path => { setParentPath(path); setSearch(''); setSearchInput(''); setPage(1); setSelected(null) }
   const relative = rootPath && parentPath.startsWith(rootPath) ? parentPath.slice(rootPath.length).replace(/^\//, '') : ''
   const segments = relative.split('/').filter(Boolean)
@@ -243,7 +255,7 @@ export default function ServerFileBrowser({ projectId, sourceId, initialScopeId,
       {listing.error && <p role="alert" className="p-5 text-sm text-rose-700">{listing.error}</p>}
       <div className="sfb-table-wrap overflow-x-auto" role="region" aria-label="Server folder contents" tabIndex={0}><table className="sfb-table min-w-full text-left text-sm"><caption className="sr-only">Synchronized files and folders</caption><thead className="bg-slate-50 text-xs text-slate-600"><tr><th scope="col" className="px-5 py-3">Name</th><th scope="col" className="px-3 py-3">Type</th><th scope="col" className="px-3 py-3">Content status</th><th scope="col" className="px-3 py-3">Size</th><th scope="col" className="px-3 py-3">Modified</th></tr></thead><tbody className="divide-y divide-slate-100">
         {listing.loading && <tr><td colSpan={5} className="p-6 text-center text-slate-500" role="status">Loading files…</td></tr>}
-        {!listing.loading && !listing.error && !listing.items.length && <tr><td colSpan={5} className="p-6 text-center text-slate-600"><p className="mx-auto max-w-2xl">{emptyDescription(scope, search)}</p></td></tr>}
+        {!listing.loading && !listing.error && !listing.items.length && <tr><td colSpan={5} className="p-6 text-center text-slate-600"><p className="mx-auto max-w-2xl">{emptyDescription(scope, search, autoRefreshing)}</p></td></tr>}
         {listing.items.map(entry => <tr key={entry.id} className={selected?.id === entry.id ? 'bg-indigo-50' : 'hover:bg-slate-50'}><td className="max-w-lg px-5 py-3"><button type="button" onClick={() => entry.is_directory ? navigate(entry.relative_path) : setSelected(entry)} className="inline-flex max-w-full items-center gap-2 text-left font-medium text-indigo-700 hover:underline"><EntryIcon entry={entry} /><span className="break-words">{entry.name}</span></button>{search && <p className="mt-1 break-words text-xs text-slate-500">{entry.parent_path}</p>}</td><td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{typeLabel(entry)}</td><td className="px-3 py-3"><ReplicaStatus status={entry.status} label={contentLabel(entry)} /></td><td className="whitespace-nowrap px-3 py-3 text-slate-600">{entry.is_directory ? '—' : sizeLabel(entry.size_bytes)}</td><td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{dateLabel(entry.modified_at)}</td></tr>)}
       </tbody></table></div>
       <div className="sfb-pagination flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3"><p className="text-xs text-slate-600" role="status">{listing.count} item(s) · Page {page}</p><div className="flex gap-2"><button type="button" className={buttonStyle} disabled={page === 1 || listing.loading} onClick={() => setPage(value => value - 1)}>Previous</button><button type="button" className={buttonStyle} disabled={!listing.next || listing.loading} onClick={() => setPage(value => value + 1)}>Next</button></div></div>

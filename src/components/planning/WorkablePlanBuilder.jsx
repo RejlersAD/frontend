@@ -4,6 +4,14 @@ import planningIntelligenceService from '../../services/planningIntelligence.ser
 import usePlanningJob from '../../hooks/usePlanningJob'
 
 const runningStatuses = new Set(['queued', 'running'])
+const matchesPreview = (job, confirmedAt) => {
+  if (!job) return false
+  if (!confirmedAt) return true
+  if (runningStatuses.has(job.status) || ['failed', 'cancelled'].includes(job.status)) {
+    return Date.parse(job.created_at) >= Date.parse(confirmedAt)
+  }
+  return job.result_data?.preview_confirmation_at === confirmedAt
+}
 const errorText = (error, fallback) => error?.response?.data?.error || error?.message || fallback
 const BUILD_STAGES = [
   { label: 'Documents reviewed', startsAt: 5, completesAt: 12 },
@@ -43,7 +51,7 @@ const StageTracker = ({ job }) => {
 
 StageTracker.propTypes = { job: PropTypes.object.isRequired }
 
-export default function WorkablePlanBuilder({ projectId, intelligenceRunId, onOpenPlanner }) {
+export default function WorkablePlanBuilder({ projectId, intelligenceRunId, previewConfirmedAt, onOpenPlanner }) {
   const [job, setJob] = useState(null)
   const [baseline, setBaseline] = useState(null)
   const [error, setError] = useState('')
@@ -56,15 +64,19 @@ export default function WorkablePlanBuilder({ projectId, intelligenceRunId, onOp
 
   useEffect(() => {
     if (!projectId) return
+    let cancelled = false
     planningIntelligenceService.getWorkablePlanStatus(projectId).then(data => {
-      setJob(data.job || null)
-      setBaseline(data.baseline || null)
-    }).catch(error => setError(errorText(error, 'Could not load the workable-plan status.')))
-  }, [projectId])
+      if (cancelled) return
+      const current = matchesPreview(data.job, previewConfirmedAt)
+      setJob(current ? data.job : null)
+      setBaseline(current ? data.baseline || null : null)
+    }).catch(error => { if (!cancelled) setError(errorText(error, 'Could not load the workable-plan status.')) })
+    return () => { cancelled = true }
+  }, [projectId, previewConfirmedAt])
 
   useEffect(() => {
-    if (activeJob?.job_type === 'workable_plan') setJob(activeJob)
-  }, [activeJob])
+    if (activeJob?.job_type === 'workable_plan' && matchesPreview(activeJob, previewConfirmedAt)) setJob(activeJob)
+  }, [activeJob, previewConfirmedAt])
 
   const result = job?.result_data || {}
   const sheet = result.decision_sheet || {}
@@ -168,5 +180,6 @@ export default function WorkablePlanBuilder({ projectId, intelligenceRunId, onOp
 WorkablePlanBuilder.propTypes = {
   projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   intelligenceRunId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  previewConfirmedAt: PropTypes.string,
   onOpenPlanner: PropTypes.func.isRequired,
 }

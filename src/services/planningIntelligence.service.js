@@ -67,6 +67,12 @@ export const planningIntelligenceService = {
   getWorkablePlanStatus: async projectId => (
     await apiClient.get(PLANNING_ENDPOINTS.workablePlanStatus(projectId))
   ).data,
+  getWorkBreakdown: async (projectId, intelligenceRunId) => (
+    await apiClient.get(PLANNING_ENDPOINTS.workBreakdown(projectId), { params: { intelligence_run_id: intelligenceRunId } })
+  ).data,
+  saveWorkBreakdown: async (projectId, payload) => (
+    await apiClient.put(PLANNING_ENDPOINTS.workBreakdown(projectId), payload)
+  ).data,
   approveWorkableBaseline: async (projectId, scheduleVersionId, name = '') => (
     await apiClient.post(PLANNING_ENDPOINTS.approveWorkableBaseline(projectId), {
       schedule_version_id: scheduleVersionId, ...(name ? { name } : {}),
@@ -284,6 +290,7 @@ export const planningIntelligenceService = {
   listDocumentProfiles: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.documentProfiles, { params: { project: projectId } })),
   listIntelligenceRuns: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.intelligenceRuns, { params: { project: projectId } })),
   getIntelligenceRun: async (runId) => (await apiClient.get(PLANNING_ENDPOINTS.intelligenceRun(runId))).data,
+  confirmIntelligencePreview: async (runId, preview) => (await apiClient.post(PLANNING_ENDPOINTS.confirmIntelligencePreview(runId), { preview })).data,
   listIntelligenceFacts: async (runId, params = {}) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.intelligenceFacts, { params: { run: runId, ...params } })),
   reviewIntelligenceFact: async (factId, status) => (await apiClient.post(PLANNING_ENDPOINTS.reviewIntelligenceFact(factId), { status })).data,
   addIntelligenceFact: async (runId, fact) => (await apiClient.post(PLANNING_ENDPOINTS.addIntelligenceFact(runId), fact)).data,
