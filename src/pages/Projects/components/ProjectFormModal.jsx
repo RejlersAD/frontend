@@ -18,6 +18,8 @@ const buildInitial = (project) => {
     PROJECT_FORM_API_FIELDS.forEach((k) => {
       if (project[k] !== undefined && project[k] !== null) base[k] = project[k]
     })
+    base.project_type = project.custom_fields?.project_type || 'engineering'
+    base.department = project.custom_fields?.department || ''
   }
   return base
 }
@@ -38,6 +40,7 @@ export default function ProjectFormModal({
   project = null,
   onClose,
   onSubmit,                 // async (payload) => savedProject
+  onAISetup,
 }) {
   const initial = useMemo(() => buildInitial(project), [project])
   const [values, setValues] = useState(initial)
@@ -56,7 +59,10 @@ export default function ProjectFormModal({
 
   if (!open) return null
 
-  const setField = (name, value) => setValues((prev) => ({ ...prev, [name]: value }))
+  const setField = (name, value) => setValues((prev) => ({
+    ...prev, [name]: value,
+    ...(mode === 'create' && name === 'project_type' && value !== 'engineering' && !prev.scope_type ? { scope_type: 'other' } : {}),
+  }))
 
   const validate = () => {
     const errs = {}
@@ -80,7 +86,14 @@ export default function ProjectFormModal({
     setSubmitting(true)
     setServerError(null)
     try {
-      await onSubmit(stripBlanks(values))
+      await onSubmit({
+        ...stripBlanks(values),
+        custom_fields: {
+          ...project?.custom_fields,
+          project_type: values.project_type,
+          department: String(values.department || '').trim(),
+        },
+      })
       onClose?.()
     } catch (err) {
       // DRF field-level error dict support
@@ -124,6 +137,7 @@ export default function ProjectFormModal({
                 {serverError}
               </div>
             )}
+            {mode === 'create' && onAISetup && <div className="flex items-center justify-between gap-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700"><span>Describe your goal to prepare the project, work breakdown and schedule.</span><button type="button" disabled={submitting} className="shrink-0 rounded border border-blue-300 bg-white px-3 py-2 font-medium text-blue-700" onClick={() => onAISetup(values)}>Create with AI</button></div>}
 
             {PROJECT_FORM_SECTIONS.map((section) => (
               <fieldset key={section.id} className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">

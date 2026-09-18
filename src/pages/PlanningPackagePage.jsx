@@ -223,6 +223,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   const [, setGenerating] = useState(false);
   const [showGenerationWizard, setShowGenerationWizard] = useState(false);
   const [showPlannerWorkspace, setShowPlannerWorkspace] = useState(false);
+  const [workspaceInitialTab, setWorkspaceInitialTab] = useState('activities');
   const [downloadingPresentation, setDownloadingPresentation] = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
   const [exportedFormat, setExportedFormat] = useState(null);
@@ -281,7 +282,15 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     && !intelligenceOutdated && !previewReviewState.unavailable && !previewReviewState.conflicts;
   const previewConfirmed = Boolean(previewConfirmation?.is_current) && canConfirmPreview
     && planningPreviewKey(currentPreview) === planningPreviewKey(previewConfirmation.preview);
-  const openWorkBreakdown = () => setCurrentStep(previewConfirmed ? 'wbs' : 'intelligence');
+  const manualPlanning = selectedProject?.planning_mode === 'manual';
+  const planningSchedule = workBreakdownSchedule?.schedule_version_id ? workBreakdownSchedule : enterpriseContract?.latest_schedule_version ? {
+    schedule_id: enterpriseContract.latest_schedule_version.schedule_id,
+    schedule_version_id: enterpriseContract.latest_schedule_version.id,
+  } : null;
+  const acceptWorkBreakdown = useCallback(data => {
+    if (data?.schedule_version_id) setWorkBreakdownSchedule(data);
+  }, []);
+  const openWorkBreakdown = () => setCurrentStep(manualPlanning ? inputsReady ? 'wbs' : 'upload' : previewConfirmed ? 'wbs' : 'intelligence');
   const acceptLoadedIntelligence = useCallback((data, confirmation) => {
     const prior = loadedPreviewRef.current;
     loadedPreviewRef.current = data;
@@ -401,14 +410,18 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
       return;
     }
     setLoadingContract(true);
+    setEnterpriseContract(null);
     try {
-      setEnterpriseContract(await planningIntelligenceService.getEnterpriseContract(projectId));
+      const result = await planningIntelligenceService.getEnterpriseContract(projectId);
+      if (activePreviewProjectRef.current !== projectId) return;
+      setEnterpriseContract(result);
       setContractError(null);
     } catch (err) {
+      if (activePreviewProjectRef.current !== projectId) return;
       setEnterpriseContract(null);
       setContractError(describeContractError(err));
     } finally {
-      setLoadingContract(false);
+      if (activePreviewProjectRef.current === projectId) setLoadingContract(false);
     }
   }, []);
 
@@ -434,6 +447,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
   useEffect(() => {
     if (selectedProjectId) {
+      setWorkBreakdownSchedule(null);
       loadFiles(selectedProjectId);
       loadLatestGeneration(selectedProjectId);
       loadAiSettings(selectedProjectId);
@@ -509,6 +523,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     if (!projectId) return;
     if (embedded) {
       setSelectedProjectId(projectId);
+      setWorkspaceInitialTab('activities');
       setShowPlannerWorkspace(true);
       return;
     }
@@ -3997,13 +4012,15 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     switch (currentStep) {
       case 'upload': return renderUploadStep();
       case 'intelligence': return renderIntelligenceStep();
-      case 'wbs': return embedded ? previewConfirmed ? <WorkBreakdownPanel
-        key={`${intelligencePreview.document_intelligence_run_id}:${previewConfirmation.confirmed_at}`}
-        projectId={selectedProjectId} intelligenceRunId={intelligencePreview.document_intelligence_run_id}
-        previewConfirmedAt={previewConfirmation.confirmed_at} baselinePublished={Boolean(enterpriseContract?.baseline_locked)}
+      case 'wbs': return embedded ? manualPlanning || previewConfirmed ? <WorkBreakdownPanel
+        key={manualPlanning ? `manual:${selectedProjectId}` : `${intelligencePreview.document_intelligence_run_id}:${previewConfirmation.confirmed_at}`}
+        projectId={selectedProjectId} intelligenceRunId={intelligencePreview?.document_intelligence_run_id}
+        planningMode={manualPlanning ? 'manual' : 'document'}
+        previewConfirmedAt={previewConfirmation?.confirmed_at} baselinePublished={Boolean(enterpriseContract?.baseline_locked)}
         onDirtyChanged={setWorkBreakdownDirty} onSavingChanged={setWorkBreakdownSaving}
+        onLoaded={acceptWorkBreakdown}
         onBack={() => setCurrentStep('upload')}
-        onContinue={result => { setWorkBreakdownSchedule(result); setCurrentStep('schedule'); setShowPlannerWorkspace(true); }}
+        onContinue={result => { setWorkBreakdownSchedule(result); setWorkspaceInitialTab('activities'); setCurrentStep('schedule'); setShowPlannerWorkspace(true); }}
       /> : <p>Confirm and save the Document Intelligence Preview before building the work breakdown.</p> : renderWbsStep();
       case 'schedule': return renderScheduleStep();
       case 'eddr': return renderEddrStep();
@@ -4037,6 +4054,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     const goToStage = async index => {
       if (workBreakdownDirty && index !== 1 && !(await radaiConfirm('Leave Work breakdown and discard unsaved task changes?'))) return;
       if (index === 1) openWorkBreakdown();
+      else if (manualPlanning && index >= 2) { setWorkspaceInitialTab(index === 3 ? 'assurance' : index === 4 ? 'governance' : 'activities'); setCurrentStep(stages[index].steps[0]); setShowPlannerWorkspace(true); }
       else setCurrentStep(stages[index].steps[0]);
     };
     const backToPortfolio = () => onBackToPortfolio ? onBackToPortfolio() : navigate(`/projects?project=${enterpriseProject?.id || ''}`);
@@ -4054,15 +4072,15 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         onClose={() => setShowGenerationWizard(false)} onGenerate={handleGenerate}
         onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)} />
       {showPlannerWorkspace && selectedProjectId && <PlannerWorkspacePage embedded planningProjectId={selectedProjectId}
-        initialScheduleId={workBreakdownSchedule?.schedule_id} initialVersionId={workBreakdownSchedule?.schedule_version_id}
-        onBack={() => { setShowPlannerWorkspace(false); if (workBreakdownSchedule) setCurrentStep('wbs'); }} onOpenGenerationWizard={() => { setShowPlannerWorkspace(false); setShowGenerationWizard(true); }} />}
+        initialScheduleId={planningSchedule?.schedule_id} initialVersionId={planningSchedule?.schedule_version_id} initialTab={workspaceInitialTab}
+        onBack={() => { setShowPlannerWorkspace(false); if (planningSchedule) setCurrentStep('wbs'); }} onOpenGenerationWizard={() => { setShowPlannerWorkspace(false); setShowGenerationWizard(true); }} />}
       <nav aria-label="Planning stages" hidden={showPlannerWorkspace}><ol className="pln-steps">{stages.map((stage, index) => {
         const active = index === selectedStage;
-        const available = !analyzing && !savingPreview && !workBreakdownSaving && (index === 0 || (Boolean(selectedProjectId) && (Boolean(generation) || (index === 1 && Boolean(intelligencePreview)))));
-        const complete = index === 0 && previewConfirmed && selectedStage > 0;
+        const available = !analyzing && !savingPreview && !workBreakdownSaving && (index === 0 || (Boolean(selectedProjectId) && (manualPlanning ? index === 1 ? inputsReady : !loadingContract && Boolean(planningSchedule) : Boolean(generation) || (index === 1 && Boolean(intelligencePreview)))));
+        const complete = index === 0 && (manualPlanning ? inputsReady : previewConfirmed) && selectedStage > 0;
         return <li key={stage.label} className={complete ? 'pln-step-complete' : undefined}><button type="button" aria-current={active ? 'step' : undefined} disabled={!available}
           onClick={() => goToStage(index)}>
-          <span className="pln-step-number">{complete ? <Check size={21} /> : index + 1}</span><span><strong>{stage.label}</strong><small>{complete ? 'Complete' : active ? 'In progress' : index === 4 && enterpriseContract?.baseline_locked ? 'Baseline published' : generation ? 'Available' : 'Not started'}</small></span>
+          <span className="pln-step-number">{complete ? <Check size={21} /> : index + 1}</span><span><strong>{stage.label}</strong><small>{complete ? 'Complete' : active ? 'In progress' : index === 4 && enterpriseContract?.baseline_locked ? 'Baseline published' : generation || manualPlanning && available ? 'Available' : 'Not started'}</small></span>
         </button></li>;
       })}</ol></nav>
       {loadingProjects ? <div className="pln-workspace-tools" role="status"><RefreshCw size={17} className="animate-spin" />Loading project planning…</div> : <>
@@ -4071,6 +4089,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} analysisRevision={analysisRevision}
           uploadCategory={uploadCategory} onUploadCategory={setUploadCategory} onUpload={handleUpload} onDeleteFile={handleDeleteFile}
           onAnalyze={handleAnalyze} onSaved={savedProject} onBack={backToPortfolio}
+          onOpenWorkBreakdown={() => setCurrentStep('wbs')}
           onOpenIntelligencePreview={() => setCurrentStep('intelligence')}
           onPreviewStaleChanged={setIntelligenceOutdated}
           onReadinessChanged={setInputsReady}
@@ -4083,7 +4102,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           {renderStepContent()}
           <div className="pln-workspace-tools" hidden={currentStep === 'wbs'}><button type="button" className="pln-button" onClick={() => setCurrentStep('upload')}>Back to scope &amp; inputs</button><span>{enterpriseProject?.code} · {enterpriseProject?.name}</span><button type="button" className="pln-button pln-primary" disabled={currentStep === 'intelligence' && (!canConfirmPreview || savingPreview)} onClick={currentStep === 'intelligence' ? confirmPreview : () => openPlannerWorkspace(selectedProjectId)}>{currentStep === 'intelligence' ? savingPreview ? 'Saving confirmation…' : previewConfirmed ? 'Continue to Work breakdown' : 'Confirm & save → Work breakdown' : 'Open schedule workspace'}</button></div>
         </div>}
-        {selectedProject && !showPlannerWorkspace && currentStep !== 'wbs' && <details className="pln-workspace-details"><summary>Planning tools &amp; workspace details</summary><div className="pln-workspace-tools"><button type="button" className="pln-button" onClick={() => setCurrentStep('intelligence')}>Document Intelligence Preview</button><span>Review the schedule basis, discipline inputs and generation plan.</span></div>{renderProjectPicker()}</details>}
+        {selectedProject && !showPlannerWorkspace && currentStep !== 'wbs' && <details className="pln-workspace-details"><summary>Planning tools &amp; workspace details</summary><div className="pln-workspace-tools">{!manualPlanning && <button type="button" className="pln-button" onClick={() => setCurrentStep('intelligence')}>Document Intelligence Preview</button>}<span>{manualPlanning ? 'Manage the project calendar, tasks and schedule.' : 'Review the schedule basis, discipline inputs and generation plan.'}</span></div>{renderProjectPicker()}</details>}
       </>}
       {renderVisualizationModal()}
     </div>;

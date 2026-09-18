@@ -131,6 +131,9 @@ export const PLANNING_ENDPOINTS = {
   buildWorkablePlan: (id) => `/planning-intelligence/projects/${id}/build-workable-plan/`,
   workablePlanStatus: (id) => `/planning-intelligence/projects/${id}/workable-plan-status/`,
   workBreakdown: (id) => `/planning-intelligence/projects/${id}/work-breakdown/`,
+  manualWorkBreakdown: (id) => `/planning-intelligence/projects/${id}/manual-work-breakdown/`,
+  eligiblePlanningEmployees: (id) => `/planning-intelligence/projects/${id}/eligible-employees/`,
+  employeeActivity: (id) => `/planning-intelligence/projects/${id}/employee-activity/`,
   approveWorkableBaseline: (id) => `/planning-intelligence/projects/${id}/approve-workable-baseline/`,
   // Planner corrections create an immutable child revision.
   editGeneration: (id) => `/planning-intelligence/generations/${id}/edit/`,

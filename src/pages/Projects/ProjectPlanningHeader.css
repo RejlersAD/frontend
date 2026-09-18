@@ -11,8 +11,9 @@
 .project-performance-workspace .pp-planning-title { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .project-performance-workspace .pp-planning-title h1 { margin: 0; color: #061849; font-size: 28px; font-weight: 700; line-height: 38px; letter-spacing: -.5px; }
 .project-performance-workspace .pp-planning-title .pp-badge { min-height: 23px; padding: 2px 11px; background: #e6ebf3; color: #233d6c; font-size: 12px; font-weight: 500; }
-.project-performance-workspace .pp-planning-actions { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+.project-performance-workspace .pp-planning-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 11px; flex-shrink: 0; max-width: 100%; }
 .project-performance-workspace .pp-planning-actions .pp-button { min-height: 40px; color: #0751ff; font-size: 13px; }
+.project-performance-workspace .pp-planning-actions .pp-button.pp-primary { color: #fff; }
 .project-performance-workspace .pp-planning-actions .pp-planning-save { padding: 8px 22px; border-color: #a9bfe9; }
 .project-performance-workspace .pp-planning-actions .pp-icon-button { width: 40px; }
 .project-performance-workspace .pp-planning-project-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-width: 0; margin-bottom: 2px; }

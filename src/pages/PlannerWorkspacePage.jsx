@@ -56,7 +56,7 @@ const StatusBadge = ({ status }) => {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${styles[status] || styles.draft}`}>{status}</span>
 }
 
-const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, initialScheduleId = null, initialVersionId = null, onBack, onOpenGenerationWizard }) => {
+const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, initialScheduleId = null, initialVersionId = null, initialTab = 'activities', onBack, onOpenGenerationWizard }) => {
   const { projectId: routeProjectId } = useParams()
   const projectId = planningProjectId || routeProjectId
   const navigate = useNavigate()
@@ -70,7 +70,7 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, init
   const [workspace, setWorkspace] = useState(null)
   const [draftActivities, setDraftActivities] = useState([])
   const [dirtyIds, setDirtyIds] = useState(new Set())
-  const [tab, setTab] = useState('activities')
+  const [tab, setTab] = useState(() => TABS.some(item => item.id === initialTab) ? initialTab : 'activities')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState(null)
@@ -704,6 +704,7 @@ PlannerWorkspacePage.propTypes = {
   planningProjectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   initialScheduleId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   initialVersionId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  initialTab: PropTypes.string,
   onBack: PropTypes.func,
   onOpenGenerationWizard: PropTypes.func,
 }

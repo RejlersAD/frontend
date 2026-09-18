@@ -11,6 +11,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import ProjectControlHeader from './components/ProjectControlHeader'
 import PhaseStubCard from './components/PhaseStubCard'
 import ProjectFormModal from './components/ProjectFormModal'
+import AIProjectSetupDialog from './components/AIProjectSetupDialog'
 import QhseImportModal from './components/QhseImportModal'
 import ProjectDashboardTab from './tabs/ProjectDashboardTab'
 import CostDashboardTab from './tabs/CostDashboardTab'
@@ -83,6 +84,7 @@ export default function ProjectsPage() {
   const [loadingFlags, setLoadingFlags] = useState(true)
   const [error, setError] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [aiSetup, setAiSetup] = useState(null)
   const [formMode, setFormMode] = useState('create')
   const [editingProject, setEditingProject] = useState(null)
   const [toast, setToast] = useState(null)
@@ -310,6 +312,7 @@ export default function ProjectsPage() {
         onSelectView={handleSelectView}
         onNavigate={navigate}
         onCreate={handleOpenCreate}
+        onCreateWithAI={() => setAiSetup({ initialValues: {} })}
         onEdit={handleOpenEdit}
         onImport={() => setQhseImportOpen(true)}
         onArchive={handleDelete}
@@ -416,7 +419,18 @@ export default function ProjectsPage() {
         project={editingProject}
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmitForm}
+        onAISetup={values => { setFormOpen(false); setAiSetup({ initialValues: values }) }}
       />
+
+      {aiSetup && <AIProjectSetupDialog initialValues={aiSetup.initialValues} onClose={() => setAiSetup(null)} onCreated={result => {
+        const project = result.enterprise_project
+        setProjects(current => [...current.filter(item => String(item.id) !== String(project.id)), project])
+        setSelectedProjectId(project.id)
+        setAiSetup(null)
+        setToast({ type: 'success', message: `Created ${project.name} with its draft plan, schedule and assignments.` })
+        navigate(`/projects?project=${project.id}&view=plan-baseline&scheduleMode=planner`)
+        setRefreshVersion(value => value + 1)
+      }} />}
 
       <QhseImportModal
         open={qhseImportOpen}

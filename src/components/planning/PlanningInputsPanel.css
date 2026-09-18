@@ -29,6 +29,10 @@
 .planning-inputs .pln-metrics .pln-warning svg { color: #ef7900; }
 .planning-inputs .pln-columns { display: grid; grid-template-columns: minmax(0, 1.73fr) minmax(290px, 1fr); gap: 14px; align-items: stretch; }
 .planning-inputs .pln-main-column { display: flex; min-width: 0; flex-direction: column; gap: 10px; }
+.planning-inputs .pln-method { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.planning-inputs .pln-method p { max-width: 440px; color: #526c94; font-size: 12px; }
+.planning-inputs .pln-method label { flex: 1 1 230px; max-width: 360px; }
+.planning-inputs .pln-method select { width: 100%; min-height: 36px; border: 1px solid #cedaee; border-radius: 4px; padding: 6px 10px; color: #102753; background: #fff; }
 .planning-inputs .pln-card { min-width: 0; padding: 13px 18px; border: 1px solid var(--pln-border); border-radius: 6px; background: #fff; box-shadow: 0 1px 2px #14336903; }
 .planning-inputs h2, .planning-input-dialog h2 { margin: 0 0 9px; color: #07194c; font-size: 18px; line-height: 24px; font-weight: 700; letter-spacing: -.25px; }
 .planning-inputs h3, .planning-input-dialog h3 { margin: 12px 0 6px; color: var(--pln-ink); font-size: 13px; font-weight: 650; }

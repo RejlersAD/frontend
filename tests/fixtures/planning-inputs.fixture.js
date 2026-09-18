@@ -88,6 +88,18 @@ export function confirmPlanningEvidence(record, confirmedAt = '2026-09-15T06:34:
   }
 }
 
+export const planningEmployees = [
+  { user_id: 7, employee_id: '00000000-0000-0000-0000-000000000007', employee_code: 'RAD-007', name: 'Maya Hassan', email: 'maya.hassan@example.test', department: 'Process Engineering', job_title: 'Lead Process Engineer' },
+  { user_id: 8, employee_id: '00000000-0000-0000-0000-000000000008', employee_code: 'RAD-008', name: 'Omar Saleh', email: 'omar.saleh@example.test', department: 'Piping Engineering', job_title: 'Lead Piping Engineer' },
+  { user_id: 9, employee_id: '00000000-0000-0000-0000-000000000009', employee_code: 'RAD-009', name: 'Layla Ahmed', email: 'layla.ahmed@example.test', department: 'Project Control', job_title: 'Project Manager' },
+  { user_id: 10, employee_id: '00000000-0000-0000-0000-000000000010', employee_code: 'RAD-010', name: 'Nadia Ali', email: 'nadia.ali@example.test', department: 'Mechanical Engineering', job_title: 'Stress Engineer' },
+]
+
+export const taskAssignmentDefaults = {
+  assignee_id: null, reviewer_id: null, assignee: null, reviewer_user: null,
+  task_type: 'deliverable', due_date: null, priority: 'medium', status: 'todo', progress_percent: 0, project_task_id: null,
+}
+
 export function workBreakdownRecord(record) {
   const run = record.runs.find(item => item.status === 'succeeded')
   const names = { process: 'Process Engineering', piping: 'Piping Engineering', electrical: 'Electrical', civil: 'Civil' }
@@ -98,7 +110,7 @@ export function workBreakdownRecord(record) {
     disciplines,
     source_documents: record.files.map(file => ({ id: file.id, name: file.original_filename, category: file.category, status: 'reviewed' })),
     tasks: disciplines.flatMap(discipline => (run.intelligence.disciplines[discipline.code].deliverables || []).filter(title => !(run.intelligence.disciplines[discipline.code].excluded_deliverables || []).includes(title)).map((title, index) => ({
-      id: `${discipline.code}-${index + 1}`, discipline: discipline.code, title, owner: '', effort_hours: null, depends_on: [], acceptance_criteria: '', reviewer: '', source_references: [],
+      ...taskAssignmentDefaults, id: `${discipline.code}-${index + 1}`, discipline: discipline.code, title, owner: '', effort_hours: null, depends_on: [], acceptance_criteria: '', reviewer: '', source_references: [],
     }))),
   }
 }
@@ -114,6 +126,11 @@ export async function planningInputsHarness(page, options = {}) {
       state.confirmError = null
       state.wbsSaveError = null
       state.wbsStatus = 409
+      state.employees = structuredClone(planningEmployees)
+      state.employeeLookupError = null
+      state.nextProjectTaskId = 3001
+      state.employeeActivities = {}
+      state.employeeActivityError = null
       state.fileListReads = 0
       state.jobs = {}
       state.jobReads = 0
@@ -166,10 +183,25 @@ export async function planningInputsHarness(page, options = {}) {
         }
         return send(record.planningProject)
       }
+      if (projectMatch && path.endsWith('/employee-activity/') && method === 'GET') {
+        if (state.employeeActivityError) return send(state.employeeActivityError.body, state.employeeActivityError.status)
+        const activity = state.employeeActivities[`${record.planningProject.id}:${url.searchParams.get('user_id')}`]
+        return send(activity || { detail: 'Not found.' }, activity ? 200 : 404)
+      }
+      if (projectMatch && path.endsWith('/eligible-employees/') && method === 'GET') {
+        if (state.employeeLookupError) return send(state.employeeLookupError, 503)
+        const search = (url.searchParams.get('search') || '').trim().toLowerCase()
+        const results = state.employees.filter(employee => Object.values(employee).join(' ').toLowerCase().includes(search))
+        return send({ count: results.length, results })
+      }
       if (projectMatch && path.endsWith('/work-breakdown/')) {
         const run = record.runs.find(item => item.status === 'succeeded')
         if (!run?.preview_confirmation?.is_current) return send({ error: 'Confirm and save the Document Intelligence Preview before editing the work breakdown.', code: 'intelligence_preview_confirmation_required' }, 409)
-        const draft = record.workBreakdown?.preview_confirmed_at === run.preview_confirmation.confirmed_at ? record.workBreakdown : workBreakdownRecord(record)
+        const base = record.workBreakdown?.preview_confirmed_at === run.preview_confirmation.confirmed_at ? record.workBreakdown : workBreakdownRecord(record)
+        const draft = { ...base, tasks: base.tasks.map(task => {
+          const core = record.tasks.find(row => row.id === task.project_task_id && !row.is_deleted)
+          return core ? { ...task, status: core.status, progress_percent: core.progress_percent } : task
+        }) }
         if (method === 'GET') return send(draft)
         if (method === 'PUT') {
           const data = route.request().postDataJSON()
@@ -177,7 +209,27 @@ export async function planningInputsHarness(page, options = {}) {
           if (state.wbsSaveError) return send(state.wbsSaveError, state.wbsStatus)
           if (data.preview_confirmed_at !== run.preview_confirmation.confirmed_at || data.intelligence_run_id !== run.id) return send({ error: 'Preview confirmation changed. Review the latest inputs before saving.', code: 'work_breakdown_preview_changed' }, 409)
           if (data.revision !== draft.revision) return send({ error: 'Another user updated this work breakdown. Reload before saving.', code: 'work_breakdown_revision_conflict' }, 409)
-          record.workBreakdown = { ...draft, tasks: structuredClone(data.tasks), revision: draft.revision + 1, saved_at: new Date(Date.parse(fixedNow) + 420000).toISOString() }
+          const tasks = data.tasks.map(task => {
+            const previous = draft.tasks.find(row => row.id === task.id)
+            const assignee = state.employees.find(employee => employee.user_id === task.assignee_id) || null
+            const reviewer = state.employees.find(employee => employee.user_id === task.reviewer_id) || null
+            const core = record.tasks.find(row => row.wbs_task_id === task.id)
+            const saved = { ...taskAssignmentDefaults, ...structuredClone(task), assignee, reviewer_user: reviewer,
+              owner: assignee?.name || task.owner || '', reviewer: reviewer?.name || task.reviewer || '',
+              status: assignee ? core?.status || previous?.status || 'todo' : 'todo',
+              progress_percent: assignee ? core?.progress_percent || previous?.progress_percent || 0 : 0,
+              project_task_id: assignee ? core?.id || previous?.project_task_id || state.nextProjectTaskId++ : null,
+            }
+            if (saved.project_task_id) {
+              const coreTask = { id: saved.project_task_id, project: record.project.id, title: saved.title, assigned_to: saved.assignee_id,
+                task_type: saved.task_type, due_date: saved.due_date, priority: saved.priority, status: saved.status,
+                progress_percent: saved.progress_percent, wbs_task_id: saved.id, is_deleted: false }
+              record.tasks = [...record.tasks.filter(row => row.id !== coreTask.id), coreTask]
+            } else if (core) core.is_deleted = true
+            return saved
+          })
+          record.tasks.forEach(task => { if (!tasks.some(row => row.project_task_id === task.id)) task.is_deleted = true })
+          record.workBreakdown = { ...draft, tasks, revision: draft.revision + 1, saved_at: new Date(Date.parse(fixedNow) + 420000).toISOString() }
           if (data.advance) Object.assign(record.workBreakdown, { schedule_id: record.schedule.id, schedule_version_id: record.versions[0].id })
           return send(record.workBreakdown)
         }
