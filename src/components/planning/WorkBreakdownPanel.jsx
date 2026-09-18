@@ -40,6 +40,8 @@ export function EmployeeActivityLink({ task, onOpen, disabled }) {
 EmployeeActivityLink.propTypes = { task: PropTypes.object.isRequired, onOpen: PropTypes.func.isRequired, disabled: PropTypes.bool }
 
 function Dialog({ title, children, onClose, footer, busy = false }) {
+  // Keep the editor inside an open native modal; portals outside it are inert.
+  const portalHost = useRef(document.activeElement?.closest('dialog[open]') || document.body)
   const ref = useModalAccessibility(true, onClose, busy)
   useEffect(() => {
     const previous = document.body.style.overflow
@@ -51,7 +53,7 @@ function Dialog({ title, children, onClose, footer, busy = false }) {
       <header><h2 id="wbd-dialog-title">{title}</h2><button type="button" disabled={busy} className="wbd-icon-button" aria-label="Close dialog" onClick={onClose}><X size={20} /></button></header>
       <div className="wbd-dialog-body">{children}</div><footer>{footer}</footer>
     </section>
-  </div>, document.body)
+  </div>, portalHost.current)
 }
 Dialog.propTypes = { title: PropTypes.string.isRequired, children: PropTypes.node, onClose: PropTypes.func.isRequired, footer: PropTypes.node, busy: PropTypes.bool }
 
@@ -60,7 +62,10 @@ export function TaskDialog({ projectId, task, tasks, disciplines, manual, schedu
   const [error, setError] = useState('')
   const workflowStage = task.parent_deliverable_id != null || Boolean(task.workflow_stage_code || task.metadata?.workflow_stage_code)
   const milestone = isScheduleMilestone(task)
-  useEffect(() => { if (initialField === 'owner') document.querySelector('#wbd-task-form [role="combobox"]')?.focus() }, [initialField])
+  useEffect(() => {
+    const selectors = { owner: '[role="combobox"]', planned_start_date: '[name="planned_start_date"]', duration_days: '[name="duration_days"]', dependencies: '.wbd-dependencies input' }
+    if (selectors[initialField]) document.querySelector(`#wbd-task-form ${selectors[initialField]}`)?.focus()
+  }, [initialField])
   const change = (key, value) => setDraft(current => ({ ...current, [key]: value }))
   const save = event => {
     event.preventDefault()
@@ -90,8 +95,8 @@ export function TaskDialog({ projectId, task, tasks, disciplines, manual, schedu
         <PlanningEmployeePicker projectId={projectId} label="Assigned to" value={draft.assignee} disabled={busy} legacyName={draft.assignee_id ? '' : draft.owner} onChange={employee => setDraft(current => ({ ...current, assignee: employee, assignee_id: employee?.user_id ?? null, owner: employee?.name || '' }))} />
         <PlanningEmployeePicker projectId={projectId} label="Reviewer" value={draft.reviewer_user} disabled={busy} legacyName={draft.reviewer_id ? '' : draft.reviewer} onChange={employee => setDraft(current => ({ ...current, reviewer_user: employee, reviewer_id: employee?.user_id ?? null, reviewer: employee?.name || '' }))} />
         <label>Due date<input type="date" value={draft.due_date || ''} onChange={event => change('due_date', event.target.value)} /></label>
-        {(manual || scheduleEditing) && <label>Planned start<input type="date" value={draft.planned_start_date || ''} onChange={event => change('planned_start_date', event.target.value || null)} /></label>}
-        {(manual || scheduleEditing) && <label>Duration (working days)<input type="number" min={scheduleEditing && !milestone ? '0.25' : '0'} readOnly={scheduleEditing && milestone} title={scheduleEditing && milestone ? 'Milestones have zero duration.' : undefined} step="0.25" value={draft.duration_days ?? ''} onChange={event => change('duration_days', event.target.value === '' ? null : Number(event.target.value))} placeholder="Calculated from effort if blank" /></label>}
+        {(manual || scheduleEditing) && <label>Planned start<input name="planned_start_date" type="date" value={draft.planned_start_date || ''} onChange={event => change('planned_start_date', event.target.value || null)} /></label>}
+        {(manual || scheduleEditing) && <label>Duration (working days)<input name="duration_days" type="number" min={scheduleEditing && !milestone ? '0.25' : '0'} readOnly={scheduleEditing && milestone} title={scheduleEditing && milestone ? 'Milestones have zero duration.' : undefined} step="0.25" value={draft.duration_days ?? ''} onChange={event => change('duration_days', event.target.value === '' ? null : Number(event.target.value))} placeholder="Calculated from effort if blank" /></label>}
         {scheduleEditing && <p className="wbd-note">Finish dates recalculate from durations, dependencies and the project calendar when saved.</p>}
         <label>Priority<select value={draft.priority} onChange={event => change('priority', event.target.value)}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
         <label>Planned effort (hours)<input type="number" min="0" step="0.01" value={draft.effort_hours ?? ''} onChange={event => change('effort_hours', event.target.value)} placeholder="Enter hours" /></label>

@@ -30,7 +30,7 @@ const documentRecord = (name = 'Approved MDR.csv', category = 'mdr', id = 801) =
   size_bytes: 640, file: null, parsed_metadata: {}, created_at: fixedNow, updated_at: fixedNow,
 })
 
-function snapshot(record, historicalVersion) {
+function snapshot(record, historicalVersion, decorate) {
   const plan = structuredClone(record.simplePlan)
   plan.permissions = {
     can_edit: plan.state !== 'baselined', can_assign: plan.state !== 'baselined',
@@ -45,7 +45,7 @@ function snapshot(record, historicalVersion) {
     plan.permissions = { can_edit: false, can_assign: false, can_submit: false, can_approve_publish: false, can_reopen: false }
     plan.tasks = plan.tasks.map((task, index) => ({ ...task, is_critical: index === 0, calculated: true, total_float_days: index ? 2 : 0 }))
   }
-  return plan
+  return decorate ? decorate(plan, record, historicalVersion) : plan
 }
 
 export async function masterScheduleHarness(page, options = {}) {
@@ -77,8 +77,10 @@ export async function masterScheduleHarness(page, options = {}) {
       page.on('pageerror', error => state.pageErrors.push(error.message))
     },
     async handleRequest(context) {
-      const { route, path, url, state, record, reply } = context
-      if (await options.handleRequest?.(context)) return true
+      const { route, path, url, state, reply } = context
+      const planningProjectId = path.match(/\/planning-intelligence\/projects\/(\d+)\//)?.[1]
+      const record = Object.values(state.records).find(item => String(item.planningProject.id) === planningProjectId) || context.record
+      if (await options.handleRequest?.({ ...context, record })) return true
       const method = route.request().method()
       const send = async (body, status = 200) => { await reply(route, body, status); return true }
       const json = () => route.request().postDataJSON()
@@ -120,7 +122,7 @@ export async function masterScheduleHarness(page, options = {}) {
         write(null); record.files = record.files.filter(file => !path.endsWith(`/${file.id}/`)); return send({}, 200)
       }
       if (path.includes('/simple-plan/')) {
-        if (method === 'GET') return send(snapshot(record, url.searchParams.get('version_id')))
+        if (method === 'GET') return send(snapshot(record, url.searchParams.get('version_id'), options.decorateSnapshot))
         const body = json(); write(body)
         if (state.saveError && method === 'PUT') return send(state.saveError, 409)
         if (body.revision !== record.simplePlan.revision) return send({ error: 'The plan changed in another session. Refresh before saving.', code: 'simple_plan_revision_conflict' }, 409)
@@ -141,7 +143,7 @@ export async function masterScheduleHarness(page, options = {}) {
         else if (path.endsWith('/approve-publish/')) Object.assign(record.simplePlan, { state: 'baselined', revision: body.revision + 1, baseline: { id: 601, name: 'Approved Phase 1 baseline', version_id: 91, approved_at: fixedNow }, review: { id: 501, status: 'approved' } })
         else if (path.endsWith('/reopen/')) Object.assign(record.simplePlan, { state: 'review', revision: body.revision + 1, review: null })
         else { state.unknownWrites.push(path); return send({ detail: 'Unexpected mocked planning action.' }, 400) }
-        return send(snapshot(record))
+        return send(snapshot(record, null, options.decorateSnapshot))
       }
       if (method !== 'GET' && method !== 'OPTIONS') { state.unknownWrites.push(path); return send({ detail: 'Unexpected write blocked by the browser fixture.' }, 400) }
       return false

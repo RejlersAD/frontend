@@ -1,0 +1,33 @@
+.planning-schedule-checks { color: #102953; min-width: 0; }
+.psc-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.psc-header h3 { margin: 0 0 5px; color: #101f4c; font-size: 17px; }
+.psc-header p, .psc-issue p { font-size: 13px; line-height: 1.5; margin: 6px 0; }
+.psc-header p { color: #5c7094; }
+.planning-schedule-checks button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; border: 1px solid #bed1ef; border-radius: 5px; background: #fff; color: #0751ff; font-size: 12px; white-space: nowrap; }
+.planning-schedule-checks button:disabled { opacity: .5; cursor: not-allowed; }
+.planning-schedule-checks button:focus-visible { outline: 2px solid #0751ff; outline-offset: 2px; }
+.psc-dates { display: flex; flex-wrap: wrap; gap: 16px 32px; padding: 14px; margin: 0 0 16px; background: #f5f8ff; border: 1px solid #d5e2f4; border-radius: 6px; }
+.psc-dates dt { font-size: 12px; color: #5b7096; }
+.psc-dates dd { margin: 4px 0 0; font-size: 15px; font-weight: 600; }
+.psc-negative { color: #b42318; }
+.psc-issue { border: 1px solid #ebce9e; border-radius: 6px; padding: 14px; margin-top: 12px; background: #fff; }
+.psc-issue-title { display: flex; align-items: flex-start; gap: 8px; color: #92520d; }
+.psc-issue-title h4 { margin: 0; font-size: 14px; }
+.psc-issue-title svg { flex-shrink: 0; }
+.psc-issue .psc-resolution { color: #536a8f; }
+.psc-affected { font-weight: 600; padding-top: 8px; }
+.psc-table { overflow: auto; max-height: 420px; border: 1px solid #dce6f3; border-radius: 5px; margin-top: 8px; }
+.psc-table table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+.psc-table th, .psc-table td { padding: 9px 10px; border-bottom: 1px solid #e1e9f5; white-space: nowrap; }
+.psc-table th { position: sticky; top: 0; z-index: 1; background: #f4f8fc; color: #48668c; font-weight: 600; }
+.psc-table td:first-child { min-width: 200px; max-width: 400px; white-space: normal; }
+.psc-table td strong { font-weight: 500; }
+.psc-table td small { display: block; margin-bottom: 3px; color: #5c7598; }
+.psc-table tr:last-child td { border-bottom: 0; }
+.psc-resource-list { padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.psc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.planning-schedule-checks .psc-show-all { margin-top: 10px; }
+.psc-clear { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #14754e; }
+.prv-schedule-checks { padding: 18px; margin: 16px 0; background: #fff; border: 1px solid #d7e2f3; border-radius: 7px; }
+.sc-commandbar .sc-issues-button { color: #9a4219; border-color: #e5b995; background: #fff9ed; }
+@media (max-width: 700px) { .psc-header { flex-wrap: wrap; gap: 8px; }.psc-issue { padding: 10px; }.prv-schedule-checks { padding: 12px; }.psc-dates { gap: 12px 22px; } }
