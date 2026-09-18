@@ -73,6 +73,18 @@ export const planningIntelligenceService = {
   saveWorkBreakdown: async (projectId, payload) => (
     await apiClient.put(PLANNING_ENDPOINTS.workBreakdown(projectId), payload)
   ).data,
+  getManualWorkBreakdown: async projectId => (
+    await apiClient.get(PLANNING_ENDPOINTS.manualWorkBreakdown(projectId))
+  ).data,
+  saveManualWorkBreakdown: async (projectId, payload) => (
+    await apiClient.put(PLANNING_ENDPOINTS.manualWorkBreakdown(projectId), payload)
+  ).data,
+  listEligibleEmployees: async (projectId, search = '', signal) => (
+    await apiClient.get(PLANNING_ENDPOINTS.eligiblePlanningEmployees(projectId), { params: { search }, signal, suppressErrorToast: true })
+  ).data,
+  getEmployeeActivity: async (projectId, employeeId, signal) => (
+    await apiClient.get(PLANNING_ENDPOINTS.employeeActivity(projectId), { params: { user_id: employeeId }, signal, suppressErrorToast: true })
+  ).data,
   approveWorkableBaseline: async (projectId, scheduleVersionId, name = '') => (
     await apiClient.post(PLANNING_ENDPOINTS.approveWorkableBaseline(projectId), {
       schedule_version_id: scheduleVersionId, ...(name ? { name } : {}),

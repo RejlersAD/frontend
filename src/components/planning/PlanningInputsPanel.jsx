@@ -9,7 +9,8 @@ import { calculatePlanningDuration } from '../../utils/planningProjectDates'
 import './PlanningInputsPanel.css'
 
 const draftFrom = (project, enterprise) => ({
-  scope_summary: project?.scope_summary || '', exclusions: project?.exclusions || '',
+  planning_mode: project?.planning_mode || enterprise?.custom_fields?.planning_mode || (enterprise?.custom_fields?.project_type && enterprise.custom_fields.project_type !== 'engineering' ? 'manual' : 'document'),
+  scope_summary: (project ? project.scope_summary : enterprise?.description) || '', exclusions: project?.exclusions || '',
   phase: (project ? project.phase : enterprise?.custom_fields?.project_phase) || '',
   effective_date: (project ? project.effective_date : enterprise?.start_date) || '',
   planned_end_date: (project ? project.planned_end_date : enterprise?.end_date) || '',
@@ -62,9 +63,10 @@ function InputReviewDialog({ facts, conflicts, busy, error, stale, previewAvaila
   </dialog>
 }
 
-export default function PlanningInputsPanel({ project, enterpriseProject, contract, loadingContract, files, uploading, analyzing, analysisRevision, uploadCategory, onUploadCategory, onUpload, onDeleteFile, onAnalyze, onSaved, onOpenIntelligencePreview, onPreviewStaleChanged, onReviewStateChanged, reviewRequest = 0, onReadinessChanged, onBack, onAiSettings, onRevealInputs, onIntelligenceLoaded, hidden = false }) {
+export default function PlanningInputsPanel({ project, enterpriseProject, contract, loadingContract, files, uploading, analyzing, analysisRevision, uploadCategory, onUploadCategory, onUpload, onDeleteFile, onAnalyze, onSaved, onOpenWorkBreakdown, onOpenIntelligencePreview, onPreviewStaleChanged, onReviewStateChanged, reviewRequest = 0, onReadinessChanged, onBack, onAiSettings, onRevealInputs, onIntelligenceLoaded, hidden = false, simple = false }) {
   const [draft, setDraft] = useState(() => draftFrom(project, enterpriseProject))
   const [saving, setSaving] = useState(false)
+  const [preparingUpload, setPreparingUpload] = useState(false)
   const [notice, setNotice] = useState(null)
   const [review, setReview] = useState({ run: null, facts: [], conflicts: [] })
   const [reviewLoading, setReviewLoading] = useState(false)
@@ -73,13 +75,21 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
   const [reviewBusy, setReviewBusy] = useState(false)
   const [analysisNeeded, setAnalysisNeeded] = useState(false)
   const inputRef = useRef(null), endDateRef = useRef(null), requestSequence = useRef(0), saveInFlight = useRef(false)
+  const uploadDraftRef = useRef(null)
   const baselineLocked = Boolean(contract?.baseline_locked)
+  const manual = draft.planning_mode === 'manual'
   const duration = calculatePlanningDuration(draft.effective_date, draft.planned_end_date)
   const savedDraft = draftFrom(project, enterpriseProject)
   const hasChanges = Object.keys(draft).some(key => String(draft[key]) !== String(savedDraft[key]))
-  const editingDisabled = saving || analyzing
+  const editingDisabled = saving || analyzing || preparingUpload
   const documentsProcessing = files.some(file => ['pending', 'processing'].includes(file.parse_status))
-  useEffect(() => { setDraft(draftFrom(project, enterpriseProject)) }, [project, enterpriseProject])
+  useEffect(() => {
+    const pending = uploadDraftRef.current
+    if (pending && pending.projectId === project?.id && pending.enterpriseId === enterpriseProject?.id) {
+      setDraft(pending.draft)
+      uploadDraftRef.current = null
+    } else setDraft(draftFrom(project, enterpriseProject))
+  }, [project, enterpriseProject])
   useEffect(() => {
     endDateRef.current?.setCustomValidity(draft.effective_date && draft.planned_end_date && !calculatePlanningDuration(draft.effective_date, draft.planned_end_date)
       ? 'Project end date must be after the project start date.' : '')
@@ -112,10 +122,12 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     if (saveInFlight.current || analyzing || uploading) return
     onRevealInputs?.()
     const runAnalysis = event.nativeEvent?.submitter?.value === 'analyze'
+    const continueManual = event.nativeEvent?.submitter?.value === 'manual-continue'
     if (project && (loadingContract || !contract)) { setNotice({ error: true, text: 'Wait for the project connection check to finish, then save again. Your inputs are still here.' }); return }
     if (!duration) { setNotice({ error: true, text: 'Enter a project start date and a later project end date.' }); return }
+    if (continueManual && (!draft.scope_summary.trim() || !draft.phase.trim())) { setNotice({ error: true, text: 'Enter the project scope and phase before continuing to Work breakdown.' }); return }
     if (runAnalysis && documentsProcessing) { setNotice({ error: true, text: 'Wait for the reference documents to finish processing before running Document Intelligence.' }); return }
-    if (runAnalysis && !files.some(file => file.parse_status === 'done')) { setNotice({ error: true, text: 'Upload a reference document and wait for parsing to finish before running Document Intelligence.' }); return }
+    if (runAnalysis && !simple && !files.some(file => file.parse_status === 'done')) { setNotice({ error: true, text: 'Upload a reference document and wait for parsing to finish before running Document Intelligence.' }); return }
     saveInFlight.current = true; setSaving(true); setNotice(null)
     try {
       const payload = { ...draft, effective_date: draft.effective_date || null, planned_end_date: draft.planned_end_date || null, budgeted_effort_hours: draft.budgeted_effort_hours === '' ? null : draft.budgeted_effort_hours }
@@ -128,11 +140,14 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
       setDraft(draftFrom(response.data, enterpriseProject))
       if (hasChanges) setAnalysisNeeded(true)
       setNotice({ error: false, text: 'Planning draft saved.' })
+      if (continueManual) onOpenWorkBreakdown?.(response.data)
       if (runAnalysis) {
         const result = await onAnalyze({ projectId: response.data.id })
-        if (result) {
+        if (result?.requires_rebuild) {
+          setNotice(null)
+        } else if (result) {
           setAnalysisNeeded(false)
-          setNotice({ error: false, text: 'Document Intelligence completed. Review the full preview, then confirm and save.' })
+          setNotice({ error: false, text: simple ? 'Schedule updated. Review the activities, dates and assignments in Master Schedule.' : 'Document Intelligence completed. Review the full preview, then confirm and save.' })
         } else {
           setAnalysisNeeded(true)
           setNotice({ error: true, text: 'Your draft is saved. Document Intelligence did not complete; review the message above and retry.' })
@@ -142,11 +157,30 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     finally { setSaving(false); saveInFlight.current = false }
   }
   const change = key => event => setDraft(previous => ({ ...previous, [key]: event.target.value }))
-  const upload = fileList => {
-    if (!project?.id || uploading || editingDisabled || !fileList?.length) return
-    const oversized = Array.from(fileList).find(file => file.size > PLANNING_MAX_FILE_MB * 1024 * 1024)
+  const upload = async fileList => {
+    // Snapshot the FileList before the input is cleared and workspace creation awaits.
+    const selectedFiles = Array.from(fileList || [])
+    if ((!project?.id && !enterpriseProject?.id) || saveInFlight.current || uploading || editingDisabled || !selectedFiles.length) return
+    const oversized = selectedFiles.find(file => file.size > PLANNING_MAX_FILE_MB * 1024 * 1024)
     if (oversized) { setNotice({ error: true, text: `${oversized.name} exceeds ${PLANNING_MAX_FILE_MB} MB. Choose a smaller file.` }); return }
-    onUpload(fileList)
+    saveInFlight.current = true; setPreparingUpload(true); setNotice(null)
+    try {
+      let workspace = project
+      if (!workspace?.id) {
+        // Uploading must not require dates or implicitly save unfinished scope edits.
+        const response = await apiClient.post(PLANNING_ENDPOINTS.projects, {
+          enterprise_project: enterpriseProject.id, name: enterpriseProject.name,
+          client: enterpriseProject.client_name || '', location: enterpriseProject.location || '',
+          planning_mode: draft.planning_mode,
+        }, { suppressErrorToast: true })
+        workspace = response.data
+        uploadDraftRef.current = { projectId: workspace.id, enterpriseId: enterpriseProject.id, draft }
+        onSaved(workspace)
+      }
+      await onUpload(selectedFiles, { projectId: workspace.id })
+    } catch (error) {
+      setNotice({ error: true, text: errorText(error, 'The project could not be prepared for upload. Your inputs are still here; please retry.') })
+    } finally { setPreparingUpload(false); saveInFlight.current = false }
   }
   const reviewAction = async operation => {
     setReviewBusy(true); setReviewError('')
@@ -162,17 +196,20 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
   const unknown = reviewLoading || Boolean(reviewError)
   const savedAfterAnalysis = Boolean(review.run?.started_at && project?.updated_at && Date.parse(project.updated_at) > Date.parse(review.run.started_at))
   useEffect(() => { onPreviewStaleChanged?.(stale || savedAfterAnalysis || hasChanges) }, [stale, savedAfterAnalysis, hasChanges, onPreviewStaleChanged])
-  const canOpenWorkBreakdown = Boolean(review.run) && !unknown && !stale && !analysisNeeded && !hasChanges && !savedAfterAnalysis && !documentsProcessing && Boolean(duration)
+  const canOpenWorkBreakdown = manual
+    ? Boolean(project?.id && project.planning_mode === 'manual' && duration && draft.scope_summary.trim() && draft.phase.trim()) && !hasChanges
+    : Boolean(review.run) && !unknown && !stale && !analysisNeeded && !hasChanges && !savedAfterAnalysis && !documentsProcessing && Boolean(duration)
   useEffect(() => { onReadinessChanged?.(canOpenWorkBreakdown && !editingDisabled && !uploading) }, [canOpenWorkBreakdown, editingDisabled, uploading, onReadinessChanged])
   useEffect(() => { onReviewStateChanged?.({ conflicts: review.conflicts.length, unavailable: unknown }) }, [review.conflicts.length, unknown, onReviewStateChanged])
   const openReview = () => { setReviewOpen(true) }
-  return <div className="planning-inputs" hidden={hidden}>
+  return <div className={`planning-inputs${simple ? ' planning-inputs-simple' : ''}`} hidden={hidden}>
     <div className="pln-metrics" aria-label="Planning input summary"><span><ClipboardList size={21} /><strong>{unknown ? '—' : analyzedCount}</strong>documents analyzed</span><span><ListChecks size={22} /><strong>{unknown ? '—' : requirements.length}</strong>requirements extracted</span><span className={review.conflicts.length ? 'pln-warning' : ''}><AlertTriangle size={21} /><strong>{unknown ? '—' : review.conflicts.length}</strong>{review.conflicts.length === 1 ? 'clarification open' : 'clarifications open'}</span></div>
     {notice && <div className={notice.error ? 'pln-error' : 'pln-success'} role={notice.error ? 'alert' : 'status'}>{notice.text}</div>}
     <div className="pln-columns"><div className="pln-main-column">
+      {!simple && <section className="pln-card pln-method" aria-labelledby="planning-method-heading"><div><h2 id="planning-method-heading">Planning method</h2><p>{manual ? 'Create tasks and assign employees. Reference documents are optional.' : 'Extract inputs from documents, then review and confirm the full preview.'}</p></div><label>Plan from<select aria-label="Planning method" value={draft.planning_mode} disabled={editingDisabled || uploading} onChange={change('planning_mode')}><option value="manual">Scope and tasks — no upload required</option><option value="document">Reference documents</option></select></label></section>}
       <section className="pln-card pln-documents" aria-labelledby="planning-documents-heading"><header className="pln-card-heading"><div><h2 id="planning-documents-heading">Reference documents</h2></div></header>
-        <div className="pln-upload-controls"><label className="pln-category">Document type<select value={uploadCategory} onChange={event => onUploadCategory(event.target.value)} disabled={uploading || editingDisabled}>{PLANNING_FILE_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label><button type="button" className="pln-button" disabled={!project || uploading || editingDisabled} onClick={() => inputRef.current?.click()}><Upload size={17} />{uploading ? 'Uploading…' : 'Upload'}</button></div>
-        <input ref={inputRef} type="file" aria-label="Upload reference documents" multiple accept=".pdf,.docx,.xlsx,.xlsm,.csv,.xer,.txt" className="sr-only" disabled={!project || uploading || editingDisabled} onChange={event => { upload(event.target.files); event.target.value = '' }} />
+        <div className="pln-upload-controls"><label className="pln-category">Document type<select value={uploadCategory} onChange={event => onUploadCategory(event.target.value)} disabled={uploading || editingDisabled}>{PLANNING_FILE_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label><button type="button" className="pln-button" disabled={(!project?.id && !enterpriseProject?.id) || uploading || editingDisabled} onClick={() => inputRef.current?.click()}><Upload size={17} />{uploading ? 'Uploading…' : preparingUpload ? 'Preparing upload…' : 'Upload'}</button></div>
+        <input ref={inputRef} type="file" aria-label="Upload reference documents" multiple accept=".pdf,.docx,.xlsx,.xlsm,.csv,.xer,.txt" className="sr-only" disabled={(!project?.id && !enterpriseProject?.id) || uploading || editingDisabled} onChange={event => { upload(event.target.files); event.target.value = '' }} />
         <div className="pln-doc-table-wrap"><table className="pln-doc-table"><thead><tr><th>Document</th><th>Type</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{files.map(file => {
           const extension = file.original_filename?.split('.').pop()?.toUpperCase() || 'FILE', spreadsheet = ['XLS', 'XLSX', 'CSV'].includes(extension), Icon = spreadsheet ? FileSpreadsheet : FileText
           const analyzed = file.parse_status === 'done' && analyzedIds.has(String(file.id))
@@ -182,15 +219,15 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
       <section className="pln-card pln-registration" aria-label="Project scope">
         <form id="project-planning-inputs-form" onSubmit={save} onInvalid={onRevealInputs} aria-busy={saving}>
           <fieldset disabled={editingDisabled}>
-            <label>Scope summary<textarea rows={2} value={draft.scope_summary} onChange={change('scope_summary')} placeholder="Describe the engineering scope and expected deliverables" /></label>
-            <div className="pln-phase-row"><label>Phase<input type="text" maxLength={100} value={draft.phase} onChange={change('phase')} placeholder="e.g. FEED, DEFINE, detailed engineering" /></label><label>Budgeted effort<span className="pln-input-unit"><input type="number" min="0" step="0.01" value={draft.budgeted_effort_hours} onChange={change('budgeted_effort_hours')} placeholder="Enter hours" /><span>hours</span></span></label></div>
+            <label>Scope summary<textarea rows={2} value={draft.scope_summary} required={manual || simple} onChange={change('scope_summary')} placeholder="Describe the project objective and expected deliverables" /></label>
+            <div className="pln-phase-row"><label>Phase<input type="text" maxLength={100} required={manual} value={draft.phase} onChange={change('phase')} placeholder="e.g. Phase 1, implementation, detailed engineering" /></label><label>Budgeted effort<span className="pln-input-unit"><input type="number" min="0" step="0.01" value={draft.budgeted_effort_hours} onChange={change('budgeted_effort_hours')} placeholder="Enter hours" /><span>hours</span></span></label></div>
             <div className="pln-scope-dates"><label htmlFor="planning-project-start"><span>Project start date <span className="pln-required" aria-hidden="true">*</span></span><input id="planning-project-start" aria-label="Project start date" required type="date" value={draft.effective_date} max={draft.planned_end_date || undefined} disabled={baselineLocked || Boolean(project && (loadingContract || !contract))} onChange={change('effective_date')} /></label><label htmlFor="planning-project-end"><span>Project end date <span className="pln-required" aria-hidden="true">*</span></span><input ref={endDateRef} id="planning-project-end" aria-label="Project end date" required type="date" value={draft.planned_end_date} min={draft.effective_date || undefined} disabled={baselineLocked || Boolean(project && (loadingContract || !contract))} onChange={change('planned_end_date')} /></label><div className="pln-duration-field"><label htmlFor="planning-calculated-duration">Calculated project duration</label><output id="planning-calculated-duration" htmlFor="planning-project-start planning-project-end" className="pln-duration" aria-live="polite"><Calculator size={17} aria-hidden="true" /><span><strong>{duration ? `${duration.days.toLocaleString('en-GB')} calendar ${duration.days === 1 ? 'day' : 'days'}` : 'Select project dates'}</strong><small>{duration ? `${duration.months.toLocaleString('en-GB', { maximumFractionDigits: 2 })} calendar months` : 'Calculated automatically'}</small></span></output></div></div>
             <p className="pln-date-help">Duration is calculated from the start and end dates, including weekends.</p>
             <label>Exclusions<input value={draft.exclusions} onChange={change('exclusions')} placeholder="Record activities outside the project scope" /></label>
           </fieldset>
           {saving && <p className="pln-note" role="status"><Loader2 size={15} className="animate-spin" />Saving draft…</p>}
           {baselineLocked && <p className="pln-note"><Info size={15} />Baseline dates are locked. Scope notes and planned effort remain editable.</p>}
-          {!project && <p className="pln-note"><Info size={15} />Save draft to create this project’s planning workspace and upload documents.</p>}
+          {!project && <p className="pln-note"><Info size={15} />Save draft to create this project’s planning workspace.</p>}
         </form>
       </section>
     </div><aside className="pln-card pln-review-card" aria-labelledby="planning-ai-heading"><header><h2 id="planning-ai-heading">AI input review</h2><span className={`pln-review-badge ${review.run && !needsReview && !stale ? 'is-confirmed' : ''}`}>{unknown ? 'Review unavailable' : stale ? 'Analysis out of date' : review.run ? needsReview ? 'Needs confirmation' : 'Inputs reviewed' : 'Awaiting documents'}</span></header>
@@ -204,7 +241,7 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
       <p className="pln-note"><Info size={16} />AI findings remain draft until reviewed.</p>
       <button type="button" className="pln-text-button pln-ai-settings" disabled={!project} onClick={onAiSettings}><Settings2 size={14} />AI settings</button>
     </aside></div>
-    <footer className="pln-bottom-bar"><button type="button" className="pln-button" onClick={onBack}><ArrowLeft size={17} />Back to portfolio</button><div><span>Scope &amp; inputs</span><small>{analyzing ? 'Document Intelligence is running…' : saving ? 'Saving draft…' : 'Register project → Upload documents → Analyze'}</small></div><div className="pln-stage-actions"><button type="submit" form="project-planning-inputs-form" name="planning-action" value="analyze" className="pln-button pln-primary" disabled={!project || loadingContract || !contract || editingDisabled || uploading || documentsProcessing || !files.some(file => file.parse_status === 'done')}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{analyzing ? 'Running Document Intelligence…' : 'Run Document Intelligence'}</button><button type="button" className="pln-button" disabled={!review.run?.intelligence || unknown || editingDisabled || uploading} onClick={onOpenIntelligencePreview}>Next: Document Intelligence Preview<ArrowRight size={17} /></button></div></footer>
+    {simple ? <footer className="pln-bottom-bar"><button type="button" className="pln-button" disabled={editingDisabled || uploading} onClick={onBack}><ArrowLeft size={17} />Back to schedule</button><div className="pln-stage-actions"><button type="submit" form="project-planning-inputs-form" className="pln-button" disabled={editingDisabled || uploading}>Save inputs</button><button type="submit" form="project-planning-inputs-form" name="planning-action" value="analyze" className="pln-button pln-primary" disabled={editingDisabled || uploading || documentsProcessing || Boolean(project && (loadingContract || !contract))}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{analyzing ? 'Analyzing…' : files.length ? 'Analyze & update schedule' : 'Open schedule'}</button></div></footer> : <footer className="pln-bottom-bar"><button type="button" className="pln-button" onClick={onBack}><ArrowLeft size={17} />Back to portfolio</button><div><span>Scope &amp; inputs</span><small>{analyzing ? 'Document Intelligence is running…' : saving ? 'Saving draft…' : manual ? 'Define scope → Add tasks → Build schedule' : 'Register project → Upload documents → Analyze'}</small></div><div className="pln-stage-actions">{manual ? <button type="submit" form="project-planning-inputs-form" name="planning-action" value="manual-continue" className="pln-button pln-primary" disabled={editingDisabled || uploading || Boolean(project && (loadingContract || !contract))}>{saving ? <Loader2 size={17} className="animate-spin" /> : null}Save &amp; continue to Work breakdown<ArrowRight size={17} /></button> : <><button type="submit" form="project-planning-inputs-form" name="planning-action" value="analyze" className="pln-button pln-primary" disabled={!project || loadingContract || !contract || editingDisabled || uploading || documentsProcessing || !files.some(file => file.parse_status === 'done')}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{analyzing ? 'Running Document Intelligence…' : 'Run Document Intelligence'}</button><button type="button" className="pln-button" disabled={!review.run?.intelligence || unknown || editingDisabled || uploading} onClick={onOpenIntelligencePreview}>Next: Document Intelligence Preview<ArrowRight size={17} /></button></>}</div></footer>}
     {reviewOpen && createPortal(<InputReviewDialog facts={review.facts} conflicts={review.conflicts} busy={reviewBusy} error={reviewError} stale={stale} previewAvailable={Boolean(review.run?.intelligence)} onPreview={() => { setReviewOpen(false); onOpenIntelligencePreview() }} onClose={() => setReviewOpen(false)} onReview={(id, status) => reviewAction(() => planningService.reviewIntelligenceFact(id, status))} onResolve={(id, factId) => reviewAction(() => planningService.resolveIntelligenceConflict(id, { action: 'select_fact', selected_fact_id: factId }))} />, document.body)}
   </div>
 }

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { Buffer } from 'node:buffer'
 import AxeBuilder from '@axe-core/playwright'
 import { planningInputsHarness } from '../fixtures/planning-inputs.fixture'
 
@@ -36,8 +37,7 @@ async function setPhase(page, value) {
 }
 
 async function loaded(page) {
-  await expect(page.getByRole('heading', { name: 'Project Planning', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Planning', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.planning-design')).toBeVisible()
   await expect(input(page, 'Scope summary')).toBeVisible()
   await expect(save(page)).toBeEnabled()
   await expect(review(page)).toBeVisible()
@@ -84,7 +84,7 @@ test('populated planning displays the latest completed evidence with source refe
   await expect(page.locator('.pln-project-identity')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Project scope & inputs', exact: true })).toHaveCount(0)
   const inputCardOrder = await page.locator('.pln-main-column').evaluate(element => [...element.querySelectorAll(':scope > section')].map(section => section.getAttribute('aria-label') || document.getElementById(section.getAttribute('aria-labelledby'))?.textContent))
-  expect(inputCardOrder).toEqual(['Reference documents', 'Project scope'])
+  expect(inputCardOrder).toEqual(['Planning method', 'Reference documents', 'Project scope'])
   await expect(page.getByText(/Drop files here or/)).toHaveCount(0)
   await expect(page.getByLabel('Calculated project duration', { exact: true })).toContainText('349 calendar days')
   await expect(page.getByLabel('Calculated project duration', { exact: true })).toHaveJSProperty('tagName', 'OUTPUT')
@@ -128,6 +128,7 @@ test('Save draft persists scope, phase, exclusions, dates and effort while proje
   await save(page).click()
   await expect.poll(() => writesToProject(state).length).toBe(1)
   expect(writesToProject(state)[0]).toEqual({ method: 'PATCH', path: '/api/v1/planning-intelligence/projects/71/', data: {
+    planning_mode: 'document',
     scope_summary: 'Detailed process and piping engineering with procurement support.',
     exclusions: 'Construction supervision and civil foundations excluded.',
     phase, effective_date: '2026-02-02', planned_end_date: '2026-12-14', budgeted_effort_hours: '14825.5',
@@ -167,10 +168,10 @@ test('Save draft persists scope, phase, exclusions, dates and effort while proje
   clean(state)
 })
 
-test('an empty project creates its planning workspace only on Save draft using the canonical enterprise project ID', async ({ page }) => {
+test('an empty project can upload immediately and viewing it does not create a workspace before Save draft', async ({ page }) => {
   const state = await planningInputsHarness(page, { prepare: current => current.missingPlanning.add(17) })
   await loaded(page)
-  await expect(page.getByRole('button', { name: 'Upload', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Upload', exact: true })).toBeEnabled()
   await expect(page.getByText('No reference documents uploaded yet.', { exact: true })).toBeVisible()
   await expect(review(page)).toContainText('Awaiting documents')
   await expect(review(page)).not.toContainText('Inputs reviewed')

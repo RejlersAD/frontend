@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../../services/api.service';
 import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
+import { buildGeneratedRequisitionPdf } from './generatedRequisitionPdf';
 import RecommendationSourceDocument from './RecommendationSourceDocument';
 import ApprovalRecordPdfPreview from './ApprovalRecordPdfPreview';
 import { getOriginalRecommendationDocuments } from './recommendationSourceDocuments';
@@ -139,48 +140,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         const source = pdfSourceRef.current;
         if (!source) throw new Error('The live preview source is not ready.');
 
-        await document.fonts?.ready;
-        await Promise.all(Array.from(source.querySelectorAll('img')).map((image) => (
-          image.complete
-            ? Promise.resolve()
-            : new Promise((resolve) => {
-              image.addEventListener('load', resolve, { once: true });
-              image.addEventListener('error', resolve, { once: true });
-            })
-        )));
-
-        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-          import('html2canvas'),
-          import('jspdf'),
-        ]);
-        const canvas = await html2canvas(source, {
-          backgroundColor: '#ffffff',
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          windowWidth: 1200,
+        const pdf = await buildGeneratedRequisitionPdf(source, {
+          title: requisition.pr_number || 'Purchase Requisition', subject: 'Purchase requisition approval form',
         });
         if (!active) return;
-
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-        const pageWidth = 210;
-        const pageHeight = 297;
-        const margin = 6;
-        const printableWidth = pageWidth - (margin * 2);
-        const printableHeight = pageHeight - (margin * 2);
-        const imageHeight = (canvas.height * printableWidth) / canvas.width;
-        const imageData = canvas.toDataURL('image/jpeg', 0.96);
-        let remainingHeight = imageHeight;
-        let yPosition = margin;
-
-        pdf.addImage(imageData, 'JPEG', margin, yPosition, printableWidth, imageHeight, undefined, 'FAST');
-        remainingHeight -= printableHeight;
-        while (remainingHeight > 0) {
-          pdf.addPage();
-          yPosition = margin - (imageHeight - remainingHeight);
-          pdf.addImage(imageData, 'JPEG', margin, yPosition, printableWidth, imageHeight, undefined, 'FAST');
-          remainingHeight -= printableHeight;
-        }
 
         objectUrl = URL.createObjectURL(pdf.output('blob'));
         setPdfPreviewFilename(buildProcurementPdfFilename(

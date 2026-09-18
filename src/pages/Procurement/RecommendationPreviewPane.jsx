@@ -13,6 +13,7 @@ import {
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
 import RecommendationSourceDocument from './RecommendationSourceDocument';
 import { getOriginalRecommendationDocuments } from './recommendationSourceDocuments';
+import { buildGeneratedRequisitionPdf } from './generatedRequisitionPdf';
 import './RecommendationPreviewPane.css';
 
 const PAPER_WIDTH = 740;
@@ -35,10 +36,8 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
   const [expanded, setExpanded] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
   const hasOriginal = getOriginalRecommendationDocuments(requisition.attachments).length > 0;
   const scale = fitWidth ? clamp(availableWidth / PAPER_WIDTH, 0.25, 1.5) : zoom;
-  const pageCount = Math.max(1, Math.ceil(documentHeight / PAPER_HEIGHT));
   const errorCount = issues.filter(issue => issue.severity !== 'warning').length;
   const warningCount = issues.length - errorCount;
   const issueLabel = [errorCount && `${errorCount} error${errorCount === 1 ? '' : 's'} to correct`,
@@ -85,61 +84,15 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
     if (!documentRef.current || downloading) return;
     setDownloading(true);
     setDownloadError('');
-    let exportHost;
     try {
-      // Render an unscaled copy so zoom and scroll position never change the PDF.
-      exportHost = document.createElement('div');
-      exportHost.className = 'rpp-preview rpp-export-host';
-      exportHost.setAttribute('aria-hidden', 'true');
-      const copy = documentRef.current.cloneNode(true);
-      copy.style.transform = 'none';
-      exportHost.appendChild(copy);
-      document.body.appendChild(exportHost);
-      await document.fonts?.ready;
-      await Promise.all(Array.from(copy.querySelectorAll('img')).map(async (image) => {
-        if (image.decode) {
-          try { await image.decode(); } catch { /* The text remains exportable if an image is unavailable. */ }
-        }
-      }));
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas'), import('jspdf'),
-      ]);
-      const canvas = await html2canvas(copy, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        windowWidth: 1200,
-        scrollX: 0,
-        scrollY: 0,
+      const pdf = await buildGeneratedRequisitionPdf(documentRef.current, {
+        title: requisition.pr_number || 'Draft purchase recommendation', subject: 'Purchase recommendation form preview',
       });
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-      const margin = 6;
-      const width = pdf.internal.pageSize.getWidth() - margin * 2;
-      const height = pdf.internal.pageSize.getHeight() - margin * 2;
-      const pixelsPerPage = Math.floor(Math.min(
-        height * canvas.width / width,
-        PAPER_HEIGHT * canvas.width / PAPER_WIDTH,
-      ));
-      const totalPages = Math.ceil(canvas.height / pixelsPerPage);
-      for (let page = 0; page < totalPages; page += 1) {
-        if (page > 0) pdf.addPage();
-        const top = page * pixelsPerPage;
-        const slice = document.createElement('canvas');
-        slice.width = canvas.width;
-        slice.height = Math.min(pixelsPerPage, canvas.height - top);
-        const context = slice.getContext('2d');
-        if (!context) throw new Error('This browser could not render the document.');
-        context.drawImage(canvas, 0, top, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
-        pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, margin, width, slice.height * width / canvas.width, undefined, 'FAST');
-      }
-      pdf.setProperties({ title: requisition.pr_number || 'Draft purchase recommendation', subject: 'Purchase recommendation form preview' });
       const reference = String(requisition.pr_number || 'Purchase-Recommendation-Draft').replace(/[^A-Za-z0-9._-]+/g, '-');
       pdf.save(`${reference}.pdf`);
     } catch (error) {
       setDownloadError(`PDF download failed. ${error?.message || 'Please try again.'}`);
     } finally {
-      exportHost?.remove();
       setDownloading(false);
     }
   };
@@ -161,7 +114,7 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
         </div>
         {!hasOriginal && <p>Updates as fields are completed</p>}
         <div className="rpp-toolbar" aria-label="Document preview controls">
-          {!hasOriginal && <><span className="rpp-page-number">Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
+          {!hasOriginal && <><span className="rpp-page-number">Page 1 of 1</span>
           <div className="rpp-zoom-controls">
             <button type="button" aria-label="Zoom out preview" onClick={() => changeZoom(-0.1)} disabled={scale <= 0.25}><MinusIcon /></button>
             <output aria-label="Preview zoom">{Math.round(scale * 100)}%</output>
@@ -191,7 +144,6 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
         aria-labelledby={`${instanceId}-document-tab`}
         hidden={tab !== 'document'}
         tabIndex={0}
-        onScroll={(event) => setCurrentPage(Math.floor(event.currentTarget.scrollTop / (PAPER_HEIGHT * scale)) + 1)}
       >
         <div className="rpp-paper-frame" style={{ width: PAPER_WIDTH * scale, height: documentHeight * scale }}>
           <div className="rpp-document" ref={documentRef} style={{ transform: `scale(${scale})` }}>

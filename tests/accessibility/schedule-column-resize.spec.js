@@ -1,0 +1,120 @@
+import { test, expect } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import { wideTimelineHarness } from '../fixtures/wide-timeline.fixture.js'
+import { scheduleWorkspace } from '../fixtures/schedule-controls.js'
+
+test.setTimeout(60000)
+const columns = [
+  { label: 'Activity ID', key: 'activity-code', initial: 120, min: 60, max: 480 },
+  { label: 'Activity Name', key: 'activity-name', initial: 220, min: 100, max: 1200 },
+  { label: 'Duration', key: 'duration', initial: 72, min: 50, max: 240 },
+  { label: 'Start', key: 'start', initial: 80, min: 70, max: 240 },
+  { label: 'Finish', key: 'finish', initial: 80, min: 70, max: 240 },
+  { label: 'Total Float', key: 'float', initial: 64, min: 50, max: 240 },
+]
+const grid = page => scheduleWorkspace(page).getByRole('region', { name: 'Schedule activities and Gantt', exact: true })
+const handle = (page, column) => grid(page).getByRole('separator', { name: `Resize ${column.label} column`, exact: true })
+async function widths(page) {
+  return grid(page).locator('.p6-heading .p6-table-row > [role="columnheader"]').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width))
+}
+async function revealHandle(page, column) {
+  const edge = await grid(page).getByRole('columnheader', { name: column.label, exact: true }).evaluate(element => element.offsetLeft + element.offsetWidth)
+  await grid(page).getByLabel('Scroll activity columns', { exact: true }).evaluate((element, right) => {
+    element.scrollLeft = Math.max(0, right - element.clientWidth)
+    element.dispatchEvent(new Event('scroll'))
+  }, edge)
+}
+async function unchangedExcept(page, before, index, expected) {
+  const after = await widths(page)
+  expect(after[index + 1]).toBe(expected)
+  for (let sibling = 0; sibling < after.length; sibling += 1) if (sibling !== index + 1) expect(after[sibling]).toBe(before[sibling])
+}
+async function aligned(page, column) {
+  const heading = await grid(page).getByRole('columnheader', { name: column.label, exact: true }).boundingBox()
+  for (const id of ['activity-1', 'activity-2', 'activity-3']) {
+    const cell = await grid(page).locator(`[data-row-id="${id}"] [data-column="${column.key}"]`).boundingBox()
+    expect(cell.width).toBe(heading.width)
+    expect(cell.x).toBeCloseTo(heading.x, 1)
+  }
+}
+function clean(state) {
+  expect(state.pageErrors).toEqual([])
+  expect(state.unknown).toEqual([])
+  expect(state.unknownWrites).toEqual([])
+  expect(state.writes).toEqual([])
+}
+
+test('all six activity columns resize independently by keyboard, respect bounds and reset only the chosen column', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const state = await wideTimelineHarness(page)
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(44)
+  expect(await widths(page)).toEqual([30, ...columns.map(column => column.initial)])
+  const tableBefore = await grid(page).locator('.p6-heading .p6-left-clip').boundingBox()
+  for (const [index, column] of columns.entries()) {
+    const before = await widths(page)
+    const resize = handle(page, column)
+    await resize.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(resize).toHaveAttribute('aria-valuenow', String(column.initial + 10))
+    await unchangedExcept(page, before, index, column.initial + 10)
+    await page.keyboard.press('Home')
+    await page.keyboard.press('ArrowLeft')
+    await expect(resize).toHaveAttribute('aria-valuenow', String(column.min))
+    await unchangedExcept(page, before, index, column.min)
+    await page.keyboard.press('End')
+    await page.keyboard.press('ArrowRight')
+    await expect(resize).toHaveAttribute('aria-valuenow', String(column.max))
+    await unchangedExcept(page, before, index, column.max)
+    await revealHandle(page, column)
+    await resize.dblclick()
+    await expect(resize).toHaveAttribute('aria-valuenow', String(column.initial))
+    expect(await widths(page)).toEqual(before)
+    await aligned(page, column)
+  }
+  expect((await grid(page).locator('.p6-heading .p6-left-clip').boundingBox()).width).toBe(tableBefore.width)
+  clean(state)
+})
+
+test('pointer resizing keeps other columns fixed and aligns headers with rows after horizontal scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const state = await wideTimelineHarness(page)
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(44)
+  for (const [index, column] of columns.entries()) {
+    const before = await widths(page)
+    await revealHandle(page, column)
+    const resize = handle(page, column)
+    const box = await resize.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + 20, box.y + box.height / 2, { steps: 4 })
+    await page.mouse.up()
+    await expect(resize).toHaveAttribute('aria-valuenow', String(column.initial + 20))
+    await unchangedExcept(page, before, index, column.initial + 20)
+    await aligned(page, column)
+  }
+  const scroll = grid(page).getByLabel('Scroll activity columns', { exact: true })
+  await scroll.evaluate(element => { element.scrollLeft = element.scrollWidth; element.dispatchEvent(new Event('scroll')) })
+  for (const column of columns) await aligned(page, column)
+  const scan = await new AxeBuilder({ page }).include('.primavera-gantt').analyze()
+  expect(scan.violations.filter(item => ['serious', 'critical'].includes(item.impact))).toEqual([])
+  clean(state)
+})
+
+test('clicking a partly clipped duration opens its editor without losing the click during focus scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const state = await wideTimelineHarness(page)
+  await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(44)
+  const nameResize = handle(page, columns[1])
+  await nameResize.focus()
+  await page.keyboard.press('Shift+ArrowRight')
+  for (let step = 0; step < 3; step += 1) await page.keyboard.press('ArrowRight')
+  await expect(nameResize).toHaveAttribute('aria-valuenow', '300')
+  const title = state.records[17].simplePlan.tasks[0].title
+  await grid(page).getByRole('button', { name: `Edit duration for ${title}`, exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit task', exact: true })
+  await expect(editor).toBeVisible()
+  await expect(editor.getByLabel('Task / deliverable', { exact: true })).toHaveValue(title)
+  await expect(editor.getByLabel('Duration (working days)', { exact: true })).toHaveValue('5')
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  clean(state)
+})

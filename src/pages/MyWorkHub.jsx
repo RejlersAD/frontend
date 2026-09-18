@@ -7,6 +7,7 @@ import { fetchCurrentUser } from '../store/slices/rbacSlice'
 import ApprovalReviewDialog from '../components/approvals/ApprovalReviewDialog'
 import WorkHubCalendar from '../components/workhub/WorkHubCalendar'
 import WorkHubNotices from '../components/workhub/WorkHubNotices'
+import AssignedTaskDetail from '../components/workhub/AssignedTaskDetail'
 import useWorkHubData from '../components/workhub/useWorkHubData'
 import { availableWorkspaces, calendarSource, defaultShortcuts, DEFAULT_PREFERENCES, displayDate, humanize, isReady, loadPreferences, metric, numberValue, presentActivity, safeRoute, taskIsOverdue } from '../components/workhub/workHubPresentation'
 import './MyWorkHub.css'
@@ -28,6 +29,8 @@ export default function MyWorkHub() {
   const [tab, setTab] = useState('tasks')
   const [dialog, setDialog] = useState(null)
   const [review, setReview] = useState(null)
+  const [taskSaving, setTaskSaving] = useState(false)
+  const taskBusy = useRef(false)
   const [preferences, setPreferences] = useState(() => ({ key: preferenceKey, value: loadPreferences(preferenceKey) }))
   const [preferenceMessage, setPreferenceMessage] = useState('')
   const trigger = useRef(null)
@@ -57,11 +60,17 @@ export default function MyWorkHub() {
   useEffect(() => { setReview(null) }, [profile])
   const refresh = () => { if (user && !profile) dispatch(fetchCurrentUser()); setToday(new Date()); setRevision(value => value + 1) }
   const openDialog = value => { trigger.current = document.activeElement; setDialog({ ...value, userId }) }
-  const closeDialog = useCallback(() => { setDialog(null); requestAnimationFrame(() => trigger.current?.focus()) }, [])
+  const closeDialog = useCallback(() => { if (taskBusy.current) return; setDialog(null); requestAnimationFrame(() => trigger.current?.focus()) }, [])
+  const taskBusyChanged = useCallback(value => { taskBusy.current = value; setTaskSaving(value) }, [])
   const openApproval = item => { trigger.current = document.activeElement; setReview({ item, userId, profile }) }
   const closeReview = useCallback(() => { setReview(null); requestAnimationFrame(() => trigger.current?.focus()) }, [])
   const openItem = row => {
     if (tab === 'approvals') { openApproval(row); return }
+    if (tab === 'tasks') {
+      if (!dialog) trigger.current = document.activeElement
+      setDialog({ type: 'task', item: row, userId })
+      return
+    }
     const route = safeRoute(row.route)
     if (route) navigate(route)
     else openDialog({ type: 'activity', item: row })
@@ -103,7 +112,8 @@ export default function MyWorkHub() {
       {currentPreferences.notices && <WorkHubNotices source={noticeSource} onRetry={refresh} onOpenNotice={item => openDialog({ type: 'notice', item })} onViewAll={() => navigate('/notifications')} />}
     </div>}</div>
     <footer className="wh-page-footer"><span>{bundle ? `Updated ${new Date(bundle.as_of).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : data.bundle.loading ? 'Updating your work hub…' : 'Work summary unavailable'}</span><span>Personal records · Source availability is shown in each panel</span></footer>
-    {dialog?.userId === userId && <HubDialog title={{ customize: 'Customize your work hub', calendar: 'HR calendar', workspaces: 'Available workspaces', work: tab === 'tasks' ? 'My assigned tasks' : 'Recent activity', notice: 'Notice details', activity: 'Activity details' }[dialog.type]} onClose={closeDialog} wide={['work', 'workspaces'].includes(dialog.type)}>
+    {dialog?.userId === userId && <HubDialog title={{ customize: 'Customize your work hub', calendar: 'HR calendar', workspaces: 'Available workspaces', work: tab === 'tasks' ? 'My assigned tasks' : 'Recent activity', task: 'Assigned task', notice: 'Notice details', activity: 'Activity details' }[dialog.type]} onClose={closeDialog} busy={dialog.type === 'task' && taskSaving} wide={['work', 'workspaces'].includes(dialog.type)}>
+      {dialog.type === 'task' && <AssignedTaskDetail key={`${userId}:${dialog.item.id}`} taskId={dialog.item.id} onSaved={refresh} onClose={closeDialog} onBusyChange={taskBusyChanged} />}
       {dialog.type === 'customize' && <Customize preferences={currentPreferences} workspaces={workspaces} onSave={savePreferences} onCancel={closeDialog} />}
       {dialog.type === 'calendar' && <WorkHubCalendar source={calendar} month={month} onMonthChange={setMonth} onRetry={refresh} expanded />}
       {dialog.type === 'workspaces' && <WorkspaceDirectory items={workspaces} />}
@@ -126,7 +136,7 @@ function WorkTable({ tab, rows, loading, error, unavailable, reason, onRetry, on
     const date = tab === 'approvals' ? detail.dueAt : tab === 'recent' ? row.timestamp : row.due_date
     const status = tab === 'approvals' ? detail.stageLabel : tab === 'recent' ? row.status_label : humanize(row.status)
     const action = tab === 'approvals' ? 'Review' : tab === 'recent' && !safeRoute(row.route) ? 'View details' : 'Open'
-    return <tr key={row._queueKey || row.id}><td><span className="wh-work-icon"><DocumentTextIcon aria-hidden="true" /></span></td><td><strong>{title || 'Untitled record'}</strong><small title={description}>{description}</small></td><td className={tab === 'approvals' && detail.overdue || tab === 'tasks' && taskIsOverdue(date, asOf, timeZone) ? 'wh-danger' : ''}>{displayDate(date)}</td><td>{tab === 'approvals' ? row._approvalLabel : tab === 'tasks' ? 'Project Control' : row.source_label}</td><td><span className={`wh-status wh-status--${/fail|reject|blocked/i.test(status) ? 'danger' : /progress|review/i.test(status) ? 'blue' : /pending|not started|todo|to do/i.test(status) ? 'amber' : 'neutral'}`}>{status}</span></td><td><button className={`wh-button wh-work-action${tab === 'approvals' ? ' wh-button--primary' : ''}`} aria-label={`${action}${action === 'View details' ? ' for' : ''} ${detail?.reference || title}`} onClick={() => onOpen(row)}>{action}</button></td></tr>
+    return <tr key={row._queueKey || row.id}><td><span className="wh-work-icon"><DocumentTextIcon aria-hidden="true" /></span></td><td><strong>{tab === 'tasks' ? <button className="wh-task-title-button" onClick={() => onOpen(row)}>{title || 'Untitled task'}</button> : title || 'Untitled record'}</strong><small title={description}>{description}</small></td><td className={tab === 'approvals' && detail.overdue || tab === 'tasks' && taskIsOverdue(date, asOf, timeZone) ? 'wh-danger' : ''}>{displayDate(date)}</td><td>{tab === 'approvals' ? row._approvalLabel : tab === 'tasks' ? 'Project Control' : row.source_label}</td><td><span className={`wh-status wh-status--${/fail|reject|blocked/i.test(status) ? 'danger' : /progress|review/i.test(status) ? 'blue' : /pending|not started|todo|to do/i.test(status) ? 'amber' : 'neutral'}`}>{status}</span></td><td><button className={`wh-button wh-work-action${tab === 'approvals' ? ' wh-button--primary' : ''}`} aria-label={`${action}${action === 'View details' ? ' for' : ''} ${detail?.reference || title}`} onClick={() => onOpen(row)}>{action}</button></td></tr>
   })}</tbody></table></div>
 }
 function Workspace({ item }) {
@@ -144,7 +154,7 @@ function ActivityOverview({ source, loading, error, onRetry }) {
   const maximum = Math.max(1, ...series.map(row => numberValue(row.count) ?? 0))
   return <section className="wh-panel wh-activity" aria-label="Activity overview" data-testid="workhub-activity"><div className="wh-panel-heading"><h2>Activity overview</h2><span className="wh-muted">Last 7 days</span></div>{loading || error || !ready ? <div className="wh-activity-empty" role="status"><ChartBarIcon aria-hidden="true" /><span>{loading ? 'Loading your activity…' : 'Personal activity is not available.'}</span>{(error || source?.status === 'error') && <button className="wh-text-button" onClick={onRetry}>Retry activity</button>}</div> : <div className="wh-activity-content"><div className="wh-chart" role="img" aria-label={`Recorded actions and workspace visits over seven days: ${series.map(row => `${row.date}: ${row.count}`).join('; ')}`}><div className="wh-chart-axis"><span>{maximum}</span><span>{Math.round(maximum / 2)}</span><span>0</span></div><div className="wh-chart-columns">{series.map(row => <div className="wh-chart-day" key={row.date}><div className="wh-chart-bar-area"><div className="wh-chart-bar" style={{ height: `${((numberValue(row.count) ?? 0) / maximum) * 100}%` }} title={`${row.count} activity records`} /></div><span>{new Date(`${row.date}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</span></div>)}</div></div><div className="wh-activity-metrics"><div><CheckCircleIcon aria-hidden="true" /><span><strong>{metric(source.total_count)}</strong><span>Recorded activity</span><small>Actions and page visits</small></span></div><div><DocumentTextIcon aria-hidden="true" /><span><strong>{series.filter(row => row.count > 0).length}</strong><span>Active days</span><small>Last 7 days</small></span></div></div></div>}</section>
 }
-function HubDialog({ title, onClose, children, wide }) {
+function HubDialog({ title, onClose, children, wide, busy = false }) {
   const element = useRef(null)
   useEffect(() => {
     const dialog = element.current
@@ -161,7 +171,7 @@ function HubDialog({ title, onClose, children, wide }) {
     dialog.addEventListener('keydown', trapTab)
     return () => { dialog.removeEventListener('cancel', cancel); dialog.removeEventListener('keydown', trapTab); dialog.close() }
   }, [onClose])
-  return <dialog ref={element} className={`wh-dialog${wide ? ' wh-dialog--wide' : ''}`} aria-labelledby="wh-dialog-title"><header><h2 id="wh-dialog-title">{title}</h2><button className="wh-icon-button" aria-label="Close dialog" onClick={onClose}><XMarkIcon aria-hidden="true" /></button></header>{children}</dialog>
+  return <dialog ref={element} className={`wh-dialog${wide ? ' wh-dialog--wide' : ''}`} aria-labelledby="wh-dialog-title"><header><h2 id="wh-dialog-title">{title}</h2><button className="wh-icon-button" aria-label="Close dialog" onClick={onClose} disabled={busy}><XMarkIcon aria-hidden="true" /></button></header>{children}</dialog>
 }
 function Customize({ preferences, workspaces, onSave, onCancel }) {
   const [draft, setDraft] = useState({ ...preferences, shortcuts: preferences.shortcuts ?? defaultShortcuts(workspaces) })

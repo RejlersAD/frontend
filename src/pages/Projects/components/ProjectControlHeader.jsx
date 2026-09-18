@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useRef } from 'react'
-import { Download, FileText, MoreHorizontal, Plus, RefreshCw, Upload, Pencil, CalendarDays, LayoutGrid, CircleDollarSign, Flag, ShieldCheck, Briefcase, AlertTriangle, ChevronDown } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { Download, FileText, MoreHorizontal, Plus, RefreshCw, Upload, Pencil, CalendarDays, LayoutGrid, CircleDollarSign, Flag, ShieldCheck, Briefcase, AlertTriangle, ChevronDown, Sparkles } from 'lucide-react'
 import { PROJECT_VIEW_MODES } from '../../../config/projectControl.config'
 import { formatDate, projectManagerName } from '../useProjectPerformance'
 import ProjectSelector from './ProjectSelector'
@@ -9,12 +9,19 @@ const titleCase = value => String(value || '').replaceAll('_', ' ').replace(/\b\
 
 export default function ProjectControlHeader({
   projects, selectedProject, selectedProjectId, onSelectProject, loading, error,
-  phaseFlags, activeView, onSelectView, onNavigate, onCreate, onEdit, onImport,
+  phaseFlags, activeView, onSelectView, onNavigate, onCreate, onCreateWithAI, onEdit, onImport,
   onArchive, onRefresh, onExport, performance, lastRefreshed, onOpenDialog,
   schedulePerformance, onUpdateSchedule, commercialPerformance, onUpdateCommercial, milestoneControl, onAddMilestone, riskControl, onAddRiskRecord, estimateControl, onNewEstimate, documentControl, onAddDocument,
   scheduleMode = 'management',
 }) {
   const menuRef = useRef(null), addRef = useRef(null)
+  const [scheduleState, setScheduleState] = useState(null)
+  useEffect(() => {
+    setScheduleState(null)
+    const receive = event => { if (String(event.detail?.projectId) === String(selectedProjectId)) setScheduleState(event.detail) }
+    window.addEventListener('radai:master-schedule-state', receive)
+    return () => window.removeEventListener('radai:master-schedule-state', receive)
+  }, [selectedProjectId])
   useEffect(() => {
     const dismiss = event => {
       for (const ref of [menuRef, addRef]) {
@@ -59,25 +66,23 @@ export default function ProjectControlHeader({
   const exportLabel = isDocuments ? 'Export register' : isEstimates ? 'Export estimate' : isRisk ? 'Export register' : isMilestones ? 'Export milestone report' : isCommercial ? 'Export commercial' : isSchedule ? 'Export schedule' : 'Export report'
   const exportDisabled = !selectedProject || (isDocuments && (!model?.availability?.list || activePerformance?.loading)) || (isEstimates && (!model?.availability?.selected || activePerformance?.loading)) || (isRisk && (!model?.rows?.length || activePerformance?.loading)) || (isMilestones && (!model?.rows?.length || activePerformance?.loading)) || (isSchedule && (!model?.activities?.length || activePerformance?.loading)) || (isCommercial && (!model?.availability?.commercial || activePerformance?.loading))
   if (isSchedule && scheduleMode === 'planner' && selectedProject) return <header className="pp-header pp-planning-header">
-    <nav className="pp-breadcrumb" aria-label="Breadcrumb"><span>Project Control</span><span>/</span><a href="/projects">Portfolio</a><span>/</span><span aria-current="page">Plan &amp; Baseline</span></nav>
-    <div className="pp-planning-title-row">
-      <div className="pp-planning-title"><h1>Project Planning</h1><span className="pp-badge pp-neutral">Draft</span></div>
+    <div className="pp-planning-project-row pp-schedule-project-row">
+      <div className="pp-project-picker pp-planning-project-picker"><ProjectSelector compact projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} label="Active Project" /></div>
+      <span className="pp-planning-manager">Project manager: {projectManagerName(selectedProject)}</span>
       <div className="pp-planning-actions">
-        <button type="submit" form="project-planning-inputs-form" onClick={event => { const workBreakdownForm = document.getElementById('project-planning-work-breakdown-form'); if (workBreakdownForm) { event.preventDefault(); workBreakdownForm.requestSubmit(); } }} className="pp-button pp-planning-save" disabled={loading}>Save draft</button>
+        <button type="button" onClick={() => window.dispatchEvent(new Event('radai:save-master-schedule'))} className="pp-button pp-planning-save" disabled={loading || !scheduleState?.canSave}>Save draft</button>
         <details ref={menuRef} className="pp-menu"><summary className="pp-button pp-icon-button"><span className="sr-only">More project actions</span><MoreHorizontal size={19} /></summary><div className="pp-menu-items">
+          <p className="pp-master-manager-note">Project manager: {projectManagerName(selectedProject)}</p>
           <button type="button" disabled={loading || activePerformance?.loading} onClick={() => run(onRefresh)}><RefreshCw size={15} />Refresh project</button>
           <button type="button" disabled={exportDisabled} onClick={() => run(onExport)}><Download size={15} />Export schedule</button>
           <button type="button" onClick={() => run(onEdit)}><Pencil size={15} />Edit project details</button>
           <button type="button" onClick={() => run(onImport)}><Upload size={15} />Import from QHSE</button>
           <button type="button" onClick={() => run(onCreate)}><Plus size={15} />New project</button>
+          {onCreateWithAI && <button type="button" onClick={() => run(onCreateWithAI)}><Sparkles size={15} />Create project with AI</button>}
           {extras.map(area => <button type="button" key={area.key} onClick={() => run(() => area.route ? onNavigate(area.route) : onSelectView(area.key))}>{area.label}</button>)}
           <button type="button" className="pp-danger" onClick={() => run(onArchive)}>Delete project</button>
         </div></details>
       </div>
-    </div>
-    <div className="pp-planning-project-row">
-      <div className="pp-project-picker pp-planning-project-picker"><ProjectSelector compact projects={projects} value={selectedProjectId} onChange={onSelectProject} loading={loading} error={error} label="Active Project" /></div>
-      <span className="pp-planning-manager">Project manager: {projectManagerName(selectedProject)}</span>
     </div>
     <nav className="pp-tabs" aria-label="Project work areas"><ul>{areas.map(({ key, label, icon, scheduleIcon, dialog }) => { const Icon = key === 'estimates' ? Briefcase : key === 'documents' ? FileText : scheduleIcon || icon; return <li key={key}><button type="button" aria-current={!dialog && activeView === key ? 'page' : undefined} onClick={() => dialog ? onOpenDialog(dialog) : onSelectView(key)}>{Icon && <Icon size={17} aria-hidden="true" />}{label}</button></li> })}</ul></nav>
   </header>
@@ -87,7 +92,7 @@ export default function ProjectControlHeader({
       <div className="pp-project-heading"><div className="pp-title-row"><h1>{heading}</h1>{selectedProject && <><span className={`pp-badge pp-${operationalStatusConfirmed && selectedProject.status === 'active' ? 'success' : 'neutral'}`}>{operationalStatusConfirmed ? titleCase(selectedProject.status) : 'Status to confirm'}</span>{health && <span className={`pp-badge pp-${health.tone}`}>{isPerformanceArea && health.tone !== 'success' && <AlertTriangle size={12} aria-hidden="true" />}{health.label}</span>}</>}</div>
         {selectedProject ? <div className="pp-project-meta"><span>Client: {selectedProject.client_name || 'Not provided'}</span><span>Project manager: {projectManagerName(selectedProject)}</span>{!isPerformanceArea && <span>{formatDate(selectedProject.start_date)} – {formatDate(selectedProject.end_date)}</span>}{!isEPC && <span>Data date: {formatDate(model?.dataDate)}</span>}</div> : <p className="pp-muted">Open and manage the projects you are authorised to access.</p>}
       </div>
-      <div className="pp-header-actions"><div><button type="button" className="pp-button" disabled={loading || performance?.loading || activePerformance?.loading} onClick={onRefresh}><RefreshCw size={16} />Refresh</button><button type="button" className="pp-button" disabled={exportDisabled} onClick={onExport} title={isDocuments ? 'Download the full project document register as CSV' : isEstimates ? 'Download the selected estimate and cost items as CSV' : isRisk ? 'Download the complete risk, issue and change register as CSV' : isMilestones ? 'Download the complete milestone register as CSV' : isCommercial ? 'Download the current commercial summary, WBS costs and postings as CSV' : isSchedule ? 'Download the selected schedule comparison as CSV' : 'Print or save this report as PDF'}><Download size={16} />{exportLabel}</button>
+      <div className="pp-header-actions"><div>{onCreateWithAI && <button type="button" className="pp-button pp-primary" onClick={onCreateWithAI}><Sparkles size={17} aria-hidden="true" />Create project with AI</button>}<button type="button" className="pp-button" disabled={loading || performance?.loading || activePerformance?.loading} onClick={onRefresh}><RefreshCw size={16} />Refresh</button><button type="button" className="pp-button" disabled={exportDisabled} onClick={onExport} title={isDocuments ? 'Download the full project document register as CSV' : isEstimates ? 'Download the selected estimate and cost items as CSV' : isRisk ? 'Download the complete risk, issue and change register as CSV' : isMilestones ? 'Download the complete milestone register as CSV' : isCommercial ? 'Download the current commercial summary, WBS costs and postings as CSV' : isSchedule ? 'Download the selected schedule comparison as CSV' : 'Print or save this report as PDF'}><Download size={16} />{exportLabel}</button>
         <details ref={menuRef} className="pp-menu"><summary className="pp-button pp-icon-button"><span className="sr-only">More project actions</span><MoreHorizontal size={19} /></summary><div className="pp-menu-items">
           {selectedProject && <button type="button" onClick={() => run(onEdit)}><Pencil size={15} />Edit project details</button>}<button type="button" onClick={() => run(onImport)}><Upload size={15} />Import from QHSE</button><button type="button" onClick={() => run(onCreate)}><Plus size={15} />New project</button>
           {selectedProject && <>{extras.map(area => <button type="button" key={area.key} onClick={() => run(() => area.route ? onNavigate(area.route) : onSelectView(area.key))}>{area.label}</button>)}<button type="button" className="pp-danger" onClick={() => run(onArchive)}>Delete project</button></>}

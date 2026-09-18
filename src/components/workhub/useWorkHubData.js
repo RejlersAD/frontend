@@ -10,11 +10,12 @@ const readList = data => {
   if (!Array.isArray(rows) || rows.some(row => !row || row.id === undefined || row.id === null)) throw new Error('The source returned an incomplete response.')
   return rows
 }
-function useSource(loader, key, enabled = true) {
+function useSource(loader, key, enabled = true, refreshRevision = 0) {
   const [result, setResult] = useState({ ...pending, key, loader, enabled })
   useEffect(() => {
     const controller = new AbortController()
-    setResult({ ...pending, key, loader, enabled })
+    setResult(current => current.key === key && current.loader === loader && current.enabled === enabled && current.data
+      ? { ...current, error: '' } : { ...pending, key, loader, enabled })
     if (enabled) loader(controller.signal).then(data => {
       if (!controller.signal.aborted) setResult({ data, key, loader, enabled, loading: false, error: '' })
     }).catch(error => {
@@ -22,11 +23,20 @@ function useSource(loader, key, enabled = true) {
     })
     else setResult({ data: null, key, loader, enabled, loading: false, error: '' })
     return () => controller.abort()
-  }, [loader, key, enabled])
+  }, [loader, key, enabled, refreshRevision])
   return result.key === key && result.loader === loader && result.enabled === enabled ? result : pending
 }
 export default function useWorkHubData({ user, profile, profileLoading = false, revision, month, today }) {
+  const [taskRefresh, setTaskRefresh] = useState(0)
   const identity = `${user?.id || user?.user?.id || 'unknown'}:${JSON.stringify(profile?.module_actions || {})}:${JSON.stringify(profile?.roles || [])}`
+  useEffect(() => {
+    if (!user) return undefined
+    const refreshTasks = () => { if (document.visibilityState === 'visible') setTaskRefresh(value => value + 1) }
+    const interval = window.setInterval(refreshTasks, 30000)
+    window.addEventListener('focus', refreshTasks)
+    document.addEventListener('visibilitychange', refreshTasks)
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', refreshTasks); document.removeEventListener('visibilitychange', refreshTasks) }
+  }, [identity, user])
   const types = useMemo(() => user && profile ? getEnabledApprovalTypes(user, profile) : [], [user, profile])
   const period = `${today.getFullYear()}-${today.getMonth() + 1}`
   const calendarPeriod = `${month.getFullYear()}-${month.getMonth() + 1}`
@@ -54,7 +64,7 @@ export default function useWorkHubData({ user, profile, profileLoading = false, 
     }))
     return { rows: sortApprovals(results.flatMap(result => result.status === 'fulfilled' ? result.value.rows : [])), partial: results.some(result => result.status === 'rejected' || result.value.truncated), available: !connected.length || results.some(result => result.status === 'fulfilled'), unconnected: types.filter(type => UNCONNECTED_QUEUES[type.id]).map(type => type.id) }
   }, [types, user, profile])
-  const bundle = useSource(bundleLoader, `${baseKey}:${period}`, !!user)
+  const bundle = useSource(bundleLoader, `${baseKey}:${period}`, !!user, taskRefresh)
   const alternateCalendar = useSource(calendarLoader, `${baseKey}:${calendarPeriod}`, !!user && calendarPeriod !== period)
   const features = useSource(featureLoader, baseKey, !!user)
   const notices = useSource(noticeLoader, baseKey, !!user)

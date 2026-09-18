@@ -284,7 +284,7 @@ export const PROJECT_FORM_SECTIONS = [
     title: 'Basics',
     fields: [
       { name: 'code',         label: 'Project Code',  type: 'text',     required: true,  placeholder: 'PRJ-2026-001', help: 'Unique short code', colSpan: 1 },
-      { name: 'name',         label: 'Project Name',  type: 'text',     required: true,  placeholder: 'New refinery expansion', colSpan: 2 },
+      { name: 'name',         label: 'Project Name',  type: 'text',     required: true,  placeholder: 'e.g. RADAI System Development', colSpan: 2 },
       { name: 'description',  label: 'Description',   type: 'textarea', required: false, placeholder: 'Scope, objectives, deliverables…', rows: 3, colSpan: 3 },
     ],
   },
@@ -292,6 +292,13 @@ export const PROJECT_FORM_SECTIONS = [
     id: 'classification',
     title: 'Classification',
     fields: [
+      { name: 'project_type', label: 'Project type', type: 'select', required: true, defaultValue: 'engineering', options: [
+        { value: 'engineering', label: 'Engineering' },
+        { value: 'software', label: 'Software / IT' },
+        { value: 'internal', label: 'Internal / Department' },
+        { value: 'business', label: 'Business / Operations' },
+      ] },
+      { name: 'department', label: 'Department', type: 'text', placeholder: 'e.g. IT, HR, Finance', colSpan: 2 },
       { name: 'status',   label: 'Status',   type: 'select', required: true, options: PROJECT_STATUS_OPTIONS,   defaultValue: 'planning' },
       { name: 'priority', label: 'Priority', type: 'select', required: true, options: PROJECT_PRIORITY_OPTIONS, defaultValue: 'medium'   },
       { name: 'progress', label: 'Progress %', type: 'number', required: false, min: 0, max: 100, defaultValue: 0 },
@@ -336,7 +343,7 @@ export const PROJECT_FORM_SECTIONS = [
         options: PROJECT_SCOPE_TYPE_OPTIONS,
         defaultValue: '',
         colSpan: 3,
-        help: 'Engineering engagement type — FEED, Detailed Engineering, EPC, …',
+        help: 'Engineering scope, where applicable',
       },
     ],
   },
