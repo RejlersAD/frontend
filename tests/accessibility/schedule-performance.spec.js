@@ -12,7 +12,7 @@ const workAreas = page => page.getByRole('navigation', { name: 'Project work are
 
 async function loaded(page) {
   await expect(page.getByRole('heading', { name: 'Schedule Performance', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Management', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Performance', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(indicators(page)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
 }
@@ -182,17 +182,19 @@ test('Refresh and project selection reload the schedule source and preserve the 
   expect(state.unknown).toEqual([])
 })
 
-test('Management and Planner preserve the existing linked-planning workflow and update action', async ({ page }) => {
+test('Performance and Planning preserve the linked-planning workflow and update action', async ({ page }) => {
   await scheduleHarness(page, { prepare: state => { state.noLinked = true } })
   await loaded(page)
-  await page.getByRole('button', { name: 'Planner', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Planner', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('button', { name: 'Create linked planning workspace', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Management', exact: true }).click()
+  await page.getByRole('button', { name: 'Planning', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Planning', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('heading', { name: 'Project Planning', exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Scope summary', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Performance', exact: true }).click()
   await expect(indicators(page)).toBeVisible()
   await page.getByRole('button', { name: 'Update schedule', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Planner', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('button', { name: 'Create linked planning workspace', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Planning', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('textbox', { name: 'Scope summary', exact: true })).toBeVisible()
   await workAreas(page).getByRole('button', { name: 'Overview', exact: true }).click()
   await expect(page).not.toHaveURL(/view=plan-baseline/)
   await expect(page.getByRole('heading', { name: 'Project Performance', exact: true })).toBeVisible()

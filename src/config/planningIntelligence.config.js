@@ -102,6 +102,7 @@ export const PLANNING_ENDPOINTS = {
   documentProfiles: '/planning-intelligence/document-profiles/',
   intelligenceRuns: '/planning-intelligence/intelligence-runs/',
   intelligenceRun: (id) => `/planning-intelligence/intelligence-runs/${id}/`,
+  confirmIntelligencePreview: (id) => `/planning-intelligence/intelligence-runs/${id}/confirm-preview/`,
   addIntelligenceFact: (id) => `/planning-intelligence/intelligence-runs/${id}/add-fact/`,
   intelligenceFacts: '/planning-intelligence/intelligence-facts/',
   reviewIntelligenceFact: (id) => `/planning-intelligence/intelligence-facts/${id}/review/`,
@@ -129,6 +130,7 @@ export const PLANNING_ENDPOINTS = {
   auditEvents: '/planning-intelligence/audit-events/',
   buildWorkablePlan: (id) => `/planning-intelligence/projects/${id}/build-workable-plan/`,
   workablePlanStatus: (id) => `/planning-intelligence/projects/${id}/workable-plan-status/`,
+  workBreakdown: (id) => `/planning-intelligence/projects/${id}/work-breakdown/`,
   approveWorkableBaseline: (id) => `/planning-intelligence/projects/${id}/approve-workable-baseline/`,
   // Planner corrections create an immutable child revision.
   editGeneration: (id) => `/planning-intelligence/generations/${id}/edit/`,

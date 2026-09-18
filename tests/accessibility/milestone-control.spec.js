@@ -141,8 +141,8 @@ test('selected milestones disclose real schedule dependencies and missing eviden
   await selectMilestone(page, 'IFC package release')
   await page.getByRole('button', { name: 'Update forecast', exact: true }).click()
   await expect(page).toHaveURL(/view=plan-baseline/)
-  await expect(page.getByRole('heading', { name: 'Schedule Performance', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Planner', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('heading', { name: 'Project Planning', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Planning', exact: true })).toHaveAttribute('aria-pressed', 'true')
   expect(state.writes).toEqual([])
 })
 

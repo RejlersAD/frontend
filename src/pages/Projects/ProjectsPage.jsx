@@ -41,6 +41,7 @@ import './MilestoneControl.css'
 import './RiskChangeControl.css'
 import './EstimateControl.css'
 import './DocumentControl.css'
+import './ProjectPlanningHeader.css'
 
 const loadProjectList = async () => {
   const projects = []
@@ -295,7 +296,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className={`project-control-workspace project-performance-workspace${view === 'plan-baseline' ? ' pp-schedule-workspace' : view === 'commercial-dashboard' ? ' pp-commercial-workspace' : view === 'milestones' ? ' pp-milestone-workspace' : view === 'risk' ? ' pp-risk-workspace' : view === 'estimates' ? ' pp-estimate-workspace' : view === 'documents' ? ' pp-document-workspace' : ''}`}>
+    <div className={`project-control-workspace project-performance-workspace${view === 'plan-baseline' ? ` pp-schedule-workspace${scheduleMode === 'planner' ? ' pp-planning-workspace' : ''}` : view === 'commercial-dashboard' ? ' pp-commercial-workspace' : view === 'milestones' ? ' pp-milestone-workspace' : view === 'risk' ? ' pp-risk-workspace' : view === 'estimates' ? ' pp-estimate-workspace' : view === 'documents' ? ' pp-document-workspace' : ''}`}>
       <ProjectControlHeader
         projects={projects}
         selectedProject={selectedProject}
@@ -305,6 +306,7 @@ export default function ProjectsPage() {
         error={error}
         phaseFlags={phaseFlags}
         activeView={view}
+        scheduleMode={scheduleMode}
         onSelectView={handleSelectView}
         onNavigate={navigate}
         onCreate={handleOpenCreate}

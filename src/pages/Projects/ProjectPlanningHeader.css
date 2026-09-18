@@ -1,0 +1,54 @@
+.project-performance-workspace.pp-planning-workspace {
+  --pp-blue: #0751ff;
+  background: #f4f8fc;
+  color: #081b4e;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.project-performance-workspace .pp-header.pp-planning-header { padding: 12px 20px 0; }
+.project-performance-workspace .pp-planning-header .pp-breadcrumb { margin-bottom: 3px; font-size: 12px; line-height: 19px; }
+.project-performance-workspace .pp-planning-title-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.project-performance-workspace .pp-planning-title { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.project-performance-workspace .pp-planning-title h1 { margin: 0; color: #061849; font-size: 28px; font-weight: 700; line-height: 38px; letter-spacing: -.5px; }
+.project-performance-workspace .pp-planning-title .pp-badge { min-height: 23px; padding: 2px 11px; background: #e6ebf3; color: #233d6c; font-size: 12px; font-weight: 500; }
+.project-performance-workspace .pp-planning-actions { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+.project-performance-workspace .pp-planning-actions .pp-button { min-height: 40px; color: #0751ff; font-size: 13px; }
+.project-performance-workspace .pp-planning-actions .pp-planning-save { padding: 8px 22px; border-color: #a9bfe9; }
+.project-performance-workspace .pp-planning-actions .pp-icon-button { width: 40px; }
+.project-performance-workspace .pp-planning-project-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-width: 0; margin-bottom: 2px; }
+.project-performance-workspace .pp-planning-project-picker { flex: 1; max-width: 820px; min-width: 0; }
+.project-performance-workspace.pp-schedule-workspace .pp-planning-project-picker input[role="combobox"] { min-height: 30px; height: 30px; padding: 2px 30px 2px 0; border: 1px solid transparent; background: transparent; color: #15356b; font-size: 14px; font-weight: 600; line-height: 24px; }
+.project-performance-workspace .pp-planning-project-picker input[role="combobox"]:hover { border-color: #d5e1f1; }
+.project-performance-workspace .pp-planning-project-picker input[role="combobox"]:focus { padding-left: 8px; background: #fff; border-color: #a9bfe9; }
+.project-performance-workspace .pp-planning-project-picker .pointer-events-none { display: none; }
+.project-performance-workspace .pp-planning-project-picker .pp-selector > .relative > button { width: 28px; height: 28px; }
+.project-performance-workspace .pp-planning-project-picker .pp-selector > .absolute { min-width: min(520px, calc(100vw - 60px)); }
+.project-performance-workspace .pp-planning-manager { flex-shrink: 0; color: #49638d; font-size: 12px; }
+.project-performance-workspace.pp-schedule-workspace .pp-planning-header .pp-tabs { border-bottom: 0; }
+.project-performance-workspace .pp-planning-header .pp-tabs ul { gap: 8px; }
+.project-performance-workspace.pp-schedule-workspace .pp-planning-header .pp-tabs button { gap: 9px; min-height: 39px; padding: 7px 10px 9px; font-size: 12px; line-height: 19px; }
+.project-performance-workspace .pp-planning-header .pp-tabs button svg { width: 17px; height: 17px; }
+.project-performance-workspace.pp-planning-workspace .pp-body { padding: 0 20px 0; }
+.project-performance-workspace .sp-workspace.sp-planning { gap: 8px; }
+.project-performance-workspace .sp-planning > .sp-toolbar { min-height: 50px; padding: 8px; border-color: #dbe5f1; }
+.project-performance-workspace .sp-planning .sp-mode-switch button { min-width: 96px; min-height: 29px; padding: 4px 17px; font-size: 12px; }
+.project-performance-workspace .sp-planning > .sp-planner-container { padding: 0; }
+
+@media (max-width: 900px) {
+  .project-performance-workspace .pp-planning-project-row { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .project-performance-workspace .pp-planning-project-picker { width: 100%; }
+  .project-performance-workspace .pp-planning-manager { padding-bottom: 4px; }
+}
+
+@media (max-width: 560px) {
+  .project-performance-workspace .pp-header.pp-planning-header { padding: 10px 10px 0; }
+  .project-performance-workspace.pp-planning-workspace .pp-body { padding-right: 10px; padding-left: 10px; }
+  .project-performance-workspace .pp-planning-title-row { align-items: flex-start; flex-wrap: wrap; gap: 5px; }
+  .project-performance-workspace .pp-planning-title h1 { font-size: 24px; }
+  .project-performance-workspace .pp-planning-title { gap: 8px; }
+  .project-performance-workspace .pp-planning-actions .pp-button { min-height: 34px; font-size: 12px; }
+  .project-performance-workspace .pp-planning-actions .pp-planning-save { padding: 5px 12px; }
+  .project-performance-workspace .pp-planning-actions .pp-icon-button { width: 34px; }
+  .project-performance-workspace .sp-planning .sp-mode-switch { width: auto; }
+  .project-performance-workspace .sp-planning .sp-mode-switch button { min-width: 95px; }
+}

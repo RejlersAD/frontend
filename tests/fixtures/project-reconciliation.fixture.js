@@ -130,6 +130,6 @@ export async function reconciliationHarness(page, options = {}) {
     state.unknown.push({ path, method })
     return reply(route, { detail: 'Unexpected isolated reconciliation fixture request.' }, 400)
   })
-  await page.goto('/procurement/projects/reconciliation', { waitUntil: 'domcontentloaded' })
+  await page.goto('/procurement/projects/reconciliation/advanced', { waitUntil: 'domcontentloaded' })
   return state
 }

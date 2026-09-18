@@ -56,7 +56,7 @@ const StatusBadge = ({ status }) => {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${styles[status] || styles.draft}`}>{status}</span>
 }
 
-const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBack, onOpenGenerationWizard }) => {
+const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, initialScheduleId = null, initialVersionId = null, onBack, onOpenGenerationWizard }) => {
   const { projectId: routeProjectId } = useParams()
   const projectId = planningProjectId || routeProjectId
   const navigate = useNavigate()
@@ -150,7 +150,7 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
         setSchedules(scheduleRows)
         setGenerations(generationRows)
         setDefaultProposals(proposalRows)
-        if (scheduleRows.length) setScheduleId(String(scheduleRows[0].id))
+        if (scheduleRows.length) setScheduleId(String(scheduleRows.find(row => String(row.id) === String(initialScheduleId))?.id || scheduleRows[0].id))
         else setLoading(false)
       } catch (error) {
         if (active) {
@@ -161,7 +161,7 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
     }
     initialize()
     return () => { active = false }
-  }, [projectId])
+  }, [projectId, initialScheduleId])
 
   useEffect(() => {
     if (!scheduleId) return
@@ -172,7 +172,8 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
         const rows = await planningIntelligenceService.listScheduleVersions(scheduleId)
         if (!active) return
         setVersions(rows)
-        const nextId = rows[0]?.id ? String(rows[0].id) : ''
+        const requestedVersion = rows.find(row => String(row.id) === String(initialVersionId));
+        const nextId = requestedVersion ? String(requestedVersion.id) : rows[0]?.id ? String(rows[0].id) : ''
         setVersionId(nextId)
         if (!nextId) setLoading(false)
       } catch (error) {
@@ -184,7 +185,7 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
     }
     loadVersions()
     return () => { active = false }
-  }, [scheduleId])
+  }, [scheduleId, initialVersionId])
 
   useEffect(() => {
     if (versionId) loadWorkspace(versionId)
@@ -701,6 +702,8 @@ const PlannerWorkspacePage = ({ embedded = false, planningProjectId = null, onBa
 PlannerWorkspacePage.propTypes = {
   embedded: PropTypes.bool,
   planningProjectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  initialScheduleId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  initialVersionId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   onBack: PropTypes.func,
   onOpenGenerationWizard: PropTypes.func,
 }

@@ -123,6 +123,7 @@ import ProjectDashboard from './pages/Procurement/ProjectDashboard'
 import ProjectDetail from './pages/Procurement/ProjectDetail'
 import ProjectCreator from './pages/Procurement/ProjectCreator'
 import ProjectReconciliation from './pages/Procurement/ProjectReconciliation'
+import ProjectLinks from './pages/Procurement/ProjectLinks'
 // Process Datasheet Components
 import ProcessDatasheetPage from './pages/ProcessDatasheetPage'
 import ComprehensivePumpForm from './pages/ProcessDatasheet/ComprehensivePumpForm'
@@ -960,6 +961,14 @@ function App() {
         />
         <Route
           path="procurement/projects/reconciliation"
+          element={
+            <ModuleProtectedRoute moduleCode="procurement">
+              <ProjectLinks />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="procurement/projects/reconciliation/advanced"
           element={
             <ModuleProtectedRoute moduleCode="procurement">
               <ProjectReconciliation />
