@@ -152,7 +152,7 @@ export default function WorkBreakdownPanel({ projectId, intelligenceRunId, previ
     rows[1].depends_on = [rows[0].id]; rows[2].depends_on = [rows[1].id]
     updateTasks([...tasks, ...rows]); setDialog(null)
   }
-  if (loading) return <section className="work-breakdown"><div className="wbd-loading" role="status"><Loader2 size={19} className="animate-spin" />Loading work breakdown…</div></section>
+  if (loading) return <section className="work-breakdown"><form id="project-planning-work-breakdown-form" onSubmit={event => event.preventDefault()} /><div className="wbd-loading" role="status"><Loader2 size={19} className="animate-spin" />Loading work breakdown…</div></section>
   if (!draft) return <section className="work-breakdown"><div className="wbd-error" role="alert">{error || 'Work breakdown is unavailable.'}</div><div className="wbd-actions"><button type="button" className="wbd-button" onClick={onBack}><ArrowLeft size={16} />Back to inputs</button><button type="button" className="wbd-button" onClick={() => setLoadRevision(value => value + 1)}>Retry</button></div></section>
   return <section className="work-breakdown" aria-label="Work breakdown planning" aria-busy={saving}>
     <form id="project-planning-work-breakdown-form" onSubmit={event => { event.preventDefault(); save(false) }} />

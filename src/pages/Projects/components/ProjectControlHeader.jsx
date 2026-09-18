@@ -63,7 +63,7 @@ export default function ProjectControlHeader({
     <div className="pp-planning-title-row">
       <div className="pp-planning-title"><h1>Project Planning</h1><span className="pp-badge pp-neutral">Draft</span></div>
       <div className="pp-planning-actions">
-        <button type="submit" form="project-planning-inputs-form" onClick={event => { const workBreakdownForm = document.getElementById('project-planning-work-breakdown-form'); if (workBreakdownForm) { event.preventDefault(); workBreakdownForm.requestSubmit(); } else if (document.getElementById('project-planning-inputs-form')?.closest('[hidden]')) { event.preventDefault(); } }} className="pp-button pp-planning-save" disabled={loading}>Save draft</button>
+        <button type="submit" form="project-planning-inputs-form" onClick={event => { const workBreakdownForm = document.getElementById('project-planning-work-breakdown-form'); if (workBreakdownForm) { event.preventDefault(); workBreakdownForm.requestSubmit(); } }} className="pp-button pp-planning-save" disabled={loading}>Save draft</button>
         <details ref={menuRef} className="pp-menu"><summary className="pp-button pp-icon-button"><span className="sr-only">More project actions</span><MoreHorizontal size={19} /></summary><div className="pp-menu-items">
           <button type="button" disabled={loading || activePerformance?.loading} onClick={() => run(onRefresh)}><RefreshCw size={15} />Refresh project</button>
           <button type="button" disabled={exportDisabled} onClick={() => run(onExport)}><Download size={15} />Export schedule</button>
