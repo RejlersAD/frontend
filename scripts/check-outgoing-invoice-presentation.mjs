@@ -1,6 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { outgoingMoney, outgoingNumber, outgoingState, outgoingCsv, outgoingCollectionCurrency, loadOutgoingExport } from '../src/components/Finance/outgoingInvoicePresentation.js';
+import { outgoingBalance, outgoingMoney, outgoingNumber, outgoingState, outgoingCsv, outgoingCollectionCurrency, loadOutgoingExport } from '../src/components/Finance/outgoingInvoicePresentation.js';
+import { outgoingReviewSuggestion, outgoingReviewTotal } from '../src/components/Finance/outgoingReviewPresentation.js';
+
+test('Calculated L minus AA drives collection rows, CSV and invoice review despite stale imported balances', () => {
+  const row = { invoice_number: 'FORMULA', currency: 'AED', invoice_amount: '100.00', grand_total: '999.00', actual_payment_received: '40.00', calculated_receivable_balance: '60.00', balance_to_be_received: '999.00', payment_status: 'partial', due_date: '2026-09-01' };
+  assert.equal(outgoingBalance(row), '60.00');
+  assert.equal(outgoingState(row, '2026-09-21').label, 'Overdue');
+  assert.ok(outgoingCsv([row], '2026-09-21').includes('"60.00"'));
+  assert.ok(!outgoingCsv([row], '2026-09-21').includes('999.00'));
+  assert.deepEqual(outgoingReviewTotal(row), { label: 'Invoice amount', value: '100.00' });
+  assert.equal(outgoingReviewSuggestion(row, new Date(2026, 8, 21)).title, 'Review the overdue balance');
+  assert.equal(outgoingState({ ...row, calculated_receivable_balance: '-5.00' }, '2026-09-21').label, 'Credit balance');
+});
+
+test('Unknown calculated balances never fall back to stale Y or grand totals', () => {
+  const row = { currency: 'AED', invoice_amount: null, grand_total: '999.00', balance_to_be_received: '800.00', calculated_receivable_balance: null, payment_status: 'pending' };
+  assert.equal(outgoingBalance(row), null);
+  assert.equal(outgoingState(row).label, 'Balance missing');
+  assert.equal(outgoingReviewSuggestion(row).title, 'Complete the invoice record');
+  assert.equal(outgoingReviewTotal(row).value, null);
+  assert.ok(!outgoingCsv([row]).includes('800.00'));
+});
 
 test('Original currency amounts distinguish zero, missing and malformed values', () => {
   assert.equal(outgoingMoney('0.00', 'USD'), 'USD 0.00');

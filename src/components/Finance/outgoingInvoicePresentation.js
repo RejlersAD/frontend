@@ -1,4 +1,4 @@
-import { outgoingReviewMoney, outgoingReviewNumber } from './outgoingReviewPresentation.js';
+import { outgoingReviewBalance, outgoingReviewMoney, outgoingReviewNumber } from './outgoingReviewPresentation.js';
 
 export const OUTGOING_QUEUES = [
   ['open', 'All open'], ['overdue', 'Overdue'], ['due_soon', 'Due this week'],
@@ -9,6 +9,7 @@ export const OUTGOING_AGES = [['current', 'Current'], ['days_1_30', '1–30 days
 export const outgoingNumber = outgoingReviewNumber;
 export const outgoingCurrency = value => /^[A-Z]{3}$/.test(String(value || '').trim().toUpperCase()) ? String(value).trim().toUpperCase() : null;
 export const outgoingMoney = outgoingReviewMoney;
+export const outgoingBalance = outgoingReviewBalance;
 export function outgoingCollectionCurrency(summary, currency) {
   const health = summary?.collection_health;
   const recorded = health?.by_currency?.find(row => row.currency === currency);
@@ -24,7 +25,7 @@ export const outgoingDate = (value, time = false) => {
 };
 export const outgoingToday = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
 export function outgoingState(invoice, today = outgoingToday()) {
-  const balance = outgoingNumber(invoice.balance_to_be_received);
+  const balance = outgoingNumber(outgoingBalance(invoice));
   const status = invoice.payment_status;
   if (status === 'cancelled') return { label: 'Cancelled', tone: 'muted', age: 'Closed', next: 'View invoice' };
   if (status === 'credit_note') return { label: 'Credit note', tone: 'blue', age: 'Credit note', next: 'Review credit' };
@@ -47,7 +48,7 @@ const csvCell = value => {
 export function outgoingCsv(rows, today) {
   const data = [['Invoice', 'Customer', 'Company', 'Project', 'Invoice date', 'Due date', 'Currency', 'Outstanding', 'Payment status', 'Collection status', 'Project manager', 'Suggested next action'], ...rows.map(row => {
     const state = outgoingState(row, today);
-    return [row.invoice_number, row.account, row.company, row.project_name || row.rad_project_no || row.project_id, row.invoice_date, row.due_date, outgoingCurrency(row.currency), outgoingNumber(row.balance_to_be_received) === null ? '' : row.balance_to_be_received, row.payment_status, state.label, row.pm, state.next];
+    return [row.invoice_number, row.account, row.company, row.project_name || row.rad_project_no || row.project_id, row.invoice_date, row.due_date, outgoingCurrency(row.currency), outgoingNumber(outgoingBalance(row)) === null ? '' : outgoingBalance(row), row.payment_status, state.label, row.pm, state.next];
   })];
   return '\uFEFF' + data.map(row => row.map(csvCell).join(',')).join('\r\n');
 }

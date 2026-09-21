@@ -7,7 +7,7 @@ import {
 import invoiceTrackerService from '../../services/invoiceTracker.service';
 import { outgoingState, outgoingToday } from './outgoingInvoicePresentation';
 import {
-  outgoingReviewAttachmentUrl, outgoingReviewCurrency, outgoingReviewDate, outgoingReviewDateValue, outgoingReviewEmail, outgoingReviewMoney,
+  outgoingReviewAttachmentUrl, outgoingReviewBalance, outgoingReviewCurrency, outgoingReviewDate, outgoingReviewDateValue, outgoingReviewEmail, outgoingReviewMoney,
   outgoingReviewNumber, outgoingReviewStatus, outgoingReviewSuggestion, outgoingReviewTimeline, outgoingReviewTotal,
 } from './outgoingReviewPresentation';
 import './OutgoingInvoiceReview.css';
@@ -76,7 +76,7 @@ export default function OutgoingInvoiceReview({ invoice, onClose, onOpen, onChan
                 <section className="outgoing-review-summary"><div><h3>Invoice details</h3><dl><Field label="Invoice date">{outgoingReviewDate(data.invoice_date)}</Field><Field label="Sent date">{outgoingReviewDate(data.invoice_sent_date)}</Field>
                   <Field label="Due date">{outgoingReviewDate(data.due_date)}</Field><Field label="Payment terms">{data.payment_terms || 'Not recorded'}</Field></dl></div>
                   <div className="outgoing-review-payment"><h3>Payment summary</h3><span className="outgoing-review-balance-label">Outstanding</span>
-                    <strong className="outgoing-review-balance" data-testid="outgoing-review-outstanding" data-tone={outgoingReviewCurrency(data.currency) && outgoingReviewNumber(data.balance_to_be_received) > 0 && collectionTone === 'danger' ? 'danger' : 'neutral'}>{outgoingReviewMoney(data.balance_to_be_received, data.currency)}</strong>
+                    <strong className="outgoing-review-balance" data-testid="outgoing-review-outstanding" data-tone={outgoingReviewCurrency(data.currency) && outgoingReviewNumber(outgoingReviewBalance(data)) > 0 && collectionTone === 'danger' ? 'danger' : 'neutral'}>{outgoingReviewMoney(outgoingReviewBalance(data), data.currency)}</strong>
                     {!outgoingReviewCurrency(data.currency) && <p className="outgoing-review-note">Currency not recorded</p>}
                     <dl><Field label={total.label}>{outgoingReviewMoney(total.value, data.currency)}</Field>
                       <Field label="Total received" note="Aggregate amount received on this invoice.">{outgoingReviewMoney(data.actual_payment_received, data.currency)}</Field>

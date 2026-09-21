@@ -16,24 +16,66 @@ const months = Array.from({ length: 12 }, (_, index) => new Date(Date.UTC(2025, 
 const sum = rows => rows.reduce((total, row) => total + Number(row.amount || 0), 0);
 const metric = rows => ({ amount: rows.some(row => row.amount === null) ? null : sum(rows).toFixed(2), known_amount: rows.length && rows.every(row => row.amount === null) ? null : sum(rows).toFixed(2), count: rows.length, missing_count: rows.filter(row => row.amount === null).length, partial: rows.some(row => row.amount === null) });
 const unavailable = () => ({ amount: null, known_amount: null, count: null, missing_count: null, partial: true });
+const decimal = value => value === null || value === undefined ? null : Number(value).toFixed(2);
+const excluded = ['cancelled', 'credit_note'];
+const statusLabels = { pending: 'Pending', partial: 'Partially Paid', paid: 'Paid', overdue: 'Overdue' };
+const daysPastDue = (date, asOf) => date ? Math.max(0, Math.floor((Date.parse(asOf) - Date.parse(date)) / 86400000)) : null;
+const bucketFor = (date, asOf) => { const days = daysPastDue(date, asOf); return days === null ? 'unknown_due_date' : days === 0 ? 'current' : days <= 30 ? 'days_1_30' : days <= 60 ? 'days_31_60' : days <= 90 ? 'days_61_90' : 'over90'; };
+
+function sourceInvoice(row) {
+  const status = row.payment_status || (row.paid ? 'paid' : 'pending');
+  const invoiceAmount = Object.hasOwn(row, 'invoice_amount') ? row.invoice_amount : row.amount;
+  const receipt = Object.hasOwn(row, 'actual_payment_received') ? row.actual_payment_received : row.paid ? invoiceAmount : 0;
+  const balance = invoiceAmount === null ? null : Number(invoiceAmount) - Number(receipt ?? 0);
+  return {
+    ...row, invoice_amount: decimal(invoiceAmount), actual_payment_received: decimal(receipt), amount: balance,
+    invoice_amount_aed: Object.hasOwn(row, 'invoice_amount_aed') ? decimal(row.invoice_amount_aed) : decimal(invoiceAmount),
+    // Deliberately incorrect stored Y must never determine the displayed balance.
+    balance_to_be_received: decimal(row.balance_to_be_received ?? 987654.32),
+    invoice_sent_date: row.invoice_date ? new Date(Date.parse(row.invoice_date) + 86400000).toISOString().slice(0, 10) : null,
+    project_name: row.project_name || 'Synthetic engineering delivery', payment_terms: row.payment_terms || '30 days',
+    pm: row.owner || null, payment_status: status, payment_status_label: statusLabels[status] || status,
+    payment_date: Number(receipt) > 0 ? '2026-09-18' : null, remarks: row.remarks || 'Synthetic invoice source record',
+  };
+}
+
+export function formulaInvoiceSources() {
+  return [
+    { id: 901, company: 'Formula Customer', invoice_amount: 10000, actual_payment_received: 2500, payment_status: 'partial', due_date: '2026-05-01' },
+    { id: 902, company: 'Blank Receipt Ltd', invoice_amount: 2000, actual_payment_received: null, due_date: '2026-09-10' },
+    { id: 903, company: 'Missing Invoice Ltd', invoice_amount: null, actual_payment_received: 100, grand_total: '9000.00', due_date: '2026-08-01' },
+    { id: 904, company: 'Settled Example', invoice_amount: 3000, actual_payment_received: 3000, due_date: '2026-07-01' },
+    { id: 905, company: 'Overpaid Example', invoice_amount: 1000, actual_payment_received: 1250, due_date: '2026-07-01' },
+    { id: 906, company: 'Paid Status Example', invoice_amount: 8000, actual_payment_received: 1000, payment_status: 'paid', due_date: '2026-07-01' },
+    { id: 907, company: 'Cancelled Example', invoice_amount: 500, actual_payment_received: 0, payment_status: 'cancelled', due_date: '2026-07-01' },
+    { id: 908, company: 'Credit Note Example', invoice_amount: 700, actual_payment_received: 0, payment_status: 'credit_note', due_date: '2026-07-01' },
+  ].map(row => sourceInvoice({ account: 'LEGACY-FORMULA', invoice_date: '2026-04-01', invoice_number: `SYN-FORMULA-${row.id}`, owner: 'Alex Morgan', ...row }));
+}
 
 function invoices() {
-  return customerRows.flatMap(([company, amounts], customerIndex) => amounts.flatMap((amount, bucketIndex) => amount ? [{ id: 100 + customerIndex * 10 + bucketIndex, company, account: legacyAccounts[customerIndex], amount, bucket: bucketLabels[bucketIndex][0], due_date: bucketIndex === 4 ? ['2026-05-11', '2026-02-05', '2025-12-13'][customerIndex] : dates[bucketIndex], invoice_date: bucketIndex === 4 ? ['2026-04-01', '2026-01-01', '2025-11-01'][customerIndex] : ['2026-09-01', '2026-08-01', '2026-07-01', '2026-06-01', null, null][bucketIndex], invoice_number: `SYN-2026-${customerIndex + 1}${bucketIndex}`, owner: customerIndex % 2 ? 'Alex Morgan' : null }] : []));
+  return customerRows.flatMap(([company, amounts], customerIndex) => amounts.flatMap((amount, bucketIndex) => amount ? [sourceInvoice({ id: 100 + customerIndex * 10 + bucketIndex, company, account: legacyAccounts[customerIndex], amount, bucket: bucketLabels[bucketIndex][0], due_date: bucketIndex === 4 ? ['2026-05-11', '2026-02-05', '2025-12-13'][customerIndex] : dates[bucketIndex], invoice_date: bucketIndex === 4 ? ['2026-04-01', '2026-01-01', '2025-11-01'][customerIndex] : ['2026-09-01', '2026-08-01', '2026-07-01', '2026-06-01', null, null][bucketIndex], invoice_number: `SYN-2026-${customerIndex + 1}${bucketIndex}`, owner: customerIndex % 2 ? 'Alex Morgan' : null })] : []));
+}
+
+function sourceRecords(name, currency) {
+  let rows = name === 'formula' ? formulaInvoiceSources() : invoices();
+  if (name === 'partial') rows.push(sourceInvoice({ id: 999, company: 'Stripe Inc.', account: '', invoice_amount: null, grand_total: '12000.00', due_date: '2026-04-01', invoice_date: '2026-03-01', invoice_number: 'SYN-MISSING-001', owner: null }));
+  if (currency === 'USD') rows = rows.filter(row => row.company === 'Business Tech').map(row => sourceInvoice({ ...row, invoice_amount: row.invoice_amount === null ? null : Number(row.invoice_amount) / 3, actual_payment_received: row.actual_payment_received === null ? null : Number(row.actual_payment_received) / 3, invoice_amount_aed: null }));
+  if (currency === 'USD') rows.push(sourceInvoice({ id: 750, company: 'Business Tech', account: legacyAccounts[4], amount: 1100, invoice_date: '2026-08-01', due_date: '2026-08-28', invoice_number: 'SYN-USD-PAID-001', paid: true, invoice_amount_aed: null }));
+  if (currency === 'AED' && name !== 'formula') rows.push(...months.map((month, index) => sourceInvoice({ id: 600 + index, company: 'Stripe Inc.', account: '', amount: 9000 + index * 4000, invoice_date: `${month}-01`, due_date: `${month}-28`, invoice_number: `SYN-PAID-${String(index + 1).padStart(2, '0')}`, paid: true })));
+  if (name === 'missing-company') rows = [{ ...rows[0], company: '', account: 'LEGACY-ONLY-ACCOUNT' }];
+  return name === 'empty' || currency === 'EUR' ? [] : rows.filter(row => !excluded.includes(row.payment_status));
 }
 
 export function receivablesFixture(name = 'full', params = {}) {
   const currency = params.currency || 'AED';
   const company = params.company || '';
   const asOf = params.as_of || '2026-09-21';
-  let rows = invoices();
-  if (name === 'missing-company') rows = [{ ...rows[0], company: '', account: 'LEGACY-ONLY-ACCOUNT' }];
-  if (name === 'partial') rows.push({ id: 999, company: 'Stripe Inc.', account: '', amount: null, bucket: 'over90', due_date: '2026-04-01', invoice_date: '2026-03-01', invoice_number: 'SYN-MISSING-001', owner: null });
-  if (name === 'empty' || currency === 'EUR') rows = [];
-  if (currency === 'USD') rows = rows.filter(row => row.company === 'Business Tech').map(row => ({ ...row, amount: row.amount === null ? null : row.amount / 3 }));
-  if (company) rows = rows.filter(row => row.company === company);
+  const records = sourceRecords(name, currency).filter(row => !company || row.company === company);
+  const rows = records.filter(row => row.payment_status !== 'paid' && (row.amount === null || row.amount > 0)).map(row => ({ ...row, bucket: bucketFor(row.due_date, asOf) }));
+  const missing = rows.filter(row => row.amount === null).length;
   const overdue = rows.filter(row => !['current', 'unknown_due_date'].includes(row.bucket));
   const periodMonths = months.slice(-Number(params.months || 12));
-  const receipts = name === 'empty' ? [] : currency === 'USD' && (!company || company === 'Business Tech') ? [{ invoice_date: '2026-08-01', amount: 1100 }] : currency !== 'AED' || (company && company !== 'Stripe Inc.') ? [] : months.map((month, index) => ({ invoice_date: `${month}-01`, amount: 9000 + index * 4000 }));
+  const receipts = records.map(row => ({ invoice_date: row.invoice_date, amount: Number(row.actual_payment_received ?? 0) }));
   const customers = [...new Set(rows.map(row => row.company))].map(company => {
     const selected = rows.filter(row => row.company === company);
     return { company, customer: company || 'Customer not recorded', account: company || 'Customer not recorded', ...metric(selected), overdue: metric(selected.filter(row => !['current', 'unknown_due_date'].includes(row.bucket))), share_percentage: sum(rows) ? sum(selected) / sum(rows) * 100 : 0,
@@ -42,19 +84,19 @@ export function receivablesFixture(name = 'full', params = {}) {
   const payableRows = [15000, 18000, 12000, 6000, 4500, 0].flatMap((amount, index) => amount && !company && currency === 'AED' ? [{ amount, bucket: bucketLabels[index][0], due_date: dates[index] }] : []);
   const data = {
     schema_version: '1.0', generated_at: RECEIVABLES_CHECK_TIME, source_updated_at: RECEIVABLES_CHECK_TIME, as_of_date: asOf, currency, currency_conversion_applied: false,
-    filters: { companies: customerRows.map(row => row[0]), currencies: ['AED', 'EUR', 'USD'], company, months: Number(params.months || 12) },
-    sources: { receivables: { status: name === 'partial' ? 'incomplete' : 'available', reason: name === 'partial' ? '1 invoice balance is missing; recorded subtotals exclude it.' : null, route: '/finance/outgoing-invoices', invoice_count: rows.length + receipts.length, open_count: rows.length, missing_balance_count: rows.filter(row => row.amount === null).length, unknown_due_date_count: 0, source_updated_at: RECEIVABLES_CHECK_TIME }, payables: { status: 'available', reason: null, route: '/finance/incoming-invoices', invoice_count: payableRows.length, open_count: payableRows.length, missing_balance_count: 0, unknown_due_date_count: 0, source_updated_at: RECEIVABLES_CHECK_TIME } },
+    filters: { companies: name === 'formula' ? formulaInvoiceSources().filter(row => !excluded.includes(row.payment_status)).map(row => row.company) : customerRows.map(row => row[0]), currencies: ['AED', 'EUR', 'USD'], company, months: Number(params.months || 12) },
+    sources: { receivables: { status: missing ? 'incomplete' : 'available', reason: missing ? `${missing} invoice amount is missing; recorded subtotals exclude it.` : null, route: '/finance/outgoing-invoices', invoice_count: records.length, open_count: rows.length, missing_balance_count: missing, unknown_due_date_count: rows.filter(row => !row.due_date).length, source_updated_at: RECEIVABLES_CHECK_TIME }, payables: { status: 'available', reason: null, route: '/finance/incoming-invoices', invoice_count: payableRows.length, open_count: payableRows.length, missing_balance_count: 0, unknown_due_date_count: 0, source_updated_at: RECEIVABLES_CHECK_TIME } },
     kpis: { unpaid: metric(rows), overdue: metric(overdue), over30: metric(overdue.filter(row => row.bucket !== 'days_1_30')), over90: metric(rows.filter(row => row.bucket === 'over90')) },
     customers,
-    priority_invoices: [...overdue].sort((left, right) => left.due_date.localeCompare(right.due_date) || Number(right.amount) - Number(left.amount)).slice(0, 5).map(row => ({ id: row.id, company: row.company, customer: row.company || 'Customer not recorded', account: row.account, invoice_number: row.invoice_number, due_date: row.due_date, days_overdue: Math.floor((Date.parse(asOf) - Date.parse(row.due_date)) / 86400000), balance: row.amount === null ? null : row.amount.toFixed(2), owner: row.owner })),
+    priority_invoices: [...overdue].sort((left, right) => left.due_date.localeCompare(right.due_date) || Number(right.amount) - Number(left.amount)).slice(0, 5).map(row => ({ id: row.id, company: row.company, customer: row.company || 'Customer not recorded', account: row.account, invoice_number: row.invoice_number, due_date: row.due_date, days_overdue: Math.floor((Date.parse(asOf) - Date.parse(row.due_date)) / 86400000), invoice_amount: row.invoice_amount, actual_payment_received: row.actual_payment_received, balance_to_be_received: row.balance_to_be_received, balance: decimal(row.amount), owner: row.owner })),
     priority_invoice_count: rows.length,
     ageing: bucketLabels.map(([id, label]) => ({ id, label, receivables: metric(rows.filter(row => row.bucket === id)), payables: metric(payableRows.filter(row => row.bucket === id)) })),
     overdue_by_month: periodMonths.map(month => ({ month, receivables: metric(overdue.filter(row => row.due_date?.startsWith(month))), payables: metric(payableRows.filter(row => row.bucket !== 'current' && row.due_date?.startsWith(month))) })),
-    paid_unpaid_by_month: periodMonths.map(month => ({ month, paid: metric(receipts.filter(row => row.invoice_date.startsWith(month))), unpaid: metric(rows.filter(row => row.invoice_date?.startsWith(month))) })),
-    chart_exclusions: { receivables: { overdue_outside_window: overdue.filter(row => !periodMonths.includes(row.due_date?.slice(0, 7))).length, invoice_date_unknown: 0, invoice_date_outside_window: [...rows, ...receipts].filter(row => !periodMonths.includes(row.invoice_date?.slice(0, 7))).length }, payables: { overdue_outside_window: 0, invoice_date_unknown: 0, invoice_date_outside_window: 0 } },
+    paid_unpaid_by_month: periodMonths.map(month => ({ month, paid: metric(receipts.filter(row => row.invoice_date?.startsWith(month))), unpaid: metric(rows.filter(row => row.invoice_date?.startsWith(month))) })),
+    chart_exclusions: { receivables: { overdue_outside_window: overdue.filter(row => !periodMonths.includes(row.due_date?.slice(0, 7))).length, invoice_date_unknown: records.filter(row => !row.invoice_date).length, invoice_date_outside_window: records.filter(row => !periodMonths.includes(row.invoice_date?.slice(0, 7))).length }, payables: { overdue_outside_window: 0, invoice_date_unknown: 0, invoice_date_outside_window: 0 } },
     definitions: {
-      unpaid: 'Current positive or unknown balances on unsettled invoices in the selected original currency.',
-      overdue: 'Current outstanding balances with a due date before the reporting date.',
+      unpaid: 'Invoice Amount (L) minus Actual Payment Received (AA). Blank receipts are zero; missing invoice amounts remain unknown. Nonpositive balances and paid/cancelled/credit-note records are excluded.',
+      overdue: 'Positive Invoice Amount (L) minus Actual Payment Received (AA), for eligible invoices due before the reporting date. Stored balance column Y is not used.',
       over30: 'Current outstanding balances more than 30 days past due.',
       over90: 'Current outstanding balances more than 90 days past due.',
       overdue_by_month: 'Current overdue balances grouped by invoice due month; not historical balance snapshots.',
@@ -84,24 +126,18 @@ export function receivablesFixture(name = 'full', params = {}) {
 }
 
 export function customerInvoicesFixture(name = 'full', params = {}) {
-  const currency = params.currency || 'AED', company = params.company || '';
-  let records = invoices().map(row => ({ ...row, paid: false }));
-  if (name === 'partial') records.push({ id: 999, company: 'Stripe Inc.', account: '', amount: null, invoice_date: '2026-03-01', due_date: '2026-04-01', invoice_number: 'SYN-MISSING-001', paid: false });
-  if (currency === 'USD') records = records.filter(row => row.company === 'Business Tech').map(row => ({ ...row, amount: row.amount / 3 }));
-  if (currency === 'USD') records.push({ id: 750, company: 'Business Tech', account: legacyAccounts[4], amount: 1100, invoice_date: '2026-08-01', due_date: '2026-08-28', invoice_number: 'SYN-USD-PAID-001', paid: true });
-  if (currency === 'AED') records.push(...months.map((month, index) => ({ id: 600 + index, company: 'Stripe Inc.', account: '', amount: 9000 + index * 4000, invoice_date: `${month}-01`, due_date: `${month}-28`, invoice_number: `SYN-PAID-${String(index + 1).padStart(2, '0')}`, paid: true })));
-  if (name === 'missing-company') records = [{ ...records[0], company: '', account: 'LEGACY-ONLY-ACCOUNT' }];
-  if (company) records = records.filter(row => row.company === company);
-  if (['empty', 'register-empty'].includes(name) || currency === 'EUR') records = [];
+  const currency = params.currency || 'AED', company = params.company || '', asOf = params.as_of || '2026-09-21';
+  const records = name === 'register-empty' ? [] : sourceRecords(name, currency).filter(row => !company || row.company === company);
   const rows = records.map(row => {
-    const amount = row.amount === null ? 12000 : row.amount;
-    return { id: row.id, account: row.account, company: row.company, customer: row.company || 'Customer not recorded', invoice_number: row.invoice_number, invoice_date: row.invoice_date, due_date: row.due_date, payment_status: row.paid ? 'paid' : 'pending', payment_status_label: row.paid ? 'Paid' : 'Pending', currency,
-      amount: amount.toFixed(2), amount_home: currency === 'AED' ? amount.toFixed(2) : null,
-      amount_due_home: row.paid ? '0.00' : currency === 'AED' && row.amount !== null ? row.amount.toFixed(2) : null,
-      amount_basis: 'Recorded invoice amount', amount_due_home_basis: row.paid && currency !== 'AED' ? 'zero_recorded_balance' : currency === 'AED' ? 'Recorded AED balance' : 'Home-currency due balance not recorded; no FX conversion is applied.' };
+    return { ...row, customer: row.company || 'Customer not recorded', currency,
+      amount: row.invoice_amount, amount_home: row.invoice_amount_aed,
+      days_overdue: row.payment_status === 'paid' ? 0 : daysPastDue(row.due_date, asOf),
+      amount_due_home: currency === 'AED' ? decimal(row.amount) : row.amount === 0 ? '0.00' : null,
+      amount_basis: row.invoice_amount === null ? 'not_recorded' : 'invoice_amount',
+      amount_due_home_basis: currency !== 'AED' && row.amount === 0 ? 'zero_calculated_balance' : currency === 'AED' ? 'invoice_amount_less_actual_payment_received' : 'not_recorded_for_foreign_currency' };
   });
   const ordering = params.ordering || '-invoice_date', descending = ordering.startsWith('-'), key = ordering.replace(/^-/, '');
-  const monetary = ['amount', 'amount_home', 'amount_due_home'].includes(key);
+  const monetary = ['amount', 'amount_home', 'amount_due_home', 'invoice_amount', 'invoice_amount_aed', 'actual_payment_received', 'days_overdue'].includes(key);
   rows.sort((left, right) => {
     const a = left[key], b = right[key];
     if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
@@ -109,18 +145,20 @@ export function customerInvoicesFixture(name = 'full', params = {}) {
     return (descending ? -order : order) || left.id - right.id;
   });
   const page = Number(params.page || 1), pageSize = Number(params.page_size || 8), pages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const columnMetric = key => ({ ...metric(rows.map(row => ({ amount: row[key] === null ? null : Number(row[key]) }))), currency: key === 'amount' ? currency : 'AED' });
+  const columnMetric = key => ({ ...metric(rows.map(row => ({ amount: key === 'actual_payment_received' ? Number(row[key] ?? 0) : row[key] === null ? null : Number(row[key]) }))), currency: ['amount', 'actual_payment_received'].includes(key) ? currency : 'AED' });
+  const totals = Object.fromEntries(['amount', 'amount_home', 'amount_due_home', 'actual_payment_received'].map(key => [key, columnMetric(key)]));
+  const partial = Object.values(totals).some(item => item.partial);
   const data = {
-    schema_version: '1.0', status: name === 'partial' ? 'incomplete' : 'available', currency, home_currency: 'AED', ordering, filters: { company, currency },
-    source: { status: name === 'partial' ? 'incomplete' : 'available', reason: name === 'partial' ? 'One balance is missing; totals retain the recorded subtotal.' : null, route: '/finance/outgoing-invoices', source_updated_at: RECEIVABLES_CHECK_TIME },
+    schema_version: '1.0', status: partial ? 'incomplete' : 'available', currency, home_currency: 'AED', as_of_date: asOf, ordering, filters: { company, currency, as_of: asOf },
+    source: { status: partial ? 'incomplete' : 'available', reason: partial ? 'Some invoice amounts are missing; totals retain recorded subtotals.' : null, route: '/finance/outgoing-invoices', source_updated_at: RECEIVABLES_CHECK_TIME },
     pagination: { page, page_size: pageSize, count: rows.length, pages, has_next: page < pages, has_previous: page > 1 }, rows: rows.slice((page - 1) * pageSize, page * pageSize),
-    totals: { amount: columnMetric('amount'), amount_home: columnMetric('amount_home'), amount_due_home: columnMetric('amount_due_home') },
-    definitions: { scope: 'All matching customer invoices, including settled records; cancelled and credit notes excluded.', amount: 'Recorded invoice amount in its original currency.', amount_home: 'Persisted home-currency invoice amount; no new FX conversion.', amount_due_home: 'Recorded AED due balances only; foreign-currency due values are not converted.', totals: 'Grand totals cover all filtered rows, not only this page.' },
+    totals,
+    definitions: { scope: 'All matching customer invoices, including settled records; cancelled and credit notes excluded.', amount: 'Invoice Amount from column L; no stored-balance or grand-total fallback.', amount_home: 'Persisted Inv Amt. (AED) from column M; no new FX conversion.', amount_due_home: 'Signed Invoice Amount (L) minus Actual Payment Received (AA) for AED invoices. Blank AA means zero and missing L remains unknown; no FX conversion.', actual_payment_received: 'Recorded column AA; missing receipt cells stay blank, while their contribution to totals is zero.', totals: 'Grand totals cover all filtered rows, not only this page.' },
   };
   if (name === 'restricted' || name === 'register-restricted') {
     data.status = 'restricted'; data.source = { status: 'restricted', reason: 'Read access to the customer invoice register is required.', route: null, source_updated_at: null };
     data.rows = []; data.pagination = { ...data.pagination, count: null, pages: null, has_next: false, has_previous: false };
-    data.totals = Object.fromEntries(Object.keys(data.totals).map(key => [key, { ...unavailable(), currency: key === 'amount' ? currency : 'AED' }]));
+    data.totals = Object.fromEntries(Object.keys(data.totals).map(key => [key, { ...unavailable(), currency: ['amount', 'actual_payment_received'].includes(key) ? currency : 'AED' }]));
   }
   return { data, failure: ['error', 'register-error'].includes(name) ? 503 : name === 'forbidden' ? 403 : page > pages ? 404 : null };
 }
