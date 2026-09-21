@@ -11,6 +11,7 @@ import postcss from 'postcss';
 import tailwind from 'tailwindcss';
 import tailwindConfig from '../tailwind.config.js';
 import { reportFixture } from './check-executive-fixtures.mjs';
+import { RECEIVABLES_CHECK_TIME, customerInvoicesFixture, receivablesFixture } from './check-receivables-dashboard-fixtures.mjs';
 import { runFinancialPerformanceChecks } from './check-financial-performance.mjs';
 import { runProjectPortfolioChecks } from './check-project-portfolio.mjs';
 import { runCommercialPipelineChecks } from './check-commercial-pipeline.mjs';
@@ -36,11 +37,14 @@ const baselinePath = path.join(artifacts, 'sidebar-baseline-sha256.json');
 const snapshotGuards = historicalGuardsEnabled(overviewPolish, tabsPolish);
 console.log(`Historical snapshot guards: ${snapshotGuards ? 'enabled' : 'not requested'}; mode: ${visualsOnly ? 'current responsive visuals' : 'functional checks'}`);
 const sidebarBaseline = snapshotGuards ? await loadSnapshot(frontend, baselinePath) : await snapshotSources(frontend, guardedFiles);
+const protectedBaselinePath = process.argv.find(arg => arg.startsWith('--protected-baseline='))?.slice('--protected-baseline='.length);
+const protectedBaseline = protectedBaselinePath ? JSON.parse(await readFile(protectedBaselinePath, 'utf8')) : [];
 async function assertSidebarUnchanged() {
   for (const row of sidebarBaseline) {
     const actual = createHash('sha256').update(await readFile(row.Path)).digest('hex').toUpperCase();
     assert.equal(actual, row.Hash, `Sidebar guard changed: ${row.Path}`);
   }
+  for (const row of protectedBaseline) assert.equal(createHash('sha256').update(await readFile(path.join(frontend, row.file))).digest('hex'), row.hash, `Protected Executive source changed: ${row.file}`);
 }
 await assertSidebarUnchanged();
 async function assertOverviewPolishProtected() {
@@ -74,6 +78,16 @@ window.print = () => {
   window.executivePrintSnapshot = {
     actions:[...document.querySelectorAll('[data-testid^="executive-action-"]')].map(node=>node.dataset.testid),
     financialActions:[...document.querySelectorAll('[data-testid^="financial-action-"]')].map(node=>node.dataset.testid),
+    financialText:document.querySelector('[data-testid="financial-performance"]')?.textContent,
+    financialKpis:[...document.querySelectorAll('[data-testid^="financial-kpi-"] strong')].map(node=>node.textContent),
+    financialCurrency:document.querySelector('select[aria-label="Financial reporting currency"]')?.value,
+    financialProjects:[...document.querySelectorAll('.ef-project-table tbody tr')].map(node=>node.textContent),
+    financialManagementActions:[...document.querySelectorAll('.ef-actions-table tbody tr')].map(node=>node.textContent),
+    receivablesText:document.querySelector('.finance-command-center')?.textContent,
+    receivablesKpis:[...document.querySelectorAll('[data-testid^="finance-kpi-"] strong')].map(node=>node.textContent),
+    customerInvoices:[...document.querySelectorAll('[data-testid="customer-invoices-section"] tbody tr')].map(node=>node.textContent),
+    receivablesCurrency:document.querySelector('select[aria-label="Reporting currency"]')?.value,
+    receivablesCompany:document.querySelector('select[aria-label="Customer"]')?.value,
     portfolioProjects:[...document.querySelectorAll('[data-testid^="portfolio-project-"]')].map(node=>node.dataset.testid),
     portfolioExceptions:[...document.querySelectorAll('[data-testid^="portfolio-action-"]')].map(node=>node.dataset.testid),
     portfolioText:document.querySelector('[data-testid="project-portfolio"]')?.textContent,
@@ -108,7 +122,9 @@ createRoot(document.getElementById('root')).render(
 
 const apiFixture = `
 export default {get: async (url, config = {}) => {
-  const response = await fetch('/fixture-api' + url, {signal:config.signal});
+  const target = new URL('/fixture-api' + url, location.origin);
+  for (const [key,value] of Object.entries(config.params || {})) if(value !== undefined && value !== null) target.searchParams.set(key,value);
+  const response = await fetch(target, {signal:config.signal});
   const data = await response.json();
   if (!response.ok) {const error = new Error(data.detail || 'Fixture request failed');error.response={status:response.status,data};throw error;}
   return {data};
@@ -132,7 +148,7 @@ const stubs = [
 
 const buildBundle = baselineMain => build({
   stdin: { contents: source, loader: 'jsx', resolveDir: frontend },
-  bundle: true, write: false, format: 'iife', loader: { '.css': 'empty' },
+  jsx: 'automatic', bundle: true, write: false, format: 'iife', loader: { '.css': 'empty' },
   define: { 'import.meta.env': '{}' },
   plugins: [{ name: 'executive-fixture', setup(builder) {
     if (baselineMain) builder.onLoad({ filter: /pages[\\/]Executive[\\/]ExecutiveMainPanels\.jsx$/ }, () => ({ contents: baselineMain, loader: 'jsx' }));
@@ -144,11 +160,13 @@ const beforeCardsMain = overviewPolish ? await readFile(path.join(artifacts, 'Ex
 const beforeCardsCss = overviewPolish ? await readFile(path.join(artifacts, 'ExecutiveOverview-before-cards.css'), 'utf8') : null;
 const beforeCardsBundle = beforeCardsMain ? await buildBundle(beforeCardsMain) : bundle;
 const executiveFiles = await readdir(path.join(frontend, 'src/pages/Executive'));
+const financeFiles = await readdir(path.join(frontend, 'src/components/Finance'));
 const components = await Promise.all([
   'src/components/Layout/Sidebar.jsx', 'src/components/Layout/Layout.jsx',
   'src/components/Layout/Header.jsx', 'src/components/Layout/GlobalSearch.jsx',
   'src/components/help/ContextualHelpButton.jsx', 'src/config/layout.config.js',
   ...executiveFiles.filter(file => /\.(jsx?|mjs)$/.test(file)).map(file => `src/pages/Executive/${file}`),
+  ...financeFiles.filter(file => /\.(jsx?|mjs)$/.test(file)).map(file => `src/components/Finance/${file}`),
 ].map(file => readFile(path.join(frontend, file), 'utf8')));
 const css = await postcss([tailwind({
   ...tailwindConfig,
@@ -159,7 +177,8 @@ const componentCssFiles = [
   ...executiveFiles.filter(file => file.endsWith('.css')).map(file => `src/pages/Executive/${file}`),
 ];
 const componentCss = await Promise.all(componentCssFiles.map(file => readFile(path.join(frontend, file), 'utf8')));
-const markup = (styles, script = bundle.outputFiles[0].text) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Executive overview checks</title><style>${css.css}\n${styles.join('\n')}</style></head><body><div id="root"></div><script>${script.replaceAll('</script', '<\\/script')}</script></body></html>`;
+const financeStyles = await build({ stdin: { contents: financeFiles.filter(file => file.endsWith('.css')).map(file => `@import ${JSON.stringify(`./src/components/Finance/${file}`)};`).join('\n'), loader: 'css', resolveDir: frontend }, bundle: true, write: false, external: ['/assets/*', '/fonts/*'], loader: { '.woff2': 'dataurl', '.woff': 'dataurl' } });
+const markup = (styles, script = bundle.outputFiles[0].text) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Executive overview checks</title><style>${css.css}\n${financeStyles.outputFiles[0].text}\n${styles.join('\n')}</style></head><body><div id="root"></div><script>${script.replaceAll('</script', '<\\/script')}</script></body></html>`;
 const html = tabsPolishBaseline ? await readFile(path.join(artifacts, 'baseline.html'), 'utf8') : markup(componentCss);
 const undecoratedHtml = tabsPolish && !tabsPolishBaseline ? await readFile(path.join(artifacts, 'baseline.html'), 'utf8') : markup(componentCss.map((text, index) => componentCssFiles[index].endsWith('/ExecutiveOverview.css') ? beforeCardsCss || '' : text), beforeCardsBundle.outputFiles[0].text);
 await mkdir(artifacts, { recursive: true });
@@ -170,30 +189,42 @@ const requests = [];
 const unexpectedRequests = [];
 const checks = [];
 
-async function newPage({ fixture = 'full', status = 200, loading = false, width = 1672, dark = false, decoration = true, route: initialRoute = '/executive' } = {}) {
+async function newPage({ fixture = 'full', status = 200, loading = false, width = 1672, dark = false, decoration = true, route: initialRoute = '/executive', financeFixture = 'full', financeLoading = false, registerLoading = false } = {}) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 941 } });
   const page = await context.newPage();
+  await page.clock.setFixedTime(new Date(RECEIVABLES_CHECK_TIME));
   page.setDefaultTimeout(10000);
   page.on('pageerror', error => errors.push(error.message));
   if (dark) await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.add('dark')));
-  const control = { fixture, status, loading, pending: [] };
+  const control = { fixture, status, loading, pending: [], financeFixture, financeLoading, registerLoading, financeStatus: null, registerStatus: null, financePending: [], registerPending: [], requests: [] };
   const fulfillReport = route => route.fulfill({
     status: control.status, contentType: 'application/json',
     body: JSON.stringify(control.status === 200 ? reportFixture(control.fixture) : { detail: control.status === 403 ? 'Executive overview access is restricted.' : 'Fixture source unavailable.' }),
   });
+  const fulfillFinance = async (route, register = false) => {
+    const url = new URL(route.request().url());
+    if (register ? control.registerLoading : control.financeLoading) { (register ? control.registerPending : control.financePending).push(route); return; }
+    const fixtureData = (register ? customerInvoicesFixture : receivablesFixture)(control.financeFixture, Object.fromEntries(url.searchParams));
+    const failure = (register ? control.registerStatus : control.financeStatus) || fixtureData.failure;
+    return route.fulfill({ status: failure || 200, contentType: 'application/json', body: JSON.stringify(failure ? { detail: failure === 403 ? 'Executive financial access is required.' : 'Synthetic executive finance source unavailable.' } : fixtureData.data) });
+  };
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
     if (request.isNavigationRequest() && url.origin === origin) return route.fulfill({ contentType: 'text/html', body: decoration ? html : undecoratedHtml });
     requests.push({ url: request.url(), method: request.method() });
+    control.requests.push({ endpoint: url.pathname.replace(/^\/fixture-api/, ''), query: url.search, method: request.method() });
+    if (request.method() !== 'GET') { unexpectedRequests.push(`${request.method()} ${request.url()}`); return route.abort(); }
     if (url.origin === origin && url.pathname === '/fixture-api/dashboard/executive/') {
       if (control.loading) { control.pending.push(route); return; }
       return fulfillReport(route);
     }
+    if (url.origin === origin && url.pathname === '/fixture-api/dashboard/executive/receivables/') return fulfillFinance(route);
+    if (url.origin === origin && url.pathname === '/fixture-api/dashboard/executive/customer-invoices/') return fulfillFinance(route, true);
     if (url.pathname.endsWith('/rbac/users/me/')) return route.fulfill({
       contentType: 'application/json', body: JSON.stringify({ user: { id: 'executive-check', is_superuser: true }, roles: [{ code: 'super_admin', name: 'Super Administrator' }], modules: [] }),
     });
-    if (url.origin === origin && url.pathname.startsWith('/assets/')) {
+    if (url.origin === origin && (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/fonts/'))) {
       const resolved = path.resolve(frontend, 'public', '.' + decodeURIComponent(url.pathname));
       if (resolved.startsWith(path.resolve(frontend, 'public') + path.sep)) {
         try {
@@ -209,6 +240,8 @@ async function newPage({ fixture = 'full', status = 200, loading = false, width 
     control.loading = false;
     await Promise.all(control.pending.splice(0).map(fulfillReport));
   };
+  control.releaseFinance = async () => { control.financeLoading = false; await Promise.all(control.financePending.splice(0).map(route => fulfillFinance(route))); };
+  control.releaseRegister = async () => { control.registerLoading = false; await Promise.all(control.registerPending.splice(0).map(route => fulfillFinance(route, true))); };
   await page.goto(origin + '?route=' + encodeURIComponent(initialRoute));
   await page.locator('#application-sidebar').waitFor({ state: 'attached' });
   return { page, control };
@@ -504,6 +537,7 @@ async function runTabsPolishChecks() {
 const suiteOptions = name => ({ frontend, newPage, assertGeometry, reportFixture, ...(!snapshotGuards ? { verification: { artifacts: path.join(artifacts, name), assertProtected: assertSidebarUnchanged, comparisonMode: 'historical_snapshots_not_requested' } } : {}) });
 
 async function runCurrentVisualChecks() {
+  const comparisonDirectory = process.argv.find(arg => arg.startsWith('--compare-visuals='))?.slice('--compare-visuals='.length);
   const requestedTabs = process.argv.find(arg => arg.startsWith('--tabs='))?.slice(7).split(',');
   const tabs = ['overview', ...polishedTabs].filter(tab => !requestedTabs || requestedTabs.includes(tab));
   assert.ok(tabs.length, 'Choose at least one supported Executive tab');
@@ -512,13 +546,14 @@ async function runCurrentVisualChecks() {
     for (const options of [{ width: 1672 }, { width: 1440 }, { width: 1024 }, { width: 390 }, { width: 1672, dark: true }]) {
       const { page } = await newPage({ ...options, route: tab === 'overview' ? '/executive' : `/executive?tab=${tab}` });
       try {
-        await page.getByTestId(tab === 'overview' ? 'executive-outcomes' : `${tab}-outcomes`).waitFor();
+        await page.getByTestId(tab === 'overview' ? 'executive-outcomes' : tab === 'financial' ? 'financial-performance' : `${tab}-outcomes`).waitFor();
+        if (tab === 'financial') await page.waitForFunction(() => document.querySelector('[data-testid="financial-performance"]')?.getAttribute('aria-busy') === 'false');
         await page.evaluate(() => document.fonts.ready);
         await assertGeometry(page, options.width);
-        const headers = await page.locator('.cc-command-center table thead th:visible').evaluateAll(nodes => nodes.map(node => ({
+        const headers = await page.locator('.cc-command-center table:not([data-table-typography="preserve"]) thead th:visible').evaluateAll(nodes => nodes.map(node => ({
           label: node.textContent.trim(), size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight,
         })));
-        assert.ok(headers.length, `${tab} renders real table headings`);
+        assert.ok(headers.length || (tab === 'financial' && await page.locator('.cc-command-center table[data-table-typography="preserve"] thead th:visible').count()), `${tab} renders real table headings`);
         for (const header of headers) assert.deepEqual([header.size, header.weight], ['13px', '600'], `${tab}: ${header.label}`);
         const actions = page.locator('.cc-command-center table tbody button:not([disabled]):visible, .cc-command-center table tbody a[href]:visible');
         if (await actions.count()) {
@@ -530,12 +565,14 @@ async function runCurrentVisualChecks() {
           });
         }
         const name = `${tab}-${options.width}${options.dark ? '-dark' : ''}`;
-        await page.screenshot({ path: path.join(artifacts, `${name}.png`) });
+        const screenshotBytes = await page.screenshot({ path: path.join(artifacts, `${name}.png`) });
+        const comparison = comparisonDirectory ? await pixelDifference(page, [await readFile(path.join(comparisonDirectory, `${name}.png`)), screenshotBytes]) : undefined;
+        if (comparison) { assert.equal(comparison.dimensionsMatch, true, `${name} baseline image dimensions`); assert.equal(comparison.changedPixels, 0, `${name} is pixel-identical to its unchanged-tab baseline`); }
         const scan = options.width === 1672 || options.width === 390
           ? await new AxeBuilder({ page }).include('.cc-command-center').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
           : { violations: [] };
         const violations = scan.violations.map(({ id, nodes }) => ({ id, targets: nodes.map(node => node.target) }));
-        results.push({ name, headers, violations });
+        results.push({ name, headers, violations, comparison });
         await writeFile(path.join(artifacts, 'visual-checks.json'), JSON.stringify({ mode: 'current-source-visuals', cases: results }, null, 2));
         assert.deepEqual(violations, [], `${name} has no accessibility violations`);
         console.log(`PASS: ${name} layout, shared table typography and keyboard controls`);
@@ -628,7 +665,7 @@ try {
   await page.keyboard.press('Home');
   await page.waitForFunction(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent === 'Overview');
   for (const [name, target] of [
-    ['Financial performance', 'financial-outcomes'], ['Project portfolio', 'portfolio-outcomes'],
+    ['Financial performance', 'financial-performance'], ['Project portfolio', 'portfolio-outcomes'],
     ['Commercial pipeline', 'commercial-outcomes'], ['Workforce', 'workforce-outcomes'],
     ['Risk & compliance', 'risk-outcomes'],
   ]) {
@@ -850,6 +887,10 @@ try {
   assert.deepEqual(errors, [], 'No runtime errors in executive tab scenarios');
   assert.ok(requests.every(request => request.method === 'GET'), 'Checks never issue write requests');
   assert.deepEqual(unexpectedRequests, [], 'No unmocked external requests');
+} catch (error) {
+  await writeFile(path.join(artifacts, 'failure.json'), JSON.stringify({ error: error.stack, runtimeErrors: errors, unexpectedRequests }, null, 2));
+  for (const context of browser.contexts()) { const page = context.pages()[0]; if (page && !page.isClosed()) await page.screenshot({ path: path.join(artifacts, 'failure.png') }).catch(() => {}); }
+  throw error;
 } finally {
   await browser.close();
 }

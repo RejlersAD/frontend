@@ -17,6 +17,7 @@ import {
 import { toast } from 'react-toastify';
 import financeService from '../../services/finance.service';
 import IncomingInvoiceWorkspace from '../../components/Finance/IncomingInvoiceWorkspace';
+import './ProcurementInvoiceImport.css';
 
 const CURRENCIES = ['AED', 'USD', 'EUR', 'GBP', 'SAR', 'QAR', 'OMR', 'KWD', 'BHD'];
 
@@ -96,7 +97,7 @@ const Field = ({ label, required, className = '', children }) => (
 
 const inputClass = 'h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100';
 
-const newLine = (number) => ({
+const newLine = (number, currency) => ({
   line_number: number,
   description: '',
   quantity: '',
@@ -105,12 +106,14 @@ const newLine = (number) => ({
   tax_rate: '',
   tax_amount: '',
   total_amount: '',
-  currency: 'AED',
+  currency,
   po_item_reference: '',
   ocr_confidence: '',
 });
 
 const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
+  const dialog = useRef(null);
+  const opener = useRef(null);
   const fileInput = useRef(null);
   const [file, setFile] = useState(null);
   const [pdfUrl, setPdfUrl] = useState('');
@@ -119,6 +122,7 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [dragging, setDragging] = useState(false);
 
   const reset = useCallback(() => {
     setFile(null);
@@ -127,11 +131,32 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
     setBusy(false);
     setError('');
     setResult(null);
+    setDragging(false);
   }, []);
 
   useEffect(() => {
-    if (!open) reset();
+    const element = dialog.current;
+    if (open) {
+      opener.current = document.activeElement;
+      element?.showModal();
+    }
+    else reset();
+    return () => {
+      element?.close();
+      if (open) {
+        const previousFocus = opener.current;
+        window.requestAnimationFrame(() => {
+          if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+        });
+      }
+    };
   }, [open, reset]);
+
+  useEffect(() => {
+    if (!open) return;
+    const target = dialog.current?.querySelector(preview || result ? 'h3' : '.pi-import-dropzone');
+    target?.focus({ preventScroll: true });
+  }, [open, preview, result]);
 
   useEffect(() => {
     if (!file) {
@@ -146,12 +171,13 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
   if (!open) return null;
 
   const selectFile = (selected) => {
+    if (busy) return;
     setError('');
     setPreview(null);
     setForm(null);
     setResult(null);
     if (!selected) return setFile(null);
-    if (selected.type !== 'application/pdf' && !selected.name.toLowerCase().endsWith('.pdf')) {
+    if (!selected.name.toLowerCase().endsWith('.pdf')) {
       setFile(null);
       return setError('Select a PDF invoice document.');
     }
@@ -163,7 +189,7 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
   };
 
   const runPreview = async () => {
-    if (!file) return;
+    if (!file || busy) return;
     setBusy(true);
     setError('');
     try {
@@ -186,7 +212,12 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
     }
   };
 
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const update = (field, value) => setForm((current) => ({
+    ...current,
+    [field]: value,
+    ...(field === 'confirmed_po_id' ? { confirm_po_match: false } : {}),
+    ...(field === 'currency' ? { line_items: current.line_items.map(line => ({ ...line, currency: value })) } : {}),
+  }));
   const updateLine = (index, field, value) => setForm((current) => ({
     ...current,
     line_items: current.line_items.map((line, lineIndex) => lineIndex === index ? { ...line, [field]: value } : line),
@@ -202,6 +233,7 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
   const selectedVendor = preview?.vendor_options?.find((vendor) => vendor.id === form?.vendor_id);
 
   const saveReviewed = async () => {
+    if (busy) return;
     if (!form.invoice_number || !form.vendor_id || !form.vendor_name || !form.invoice_date || !form.total_amount || !form.currency) {
       return setError('Complete all required invoice and company-vendor fields before saving.');
     }
@@ -235,39 +267,58 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
     if (!busy) onClose();
   };
 
+  const trapFocus = (event) => {
+    if (event.key !== 'Tab') return;
+    const controls = [...dialog.current.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), iframe, [tabindex="0"]')]
+      .filter(element => element.getClientRects().length);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (!first) { event.preventDefault(); return; }
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
+
   const allocation = result?.invoice?.po_allocations?.[0];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/65 backdrop-blur-sm">
-      <div className="flex min-h-screen items-start justify-center p-3 lg:p-6">
-        <div className="w-full max-w-[1500px] overflow-hidden rounded-2xl bg-white shadow-2xl">
-          <header className="flex items-center justify-between bg-gradient-to-r from-indigo-700 via-violet-700 to-purple-700 px-5 py-4 text-white">
+    <dialog ref={dialog} className="pi-import-dialog" aria-labelledby="pi-import-title" aria-describedby="pi-import-description" onKeyDown={trapFocus} onCancel={(event) => { event.preventDefault(); close(); }}>
+          <header className="pi-import-header flex items-center justify-between gap-4 bg-gradient-to-r from-indigo-700 via-violet-700 to-purple-700 px-5 py-4 text-white">
             <div className="flex items-center gap-3">
-              <DocumentMagnifyingGlassIcon className="h-7 w-7" />
+              <DocumentMagnifyingGlassIcon className="h-7 w-7 shrink-0" aria-hidden="true" />
               <div>
-                <h2 className="font-bold">Import Procurement Invoice PDF</h2>
-                <p className="text-xs text-indigo-100">OCR preview → manual validation → company master match → controlled database record</p>
+                <h2 id="pi-import-title" className="font-bold">Import Procurement Invoice PDF</h2>
+                <p id="pi-import-description" className="text-xs text-indigo-100">Upload a supplier invoice, review captured details, then validate and record.</p>
               </div>
             </div>
-            <button type="button" onClick={close} disabled={busy} className="rounded-lg p-1.5 hover:bg-white/10 disabled:opacity-50">
+            <button type="button" aria-label="Close invoice import" onClick={close} disabled={busy} className="shrink-0 rounded-lg p-1.5 hover:bg-white/10 disabled:opacity-50">
               <XMarkIcon className="h-6 w-6" />
             </button>
           </header>
-
+          <div className="pi-import-body" aria-busy={busy}>
           {!preview && !result && (
-            <div className="grid min-h-[620px] gap-6 p-6 lg:grid-cols-2">
-              <div className="flex flex-col justify-center">
+            <div className="pi-import-upload">
+              <div className="pi-import-upload-controls flex min-w-0 flex-col justify-center">
                 <button
                   type="button"
                   onClick={() => fileInput.current?.click()}
-                  className="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/60 px-6 py-14 text-center transition hover:border-indigo-500 hover:bg-indigo-50"
+                  disabled={busy}
+                  onDragOver={(event) => { event.preventDefault(); if (!busy) setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragging(false);
+                    if (busy) return;
+                    if (event.dataTransfer.files.length !== 1) return setError('Choose one PDF invoice at a time.');
+                    selectFile(event.dataTransfer.files[0]);
+                  }}
+                  className={`pi-import-dropzone rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/60 px-6 py-10 text-center transition hover:border-indigo-500 hover:bg-indigo-50 disabled:cursor-wait ${dragging ? 'pi-import-dragging' : ''}`}
                 >
                   <ArrowUpTrayIcon className="mx-auto h-11 w-11 text-indigo-600" />
-                  <p className="mt-4 font-semibold text-slate-800">{file?.name || 'Choose or drop a supplier invoice PDF'}</p>
-                  <p className="mt-1 text-xs text-slate-500">Maximum 20 MB. Scanned and text PDFs are supported.</p>
+                  <p className="mt-4 break-words font-semibold text-slate-800">{file?.name || 'Choose or drop a supplier invoice PDF'}</p>
+                  <p className="mt-1 text-xs text-slate-600">Maximum 20 MB. Scanned and text PDFs are supported.</p>
                 </button>
-                <input ref={fileInput} type="file" accept=".pdf,application/pdf" className="hidden" onChange={(event) => selectFile(event.target.files?.[0])} />
-                {error && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+                <input ref={fileInput} type="file" accept=".pdf,application/pdf" disabled={busy} className="hidden" onChange={(event) => { const selected = event.target.files?.[0]; if (selected) selectFile(selected); event.target.value = ''; }} />
+                {error && <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
                 <button
                   type="button"
                   onClick={runPreview}
@@ -278,9 +329,9 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
                   {busy ? 'Reading invoice with OCR…' : 'Capture and Review'}
                 </button>
               </div>
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                {pdfUrl ? <iframe title="Selected invoice PDF" src={pdfUrl} className="h-full min-h-[570px] w-full" /> : (
-                  <div className="flex h-full min-h-[570px] items-center justify-center text-center text-slate-400">
+              <div className="pi-import-preview overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                {pdfUrl ? <iframe title="Selected invoice PDF" src={pdfUrl} /> : (
+                  <div className="pi-import-placeholder flex h-full items-center justify-center p-5 text-center text-slate-600">
                     <div><DocumentTextIcon className="mx-auto h-16 w-16" /><p className="mt-3 text-sm">The selected PDF appears here before OCR.</p></div>
                   </div>
                 )}
@@ -289,14 +340,14 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
           )}
 
           {preview && form && !result && (
-            <div className="grid max-h-[82vh] lg:grid-cols-[minmax(420px,0.9fr)_minmax(620px,1.1fr)]">
-              <div className="border-r border-slate-200 bg-slate-100 p-3">
-                <iframe title="Invoice PDF review" src={pdfUrl} className="h-[77vh] w-full rounded-xl bg-white shadow-sm" />
+            <div className="pi-import-review">
+              <div className="pi-import-review-pdf border-slate-200 bg-slate-100 p-3">
+                <iframe title="Invoice PDF review" src={pdfUrl} className="rounded-xl bg-white shadow-sm" />
               </div>
-              <div className="h-[82vh] overflow-y-auto p-5">
+              <fieldset disabled={busy} className="pi-import-review-fields min-w-0 p-5">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-bold text-slate-900">Review captured fields</h3>
+                    <h3 tabIndex={-1} className="font-bold text-slate-900">Review captured fields</h3>
                     <p className="text-xs text-slate-500">OCR confidence: {preview.ocr_confidence}% · all fields remain editable</p>
                   </div>
                   <button type="button" onClick={() => { setPreview(null); setForm(null); }} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700">
@@ -369,12 +420,12 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
                 <section className="mt-4 rounded-xl border border-slate-200 p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div><h4 className="font-semibold text-slate-800">Invoice lines</h4><p className="text-xs text-slate-500">Add or correct lines when OCR table detection is incomplete.</p></div>
-                    <button type="button" onClick={() => setForm((current) => ({ ...current, line_items: [...current.line_items, newLine(current.line_items.length + 1)] }))} className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-2.5 py-1.5 text-xs font-semibold text-indigo-700"><PlusIcon className="h-4 w-4" /> Add line</button>
+                    <button type="button" onClick={() => setForm((current) => ({ ...current, line_items: [...current.line_items, newLine(current.line_items.length + 1, current.currency)] }))} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-indigo-200 px-2.5 py-1.5 text-xs font-semibold text-indigo-700"><PlusIcon className="h-4 w-4" /> Add line</button>
                   </div>
                   <div className="space-y-3">
                     {form.line_items.length === 0 && <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">No lines confidently detected. You may add them manually or save the verified invoice header.</p>}
                     {form.line_items.map((line, index) => (
-                      <div key={`${line.line_number}-${index}`} className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[1fr_90px_120px_120px_36px]">
+                      <div key={`${line.line_number}-${index}`} className="pi-import-line grid gap-2 rounded-lg bg-slate-50 p-3">
                         <input aria-label={`Line ${index + 1} description`} placeholder="Description" className={inputClass} value={line.description || ''} onChange={(e) => updateLine(index, 'description', e.target.value)} />
                         <input aria-label={`Line ${index + 1} quantity`} placeholder="Qty" type="number" min="0" step="0.0001" className={inputClass} value={line.quantity || ''} onChange={(e) => updateLine(index, 'quantity', e.target.value)} />
                         <input aria-label={`Line ${index + 1} unit price`} placeholder="Unit price" type="number" min="0" step="0.01" className={inputClass} value={line.unit_price || ''} onChange={(e) => updateLine(index, 'unit_price', e.target.value)} />
@@ -385,25 +436,25 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
                   </div>
                 </section>
 
-                {error && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
-                <div className="sticky bottom-0 mt-5 flex justify-end gap-2 border-t border-slate-200 bg-white/95 py-4 backdrop-blur">
+                {error && <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+                <div className="pi-import-actions sticky bottom-0 mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white/95 py-4 backdrop-blur">
                   <button type="button" onClick={close} disabled={busy} className="h-10 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cancel</button>
-                  <button type="button" onClick={saveReviewed} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+                  <button type="button" onClick={saveReviewed} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-700 px-5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
                     {busy ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <ShieldCheckIcon className="h-4 w-4" />}
                     {busy ? 'Recording…' : 'Validate and Record'}
                   </button>
                 </div>
-              </div>
+              </fieldset>
             </div>
           )}
 
           {result && (
-            <div className="grid min-h-[620px] gap-5 p-6 lg:grid-cols-2">
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100"><iframe title="Recorded invoice PDF" src={pdfUrl} className="h-full min-h-[570px] w-full" /></div>
-              <div className="flex flex-col justify-center">
+            <div className="pi-import-upload">
+              <div className="pi-import-preview overflow-hidden rounded-xl border border-slate-200 bg-slate-100"><iframe title="Recorded invoice PDF" src={pdfUrl} /></div>
+              <div className="flex min-w-0 flex-col justify-center">
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
                   <CheckCircleIcon className="h-10 w-10 text-emerald-600" />
-                  <h3 className="mt-3 text-xl font-bold text-emerald-900">{result.message}</h3>
+                  <h3 tabIndex={-1} className="mt-3 text-xl font-bold text-emerald-900">{result.message}</h3>
                   <p className="mt-1 text-sm text-emerald-700">The PDF, reviewed fields, structured lines, and audit entry are stored in the company database.</p>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -421,9 +472,8 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+          </div>
+    </dialog>
   );
 };
 

@@ -14,6 +14,10 @@
 .psq-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; padding: 12px; border: 1px solid #dce6f3; border-radius: 5px; background: #f7faff; }
 .psq-summary > span { display: inline-flex; align-items: center; gap: 6px; color: #3c577c; }
 .psq-summary strong { color: #153464; }
+.psq-horizon { padding: 10px 12px; margin-top: 10px; border: 1px solid #cbdbee; border-radius: 4px; background: #f7faff; color: #355681; }
+.psq-horizon > div { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.psq-horizon p { margin: 5px 0 0; font-size: 12px; }
+.psq-horizon.needs-review { border-color: #efcf8f; background: #fff9ec; color: #805110; }
 .psq-workflow-sequence { margin: 8px 0 0; color: #3c577c; font-size: 12px; }
 .psq-error { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #efb0b0; border-radius: 4px; color: #9b2020; background: #fff4f4; }
 .psq-warnings { display: flex; flex-direction: column; gap: 7px; margin: 12px 0; padding: 10px 12px; list-style: none; border: 1px solid #efcf8f; border-radius: 4px; background: #fff9ec; color: #805110; }

@@ -96,7 +96,7 @@ export function TaskDialog({ projectId, task, tasks, disciplines, manual, schedu
         <PlanningEmployeePicker projectId={projectId} label="Reviewer" value={draft.reviewer_user} disabled={busy} legacyName={draft.reviewer_id ? '' : draft.reviewer} onChange={employee => setDraft(current => ({ ...current, reviewer_user: employee, reviewer_id: employee?.user_id ?? null, reviewer: employee?.name || '' }))} />
         <label>Due date<input type="date" value={draft.due_date || ''} onChange={event => change('due_date', event.target.value)} /></label>
         {(manual || scheduleEditing) && <label>Planned start<input name="planned_start_date" type="date" value={draft.planned_start_date || ''} onChange={event => change('planned_start_date', event.target.value || null)} /></label>}
-        {(manual || scheduleEditing) && <label>Duration (working days)<input name="duration_days" type="number" min={scheduleEditing && !milestone ? '0.25' : '0'} readOnly={scheduleEditing && milestone} title={scheduleEditing && milestone ? 'Milestones have zero duration.' : undefined} step="0.25" value={draft.duration_days ?? ''} onChange={event => change('duration_days', event.target.value === '' ? null : Number(event.target.value))} placeholder="Calculated from effort if blank" /></label>}
+        {(manual || scheduleEditing) && <label>Duration (working days)<input name="duration_days" type="number" min={scheduleEditing && !milestone ? '0.25' : '0'} readOnly={scheduleEditing && milestone} title={scheduleEditing && milestone ? 'Milestones have zero duration.' : undefined} step="0.25" value={draft.duration_days ?? ''} onChange={event => change('duration_days', event.target.value === '' ? null : Number(event.target.value))} placeholder="Leave blank when the duration is unknown" /></label>}
         {scheduleEditing && <p className="wbd-note">Finish dates recalculate from durations, dependencies and the project calendar when saved.</p>}
         <label>Priority<select value={draft.priority} onChange={event => change('priority', event.target.value)}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
         <label>Planned effort (hours)<input type="number" min="0" step="0.01" value={draft.effort_hours ?? ''} onChange={event => change('effort_hours', event.target.value)} placeholder="Enter hours" /></label>
@@ -119,7 +119,7 @@ function TemplateDialog({ disciplines, manual, onApply, onClose }) {
       <label>Deliverable name<input required maxLength={400} value={name} onChange={event => setName(event.target.value)} placeholder={manual ? 'e.g. Employee onboarding process' : 'e.g. Design package'} /></label>
       <label>{manual ? 'Workstream' : 'Discipline'}<select value={discipline} onChange={event => setDiscipline(event.target.value)}>{disciplines.map(row => <option key={row.code} value={row.code}>{row.name}</option>)}</select></label>
       <ol className="wbd-template-preview"><li>Prepare {name || 'deliverable'}</li><li>Review {name || 'deliverable'}</li><li>{manual ? 'Complete' : 'Issue'} {name || 'deliverable'}</li></ol>
-      <p className="wbd-note"><Info size={15} />Set owners and effort after adding these tasks.</p>
+      <p className="wbd-note"><Info size={15} />This adds a user-configured workflow, not document-extracted activities. Set owners and effort after adding these tasks.</p>
     </form>
   </Dialog>
 }

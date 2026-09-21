@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import PropTypes from 'prop-types'
 import planningIntelligenceService from '../../services/planningIntelligence.service'
-import SchedulingDefaultsApprovalPanel from './SchedulingDefaultsApprovalPanel'
+import PlanningExtractionCoverage from './PlanningExtractionCoverage'
+import { durationUnitLabel, sourceReferenceLabel } from '../../utils/planningDurationEvidence'
 
-const STEPS = ['Scope', 'Workflow', 'Process logic', 'Review', 'Complete']
-const TRUSTED_STEPS = ['Inputs', 'Workflow families', 'Evidence logic', 'Review', 'Complete']
+const STEPS = ['Inputs', 'Source activities', 'Source logic', 'Review', 'Complete']
 
 const messageFor = (error, fallback) => {
   const data = error?.response?.data
@@ -22,27 +22,15 @@ const messageFor = (error, fallback) => {
 
 export default function GenerationWizard({
   open, project, files = [], intelligence, intelligenceOverrides,
-  onClose, onGenerate, onOpenPlanner,
+  onClose, onGenerate, onOpenPlanner, onReviewEvidence,
 }) {
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [configuration, setConfiguration] = useState(null)
-  const [workflows, setWorkflows] = useState([])
-  const [dependencies, setDependencies] = useState([])
-  const [workflowId, setWorkflowId] = useState('')
-  const [dependencyId, setDependencyId] = useState('')
-  const [customCount, setCustomCount] = useState(false)
-  const [requestedCount, setRequestedCount] = useState(5)
-  const [confirmedRules, setConfirmedRules] = useState(new Set())
   const [preview, setPreview] = useState(null)
   const [result, setResult] = useState(null)
-  const [pendingProposal, setPendingProposal] = useState(null)
-  const [showInlineApproval, setShowInlineApproval] = useState(false)
-  const [approvalNotice, setApprovalNotice] = useState(null)
-  const [scheduleBasis, setScheduleBasis] = useState(null)
-  const [generationPlan, setGenerationPlan] = useState(null)
 
   useEffect(() => {
     if (!open || !project?.id) return
@@ -51,38 +39,9 @@ export default function GenerationWizard({
     setError('')
     setPreview(null)
     setResult(null)
-    setPendingProposal(null)
-    setShowInlineApproval(false)
-    setApprovalNotice(null)
     setLoading(true)
-    Promise.all([
-      planningIntelligenceService.listScheduleConfigurations(project.id),
-      planningIntelligenceService.listWorkflowTemplates(project.id),
-      planningIntelligenceService.listDependencyTemplates(project.id),
-      planningIntelligenceService.listScheduleBases(project.id),
-      planningIntelligenceService.listGenerationPlans(project.id),
-    ]).then(([configurationRows, workflowRows, dependencyRows, basisRows, planRows]) => {
-      if (cancelled) return
-      const current = configurationRows[0] || null
-      const activeWorkflows = workflowRows.filter(item => item.status === 'active')
-      const activeDependencies = dependencyRows.filter(item => item.status === 'active')
-      const selectedWorkflow = activeWorkflows.find(item => item.id === current?.workflow_template)
-        || activeWorkflows.find(item => item.is_default)
-        || activeWorkflows[0]
-      const selectedDependency = activeDependencies.find(item => item.id === current?.dependency_template)
-        || activeDependencies.find(item => item.is_default)
-        || activeDependencies[0]
-      setConfiguration(current)
-      setWorkflows(activeWorkflows)
-      setDependencies(activeDependencies)
-      setWorkflowId(selectedWorkflow?.id || '')
-      setDependencyId(selectedDependency?.id || '')
-      setRequestedCount(selectedWorkflow?.stage_count || 5)
-      setCustomCount((selectedWorkflow?.stage_count || 5) !== 5)
-      setConfirmedRules(new Set((current?.settings?.confirmed_dependency_rule_ids || []).map(Number)))
-      const approvedBasis = basisRows.find(item => item.status === 'approved') || basisRows[0] || null
-      setScheduleBasis(approvedBasis)
-      setGenerationPlan(planRows.find(item => item.status === 'approved' && item.basis === approvedBasis?.id) || null)
+    planningIntelligenceService.listScheduleConfigurations(project.id).then(configurationRows => {
+      if (!cancelled) setConfiguration(configurationRows[0] || null)
     }).catch(err => {
       if (!cancelled) setError(messageFor(err, 'Could not load scheduling configuration.'))
     }).finally(() => {
@@ -91,8 +50,6 @@ export default function GenerationWizard({
     return () => { cancelled = true }
   }, [open, project?.id])
 
-  const selectedWorkflow = workflows.find(item => item.id === Number(workflowId)) || null
-  const selectedDependency = dependencies.find(item => item.id === Number(dependencyId)) || null
   const parsedFiles = files.filter(item => item.parse_status === 'done')
   const failedFiles = files.filter(item => item.parse_status === 'failed')
   const disciplines = Object.entries(intelligence?.disciplines || {})
@@ -101,122 +58,37 @@ export default function GenerationWizard({
     const excluded = new Set(item?.excluded_deliverables || [])
     return total + (item?.deliverables || []).filter(name => !excluded.has(name)).length
   }, 0)
-  const matchingWorkflows = useMemo(
-    () => workflows.filter(item => Number(item.stage_count) === Number(requestedCount)),
-    [workflows, requestedCount],
-  )
-  const requiredRules = (selectedDependency?.rules || []).filter(item => item.requires_confirmation)
-  const outstandingRules = requiredRules.filter(item => !confirmedRules.has(item.id))
-  const usesTrustedPlan = generationPlan?.status === 'approved'
-  const wizardSteps = usesTrustedPlan ? TRUSTED_STEPS : STEPS
-  const confirmedPlanDependencies = (generationPlan?.dependencies || []).filter(item => item.status === 'confirmed')
-  const workflowFamilyCounts = (generationPlan?.deliverables || []).reduce((counts, item) => {
-    counts[item.workflow_family] = (counts[item.workflow_family] || 0) + 1
-    return counts
-  }, {})
+  const scheduleVersionId = result?.job?.result_data?.schedule_version_id
+  const evidenceReviewRequired = !scheduleVersionId || result?.job?.result_data?.state === 'needs_evidence_review'
+  const sourceActivities = preview?.sample_activities || []
+  const sourceNames = new Map(sourceActivities.map(item => [String(item.id), item.name || item.title || item.id]))
+  const sourceRelationships = preview?.sample_logic_matrix || preview?.logic_matrix || sourceActivities.flatMap(item => (item.predecessors || []).map(link => ({ ...link, predecessor: link.id, successor: item.id })))
 
   if (!open) return null
-
-  const selectStandard = () => {
-    const standard = workflows.find(item => item.is_default && Number(item.stage_count) === 5)
-      || workflows.find(item => Number(item.stage_count) === 5)
-    setCustomCount(false)
-    setRequestedCount(5)
-    if (standard) setWorkflowId(standard.id)
-  }
-
-  const selectCustomCount = value => {
-    const count = Math.max(1, Math.min(50, Number(value) || 1))
-    setRequestedCount(count)
-    const matching = workflows.find(item => Number(item.stage_count) === count)
-    setWorkflowId(matching?.id || '')
-  }
-
-  const toggleRule = id => {
-    setConfirmedRules(previous => {
-      const next = new Set(previous)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }
 
   const blockerForStep = () => {
     if (step === 0) {
       if (!parsedFiles.length) return 'No parsed source document is available. Wait for parsing to finish or correct the failed upload.'
       if (!intelligence) return 'Document Intelligence has not completed. Run Document Intelligence before schedule generation.'
-      if (!deliverableCount) return 'Document Intelligence contains no selected deliverables. Include at least one deliverable.'
-      if (scheduleBasis?.status !== 'approved') return 'Approve the controlled Schedule Basis in Document Intelligence before schedule generation.'
-      if (generationPlan?.status !== 'approved') return 'Approve the Trustworthy Generation Plan in Document Intelligence before schedule generation.'
-    }
-    if (step === 1) {
-      if (usesTrustedPlan) return ''
-      if (!workflows.length) return 'No active workflow template is available for this project.'
-      if (!selectedWorkflow) {
-        return matchingWorkflows.length
-          ? `Select one of the ${matchingWorkflows.length} active ${requestedCount}-task workflow templates.`
-          : `No active workflow contains exactly ${requestedCount} tasks. Select the standard five-stage workflow or activate a matching template.`
-      }
-      const actualCount = Number(selectedWorkflow.stage_count)
-      if (actualCount !== Number(requestedCount)) return `Selected workflow “${selectedWorkflow.name}” contains ${actualCount} tasks, but ${requestedCount} tasks were requested.`
-    }
-    if (step === 2 && !usesTrustedPlan && selectedDependency && outstandingRules.length) {
-      const first = outstandingRules[0]
-      return `${outstandingRules.length} Process release gate${outstandingRules.length === 1 ? '' : 's'} still require confirmation. First outstanding gate: ${first.predecessor_name} → ${first.successor_name}.`
     }
     if (step === 3) {
       if (!preview) return 'The generation preview has not completed.'
-      const critical = (preview.validation || []).filter(item => item.severity === 'critical')
-      if (critical.length) return `${critical.length} critical validation finding${critical.length === 1 ? '' : 's'} block generation: ${critical.map(item => item.message).join(' · ')}`
+
     }
     return ''
   }
 
   const canContinue = () => !blockerForStep()
 
-  const prepareReview = async () => {
+  const prepareReview = async (nextStep = 3) => {
     setSaving(true)
     setError('')
     try {
-      if (usesTrustedPlan) {
-        const generatedPreview = await planningIntelligenceService.previewGeneration(project.id, {
-          intelligence_overrides: intelligenceOverrides,
-        })
-        setPreview(generatedPreview)
-        setStep(3)
-        return
-      }
-      if (!configuration) throw new Error('This project has no schedule configuration.')
-      const settings = {
-        ...(configuration.settings || {}),
-        date_authority: 'relational_cpm',
-        confirmed_dependency_rule_ids: [...confirmedRules].sort((a, b) => a - b),
-      }
-      const previousConfirmations = (configuration.settings?.confirmed_dependency_rule_ids || [])
-        .map(Number).sort((a, b) => a - b)
-      const configurationChanged = configuration.workflow_template !== selectedWorkflow.id
-        || configuration.dependency_template !== (selectedDependency?.id || null)
-        || configuration.standard_task_count !== selectedWorkflow.stage_count
-        || JSON.stringify(previousConfirmations) !== JSON.stringify(settings.confirmed_dependency_rule_ids)
-        || configuration.settings?.date_authority !== 'relational_cpm'
-      if (configurationChanged) {
-        const proposal = await planningIntelligenceService.createScheduleDefaultProposal({
-          project: project.id,
-          title: `${selectedWorkflow.name} scheduling defaults`,
-          rationale: 'Proposed through the controlled schedule generation wizard.',
-          workflow_template: selectedWorkflow.id,
-          dependency_template: selectedDependency?.id || null,
-          confirmed_dependency_rule_ids: settings.confirmed_dependency_rule_ids,
-        })
-        setPendingProposal(proposal)
-        setPreview(null)
-        setStep(3)
-        return
-      }
       const generatedPreview = await planningIntelligenceService.previewGeneration(project.id, {
         intelligence_overrides: intelligenceOverrides,
       })
       setPreview(generatedPreview)
-      setStep(3)
+      setStep(nextStep)
     } catch (err) {
       setError(messageFor(err, 'Could not prepare the generation preview.'))
     } finally {
@@ -231,8 +103,8 @@ export default function GenerationWizard({
       setError(blocker)
       return
     }
-    if (step === 2) {
-      prepareReview()
+    if (step === 0) {
+      prepareReview(1)
       return
     }
     setStep(value => Math.min(4, value + 1))
@@ -243,43 +115,15 @@ export default function GenerationWizard({
     setError('')
     try {
       const generated = await onGenerate({
-        expected_configuration_version: configuration.configuration_version,
+        ...(configuration?.configuration_version != null ? { expected_configuration_version: configuration.configuration_version } : {}),
       })
-      if (!generated) throw new Error('Generation did not return a schedule version.')
+      if (!generated) throw new Error('Generation did not return a document evidence snapshot.')
       setResult(generated)
       setStep(4)
     } catch (err) {
       setError(messageFor(err, 'Schedule generation failed.'))
     } finally {
       setSaving(false)
-    }
-  }
-
-  const refreshAfterDefaultDecision = async () => {
-    const [configurationRows, proposals] = await Promise.all([
-      planningIntelligenceService.listScheduleConfigurations(project.id),
-      planningIntelligenceService.listScheduleDefaultProposals(project.id),
-    ])
-    const updatedConfiguration = configurationRows[0] || null
-    setConfiguration(updatedConfiguration)
-    const decided = proposals.find(item => item.id === pendingProposal?.id)
-    if (decided?.status === 'approved') {
-      setPendingProposal(null)
-      setShowInlineApproval(false)
-      setApprovalNotice(null)
-      setSaving(true)
-      try {
-        const generatedPreview = await planningIntelligenceService.previewGeneration(project.id, {
-          intelligence_overrides: intelligenceOverrides,
-        })
-        setPreview(generatedPreview)
-      } catch (err) {
-        setError(messageFor(err, 'Defaults were approved, but the generation preview could not be prepared.'))
-      } finally {
-        setSaving(false)
-      }
-    } else if (decided?.status === 'rejected') {
-      setApprovalNotice({ type: 'error', message: 'The proposed defaults were rejected. Return to Workflow or Process logic and revise the selection.' })
     }
   }
 
@@ -293,23 +137,6 @@ export default function GenerationWizard({
       setPreview(generatedPreview)
     } catch (err) {
       setError(messageFor(err, 'The schedule preview could not be prepared.'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const approvePendingProposal = async () => {
-    if (!pendingProposal?.id || !pendingProposal.can_approve) return
-    setSaving(true)
-    setError('')
-    setApprovalNotice(null)
-    try {
-      await planningIntelligenceService.decideScheduleDefaultProposal(
-        pendingProposal.id, 'approved', 'Approved by project authority in the controlled generation wizard.',
-      )
-      await refreshAfterDefaultDecision()
-    } catch (err) {
-      setError(messageFor(err, 'The scheduling defaults could not be approved.'))
     } finally {
       setSaving(false)
     }
@@ -329,19 +156,20 @@ export default function GenerationWizard({
 
         <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
           <div className="grid grid-cols-5 gap-2">
-            {wizardSteps.map((label, index) => (
+            {STEPS.map((label, index) => (
               <div key={label} className="min-w-0">
                 <div className={`h-1.5 rounded-full ${index <= step ? 'bg-violet-600' : 'bg-slate-200'}`} />
                 <p className={`mt-2 truncate text-xs font-bold ${index === step ? 'text-violet-700' : 'text-slate-400'}`}>{index + 1}. {label}</p>
               </div>
             ))}
           </div>
-          {(loading || saving) && <ProcessingBar label={loading ? 'Loading workflow configuration and engineering logic…' : step === 2 ? 'Running Phase E checks and preparing the exact schedule preview…' : step === 3 ? 'Generating and calculating the relational CPM schedule…' : 'Processing…'} />}
+          {(loading || saving) && <ProcessingBar label={loading ? 'Loading source evidence…' : step === 2 ? 'Reviewing source evidence and preparing the schedule preview…' : step === 3 ? 'Preparing the document evidence draft…' : 'Processing…'} />}
         </div>
 
         <main className="flex-1 overflow-y-auto p-5 sm:p-7">
           {loading ? <div className="flex h-full items-center justify-center text-slate-500">Loading project configuration…</div> : (
             <div className="mx-auto max-w-5xl space-y-5">
+              {step === 0 && <PlanningExtractionCoverage coverage={intelligence?.processing_coverage} aiCoverage={intelligence?.ai_processing_coverage} />}
               {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</div>}
 
               {step === 0 && (
@@ -363,91 +191,38 @@ export default function GenerationWizard({
                 </>
               )}
 
-              {step === 1 && usesTrustedPlan && (
-                <>
-                  <div><h3 className="text-2xl font-bold text-slate-950">Verified workflow families</h3><p className="mt-1 text-slate-600">These classifications come from approved Generation Plan v{generationPlan.version}. They are read-only here to prevent a second workflow model from overriding the reviewed plan.</p></div>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {Object.entries(workflowFamilyCounts).map(([family, count]) => <Metric key={family} label={family.replaceAll('_', ' ')} value={count} />)}
-                  </div>
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{generationPlan.deliverables.length} deliverables have approved, type-specific workflows.</div>
-                </>
-              )}
-
-              {step === 1 && !usesTrustedPlan && (
-                <>
-                  <div><h3 className="text-2xl font-bold text-slate-950">Choose the deliverable workflow</h3><p className="mt-1 text-slate-600">The standard is five visible Primavera-style tasks. A different count requires an active template with exactly that number of defined stages.</p></div>
-                  <button type="button" onClick={selectStandard} className={`w-full rounded-2xl border-2 p-5 text-left ${!customCount ? 'border-violet-500 bg-violet-50' : 'border-slate-200 bg-white'}`}>
-                    <div className="flex items-center justify-between"><span className="font-bold text-slate-900">Standard five-stage workflow</span><span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Recommended</span></div>
-                    <p className="mt-2 text-sm text-slate-600">IFR → COMPANY REVIEW → IFA → COMPANY APPROVAL → FINAL ISSUE</p>
-                  </button>
-                  <button type="button" onClick={() => setCustomCount(true)} className={`w-full rounded-2xl border-2 p-5 text-left ${customCount ? 'border-violet-500 bg-violet-50' : 'border-slate-200 bg-white'}`}>
-                    <span className="font-bold text-slate-900">Use a different number of tasks</span>
-                    <p className="mt-1 text-sm text-slate-600">Select this only where the contract or deliverable class requires a different workflow.</p>
-                  </button>
-                  {customCount && <div className="rounded-2xl border border-violet-200 bg-white p-5"><label className="text-sm font-bold text-slate-700">How many workflow tasks are required?</label><input type="number" min="1" max="50" value={requestedCount} onChange={event => selectCustomCount(event.target.value)} className="mt-2 w-40 rounded-xl border-2 border-slate-200 px-3 py-2 focus:border-violet-500 focus:outline-none" />
-                    <div className="mt-4 space-y-2">{matchingWorkflows.length ? matchingWorkflows.map(template => <label key={template.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 hover:bg-slate-50"><input type="radio" name="workflow" checked={Number(workflowId) === template.id} onChange={() => setWorkflowId(template.id)} className="mt-1 accent-violet-600"/><span><span className="block font-bold text-slate-800">{template.name}</span><span className="text-xs text-slate-500">{template.stage_count} stages · v{template.version}</span></span></label>) : <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">No active {requestedCount}-task template exists. Create and activate the workflow in Configuration before generating.</p>}</div>
-                  </div>}
-                  {selectedWorkflow && <div className="grid gap-2 sm:grid-cols-5">{selectedWorkflow.stages.map(stage => <div key={stage.id} className="rounded-xl border border-slate-200 bg-white p-3"><span className="text-xs font-bold text-violet-600">{stage.sequence}</span><p className="mt-1 text-sm font-bold text-slate-800">{stage.name}</p><p className="mt-1 text-xs text-slate-500">{stage.duration_days} days</p></div>)}</div>}
-                  {!blockerForStep() && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">Workflow validated: {selectedWorkflow.name} contains exactly {Number(selectedWorkflow.stage_count)} configured tasks.</div>}
-                  {blockerForStep() && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{blockerForStep()}</div>}
-                </>
-              )}
-
-              {step === 2 && usesTrustedPlan && (
-                <>
-                  <div><h3 className="text-2xl font-bold text-slate-950">Verified evidence logic</h3><p className="mt-1 text-slate-600">The wizard will use only the dependencies, phases, and scenario approved in Generation Plan v{generationPlan.version}.</p></div>
-                  <div className="grid gap-3 sm:grid-cols-3"><Metric label="Confirmed links" value={confirmedPlanDependencies.length} tone="green"/><Metric label="Documented phases" value={(generationPlan.phases || []).length}/><Metric label="Selected scenario" value={(generationPlan.selected_scenario || 'Not required').replaceAll('_', ' ')} /></div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4"><h4 className="font-bold text-slate-900">Documented phases</h4><div className="mt-3 flex flex-wrap gap-2">{(generationPlan.phases || []).map(phase => <span key={phase.id} className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800">{phase.sequence}. {phase.name}{phase.duration_months ? ` · ${Number(phase.duration_months)} months` : ''}</span>)}</div></div>
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">Logic review is complete. Generic dependency templates will not be applied.</div>
-                </>
-              )}
-
-              {step === 2 && !usesTrustedPlan && (
-                <>
-                  <div><h3 className="text-2xl font-bold text-slate-950">Confirm Process release gates</h3><p className="mt-1 text-slate-600">These relationships came from the engineer’s Process flow. Confirmation makes the assumption controlled and traceable.</p></div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4"><label className="text-sm font-bold text-slate-700">Engineering dependency template</label><select value={dependencyId} onChange={event => { setDependencyId(event.target.value); setConfirmedRules(new Set()) }} className="mt-2 w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-violet-500 focus:outline-none"><option value="">No dependency template</option>{dependencies.map(template => <option key={template.id} value={template.id}>{template.name} · v{template.version}</option>)}</select></div>
-                  {!selectedDependency ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">No dependency template is selected.</div> : <>
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4"><div><p className="font-bold text-slate-900">{selectedDependency.name}</p><p className="text-sm text-slate-500">{selectedDependency.rule_count} rules · {requiredRules.length} require confirmation</p></div><button type="button" onClick={() => setConfirmedRules(new Set(requiredRules.map(item => item.id)))} className="rounded-xl bg-violet-100 px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-200">Confirm all</button></div>
-                    <div className="max-h-[46vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white">
-                      {selectedDependency.rules.map(rule => <label key={rule.id} className="flex cursor-pointer gap-3 border-b border-slate-100 p-3 last:border-0 hover:bg-slate-50"><input type="checkbox" checked={!rule.requires_confirmation || confirmedRules.has(rule.id)} disabled={!rule.requires_confirmation} onChange={() => toggleRule(rule.id)} className="mt-1 accent-violet-600"/><span className="min-w-0"><span className="block text-sm font-bold text-slate-800">{rule.predecessor_name} · {rule.predecessor_stage_code} → {rule.successor_name} · {rule.successor_stage_code}</span><span className="text-xs text-slate-500">{rule.relationship_type}{Number(rule.lag_days) ? ` + ${rule.lag_days}d` : ''} · {rule.source_reference || 'Configured engineering logic'}</span></span></label>)}
-                    </div>
-                  </>}
-                </>
-              )}
+              {step === 1 && <>
+                <div><h3 className="text-2xl font-bold text-slate-950">Review source activities</h3><p className="mt-1 text-slate-600">Activities and durations come from the extracted source evidence. Missing information remains Not Specified.</p></div>
+                <p className="text-sm text-slate-600">Showing {sourceActivities.length} of {preview?.activity_count ?? 'Not Specified'} extracted activities.</p><div className="overflow-auto rounded-2xl border border-slate-200 bg-white"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">Activity / deliverable</th><th className="p-3">Source duration</th><th className="p-3">Source reference</th></tr></thead><tbody>{sourceActivities.map((item, index) => <tr key={item.id || index}><td className="p-3">{item.canonical_name || item.name || item.title || 'Not Specified'}</td><td className="p-3">{item.original_duration_days == null ? 'Not Specified' : `${item.original_duration_days} ${durationUnitLabel({ ...item, duration_source: 'source_document' })}`}</td><td className="p-3">{item.source_references?.length ? item.source_references.map(sourceReferenceLabel).join('; ') : 'Not Specified'}</td></tr>)}</tbody></table></div>
+                <p className="text-sm text-slate-600">Workflow stages and task counts are not added from templates.</p>
+              </>}
+              {step === 2 && <>
+                <div><h3 className="text-2xl font-bold text-slate-950">Review source logic</h3><p className="mt-1 text-slate-600">Review relationships extracted from the documents. Document order, names and templates do not establish a dependency.</p></div>
+                <div className="grid gap-3 sm:grid-cols-2"><Metric label="Extracted relationships" value={preview?.relationship_count ?? 'Not Specified'}/><Metric label="Shown in this preview" value={sourceRelationships.length}/></div>
+                <div className="overflow-auto rounded-2xl border border-slate-200 bg-white"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">Predecessor</th><th className="p-3">Successor</th><th className="p-3">Type</th><th className="p-3">Lag</th><th className="p-3">Source reference</th></tr></thead><tbody>{sourceRelationships.map((item, index) => <tr key={item.id || index}><td className="p-3">{item.predecessor_name || sourceNames.get(String(item.predecessor ?? item.predecessor_id)) || item.predecessor || item.predecessor_id || 'Not Specified'}</td><td className="p-3">{item.successor_name || sourceNames.get(String(item.successor ?? item.successor_id)) || item.successor || item.successor_id || 'Not Specified'}</td><td className="p-3">{item.relationship_type || item.type || 'Not Specified'}</td><td className="p-3">{item.lag_days == null ? 'Not Specified' : `${item.lag_days} d`}</td><td className="p-3">{item.source_references?.length ? item.source_references.map(sourceReferenceLabel).join('; ') : 'Not Specified'}</td></tr>)}{!sourceRelationships.length && <tr><td colSpan={5} className="p-3">Not Specified: no extracted source relationships.</td></tr>}</tbody></table></div>
+              </>}
 
               {step === 3 && preview && (
                 <>
-                  <div><h3 className="text-2xl font-bold text-slate-950">Review the exact generation plan</h3><p className="mt-1 text-slate-600">This preview is deterministic and has not created a schedule version. Final dates will come from relational CPM.</p></div>
-                  <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6"><Metric label="WBS nodes" value={preview.wbs_node_count}/><Metric label="Deliverables" value={preview.deliverable_count}/><Metric label="Activities" value={preview.activity_count}/><Metric label="Workflow tasks" value={preview.configured_workflow_activity_count}/><Metric label="Relationships" value={preview.relationship_count}/><Metric label="Milestones" value={preview.milestone_count}/></div>
-                  <div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-4"><h4 className="font-bold text-slate-900">Configuration snapshot</h4><dl className="mt-3 space-y-2 text-sm">{usesTrustedPlan ? <><Row label="Generation Plan" value={`v${generationPlan.version} · approved`}/><Row label="Workflow authority" value="Deliverable-specific families"/><Row label="Confirmed logic" value={`${confirmedPlanDependencies.length} links`}/><Row label="Scenario" value={(generationPlan.selected_scenario || 'Not required').replaceAll('_', ' ')}/></> : <><Row label="Workflow" value={`${selectedWorkflow?.name} (${selectedWorkflow?.stage_count} tasks)`}/><Row label="Process network" value={selectedDependency?.name || 'None'}/><Row label="Confirmed gates" value={`${confirmedRules.size}`}/><Row label="Date authority" value="Relational CPM"/></>}</dl></div><div className="rounded-2xl border border-slate-200 bg-white p-4"><h4 className="font-bold text-slate-900">Pre-generation validation</h4><div className="mt-3 space-y-2">{(preview.validation || []).map((item, index) => <div key={`${item.rule}-${index}`} className={`rounded-lg px-3 py-2 text-xs font-semibold ${item.severity === 'critical' ? 'bg-rose-50 text-rose-700' : item.severity === 'warning' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{item.message}</div>)}</div></div></div>
-                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">Generating creates a new immutable JSON generation and a new relational draft schedule version. Existing approved or baselined versions remain unchanged.</div>
+                  <div><h3 className="text-2xl font-bold text-slate-950">Review the source generation plan</h3><p className="mt-1 text-slate-600">Review the extracted evidence and validation findings before creating a draft. Dates and float require complete durations, relationships and calendar information.</p></div>
+                  <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6"><Metric label="WBS nodes" value={preview.wbs_node_count}/><Metric label="Deliverables" value={preview.deliverable_count}/><Metric label="Activities" value={preview.activity_count}/><Metric label="Source gaps" value={preview.missing_information?.length ?? 'Not Specified'}/><Metric label="Relationships" value={preview.relationship_count}/><Metric label="Milestones" value={preview.milestone_count}/></div>
+                  <div className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-4"><h4 className="font-bold text-slate-900">Configuration snapshot</h4><dl className="mt-3 space-y-2 text-sm"><Row label="Activity authority" value="Extracted source evidence"/><Row label="Relationships extracted" value={`${preview.relationship_count ?? 'Not Specified'}`}/><Row label="Missing source values" value="Not Specified"/></dl></div><div className="rounded-2xl border border-slate-200 bg-white p-4"><h4 className="font-bold text-slate-900">Pre-generation validation</h4><div className="mt-3 space-y-2">{(preview.validation || []).map((item, index) => <div key={`${item.rule}-${index}`} className={`rounded-lg px-3 py-2 text-xs font-semibold ${item.severity === 'critical' ? 'bg-rose-50 text-rose-700' : item.severity === 'warning' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{item.message}</div>)}</div></div></div>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">Generate saves a document evidence draft for review. Schedule calculation requires complete source durations, relationships and calendar information.</div>
                 </>
               )}
 
-              {step === 3 && !preview && !pendingProposal && (
-                <div className="mx-auto max-w-2xl rounded-3xl border border-blue-200 bg-white p-7 text-center shadow-sm"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-2xl text-blue-700">↻</div><h3 className="mt-4 text-2xl font-bold text-slate-950">Configuration approved — preview pending</h3><p className="mt-2 text-sm text-slate-600">Approval is safely stored. Retry only the deterministic preview; the wizard will not repeat analysis or create another approval proposal.</p><button type="button" onClick={retryPreview} disabled={saving} className="mt-5 rounded-xl bg-violet-600 px-5 py-3 font-bold text-white disabled:opacity-40">{saving ? 'Preparing preview…' : 'Retry schedule preview'}</button></div>
-              )}
-
-              {step === 3 && pendingProposal && !showInlineApproval && (
-                <div className="mx-auto max-w-3xl rounded-3xl border border-amber-200 bg-white p-7 shadow-sm">
-                  <div className="flex items-start gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-2xl text-amber-700">⌛</div><div><p className="text-xs font-bold uppercase tracking-wider text-amber-700">Final approval required</p><h3 className="mt-1 text-2xl font-bold text-slate-950">Proposed defaults are not effective yet</h3><p className="mt-2 text-sm text-slate-600">Proposal #{pendingProposal.id} passed {pendingProposal.test_results.filter(item => item.status === 'passed').length} of {pendingProposal.test_results.length} Phase E checks. A project manager, project owner, or administrator must approve it in Planner Workspace → Governance → Default approvals.</p></div></div>
-                  <div className="mt-5 space-y-2">{pendingProposal.test_results.map(test => <div key={test.code} className={`rounded-xl px-3 py-2 text-sm ${test.status === 'passed' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}><b>{test.status === 'passed' ? 'Passed' : 'Failed'} · {test.code.replaceAll('_', ' ')}</b><div className="mt-0.5 text-xs opacity-80">{test.message}</div></div>)}</div>
-                  <div className="mt-6 flex flex-wrap gap-3">{pendingProposal.can_approve && <button type="button" onClick={approvePendingProposal} disabled={saving || !pendingProposal.tests_passed} className="rounded-xl bg-emerald-600 px-5 py-3 font-bold text-white shadow hover:bg-emerald-700 disabled:opacity-40">{saving ? 'Approving and preparing preview…' : 'Approve defaults & continue'}</button>}<button type="button" onClick={() => setShowInlineApproval(true)} className="rounded-xl bg-violet-600 px-5 py-3 font-bold text-white">{pendingProposal.can_approve ? 'Open full governance' : 'Open Governance →'}</button><button type="button" onClick={onClose} className="rounded-xl border px-5 py-3 font-bold text-slate-700">Return to package</button></div>
-                </div>
-              )}
-
-              {step === 3 && pendingProposal && showInlineApproval && (
-                <div className="space-y-4"><div className="flex flex-wrap items-center gap-3"><div className="mr-auto"><p className="text-xs font-bold uppercase tracking-wider text-violet-600">Project-level governance</p><h3 className="text-2xl font-bold text-slate-950">Final approval — Proposal #{pendingProposal.id}</h3><p className="mt-1 text-sm text-slate-600">Approve the tested defaults here. No schedule version is required for this decision.</p></div><button type="button" onClick={() => setShowInlineApproval(false)} className="rounded-xl border px-4 py-2 text-sm font-bold text-slate-700">Back to summary</button></div>{approvalNotice && <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${approvalNotice.type === 'error' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{approvalNotice.message}</div>}<SchedulingDefaultsApprovalPanel projectId={project.id} onNotice={(type, message) => setApprovalNotice({ type, message })} onChanged={refreshAfterDefaultDecision} /></div>
+              {step === 3 && !preview && (
+                <div className="mx-auto max-w-2xl rounded-3xl border border-blue-200 bg-white p-7 text-center shadow-sm"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-2xl text-blue-700">↻</div><h3 className="mt-4 text-2xl font-bold text-slate-950">Source preview pending</h3><p className="mt-2 text-sm text-slate-600">Retry the preview using the source evidence. A retry does not create a schedule version.</p><button type="button" onClick={retryPreview} disabled={saving} className="mt-5 rounded-xl bg-violet-600 px-5 py-3 font-bold text-white disabled:opacity-40">{saving ? 'Preparing preview…' : 'Retry schedule preview'}</button></div>
               )}
 
               {step === 4 && (
-                <div className="py-12 text-center"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-4xl text-emerald-700">✓</div><h3 className="mt-5 text-3xl font-bold text-slate-950">Schedule generated successfully</h3><p className="mt-2 text-slate-600">Generation v{result?.generation?.version} and relational CPM schedule version {result?.job?.result_data?.schedule_version_id} are ready.</p><div className="mt-7 flex justify-center gap-3"><button type="button" onClick={onClose} className="rounded-xl border border-slate-200 bg-white px-5 py-3 font-bold text-slate-700 hover:bg-slate-50">Return to package</button><button type="button" onClick={onOpenPlanner} className="rounded-xl bg-violet-600 px-5 py-3 font-bold text-white shadow hover:bg-violet-700">Open Planner Workspace →</button></div></div>
+                <div className="py-12 text-center"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-4xl text-emerald-700">✓</div><h3 className="mt-5 text-3xl font-bold text-slate-950"> {evidenceReviewRequired ? 'Document evidence ready for review' : 'Schedule generated successfully'}</h3><p className="mt-2 text-slate-600">{evidenceReviewRequired ? 'Review Not Specified values and source relationships before schedule calculation.' : `Generation v${result?.generation?.version} and schedule version ${scheduleVersionId} are ready.`}</p><div className="mt-7 flex justify-center gap-3"><button type="button" onClick={onClose} className="rounded-xl border border-slate-200 bg-white px-5 py-3 font-bold text-slate-700 hover:bg-slate-50">Return to package</button><button type="button" onClick={evidenceReviewRequired ? onReviewEvidence || onClose : onOpenPlanner} className="rounded-xl bg-violet-600 px-5 py-3 font-bold text-white shadow hover:bg-violet-700">{evidenceReviewRequired ? 'Review source evidence' : 'Open Planner Workspace →'}</button></div></div>
               )}
             </div>
           )}
         </main>
 
-        {!loading && step < 4 && !pendingProposal && <footer className="flex items-center justify-between border-t border-slate-200 bg-white px-5 py-4 sm:px-7"><button type="button" onClick={() => step ? setStep(value => value - 1) : onClose()} disabled={saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40">{step ? '← Back' : 'Cancel'}</button><div className="flex items-center gap-3"><span className="hidden text-xs font-semibold text-slate-400 sm:inline">Configuration v{configuration?.configuration_version || '—'}</span>{step === 3 ? <button type="button" onClick={generate} disabled={saving || !canContinue()} className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-700 px-5 py-2.5 text-sm font-bold text-white shadow disabled:opacity-40">{saving ? 'Generating…' : 'Generate new draft'}</button> : <button type="button" onClick={next} disabled={saving} className="rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-bold text-white shadow hover:bg-slate-800 disabled:opacity-40">{saving ? 'Preparing preview…' : 'Continue →'}</button>}</div></footer>}
+        {!loading && step < 4 && <footer className="flex items-center justify-between border-t border-slate-200 bg-white px-5 py-4 sm:px-7"><button type="button" onClick={() => step ? setStep(value => value - 1) : onClose()} disabled={saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40">{step ? '← Back' : 'Cancel'}</button><div className="flex items-center gap-3"><span className="hidden text-xs font-semibold text-slate-400 sm:inline">Configuration v{configuration?.configuration_version || '—'}</span>{step === 3 ? <button type="button" onClick={generate} disabled={saving || !canContinue()} className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-700 px-5 py-2.5 text-sm font-bold text-white shadow disabled:opacity-40">{saving ? 'Generating…' : 'Generate new draft'}</button> : <button type="button" onClick={next} disabled={saving} className="rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-bold text-white shadow hover:bg-slate-800 disabled:opacity-40">{saving ? 'Preparing preview…' : 'Continue →'}</button>}</div></footer>}
       </div>
     </div>
   )
@@ -470,11 +245,12 @@ GenerationWizard.propTypes = {
   open: PropTypes.bool.isRequired,
   project: PropTypes.shape({ id: PropTypes.number, name: PropTypes.string }),
   files: PropTypes.arrayOf(PropTypes.object),
-  intelligence: PropTypes.shape({ disciplines: PropTypes.object }),
+  intelligence: PropTypes.shape({ disciplines: PropTypes.object, processing_coverage: PropTypes.object, ai_processing_coverage: PropTypes.object }),
   intelligenceOverrides: PropTypes.object,
   onClose: PropTypes.func.isRequired,
   onGenerate: PropTypes.func.isRequired,
   onOpenPlanner: PropTypes.func.isRequired,
+  onReviewEvidence: PropTypes.func,
 }
 
 Metric.propTypes = {

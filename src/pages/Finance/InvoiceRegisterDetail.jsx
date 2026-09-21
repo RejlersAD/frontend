@@ -18,6 +18,7 @@ import {
 import { toast } from 'react-toastify';
 import financeService from '../../services/finance.service';
 import invoiceTrackerService from '../../services/invoiceTracker.service';
+import { outgoingReviewBalance, outgoingReviewTotal } from '../../components/Finance/outgoingReviewPresentation';
 
 const LABELS = {
   ocr_review: 'OCR Review', ready_for_matching: 'Ready for Matching', procurement_review: 'Procurement Review',
@@ -206,7 +207,7 @@ IncomingDetail.propTypes = { invoice: PropTypes.object.isRequired, onChanged: Pr
 const OutgoingDetail = ({ invoice, onChanged }) => {
   const uploadRef = useRef(null);
   const [working, setWorking] = useState(false);
-  const total = invoice.grand_total ?? invoice.invoice_amount;
+  const total = outgoingReviewTotal(invoice);
   const upload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -224,7 +225,7 @@ const OutgoingDetail = ({ invoice, onChanged }) => {
   const firstPdf = invoice.attachments?.find((item) => item.content_type === 'application/pdf' || item.original_filename?.toLowerCase().endsWith('.pdf'));
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-3"><FinancialCard label="Invoice total" value={money(total, invoice.currency)} /><FinancialCard label="Amount received" value={money(invoice.actual_payment_received, invoice.currency)} /><FinancialCard label="Outstanding balance" value={money(invoice.balance_to_be_received, invoice.currency)} emphasis /></div>
+      <div className="grid gap-3 sm:grid-cols-3"><FinancialCard label={total.label} value={money(total.value, invoice.currency)} /><FinancialCard label="Amount received" value={money(invoice.actual_payment_received, invoice.currency)} /><FinancialCard label="Outstanding balance" value={money(outgoingReviewBalance(invoice), invoice.currency)} emphasis /></div>
       <div className="grid gap-5 xl:grid-cols-2">
         <div className="space-y-4">
           <Section icon={UserCircleIcon} title="Customer and project"><dl className="grid gap-4 sm:grid-cols-2"><Field label="Account" value={invoice.account} /><Field label="Company" value={invoice.company} /><Field label="RAD project number" value={invoice.rad_project_no} mono /><Field label="Project ID" value={invoice.project_id} mono /><Field label="Project name" value={invoice.project_name} wide /><Field label="Project manager" value={invoice.pm} /><Field label="Finance / PM email" value={invoice.finance_pm_email} /><Field label="Contract clause" value={invoice.contract_clause} wide /></dl></Section>

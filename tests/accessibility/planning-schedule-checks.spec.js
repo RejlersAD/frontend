@@ -39,40 +39,65 @@ async function review(page) {
   await expect(approval(page)).toBeVisible()
 }
 
-test('a rejected submission explains the affected activity and allows a reviewed correction before resubmitting', async ({ page }) => {
-  let submissionChecksDiscovered = false
+test('repeated missing durations become one actionable review with every activity still reachable', async ({ page }) => {
+  const state = await open(page, {
+    prepare(current) {
+      const plan = current.records[17].simplePlan
+      plan.tasks = Array.from({ length: 220 }, (_, index) => ({
+        ...plan.tasks[0], id: `missing-${index + 1}`, title: `Source deliverable ${index + 1}`,
+        activity_code: `MDR-${index + 1}`, duration_days: null, planned_start_date: null,
+        planned_finish_date: null, total_float_days: null, depends_on: [],
+      }))
+    },
+    decorateSnapshot(plan) {
+      plan.blockers = [
+        { code: 'reference_schedule_not_imported', message: 'Uploaded activity dates, calendar and relationships require review.' },
+        ...plan.tasks.map(task => ({ code: 'duration_required', task_id: task.id, field: 'duration_days', message: `${task.title} has no source duration.` })),
+      ]
+      return plan
+    },
+  })
+  await workspace(page).getByRole('button', { name: 'Review 2 actions', exact: true }).click()
+  await expect(issues(page)).toContainText('2 review actions need attention before submission.')
+  await expect(issues(page).locator('article')).toHaveCount(2)
+  await expect(issues(page)).toContainText('220 affected activities')
+  await expect(issues(page)).toContainText('Project start and finish define the planning window.')
+  const durationReview = issues(page).locator('article').filter({ has: page.getByRole('heading', { name: 'Review activity durations against the documents', exact: true }) })
+  await expect(durationReview.getByRole('button', { name: 'Project inputs', exact: true })).toBeEnabled()
+  await durationReview.getByRole('button', { name: 'Show all 220 affected activities', exact: true }).click()
+  await durationReview.getByRole('button', { name: 'Edit activity Source deliverable 220', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit task', exact: true })
+  await expect(editor.getByLabel('Task / deliverable', { exact: true })).toHaveValue('Source deliverable 220')
+  await expect(editor.getByLabel('Duration (working days)', { exact: true })).toHaveValue('')
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(state.writes).toEqual([])
+  expect(state.records[17].simplePlan.tasks.every(task => task.duration_days === null && !task.depends_on.length)).toBe(true)
+  clean(state)
+})
+
+test('a timing warning explains the affected activity and allows an optional reviewed correction before submitting', async ({ page }) => {
   const state = await open(page, {
     prepare(current) {
       const task = current.records[17].simplePlan.tasks[0]
       Object.assign(task, { activity_code: 'ACT-001', planned_start_date: '2026-12-17', planned_finish_date: '2026-12-22', duration_days: 4, total_float_days: null })
     },
     decorateSnapshot(plan, record) {
-      if (record.project.id === 17 && submissionChecksDiscovered && plan.tasks[0].duration_days > 2) plan.blockers = [deadlineIssue(plan.tasks[0])]
+      if (record.project.id === 17 && plan.tasks[0].duration_days > 2) plan.warnings = [deadlineIssue(plan.tasks[0])]
       return plan
-    },
-    async handleRequest({ route, path, record, state: current, reply }) {
-      if (path.endsWith('/submit/') && record.simplePlan.tasks[0].duration_days > 2) {
-        current.writes.push({ method: 'POST', path, data: route.request().postDataJSON() })
-        submissionChecksDiscovered = true
-        await reply(route, { error: 'Resolve the schedule checks before submitting.', code: 'simple_plan_schedule_blocked', blockers: [deadlineIssue(record.simplePlan.tasks[0])] }, 400)
-        return true
-      }
-      return false
     },
   })
   const targetBefore = state.records[17].project.end_date
   const unchangedTask = structuredClone(state.records[17].simplePlan.tasks[1])
   await review(page)
-  await submit(page).click()
-  await expect(approval(page).getByRole('heading', { name: 'Resolve schedule issues', exact: true })).toBeVisible()
+  await expect(approval(page).getByRole('heading', { name: 'Review timing warnings', exact: true })).toBeVisible()
   await expect(issues(page)).toContainText(reason)
   await expect(issues(page)).toContainText(registerNames[0])
   await expect(issues(page)).toContainText('Review the activity duration and its predecessor links')
   await expect(issues(page)).toContainText('20 Dec 2026')
   await expect(issues(page)).toContainText('22 Dec 2026')
   await expect(issues(page).getByRole('cell', { name: '-2 d', exact: true })).toBeVisible()
-  await expect(submit(page)).toBeDisabled()
-  expect(simpleWrites(state).map(item => item.method)).toEqual(['POST'])
+  await expect(submit(page)).toBeEnabled()
+  expect(simpleWrites(state)).toHaveLength(0)
   expect(state.records[17].simplePlan.tasks[0].duration_days).toBe(4)
   const scan = await new AxeBuilder({ page }).include('[aria-label="Schedule issues"]').analyze()
   expect(scan.violations.filter(item => ['serious', 'critical'].includes(item.impact))).toEqual([])
@@ -96,7 +121,7 @@ test('a rejected submission explains the affected activity and allows a reviewed
   expect(state.writes.some(item => item.method === 'PATCH' || item.path.endsWith('/apply-schedule/'))).toBe(false)
   await submit(page).click()
   await expect(approval(page).getByRole('button', { name: 'Approve & publish baseline', exact: true })).toBeEnabled()
-  expect(simpleWrites(state).filter(item => item.path.endsWith('/submit/')).map(item => item.data.revision)).toEqual([4, 5])
+  expect(simpleWrites(state).filter(item => item.path.endsWith('/submit/')).map(item => item.data.revision)).toEqual([5])
   clean(state)
 })
 
@@ -133,8 +158,8 @@ test('all affected activities remain reachable beyond the old 25-item limit', as
       return plan
     },
   })
-  await workspace(page).getByRole('button', { name: 'Resolve 1 issue', exact: true }).click()
-  await expect(issues(page).getByRole('heading', { name: 'Resolve schedule issues', exact: true })).toBeVisible()
+  await workspace(page).getByRole('button', { name: 'Review 1 timing warning', exact: true }).click()
+  await expect(issues(page).getByRole('heading', { name: 'Review timing warnings', exact: true })).toBeVisible()
   const last = issues(page).getByRole('button', { name: 'Edit activity Late deliverable 31', exact: true })
   if (!await last.isVisible()) {
     const more = issues(page).getByRole('button', { name: /Show all|Show more|Next/i })
@@ -170,7 +195,7 @@ test('calculated issue evidence does not silently replace the saved activity con
     },
   })
   const before = structuredClone(state.records[17].simplePlan.tasks[0])
-  await workspace(page).getByRole('button', { name: 'Resolve 1 issue', exact: true }).click()
+  await workspace(page).getByRole('button', { name: 'Review 1 timing warning', exact: true }).click()
   await expect(issues(page).getByRole('cell', { name: '22 Dec 2026', exact: true })).toBeVisible()
   await expect(issues(page).getByRole('cell', { name: '24 Dec 2026', exact: true })).toBeVisible()
   await issues(page).getByRole('button', { name: `Edit activity ${before.title}`, exact: true }).click()

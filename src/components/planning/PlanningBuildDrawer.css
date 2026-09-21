@@ -1,0 +1,38 @@
+.planning-build-drawer { color: #153464; }
+.planning-build-drawer p { margin: 0 0 12px; }
+.planning-build-drawer h3 { color: #0b2252; font-size: 15px; }
+.planning-build-drawer button { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; border: 1px solid #c7d7eb; border-radius: 4px; padding: 5px 9px; color: #174880; background: white; font: inherit; cursor: pointer; }
+.planning-build-drawer button.pbd-primary { color: white; background: #0751ff; border-color: #0751ff; }
+.planning-build-drawer .pbd-link { border: 0; padding: 3px; color: #0751d7; }
+.planning-build-drawer label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; margin: 10px 0; }
+.planning-build-drawer select, .planning-build-drawer textarea { padding: 7px; width: 100%; border: 1px solid #c7d7eb; border-radius: 4px; color: #153464; background: white; font: inherit; }
+.planning-build-drawer textarea { min-height: 70px; resize: vertical; }
+.planning-build-drawer fieldset { margin: 12px 0; padding: 10px; border: 1px solid #dce6f3; border-radius: 4px; }
+.planning-build-drawer form > fieldset { padding: 0; border: 0; }
+.planning-build-drawer legend { color: #0b2252; font-weight: 600; }
+.planning-build-drawer small { display: block; font-size: 11px; color: #526987; overflow-wrap: anywhere; }
+.pbd-source { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.pbd-source label, .planning-build-drawer .pbd-checkbox { flex-direction: row; align-items: start; }
+.pbd-source input, .pbd-checkbox input { margin-top: 4px; }
+.pbd-profile, .pbd-message { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; background: #f6f9fe; border: 1px solid #cbd9ed; border-radius: 4px; margin-bottom: 10px; }
+.pbd-profile button { margin-left: auto; }
+.pbd-message.is-error { background: #fff5f3; border-color: #e9c1bc; color: #902f29; }
+.pbd-note { font-size: 11px; color: #526987; }
+.pbd-actions, .pbd-tabs, .pbd-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.pbd-actions > span { font-size: 11px; color: #526987; }
+.pbd-tabs button[aria-selected=true] { background: #eaf1ff; color: #0751d7; border-color: #91b3fb; }
+.pbd-summary span { border: 1px solid #dce6f3; border-radius: 4px; padding: 5px 8px; font-size: 12px; }
+.pbd-preview { margin-top: 16px; border-top: 1px solid #dce6f3; padding-top: 12px; }
+.pbd-table { overflow: auto; max-height: 420px; }
+.pbd-table table { width: 100%; min-width: 550px; border-collapse: collapse; font-size: 12px; }
+.pbd-table th, .pbd-table td { padding: 8px; text-align: left; vertical-align: top; border: 1px solid #dce6f3; }
+.pbd-table thead th { background: #f5f8fd; position: sticky; top: 0; }
+.pbd-table td { overflow-wrap: anywhere; max-width: 260px; }
+.pbd-values { margin: 0; }
+.pbd-values dt { font-size: 10px; color: #526987; }
+.pbd-values dd { margin: 0 0 7px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pbd-lineage > div { margin: 7px 0; }
+.pbd-lineage summary, .planning-build-drawer summary { cursor: pointer; color: #0751d7; }
+.pbd-issues { list-style: none; padding: 0; }
+.pbd-issues li { display: flex; align-items: start; gap: 6px; border: 1px solid #e7d3aa; background: #fff8eb; border-radius: 4px; padding: 9px; margin: 7px 0; color: #775115; }
+.pbd-issues svg { flex-shrink: 0; margin-top: 2px; }

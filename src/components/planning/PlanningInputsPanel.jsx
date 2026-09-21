@@ -33,15 +33,26 @@ const errorText = (error, fallback) => {
   if (data && typeof data === 'object') return Object.entries(data).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${Array.isArray(value) ? value.join(' ') : String(value)}`).join(' · ')
   return fallback
 }
-async function allRecords(endpoint, params) {
+async function allRecords(endpoint, params, signal) {
   let page = 1, rows = []
   do {
-    const response = await apiClient.get(endpoint, { params: { ...params, page } })
+    const response = await apiClient.get(endpoint, { params: { ...params, page }, signal })
     rows = rows.concat(response.data?.results ?? response.data ?? [])
     if (!response.data?.next) return rows
     page += 1
   } while (page <= 1000)
   throw new Error('The complete input review could not be loaded.')
+}
+
+async function latestCompletedRun(projectId, signal) {
+  // Runs are returned newest first. Avoid loading older, fully compiled previews
+  // once the completed analysis used by this panel has been found.
+  for (let page = 1; page <= 1000; page += 1) {
+    const response = await apiClient.get(PLANNING_ENDPOINTS.intelligenceRuns, { params: { project: projectId, page }, signal })
+    const run = (response.data?.results ?? response.data ?? []).find(item => item.status === 'succeeded')
+    if (run || !response.data?.next) return run || null
+  }
+  throw new Error('The latest completed input analysis could not be loaded.')
 }
 
 function InputReviewDialog({ facts, conflicts, busy, error, stale, previewAvailable, onPreview, onReview, onResolve, onClose }) {
@@ -76,6 +87,7 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
   const [analysisNeeded, setAnalysisNeeded] = useState(false)
   const inputRef = useRef(null), endDateRef = useRef(null), requestSequence = useRef(0), saveInFlight = useRef(false)
   const uploadDraftRef = useRef(null)
+  const reviewController = useRef(null)
   const baselineLocked = Boolean(contract?.baseline_locked)
   const manual = draft.planning_mode === 'manual'
   const duration = calculatePlanningDuration(draft.effective_date, draft.planned_end_date)
@@ -96,25 +108,31 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
   }, [draft.effective_date, draft.planned_end_date])
 
   const loadReview = useCallback(async () => {
+    reviewController.current?.abort()
+    const controller = new AbortController()
+    reviewController.current = controller
     const sequence = ++requestSequence.current
     if (!project?.id) { setReview({ run: null, facts: [], conflicts: [] }); setReviewLoading(false); setReviewError(''); return }
-    setReviewLoading(true); setReviewError('')
+    setReviewLoading(true); setReviewError(''); setReview({ run: null, facts: [], conflicts: [] })
     try {
-      const runs = await allRecords(PLANNING_ENDPOINTS.intelligenceRuns, { project: project.id })
-      const run = runs.find(item => item.status === 'succeeded') || null
+      const run = await latestCompletedRun(project.id, controller.signal)
+      if (sequence !== requestSequence.current || controller.signal.aborted) return
+      // Parsing and analysis are different states. A completed run already proves
+      // these files were analyzed, even while its large findings list is loading.
+      setReview({ run, facts: [], conflicts: [] })
       const [facts, conflicts] = run ? await Promise.all([
-        allRecords(PLANNING_ENDPOINTS.intelligenceFacts, { run: run.id }),
-        allRecords(PLANNING_ENDPOINTS.intelligenceConflicts, { run: run.id, status: 'open' }),
+        allRecords(PLANNING_ENDPOINTS.intelligenceFacts, { run: run.id }, controller.signal),
+        allRecords(PLANNING_ENDPOINTS.intelligenceConflicts, { run: run.id, status: 'open' }, controller.signal),
       ]) : [[], []]
       if (sequence === requestSequence.current) {
         setReview({ run, facts, conflicts: conflicts.filter(item => item.status === 'open') })
         onIntelligenceLoaded?.(run?.intelligence || null, run?.preview_confirmation || null)
       }
     } catch (error) {
-      if (sequence === requestSequence.current) setReviewError(errorText(error, 'Input review could not be loaded. Please retry.'))
+      if (sequence === requestSequence.current && !controller.signal.aborted) setReviewError(errorText(error, 'Input review could not be loaded. Please retry.'))
     } finally { if (sequence === requestSequence.current) setReviewLoading(false) }
   }, [project?.id, onIntelligenceLoaded])
-  useEffect(() => { loadReview(); return () => { requestSequence.current += 1 } }, [loadReview, analysisRevision])
+  useEffect(() => { loadReview(); return () => { requestSequence.current += 1; reviewController.current?.abort() } }, [loadReview, analysisRevision])
   useEffect(() => { if (reviewRequest) setReviewOpen(true) }, [reviewRequest])
 
   const save = async event => {
@@ -230,14 +248,14 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
           {!project && <p className="pln-note"><Info size={15} />Save draft to create this project’s planning workspace.</p>}
         </form>
       </section>
-    </div><aside className="pln-card pln-review-card" aria-labelledby="planning-ai-heading"><header><h2 id="planning-ai-heading">AI input review</h2><span className={`pln-review-badge ${review.run && !needsReview && !stale ? 'is-confirmed' : ''}`}>{unknown ? 'Review unavailable' : stale ? 'Analysis out of date' : review.run ? needsReview ? 'Needs confirmation' : 'Inputs reviewed' : 'Awaiting documents'}</span></header>
+    </div><aside className="pln-card pln-review-card" aria-labelledby="planning-ai-heading" aria-busy={reviewLoading}><header><h2 id="planning-ai-heading">AI input review</h2><span className={`pln-review-badge ${review.run && !unknown && !needsReview && !stale ? 'is-confirmed' : ''}`}>{reviewLoading ? 'Loading review' : reviewError ? 'Review unavailable' : stale ? 'Analysis out of date' : review.run ? needsReview ? 'Needs confirmation' : 'Inputs reviewed' : 'Awaiting documents'}</span></header>
       <p>{reviewLoading ? 'Loading extracted inputs…' : review.run ? `Extracted from ${analyzedCount} source ${analyzedCount === 1 ? 'document' : 'documents'}` : 'Analyze source documents to extract project requirements.'}</p>
       {reviewError && <div className="pln-error" role="alert">{reviewError}<button type="button" className="pln-text-button" onClick={loadReview}>Retry input review</button></div>}
       {stale && <p className="pln-note"><Info size={15} />Documents have changed. Analyze again to refresh the findings.</p>}
       <h3>Requirements found</h3><ul className="pln-requirements">{requirements.slice(0, 3).map(fact => <li key={fact.id}><span className="pln-evidence-icon"><FileText size={19} /></span><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small></div></li>)}</ul>
-      {!requirements.length && <div className="pln-empty pln-review-empty"><FileText size={25} /><p>{review.run ? 'No requirements were extracted. Review the source documents and other findings.' : 'Your extracted requirements will appear here with their source references.'}</p></div>}
+      {!requirements.length && <div className="pln-empty pln-review-empty"><FileText size={25} /><p>{reviewLoading ? 'Loading extracted requirements…' : reviewError ? 'Requirements could not be loaded. Retry input review.' : review.run ? 'No requirements were extracted. Review the source documents and other findings.' : 'Your extracted requirements will appear here with their source references.'}</p></div>}
       {review.facts.length > 0 && <button type="button" className="pln-text-button pln-view-all" onClick={openReview}>View all {requirements.length || review.facts.length} {requirements.length ? 'requirements' : 'findings'}<ArrowRight size={15} /></button>}
-      <div className={`pln-clarification ${!review.conflicts.length ? 'is-clear' : ''}`}><h3>{review.conflicts.length ? <AlertTriangle size={21} /> : <CheckCircle2 size={20} />}{review.conflicts.length ? 'Clarification required' : 'Clarifications'}</h3>{review.conflicts.length ? <><p>{review.conflicts[0].description}</p>{review.conflicts[0].facts?.[0] && <small><FileText size={14} />{sourceText(review.conflicts[0].facts[0])}</small>}<button type="button" className="pln-button" onClick={openReview}>Review clarification<ArrowRight size={14} /></button></> : <p>{unknown ? 'Clarification status is unavailable.' : review.run ? 'No open clarifications in the latest analysis.' : 'Any missing or conflicting inputs will be listed after analysis.'}</p>}</div>
+      <div className={`pln-clarification ${!review.conflicts.length && !unknown ? 'is-clear' : ''}`}><h3>{review.conflicts.length ? <AlertTriangle size={21} /> : reviewLoading ? <Loader2 size={20} className="animate-spin" /> : reviewError ? <Info size={20} /> : <CheckCircle2 size={20} />}{review.conflicts.length ? 'Clarification required' : 'Clarifications'}</h3>{review.conflicts.length ? <><p>{review.conflicts[0].description}</p>{review.conflicts[0].facts?.[0] && <small><FileText size={14} />{sourceText(review.conflicts[0].facts[0])}</small>}<button type="button" className="pln-button" onClick={openReview}>Review clarification<ArrowRight size={14} /></button></> : <p>{reviewLoading ? 'Loading clarification status…' : reviewError ? 'Clarification status is unavailable.' : review.run ? 'No open clarifications in the latest analysis.' : 'Any missing or conflicting inputs will be listed after analysis.'}</p>}</div>
       <p className="pln-note"><Info size={16} />AI findings remain draft until reviewed.</p>
       <button type="button" className="pln-text-button pln-ai-settings" disabled={!project} onClick={onAiSettings}><Settings2 size={14} />AI settings</button>
     </aside></div>

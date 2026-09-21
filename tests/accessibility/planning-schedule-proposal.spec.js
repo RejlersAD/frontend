@@ -22,11 +22,44 @@ async function preview(page) {
   await expect(dialog(page)).toBeVisible()
 }
 
+for (const fits of [true, false]) test(`fixed-date preview explains ${fits ? 'fitted' : 'unresolved'} timing without moving the project target`, async ({ page }) => {
+  const state = await open(page, {
+    async handleRequest({ path, route, record, state: current, reply }) {
+      if (!path.endsWith('/propose-schedule/')) return false
+      current.writes.push({ method: 'POST', path, data: route.request().postDataJSON() })
+      const plan = structuredClone(record.simplePlan)
+      await reply(route, { plan, proposal: {
+        token: 'fixed-horizon-preview', revision: plan.revision, changed_count: 3,
+        horizon_fit: {
+          fits, start_date: '2026-01-06', finish_date: '2026-09-04',
+          original_forecast_finish: '2026-10-01', forecast_finish: fits ? '2026-09-04' : '2026-10-01',
+          moved_activity_ids: ['activity-1', 'activity-2'], resized_activity_ids: ['activity-1'],
+          source_review_days: 10, source_values_changed: false,
+        },
+      } })
+      return true
+    },
+  })
+  const before = structuredClone(state.records[17].simplePlan)
+  await preview(page)
+  const summary = dialog(page).getByRole('region', { name: 'Fixed project dates', exact: true })
+  await expect(summary).toContainText('06-Jan-26 → 04-Sept-26')
+  await expect(summary).toContainText(fits ? 'Proposed timing fits' : 'Timing needs review · warning only')
+  await expect(summary).toContainText('2 activity starts adjusted; 1 proposed duration adjusted.')
+  await expect(summary).toContainText('Source values are retained.')
+  await expect(dialog(page).getByRole('button', { name: 'Apply draft schedule', exact: true })).toBeEnabled()
+  await expect(dialog(page).getByText('These are planning estimates, not a verified import of the original schedule. Review dates, durations and inferred links before applying.', { exact: true })).toBeVisible()
+  await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(state.records[17].simplePlan).toEqual(before)
+  expect(savedCalls(state)).toEqual([])
+  clean(state)
+})
+
 test('proposal shows current and proposed dates, stable IDs, source requirements and Gantt without saving', async ({ page }) => {
   const state = await open(page)
   const before = structuredClone(state.records[17].simplePlan)
   await preview(page)
-  expect(state.writes).toEqual([expect.objectContaining({ method: 'POST', path: '/api/v1/planning-intelligence/projects/71/simple-plan/propose-schedule/', data: { revision: 4, workflow_mode: 'standard_five' } })])
+  expect(state.writes).toEqual([expect.objectContaining({ method: 'POST', path: '/api/v1/planning-intelligence/projects/71/simple-plan/propose-schedule/', data: { revision: 4, workflow_mode: 'source_only' } })])
   await expect(dialog(page).getByText(proposalWarning, { exact: true })).toBeVisible()
   await expect(dialog(page).locator('.psq-summary > span').filter({ hasText: 'Proposed finish' })).toContainText('23-Mar-26')
   await expect(dialog(page).locator('.psq-summary > span').filter({ hasText: 'Project target' })).toContainText('04-Sept-26')
@@ -44,7 +77,7 @@ test('proposal shows current and proposed dates, stable IDs, source requirements
   await changed.getByText('1 predecessor', { exact: true }).click()
   await expect(changed).toContainText(before.tasks[0].activity_code)
   await expect(changed).toContainText('The predecessor provides the required design input.')
-  await expect(changed).toContainText('Planning inference')
+  await expect(changed).toContainText('Unverified inference')
   await page.screenshot({ path: '../artifacts/planning-schedule-proposal.png', animations: 'disabled' })
   const search = dialog(page).getByRole('textbox', { name: 'Search proposed activities', exact: true })
   await search.fill(before.tasks[4].activity_code)

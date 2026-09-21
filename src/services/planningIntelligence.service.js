@@ -18,6 +18,54 @@ const awaitJob = async (initialJob, timeoutMs = 15 * 60 * 1000) => {
 export const planningIntelligenceService = {
   listProjects: async () => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.projects)),
   getProject: async (projectId) => (await apiClient.get(PLANNING_ENDPOINTS.project(projectId))).data,
+  getSourceSchedulePreview: async (projectId, params = {}, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/source-preview/`, { params, signal, suppressErrorToast: true })).data,
+  previewSourceScheduleImport: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/preview-source-import/`, payload, { suppressErrorToast: true })).data,
+  applySourceScheduleImport: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/apply-source-import/`, payload, { suppressErrorToast: true })).data,
+  getCurrentMasterSchedule: async projectId => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/`, { suppressErrorToast: true })).data,
+  proposeIntelligentSequence: async (projectId, payload) => (await apiClientLongTimeout.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/propose-intelligent-sequence/`, payload, { suppressErrorToast: true, timeout: 600000 })).data,
+  applyIntelligentSequence: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/apply-intelligent-sequence/`, payload, { suppressErrorToast: true })).data,
+  getOperationalControls: async (projectId, params = {}, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}operational-controls/`, { params, signal, suppressErrorToast: true })).data,
+  actOnOperationalControls: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}operational-controls/`, payload, { suppressErrorToast: true })).data,
+  getDelayAnalysis: async (projectId, params = {}, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}delay-analysis/`, { params, signal, suppressErrorToast: true })).data,
+  actOnDelayAnalysis: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}delay-analysis/`, payload, { suppressErrorToast: true })).data,
+  downloadDelayCase: async (projectId, caseId, format) => apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}delay-analysis/cases/${caseId}/export/`, { params: { format }, responseType: 'blob', suppressErrorToast: true }),
+  getPlanningRiskRegister: async (projectId, versionId, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}risk-register/`, { params: versionId == null ? {} : { version_id: versionId }, signal, suppressErrorToast: true })).data,
+  createPlanningRisk: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}risk-register/`, payload, { suppressErrorToast: true })).data,
+  updatePlanningRisk: async (projectId, payload) => (await apiClient.patch(`${PLANNING_ENDPOINTS.project(projectId)}risk-register/`, payload, { suppressErrorToast: true })).data,
+  listPlanningBuilds: async (projectId, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}planning-builds/`, { signal, suppressErrorToast: true })).data,
+  getPlanningBuild: async (projectId, buildId) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}planning-builds/${buildId}/`, { suppressErrorToast: true })).data,
+  previewPlanningBuild: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}planning-builds/`, payload, { suppressErrorToast: true })).data,
+  applyPlanningBuild: async (projectId, buildId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}planning-builds/${buildId}/apply/`, payload, { suppressErrorToast: true })).data,
+  getPlanningProfiles: async (projectId, signal) => (
+    await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}planning-profiles/`, { signal, suppressErrorToast: true })
+  ).data,
+  createPlanningProfile: async (projectId, payload) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}planning-profiles/`, payload, { suppressErrorToast: true })
+  ).data,
+  updatePlanningProfile: async (projectId, profileId, payload) => (
+    await apiClient.patch(`${PLANNING_ENDPOINTS.project(projectId)}planning-profiles/${profileId}/`, payload, { suppressErrorToast: true })
+  ).data,
+  actOnPlanningProfile: async (projectId, profileId, action, payload) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}planning-profiles/${profileId}/${action}/`, payload, { suppressErrorToast: true })
+  ).data,
+  selectPlanningProfile: async (projectId, payload) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}planning-profiles/select/`, payload, { suppressErrorToast: true })
+  ).data,
+  getEvidenceReview: async (projectId, params = {}, signal) => (
+    await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/`, { params, signal, suppressErrorToast: true })
+  ).data,
+  refreshEvidenceReview: async (projectId, payload = {}, params = {}) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/refresh/`, payload, { params, suppressErrorToast: true })
+  ).data,
+  decideEvidenceReview: async (projectId, payload, params = {}) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/decisions/`, payload, { params, suppressErrorToast: true })
+  ).data,
+  materializeAcceptedEvidence: async (projectId, revision, activate = false, masterRevision) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/materialize/`, { revision, ...(activate ? { activate: true, master_revision: masterRevision } : {}) }, { suppressErrorToast: true })
+  ).data,
+  getScheduleExportCapabilities: async (versionId, signal) => (
+    await apiClient.get(`${PLANNING_ENDPOINTS.scheduleVersion(versionId)}export-capabilities/`, { signal, suppressErrorToast: true })
+  ).data,
   getEnterpriseContract: async projectId => (
     await apiClient.get(PLANNING_ENDPOINTS.enterpriseContract(projectId))
   ).data,
@@ -302,6 +350,7 @@ export const planningIntelligenceService = {
   listDocumentProfiles: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.documentProfiles, { params: { project: projectId } })),
   listIntelligenceRuns: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.intelligenceRuns, { params: { project: projectId } })),
   getIntelligenceRun: async (runId) => (await apiClient.get(PLANNING_ENDPOINTS.intelligenceRun(runId))).data,
+  resumeIntelligenceRun: async runId => awaitJob((await apiClient.post(`${PLANNING_ENDPOINTS.intelligenceRun(runId)}resume/`, {}, { suppressErrorToast: true })).data),
   confirmIntelligencePreview: async (runId, preview) => (await apiClient.post(PLANNING_ENDPOINTS.confirmIntelligencePreview(runId), { preview })).data,
   listIntelligenceFacts: async (runId, params = {}) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.intelligenceFacts, { params: { run: runId, ...params } })),
   reviewIntelligenceFact: async (factId, status) => (await apiClient.post(PLANNING_ENDPOINTS.reviewIntelligenceFact(factId), { status })).data,

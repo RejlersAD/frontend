@@ -118,6 +118,33 @@ const financeService = {
     return response.data;
   },
 
+  /** Current receivables with recorded subtotals and independently authorized bills. */
+  async getReceivablesDashboard(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get(`${API_BASE}/dashboard/receivables/`, { params });
+    return response.data;
+  },
+
+  /** Paginated customer invoice rows and totals for the whole selected cohort. */
+  async getCustomerInvoiceRegister(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get(`${API_BASE}/dashboard/customer-invoices/`, { params });
+    return response.data;
+  },
+
+  /** Executive entry points retain each invoice register's source permissions. */
+  async getExecutiveReceivablesDashboard(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get('/dashboard/executive/receivables/', { params });
+    return response.data;
+  },
+
+  async getExecutiveCustomerInvoiceRegister(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get('/dashboard/executive/customer-invoices/', { params });
+    return response.data;
+  },
+
   /**
    * Get single invoice details
    */

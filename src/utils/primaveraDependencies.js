@@ -66,7 +66,7 @@ function route(source, target, type, rowHeight, timelineWidth) {
 
 // Rows already reflect filtering and WBS expansion. Only join two visible,
 // dated activities; a collapsed group never invents a summary relationship.
-export function buildPrimaveraDependencies(rows, positions, rowHeight = 16, timelineWidth = Infinity) {
+export function buildPrimaveraDependencies(rows, positions, rowHeight = 16, timelineWidth = Infinity, { sourceOnly = false } = {}) {
   const tasks = new Map(rows.filter(row => row.kind === 'task').map(row => [valueKey(row.id), row.task]))
   const links = []
   for (const [successorId, successor] of tasks) {
@@ -80,9 +80,11 @@ export function buildPrimaveraDependencies(rows, positions, rowHeight = 16, time
       if (!predecessor || !source || predecessorId === successorId) continue
       const detail = details.find(item => valueKey(item.task_id ?? item.predecessor_id) === predecessorId) || {}
       const reason = successor.dependency_rationales?.[predecessorId]
-      const type = String(detail.type || detail.relationship_type || reason?.relationship_type || 'FS').toUpperCase()
+      const specifiedType = detail.type || detail.relationship_type || reason?.relationship_type
+      const type = String(specifiedType || (sourceOnly ? '' : 'FS')).toUpperCase()
       if (!RELATIONSHIPS[type]) continue
       const lagValue = detail.lag_days ?? reason?.lag_days
+      if (sourceOnly && (lagValue == null || lagValue === '' || !Number.isFinite(Number(lagValue)))) continue
       const lag = Number.isFinite(Number(lagValue)) ? Number(lagValue) : 0
       const rationale = typeof reason === 'string' ? reason : reason?.rationale || reason?.message || reason?.description
       const sourceReferences = detail.source_references || reason?.source_references || []
@@ -92,6 +94,9 @@ export function buildPrimaveraDependencies(rows, positions, rowHeight = 16, time
       const description = [
         `${sourceCode} ${predecessor.title} → ${targetCode} ${successor.title}`,
         `${RELATIONSHIPS[type]} (${type}); lag ${lag > 0 ? '+' : ''}${lag} working days`,
+        predecessor.display_date_basis === 'source' || successor.display_date_basis === 'source'
+          ? 'Source dates shown; this relationship has not been verified against those dates' : null,
+        detail.source === 'workflow_template' || reason?.source === 'workflow_template' ? 'User-configured workflow' : null,
         reason?.status === 'proposed' ? 'Proposed relationship' : null,
         reason?.evidence_type === 'planning_inference' ? 'Planning inference' : null,
         rationale, ...sourceReferences.map(referenceLabel),

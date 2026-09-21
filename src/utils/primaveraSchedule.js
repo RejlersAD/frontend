@@ -1,3 +1,6 @@
+import { missingSourceDuration } from './planningDurationEvidence'
+import { dateDisplayTask } from './planningDateEvidence'
+
 const DAY = 86400000
 const key = value => value == null ? null : String(value)
 const day = value => value ? Date.parse(`${String(value).slice(0, 10)}T00:00:00Z`) : NaN
@@ -122,7 +125,7 @@ export function buildPrimaveraModel(plan, tasks, disciplines) {
     let parent = deliverableNodes.get(deliverableId) || nodeMap.get(key(task.wbs_node_id))
     if (!parent && !sourceHierarchy) parent = [...nodeMap.values()].find(node => node.discipline === task.discipline)
     const code = task.activity_code || task.external_id || task.document_number || String(task.id)
-    const row = { ...task, id: key(task.id), activity_code: code, sourceIndex: index, originalTask: task,
+    const row = { ...dateDisplayTask(task), id: key(task.id), activity_code: code, sourceIndex: index, originalTask: task,
       parent_deliverable_id: deliverableId || task.parent_deliverable_id }
     if (parent) parent.tasks.push(row)
     else projectRoot.tasks.push(row)
@@ -160,6 +163,13 @@ export function buildPrimaveraModel(plan, tasks, disciplines) {
     node.descendantTasks = allTasks
     // A supplied null means unknown; never replace it with an inferred total.
     node.summary = node.summary || summarize(allTasks, calendar)
+    if (allTasks.some(missingSourceDuration) && !finite(node.summary.original_duration_days)) {
+      node.summary = { ...node.summary, planned_start_date: null, planned_finish_date: null,
+        duration_days: null, total_float_days: null, complete: false }
+    }
+    // Independent source-summary evidence remains visible when child durations
+    // are missing; never derive a calendar duration from those source dates.
+    node.summary = dateDisplayTask(node.summary, { summary: true })
     return allTasks
   }
   tree.forEach(node => prepare(node, []))
@@ -174,7 +184,7 @@ export function buildPrimaveraModel(plan, tasks, disciplines) {
   return { tree, tasks, sourceHierarchy }
 }
 
-export function flattenPrimaveraModel(model, { search = '', discipline = 'all', criticalOnly = false, collapsed = new Set(), flat = false } = {}) {
+export function flattenPrimaveraModel(model, { search = '', discipline = 'all', criticalOnly = false, collapsed = new Set(), flat = false, level = 'activities' } = {}) {
   const needle = search.trim().toLowerCase()
   const filtersActive = Boolean(needle || discipline !== 'all' || criticalOnly)
   const matchesTask = (task, ancestorMatch) => (!needle || ancestorMatch || task.ancestors?.some(node => `${node.code} ${node.name}`.toLowerCase().includes(needle)) || `${task.activity_code} ${task.title} ${task.owner || ''} ${task.assignee?.name || ''}`.toLowerCase().includes(needle))
@@ -191,5 +201,7 @@ export function flattenPrimaveraModel(model, { search = '', discipline = 'all', 
     for (const task of node.tasks) if (matchesTask(task, matchesGroup)) rows.push({ kind: 'task', id: task.id, task, depth: node.depth + 1, ancestors: [...node.ancestors, node] })
   }
   model.tree.forEach(node => walk(node))
+  if (level === 'project') return rows.filter(row => row.kind === 'wbs' && row.node.is_project)
+  if (level === 'wbs') return rows.filter(row => row.kind === 'wbs' && !row.node.is_deliverable)
   return rows
 }

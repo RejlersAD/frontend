@@ -1,23 +1,28 @@
 import React, { useState } from 'react'
 import PropTypes from 'prop-types'
 import { AlertTriangle, CheckCircle2, FileText, Pencil, RefreshCw } from 'lucide-react'
+import { isTimingWarning, scheduleChecks, scheduleIssueGroups } from './scheduleCheckPolicy'
 import './PlanningScheduleChecks.css'
 
 const labels = {
-  negative_float: 'Activities need earlier completion',
+  negative_float: 'Activity timing needs review',
   contract_finish_overrun: 'The schedule finishes after the required date',
   contractual_finish_overrun: 'The schedule finishes after the required date',
-  duration_required: 'Activity duration is missing',
+  duration_required: 'Review activity durations against the documents',
+  reference_schedule_not_imported: 'Review the uploaded schedule',
+  source_import_review_required: 'Review the imported schedule evidence',
   zero_duration_tasks: 'Activity duration must be greater than zero',
   dependency_cycle: 'Dependencies form a loop',
   start_to_finish: 'Review the dependency type',
   resource_overallocation: 'Assigned work exceeds resource capacity',
 }
 const resolutions = {
-  negative_float: 'Review the start, duration and predecessors of these activities against the approved schedule. Their complete dependency chain must finish by the required date.',
-  contract_finish_overrun: 'Review the activities finishing late and their predecessors. Correct the proposed timing against the approved schedule.',
-  contractual_finish_overrun: 'Review the activities finishing late and their predecessors. Correct the proposed timing against the approved schedule.',
-  duration_required: 'Enter the planned duration in working days and save the activity.',
+  negative_float: 'Review the documented durations, working calendar and predecessor links against the MDR and SOW. Keep the required project finish unchanged.',
+  contract_finish_overrun: 'Review the documented timing and predecessors against the MDR and SOW. The required project finish remains unchanged.',
+  contractual_finish_overrun: 'Review the documented timing and predecessors against the MDR and SOW. The required project finish remains unchanged.',
+  duration_required: 'Review the uploaded schedule and link each activity to its source duration. Keep information not stated in the documents as Not Specified; any planner-entered duration needs a reviewed basis.',
+  reference_schedule_not_imported: 'Review the recovered source rows, dates, calendar and relationships before applying them to this project.',
+  source_import_review_required: 'Source activities and dates are visible in Master Schedule. Review scope links, the working calendar and predecessor evidence before calculation and baseline approval.',
   zero_duration_tasks: 'Enter a positive working duration for each task. Keep zero duration only for genuine milestones.',
   dependency_cycle: 'Review Depends on and remove the incorrect relationship that links an activity back to itself.',
   start_to_finish: 'Review the predecessor connection. Remove an incorrect dependency or use Schedule Controls to correct its relationship type.',
@@ -26,10 +31,10 @@ const resolutions = {
 const inputIssues = new Set(['tasks_required', 'dates_required', 'dates_invalid', 'inputs_changed', 'documents_processing'])
 const date = value => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not set'
 const number = value => value == null ? '—' : new Intl.NumberFormat('en', { maximumFractionDigits: 2 }).format(Number(value))
-const normalize = row => typeof row === 'string' ? { message: row } : row
 
-function affectedRows(issue, tasks) {
-  const aliases = new Map(tasks.flatMap(task => [task.id, task.external_id, task.activity_code].filter(value => value != null).map(value => [String(value), task])))
+function affectedRows(issue, tasks, taskAliases) {
+  const aliases = taskAliases || new Map(tasks.flatMap(task => [task.id, task.external_id, task.activity_code].filter(value => value != null).map(value => [String(value), task])))
+  if (issue.grouped_issues) return [...new Map(issue.grouped_issues.flatMap(item => affectedRows(item, tasks, aliases)).map(row => [String(row.id), row])).values()]
   const evidence = [...(issue.affected_activities || []), ...(issue.activities || [])]
   const keys = [...(issue.task_id != null ? [issue.task_id] : []), ...(issue.task_ids || []), ...evidence.map(item => typeof item === 'object' ? item.task_id ?? item.external_id ?? item.id : item)]
   const rows = new Map()
@@ -50,17 +55,20 @@ function affectedRows(issue, tasks) {
   return [...rows.values()]
 }
 
-function IssueCard({ issue, tasks, locked, busy, onEdit, onInputs, onVerifySources, hideActivities }) {
+function IssueCard({ issue, tasks, locked, busy, onEdit, onInputs, onVerifySources, onEvidence, onSources, hideActivities }) {
   const [expanded, setExpanded] = useState(false)
   const rows = affectedRows(issue, tasks)
   const visible = expanded ? rows : rows.slice(0, 25)
-  const sourceIssue = /reference_schedule|source_verification|source_schedule/.test(issue.code || '')
-  const needsInputs = inputIssues.has(issue.code) || sourceIssue
+  const sourceIssue = issue.code === 'duration_required' || /reference_schedule|source_verification|source_schedule/.test(issue.code || '')
+  const evidenceIssue = sourceIssue || /source_import|calendar_not_specified|evidence_graph_not_current/.test(issue.code || '')
+  const needsInputs = inputIssues.has(issue.code) || evidenceIssue
   const field = issue.field === 'assignee_id' ? 'owner' : issue.field === 'depends_on' ? 'dependencies' : issue.field
   return <article className="psc-issue">
     <div className="psc-issue-title"><AlertTriangle size={18} /><h4>{labels[issue.code] || issue.message || 'Schedule issue'}</h4></div>
-    {labels[issue.code] && <p>{issue.message || issue.detail}</p>}
+    {isTimingWarning(issue) && <p className="psc-advisory">Warning only. This does not prevent submission or baseline approval.</p>}
+    {labels[issue.code] && <p>{issue.grouped_issues?.length > 1 ? `${rows.length} activities need this review. Their individual records are listed below.` : issue.message || issue.detail}</p>}
     {(issue.resolution || resolutions[issue.code]) && <p className="psc-resolution">{issue.resolution || resolutions[issue.code]}</p>}
+    {needsInputs && <div className="psc-actions">{sourceIssue && onSources && <button type="button" disabled={busy} onClick={onSources}><FileText size={15} />Review extracted schedule</button>}{evidenceIssue && (onEvidence || onVerifySources) && <button type="button" disabled={busy} onClick={onEvidence || onVerifySources}><FileText size={15} />Review source evidence</button>}<button type="button" disabled={locked || busy} onClick={onInputs}><FileText size={15} />Project inputs</button></div>}
     {issue.resources?.length > 0 && <ul className="psc-resource-list">{issue.resources.map((resource, index) => <li key={resource.resource_id || index}><strong>{resource.resource_name || resource.resource_code || 'Resource'}</strong>: peak demand {number(resource.peak_demand)} / capacity {number(resource.capacity_per_day)} per day{resource.peak_date ? ` on ${date(resource.peak_date)}` : ''}.</li>)}</ul>}
     {rows.length > 0 && !hideActivities && <>
       <p className="psc-affected">{rows.length} affected {rows.length === 1 ? 'activity' : 'activities'}</p>
@@ -69,14 +77,15 @@ function IssueCard({ issue, tasks, locked, busy, onEdit, onInputs, onVerifySourc
       </tbody></table></div>
       {rows.length > 25 && <button type="button" className="psc-show-all" onClick={() => setExpanded(value => !value)}>{expanded ? 'Show first 25 activities' : `Show all ${rows.length} affected activities`}</button>}
     </>}
-    {needsInputs && <div className="psc-actions">{sourceIssue && onVerifySources && <button type="button" disabled={busy} onClick={onVerifySources}><FileText size={15} />Review source evidence</button>}<button type="button" disabled={locked || busy} onClick={onInputs}><FileText size={15} />Project inputs</button></div>}
-    {!rows.length && !needsInputs && <p className="psc-resolution">Check again to load the latest activity details. Review the named issue before submitting.</p>}
+    {!rows.length && !needsInputs && <p className="psc-resolution">Check again to load the latest activity details.{!isTimingWarning(issue) && ' Review the named issue before submitting.'}</p>}
   </article>
 }
-IssueCard.propTypes = { issue: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, locked: PropTypes.bool, busy: PropTypes.bool, onEdit: PropTypes.func.isRequired, onInputs: PropTypes.func.isRequired, onVerifySources: PropTypes.func, hideActivities: PropTypes.bool }
+IssueCard.propTypes = { issue: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, locked: PropTypes.bool, busy: PropTypes.bool, onEdit: PropTypes.func.isRequired, onInputs: PropTypes.func.isRequired, onVerifySources: PropTypes.func, onEvidence: PropTypes.func, onSources: PropTypes.func, hideActivities: PropTypes.bool }
 
-export default function PlanningScheduleChecks({ plan, tasks, locked, busy, onEdit, onInputs, onRefresh, onVerifySources }) {
-  const issues = (plan.blockers || []).map(normalize)
+export default function PlanningScheduleChecks({ plan, tasks, locked, busy, onEdit, onInputs, onRefresh, onVerifySources, onEvidence, onSources }) {
+  const { blockers, timingWarnings } = scheduleChecks(plan)
+  const blockerGroups = scheduleIssueGroups(blockers)
+  const issues = [...blockerGroups, ...timingWarnings]
   const targetIssue = issues.find(issue => issue.target_finish_date)
   const target = targetIssue?.target_finish_date || plan.project?.end_date
   const forecast = targetIssue?.forecast_finish_date || tasks.map(task => task.planned_finish_date).filter(Boolean).sort().at(-1)
@@ -84,10 +93,11 @@ export default function PlanningScheduleChecks({ plan, tasks, locked, busy, onEd
   const minFloat = Math.min(0, ...(negative ? affectedRows(negative, tasks) : tasks).map(task => Number(task.total_float_days) || 0))
   const recovery = negative?.minimum_float_days ?? minFloat
   return <section className="planning-schedule-checks" aria-label="Schedule issues">
-    <header className="psc-header"><div><h3 tabIndex={-1}>{issues.length ? 'Resolve schedule issues' : 'Schedule checks'}</h3><p>{issues.length ? `${issues.length} ${issues.length === 1 ? 'check needs' : 'checks need'} attention before submission. Edit an activity below, then save to update the checks.` : 'No blocking issues in the current draft. Submission checks the complete schedule again.'}</p></div><button type="button" disabled={busy} onClick={onRefresh}><RefreshCw size={15} />Check again</button></header>
+    <header className="psc-header"><div><h3 tabIndex={-1}>{blockers.length ? 'Resolve schedule issues' : timingWarnings.length ? 'Review timing warnings' : 'Schedule checks'}</h3><p>{blockers.length ? `${blockerGroups.length} review ${blockerGroups.length === 1 ? 'action needs' : 'actions need'} attention before submission. Repeated findings are grouped below; every affected activity remains available for review.` : timingWarnings.length ? 'Timing warnings do not prevent submission or baseline approval. Review the source evidence; the required project dates stay unchanged.' : 'No blocking issues in the current draft. Submission checks the complete schedule again.'}</p></div><button type="button" disabled={busy} onClick={onRefresh}><RefreshCw size={15} />Check again</button></header>
+    {blockers.some(issue => issue.code === 'duration_required') && <p className="psc-resolution">Project start and finish define the planning window. Activity timing still needs source durations, a working calendar and verified sequence links.</p>}
     {issues.length > 0 && target && forecast && <dl className="psc-dates"><div><dt>Required finish</dt><dd>{date(target)}</dd></div><div><dt>Calculated finish</dt><dd className={forecast > target ? 'psc-negative' : undefined}>{date(forecast)}</dd></div>{Number(recovery) < 0 && <div><dt>Time to recover</dt><dd className="psc-negative">{number(Math.abs(recovery))} working days</dd></div>}</dl>}
     {!issues.length && <p className="psc-clear"><CheckCircle2 size={18} />Current draft checks are clear.</p>}
-    {issues.map((issue, index) => <IssueCard key={`${issue.code}-${index}`} issue={issue} tasks={tasks} locked={locked} busy={busy} onEdit={onEdit} onInputs={onInputs} onVerifySources={onVerifySources} hideActivities={Boolean(negative && ['contract_finish_overrun', 'contractual_finish_overrun'].includes(issue.code))} />)}
+    {issues.map((issue, index) => <IssueCard key={`${issue.code}-${index}`} issue={issue} tasks={tasks} locked={locked} busy={busy} onEdit={onEdit} onInputs={onInputs} onVerifySources={onVerifySources} onEvidence={onEvidence} onSources={onSources} hideActivities={Boolean(negative && ['contract_finish_overrun', 'contractual_finish_overrun'].includes(issue.code))} />)}
   </section>
 }
-PlanningScheduleChecks.propTypes = { plan: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, locked: PropTypes.bool, busy: PropTypes.bool, onEdit: PropTypes.func.isRequired, onInputs: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired, onVerifySources: PropTypes.func }
+PlanningScheduleChecks.propTypes = { plan: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, locked: PropTypes.bool, busy: PropTypes.bool, onEdit: PropTypes.func.isRequired, onInputs: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired, onVerifySources: PropTypes.func, onEvidence: PropTypes.func, onSources: PropTypes.func }

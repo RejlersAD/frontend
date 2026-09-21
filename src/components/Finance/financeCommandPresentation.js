@@ -37,7 +37,7 @@ export function currencyBalance(source, currency) {
   if (!sourceReadable(source)) return { status: source?.status || 'unavailable', outstanding: null, overdue: null, invoice_count: null, buckets: [] };
   if (!currency) return { status: 'unavailable', outstanding: null, overdue: null, invoice_count: source.open_count === 0 ? 0 : null, buckets: [] };
   const row = source.by_currency.find(item => item.currency === currency);
-  if (!row && source.missing_currency_count > 0) return { status: 'incomplete', outstanding: null, overdue: null, invoice_count: null, buckets: [] };
+  if (!row && source.missing_currency_count > 0) return { status: 'incomplete', missing_currency_count: source.missing_currency_count, outstanding: null, overdue: null, invoice_count: null, buckets: [] };
   if (!row) return { status: 'available', outstanding: 0, overdue: 0, invoice_count: 0, buckets: [], oldest_due_date: null };
   return row.status === 'available' ? row : { ...row, outstanding: null, overdue: null };
 }
@@ -57,7 +57,14 @@ export function currencyPositions(data) {
 export function sourceMessage(source, fallback = 'Source not connected') {
   if (source?.status === 'restricted') return 'Access restricted';
   if (source?.status === 'error') return 'Source temporarily unavailable';
-  if (source?.status === 'incomplete') return 'Some balances are not recorded';
+  if (source?.status === 'incomplete') {
+    const balances = financeCount(source.missing_balance_count);
+    const currencies = financeCount(source.missing_currency_count);
+    const issues = [];
+    if (balances > 0) issues.push(`${balances} invoice ${balances === 1 ? 'balance' : 'balances'} missing`);
+    if (currencies > 0) issues.push(`${currencies} invoice ${currencies === 1 ? 'currency' : 'currencies'} missing`);
+    return issues.join(' · ') || 'Some balances are not recorded';
+  }
   return source?.reason || fallback;
 }
 
@@ -65,15 +72,19 @@ export function financeKpis(data, currency) {
   const arSource = data?.sources?.receivables; const apSource = data?.sources?.payables;
   const ar = currencyBalance(arSource, currency); const ap = currencyBalance(apSource, currency);
   const arCount = financeCount(ar.invoice_count); const apCount = financeCount(ap.invoice_count);
+  const arIssue = ar.status === 'incomplete' ? sourceMessage(ar) : null;
+  const apIssue = ap.status === 'incomplete' ? sourceMessage(ap) : null;
+  const invoiceNote = (count, source, issue) => count === null ? sourceMessage(source) : `${count} open ${count === 1 ? 'invoice' : 'invoices'}${issue ? ` · ${issue}` : ''}`;
+  const missingReason = issue => `${issue}. Totals are withheld until the missing balances or currencies are recorded in the invoice register.`;
   const overdueBuckets = (ar.buckets || []).filter(row => ['days_1_30', 'days_31_60', 'days_61_90', 'over90'].includes(row.id));
   const overdueCount = ar.status === 'available' && overdueBuckets.every(row => financeCount(row.count) !== null) ? overdueBuckets.reduce((total, row) => total + financeCount(row.count), 0) : null;
   const unavailable = id => data?.unavailable_metrics?.find(metric => metric.id === id)?.reason;
   return [
     { id: 'cash', label: 'Cash position', value: null, text: '—', tone: 'green', note: 'Treasury source not connected', reason: unavailable('cash_position') || 'Approved bank or treasury balances are not connected.' },
-    { id: 'receivables', label: 'Receivables outstanding', value: ar.outstanding, text: financeMoney(ar.outstanding, currency, true), tone: 'blue', note: arCount === null ? sourceMessage(arSource) : `${arCount} open ${arCount === 1 ? 'invoice' : 'invoices'}`, reason: 'Recorded outstanding customer balances in the selected original currency.' },
-    { id: 'payables', label: 'Payables outstanding', value: ap.outstanding, text: financeMoney(ap.outstanding, currency, true), tone: 'slate', note: apCount === null ? sourceMessage(apSource) : `${apCount} open ${apCount === 1 ? 'invoice' : 'invoices'}`, reason: 'Recorded supplier invoice totals less recorded paid amounts, in the selected original currency.' },
+    { id: 'receivables', label: 'Receivables outstanding', value: ar.outstanding, text: financeMoney(ar.outstanding, currency, true), tone: 'blue', note: invoiceNote(arCount, arSource, arIssue), reason: arIssue ? missingReason(arIssue) : 'Recorded outstanding customer balances in the selected original currency.' },
+    { id: 'payables', label: 'Payables outstanding', value: ap.outstanding, text: financeMoney(ap.outstanding, currency, true), tone: 'slate', note: invoiceNote(apCount, apSource, apIssue), reason: apIssue ? missingReason(apIssue) : 'Recorded supplier invoice totals less recorded paid amounts, in the selected original currency.' },
     { id: 'working_capital', label: 'Net working capital', value: null, text: '—', tone: 'green', note: 'Full balance sheet not connected', reason: unavailable('net_working_capital') || 'Other current assets and liabilities are not connected. Net invoice exposure appears separately below.' },
-    { id: 'overdue', label: 'Overdue exposure', value: ar.overdue, text: financeMoney(ar.overdue, currency, true), tone: 'red', note: overdueCount === null ? sourceMessage(arSource) : `${overdueCount} receivables past due`, reason: 'Outstanding receivables with an invoice due date before the reporting date; invoice payment dates are not approval SLAs.' },
+    { id: 'overdue', label: 'Overdue exposure', value: ar.overdue, text: financeMoney(ar.overdue, currency, true), tone: 'red', note: overdueCount === null ? arIssue || sourceMessage(arSource) : `${overdueCount} receivables past due`, reason: arIssue ? missingReason(arIssue) : 'Outstanding receivables with an invoice due date before the reporting date; invoice payment dates are not approval SLAs.' },
   ];
 }
 
@@ -113,8 +124,10 @@ export function financeCoverage(data) {
   const sources = [data?.sources?.receivables, data?.sources?.payables];
   if (!sources.every(sourceReadable)) return null;
   const counts = sources.map(source => source.balance_coverage);
-  if (!counts.every(row => financeCount(row?.known_count) !== null && financeCount(row?.total_count) !== null)) return null;
+  if (!counts.every(row => financeCount(row?.known_count) !== null && financeCount(row?.total_count) !== null && Number(row.known_count) <= Number(row.total_count))) return null;
   const total = counts.reduce((sum, row) => sum + financeCount(row.total_count), 0);
   const known = counts.reduce((sum, row) => sum + financeCount(row.known_count), 0);
-  return total > 0 && known <= total ? Math.round(known / total * 100) : null;
+  if (total === 0) return null;
+  // Only an entirely recorded cohort may display 100%, even after rounding.
+  return known === total ? 100 : Math.min(99.9, Math.round(known / total * 1000) / 10);
 }

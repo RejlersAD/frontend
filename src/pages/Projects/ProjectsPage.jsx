@@ -209,10 +209,11 @@ export default function ProjectsPage() {
     if (!(await radaiConfirm(PROJECT_COPY.deleteConfirm(selectedProject.name)))) return
     try {
       await PC.deleteProject(selectedProject.id)
-      setToast({ type: 'success', message: `Deleted “${selectedProject.name}”.` })
+      setToast({ type: 'success', message: `Archived “${selectedProject.name}”.` })
       await reloadProjects({ selectId: null })
     } catch (e) {
-      setToast({ type: 'error', message: e?.message || 'Delete failed.' })
+      const detail = e?.response?.data?.detail || e?.response?.data?.error
+      setToast({ type: 'error', message: typeof detail === 'string' ? detail : 'Unable to archive this project. Please try again.' })
     }
   }
 

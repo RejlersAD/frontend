@@ -8,6 +8,7 @@ import PlanningScheduleCanvas from './PlanningScheduleCanvas'
 import PlanningSequenceReview from './PlanningSequenceReview'
 import PlanningSourceVerification from './PlanningSourceVerification'
 import PlanningScheduleChecks from './PlanningScheduleChecks'
+import { scheduleChecks } from './scheduleCheckPolicy'
 import ScheduleNotice from './ScheduleNotice'
 import PlanningEmployeeActivity from './PlanningEmployeeActivity'
 import './PlanningReviewPanel.css'
@@ -35,7 +36,7 @@ const editableTask = task => ({
 })
 const stateLabel = { inputs: 'Inputs required', review: 'Draft plan', submitted: 'Awaiting approval', baselined: 'Baseline published' }
 
-export default function PlanningReviewPanel({ projectId, enterpriseProject, stage = 'review', planningMode = 'document', canEdit = true, refreshKey = 0, onBack, onInputs, onAnalyze, onCompare, onOpenAdvanced, onContinue, onLoaded, onSavingChanged }) {
+export default function PlanningReviewPanel({ projectId, enterpriseProject, stage = 'review', planningMode = 'document', canEdit = true, refreshKey = 0, selectedVersionId: controlledVersionId, onVersionChange, onBack, onInputs, onAnalyze, onRebuild, onCompare, onOpenAdvanced, onContinue, onLoaded, onSavingChanged }) {
   const [plan, setPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -46,7 +47,9 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
   const [notice, setNotice] = useState('')
   const dismissNotice = useCallback(() => setNotice(''), [])
   const [refresh, setRefresh] = useState(0)
-  const [selectedVersionId, setSelectedVersionId] = useState('current')
+  const [localVersionId, setLocalVersionId] = useState('current')
+  const selectedVersionId = controlledVersionId ?? localVersionId
+  const setSelectedVersionId = value => { if (onVersionChange) onVersionChange(String(value)); else setLocalVersionId(String(value)) }
   const [approverId, setApproverId] = useState('')
   const [dialog, setDialog] = useState(null)
   const pending = useRef(false)
@@ -91,11 +94,7 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
   }, [plan])
   const groups = disciplines.map(group => ({ ...group, tasks: tasks.filter(task => task.discipline === group.code) })).filter(group => group.tasks.length)
   const recentChecks = submissionChecks?.endpoint === endpoint && submissionChecks.revision === plan?.revision ? submissionChecks.blockers : []
-  const blockers = [...new Map([...(plan?.blockers || []), ...(recentChecks || [])].map((row, index) => {
-    const item = typeof row === 'string' ? { code: `blocker-${index}`, message: row } : row
-    return [`${item.code || item.message}:${item.task_id || ''}`, item]
-  })).values()]
-  const warnings = (plan?.warnings || []).map(row => typeof row === 'string' ? { message: row } : row)
+  const { blockers, warnings, otherWarnings } = scheduleChecks(plan || {}, recentChecks || [])
   const unassigned = tasks.filter(task => !task.assignee_id)
   const proposed = tasks.filter(task => task.duration_source === 'proposed')
   const dates = tasks.flatMap(task => [task.planned_start_date, task.planned_finish_date]).filter(Boolean).sort()
@@ -138,6 +137,12 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
   }
   const publish = () => mutate(() => apiClient.post(`${endpoint}approve-publish/`, { revision: plan.revision }), 'Plan approved and baseline published.')
   const reopen = () => mutate(() => apiClient.post(`${endpoint}reopen/`, { revision: plan.revision }), 'A new draft version is ready. The published baseline is retained.')
+  const calculate = () => mutate(() => apiClient.post(`${endpoint}calculate/`, { revision: plan.revision }), 'Schedule calculation completed. Review the dates and float before approval.')
+  const validate = () => mutate(() => apiClient.post(`${endpoint}validate/`, { revision: plan.revision }), 'Schedule validation completed. Review the findings before approval.')
+  const activateVersion = async versionId => {
+    const result = await mutate(() => apiClient.post(`${endpoint}select-version/`, { revision: plan.master_revision, version_id: versionId }), versionId == null ? 'The preserved working draft is open.' : 'This schedule version is now active in Master Schedule.')
+    if (result) { setSelectedVersionId('current'); setRefresh(value => value + 1) }
+  }
   const buildSchedule = async event => {
     if (pending.current || locked || !tasks.length) return
     sequenceTrigger.current = event?.currentTarget || document.activeElement
@@ -145,7 +150,7 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
     const requestContext = viewContext
     pending.current = true; setBuildingSchedule(true); setError(''); setNotice('')
     try {
-      const response = await apiClient.post(`${endpoint}propose-schedule/`, { revision: plan.revision, workflow_mode: 'standard_five' })
+      const response = await apiClient.post(`${endpoint}propose-schedule/`, { revision: plan.revision, workflow_mode: 'source_only' })
       if (!alive.current || currentEndpoint.current !== requestEndpoint || currentViewContext.current !== requestContext) return
       setDialog({ type: 'sequence', proposal: response.data.proposal, preview: response.data.plan })
     } catch (reason) { if (alive.current && currentViewContext.current === requestContext) setError(messageFor(reason)) }
@@ -171,28 +176,30 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
 
   return <section className="planning-review work-breakdown" aria-label={approval ? 'Approve and publish plan' : 'Review project plan'} aria-busy={saving || loading || buildingSchedule}>
     {error && !['task', 'sequence'].includes(dialog?.type) && <p className="wbd-error" role="alert">{error}</p>}
-    {buildingSchedule && <div className="prv-build-notice" role="status"><Loader2 size={18} className="animate-spin" />Preparing proposed durations, dates and dependencies…</div>}
+    {buildingSchedule && <div className="prv-build-notice" role="status"><Loader2 size={18} className="animate-spin" />Reviewing source activities, durations, dates and dependencies…</div>}
     {notice && <ScheduleNotice message={notice} onClose={dismissNotice} />}
     {plan.stale_inputs && <p className="prv-stale" role="alert"><AlertTriangle size={18} /><span>Project inputs have changed. Return to inputs and rebuild the plan before submitting or publishing.</span><button type="button" className="wbd-link" disabled={saving} onClick={onBack}>Review inputs<ArrowRight size={15} /></button></p>}
-    {approval && plan.state !== 'baselined' && <div className="prv-schedule-checks"><PlanningScheduleChecks plan={{ ...plan, blockers }} tasks={tasks} locked={repairLocked} busy={saving || loading || buildingSchedule} onEdit={edit} onInputs={inputs} onRefresh={() => setRefresh(value => value + 1)} onVerifySources={() => setDialog({ type: 'sources' })} /></div>}
+    {approval && plan.state !== 'baselined' && <div className="prv-schedule-checks"><PlanningScheduleChecks plan={{ ...plan, blockers, warnings }} tasks={tasks} locked={repairLocked} busy={saving || loading || buildingSchedule} onEdit={edit} onInputs={inputs} onRefresh={() => setRefresh(value => value + 1)} onVerifySources={() => setDialog({ type: 'sources' })} /></div>}
     {approval && <div className="prv-metrics" aria-label="Plan summary"><div><ClipboardCheck size={20} /><span><strong>{tasks.length}</strong>Tasks / deliverables</span></div><div><CalendarDays size={20} /><span><strong>{start ? dateLabel(start) : 'Not set'}</strong>Planned start</span></div><div><Clock3 size={20} /><span><strong>{finish ? dateLabel(finish) : 'Not set'}</strong>Planned finish</span></div><div className={unassigned.length ? 'prv-warning' : 'prv-good'}><User size={20} /><span><strong>{unassigned.length}</strong>Unassigned tasks</span></div></div>}
     {approval ? <div className="prv-approval-grid">
       <section className="wbd-card prv-approval-card"><div className="prv-approval-icon"><ShieldCheck size={27} /></div><header><h2>{plan.state === 'baselined' ? 'Baseline published' : 'Approve & publish'}</h2><p>{plan.state === 'baselined' ? 'The approved plan is available for project control.' : 'Review the project plan before publishing its baseline.'}</p></header><dl><div><dt>Status</dt><dd>{stateLabel[plan.state] || plan.state}</dd></div><div><dt>Plan revision</dt><dd>{plan.revision}</dd></div><div><dt>Workstreams / disciplines</dt><dd>{groups.length}</dd></div><div><dt>Planned effort</dt><dd>{formatNumber(tasks.reduce((sum, task) => sum + Number(task.effort_hours || 0), 0))} hours</dd></div><div><dt>Proposed durations</dt><dd>{proposed.length}</dd></div></dl>{plan.state === 'submitted' && !canPublish && <p className="prv-note"><ShieldCheck size={17} />Awaiting an authorized approver.</p>}{plan.state === 'baselined' && <p className="prv-published"><CheckCircle2 size={18} />{plan.baseline?.name || 'Project baseline'} published</p>}</section>
       <section className="wbd-card"><h2>Included in this plan</h2><ul className="prv-discipline-list">{groups.map(group => <li key={group.code}><span>{group.name}</span><strong>{group.tasks.length} {group.tasks.length === 1 ? 'task' : 'tasks'}</strong></li>)}</ul><div className="prv-sources"><h3>Source documents</h3>{(plan.source_documents || []).length ? plan.source_documents.map(file => <p key={file.id}><FileText size={16} />{file.name || file.original_filename}</p>) : <p>Project scope and planning inputs</p>}</div></section>
-    </div> : <PlanningScheduleCanvas plan={{ ...plan, blockers, project: {
+    </div> : <PlanningScheduleCanvas plan={{ ...plan, blockers, warnings, project: {
       id: projectId, code: enterpriseProject?.code || '', name: enterpriseProject?.name || '',
       phase: enterpriseProject?.custom_fields?.project_phase || '',
       start_date: enterpriseProject?.start_date || null, end_date: enterpriseProject?.end_date || null,
       ...(plan.project || {}),
     } }} tasks={tasks} disciplines={disciplines} saving={saving} locked={locked} onBuildSchedule={buildSchedule} buildingSchedule={buildingSchedule}
       onEdit={edit} onEmployee={employee} onAdd={() => { setError(''); setDialog({ type: 'task', task: newTask(disciplines[0].code), isNew: true }) }}
-      onInputs={inputs} onAnalyze={onAnalyze} onRefresh={() => setRefresh(value => value + 1)} onSave={saveCurrent} onNewVersion={reopen} onCompare={onCompare}
+      onInputs={inputs} onAnalyze={onAnalyze} onRebuild={planningMode === 'document' && !locked ? onRebuild : undefined} onRefresh={() => setRefresh(value => value + 1)} onSave={saveCurrent} onNewVersion={reopen} onCompare={onCompare}
       onVerifySources={() => setDialog({ type: 'sources' })}
+      onOpenCreatedSchedule={result => { setSelectedVersionId('current'); setRefresh(value => value + 1); setNotice(result?.notice || 'Accepted inputs opened in Master Schedule. Calculate and review this draft before approval.') }}
+      onCalculate={calculate} onValidate={validate} onActivateVersion={activateVersion}
       selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onOpenAdvanced={onOpenAdvanced ? () => onOpenAdvanced(plan) : undefined} onAddWorkstream={planningMode === 'manual' ? () => { setError(''); setDialog({ type: 'workstream' }) } : undefined}
       onApproval={plan.state === 'baselined' || plan.viewing_history || plan.legacy_read_only || selectedVersionId !== 'current' ? null : () => onContinue ? onContinue(plan) : submit()}
       checksOpenRequest={checksOpenRequest} checking={loading}
       approvalDisabled={!tasks.length || (!onContinue && !canSubmit)} approvalLabel="Review & approve" />}
-    {approval && (warnings.length > 0 || (plan.assumptions || []).length > 0) && <section className="wbd-card prv-review-notes"><h2>{warnings.length ? 'Review warnings' : 'Planning assumptions'}</h2>{warnings.length > 0 && <ul className="prv-blockers">{warnings.map((item, index) => <li key={index}><AlertTriangle size={17} /><span>{item.message || item.description || item.detail || item.code}</span></li>)}</ul>}{(plan.assumptions || []).length > 0 && <ul className="prv-assumptions">{plan.assumptions.map((item, index) => <li key={index}><Sparkles size={15} /><span>{typeof item === 'string' ? item : item.message || item.description || item.label}</span></li>)}</ul>}</section>}
+    {approval && (otherWarnings.length > 0 || (plan.assumptions || []).length > 0) && <section className="wbd-card prv-review-notes"><h2>{otherWarnings.length ? 'Review warnings' : 'Planning assumptions'}</h2>{otherWarnings.length > 0 && <ul className="prv-blockers">{otherWarnings.map((item, index) => <li key={index}><AlertTriangle size={17} /><span>{item.message || item.description || item.detail || item.code}</span></li>)}</ul>}{(plan.assumptions || []).length > 0 && <ul className="prv-assumptions">{plan.assumptions.map((item, index) => <li key={index}><Sparkles size={15} /><span>{typeof item === 'string' ? item : item.message || item.description || item.label}</span></li>)}</ul>}</section>}
     {approval && plan.state === 'review' && plan.approvers?.length > 0 && <label className="prv-approver">Approver<select aria-label="Plan approver" value={approverId} disabled={saving} onChange={event => setApproverId(event.target.value)}><option value="">Project approval authority</option>{plan.approvers.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}
     {approval && <footer className="prv-footer"><button type="button" className="wbd-button wbd-secondary" disabled={saving} onClick={onBack}><ArrowLeft size={16} />{approval ? 'Back to review' : 'Back to inputs'}</button><span>{stateLabel[plan.state] || 'Draft plan'} · Revision {plan.revision}</span>{plan.state === 'baselined' ? <span className="prv-published"><CheckCircle2 size={18} />Baseline published</span> : approval && plan.state === 'submitted' ? <button type="button" className="wbd-button wbd-primary" disabled={saving || !canPublish} onClick={publish}>{saving ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={17} />}Approve & publish baseline</button> : plan.state === 'submitted' ? <button type="button" className="wbd-button wbd-primary" disabled={saving} onClick={() => onContinue?.(plan)}>View approval<ArrowRight size={16} /></button> : <button type="button" className="wbd-button wbd-primary" disabled={saving || !canSubmit} onClick={submit}>{saving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}Submit for approval</button>}</footer>}
     {dialog?.type === 'sequence' && <PlanningSequenceReview currentPlan={plan} previewPlan={dialog.preview} proposal={dialog.proposal} returnFocusElement={sequenceTrigger.current} busy={saving} error={error} onClose={() => { if (!saving) { setDialog(null); setError('') } }} onApply={async () => {
@@ -216,6 +223,6 @@ PlanningReviewPanel.propTypes = {
   projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   enterpriseProject: PropTypes.object,
   stage: PropTypes.oneOf(['review', 'approval']), planningMode: PropTypes.oneOf(['document', 'manual']), canEdit: PropTypes.bool,
-  refreshKey: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), onBack: PropTypes.func, onInputs: PropTypes.func, onAnalyze: PropTypes.func, onCompare: PropTypes.func, onOpenAdvanced: PropTypes.func,
-  onContinue: PropTypes.func, onLoaded: PropTypes.func, onSavingChanged: PropTypes.func,
+  refreshKey: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), onBack: PropTypes.func, onInputs: PropTypes.func, onAnalyze: PropTypes.func, onRebuild: PropTypes.func, onCompare: PropTypes.func, onOpenAdvanced: PropTypes.func,
+  onContinue: PropTypes.func, onLoaded: PropTypes.func, onSavingChanged: PropTypes.func, selectedVersionId: PropTypes.string, onVersionChange: PropTypes.func,
 }

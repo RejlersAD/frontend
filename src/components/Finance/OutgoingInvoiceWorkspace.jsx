@@ -1,23 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightIcon, ArrowUpTrayIcon, Bars3Icon, BookmarkIcon, ChartBarIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ClockIcon, EllipsisHorizontalIcon, MagnifyingGlassIcon, PlusCircleIcon, AdjustmentsHorizontalIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import invoiceTrackerService from '../../services/invoiceTracker.service';
 import { PAYMENT_STATUSES } from '../../config/invoiceTracker.config';
 import OutgoingInvoiceReview from './OutgoingInvoiceReview';
 import OutgoingInvoiceCreate, { trapOutgoingDialogFocus } from './OutgoingInvoiceCreate';
-import { OUTGOING_QUEUES, OUTGOING_FILTERS, OUTGOING_AGES, outgoingCollectionCurrency, outgoingCsv, outgoingDate, outgoingMoney, outgoingNumber, outgoingState, outgoingToday, loadOutgoingExport } from './outgoingInvoicePresentation';
+import { OUTGOING_QUEUES, OUTGOING_FILTERS, OUTGOING_AGES, outgoingCollectionCurrency, outgoingCsv, outgoingDate, outgoingMoney, outgoingBalance, outgoingNumber, outgoingState, outgoingToday, loadOutgoingExport } from './outgoingInvoicePresentation';
 import './OutgoingInvoiceWorkspace.css';
 
-const Select = ({ label, value, options, onChange }) => <select aria-label={label} title={label} value={value} onChange={event => onChange(event.target.value)}><option value="">{label}</option>{options.map(option => { const [id, text] = Array.isArray(option) ? option : [option.value ?? option, option.label ?? option.value ?? option]; return <option key={id} value={id}>{text}</option>; })}</select>;
+const Select = ({ label, value, options, onChange }) => <select aria-label={label} title={label} value={value} onChange={event => onChange(event.target.value)}><option value="">{label}</option>{value && !options.some(option => String(Array.isArray(option) ? option[0] : option.value ?? option) === value) && <option value={value}>{value}</option>}{options.map(option => { const [id, text] = Array.isArray(option) ? option : [option.value ?? option, option.label ?? option.value ?? option]; return <option key={id} value={id}>{text}</option>; })}</select>;
 Select.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string.isRequired, options: PropTypes.array.isRequired, onChange: PropTypes.func.isRequired };
 const failText = error => error?.response?.data?.detail || error?.message || 'The invoice register could not be loaded.';
 const countText = value => outgoingNumber(value)?.toLocaleString('en-GB') ?? '—';
 
 export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState(OUTGOING_FILTERS);
-  const [queue, setQueue] = useState('overdue');
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState(() => ({ ...OUTGOING_FILTERS, ...Object.fromEntries(['currency', 'company', 'account'].filter(key => searchParams.has(key)).map(key => [key, searchParams.get(key)])) }));
+  const [queue, setQueue] = useState(() => ['all', 'open', 'overdue', 'due_soon', 'partial', 'paid'].includes(searchParams.get('queue')) ? searchParams.get('queue') : 'overdue');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(7);
   const [ordering, setOrdering] = useState('due_date');
@@ -140,7 +141,7 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
             <td><button type="button" className="oc-invoice-link" onClick={() => selectInvoice(invoice)}>{invoice.invoice_number || 'No reference'}</button></td>
             <td><strong className="oc-customer" title={invoice.account || invoice.company}>{invoice.account || invoice.company || 'Not recorded'}</strong><span className="oc-project" title={invoice.project_name || invoice.rad_project_no}>{invoice.rad_project_no || invoice.project_id || invoice.project_name || '—'}</span></td>
             <td>{outgoingDate(invoice.invoice_date)}</td><td>{outgoingDate(invoice.due_date)}</td>
-            <td className="oc-money" title={!invoice.currency ? 'Currency not recorded' : undefined}>{outgoingMoney(invoice.balance_to_be_received, invoice.currency)}</td>
+            <td className="oc-money" title={!invoice.currency ? 'Currency not recorded' : undefined}>{outgoingMoney(outgoingBalance(invoice), invoice.currency)}</td>
             <td><span className={`oc-badge oc-${state.tone}`}>{state.label}</span></td><td>{invoice.pm || <span className="oc-muted">Not recorded</span>}</td><td>{state.next}</td>
             <td><button type="button" aria-label={`Review invoice ${invoice.invoice_number}`} className={`oc-row-button ${active ? 'oc-primary' : ''}`} onClick={() => selectInvoice(invoice)}>{state.label === 'Settled' ? 'Open' : 'Review'}</button></td>
           </tr>; })}</tbody></table></div>

@@ -1,118 +1,148 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router-dom';
-import {
-  ArrowPathIcon, BanknotesIcon, ChartBarIcon, ChevronRightIcon, ClipboardDocumentListIcon,
-  Cog6ToothIcon, DocumentArrowDownIcon, DocumentTextIcon, ExclamationTriangleIcon,
-  InformationCircleIcon, ShieldCheckIcon, CircleStackIcon, XMarkIcon, WalletIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightIcon, CalendarDaysIcon, ChevronDownIcon, EllipsisHorizontalIcon, InformationCircleIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import financeService from '../../services/finance.service';
-import { CashWorkingCapitalTrend, ReceivablesAgeing } from './FinanceCommandCharts';
-import { exportFinanceCommandPdf } from './financeCommandPdf';
-import {
-  currencyPositions, financeControls, financeCount, financeCoverage, financeDate,
-  financeKpis, financeMoney, financeProcesses, financeRoute, financeTrend, sourceMessage,
-} from './financeCommandPresentation';
+import { financeCount, financeDate, financeNumber } from './financeCommandPresentation';
+import { RECEIVABLE_AGES, RECEIVABLE_KPIS, receivableAlert, receivableChartRows, receivableCollectionRoute, receivableCustomer, receivableCustomerRows, receivableDate, receivableMetricNote, receivableMoney, receivableNumber, receivableRawValue, receivableReadable, receivablesCsv, receivablesToday, receivableValue } from './financeReceivablesPresentation';
+import { CustomerBalancesChart, ExposureDonut, OverdueTrendChart, PaymentHistoryChart } from './ReceivablesDashboardCharts';
+import CustomerInvoicesSection from './CustomerInvoicesSection';
+import { WorkbookSummaryCards, PaymentStatusSummary } from './WorkbookSummary';
 import './FinanceCommandCenter.css';
 
-const KPI_ICONS = [WalletIcon, DocumentTextIcon, BanknotesIcon, ChartBarIcon, ExclamationTriangleIcon];
-const IconHeading = ({ icon: Icon, children, extra }) => <header className="finance-command-panel-heading"><h2><Icon aria-hidden="true" />{children}</h2>{extra}</header>;
-IconHeading.propTypes = { icon: PropTypes.elementType.isRequired, children: PropTypes.node.isRequired, extra: PropTypes.node };
+function Panel({ title, className = '', children, extra, info }) {
+  return <section className={`ar-panel ${className}`} aria-label={title}><header className="ar-panel-heading"><h2>{title}{info && <span className="ar-info" role="img" tabIndex={0} aria-label={info} title={info}><InformationCircleIcon aria-hidden="true" /></span>}</h2>{extra}</header>{children}</section>;
+}
+Panel.propTypes = { title: PropTypes.string.isRequired, className: PropTypes.string, children: PropTypes.node, extra: PropTypes.node, info: PropTypes.string };
 
-const Progress = ({ percentage, tone = 'blue', label }) => <div className={`finance-command-progress finance-command-${tone}`} title={label}><span role={percentage === null ? undefined : 'meter'} aria-label={label} aria-valuenow={percentage ?? undefined} aria-valuemin={percentage === null ? undefined : 0} aria-valuemax={percentage === null ? undefined : 100}><i style={{ width: percentage === null ? '0%' : `${Math.max(0, Math.min(100, percentage))}%` }} /></span><small>{percentage === null ? '—' : `${Math.round(percentage)}%`}</small></div>;
-Progress.propTypes = { percentage: PropTypes.number, tone: PropTypes.string, label: PropTypes.string.isRequired };
+function CustomerTable({ rows, totals, total, currency, allCount, collectionRoute }) {
+  const unknown = rows.some(row => row.unknown_due_date_count > 0) || (totals || []).some(row => row.id === 'unknown_due_date' && row.receivables?.count > 0);
+  const ages = [...RECEIVABLE_AGES, ...(unknown ? [['unknown_due_date', 'Unknown']] : [])];
+  const maxima = Object.fromEntries(ages.map(([key]) => [key, Math.max(1, ...rows.map(row => row.buckets[key] || 0))]));
+  return <div className="ar-table-scroll" tabIndex={0} role="region" aria-label="Customer ageing summary"><table className="ar-table ar-ageing-table" data-table-typography="preserve"><caption className="sr-only">{rows.length} of {allCount} customers. Grand total includes all customers. Amounts in {currency}; asterisks indicate recorded subtotals.</caption>
+    <thead><tr><th scope="col">Customer</th>{ages.map(([id, label]) => <th scope="col" key={id}>{label}</th>)}<th scope="col">Amount due</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.company}>
+      <th scope="row">{row.company ? <Link to={collectionRoute(row.company)} title={row.customer}>{row.customer}</Link> : row.customer}</th>
+      {ages.map(([id, label]) => <td key={id} className={`ar-heat ar-heat-${id}`} style={{ '--ar-heat': row.buckets[id] > 0 ? 0.16 + (row.buckets[id] / maxima[id]) * 0.25 : 0 }} title={`${row.customer}, ${label}: ${receivableMoney(row.bucket_display[id], currency)}`}>
+        {receivableNumber(row.bucket_display[id])}{row.bucket_metrics?.[id]?.partial && <abbr title="Recorded subtotal; some balances are missing">*</abbr>}
+      </td>)}<td className="ar-total-heat">{receivableNumber(row.display_amount)}{row.partial && <abbr title="Recorded subtotal; some invoice balances are missing">*</abbr>}</td>
+    </tr>)}</tbody>
+    {rows.length > 0 && <tfoot><tr><th scope="row">Grand total</th>{ages.map(([id]) => { const metric = totals?.find(row => row.id === id)?.receivables; return <td key={id}>{receivableNumber(receivableRawValue(metric))}{metric?.partial && <abbr title="Recorded subtotal">*</abbr>}</td>; })}<td>{receivableNumber(receivableRawValue(total))}{total?.partial && <abbr title="Recorded subtotal">*</abbr>}</td></tr></tfoot>}
+  </table>{!rows.length && <p className="ar-table-empty">No customer balances available for these filters.</p>}</div>;
+}
+CustomerTable.propTypes = { rows: PropTypes.array.isRequired, totals: PropTypes.array, total: PropTypes.object, currency: PropTypes.string, allCount: PropTypes.number, collectionRoute: PropTypes.func.isRequired };
 
-const PositionTable = ({ rows }) => <div className="finance-command-table-scroll" role="region" tabIndex={0} aria-label="Currency position table"><table className="finance-command-table finance-command-position-table"><caption className="sr-only">Balances in original currencies; net exposure is receivables less payables.</caption><thead><tr><th scope="col">Currency</th><th scope="col">A/R outstanding</th><th scope="col">A/P outstanding</th><th scope="col">Net exposure</th><th scope="col">Oldest due</th></tr></thead><tbody>{rows.map(row => <tr key={row.currency}><th scope="row">{row.currency === 'UNSPECIFIED' ? 'Unspecified' : row.currency}</th><td>{financeMoney(row.receivables, row.currency)}</td><td>{financeMoney(row.payables, row.currency)}</td><td className={row.net === null ? '' : row.net < 0 ? 'finance-command-negative' : 'finance-command-positive'}>{financeMoney(row.net, row.currency)}</td><td>{row.oldest_due_date ? financeDate(row.oldest_due_date) : '—'}</td></tr>)}</tbody></table>{!rows.length && <p className="finance-command-empty-note">No currency balances are available from the connected registers.</p>}</div>;
-PositionTable.propTypes = { rows: PropTypes.array.isRequired };
+function InvoiceTable({ rows, total, currency, count }) {
+  return <div className="ar-table-scroll" tabIndex={0} role="region" aria-label="Unpaid invoices requiring action"><table className="ar-table ar-invoice-table" data-table-typography="preserve"><caption className="sr-only">Priority invoices shown; grand total covers all {count ?? ''} open invoices in {currency}. Owners are recorded project managers.</caption>
+    <thead><tr><th scope="col">Customer</th><th scope="col">Invoice</th><th scope="col">Due date</th><th scope="col">Days overdue</th><th scope="col">Amount due</th><th scope="col">Owner</th><th scope="col">Action</th></tr></thead>
+    <tbody>{rows.map((row, index) => <tr key={row.id}><th scope="row" title={receivableCustomer(row)}>{receivableCustomer(row)}</th><td>{row.invoice_number}</td><td>{row.due_date ? receivableDate(row.due_date) : 'Not recorded'}</td><td className={row.days_overdue > 0 ? 'ar-overdue-days' : 'ar-future-days'}>{financeNumber(row.days_overdue) ?? '—'}</td><td className="ar-total-heat">{receivableNumber(row.balance)}</td><td title={row.owner || 'Project manager not recorded'}>{row.owner || 'Not recorded'}</td><td><Link className={index === 0 ? 'ar-review-link' : 'ar-invoice-more'} to={`/finance/outgoing-invoices/${encodeURIComponent(row.id)}`} aria-label={`Review invoice ${row.invoice_number}`}>{index === 0 ? 'Review' : <EllipsisHorizontalIcon aria-hidden="true" />}</Link></td></tr>)}</tbody>
+    {rows.length > 0 && <tfoot><tr><th scope="row" colSpan={4}>Grand total <span className="ar-table-scope">{count > rows.length ? `· all ${count} open invoices` : ''}</span></th><td>{receivableNumber(receivableRawValue(total))}{total?.partial && <abbr title="Recorded subtotal">*</abbr>}</td><td colSpan={2} /></tr></tfoot>}
+  </table>{!rows.length && <p className="ar-table-empty">No unpaid invoices requiring action in this view.</p>}</div>;
+}
+InvoiceTable.propTypes = { rows: PropTypes.array.isRequired, total: PropTypes.object, currency: PropTypes.string, count: PropTypes.number };
 
-export default function FinanceCommandCenter() {
+export default function FinanceCommandCenter({ embedded = false, dataScope = 'finance', refreshKey = 0, printing = false, onSnapshotChange }) {
   const [data, setData] = useState(null);
+  const [filters, setFilters] = useState({ currency: '', company: '', months: '12', as_of: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [currency, setCurrency] = useState('');
+  const [refresh, setRefresh] = useState(0);
   const [dialog, setDialog] = useState(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState('');
-  const [exportStatus, setExportStatus] = useState('');
-  const requestId = useRef(0);
-  const dialogRef = useRef(null);
-
-  const load = useCallback(async () => {
-    const current = ++requestId.current;
-    setLoading(true); setError('');
-    try {
-      const response = await financeService.getFinanceCommandCenter();
-      if (!response?.sources || !Array.isArray(response.currencies) || !response.process || response.schema_version !== '1.0') throw new Error('The finance dashboard returned an incomplete response. Please refresh.');
-      if (current !== requestId.current) return;
-      setData(response);
-      setCurrency(previous => response.currencies.includes(previous) ? previous : response.currencies.includes('AED') ? 'AED' : response.currencies[0] || '');
-    } catch (requestError) {
-      if (current !== requestId.current) return;
-      setData(null);
-      setError(requestError?.response?.status === 403 ? 'You do not have access to the Finance dashboard.' : requestError?.response?.data?.detail || requestError?.message || 'The finance dashboard could not be loaded.');
-    } finally { if (current === requestId.current) setLoading(false); }
-  }, []);
-  useEffect(() => { load(); return () => { requestId.current += 1; }; }, [load]);
+  const [dismissed, setDismissed] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
+  const [options, setOptions] = useState({ currencies: [], companies: [] });
+  const [registerSnapshot, setRegisterSnapshot] = useState({ data: null, loading: true, error: '' });
+  const sequence = useRef(0), dialogRef = useRef(null), menuRef = useRef(null);
+  useEffect(() => {
+    const request = ++sequence.current;
+    setLoading(true); setError(''); setData(null); setDismissed(false); setExportMessage('');
+    const fetchDashboard = dataScope === 'executive' ? financeService.getExecutiveReceivablesDashboard : financeService.getReceivablesDashboard;
+    fetchDashboard(filters).then(response => {
+      if (request !== sequence.current) return;
+      if (response?.schema_version !== '1.0' || !response.sources || !response.kpis || !Array.isArray(response.customers)) throw new Error('The receivables response is incomplete. Please refresh.');
+      setData(response); setOptions({ currencies: [...new Set([...(response.filters?.currencies || []), ...(receivableReadable(response.sources.receivables) && response.currency ? [response.currency] : [])])], companies: response.filters?.companies || [] });
+    }).catch(requestError => {
+      if (request !== sequence.current) return;
+      const detail = requestError?.response?.data;
+      setError(typeof detail?.detail === 'string' ? detail.detail : requestError?.response?.status === 403 ? 'You do not have access to this finance dashboard.' : detail && typeof detail === 'object' ? Object.values(detail).flat().join(' ') : requestError?.message || 'The receivables dashboard could not be loaded.');
+    }).finally(() => { if (request === sequence.current) setLoading(false); });
+    return () => { sequence.current += 1; };
+  }, [filters, refresh, refreshKey, dataScope]);
   useEffect(() => {
     if (!dialog) return undefined;
-    const previousFocus = document.activeElement;
-    const element = dialogRef.current;
+    const previous = document.activeElement, element = dialogRef.current;
     element?.showModal();
-    return () => { element?.close(); if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus(); };
+    return () => { element?.close(); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, [dialog]);
-
-  const cards = financeKpis(data, currency);
-  const positions = currencyPositions(data);
-  const processes = financeProcesses(data);
-  const controls = financeControls(data);
-  const actions = data?.actions || [];
-  const coverage = financeCoverage(data);
-  const currencies = data?.currencies || [];
-  const asOf = data?.as_of_date ? new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${data.as_of_date}T12:00:00Z`)) : 'Current position';
-  const updated = Object.values(data?.sources || {}).map(source => source.source_updated_at).filter(value => value && Number.isFinite(Date.parse(value))).sort().at(-1);
-  const notices = Object.entries(data?.sources || {}).filter(([, source]) => source.status !== 'available');
-  const exportPdf = async () => {
-    if (!data || exporting) return;
-    setExporting(true); setExportError(''); setExportStatus('');
-    try { await exportFinanceCommandPdf(data, currency); setExportStatus('Financial report exported.'); }
-    catch { setExportError('The PDF could not be exported. Please try again.'); }
-    finally { setExporting(false); }
+  const change = (key, value) => setFilters(current => ({ ...current, [key]: value }));
+  const currency = data?.currency || filters.currency || options.currencies[0] || '';
+  const asOf = filters.as_of || data?.as_of_date || receivablesToday();
+  const readable = receivableReadable(data?.sources?.receivables);
+  const registerScope = JSON.stringify([currency, filters.company, `${refreshKey}:${refresh}`, dataScope, asOf]);
+  const registerCurrent = !loading && readable && registerSnapshot.scope === registerScope;
+  useLayoutEffect(() => {
+    onSnapshotChange?.({ receivables: data, customer_invoice_register: registerCurrent ? registerSnapshot.data : null, customer_invoice_register_error: registerCurrent ? registerSnapshot.error : '', loading: loading || (readable && (!registerCurrent || registerSnapshot.loading)), error });
+  }, [data, loading, error, readable, registerCurrent, registerSnapshot, onSnapshotChange]);
+  const customers = receivableCustomerRows(data), charts = receivableChartRows(data), alert = receivableAlert(data);
+  const partial = readable && !!data?.kpis?.unpaid?.partial;
+  const comparisonPartial = rows => (rows || []).some(row => (receivableReadable(data?.sources?.receivables) && row.receivables?.partial) || (receivableReadable(data?.sources?.payables) && row.payables?.partial));
+  const paymentsPartial = readable && (data?.paid_unpaid_by_month || []).some(row => row.paid?.partial || row.unpaid?.partial);
+  const unknownDueDates = financeCount(data?.sources?.receivables?.unknown_due_date_count);
+  const invoices = readable ? data?.priority_invoices || [] : [];
+  const primaryOwner = invoices.find(row => row.days_overdue > 0 && row.owner)?.owner;
+  const unpaidCount = financeCount(data?.kpis?.unpaid?.count);
+  const collectionRoute = useCallback(company => receivableCollectionRoute({ currency, company: filters.company }, company), [currency, filters.company]);
+  const hideMenu = () => { if (menuRef.current) { menuRef.current.open = false; menuRef.current.querySelector('summary')?.focus(); } };
+  const reload = () => { hideMenu(); setRefresh(value => value + 1); };
+  const exportReport = () => {
+    if (!data || !readable || loading) return;
+    const url = URL.createObjectURL(new Blob([receivablesCsv(data)], { type: 'text/csv;charset=utf-8;' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `RADAI-receivables-${asOf}-${currency}.csv`; anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000); setExportMessage('Receivables report exported.');
   };
-  const actionTable = items => <div className="finance-command-table-scroll"><table className="finance-command-table finance-command-actions-table"><caption className="sr-only">Recorded financial action queues across currencies; owners and decision deadlines are not assigned in this feed.</caption><thead><tr><th scope="col" title="Display priority: overdue, matching exceptions and on-hold queues are High; other recorded queues are Medium.">Priority</th><th scope="col">Decision/action</th><th scope="col">Exposure</th><th scope="col">Owner</th><th scope="col">Due</th><th scope="col">Action</th></tr></thead><tbody>{items.map(action => {
-    const high = ['receivables_overdue', 'payables_exception', 'payables_on_hold'].includes(action.id);
-    const route = financeRoute(action.route);
-    return <tr key={action.id} className={high ? 'finance-command-action-high' : ''}><td><span className={`finance-command-priority ${high ? 'is-high' : 'is-medium'}`}>{high ? 'High' : 'Medium'}</span></td><td><span data-table-text="primary" title={action.reason}>{action.label}</span></td><td>{financeCount(action.count) === null ? '—' : `${action.count} invoices`}</td><td>{action.owner || 'Not recorded'}</td><td>{action.due_date ? financeDate(action.due_date) : 'Not recorded'}</td><td>{route ? <Link className="finance-command-row-action" to={route}>{action.id === 'receivables_overdue' ? 'Review' : 'Open queue'}</Link> : <span className="finance-command-muted">Unavailable</span>}</td></tr>;
-  })}</tbody></table>{!items.length && <p className="finance-command-empty-note">{loading ? 'Loading financial actions…' : !data || data.status !== 'available' ? 'Actions from unavailable sources cannot be assessed.' : 'No action queues require attention in the connected registers.'}</p>}</div>;
+  const chartState = children => loading ? <div className="ar-loading-chart" role="status"><span />Loading recorded balances…</div> : !data ? <div className="ar-table-empty">Financial data is unavailable.</div> : children;
 
-  return <div className="finance-command-center" aria-busy={loading}>
-    <header className="finance-command-page-header"><div className="finance-command-title"><nav aria-label="Breadcrumb"><span>Finance</span><b>/</b>Overview</nav><h1>Finance Command Center</h1><p>Cash, working capital, receivables, payables and financial actions.</p></div>
-      <label className="finance-command-period"><span>{asOf} <b>·</b></span><select aria-label="Reporting currency" value={currency} disabled={!currencies.length} onChange={event => setCurrency(event.target.value)}>{!currencies.length && <option value="">No currency recorded</option>}{currencies.map(code => <option key={code} value={code}>{code === 'UNSPECIFIED' ? 'Unspecified' : code}</option>)}</select></label>
-      <div className="finance-command-header-right"><div className="finance-command-toolbar"><button type="button" className="finance-command-button" onClick={exportPdf} disabled={loading || !data || exporting}><DocumentArrowDownIcon />{exporting ? 'Exporting…' : 'Export PDF'}</button><button type="button" className="finance-command-button" onClick={load} disabled={loading}><ArrowPathIcon className={loading ? 'finance-command-spin' : ''} />Refresh</button><button type="button" className="finance-command-button finance-command-primary" onClick={() => setDialog('report')} disabled={!data}><ChartBarIcon />Open financial report</button></div><p className="finance-command-freshness" title="Latest recorded invoice update; refresh does not change the underlying source timestamp.">{loading ? 'Refreshing financial position…' : updated ? `Updated ${financeDate(updated, true)}` : 'Source update not recorded'} <span>· {coverage === null ? 'Original currencies' : `Balance coverage ${coverage}%`}</span></p></div>
+  return <div className={`finance-command-center ar-dashboard${embedded ? ' ar-dashboard-embedded' : ''}`} aria-busy={loading}>
+    {embedded && <p className="ar-print-scope">{filters.company || 'All customers'} · {currency || 'Currency unavailable'} · Ageing as of {receivableDate(asOf)} · Monthly charts: last {filters.months} months</p>}
+    <header className="ar-page-header">{!embedded && <div className="ar-page-title"><h1>Accounts Receivable</h1><p>Monitor collections, ageing and customer exposure</p></div>}
+      <div className="ar-filters" role="group" aria-label="Receivables filters">
+        <label className="ar-filter ar-entity"><span>Customer</span><div><select aria-label="Customer" title="Customer from the invoice COMPANY column" value={filters.company} onChange={event => change('company', event.target.value)}><option value="">All customers</option>{options.companies.map(option => { const value = typeof option === 'string' ? option : option.value; return <option key={value} value={value}>{value}</option>; })}</select><ChevronDownIcon aria-hidden="true" /></div></label>
+        <label className="ar-filter ar-currency"><span>Reporting currency <button type="button" className="ar-info" aria-label="About reporting currency" title="Amounts retain their original invoice currency. Currency conversion is not applied." onClick={() => setDialog('sources')}><InformationCircleIcon aria-hidden="true" /></button></span><div><select aria-label="Reporting currency" value={currency} disabled={!options.currencies.length} onChange={event => change('currency', event.target.value)}>{!options.currencies.length && <option value="">{loading ? 'Loading…' : 'No currency'}</option>}{options.currencies.map(code => <option key={code} value={code}>{code === 'UNSPECIFIED' ? 'Unspecified' : code}</option>)}</select><ChevronDownIcon aria-hidden="true" /></div></label>
+        <label className="ar-filter ar-period"><span>Period</span><div><select aria-label="Period" title="Monthly chart window; current totals include all open invoices" value={filters.months} onChange={event => change('months', event.target.value)}><option value="6">Last 6 months</option><option value="12">Last 12 months</option><option value="24">Last 24 months</option></select><ChevronDownIcon aria-hidden="true" /></div></label>
+        <label className="ar-filter ar-asof"><span>As of</span><div><input aria-label="As of" type="date" value={asOf} max={receivablesToday()} onChange={event => change('as_of', event.target.value)} title="Age current recorded balances relative to this date" /><span className="ar-date-display" aria-hidden="true">{receivableDate(asOf)}</span></div></label>
+      </div>
+      <div className="ar-header-actions"><div><Link className={`ar-button ar-primary${!readable ? ' is-disabled' : ''}`} to={readable ? collectionRoute() : '#'} aria-disabled={!readable} onClick={event => { if (!readable) event.preventDefault(); }}>Open collection queue</Link><button type="button" className="ar-button ar-export" onClick={exportReport} disabled={loading || !readable}><ArrowDownTrayIcon />Export</button><details className="ar-more-menu" ref={menuRef} onKeyDown={event => { if (event.key === 'Escape') { hideMenu(); event.currentTarget.querySelector('summary')?.focus(); } }}><summary className="ar-button ar-icon-button" aria-label="More dashboard options"><EllipsisHorizontalIcon /></summary><div><button type="button" onClick={reload} disabled={loading}><ArrowPathIcon />Refresh data</button><button type="button" onClick={() => { hideMenu(); setDialog('sources'); }}><InformationCircleIcon />Source coverage</button><button type="button" disabled={!readable} onClick={() => { hideMenu(); setDialog('customers'); }}><UserIcon />View all customers</button></div></details></div><p className="ar-updated">{loading ? 'Updating receivables…' : data?.source_updated_at ? `Last updated: ${financeDate(data.source_updated_at, true)}` : 'Source update not recorded'}</p></div>
     </header>
-
-    {error && <div className="finance-command-notice finance-command-notice-error" role="alert"><ExclamationTriangleIcon /><span>{error}</span><button type="button" onClick={load}>Try again</button></div>}
-    {notices.length > 0 && <div className="finance-command-notice" role="status"><InformationCircleIcon /><span>{notices.map(([kind, source]) => `${kind === 'receivables' ? 'Receivables' : 'Payables'}: ${sourceMessage(source)}`).join(' · ')}</span><button type="button" onClick={() => setDialog('controls')}>View source coverage</button></div>}
-    {exportError && <p className="finance-command-export-error" role="alert">{exportError}</p>}{exportStatus && <p className="finance-command-export-status" role="status">{exportStatus}</p>}
-
-    <section className="finance-command-kpis" aria-label="Financial outcomes">{cards.map((card, index) => { const Icon = KPI_ICONS[index]; return <article key={card.id} className={`finance-command-kpi finance-command-${card.tone}`} data-testid={`finance-kpi-${card.id}`}><span className="finance-command-kpi-icon"><Icon aria-hidden="true" /></span><div><h2>{card.label}</h2><strong>{loading && !data ? '—' : card.text}</strong><p title={card.reason}>{loading && !data ? 'Loading source…' : card.note}</p></div></article>; })}</section>
-
-    <section className="finance-command-panel finance-command-actions"><IconHeading icon={ClipboardDocumentListIcon} extra={<div className="finance-command-heading-extra"><span>Across currencies</span>{actions.length > 3 && <button type="button" onClick={() => setDialog('report')}>View all {actions.length} actions <ChevronRightIcon /></button>}</div>}>Financial actions required</IconHeading>{actionTable(actions.slice(0, 3))}</section>
-
-    <div className="finance-command-analytics"><CashWorkingCapitalTrend trend={loading && !data ? { status: 'loading', series: [] } : error ? { status: 'error', series: [] } : financeTrend(data, currency)} currency={currency} /><ReceivablesAgeing source={loading && !data ? { status: 'loading' } : error ? { status: 'error' } : data?.sources?.receivables} currency={currency} /></div>
-
-    <div className="finance-command-operations"><section className="finance-command-panel finance-command-positions"><IconHeading icon={CircleStackIcon}>Entity and currency position</IconHeading><PositionTable rows={positions} /><footer>Amounts shown in original currency. Net exposure is A/R less A/P; entity coding is not recorded.</footer></section>
-      <section className="finance-command-panel finance-command-health"><IconHeading icon={Cog6ToothIcon}>Process health</IconHeading><div className="finance-command-table-scroll"><table className="finance-command-table"><thead><tr><th scope="col">Process</th><th scope="col">Status</th><th scope="col">Share of register</th><th scope="col">Action</th></tr></thead><tbody>{processes.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td><span className={`finance-command-health-status finance-command-${row.tone}`}><i />{row.count === null ? 'Not available' : `${row.count} ${row.suffix}`}</span></td><td><Progress percentage={row.percentage} tone={row.tone} label={row.definition} /></td><td>{row.route ? <Link className="finance-command-row-action" to={row.route}>{row.action}</Link> : <span className="finance-command-muted">Unavailable</span>}</td></tr>)}</tbody></table></div></section></div>
-
-    <section className="finance-command-panel finance-command-controls" aria-label="Forecast and controls"><h2><ShieldCheckIcon />Forecast and controls</h2>{controls.map(control => <div className={`finance-command-control finance-command-${control.tone}`} key={control.id} title={control.definition}><h3>{control.label}</h3><div><strong>{control.value}</strong>{control.percentage !== null && <Progress percentage={control.percentage} tone={control.tone} label={control.definition} />}</div><p>{control.note}</p></div>)}<button type="button" className="finance-command-button" onClick={() => setDialog('controls')}><ShieldCheckIcon />View controls<ChevronRightIcon /></button></section>
-
-    {dialog && <dialog ref={dialogRef} className="finance-command-dialog" aria-labelledby="finance-command-dialog-title" onKeyDown={event => {
+    {error && <div className="ar-error" role="alert"><ExclamationTriangleIcon /><span>{error}</span><button type="button" onClick={reload}>Try again</button></div>}
+    {exportMessage && <p className="ar-export-message" role="status">{exportMessage}<button type="button" aria-label="Dismiss export message" onClick={() => setExportMessage('')}><XMarkIcon /></button></p>}
+    <section className="ar-kpis" aria-label="Receivables key performance indicators">{RECEIVABLE_KPIS.map(([id, label, tone]) => <article className={`ar-kpi ar-kpi-${tone}`} key={id} data-testid={`finance-kpi-${id}`}><h2>{label}</h2><div><strong>{loading ? '—' : receivableMoney(receivableRawValue(data?.kpis?.[id]), currency)}</strong><span title={receivableMetricNote(data?.kpis?.[id])}>{loading ? 'Loading balances…' : receivableMetricNote(data?.kpis?.[id])}</span></div></article>)}</section>
+    <WorkbookSummaryCards summary={data?.workbook_summary} loading={loading} />
+    {!dismissed && <section className={`ar-collection-alert${!loading && readable && receivableValue(data?.kpis?.overdue) === 0 ? ' ar-alert-clear' : ''}`} aria-label="Collection priorities"><ExclamationTriangleIcon className="ar-alert-symbol" aria-hidden="true" /><div className="ar-alert-copy"><h2>{loading ? 'Reviewing collection priorities…' : alert.title}</h2><p>{loading ? 'Retrieving current customer balances and due dates.' : alert.detail}</p></div><div className="ar-alert-owner"><UserIcon aria-hidden="true" /><div><span>Owner</span><strong>{primaryOwner || 'Not assigned'}</strong></div></div><div className="ar-alert-due"><CalendarDaysIcon aria-hidden="true" /><div><span>Next action due</span><strong>Not scheduled</strong></div></div>{readable && <Link to={collectionRoute()} className="ar-button ar-primary ar-priority-button">Review priority accounts</Link>}<button type="button" className="ar-alert-close" aria-label="Dismiss collection alert" onClick={() => setDismissed(true)}><XMarkIcon /></button></section>}
+    <div className="ar-analysis-grid">
+      <Panel title="Unpaid amount by customer" className="ar-customer-panel" extra={partial && <span className="ar-partial-tag">Recorded balances</span>}>{chartState(<CustomerBalancesChart rows={charts.customers} currency={currency} partial={partial} />)}</Panel>
+      <Panel title="Exposure concentration" className="ar-exposure-panel" info={partial ? 'Shares use recorded balances only; missing balances may change the distribution.' : 'Share of unpaid customer balances in the selected currency.'}>{chartState(<ExposureDonut rows={charts.customers} total={receivableValue(data?.kpis?.unpaid)} currency={currency} partial={partial} />)}</Panel>
+      <Panel title="Payment status" className="ar-ageing-panel ar-payment-status-panel" info="Recorded payment status across the full workbook snapshot. Amounts use Inv Amt. (AED), including paid and cancelled invoices; missing or invalid amount cells are excluded. Dashboard filters do not change these totals or counts." extra={<span className="ar-panel-caption">Full workbook</span>}><PaymentStatusSummary summary={data?.workbook_summary} loading={loading} /></Panel>
+      <Panel title="Overdue amount over time" className="ar-trend-panel" info="Current overdue balances grouped by due month. This chart is not a historical month-end balance series." extra={<span className="ar-panel-caption">By due month</span>}>{chartState(<OverdueTrendChart rows={charts.overdue} currency={currency} partial={comparisonPartial(data?.overdue_by_month)} />)}</Panel>
+      <Panel title="AR ageing summary" className="ar-summary-panel" extra={<><span className="ar-panel-currency">{currency}</span>{!printing && customers.length > 5 && <button type="button" className="ar-text-button" onClick={() => setDialog('customers')}>Top 5 of {customers.length}<ArrowRightIcon /></button>}</>}><CustomerTable rows={printing ? customers : customers.slice(0, 5)} totals={data?.ageing} total={data?.kpis?.unpaid} currency={currency} allCount={customers.length} collectionRoute={collectionRoute} /></Panel>
+      <Panel title="Unpaid invoices requiring action" className="ar-invoices-panel" extra={<span className="ar-panel-currency">{currency}</span>}><InvoiceTable rows={printing ? invoices : invoices.slice(0, 5)} total={data?.kpis?.unpaid} currency={currency} count={unpaidCount} /></Panel>
+    </div>
+    {partial && <p className="ar-data-note">* Recorded subtotals exclude missing balances. <button type="button" onClick={() => setDialog('sources')}>View source coverage</button></p>}
+    {unknownDueDates > 0 && <p className="ar-data-note">{unknownDueDates} open {unknownDueDates === 1 ? 'invoice has' : 'invoices have'} no due date and cannot be classified as overdue.</p>}
+    {asOf !== receivablesToday() && <p className="ar-data-note">Ageing uses {receivableDate(asOf)} with current recorded balances. Historical balance snapshots are not available.</p>}
+    <div className="ar-invoice-overview">
+      <Panel title="Paid vs unpaid invoices" className="ar-history-panel" info="Recorded payments and current unpaid balances grouped by invoice issue month. This is not a cash receipts timeline." extra={readable && <Link className="ar-text-button" to={receivableCollectionRoute({ currency, company: filters.company }).replace('queue=overdue', 'queue=all')}>View invoice register<ArrowRightIcon /></Link>}>{chartState(<PaymentHistoryChart rows={charts.payments} currency={currency} partial={paymentsPartial} />)}</Panel>
+      <CustomerInvoicesSection currency={currency} company={filters.company} asOf={asOf} refreshKey={`${refreshKey}:${refresh}`} enabled={!loading && readable} dataScope={dataScope} onSnapshotChange={setRegisterSnapshot} />
+    </div>
+    {dialog && <dialog ref={dialogRef} className="ar-dialog" aria-labelledby="ar-dialog-title" onCancel={() => setDialog(null)} onKeyDown={event => {
       if (event.key !== 'Tab') return;
-      const items = [...dialogRef.current.querySelectorAll('button:not(:disabled), a[href], select:not(:disabled), summary, [tabindex="0"]')].filter(element => element.getClientRects().length);
-      const first = items[0]; const last = items.at(-1);
+      const elements = [...event.currentTarget.querySelectorAll('button:not(:disabled), a[href], [tabindex="0"]')].filter(element => element.getClientRects().length), first = elements[0], last = elements.at(-1);
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-    }} onCancel={() => setDialog(null)}><header><div><span>RADAI · Finance</span><h2 id="finance-command-dialog-title">{dialog === 'report' ? 'Financial report' : 'Forecast, controls and source coverage'}</h2></div><button type="button" aria-label="Close financial dialog" onClick={() => setDialog(null)}><XMarkIcon /></button></header><div className="finance-command-dialog-body">
-      {dialog === 'report' ? <><p>Current position as at {data?.as_of_date ? financeDate(data.as_of_date) : 'the latest recorded date'}. Amounts retain their original currencies.</p><h3>Financial actions required</h3>{actionTable(actions)}<h3>Entity and currency position</h3><PositionTable rows={positions} /><h3>Reporting definitions</h3><p>Display priority marks overdue, matching exception and on-hold queues as High; other recorded queues are Medium. These priorities do not represent assigned approval deadlines.</p>{cards.filter(card => card.value === null).map(card => <p key={card.id}><strong>{card.label}: </strong>{card.reason}</p>)}</> : <><div className="finance-command-definition-grid">{controls.map(control => <article key={control.id}><h3>{control.label}<strong>{control.value}</strong></h3><p>{control.definition}</p></article>)}</div><h3>Source coverage</h3><p>Balance coverage measures recorded balances among unsettled invoices. It does not measure ledger completeness or cash accuracy.</p>{Object.entries(data?.sources || {}).map(([key, source]) => <article className="finance-command-source" key={key}><h4>{source.source || key}</h4><p>{source.status === 'available' ? 'Connected' : sourceMessage(source)} · Last record update: {financeDate(source.source_updated_at, true)}</p><p>{source.balance_coverage?.definition || source.reason}</p>{financeRoute(source.route) && <Link className="finance-command-row-action" to={source.route}>Open register</Link>}</article>)}{!data && <p>Source coverage is not available until the dashboard loads.</p>}</>}
-    </div><footer><button type="button" className="finance-command-button" onClick={() => setDialog(null)}>Close</button>{dialog === 'report' && <button type="button" className="finance-command-button finance-command-primary" onClick={exportPdf} disabled={exporting || !data}><DocumentArrowDownIcon />{exporting ? 'Exporting…' : 'Export PDF'}</button>}</footer></dialog>}
+    }}><header><div><span>Finance / Receivables</span><h2 id="ar-dialog-title">{dialog === 'customers' ? 'Customer ageing summary' : 'Source coverage and reporting basis'}</h2></div><button type="button" className="ar-icon-button" aria-label="Close financial dialog" onClick={() => setDialog(null)}><XMarkIcon /></button></header><div className="ar-dialog-body">
+      {dialog === 'customers' ? <CustomerTable rows={customers} totals={data?.ageing} total={data?.kpis?.unpaid} currency={currency} allCount={customers.length} collectionRoute={collectionRoute} /> : <><p>Amounts are shown in their original invoice currency. No currency conversion is applied. Customer names, grouping and filters use the invoice COMPANY column.</p><p>Balance = Invoice Amount (column L) minus Actual Payment Received (column AA). Blank payments count as zero; missing invoice amounts remain unknown. Overdue totals include positive balances on unsettled invoices whose due date is before the selected as-of date.</p><p>The as-of date sets ageing bands for current recorded balances. Monthly charts group these balances by invoice or due month; they do not reconstruct past ledger balances.</p>{Object.entries(data?.sources || {}).map(([key, source]) => <section className="ar-source" key={key}><h3>{key === 'receivables' ? 'Customer invoice register' : 'Supplier invoice register'}</h3><p><strong>{source.status === 'available' ? 'Connected' : source.status === 'incomplete' ? 'Incomplete balances' : source.status === 'restricted' ? 'Access restricted' : 'Unavailable'}</strong>{source.reason ? ` · ${source.reason}` : ''}</p>{key === 'receivables' && financeCount(data?.kpis?.unpaid?.missing_count) !== null && <p>{data.kpis.unpaid.missing_count} of {unpaidCount ?? 'unknown'} open invoices have missing balances. Recorded amounts are shown as partial subtotals.</p>}{source.route && source.status !== 'restricted' && <Link to={source.route} className="ar-text-button">Open register<ArrowRightIcon /></Link>}</section>)}{!data && <p>Load the dashboard to see source coverage.</p>}<p>Collection ownership uses the recorded project manager. Action deadlines are shown only when a scheduling source is connected.</p></>}
+    </div><footer><button type="button" className="ar-button" onClick={() => setDialog(null)}>Close</button><button type="button" className="ar-button ar-primary" onClick={exportReport} disabled={!readable}><ArrowDownTrayIcon />Export</button></footer></dialog>}
   </div>;
 }
+
+FinanceCommandCenter.propTypes = { embedded: PropTypes.bool, dataScope: PropTypes.oneOf(['finance', 'executive']), refreshKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), printing: PropTypes.bool, onSnapshotChange: PropTypes.func };

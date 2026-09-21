@@ -4,6 +4,8 @@ const STATUS_LABELS = { pending: 'Pending', paid: 'Paid', partial: 'Partially pa
 export const outgoingReviewStatus = value => Object.prototype.hasOwnProperty.call(STATUS_LABELS, value) ? STATUS_LABELS[value] : text(value)?.replaceAll('_', ' ') || 'Not recorded';
 export const outgoingReviewTone = value => value === 'paid' ? 'success' : value === 'overdue' ? 'danger' : value === 'partial' ? 'warning' : value === 'pending' ? 'pending' : 'neutral';
 export const outgoingReviewCurrency = value => /^[A-Z]{3}$/.test(text(value)?.toUpperCase() || '') ? text(value).toUpperCase() : null;
+// An explicitly unknown calculated balance must not fall back to an imported balance.
+export const outgoingReviewBalance = invoice => Object.prototype.hasOwnProperty.call(invoice || {}, 'calculated_receivable_balance') ? invoice.calculated_receivable_balance : invoice?.balance_to_be_received;
 
 export function outgoingReviewNumber(value) {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
@@ -41,6 +43,7 @@ export function outgoingReviewDate(value, withTime = false) {
 }
 
 export function outgoingReviewTotal(invoice) {
+  if (Object.prototype.hasOwnProperty.call(invoice || {}, 'calculated_receivable_balance')) return { label: 'Invoice amount', value: invoice.invoice_amount ?? null };
   if (outgoingReviewNumber(invoice?.grand_total) !== null) return { label: 'Invoice total', value: invoice.grand_total };
   return { label: 'Invoice amount', value: invoice?.invoice_amount ?? null };
 }
@@ -55,7 +58,7 @@ export function outgoingReviewTimeline(invoice) {
 }
 
 export function outgoingReviewSuggestion(invoice, now = new Date()) {
-  const balance = outgoingReviewNumber(invoice?.balance_to_be_received);
+  const balance = outgoingReviewNumber(outgoingReviewBalance(invoice));
   if (!outgoingReviewCurrency(invoice?.currency) || balance === null) return { title: 'Complete the invoice record', detail: 'Check the currency and recorded balance before planning collection.' };
   if (['cancelled', 'credit_note'].includes(invoice?.payment_status)) return { title: 'Review the adjustment', detail: 'Check the recorded cancellation or credit note and supporting documents.' };
   if (invoice?.payment_status === 'paid' && balance > 0) return { title: 'Review the settlement details', detail: 'The recorded paid status and remaining balance need to be reconciled.' };
