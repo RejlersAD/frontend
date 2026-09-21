@@ -235,6 +235,11 @@ async function fixtureConsistency() {
   assert.equal(register.pagination.count, 28); assert.equal(register.rows.length, 8);
   assert.equal(Number(register.totals.amount.amount), 752828);
   assert.equal(Number(register.totals.amount_due_home.amount), Number(data.kpis.unpaid.amount));
+  assert.ok(register.rows.some(row => row.company === 'Stripe Inc.' && row.account === ''), 'Fixture includes recorded companies with blank legacy accounts');
+  const allInvoices = customerInvoicesFixture('full', { page_size: 50 }).data.rows;
+  assert.deepEqual([...new Set(allInvoices.filter(row => row.account === 'LEGACY-SHARED-ACCOUNT').map(row => row.company))].sort(), ['Gala SARL', 'Wozel & Co. LLP'], 'Fixture distinguishes companies sharing the same legacy account');
+  assert.equal(receivablesFixture('full', { company: 'Stripe Inc.' }).data.kpis.unpaid.amount, '127520.00');
+  assert.equal(receivablesFixture('full', { company: 'LEGACY-SHARED-ACCOUNT' }).data.kpis.unpaid.amount, '0.00', 'Customer filters apply to company, never raw account');
   const foreign = customerInvoicesFixture('full', { currency: 'USD' }).data;
   assert.equal(foreign.rows[0].amount, '5000.00'); assert.equal(foreign.rows[0].amount_home, null); assert.equal(foreign.rows[0].amount_due_home, null);
   record('Synthetic reference customer, ageing and KPI totals are mathematically consistent');
@@ -246,7 +251,13 @@ async function workflowChecks() {
   for (const [id, expected] of [['unpaid', 380828], ['overdue', 313499], ['over30', 286591], ['over90', 148983]]) assert.equal(await kpiAmount(page, id), expected, `${id} uses the server aggregate`);
   assert.equal(await page.getByTestId('finance-kpi-cash').count(), 0);
   const text = await root(page).innerText();
-  for (const customer of receivablesFixture().data.customers) assert.ok(text.includes(customer.account));
+  for (const customer of receivablesFixture().data.customers) {
+    assert.ok(text.includes(customer.company));
+    for (const panel of ['.ar-customer-panel', '.ar-exposure-panel', '.ar-summary-panel']) assert.ok((await page.locator(panel).innerText()).includes(customer.company), `${panel} names customers from recorded company`);
+  }
+  assert.doesNotMatch(text, /LEGACY-|Customer not recorded/, 'Recorded companies remain visible when raw accounts are blank or conflicting');
+  assert.deepEqual(await page.locator('.ar-invoices-panel tbody th[scope="row"]').allTextContents(), receivablesFixture().data.priority_invoices.map(row => row.company), 'Priority invoices display the recorded company');
+  assert.equal(await page.getByLabel('Customer', { exact: true }).locator('option').first().innerText(), 'All customers');
   const customerBars = page.locator('.ar-customer-panel rect.ar-chart-mark');
   assert.equal(await customerBars.count(), 5);
   const widths = await customerBars.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().width));
@@ -256,11 +267,12 @@ async function workflowChecks() {
   let params = await changeFilter(page, control, 'Reporting currency', 'USD');
   assert.equal(params.get('currency'), 'USD'); assert.equal(await kpiAmount(page, 'unpaid'), 5000);
   params = await changeFilter(page, control, 'Reporting currency', 'AED'); assert.equal(params.get('currency'), 'AED');
-  params = await changeFilter(page, control, 'Entity', 'Stripe Inc.'); assert.equal(params.get('company'), 'Stripe Inc.'); assert.equal(await kpiAmount(page, 'unpaid'), 127520);
-  params = await changeFilter(page, control, 'Entity', ''); assert.equal(params.get('company') || '', '');
+  params = await changeFilter(page, control, 'Customer', 'Stripe Inc.'); assert.equal(params.get('company'), 'Stripe Inc.'); assert.equal(await kpiAmount(page, 'unpaid'), 127520);
+  assert.equal(params.has('account'), false);
+  params = await changeFilter(page, control, 'Customer', ''); assert.equal(params.get('company') || '', '');
   params = await changeFilter(page, control, 'Period', '6'); assert.equal(params.get('months'), '6');
   params = await changeFilter(page, control, 'As of', '2026-09-20', true); assert.equal(params.get('as_of'), '2026-09-20');
-  record('Currency, entity, period and reporting date controls request correctly scoped server data');
+  record('Company-based customer labels and currency, customer, period and reporting date filters use the authoritative source');
 
   await moreAction(page, 'Source coverage'); const dialog = page.getByRole('dialog'); await dialog.waitFor();
   assert.match(await dialog.innerText(), /receivable|customer invoice/i);
@@ -274,6 +286,7 @@ async function workflowChecks() {
   const download = await downloadPromise; const stream = await download.createReadStream(); const parts = []; for await (const chunk of stream) parts.push(chunk); const csv = Buffer.concat(parts);
   assert.match(download.suggestedFilename(), /\.csv$/i);
   const csvText = csv.toString('utf8'); assert.match(csvText, /380828/); assert.match(csvText, /Stripe Inc\./); assert.match(csvText, /SYN-2026-/); assert.match(csvText, /AED/);
+  assert.doesNotMatch(csvText, /LEGACY-|Customer not recorded/, 'Customer CSV columns use company even when source accounts are blank or conflicting');
   await writeFile(path.join(artifacts, download.suggestedFilename()), csv);
   assert.ok(control.requests.every(request => request.method === 'GET'));
   record('CSV download contains actual scoped KPI, customer ageing and invoice data without server writes');
@@ -284,6 +297,14 @@ async function workflowChecks() {
   state = await open(); ({ page, control } = state); await root(page).getByRole('link', { name: /collection queue/i }).click(); await page.getByRole('heading', { name: 'Source destination', exact: true }).waitFor();
   const queueRoute = new URL(await page.evaluate(() => window.financeRoute), origin); assert.equal(queueRoute.pathname, '/finance/outgoing-invoices'); assert.equal(queueRoute.searchParams.get('queue'), 'overdue'); assert.equal(queueRoute.searchParams.get('currency'), 'AED'); await state.close();
   record('Invoice review and collection queue navigate to existing outgoing invoice routes; shell changes stay on /finance');
+
+  state = await open(); ({ page } = state);
+  const customerLink = page.locator('.ar-summary-panel').getByRole('link', { name: 'Stripe Inc.', exact: true });
+  const customerRoute = new URL(await customerLink.getAttribute('href'), origin);
+  assert.equal(customerRoute.pathname, '/finance/outgoing-invoices'); assert.equal(customerRoute.searchParams.get('company'), 'Stripe Inc.'); assert.equal(customerRoute.searchParams.has('account'), false);
+  await customerLink.click(); await page.getByRole('heading', { name: 'Source destination', exact: true }).waitFor();
+  assert.equal(new URL(await page.evaluate(() => window.financeRoute), origin).searchParams.get('company'), 'Stripe Inc.'); await state.close();
+  record('Customer ageing drilldowns scope the outgoing register by company without legacy account filters');
 
   for (const fixture of ['loading', 'empty', 'partial', 'restricted', 'payables-restricted', 'error', 'forbidden']) {
     state = await open({ fixture: fixture === 'loading' ? 'full' : fixture, loading: fixture === 'loading' }); ({ page, control } = state);
@@ -330,6 +351,8 @@ async function customerInvoiceChecks() {
   let state = await open(); let { page, control } = state; await registerReady(page);
   let section = registerSection(page), table = section.getByRole('table', { name: 'Customer invoices', exact: true });
   assert.equal(await table.locator('tbody tr').count(), 8, 'First page shows eight customer invoices');
+  assert.deepEqual(await table.locator('tbody th[scope="row"]').allTextContents(), customerInvoicesFixture().data.rows.map(row => row.company), 'Register customer column shows companies despite blank or conflicting raw accounts');
+  assert.doesNotMatch(await table.innerText(), /LEGACY-|Customer not recorded/);
   assert.ok((await table.innerText()).includes('Paid'), 'Register includes settled invoices alongside outstanding invoices');
   const grandTotal = await table.locator('tfoot').innerText(); assert.match(grandTotal, /752,828/); assert.match(grandTotal, /380,828/);
   for (const label of ['Customer', 'Invoice No.', 'Date', 'Due date', 'Status', 'Currency', 'Amount in currency', 'Amount in home currency', 'Amount due in home currency']) {
@@ -341,10 +364,10 @@ async function customerInvoiceChecks() {
   assert.notEqual(await table.locator('tbody').innerText(), firstPage, 'Pagination renders the next server page');
   assert.equal(await table.locator('tfoot').innerText(), grandTotal, 'Grand totals cover all filtered invoices on every page');
   response = registerResponse(page); await section.getByRole('button', { name: 'Sort customer invoices by Customer', exact: true }).click(); await response; await registerReady(page);
-  let params = new URLSearchParams(registerRequests(control).at(-1).query); assert.equal(params.get('ordering'), 'account'); assert.equal(params.get('page'), '1');
+  let params = new URLSearchParams(registerRequests(control).at(-1).query); assert.equal(params.get('ordering'), 'company'); assert.equal(params.get('page'), '1');
   assert.match(await table.locator('tbody tr').first().innerText(), /Business Tech/);
   response = registerResponse(page); await section.getByRole('button', { name: 'Sort customer invoices by Customer', exact: true }).click(); await response; await registerReady(page);
-  assert.equal(new URLSearchParams(registerRequests(control).at(-1).query).get('ordering'), '-account');
+  assert.equal(new URLSearchParams(registerRequests(control).at(-1).query).get('ordering'), '-company');
   assert.match(await table.locator('tbody tr').first().innerText(), /Wozel/);
   await section.screenshot({ path: path.join(artifacts, 'customer-invoices-1672.png'), animations: 'disabled' });
   await axe(page, 'customer-invoice-register');
@@ -359,10 +382,19 @@ async function customerInvoiceChecks() {
   assert.equal((await table.locator('tbody tr').nth(1).locator('td').last().innerText()).trim(), '0', 'An explicitly recorded settled foreign balance preserves its valid zero');
   await section.screenshot({ path: path.join(artifacts, 'customer-invoices-foreign-currency.png'), animations: 'disabled' });
   response = registerResponse(page); await changeFilter(page, control, 'Reporting currency', 'AED'); await response; await registerReady(page);
-  response = registerResponse(page); await changeFilter(page, control, 'Entity', 'Business Tech'); await response; await registerReady(page);
+  response = registerResponse(page); await changeFilter(page, control, 'Customer', 'Business Tech'); await response; await registerReady(page);
   params = new URLSearchParams(registerRequests(control).at(-1).query); assert.equal(params.get('company'), 'Business Tech'); assert.equal(await table.locator('tbody tr').count(), 1);
   assert.match(await table.locator('tfoot').innerText(), /15,000/); await state.close();
-  record('Customer register follows currency/entity filters and preserves unknown AED equivalents for foreign invoices');
+  record('Customer register follows currency/company filters and preserves unknown AED equivalents for foreign invoices');
+
+  state = await open({ fixture: 'missing-company' }); ({ page } = state); await registerReady(page);
+  for (const panel of ['.ar-customer-panel', '.ar-summary-panel', '.ar-invoices-panel', '[data-testid="customer-invoices-section"]']) {
+    assert.match(await page.locator(panel).innerText(), /Customer not recorded/);
+    assert.doesNotMatch(await page.locator(panel).innerText(), /LEGACY-ONLY-ACCOUNT/, 'Missing company must never fall back to a raw account');
+  }
+  assert.equal(await page.locator('.ar-summary-panel tbody a').count(), 0, 'A missing customer company cannot create a misleading company drilldown');
+  await axe(page, 'missing-company'); await state.close();
+  record('Only missing company values show Customer not recorded, without legacy account fallback or misleading drilldowns');
 
   for (const fixture of ['register-loading', 'register-empty', 'register-restricted', 'register-error', 'partial']) {
     state = await open({ fixture: fixture === 'register-loading' ? 'full' : fixture, registerLoading: fixture === 'register-loading' }); ({ page, control } = state); section = registerSection(page);
