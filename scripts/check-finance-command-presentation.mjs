@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { currencyBalance, currencyPositions, financeControls, financeCount, financeCoverage, financeKpis, financeMoney, financeNumber, financeProcesses, financeRoute, financeTrend } from '../src/components/Finance/financeCommandPresentation.js';
+import { currencyBalance, currencyPositions, financeControls, financeCount, financeCoverage, financeKpis, financeMoney, financeNumber, financeProcesses, financeRoute, financeTrend, sourceMessage } from '../src/components/Finance/financeCommandPresentation.js';
 
 const source = (rows = [], overrides = {}) => ({ status: 'available', by_currency: rows, invoice_count: 10, open_count: 2, missing_currency_count: 0,
   balance_coverage: { known_count: 2, total_count: 2 }, route: '/finance/outgoing-invoices', ...overrides });
@@ -69,6 +69,42 @@ test('coverage measures known balances in a real positive cohort only', () => {
   data.sources.payables.status = 'restricted'; assert.equal(financeCoverage(data), null);
   const empty = source([], { balance_coverage: { known_count: 0, total_count: 0 } });
   assert.equal(financeCoverage({ sources: { receivables: empty, payables: empty } }), null);
+});
+
+test('one missing balance never rounds up to complete coverage', () => {
+  const empty = source([], { balance_coverage: { known_count: 0, total_count: 0 } });
+  const receivables = source([], { status: 'incomplete', balance_coverage: { known_count: 244, total_count: 245 } });
+  const data = { sources: { receivables, payables: empty } };
+  assert.equal(financeCoverage(data), 99.6);
+  receivables.balance_coverage = { known_count: 2000, total_count: 2001 };
+  assert.equal(financeCoverage(data), 99.9);
+  receivables.balance_coverage.known_count = 2001;
+  assert.equal(financeCoverage(data), 100);
+  receivables.balance_coverage.known_count = 2002;
+  assert.equal(financeCoverage(data), null);
+});
+
+test('incomplete cards explain the selected currency gap and keep known invoice counts', () => {
+  const incomplete = { ...row(), status: 'incomplete', outstanding: null, overdue: null, invoice_count: 226, missing_balance_count: 1 };
+  const data = { sources: { receivables: source([incomplete, row('EUR')], { status: 'incomplete', missing_balance_count: 1 }), payables: source([]) } };
+  const cards = financeKpis(data, 'AED');
+  const ar = cards.find(card => card.id === 'receivables');
+  const overdue = cards.find(card => card.id === 'overdue');
+  assert.equal(ar.text, '—');
+  assert.equal(ar.note, '226 open invoices · 1 invoice balance missing');
+  assert.match(ar.reason, /Totals are withheld/);
+  assert.equal(overdue.text, '—');
+  assert.equal(overdue.note, '1 invoice balance missing');
+  assert.equal(overdue.reason, ar.reason);
+  assert.equal(cards.find(card => card.id === 'payables').text, 'AED 0.00');
+  assert.equal(financeKpis(data, 'EUR').find(card => card.id === 'receivables').note, '2 open invoices');
+  data.sources.payables = data.sources.receivables;
+  assert.equal(financeKpis(data, 'AED').find(card => card.id === 'payables').note, ar.note);
+  assert.equal(sourceMessage({ status: 'incomplete', missing_balance_count: 2, missing_currency_count: 1 }), '2 invoice balances missing · 1 invoice currency missing');
+  data.sources.receivables = source([], { status: 'incomplete', missing_balance_count: 0, missing_currency_count: 1 });
+  const unknownCurrency = financeKpis(data, 'AED').find(card => card.id === 'overdue');
+  assert.equal(unknownCurrency.note, '1 invoice currency missing');
+  assert.match(unknownCurrency.reason, /^1 invoice currency missing\./);
 });
 
 test('financial drilldowns only use the two authorized register route shapes', () => {

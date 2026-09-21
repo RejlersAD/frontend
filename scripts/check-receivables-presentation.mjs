@@ -1,0 +1,63 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { receivableAlert, receivableChartRows, receivableCollectionRoute, receivableCustomerRows, receivableMetricNote, receivableNumber, receivableRawValue, receivableValue, receivablesCsv } from '../src/components/Finance/financeReceivablesPresentation.js';
+import { receivablesFixture } from './check-receivables-dashboard-fixtures.mjs';
+
+test('recorded subtotals remain visible without treating unknown balances as zero', () => {
+  assert.equal(receivableValue({ amount: null, known_amount: '100.25', partial: true }), 100.25);
+  assert.equal(receivableValue({ amount: null, known_amount: null, partial: true }), null);
+  assert.equal(receivableValue({ amount: '0.00', known_amount: '0.00', partial: false }), 0);
+  assert.equal(receivableValue({ amount: null, known_amount: '100', partial: false }), null);
+  assert.equal(receivableMetricNote({ amount: null, known_amount: null, count: null, partial: true }), 'Balance not available');
+  assert.match(receivableMetricNote({ count: 226, missing_count: 1, partial: true }), /1 balance missing/);
+});
+
+test('recorded decimal amounts retain cents beyond JavaScript integer precision', () => {
+  const metric = { amount: '9999999999999999.99', partial: false };
+  assert.equal(receivableNumber(receivableRawValue(metric)), '9,999,999,999,999,999.99');
+  assert.equal(receivableNumber('12345.00'), '12,345');
+  assert.equal(receivableNumber('12345.60'), '12,345.60');
+});
+
+test('customer and priority drilldowns retain the original currency and company scope', () => {
+  const filters = { currency: 'USD', company: 'North & South' };
+  const priority = new URL(receivableCollectionRoute(filters), 'http://local.test');
+  assert.equal(priority.searchParams.get('queue'), 'overdue');
+  assert.equal(priority.searchParams.get('currency'), 'USD');
+  assert.equal(priority.searchParams.get('company'), 'North & South');
+  const customer = new URL(receivableCollectionRoute(filters, 'Customer A'), 'http://local.test');
+  assert.equal(customer.searchParams.get('queue'), 'open');
+  assert.equal(customer.searchParams.get('account'), 'Customer A');
+});
+
+test('missing due dates cannot produce an all-clear collection alert', () => {
+  const data = { sources: { receivables: { status: 'available', unknown_due_date_count: 2 } }, kpis: { overdue: { amount: '0', partial: false } }, customers: [] };
+  assert.match(receivableAlert(data).title, /2 invoices need due dates/);
+  data.sources.receivables.unknown_due_date_count = 0;
+  assert.match(receivableAlert(data).title, /No overdue balances/);
+});
+
+test('unknown-date invoices stay in ageing even when every affected balance is missing', () => {
+  const missing = { amount: null, known_amount: null, count: 1, partial: true, missing_count: 1 };
+  const empty = { amount: '0', known_amount: '0', count: 0, partial: false, missing_count: 0 };
+  const data = { sources: { receivables: { status: 'incomplete' } }, customers: [{ account: 'Unknown date', ...missing, buckets: { unknown_due_date: missing } }], ageing: [{ id: 'unknown_due_date', label: 'Unknown', receivables: missing, payables: empty }] };
+  assert.equal(receivableCustomerRows(data)[0].unknown_due_date_count, 1);
+  assert.equal(receivableChartRows(data).ageing.length, 1);
+  data.ageing[0].receivables = empty;
+  assert.equal(receivableChartRows(data).ageing.length, 0);
+});
+
+test('restricted customer sources never create customer rows', () => {
+  assert.deepEqual(receivableCustomerRows({ sources: { receivables: { status: 'restricted' } }, customers: [{ account: 'Hidden', amount: '10' }] }), []);
+});
+
+test('report exports every customer and discloses partial amounts and the date basis', () => {
+  const data = receivablesFixture('partial').data;
+  data.customers.push({ ...data.customers[0], account: '=HYPERLINK("unsafe")' });
+  const report = receivablesCsv(data);
+  assert.match(report, /Current recorded balances; not a historical balance sheet/);
+  assert.match(report, /Missing balances/);
+  assert.match(report, /Recorded amount/);
+  assert.match(report, /"Yes"/);
+  assert.ok(report.includes('"\'=HYPERLINK(""unsafe"")"'));
+});
