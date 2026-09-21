@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightIcon, ArrowUpTrayIcon, Bars3Icon, BookmarkIcon, ChartBarIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ClockIcon, EllipsisHorizontalIcon, MagnifyingGlassIcon, PlusCircleIcon, AdjustmentsHorizontalIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import invoiceTrackerService from '../../services/invoiceTracker.service';
 import { PAYMENT_STATUSES } from '../../config/invoiceTracker.config';
@@ -9,15 +9,16 @@ import OutgoingInvoiceCreate, { trapOutgoingDialogFocus } from './OutgoingInvoic
 import { OUTGOING_QUEUES, OUTGOING_FILTERS, OUTGOING_AGES, outgoingCollectionCurrency, outgoingCsv, outgoingDate, outgoingMoney, outgoingNumber, outgoingState, outgoingToday, loadOutgoingExport } from './outgoingInvoicePresentation';
 import './OutgoingInvoiceWorkspace.css';
 
-const Select = ({ label, value, options, onChange }) => <select aria-label={label} title={label} value={value} onChange={event => onChange(event.target.value)}><option value="">{label}</option>{options.map(option => { const [id, text] = Array.isArray(option) ? option : [option.value ?? option, option.label ?? option.value ?? option]; return <option key={id} value={id}>{text}</option>; })}</select>;
+const Select = ({ label, value, options, onChange }) => <select aria-label={label} title={label} value={value} onChange={event => onChange(event.target.value)}><option value="">{label}</option>{value && !options.some(option => String(Array.isArray(option) ? option[0] : option.value ?? option) === value) && <option value={value}>{value}</option>}{options.map(option => { const [id, text] = Array.isArray(option) ? option : [option.value ?? option, option.label ?? option.value ?? option]; return <option key={id} value={id}>{text}</option>; })}</select>;
 Select.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string.isRequired, options: PropTypes.array.isRequired, onChange: PropTypes.func.isRequired };
 const failText = error => error?.response?.data?.detail || error?.message || 'The invoice register could not be loaded.';
 const countText = value => outgoingNumber(value)?.toLocaleString('en-GB') ?? '—';
 
 export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState(OUTGOING_FILTERS);
-  const [queue, setQueue] = useState('overdue');
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState(() => ({ ...OUTGOING_FILTERS, ...Object.fromEntries(['currency', 'company', 'account'].filter(key => searchParams.has(key)).map(key => [key, searchParams.get(key)])) }));
+  const [queue, setQueue] = useState(() => ['all', 'open', 'overdue', 'due_soon', 'partial', 'paid'].includes(searchParams.get('queue')) ? searchParams.get('queue') : 'overdue');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(7);
   const [ordering, setOrdering] = useState('due_date');

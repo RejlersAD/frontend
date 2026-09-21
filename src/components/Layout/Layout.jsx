@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import Header from './Header'
+import FinanceCommandHeader from '../Finance/FinanceCommandHeader'
 import Footer from './Footer'
 import Sidebar from './Sidebar'
 import ProcurementApprovalReminder from '../ProcurementApprovalReminder'
@@ -79,8 +80,9 @@ const Layout = () => {
   const isViewportWorkspace = ['/dashboard', '/executive', '/approvals', '/notifications', '/admin/enquiries'].includes(location.pathname)
   const isVendorWorkspace = location.pathname === '/procurement/vendors'
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
+  const isFinanceCommandWorkspace = ['/finance', '/finance/'].includes(location.pathname)
   // Hide the shared footer on public pages that render their own or are auth flow pages.
-  const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isPurchaseOrderFormRoute && !isViewportWorkspace && !isFlushWorkspace
+  const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isPurchaseOrderFormRoute && !isViewportWorkspace && !isFlushWorkspace && !isFinanceCommandWorkspace
 
   const application = (
     <div className={`${isApplicationShell ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex bg-gray-50 dark:bg-gray-900`}>
@@ -99,7 +101,8 @@ const Layout = () => {
         aria-hidden={isMobileDrawerOpen ? true : undefined}
         className="isolate flex min-h-0 min-w-0 flex-1 flex-col"
       >
-        {showHeader && (
+        {showHeader && isFinanceCommandWorkspace && <FinanceCommandHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} profilePhotoUrl={authenticatedProfilePhoto} />}
+        {showHeader && !isFinanceCommandWorkspace && (
           <Header
             sidebarOpen={sidebarOpen}
             setSidebarOpen={setSidebarOpen}
@@ -107,7 +110,7 @@ const Layout = () => {
             profilePhotoUrl={authenticatedProfilePhoto}
           />
         )}
-        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace ? 'pt-2 sm:pt-3' : ''}`}>
+        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace && !isFinanceCommandWorkspace ? 'pt-2 sm:pt-3' : ''}`}>
           <Outlet />
         </main>
         {showFooter && <Footer />}
