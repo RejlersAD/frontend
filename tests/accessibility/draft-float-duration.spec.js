@@ -18,7 +18,7 @@ test('draft float preserves negative, zero, positive and unknown values while du
     await expect(duration(page, id)).toHaveText(text)
     await expect(duration(page, id)).toHaveAttribute('data-duration-kind', id === 'unknown' ? 'missing_source' : 'proposed')
   }
-  await expect(duration(page, 'negative').getByRole('button')).toHaveAttribute('aria-description', 'Proposed duration; review before approval')
+  await expect(duration(page, 'negative').getByRole('button')).toHaveAttribute('aria-description', 'Unverified template duration. Duration in working days.')
   await expect(grid(page).getByRole('region', { name: 'Schedule sequence legend', exact: true })).toContainText('Proposed durations')
   await expect(grid(page)).not.toContainText('*')
   const columns = grid(page).getByLabel('Scroll activity columns', { exact: true })
