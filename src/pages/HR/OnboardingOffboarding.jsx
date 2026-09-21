@@ -5,13 +5,16 @@ import { radaiConfirm, radaiAlert, radaiPrompt } from '../../services/radaiDialo
  * 
  * ✅ MIGRATED: Now uses EmployeeMaster backend (employee_master_id, auto-generated employee_number)
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import apiClient from '../../services/api.service'
 import DatePicker from '../../components/DatePicker'
 import OrganizationSuggestions from '../../components/HR/OrganizationSuggestions'
+import OnboardingDashboard from './OnboardingDashboard'
+import CreateEmployeeWizard from './CreateEmployeeWizard'
+import FullOnboardingOverview from './FullOnboardingOverview'
+import './OnboardingDashboard.css'
 
 // ── Soft-coded API endpoints ──────────────────────────────────────────────
 // Note: apiClient baseURL already includes /api/v1, so paths are relative to that
@@ -22,18 +25,6 @@ const API_ENDPOINTS = {
 }
 
 const API_BASE = API_ENDPOINTS.onboarding
-const DEFAULT_COMPANY = 'Rejlers International Engineering Solutions AB'
-
-// ISO 3166-1 regions, rendered with localized country names by the browser.
-const COUNTRY_CODES = `AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW`.split(' ')
-
-const countryDisplayNames = new Intl.DisplayNames(['en'], { type: 'region' })
-const COUNTRIES = COUNTRY_CODES
-  .map(code => countryDisplayNames.of(code))
-  .filter(Boolean)
-  .sort((a, b) => a.localeCompare(b))
-
-// ── Soft-coded quick-edit fields for list view ────────────────────────────
 const QUICK_EDIT_FIELDS = [
   { key: 'first_name', label: 'First Name', type: 'text', source: 'employee_master' },
   { key: 'last_name', label: 'Last Name', type: 'text', source: 'employee_master' },
@@ -81,41 +72,6 @@ const ONBOARDING_WORKFLOW_STAGES = [
   },
 ]
 
-const ONBOARDING_CHECKLIST_STAGES = [
-  {
-    id: 'pre_hire',
-    label: 'Pre-Hire Initiation',
-    shortLabel: 'Pre-Hire',
-    owner: 'HR',
-    icon: HeroIcons.DocumentCheckIcon,
-    description: 'Hiring approval, employment documents, employee master data, and ownership',
-  },
-  {
-    id: 'it_provisioning',
-    label: 'IT Provisioning',
-    shortLabel: 'IT Provisioning',
-    owner: 'ICT',
-    icon: HeroIcons.ComputerDesktopIcon,
-    description: 'Equipment, accounts, MFA, VPN, access, and technical handover',
-  },
-  {
-    id: 'first_day',
-    label: 'First Day Orientation',
-    shortLabel: 'First Day',
-    owner: 'HR / Manager',
-    icon: HeroIcons.UserGroupIcon,
-    description: 'Welcome, introductions, safety, policies, and operational readiness',
-  },
-  {
-    id: 'final_validation',
-    label: 'Final Checklist Validation',
-    shortLabel: 'Final Validation',
-    owner: 'HR',
-    icon: HeroIcons.ClipboardDocumentCheckIcon,
-    description: 'Final HR review, acknowledgements, records, payroll, and workflow closure',
-  },
-]
-
 const OFFBOARDING_CHECKLIST_STAGES = [
   { id: 'exit_initiation', label: 'Exit Initiation', shortLabel: 'Initiation', owner: 'HR', icon: HeroIcons.DocumentCheckIcon },
   { id: 'access_revocation', label: 'Access Revocation', shortLabel: 'Access', owner: 'ICT', icon: HeroIcons.LockClosedIcon },
@@ -152,39 +108,8 @@ const BRANCH_CONFIG = {
   RIN: { label: 'Rejlers India', color: 'text-emerald-600' },
 }
 
-// ── Soft-coded success message configuration ──────────────────────────────
-const SUCCESS_CONFIG = {
-  autoReloadDelay: 2000, // milliseconds - delay before page reload after successful employee creation
-  defaultRole: 'Default', // Default RBAC role assigned to new employees
-  visibilityLocations: [
-    'Overview tab (this page)',
-    'HR/Employees list',
-    'Admin/Users dashboard',
-    'Profile (when user logs in)'
-  ]
-}
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── SMART BUTTON CONFIGURATION FOR OVERVIEW TAB ────────────────────────────
-// All buttons in the Overview section are configured here for easy maintenance
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Navigation Action Types
- * Defines how the button should behave when clicked
- */
-const NAV_ACTIONS = {
-  HASH: 'hash',           // Navigate using window.location.hash
-  TAB: 'tab',             // Switch to a different tab
-  ROUTE: 'route',         // Navigate to a different route
-  CALLBACK: 'callback',   // Execute a custom callback function
-  EXTERNAL: 'external',   // Open external URL
-}
-
-/**
- * Button Size Presets
- * Consistent sizing across all buttons
- */
+// Shared button styles for the existing offboarding actions.
 const BUTTON_SIZES = {
   sm: 'px-3 py-1.5 text-xs',
   md: 'px-4 py-2 text-sm',
@@ -223,631 +148,6 @@ const BUTTON_VARIANTS = {
   },
 }
 
-/**
- * Smart Button Configuration for Overview Tab
- * Each button can be configured with:
- * - id: unique identifier
- * - label: button text
- * - section: which section this button belongs to ('onboarding' | 'offboarding' | 'global')
- * - actionType: type of navigation (hash, tab, route, callback, external)
- * - actionValue: value for the action (hash name, tab id, route path, callback function, external URL)
- * - variant: color scheme (primary, secondary, success, warning, danger)
- * - style: display style (base, outline, ghost)
- * - size: button size (sm, md, lg)
- * - icon: HeroIcon component to display
- * - iconPosition: where to place the icon ('left' | 'right' | 'both')
- * - showBadge: whether to show a badge with count
- * - badgeSource: function to get badge value from stats
- * - visible: function to determine if button should be shown
- * - disabled: function to determine if button should be disabled
- * - tooltip: tooltip text on hover
- * - analytics: analytics event name to track
- * - confirmBefore: show confirmation dialog before action
- * - confirmMessage: message to show in confirmation dialog
- */
-const OVERVIEW_BUTTONS = [
-  // ── Onboarding Section Buttons ──
-  {
-    id: 'view-all-onboarding',
-    label: 'View All',
-    section: 'onboarding',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, onTabChange) => {
-      if (onTabChange) onTabChange('all-onboarding')
-    },
-    variant: 'primary',
-    style: 'ghost',
-    size: 'md',
-    icon: HeroIcons.ArrowRightIcon,
-    iconPosition: 'right',
-    showBadge: false,
-    visible: (stats) => true,
-    disabled: (stats) => false,
-    tooltip: 'View complete onboarding list',
-    analytics: 'onboarding_view_all_click',
-  },
-  {
-    id: 'add-new-employee',
-    label: 'Add New',
-    section: 'onboarding',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, onTabChange) => {
-      if (onTabChange) onTabChange('create')
-    },
-    variant: 'success',
-    style: 'outline',
-    size: 'md',
-    icon: HeroIcons.PlusCircleIcon,
-    iconPosition: 'left',
-    showBadge: false,
-    visible: (stats) => true,
-    disabled: (stats) => false,
-    tooltip: 'Create new employee onboarding',
-    analytics: 'onboarding_add_new_click',
-  },
-  {
-    id: 'view-overdue-onboarding',
-    label: 'Overdue Items',
-    section: 'onboarding',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, onTabChange) => {
-      if (onTabChange) onTabChange('overdue-onboarding')
-    },
-    variant: 'danger',
-    style: 'outline',
-    size: 'sm',
-    icon: HeroIcons.ExclamationTriangleIcon,
-    iconPosition: 'left',
-    showBadge: true,
-    badgeSource: (stats) => stats?.overdue ?? 0,
-    visible: (stats) => (stats?.overdue ?? 0) > 0, // Only show if there are overdue items
-    disabled: (stats) => false,
-    tooltip: 'View overdue onboarding items',
-    analytics: 'onboarding_overdue_click',
-  },
-  {
-    id: 'view-upcoming-joiners',
-    label: 'Upcoming Joiners',
-    section: 'onboarding',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, onTabChange) => {
-      if (onTabChange) onTabChange('upcoming-onboarding')
-    },
-    variant: 'primary',
-    style: 'outline',
-    size: 'sm',
-    icon: HeroIcons.CalendarDaysIcon,
-    iconPosition: 'left',
-    showBadge: true,
-    badgeSource: (stats) => stats?.upcoming_joiners ?? 0,
-    visible: (stats) => (stats?.upcoming_joiners ?? 0) > 0,
-    disabled: (stats) => false,
-    tooltip: 'View employees joining in next 30 days',
-    analytics: 'onboarding_upcoming_click',
-  },
-
-  // ── Offboarding Section Buttons ──
-  {
-    id: 'view-all-offboarding',
-    label: 'View All',
-    section: 'offboarding',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, onTabChange) => {
-      if (onTabChange) onTabChange('all-offboarding')
-    },
-    variant: 'danger',
-    style: 'ghost',
-    size: 'md',
-    icon: HeroIcons.ArrowRightIcon,
-    iconPosition: 'right',
-    showBadge: false,
-    visible: (stats) => true,
-    disabled: (stats) => false,
-    tooltip: 'View complete offboarding list',
-    analytics: 'offboarding_view_all_click',
-  },
-  {
-    id: 'initiate-offboarding',
-    label: 'Initiate Exit',
-    section: 'offboarding',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, onTabChange) => {
-      // The real "Initiate Exit" form lives on the Offboarding List tab.
-      if (onTabChange) onTabChange('offboarding')
-    },
-    variant: 'warning',
-    style: 'outline',
-    size: 'md',
-    icon: HeroIcons.UserMinusIcon,
-    iconPosition: 'left',
-    showBadge: false,
-    visible: (stats) => true,
-    disabled: (stats) => false,
-    tooltip: 'Start offboarding process for an employee',
-    analytics: 'offboarding_initiate_click',
-  },
-  {
-    id: 'view-overdue-offboarding',
-    label: 'Overdue Items',
-    section: 'offboarding',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, onTabChange) => {
-      if (onTabChange) onTabChange('overdue-offboarding')
-    },
-    variant: 'danger',
-    style: 'outline',
-    size: 'sm',
-    icon: HeroIcons.ExclamationTriangleIcon,
-    iconPosition: 'left',
-    showBadge: true,
-    badgeSource: (stats) => stats?.overdue ?? 0,
-    visible: (stats) => (stats?.overdue ?? 0) > 0,
-    disabled: (stats) => false,
-    tooltip: 'View overdue offboarding items',
-    analytics: 'offboarding_overdue_click',
-  },
-  {
-    id: 'view-upcoming-exits',
-    label: 'Upcoming Exits',
-    section: 'offboarding',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, onTabChange) => {
-      if (onTabChange) onTabChange('upcoming-offboarding')
-    },
-    variant: 'warning',
-    style: 'outline',
-    size: 'sm',
-    icon: HeroIcons.CalendarDaysIcon,
-    iconPosition: 'left',
-    showBadge: true,
-    badgeSource: (stats) => stats?.upcoming_exits ?? 0,
-    visible: (stats) => (stats?.upcoming_exits ?? 0) > 0,
-    disabled: (stats) => false,
-    tooltip: 'View employees leaving in next 30 days',
-    analytics: 'offboarding_upcoming_click',
-  },
-
-  // ── Global Actions (appear in both sections or top-level) ──
-  {
-    id: 'refresh-statistics',
-    label: 'Refresh',
-    section: 'global',
-    actionType: NAV_ACTIONS.CALLBACK,
-    actionValue: (stats, loadFunction) => {
-      if (loadFunction) loadFunction()
-    },
-    variant: 'secondary',
-    style: 'ghost',
-    size: 'sm',
-    icon: HeroIcons.ArrowPathIcon,
-    iconPosition: 'left',
-    showBadge: false,
-    visible: (stats) => true,
-    disabled: (stats) => false,
-    tooltip: 'Refresh statistics',
-    analytics: 'overview_refresh_click',
-  },
-]
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ── SMART KPI CARD CONFIGURATION FOR OVERVIEW TAB ──────────────────────────
-// All KPI metric cards in the Overview section are configured here
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * KPI Color Schemes
- * Pre-defined color combinations for different metrics
- */
-const KPI_COLOR_SCHEMES = {
-  blue: {
-    bgColor: 'bg-blue-50',
-    textColor: 'text-blue-700',
-    iconBg: 'bg-blue-100',
-  },
-  violet: {
-    bgColor: 'bg-violet-50',
-    textColor: 'text-violet-700',
-    iconBg: 'bg-violet-100',
-  },
-  rose: {
-    bgColor: 'bg-rose-50',
-    textColor: 'text-rose-700',
-    iconBg: 'bg-rose-100',
-  },
-  emerald: {
-    bgColor: 'bg-emerald-50',
-    textColor: 'text-emerald-700',
-    iconBg: 'bg-emerald-100',
-  },
-  amber: {
-    bgColor: 'bg-amber-50',
-    textColor: 'text-amber-700',
-    iconBg: 'bg-amber-100',
-  },
-  slate: {
-    bgColor: 'bg-slate-50',
-    textColor: 'text-slate-700',
-    iconBg: 'bg-slate-100',
-  },
-  indigo: {
-    bgColor: 'bg-indigo-50',
-    textColor: 'text-indigo-700',
-    iconBg: 'bg-indigo-100',
-  },
-}
-
-/**
- * Smart KPI Card Configuration
- * Each KPI card can be configured with:
- * - id: unique identifier
- * - label: card title
- * - section: which section this card belongs to ('onboarding' | 'offboarding')
- * - valueSource: function to extract value from stats
- * - icon: HeroIcon component to display
- * - colorScheme: pre-defined color scheme (blue, violet, rose, emerald, amber, slate, indigo)
- * - subtitle: optional subtitle text or function
- * - urgent: function to determine if card should show urgent state
- * - visible: function to determine if card should be shown
- * - order: display order (lower numbers appear first)
- * - onClick: optional click handler function
- * - tooltip: tooltip text on hover
- * - animation: enable/disable animations
- */
-const KPI_CARDS_CONFIG = {
-  onboarding: [
-    {
-      id: 'onboarding-total-active',
-      label: 'Total Active',
-      section: 'onboarding',
-      valueSource: (stats) => stats?.total ?? 0,
-      icon: HeroIcons.UsersIcon,
-      colorScheme: 'blue',
-      subtitle: null,
-      urgent: (stats) => false,
-      visible: (stats) => true,
-      order: 1,
-      onClick: (stats, onAction) => {
-        if (onAction) onAction('all-onboarding')
-      },
-      tooltip: 'Total active onboarding processes',
-      animation: true,
-    },
-    {
-      id: 'onboarding-joining-soon',
-      label: 'Joining Soon',
-      section: 'onboarding',
-      valueSource: (stats) => stats?.upcoming_joiners ?? 0,
-      icon: HeroIcons.CalendarDaysIcon,
-      colorScheme: 'violet',
-      subtitle: 'Next 30 days',
-      urgent: (stats) => false,
-      visible: (stats) => true,
-      order: 2,
-      onClick: (stats, onAction) => {
-        if (onAction) onAction('upcoming-onboarding')
-      },
-      tooltip: 'Employees joining in the next 30 days',
-      animation: true,
-    },
-    {
-      id: 'onboarding-overdue',
-      label: 'Overdue',
-      section: 'onboarding',
-      valueSource: (stats) => stats?.overdue ?? 0,
-      icon: HeroIcons.ExclamationCircleIcon,
-      colorScheme: 'rose',
-      subtitle: null,
-      urgent: (stats) => (stats?.overdue ?? 0) > 0,
-      visible: (stats) => true,
-      order: 3,
-      onClick: (stats, onAction) => {
-        if (onAction) onAction('overdue-onboarding')
-      },
-      tooltip: 'Overdue onboarding items requiring attention',
-      animation: true,
-    },
-    {
-      id: 'onboarding-completed',
-      label: 'Completed',
-      section: 'onboarding',
-      valueSource: (stats) => stats?.completed_this_month ?? 0,
-      icon: HeroIcons.CheckCircleIcon,
-      colorScheme: 'emerald',
-      subtitle: 'This month',
-      urgent: (stats) => false,
-      visible: (stats) => true,
-      order: 4,
-      onClick: (stats, onAction) => {
-        if (onAction) onAction('completed-onboarding')
-      },
-      tooltip: 'Completed onboarding processes this month',
-      animation: true,
-    },
-  ],
-  offboarding: [
-    {
-      id: 'offboarding-total-active',
-      label: 'Total Active',
-      section: 'offboarding',
-      valueSource: (stats) => stats?.total ?? 0,
-      icon: HeroIcons.UsersIcon,
-      colorScheme: 'slate',
-      subtitle: null,
-      urgent: (stats) => false,
-      visible: (stats) => true,
-      order: 1,
-      onClick: (stats, onAction) => {
-        if (onAction) onAction('all-offboarding')
-      },
-      tooltip: 'Total active offboarding processes',
-      animation: true,
-    },
-    {
-      id: 'offboarding-leaving-soon',
-      label: 'Leaving Soon',
-      section: 'offboarding',
-      valueSource: (stats) => stats?.upcoming_exits ?? 0,
-      icon: HeroIcons.CalendarDaysIcon,
-      colorScheme: 'amber',
-      subtitle: 'Next 30 days',
-      urgent: (stats) => false,
-      visible: (stats) => true,
-      order: 2,
-      onClick: (stats, onAction) => {
-        if (onAction) onAction('upcoming-offboarding')
-      },
-      tooltip: 'Employees leaving in the next 30 days',
-      animation: true,
-    },
-    {
-      id: 'offboarding-overdue',
-      label: 'Overdue',
-      section: 'offboarding',
-      valueSource: (stats) => stats?.overdue ?? 0,
-      icon: HeroIcons.ExclamationCircleIcon,
-      colorScheme: 'rose',
-      subtitle: null,
-      urgent: (stats) => (stats?.overdue ?? 0) > 0,
-      visible: (stats) => true,
-      order: 3,
-      onClick: (stats, onAction) => {
-        if (onAction) onAction('overdue-offboarding')
-      },
-      tooltip: 'Overdue offboarding items requiring attention',
-      animation: true,
-    },
-    {
-      id: 'offboarding-completed',
-      label: 'Completed',
-      section: 'offboarding',
-      valueSource: (stats) => stats?.completed_this_month ?? 0,
-      icon: HeroIcons.CheckCircleIcon,
-      colorScheme: 'emerald',
-      subtitle: 'This month',
-      urgent: (stats) => false,
-      visible: (stats) => true,
-      order: 4,
-      onClick: (stats, onAction) => {
-        if (onAction) onAction('completed-offboarding')
-      },
-      tooltip: 'Completed offboarding processes this month',
-      animation: true,
-    },
-  ],
-}
-
-/**
- * Smart KPI Card Renderer Component
- * Renders a KPI card based on configuration with all smart features
- */
-const SmartKPICard = ({ config, stats, onAction }) => {
-  // Check visibility
-  const isVisible = typeof config.visible === 'function' ? config.visible(stats) : true
-  if (!isVisible) return null
-
-  // Get value
-  const value = typeof config.valueSource === 'function' ? config.valueSource(stats) : 0
-
-  // Check urgent state
-  const isUrgent = typeof config.urgent === 'function' ? config.urgent(stats) : false
-
-  // Get icon component
-  const Icon = config.icon
-
-  // Get color scheme
-  const colors = KPI_COLOR_SCHEMES[config.colorScheme] || KPI_COLOR_SCHEMES.blue
-
-  // Get subtitle (can be string or function)
-  const subtitle = typeof config.subtitle === 'function' ? config.subtitle(stats) : config.subtitle
-
-  // Handle click
-  const handleClick = () => {
-    if (typeof config.onClick === 'function') {
-      config.onClick(stats, onAction)
-    }
-  }
-
-  return (
-    <div 
-      className={`rounded-xl border border-slate-200 p-4 ${colors.bgColor} hover:shadow-lg transition-all duration-300 cursor-pointer group`}
-      onClick={handleClick}
-      title={config.tooltip}
-      data-kpi-id={config.id}
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <div className={`text-xs font-semibold ${colors.textColor} opacity-80 uppercase tracking-wide`}>
-            {config.label}
-          </div>
-          {subtitle && (
-            <div className="text-[10px] text-slate-500 mt-0.5">{subtitle}</div>
-          )}
-        </div>
-        <div 
-          className={`w-10 h-10 rounded-lg ${colors.iconBg} flex items-center justify-center ${
-            isUrgent ? 'animate-pulse' : ''
-          } ${config.animation ? 'group-hover:scale-110 transition-transform duration-300' : ''}`}
-        >
-          <Icon className={`w-5 h-5 ${colors.textColor}`} />
-        </div>
-      </div>
-      <div className={`text-3xl font-bold ${colors.textColor} ${isUrgent ? 'text-4xl' : ''}`}>
-        {value}
-      </div>
-      {isUrgent && value > 0 && (
-        <div className="mt-2 text-[10px] font-medium text-rose-600 flex items-center gap-1">
-          <HeroIcons.ExclamationTriangleIcon className="w-3 h-3" />
-          Requires attention
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
- * Smart KPI Card Grid Component
- * Renders a grid of KPI cards for a specific section with smart layout
- */
-const SmartKPICardGrid = ({ section, stats, onAction }) => {
-  const cards = KPI_CARDS_CONFIG[section] || []
-
-  // Sort by order
-  const sortedCards = [...cards].sort((a, b) => a.order - b.order)
-
-  if (sortedCards.length === 0) return null
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {sortedCards.map((cardConfig) => (
-        <SmartKPICard key={cardConfig.id} config={cardConfig} stats={stats} onAction={onAction} />
-      ))}
-    </div>
-  )
-}
-
-/**
- * Smart Button Renderer Component
- * Renders a button based on configuration with all smart features
- */
-const SmartButton = ({ config, stats, customCallback, className = '' }) => {
-  // Check visibility
-  const isVisible = typeof config.visible === 'function' ? config.visible(stats) : true
-  if (!isVisible) return null
-
-  // Check disabled state
-  const isDisabled = typeof config.disabled === 'function' ? config.disabled(stats) : false
-
-  // Get badge value if applicable
-  const badgeValue = config.showBadge && typeof config.badgeSource === 'function' 
-    ? config.badgeSource(stats) 
-    : null
-
-  // Get icon component
-  const Icon = config.icon
-
-  // Build CSS classes
-  const variantStyle = BUTTON_VARIANTS[config.variant || 'primary'][config.style || 'ghost']
-  const sizeClass = BUTTON_SIZES[config.size || 'md']
-  const baseClasses = 'font-medium rounded-lg transition-all flex items-center gap-2 relative'
-  const disabledClasses = isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-  const allClasses = `${baseClasses} ${variantStyle} ${sizeClass} ${disabledClasses} ${className}`
-
-  // Handle click
-  const handleClick = async (e) => {
-    if (isDisabled) return
-
-    // Track analytics
-    if (config.analytics) {
-      console.log(`[Analytics] ${config.analytics}`, { stats })
-    }
-
-    // Show confirmation if required
-    if (config.confirmBefore) {
-      const confirmed = (await radaiConfirm(config.confirmMessage || 'Are you sure?'))
-      if (!confirmed) return
-    }
-
-    // Execute action based on type
-    switch (config.actionType) {
-      case NAV_ACTIONS.HASH:
-        window.location.hash = config.actionValue
-        if (customCallback) customCallback(config.actionValue.replace('#', '').split('?')[0])
-        break
-      case NAV_ACTIONS.TAB:
-        if (customCallback) customCallback(config.actionValue)
-        break
-      case NAV_ACTIONS.ROUTE:
-        window.location.href = config.actionValue
-        break
-      case NAV_ACTIONS.CALLBACK:
-        if (typeof config.actionValue === 'function') {
-          config.actionValue(stats, customCallback)
-        }
-        break
-      case NAV_ACTIONS.EXTERNAL:
-        window.open(config.actionValue, '_blank', 'noopener,noreferrer')
-        break
-      default:
-        console.warn('Unknown action type:', config.actionType)
-    }
-  }
-
-  return (
-    <button
-      onClick={handleClick}
-      disabled={isDisabled}
-      className={allClasses}
-      title={config.tooltip}
-      data-button-id={config.id}
-      data-section={config.section}
-    >
-      {/* Left Icon */}
-      {Icon && (config.iconPosition === 'left' || config.iconPosition === 'both') && (
-        <Icon className="w-4 h-4 flex-shrink-0" />
-      )}
-
-      {/* Label */}
-      <span>{config.label}</span>
-
-      {/* Badge */}
-      {config.showBadge && badgeValue !== null && badgeValue > 0 && (
-        <span className="ml-1 px-2 py-0.5 bg-white bg-opacity-20 text-xs font-bold rounded-full min-w-[1.5rem] text-center">
-          {badgeValue}
-        </span>
-      )}
-
-      {/* Right Icon */}
-      {Icon && (config.iconPosition === 'right') && (
-        <Icon className="w-4 h-4 flex-shrink-0" />
-      )}
-    </button>
-  )
-}
-
-/**
- * Button Group Component
- * Renders a group of buttons for a specific section with smart layout
- */
-const SmartButtonGroup = ({ section, stats, buttons = OVERVIEW_BUTTONS, onTabChange, className = '' }) => {
-  const sectionButtons = buttons.filter(btn => btn.section === section)
-  
-  if (sectionButtons.length === 0) return null
-
-  return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      {sectionButtons.map(config => (
-        <SmartButton 
-          key={config.id} 
-          config={config} 
-          stats={stats}
-          customCallback={onTabChange}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ── Spinner Component ──────────────────────────────────────────────────────
 const Spinner = () => (
   <svg className="animate-spin w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -857,90 +157,138 @@ const Spinner = () => (
 
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function OnboardingOffboarding() {
-  const user = useSelector((state) => state.auth.user)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState(
-    ['overview', 'onboarding', 'offboarding', 'create'].includes(requestedTab) ? requestedTab : 'overview'
+    ['overview', 'onboarding', 'offboarding', 'offboarding-list', 'create'].includes(requestedTab) ? requestedTab : 'overview'
   )
-  // Filter applied to the Offboarding List tab when navigating there from an Overview card/button
-  const [offboardingFilter, setOffboardingFilter] = useState(null)
+  const [detail, setDetail] = useState(() => requestedTab === 'onboarding' && (searchParams.get('record_id') || searchParams.get('user_id'))
+    ? { recordId: searchParams.get('record_id'), employee: { user_id: searchParams.get('user_id') }, focusItChecklist: searchParams.get('action') === 'it-checklist' }
+    : null)
+  const [exitDetail, setExitDetail] = useState(null)
+  const [showInitiateExit, setShowInitiateExit] = useState(false)
+  const [exitError, setExitError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const focusedUserId = searchParams.get('user_id')
   const focusedRecordId = searchParams.get('record_id')
   const requestedAction = searchParams.get('action')
 
   useEffect(() => {
-    if (['overview', 'onboarding', 'offboarding', 'create'].includes(requestedTab)) {
-      setActiveTab(requestedTab)
-    }
+    setActiveTab(['overview', 'onboarding', 'offboarding', 'offboarding-list', 'create'].includes(requestedTab) ? requestedTab : 'overview')
   }, [requestedTab])
 
-  // Direct tab-bar navigation clears any pending filter (only Overview cards/buttons should set one)
-  const goToTab = (tabId) => {
-    if (tabId === 'offboarding') setOffboardingFilter(null)
-    setActiveTab(tabId)
-  }
+  useEffect(() => {
+    if (requestedTab !== 'offboarding' || !focusedRecordId) return
+    let active = true
+    setExitError('')
+    apiClient.get(`${API_BASE}/offboarding/${focusedRecordId}/`)
+      .then(response => { if (active) setExitDetail({ record: response.data }) })
+      .catch(() => { if (active) setExitError('Unable to open this offboarding record. Please select the employee from the dashboard to try again.') })
+    return () => { active = false }
+  }, [requestedTab, focusedRecordId])
 
-  // Tabs configuration
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: HeroIcons.ChartBarIcon },
-    { id: 'onboarding', label: 'Onboarding List', icon: HeroIcons.UserPlusIcon },
-    { id: 'offboarding', label: 'Offboarding List', icon: HeroIcons.UserMinusIcon },
-    { id: 'create', label: 'Create New Employee', icon: HeroIcons.PlusCircleIcon },
-  ]
+  const openDetail = useCallback((record, focusItChecklist = false, focusedChecklistStage = null) => {
+    const [firstName, ...lastName] = (record.employee_name || 'Employee').trim().split(/\s+/)
+    setDetail({
+      recordId: record.id,
+      focusItChecklist,
+      focusedChecklistStage,
+      employee: {
+        first_name: firstName,
+        last_name: lastName.join(' '),
+        user_id: record.user,
+        employee_number: record.employee_id,
+        email: record.employee_email,
+        division: record.department,
+        job_title_uae: record.position,
+      },
+    })
+  }, [])
+  const openEmployee = useCallback(employee => {
+    setDetail({ employee, recordId: employee.onboarding_record_id || null })
+  }, [])
+  useEffect(() => {
+    if (requestedTab !== 'onboarding' || (!focusedRecordId && !focusedUserId)) return
+    setDetail({ recordId: focusedRecordId || null, employee: { user_id: focusedUserId }, focusItChecklist: requestedAction === 'it-checklist' })
+  }, [requestedTab, focusedRecordId, focusedUserId, requestedAction])
+  const closeDetail = useCallback(() => {
+    setDetail(null)
+    setActiveTab('overview')
+    setRefreshKey(value => value + 1)
+    setSearchParams(current => {
+      const next = new URLSearchParams(current)
+      next.delete('user_id'); next.delete('record_id'); next.delete('action')
+      next.set('tab', 'overview')
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+  const openExitDetail = useCallback((record, _focusItChecklist = false, initialStage = 'exit_initiation') => {
+    setExitError('')
+    setExitDetail({ record, initialStage })
+  }, [])
+  const closeExitDetail = useCallback(() => {
+    setExitDetail(null)
+    setRefreshKey(value => value + 1)
+  }, [])
+  const updateExitDetail = useCallback(record => {
+    setExitDetail(current => current?.record.id === record.id ? { ...current, record } : current)
+  }, [])
+  const isOffboarding = activeTab === 'offboarding' || activeTab === 'offboarding-list'
+
+  const navigation = (
+    <div className="lifecycle-tabs" role="group" aria-label="Employee lifecycle">
+      <button type="button" aria-pressed={!isOffboarding} onClick={() => setActiveTab('overview')}>Onboarding</button>
+      <button type="button" aria-pressed={isOffboarding} onClick={() => setActiveTab('offboarding')}>Offboarding</button>
+    </div>
+  )
+  const startButton = (
+    <button type="button" className="lifecycle-start" onClick={() => isOffboarding ? setShowInitiateExit(true) : setActiveTab('create')}>
+      <HeroIcons.PlusIcon aria-hidden="true" />Start {isOffboarding ? 'offboarding' : 'onboarding'}
+    </button>
+  )
+
+  if (detail) return <FullOnboardingOverview {...detail} onClose={closeDetail} />
+
+  if (activeTab === 'create') return <CreateEmployeeWizard
+    onCancel={() => setActiveTab('overview')}
+    onCreated={result => {
+      setActiveTab('overview')
+      setRefreshKey(value => value + 1)
+      openDetail({ id: result.onboarding_id, user: result.user_id, employee_name: result.employee_name, employee_id: result.employee_number, employee_email: result.email, department: result.department, position: result.position })
+    }}
+  />
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 p-4 sm:p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <HeroIcons.UsersIcon className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">Onboarding | Offboarding</h1>
-            <p className="text-sm text-slate-500">Employee lifecycle management — joining, exit, equipment, documents, access</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-1">
-          <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            {tabs.map((tab) => {
-              const Icon = tab.icon
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => goToTab(tab.id)}
-                  className={`flex items-center justify-center gap-2 px-5 py-3 rounded-lg transition-all duration-200 whitespace-nowrap min-w-fit ${
-                    activeTab === tab.id
-                      ? 'bg-gradient-to-r from-blue-500 to-violet-500 text-white shadow-md shadow-blue-500/30 font-semibold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
-                  }`}
-                >
-                  <Icon className={`w-5 h-5 ${activeTab === tab.id ? 'animate-pulse' : ''}`} />
-                  <span className="text-sm">{tab.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Content */}
-      <div>
-        {activeTab === 'overview' && <OverviewTab onTabChange={setActiveTab} onOffboardingFilter={setOffboardingFilter} />}
-        {activeTab === 'onboarding' && (
-          <OnboardingListTab
-            focusedUserId={focusedUserId}
-            focusItChecklist={requestedAction === 'it-checklist'}
-          />
-        )}
-        {activeTab === 'offboarding' && <OffboardingListTab initialFilter={offboardingFilter} focusedRecordId={focusedRecordId} />}
-        {activeTab === 'create' && <CreateEmployeeTab />}
-      </div>
+    <div className="employee-lifecycle">
+      <nav className="lifecycle-breadcrumb" aria-label="Breadcrumb">
+        <a href="/hr">HR</a><span aria-hidden="true">/</span><span aria-current="page">Employee Lifecycle</span>
+      </nav>
+      <h1>Employee Lifecycle</h1>
+      {exitError && <div role="alert" className="onboarding-notice">{exitError}</div>}
+      {activeTab === 'overview' || activeTab === 'offboarding' ? (
+        <OnboardingDashboard
+          key={activeTab}
+          mode={isOffboarding ? 'offboarding' : 'onboarding'}
+          navigation={navigation}
+          startButton={startButton}
+          onOpenRecord={isOffboarding ? openExitDetail : openDetail}
+          onOpenRegister={isOffboarding ? () => setActiveTab('offboarding-list') : undefined}
+          refreshKey={refreshKey}
+        />
+      ) : (
+        <>
+          <div className="lifecycle-toolbar lifecycle-toolbar--detail">{navigation}{startButton}</div>
+          {(
+            <button type="button" className="lifecycle-back" onClick={() => setActiveTab(isOffboarding ? 'offboarding' : 'overview')}>
+              <HeroIcons.ArrowLeftIcon aria-hidden="true" />Back to overview
+            </button>
+          )}
+          {activeTab === 'onboarding' && !focusedRecordId && !focusedUserId && <OnboardingListTab onOpenEmployee={openEmployee} />}
+          {activeTab === 'offboarding-list' && <OffboardingListTab focusedRecordId={focusedRecordId} />}
+        </>
+      )}
+      {exitDetail && <OffboardingChecklistModal {...exitDetail} onClose={closeExitDetail} onUpdated={updateExitDetail} />}
+      {showInitiateExit && <InitiateExitModal onClose={() => setShowInitiateExit(false)} onSuccess={() => { setShowInitiateExit(false); setActiveTab('offboarding'); setRefreshKey(value => value + 1) }} />}
     </div>
   )
 }
@@ -949,475 +297,21 @@ export default function OnboardingOffboarding() {
 const ONBOARDING_ACTIVE_STATUSES = ['initiated', 'documentation', 'equipment', 'access_provisioning', 'training']
 const OFFBOARDING_ACTIVE_STATUSES = ['initiated', 'access_revocation', 'equipment_return', 'exit_interview', 'final_settlement']
 
-const ONBOARDING_MODAL_TITLES = {
-  all: 'All Onboarding Processes',
-  upcoming: 'Employees Joining Soon',
-  overdue: 'Overdue Onboarding Items',
-  completed: 'Completed Onboarding History — This Month',
-}
-
-// Maps a KPI/button action id to the onboarding modal filter it should apply
-const ONBOARDING_FILTER_SIGNALS = {
-  'all-onboarding': 'all',
-  'upcoming-onboarding': 'upcoming',
-  'overdue-onboarding': 'overdue',
-  'completed-onboarding': 'completed',
-}
-
-// Maps a KPI/button action id to the offboarding list filter it should apply
-const OFFBOARDING_FILTER_SIGNALS = {
-  'all-offboarding': 'all',
-  'upcoming-offboarding': 'upcoming',
-  'overdue-offboarding': 'overdue',
-  'completed-offboarding': 'completed',
-}
-
-const filterOnboardingRecords = (records, filterType, filterValue) => {
-  const today = new Date().toISOString().split('T')[0]
-  const upcomingLimit = new Date()
-  upcomingLimit.setDate(upcomingLimit.getDate() + 30)
-  const upcomingLimitStr = upcomingLimit.toISOString().split('T')[0]
-  const now = new Date()
-
-  switch (filterType) {
-    case 'upcoming':
-      return records.filter(
-        (r) => r.joining_date && r.joining_date >= today && r.joining_date <= upcomingLimitStr && ONBOARDING_ACTIVE_STATUSES.includes(r.status)
-      )
-    case 'overdue':
-      return records.filter((r) => r.joining_date && r.joining_date < today && ONBOARDING_ACTIVE_STATUSES.includes(r.status))
-    case 'completed':
-      return records.filter((r) => {
-        if (r.status !== 'completed' || !r.actual_completion_date) return false
-        const d = new Date(r.actual_completion_date)
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-      })
-    case 'branch':
-      return records.filter((r) => r.branch === filterValue)
-    case 'all':
-    default:
-      return records
-  }
-}
-
-// ── Overview Tab ───────────────────────────────────────────────────────────
-function OverviewTab({ onTabChange, onOffboardingFilter }) {
-  const [onboardingStats, setOnboardingStats] = useState(null)
-  const [offboardingStats, setOffboardingStats] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [onboardingModalOpen, setOnboardingModalOpen] = useState(false)
-  const [onboardingModalTitle, setOnboardingModalTitle] = useState('')
-  const [onboardingModalItems, setOnboardingModalItems] = useState([])
-  const [onboardingModalLoading, setOnboardingModalLoading] = useState(false)
-  const [onboardingDetail, setOnboardingDetail] = useState(null)
-
-  useEffect(() => {
-    loadStatistics()
-  }, [])
-
-  const loadOnboardingRecords = (filterType, filterValue) => {
-    setOnboardingModalOpen(true)
-    setOnboardingModalLoading(true)
-    setOnboardingModalTitle(
-      filterType === 'branch'
-        ? `Onboarding — ${BRANCH_CONFIG[filterValue]?.label || filterValue}`
-        : ONBOARDING_MODAL_TITLES[filterType] || 'Onboarding Processes'
-    )
-    apiClient
-      .get(`${API_BASE}/onboarding/`)
-      .then((res) => {
-        const records = res.data?.results || []
-        setOnboardingModalItems(filterOnboardingRecords(records, filterType, filterValue))
-      })
-      .catch((err) => console.error('Failed to load onboarding records:', err))
-      .finally(() => setOnboardingModalLoading(false))
-  }
-
-  const openOnboardingDetail = (item) => {
-    const nameParts = (item.employee_name || 'Employee').trim().split(/\s+/)
-    setOnboardingDetail({
-      recordId: item.id,
-      employee: {
-        first_name: nameParts.shift() || 'Employee',
-        last_name: nameParts.join(' '),
-        employee_number: item.employee_id,
-        email: item.employee_email,
-        division: item.department,
-        job_title_uae: item.position,
-      },
-    })
-  }
-
-  const handleOnboardingAction = (action) => {
-    if (typeof action === 'string' && action.startsWith('branch-onboarding:')) {
-      loadOnboardingRecords('branch', action.slice('branch-onboarding:'.length))
-    } else if (ONBOARDING_FILTER_SIGNALS[action]) {
-      loadOnboardingRecords(ONBOARDING_FILTER_SIGNALS[action])
-    } else if (onTabChange) {
-      onTabChange(action)
-    }
-  }
-
-  const handleOffboardingAction = (action) => {
-    if (typeof action === 'string' && action.startsWith('branch-offboarding:')) {
-      if (onOffboardingFilter) onOffboardingFilter({ branch: action.slice('branch-offboarding:'.length) })
-      if (onTabChange) onTabChange('offboarding')
-    } else if (OFFBOARDING_FILTER_SIGNALS[action]) {
-      if (onOffboardingFilter) onOffboardingFilter({ dateFilter: OFFBOARDING_FILTER_SIGNALS[action] })
-      if (onTabChange) onTabChange('offboarding')
-    } else if (onTabChange) {
-      onTabChange(action)
-    }
-  }
-
-  const loadStatistics = () => {
-    setLoading(true)
-    Promise.all([
-      apiClient.get(`${API_BASE}/onboarding/statistics/`),
-      apiClient.get(`${API_BASE}/offboarding/statistics/`),
-    ])
-      .then(([onRes, offRes]) => {
-        setOnboardingStats(onRes.data)
-        setOffboardingStats(offRes.data)
-      })
-      .catch((err) => console.error('Failed to load statistics:', err))
-      .finally(() => setLoading(false))
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner />
-        <span className="ml-2 text-slate-500">Loading statistics...</span>
-      </div>
-    )
-  }
-
-  const totalActive = (onboardingStats?.total ?? 0) + (offboardingStats?.total ?? 0)
-  const totalUrgent = (onboardingStats?.overdue ?? 0) + (offboardingStats?.overdue ?? 0)
-
-  return (
-    <div className="space-y-6">
-      {/* Global Actions Bar */}
-      <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
-        <div className="flex items-center gap-3">
-          <HeroIcons.ChartBarIcon className="w-5 h-5 text-slate-400" />
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800">Overview Dashboard</h3>
-            <p className="text-xs text-slate-500">Real-time employee lifecycle metrics</p>
-          </div>
-        </div>
-        {/* Global Action Buttons */}
-        <SmartButtonGroup 
-          section="global" 
-          stats={{ onboarding: onboardingStats, offboarding: offboardingStats }}
-          customCallback={loadStatistics}
-        />
-      </div>
-
-      {/* Hero Stats */}
-      <div className="bg-gradient-to-br from-blue-500 to-violet-600 rounded-2xl p-6 text-white shadow-lg">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <div className="text-sm font-medium opacity-90 mb-1">Total Active Processes</div>
-            <div className="text-4xl font-bold">{totalActive}</div>
-            <div className="text-xs opacity-75 mt-1">
-              {onboardingStats?.total ?? 0} onboarding • {offboardingStats?.total ?? 0} offboarding
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-medium opacity-90 mb-1">Upcoming Actions</div>
-            <div className="text-4xl font-bold">
-              {(onboardingStats?.upcoming_joiners ?? 0) + (offboardingStats?.upcoming_exits ?? 0)}
-            </div>
-            <div className="text-xs opacity-75 mt-1">Next 30 days</div>
-          </div>
-          <div>
-            <div className="text-sm font-medium opacity-90 mb-1 flex items-center gap-2">
-              {totalUrgent > 0 && <HeroIcons.ExclamationTriangleIcon className="w-4 h-4 animate-pulse" />}
-              Urgent Attention
-            </div>
-            <div className="text-4xl font-bold">{totalUrgent}</div>
-            <div className="text-xs opacity-75 mt-1">
-              {totalUrgent > 0 ? 'Overdue items requiring action' : 'All on track'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Onboarding Section */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-md">
-              <HeroIcons.UserPlusIcon className="w-6 h-6 text-white" />
-            </div>
-            Onboarding Pipeline
-          </h2>
-          {/* Smart Button Group for Onboarding Actions */}
-          <SmartButtonGroup
-            section="onboarding"
-            stats={onboardingStats}
-            onTabChange={handleOnboardingAction}
-            className="flex-shrink-0"
-          />
-        </div>
-
-        {/* Main KPIs - Smart Card Grid */}
-        <div className="mb-6">
-          <SmartKPICardGrid section="onboarding" stats={onboardingStats} onAction={handleOnboardingAction} />
-        </div>
-
-        {/* Status Pipeline */}
-        <div>
-          <h3 className="text-sm font-semibold text-slate-600 mb-3">Status Pipeline</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
-            {Object.entries(onboardingStats?.by_status ?? {}).map(([status, count]) => {
-              const cfg = ONBOARDING_STATUS_CONFIG[status] || { label: status, color: 'bg-gray-100 text-gray-700' }
-              return (
-                <div key={status} className={`rounded-lg border px-3 py-3 text-center hover:shadow-md transition-all cursor-pointer ${cfg.color}`}>
-                  <div className="text-2xl font-bold">{count}</div>
-                  <div className="text-[10px] font-semibold opacity-80 mt-1 uppercase tracking-wide">{cfg.label}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Branch Breakdown */}
-        {onboardingStats?.by_branch && Object.keys(onboardingStats.by_branch).length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-slate-600 mb-3">By Branch</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {Object.entries(onboardingStats.by_branch).map(([branch, count]) => {
-                const branchCfg = BRANCH_CONFIG[branch] || { label: branch, color: 'text-slate-600' }
-                return (
-                  <div
-                    key={branch}
-                    className="bg-slate-50 rounded-lg p-4 border border-slate-200 cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleOnboardingAction(`branch-onboarding:${branch}`)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className={`text-xs font-medium ${branchCfg.color}`}>{branchCfg.label}</div>
-                        <div className="text-2xl font-bold text-slate-700 mt-1">{count}</div>
-                      </div>
-                      <HeroIcons.BuildingOfficeIcon className={`w-8 h-8 opacity-20 ${branchCfg.color}`} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Offboarding Section */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center shadow-md">
-              <HeroIcons.UserMinusIcon className="w-6 h-6 text-white" />
-            </div>
-            Offboarding Pipeline
-          </h2>
-          {/* Smart Button Group for Offboarding Actions */}
-          <SmartButtonGroup
-            section="offboarding"
-            stats={offboardingStats}
-            onTabChange={handleOffboardingAction}
-            className="flex-shrink-0"
-          />
-        </div>
-
-        {/* Main KPIs - Smart Card Grid */}
-        <div className="mb-6">
-          <SmartKPICardGrid section="offboarding" stats={offboardingStats} onAction={handleOffboardingAction} />
-        </div>
-
-        {/* Status Pipeline */}
-        <div>
-          <h3 className="text-sm font-semibold text-slate-600 mb-3">Status Pipeline</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
-            {Object.entries(offboardingStats?.by_status ?? {}).map(([status, count]) => {
-              const cfg = OFFBOARDING_STATUS_CONFIG[status] || { label: status, color: 'bg-gray-100 text-gray-700' }
-              return (
-                <div key={status} className={`rounded-lg border px-3 py-3 text-center hover:shadow-md transition-all cursor-pointer ${cfg.color}`}>
-                  <div className="text-2xl font-bold">{count}</div>
-                  <div className="text-[10px] font-semibold opacity-80 mt-1 uppercase tracking-wide">{cfg.label}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Exit Reasons */}
-        {offboardingStats?.by_exit_reason && Object.keys(offboardingStats.by_exit_reason).length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-slate-600 mb-3">Exit Reasons Analysis</h3>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-9 gap-2">
-              {Object.entries(offboardingStats.by_exit_reason).map(([reason, count]) => {
-                const cfg = EXIT_REASON_CONFIG[reason] || { label: reason, icon: HeroIcons.QuestionMarkCircleIcon }
-                const Icon = cfg.icon
-                return (
-                  <div key={reason} className="bg-white rounded-lg border border-slate-200 px-2 py-3 text-center hover:shadow-lg hover:border-rose-300 transition-all cursor-pointer group">
-                    <Icon className="w-6 h-6 mx-auto text-slate-500 mb-2 group-hover:text-rose-600 transition-colors" />
-                    <div className="text-xl font-bold text-slate-700">{count}</div>
-                    <div className="text-[9px] text-slate-500 mt-1 font-medium">{cfg.label}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Branch Breakdown */}
-        {offboardingStats?.by_branch && Object.keys(offboardingStats.by_branch).length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-slate-600 mb-3">By Branch</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {Object.entries(offboardingStats.by_branch).map(([branch, count]) => {
-                const branchCfg = BRANCH_CONFIG[branch] || { label: branch, color: 'text-slate-600' }
-                return (
-                  <div
-                    key={branch}
-                    className="bg-slate-50 rounded-lg p-4 border border-slate-200 cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleOffboardingAction(`branch-offboarding:${branch}`)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className={`text-xs font-medium ${branchCfg.color}`}>{branchCfg.label}</div>
-                        <div className="text-2xl font-bold text-slate-700 mt-1">{count}</div>
-                      </div>
-                      <HeroIcons.BuildingOfficeIcon className={`w-8 h-8 opacity-20 ${branchCfg.color}`} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Onboarding Records Modal (Total Active / Joining Soon / Overdue / Completed / By Branch) */}
-      {onboardingModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setOnboardingModalOpen(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                <HeroIcons.ExclamationTriangleIcon className="w-5 h-5 text-rose-500" />
-                {onboardingModalTitle}
-              </h3>
-              <button
-                onClick={() => setOnboardingModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded"
-                title="Close"
-              >
-                <HeroIcons.XMarkIcon className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-5 space-y-3">
-              {onboardingModalLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Spinner />
-                  <span className="ml-2 text-slate-500 text-sm">Loading...</span>
-                </div>
-              ) : onboardingModalItems.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-6">No matching onboarding items.</p>
-              ) : (
-                onboardingModalItems.map((item) => {
-                  const cfg = ONBOARDING_STATUS_CONFIG[item.status] || { label: item.status, color: 'bg-gray-100 text-gray-700' }
-                  return (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-slate-800">{item.employee_name}</div>
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          Joining date: {item.joining_date ? new Date(item.joining_date).toLocaleDateString() : '—'}
-                          {item.department ? ` • ${item.department}` : ''}
-                        </div>
-                      </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
-                        <span className={`px-2 py-1 rounded text-xs border ${cfg.color}`}>{cfg.label}</span>
-                        <button
-                          type="button"
-                          onClick={() => openOnboardingDetail(item)}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
-                          title={`View ${item.employee_name} onboarding details`}
-                        >
-                          <HeroIcons.UserCircleIcon className="h-4 w-4" />
-                          View
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {onboardingDetail && (
-        <OnboardingFullDetailsModal
-          recordId={onboardingDetail.recordId}
-          employee={onboardingDetail.employee}
-          onClose={() => setOnboardingDetail(null)}
-        />
-      )}
-    </div>
-  )
-}
-
-// ── Onboarding List Tab ────────────────────────────────────────────────────
-function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
+function OnboardingListTab({ onOpenEmployee }) {
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ search: '', status: '', branch: '' })
   const [stats, setStats] = useState({ total: 0, urgent: 0, overdue: 0, completed: 0 })
-  const [detailEmployee, setDetailEmployee] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deletingRecordId, setDeletingRecordId] = useState(null)
   const [alert, setAlert] = useState(null)
   const [viewMode, setViewMode] = useState('compact') // 'cards' or 'compact'
   const [editingRow, setEditingRow] = useState(null) // userId of row being edited
   const [editFormData, setEditFormData] = useState({}) // Form data for inline editing
-  const focusedEmployeeOpened = useRef(false)
 
   useEffect(() => {
     loadEmployees()
   }, [filters])
-
-  useEffect(() => {
-    let active = true
-    let alertTimer
-
-    apiClient.post(`${API_BASE}/onboarding/sync-missing/`)
-      .then((res) => {
-        const createdCount = res.data?.created_count || 0
-        if (active && createdCount > 0) {
-          setAlert({
-            type: 'success',
-            message: `${createdCount} employee${createdCount === 1 ? '' : 's'} added to the onboarding initiation cycle`,
-          })
-          alertTimer = window.setTimeout(() => setAlert(null), 5000)
-        }
-      })
-      .catch((err) => console.error('Failed to synchronize missing onboarding workflows:', err))
-
-    return () => {
-      active = false
-      if (alertTimer) window.clearTimeout(alertTimer)
-    }
-  }, [])
 
   const loadEmployees = () => {
     setLoading(true)
@@ -1474,14 +368,7 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
       })
   }
 
-  useEffect(() => {
-    if (!focusedUserId || focusedEmployeeOpened.current || employees.length === 0) return
-    const employee = employees.find(item => String(item.user_id) === String(focusedUserId))
-    if (employee) {
-      focusedEmployeeOpened.current = true
-      setDetailEmployee(employee)
-    }
-  }, [employees, focusedUserId])
+
 
   // ── Quick Edit Functions (for list view) ────────────────────────────────────
   const handleQuickEdit = (employee) => {
@@ -1748,7 +635,7 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
 
                 {/* Action Button */}
                 <button
-                  onClick={() => setDetailEmployee(employee)}
+                  onClick={() => onOpenEmployee(employee)}
                   className="w-full mt-3 px-3 py-2 bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2 border border-slate-200 hover:border-blue-300"
                 >
                   <HeroIcons.ArrowsPointingOutIcon className="w-4 h-4" />
@@ -1916,7 +803,7 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
                         <HeroIcons.PencilSquareIcon className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => setDetailEmployee(employee)}
+                        onClick={() => onOpenEmployee(employee)}
                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title="View Full Onboarding Details"
                       >
@@ -1945,628 +832,7 @@ function OnboardingListTab({ focusedUserId, focusItChecklist = false } = {}) {
         </div>
       )}
 
-      {detailEmployee && (
-        <OnboardingFullDetailsModal
-          employee={detailEmployee}
-          focusItChecklist={focusItChecklist}
-          onClose={() => setDetailEmployee(null)}
-        />
-      )}
-    </div>
-  )
-}
 
-function OnboardingFullDetailsModal({ employee, recordId = null, focusItChecklist = false, onClose }) {
-  const [record, setRecord] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [checklistSaving, setChecklistSaving] = useState(null)
-  const [checklistError, setChecklistError] = useState('')
-  const [activeChecklistStage, setActiveChecklistStage] = useState(
-    focusItChecklist ? 'it_provisioning' : 'pre_hire'
-  )
-  const printViewRef = useRef(null)
-  const checklistSectionRef = useRef(null)
-
-  useEffect(() => {
-    let active = true
-    const handleEscape = (event) => event.key === 'Escape' && onClose()
-    document.addEventListener('keydown', handleEscape)
-    document.body.style.overflow = 'hidden'
-
-    const detailRequest = recordId
-      ? apiClient.get(`${API_BASE}/onboarding/${recordId}/`)
-      : apiClient.get(`${API_BASE}/onboarding/?user_id=${employee.user_id}`)
-        .then((res) => {
-          const records = Array.isArray(res.data) ? res.data : (res.data.results || [])
-          return records[0]
-            ? apiClient.get(`${API_BASE}/onboarding/${records[0].id}/`)
-            : apiClient.post(`${API_BASE}/onboarding/ensure-employee-workflow/`, { user_id: employee.user_id })
-        })
-
-    detailRequest
-      .then((res) => {
-        if (active) setRecord(res?.data || null)
-      })
-      .catch((err) => {
-        console.error('Failed to load full onboarding details:', err)
-        if (active) setError('Unable to load the onboarding details. Please try again.')
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-
-    return () => {
-      active = false
-      document.removeEventListener('keydown', handleEscape)
-      document.body.style.overflow = ''
-    }
-  }, [employee.user_id, recordId, onClose])
-
-  const formatDate = (value, fallback = 'Not set') => {
-    if (!value) return fallback
-    const parsed = new Date(value)
-    return Number.isNaN(parsed.getTime()) ? fallback : parsed.toLocaleDateString(undefined, {
-      year: 'numeric', month: 'short', day: 'numeric',
-    })
-  }
-
-  useEffect(() => {
-    if (!focusItChecklist || !record || !checklistSectionRef.current) return
-    const timer = window.setTimeout(() => {
-      checklistSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [focusItChecklist, record?.id])
-
-  const handleStartChecklistStage = async () => {
-    if (!record?.id || checklistSaving) return
-    setChecklistSaving('start')
-    setChecklistError('')
-    try {
-      const response = await apiClient.post(`${API_BASE}/onboarding/${record.id}/start-checklist-stage/`, {
-        stage: activeChecklistStage,
-      })
-      setRecord(response.data)
-    } catch (err) {
-      setChecklistError(err.response?.data?.detail || 'Unable to start this onboarding checklist stage.')
-    } finally {
-      setChecklistSaving(null)
-    }
-  }
-
-  const handleToggleChecklistItem = async (item) => {
-    if (checklistSaving || !canManageActiveStage) return
-    setChecklistSaving(item.id)
-    setChecklistError('')
-    try {
-      await apiClient.patch(`${API_BASE}/checklist/${item.id}/`, {
-        completed: !item.completed,
-      })
-      const refreshedRecord = await apiClient.get(`${API_BASE}/onboarding/${record.id}/`)
-      setRecord(refreshedRecord.data)
-    } catch (err) {
-      setChecklistError(err.response?.data?.detail || 'Unable to update the checklist item.')
-    } finally {
-      setChecklistSaving(null)
-    }
-  }
-
-  const checklistItems = record?.checklist_items || []
-  const activeChecklistConfig = ONBOARDING_CHECKLIST_STAGES.find(stage => stage.id === activeChecklistStage)
-  const ActiveChecklistIcon = activeChecklistConfig?.icon || HeroIcons.ClipboardDocumentListIcon
-  const activeChecklistItems = checklistItems.filter(item => item.stage === activeChecklistStage)
-  const activeChecklistDone = activeChecklistItems.filter(item => item.completed).length
-  const activeChecklistProgress = activeChecklistItems.length
-    ? Math.round((activeChecklistDone / activeChecklistItems.length) * 100)
-    : 0
-  const activeStagePermission = record?.checklist_stage_permissions?.[activeChecklistStage]
-  const workflowReadOnly = record?.status === 'completed' || record?.status === 'cancelled'
-  const canManageActiveStage = !workflowReadOnly && Boolean(activeStagePermission?.can_manage)
-  const canStartActiveStage = !workflowReadOnly && Boolean(activeStagePermission?.can_start)
-  const activeStageStarted = activeChecklistItems.length > 0
-  const checklistDone = checklistItems.filter(item => item.completed).length
-  const checklistProgress = checklistItems.length ? Math.round((checklistDone / checklistItems.length) * 100) : 0
-  const currentStage = record ? ONBOARDING_WORKFLOW_STAGES.findIndex(stage => stage.statuses.includes(record.status)) : -1
-  const statusConfig = record
-    ? (ONBOARDING_STATUS_CONFIG[record.status] || { label: record.status, color: 'bg-slate-100 text-slate-700' })
-    : null
-  const priorityStyles = {
-    low: 'bg-slate-100 text-slate-600 border-slate-200',
-    medium: 'bg-blue-50 text-blue-700 border-blue-200',
-    high: 'bg-amber-50 text-amber-700 border-amber-200',
-    critical: 'bg-rose-50 text-rose-700 border-rose-200',
-  }
-  const printDate = new Date().toLocaleDateString('en-CA')
-  const printFileName = [
-    `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
-    record?.employee_id || employee.employee_number || 'No-ID',
-    printDate,
-  ]
-    .map(value => String(value).replace(/[\\/:*?"<>|]+/g, '-').trim())
-    .filter(Boolean)
-    .join('_')
-
-  const handlePrintPreview = async () => {
-    if (!printViewRef.current) return
-
-    const printWindow = window.open('', '_blank', 'width=1100,height=800')
-    if (!printWindow) {
-      await radaiAlert('Print Preview was blocked. Please allow pop-ups for RADAI and try again.')
-      return
-    }
-
-    const printableView = printViewRef.current.cloneNode(true)
-    printableView.querySelectorAll('.onboarding-no-print').forEach(element => element.remove())
-    printableView.querySelector('header')?.remove()
-    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map(element => element.outerHTML)
-      .join('\n')
-    const documentNumber = `HR-ONB-${String(record?.employee_id || employee.employee_number || 'NO-ID').replace(/[^a-zA-Z0-9-]/g, '-')}-${printDate}`
-    const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
-    const escapePrintHtml = (value) => {
-      const container = document.createElement('div')
-      container.textContent = String(value)
-      return container.innerHTML
-    }
-    const safePrintFileName = escapePrintHtml(printFileName)
-    const safeEmployeeName = escapePrintHtml(employeeName)
-    const safeEmployeeId = escapePrintHtml(record?.employee_id || employee.employee_number || 'Not assigned')
-    const safeDocumentNumber = escapePrintHtml(documentNumber)
-
-    printWindow.document.open()
-    printWindow.document.write(`<!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <base href="${window.location.origin}/" />
-          <title>${safePrintFileName}</title>
-          ${styles}
-          <style>
-            @page { size: A4 portrait; margin: 28mm 12mm 18mm; }
-            html, body {
-              margin: 0 !important;
-              padding: 0 !important;
-              background: white !important;
-              color: #333333 !important;
-              font-family: Arial, Helvetica, sans-serif !important;
-            }
-            body * { visibility: visible !important; }
-            .company-print-header {
-              position: fixed;
-              top: -23mm;
-              left: 0;
-              right: 0;
-              height: 18mm;
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
-              border-bottom: 2px solid #2B3A55;
-              padding-bottom: 3mm;
-              background: white;
-            }
-            .company-print-header__brand { color: #2B3A55; font-size: 11pt; font-weight: 700; letter-spacing: .04em; }
-            .company-print-header__copy { text-align: right; line-height: 1.3; }
-            .company-print-header__copy strong { display: block; color: #2B3A55; font-size: 10pt; letter-spacing: .04em; }
-            .company-print-header__copy span { display: block; color: #484d52; font-size: 7.5pt; }
-            .company-print-footer {
-              position: fixed;
-              bottom: -13mm;
-              left: 0;
-              right: 0;
-              height: 9mm;
-              display: grid;
-              grid-template-columns: 1fr auto 1fr;
-              align-items: center;
-              gap: 4mm;
-              border-top: 1px solid #2B3A55;
-              color: #484d52;
-              font-size: 7pt;
-              background: white;
-            }
-            .company-print-footer__confidential { color: #2B3A55; font-weight: 700; letter-spacing: .05em; text-align: center; }
-            .company-print-footer__page { text-align: right; }
-            .company-print-footer__page::after { content: "Page " counter(page) " of " counter(pages); }
-            .company-document-title {
-              margin: 0 0 7mm;
-              border: 1px solid #2B3A55;
-              background: white;
-            }
-            .company-document-title__name {
-              padding: 4mm 5mm;
-              color: white;
-              background: #2B3A55;
-              border-left: 4mm solid #7FCAB5;
-              font-size: 16pt;
-              font-weight: 700;
-              letter-spacing: .02em;
-            }
-            .company-document-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr 1fr;
-              border-top: 1px solid #2B3A55;
-            }
-            .company-document-field { min-height: 13mm; padding: 2.5mm 4mm; border-right: 1px solid #cccccc; border-bottom: 1px solid #cccccc; }
-            .company-document-field:nth-child(3n) { border-right: 0; }
-            .company-document-field__label { display: block; color: #617AAD; font-size: 6.5pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-            .company-document-field__value { display: block; margin-top: 1.2mm; color: #2B3A55; font-size: 9pt; font-weight: 700; }
-            .onboarding-print-view {
-              position: static !important;
-              display: block !important;
-              width: 100% !important;
-              height: auto !important;
-              max-width: none !important;
-              overflow: visible !important;
-              border-radius: 0 !important;
-              background: white !important;
-              box-shadow: none !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            .onboarding-print-content { overflow: visible !important; padding: 0 !important; }
-            .onboarding-print-view section { break-inside: auto !important; page-break-inside: auto !important; box-shadow: none !important; }
-            .onboarding-print-view article { break-inside: avoid !important; page-break-inside: avoid !important; }
-            .onboarding-print-view h3 { color: #2B3A55 !important; }
-          </style>
-        </head>
-        <body>
-          <header class="company-print-header">
-            <div class="company-print-header__brand">REJLERS ABU DHABI</div>
-            <div class="company-print-header__copy">
-              <strong>REJLERS ABU DHABI</strong>
-              <span>Engineering &amp; Design Consultancy</span>
-              <span>HR Controlled Document</span>
-            </div>
-          </header>
-          <footer class="company-print-footer">
-            <span>www.rejlers.com/ae</span>
-            <span class="company-print-footer__confidential">CONFIDENTIAL HR DOCUMENT</span>
-            <span class="company-print-footer__page"></span>
-          </footer>
-          <section class="company-document-title">
-            <div class="company-document-title__name">EMPLOYEE ONBOARDING OVERVIEW</div>
-            <div class="company-document-grid">
-              <div class="company-document-field"><span class="company-document-field__label">Employee</span><span class="company-document-field__value">${safeEmployeeName}</span></div>
-              <div class="company-document-field"><span class="company-document-field__label">Employee ID</span><span class="company-document-field__value">${safeEmployeeId}</span></div>
-              <div class="company-document-field"><span class="company-document-field__label">Issue Date</span><span class="company-document-field__value">${printDate}</span></div>
-              <div class="company-document-field"><span class="company-document-field__label">Document Number</span><span class="company-document-field__value">${safeDocumentNumber}</span></div>
-              <div class="company-document-field"><span class="company-document-field__label">Revision</span><span class="company-document-field__value">01</span></div>
-              <div class="company-document-field"><span class="company-document-field__label">Classification</span><span class="company-document-field__value">CONFIDENTIAL · HR</span></div>
-            </div>
-          </section>
-          ${printableView.outerHTML}
-        </body>
-      </html>`)
-    printWindow.document.close()
-
-    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true })
-    printWindow.setTimeout(() => {
-      printWindow.focus()
-      printWindow.print()
-    }, 750)
-  }
-
-  const handleCompanyPrintPreview = async () => {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800')
-    if (!printWindow) {
-      await radaiAlert('Print Preview was blocked. Please allow pop-ups for RADAI and try again.')
-      return
-    }
-
-    const escapeHtml = (value) => {
-      const node = document.createElement('div')
-      node.textContent = String(value ?? '')
-      return node.innerHTML
-    }
-    const valueOrDash = (value) => escapeHtml(value || '—')
-    const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
-    const documentNumber = `HR-ONB-${String(record?.employee_id || employee.employee_number || 'NO-ID').replace(/[^a-zA-Z0-9-]/g, '-')}-${printDate}`
-    const stageRows = ONBOARDING_WORKFLOW_STAGES.map((stage, index) => {
-      const cancelled = record.status === 'cancelled'
-      const complete = !cancelled && (index < currentStage || record.status === 'completed')
-      const current = !cancelled && !complete && index === currentStage
-      const stageStatus = cancelled ? 'Cancelled' : complete ? 'Completed' : current ? 'In Progress' : 'Pending'
-      const statusClass = stageStatus.toLowerCase().replaceAll(' ', '-')
-      return `<tr><td>${index + 1}</td><td>${escapeHtml(stage.label)}</td><td><span class="status ${statusClass}">${stageStatus}</span></td></tr>`
-    }).join('')
-    const checklistRows = checklistItems.length
-      ? checklistItems.map((item, index) => {
-        const stageLabel = ONBOARDING_CHECKLIST_STAGES.find(stage => stage.id === item.stage)?.label || 'General'
-        return `<tr>
-          <td>${index + 1}</td>
-          <td>${escapeHtml(stageLabel)}</td>
-          <td><strong>${escapeHtml(item.task_name)}</strong>${item.description ? `<div class="subtext">${escapeHtml(item.description)}</div>` : ''}</td>
-          <td>${escapeHtml(item.priority || 'medium')}</td>
-          <td>${escapeHtml(formatDate(item.due_date))}</td>
-          <td>${item.completed ? 'Completed' : 'Pending'}</td>
-          <td>${valueOrDash(item.completed_by_name)}</td>
-        </tr>`
-      }).join('')
-      : '<tr><td colspan="7" class="empty">No checklist items have been added.</td></tr>'
-    const historyRows = activityHistory.length
-      ? activityHistory.map(item => `<tr><td>${escapeHtml(formatDate(item.date))}</td><td><strong>${escapeHtml(item.title)}</strong><div class="subtext">${escapeHtml(item.detail)}</div></td></tr>`).join('')
-      : '<tr><td colspan="2" class="empty">No activity has been recorded.</td></tr>'
-    const employeeRows = [
-      ['Email', record.employee_email || employee.email],
-      ['Employee ID', record.employee_id || employee.employee_number],
-      ['Position', record.position || employee.job_title_uae || employee.job_title_finland],
-      ['Department', record.department || employee.division || employee.department],
-      ['Reporting Manager', record.reporting_manager || employee.manager_name],
-      ['Branch', BRANCH_CONFIG[record.branch]?.label || record.branch],
-      ['Target Completion', formatDate(record.target_completion_date)],
-      ['Initiated By', record.created_by_name],
-    ].map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${valueOrDash(value)}</td></tr>`).join('')
-
-    printWindow.document.open()
-    printWindow.document.write(`<!doctype html><html lang="en"><head>
-      <meta charset="utf-8"><base href="${window.location.origin}/"><title>${escapeHtml(printFileName)}</title>
-      <style>
-        @page { size: A4 portrait; margin: 0; }
-        * { box-sizing: border-box; }
-        html, body { width: 210mm; min-height: 297mm; margin: 0; background: #fff; color: #333; font: 8pt Arial, Helvetica, sans-serif; }
-        body { padding: 7mm 9mm 6mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .page-header { min-height: 10mm; display: flex; align-items: center; justify-content: space-between; gap: 8mm; margin-bottom: 2.5mm; padding-bottom: 2mm; border-bottom: 1.5px solid #2B3A55; }
-        .brand-copy { line-height: 1.25; }
-        .brand-copy strong { display: block; color: #2B3A55; font-size: 10pt; letter-spacing: .04em; }
-        .brand-copy span { color: #484d52; font-size: 6.5pt; }
-        .header-copy { text-align: right; line-height: 1.35; }
-        .header-copy strong { display: block; color: #2B3A55; font-size: 8pt; letter-spacing: .04em; }
-        .header-copy span { display: block; color: #484d52; font-size: 6.5pt; }
-        .page-footer { height: 6mm; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; margin-top: 2mm; padding-top: 1.5mm; border-top: 1px solid #2B3A55; color: #484d52; font-size: 6.3pt; background: #fff; }
-        .confidential { color: #2B3A55; font-weight: 700; letter-spacing: .05em; text-align: center; }
-        .page-number { text-align: right; }
-        .title-block { margin-bottom: 2.5mm; border: 1px solid #2B3A55; }
-        .report-title { padding: 2.5mm 3.5mm; color: #fff; background: #2B3A55; border-left: 3mm solid #7FCAB5; font-size: 12pt; font-weight: 700; }
-        .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
-        .meta { min-height: 8mm; padding: 1.3mm 2.5mm; border-right: 1px solid #ccc; border-bottom: 1px solid #ccc; }
-        .meta:nth-child(3n) { border-right: 0; }
-        .label { display: block; color: #617AAD; font-size: 6pt; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-        .value { display: block; margin-top: .6mm; color: #2B3A55; font-size: 8pt; font-weight: 700; }
-        .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; margin-bottom: 2.5mm; }
-        .card { min-height: 10mm; padding: 1.5mm 2mm; border: 1px solid #ccc; border-top: 2px solid #617AAD; }
-        .card .value { margin-top: .8mm; font-size: 8.5pt; }
-        .section { margin-bottom: 2.5mm; break-inside: avoid; page-break-inside: avoid; }
-        .section-title { margin: 0 0 1.2mm; padding: 1.3mm 2mm; color: #2B3A55; background: #D3DAEA; border-left: 2mm solid #7FCAB5; font-size: 8.5pt; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        thead { display: table-header-group; }
-        th { padding: 1.3mm 1.8mm; background: #2B3A55; color: #fff; border: 1px solid #2B3A55; font-size: 6.3pt; text-align: left; text-transform: uppercase; }
-        td { padding: 1.3mm 1.8mm; border: 1px solid #ccc; vertical-align: top; overflow-wrap: anywhere; line-height: 1.25; }
-        tr { break-inside: avoid; page-break-inside: avoid; }
-        .subtext { margin-top: .5mm; color: #666; font-size: 6.5pt; line-height: 1.25; }
-        .status { display: inline-block; padding: .6mm 1.4mm; border-radius: 2mm; font-size: 6.3pt; font-weight: 700; }
-        .completed { color: #176b57; background: #D4EDE7; } .in-progress { color: #2B3A55; background: #D3DAEA; }
-        .pending { color: #666; background: #eee; } .cancelled { color: #9f3540; background: #FCE4E5; }
-        .employee-info th { width: 42mm; background: #f1f3f6; color: #2B3A55; border-color: #ccc; }
-        .empty { padding: 3mm; text-align: center; color: #777; font-style: italic; }
-      </style></head><body>
-      <header class="page-header"><div class="brand-copy"><strong>REJLERS ABU DHABI</strong><span>Engineering &amp; Design Consultancy</span></div><div class="header-copy"><strong>HR CONTROLLED DOCUMENT</strong><span>${escapeHtml(documentNumber)}</span></div></header>
-      <section class="title-block"><div class="report-title">EMPLOYEE ONBOARDING OVERVIEW</div><div class="meta-grid">
-        <div class="meta"><span class="label">Employee</span><span class="value">${escapeHtml(employeeName)}</span></div>
-        <div class="meta"><span class="label">Employee ID</span><span class="value">${valueOrDash(record.employee_id || employee.employee_number)}</span></div>
-        <div class="meta"><span class="label">Issue Date</span><span class="value">${printDate}</span></div>
-        <div class="meta"><span class="label">Document Number</span><span class="value">${escapeHtml(documentNumber)}</span></div>
-        <div class="meta"><span class="label">Revision</span><span class="value">01</span></div>
-        <div class="meta"><span class="label">Classification</span><span class="value">CONFIDENTIAL · HR</span></div>
-      </div></section>
-      <section class="summary">
-        <div class="card"><span class="label">Current Status</span><span class="value">${escapeHtml(statusConfig.label)}</span></div>
-        <div class="card"><span class="label">Joining Date</span><span class="value">${escapeHtml(formatDate(record.joining_date))}</span></div>
-        <div class="card"><span class="label">Checklist Progress</span><span class="value">${checklistDone} / ${checklistItems.length} (${checklistProgress}%)</span></div>
-        <div class="card"><span class="label">Assigned To</span><span class="value">${valueOrDash(record.assigned_to_name)}</span></div>
-      </section>
-      <section class="section"><h2 class="section-title">1. ONBOARDING STATUS</h2><table><thead><tr><th style="width:12mm">No.</th><th>Workflow Stage</th><th style="width:35mm">Status</th></tr></thead><tbody>${stageRows}</tbody></table></section>
-      <section class="section"><h2 class="section-title">2. CHECKLIST ITEMS</h2><table><thead><tr><th style="width:8mm">No.</th><th style="width:29mm">Stage</th><th>Task and Description</th><th style="width:17mm">Priority</th><th style="width:21mm">Due Date</th><th style="width:20mm">Status</th><th style="width:24mm">Completed By</th></tr></thead><tbody>${checklistRows}</tbody></table></section>
-      <section class="section"><h2 class="section-title">3. ACTIVITY HISTORY</h2><table><thead><tr><th style="width:32mm">Date</th><th>Activity</th></tr></thead><tbody>${historyRows}</tbody></table></section>
-      <section class="section"><h2 class="section-title">4. EMPLOYEE INFORMATION</h2><table class="employee-info"><tbody>${employeeRows}</tbody></table></section>
-      <footer class="page-footer"><span>www.rejlers.com/ae</span><span class="confidential">CONFIDENTIAL HR DOCUMENT</span><span class="page-number">Page 1 of 1</span></footer>
-      </body></html>`)
-    printWindow.document.close()
-    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true })
-    printWindow.setTimeout(() => { printWindow.focus(); printWindow.print() }, 750)
-  }
-
-  const activityHistory = record ? [
-    ...(record.actual_completion_date ? [{ id: 'completed', date: record.actual_completion_date, title: 'Onboarding completed', detail: 'The onboarding workflow was completed', tone: 'emerald' }] : []),
-    ...checklistItems.filter(item => item.completed_date).map(item => ({
-      id: `checklist-${item.id}`,
-      date: item.completed_date,
-      title: `Checklist completed: ${item.task_name}`,
-      detail: item.completed_by_name ? `Completed by ${item.completed_by_name}` : 'Checklist item marked complete',
-      tone: 'emerald',
-    })),
-    ...(record.updated_at ? [{ id: 'status', date: record.updated_at, title: `Status: ${statusConfig.label}`, detail: `${record.progress_percentage || 0}% of the workflow is complete`, tone: 'violet' }] : []),
-    ...((record.initiated_date || record.created_at) ? [{ id: 'initiated', date: record.initiated_date || record.created_at, title: 'Onboarding initiated', detail: record.created_by_name ? `Created by ${record.created_by_name}` : 'Onboarding record created', tone: 'blue' }] : []),
-  ].sort((a, b) => new Date(b.date) - new Date(a.date)) : []
-
-  return (
-    <div className="fixed inset-0 z-[70] bg-slate-950/60 backdrop-blur-sm p-2 sm:p-3" onClick={onClose}>
-      <style>{`
-        @media print {
-          @page { size: A4 portrait; margin: 12mm; }
-          body * { visibility: hidden !important; }
-          .onboarding-print-view, .onboarding-print-view * { visibility: visible !important; }
-          .onboarding-print-view {
-            position: absolute !important;
-            inset: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            max-width: none !important;
-            overflow: visible !important;
-            border-radius: 0 !important;
-            background: white !important;
-            box-shadow: none !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          .onboarding-print-content { overflow: visible !important; }
-          .onboarding-no-print { display: none !important; }
-          .onboarding-print-view section,
-          .onboarding-print-view article { break-inside: avoid; }
-        }
-      `}</style>
-      <div ref={printViewRef} className="onboarding-print-view mx-auto flex h-full max-w-7xl flex-col overflow-hidden rounded-xl bg-slate-50 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <header className="flex items-center justify-between gap-3 bg-gradient-to-r from-blue-700 via-indigo-700 to-violet-700 px-4 py-3 text-white lg:px-5">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white/15 text-sm font-bold ring-1 ring-white/25">
-              {employee.first_name?.[0]}{employee.last_name?.[0]}
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-lg font-bold lg:text-xl">{employee.first_name} {employee.last_name}</h2>
-                {statusConfig && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold ring-1 ring-white/25">{statusConfig.label}</span>}
-              </div>
-              <p className="mt-1 truncate text-sm text-blue-100">Full Onboarding Overview · {employee.employee_number || employee.email}</p>
-            </div>
-          </div>
-          <div className="onboarding-no-print flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCompanyPrintPreview}
-              disabled={loading || Boolean(error) || !record}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-2.5 py-1.5 text-xs font-semibold text-white ring-1 ring-white/25 transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
-              title={`Print or save as ${printFileName}.pdf`}
-            >
-              <HeroIcons.PrinterIcon className="h-4 w-4" />
-              Print Preview
-            </button>
-            <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white" title="Close full details">
-              <HeroIcons.XMarkIcon className="h-5 w-5" />
-            </button>
-          </div>
-        </header>
-
-        <main className="onboarding-print-content flex-1 overflow-y-auto p-3 lg:p-4">
-          {loading ? (
-            <div className="flex min-h-[420px] items-center justify-center"><Spinner /><span className="ml-3 text-sm text-slate-500">Loading full onboarding overview...</span></div>
-          ) : error ? (
-            <div className="mx-auto mt-16 max-w-xl rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-rose-700"><HeroIcons.ExclamationCircleIcon className="mx-auto mb-3 h-8 w-8" /><p className="font-semibold">{error}</p></div>
-          ) : !record ? (
-            <div className="mx-auto mt-16 max-w-xl rounded-xl border border-slate-200 bg-white p-8 text-center"><HeroIcons.ClipboardDocumentListIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" /><h3 className="text-lg font-semibold text-slate-800">No onboarding workflow found</h3><p className="mt-2 text-sm text-slate-500">This employee does not yet have an onboarding record.</p></div>
-          ) : (
-            <div className="space-y-4">
-              <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                {[
-                  ['Current Status', statusConfig.label, HeroIcons.SignalIcon, 'text-blue-700 bg-blue-50'],
-                  ['Joining Date', formatDate(record.joining_date), HeroIcons.CalendarDaysIcon, 'text-violet-700 bg-violet-50'],
-                  ['Checklist Progress', `${checklistDone} of ${checklistItems.length}`, HeroIcons.ClipboardDocumentCheckIcon, 'text-emerald-700 bg-emerald-50'],
-                  ['Assigned To', record.assigned_to_name || 'Not assigned', HeroIcons.UserCircleIcon, 'text-amber-700 bg-amber-50'],
-                ].map(([label, value, Icon, tone]) => (
-                  <div key={label} className="flex min-w-0 items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
-                    <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md ${tone}`}><Icon className="h-3.5 w-3.5" /></div>
-                    <div className="min-w-0">
-                      <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-                      <p className="truncate text-xs font-bold text-slate-800">{value}</p>
-                    </div>
-                  </div>
-                ))}
-              </section>
-
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <div><h3 className="flex items-center gap-1.5 text-base font-bold text-slate-900"><HeroIcons.ArrowTrendingUpIcon className="h-5 w-5 text-blue-600" />Status</h3><p className="mt-0.5 text-xs text-slate-500">Complete onboarding workflow and current stage</p></div>
-                  <div className="min-w-[200px]"><div className="mb-1 flex justify-between text-[11px] font-semibold text-slate-600"><span>Overall progress</span><span>{record.progress_percentage || 0}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500" style={{ width: `${Math.min(record.progress_percentage || 0, 100)}%` }} /></div></div>
-                </div>
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                  {ONBOARDING_WORKFLOW_STAGES.map((stage, index) => {
-                    const Icon = stage.icon
-                    const cancelled = record.status === 'cancelled'
-                    const complete = !cancelled && (index < currentStage || record.status === 'completed')
-                    const current = !cancelled && !complete && index === currentStage
-                    const label = cancelled ? 'Cancelled' : complete ? 'Completed' : current ? 'In Progress' : 'Pending'
-                    const tone = cancelled ? 'border-rose-200 bg-rose-50' : complete ? 'border-emerald-200 bg-emerald-50' : current ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-slate-50'
-                    return (
-                      <div key={stage.id} className={`rounded-lg border px-2.5 py-2 ${tone}`}>
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-white shadow-sm"><Icon className={`h-3.5 w-3.5 ${complete ? 'text-emerald-600' : current ? 'text-blue-600' : 'text-slate-400'}`} /></div>
-                          <div className="min-w-0 flex-1">
-                            <h4 className="truncate text-[11px] font-bold text-slate-800">{stage.label}</h4>
-                            <div className="mt-0.5 flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${complete ? 'bg-emerald-500' : current ? 'bg-blue-500 animate-pulse' : cancelled ? 'bg-rose-500' : 'bg-slate-300'}`} /><span className="text-[10px] font-semibold text-slate-600">{label}</span></div>
-                          </div>
-                          <span className="text-[10px] font-bold text-slate-400">0{index + 1}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </section>
-
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-                <section ref={checklistSectionRef} className={`rounded-xl border bg-white p-4 shadow-sm ${focusItChecklist ? 'border-violet-300 ring-2 ring-violet-100' : 'border-slate-200'}`}>
-                  <div className="mb-4 grid grid-cols-2 gap-1.5 rounded-lg bg-slate-100 p-1 lg:grid-cols-4">
-                    {ONBOARDING_CHECKLIST_STAGES.map(stage => {
-                      const StageIcon = stage.icon
-                      const stageItems = checklistItems.filter(item => item.stage === stage.id)
-                      const completedCount = stageItems.filter(item => item.completed).length
-                      const permission = record?.checklist_stage_permissions?.[stage.id]
-                      return (
-                        <button
-                          key={stage.id}
-                          type="button"
-                          onClick={() => { setActiveChecklistStage(stage.id); setChecklistError('') }}
-                          className={`rounded-md px-2 py-2 text-left transition ${activeChecklistStage === stage.id ? 'bg-white text-violet-700 shadow-sm ring-1 ring-violet-200' : 'text-slate-600 hover:bg-white/70'}`}
-                        >
-                          <span className="flex items-center justify-between gap-2">
-                            <StageIcon className="h-4 w-4" />
-                            {permission?.can_manage ? <HeroIcons.PencilSquareIcon className="h-3.5 w-3.5 text-emerald-500" /> : <HeroIcons.LockClosedIcon className="h-3.5 w-3.5 text-slate-400" />}
-                          </span>
-                          <span className="mt-1.5 block text-[11px] font-bold">{stage.shortLabel}</span>
-                          <span className="mt-0.5 block text-[9px] font-semibold text-slate-400">{stageItems.length ? `${completedCount}/${stageItems.length} complete` : `Owner: ${permission?.owner_label || stage.owner}`}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <div><h3 className="flex items-center gap-1.5 text-base font-bold text-slate-900"><ActiveChecklistIcon className="h-5 w-5 text-violet-600" />{activeChecklistConfig?.label}</h3><p className="mt-0.5 text-xs text-slate-500">{activeChecklistConfig?.description}</p><p className="mt-0.5 text-[11px] font-semibold text-slate-400">RBAC owner: {activeStagePermission?.owner_label || activeChecklistConfig?.owner}</p></div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700 ring-1 ring-violet-200">{activeChecklistProgress}% complete</span>
-                      <button
-                        type="button"
-                        onClick={handleStartChecklistStage}
-                        disabled={activeStageStarted || !canStartActiveStage || Boolean(checklistSaving)}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-emerald-100 disabled:text-emerald-700"
-                      >
-                        {checklistSaving === 'start' ? <Spinner /> : activeStageStarted ? <HeroIcons.CheckCircleIcon className="h-4 w-4" /> : canStartActiveStage ? <HeroIcons.PlayIcon className="h-4 w-4" /> : <HeroIcons.LockClosedIcon className="h-4 w-4" />}
-                        {activeStageStarted ? 'Checklist Started' : canStartActiveStage ? 'Start Checklist' : 'View Only'}
-                      </button>
-                    </div>
-                  </div>
-                  {!canManageActiveStage && <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><HeroIcons.ShieldExclamationIcon className="h-4 w-4" />{canStartActiveStage ? 'You may initiate this stage, but checklist completion' : 'Your RBAC role has read-only access. This stage'} is managed by {activeStagePermission?.owner_label || activeChecklistConfig?.owner}.</div>}
-                  {checklistError && <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{checklistError}</div>}
-                  {activeChecklistItems.length === 0 ? (
-                    <div className="rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/30 px-6 py-10 text-center"><ActiveChecklistIcon className="mx-auto h-9 w-9 text-violet-400" /><p className="mt-3 text-sm font-semibold text-slate-700">{activeChecklistConfig?.label} has not started</p><p className="mt-1 text-xs text-slate-500">{canStartActiveStage ? 'Select Start Checklist to create this stage’s standard tasks.' : `A user with the ${activeStagePermission?.owner_label || activeChecklistConfig?.owner} role must start this stage.`}</p></div>
-                  ) : (
-                    <div className="space-y-2">{activeChecklistItems.map(item => (
-                      <article key={item.id} className={`rounded-lg border p-3 ${item.completed ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white'}`}>
-                        <div className="flex items-start gap-3"><button type="button" onClick={() => handleToggleChecklistItem(item)} disabled={Boolean(checklistSaving) || !canManageActiveStage} className={`mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${item.completed ? 'bg-emerald-500 text-white' : 'border-2 border-slate-300 bg-white text-transparent hover:border-violet-500'}`} title={!canManageActiveStage ? 'Read-only: your RBAC role cannot update this stage' : item.completed ? 'Mark as pending' : 'Mark as completed'}>{checklistSaving === item.id ? <Spinner /> : <HeroIcons.CheckIcon className="h-3.5 w-3.5" />}</button><div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-start justify-between gap-2"><h4 className={`font-semibold ${item.completed ? 'text-slate-600 line-through' : 'text-slate-900'}`}>{item.task_name}</h4><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${priorityStyles[item.priority] || priorityStyles.medium}`}>{item.priority || 'medium'}</span></div>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500"><span className="flex items-center gap-1"><HeroIcons.CalendarDaysIcon className="h-3.5 w-3.5" />Due {formatDate(item.due_date)}</span><span className="flex items-center gap-1"><HeroIcons.UserCircleIcon className="h-3.5 w-3.5" />{item.completed_by_name || 'Unassigned'}</span><span className="flex items-center gap-1"><HeroIcons.ClockIcon className="h-3.5 w-3.5" />{item.completed ? `Completed ${formatDate(item.completed_date)}` : 'Pending'}</span></div>
-                        </div></div>
-                      </article>
-                    ))}</div>
-                  )}
-                </section>
-
-                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="mb-4"><h3 className="flex items-center gap-1.5 text-base font-bold text-slate-900"><HeroIcons.ClockIcon className="h-5 w-5 text-indigo-600" />Activity History</h3><p className="mt-0.5 text-xs text-slate-500">Latest workflow and checklist activity</p></div>
-                  <div>{activityHistory.map((event, index) => (
-                    <div key={event.id} className="relative flex gap-3 pb-4 last:pb-0">{index < activityHistory.length - 1 && <div className="absolute left-[6px] top-4 h-full w-px bg-slate-200" />}<span className={`relative mt-1 h-3.5 w-3.5 flex-shrink-0 rounded-full border-[3px] border-white shadow-sm ${event.tone === 'emerald' ? 'bg-emerald-500' : event.tone === 'violet' ? 'bg-violet-500' : 'bg-blue-500'}`} /><div><p className="text-xs font-semibold text-slate-800">{event.title}</p><p className="mt-0.5 text-[11px] leading-4 text-slate-500">{event.detail}</p><p className="mt-1 text-[10px] font-medium text-slate-400">{formatDate(event.date)}</p></div></div>
-                  ))}</div>
-                </section>
-              </div>
-
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="mb-3 flex items-center gap-1.5 text-base font-bold text-slate-900"><HeroIcons.UserIcon className="h-5 w-5 text-slate-600" />Employee Information</h3>
-                <dl className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">{[
-                  ['Email', record.employee_email || employee.email], ['Employee ID', record.employee_id || employee.employee_number],
-                  ['Position', record.position || employee.job_title_uae || employee.job_title_finland], ['Department', record.department || employee.division || employee.department],
-                  ['Reporting Manager', record.reporting_manager || employee.manager_name], ['Branch', BRANCH_CONFIG[record.branch]?.label || record.branch],
-                  ['Target Completion', formatDate(record.target_completion_date)], ['Initiated By', record.created_by_name || 'Not available'],
-                ].map(([label, value]) => <div key={label} className="border-b border-slate-100 pb-2"><dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 text-xs font-semibold text-slate-800">{value || 'Not set'}</dd></div>)}</dl>
-              </section>
-            </div>
-          )}
-        </main>
-      </div>
     </div>
   )
 }
@@ -3124,9 +1390,11 @@ const OFFBOARDING_FILTERS = [
 ]
 
 // ── Offboarding List Tab ───────────────────────────────────────────────────
-function OffboardingChecklistPanel({ recordId, onUpdated }) {
+function OffboardingChecklistPanel({ recordId, onUpdated, initialStage = 'exit_initiation' }) {
   const [record, setRecord] = useState(null)
-  const [activeStage, setActiveStage] = useState('exit_initiation')
+  const [activeStage, setActiveStage] = useState(
+    OFFBOARDING_CHECKLIST_STAGES.some(stage => stage.id === initialStage) ? initialStage : 'exit_initiation'
+  )
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
   const [error, setError] = useState('')
@@ -3201,6 +1469,11 @@ function OffboardingChecklistPanel({ recordId, onUpdated }) {
   const readOnly = ['completed', 'cancelled', 'rejected'].includes(record.status)
   const canManage = !readOnly && Boolean(permission?.can_manage)
   const canStart = !readOnly && Boolean(permission?.can_start)
+  const stageAccessMessage = permission?.disabled_reason || (readOnly
+    ? 'This offboarding workflow is closed. Its checklist is read-only.'
+    : canStart
+      ? `You may start this stage. Checklist updates are managed by ${permission?.owner_label || config?.owner}.`
+      : `Your current access does not allow changes to this stage. This stage is managed by ${permission?.owner_label || config?.owner}.`)
   const StageIcon = config?.icon || HeroIcons.ClipboardDocumentListIcon
   const printDate = new Date().toLocaleDateString('en-CA')
   const printFileName = [record.employee_name, record.employee_id || 'No-ID', 'Offboarding-Signed-Off', printDate]
@@ -3303,13 +1576,14 @@ function OffboardingChecklistPanel({ recordId, onUpdated }) {
         })}
       </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h5 className="flex items-center gap-1.5 text-sm font-bold text-slate-800"><StageIcon className="h-4 w-4 text-rose-500" />{config?.label}</h5><p className="mt-0.5 text-[11px] font-semibold text-slate-400">Owner: {permission?.owner_label || config?.owner}</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700">{progress}% complete</span><button type="button" onClick={startStage} disabled={stageItems.length > 0 || !canStart || Boolean(saving)} className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:bg-slate-200 disabled:text-slate-500">{saving === 'start' ? <Spinner /> : stageItems.length ? <HeroIcons.CheckCircleIcon className="h-4 w-4" /> : <HeroIcons.PlayIcon className="h-4 w-4" />}{stageItems.length ? 'Started' : canStart ? 'Start Checklist' : 'View Only'}</button></div></div>
+      {!canManage && <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{stageAccessMessage}</div>}
       {error && <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{String(error)}</div>}
-      {stageItems.length === 0 ? <div className="rounded-lg border-2 border-dashed border-rose-200 bg-rose-50/30 px-4 py-7 text-center"><StageIcon className="mx-auto h-7 w-7 text-rose-400" /><p className="mt-2 text-xs font-semibold text-slate-700">{config?.label} has not started</p><p className="mt-1 text-[11px] text-slate-500">{canStart ? 'Start this stage to create its standard tasks.' : `Managed by ${permission?.owner_label || config?.owner}.`}</p></div> : <div className="space-y-2">{stageItems.map(item => <article key={item.id} className={`rounded-lg border p-3 ${item.completed ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200'}`}><div className="flex items-start gap-3"><button type="button" onClick={() => toggleItem(item)} disabled={!canManage || Boolean(saving)} className={`mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full ${item.completed ? 'bg-emerald-500 text-white' : 'border-2 border-slate-300 text-transparent'} disabled:cursor-not-allowed disabled:opacity-50`}>{saving === item.id ? <Spinner /> : <HeroIcons.CheckIcon className="h-3.5 w-3.5" />}</button><div className="min-w-0 flex-1"><p className={`text-xs font-semibold ${item.completed ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{item.task_name}</p><div className="mt-1.5 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>Due {item.due_date ? new Date(item.due_date).toLocaleDateString() : 'Not set'}</span><span>{item.completed_by_name || 'Unassigned'}</span><span className="capitalize">{item.priority || 'medium'} priority</span></div></div></div></article>)}</div>}
+      {stageItems.length === 0 ? <div className="rounded-lg border-2 border-dashed border-rose-200 bg-rose-50/30 px-4 py-7 text-center"><StageIcon className="mx-auto h-7 w-7 text-rose-400" /><p className="mt-2 text-xs font-semibold text-slate-700">{config?.label} has not started</p><p className="mt-1 text-[11px] text-slate-500">{canStart ? 'Start this stage to create its standard tasks.' : stageAccessMessage}</p></div> : <div className="space-y-2">{stageItems.map(item => <article key={item.id} className={`rounded-lg border p-3 ${item.completed ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200'}`}><div className="flex items-start gap-3"><button type="button" onClick={() => toggleItem(item)} aria-label={`${item.completed ? "Mark pending" : "Complete"}: ${item.task_name}`} title={!canManage ? stageAccessMessage : undefined} disabled={!canManage || Boolean(saving)} className={`mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full ${item.completed ? 'bg-emerald-500 text-white' : 'border-2 border-slate-300 text-transparent'} disabled:cursor-not-allowed disabled:opacity-50`}>{saving === item.id ? <Spinner /> : <HeroIcons.CheckIcon className="h-3.5 w-3.5" />}</button><div className="min-w-0 flex-1"><p className={`text-xs font-semibold ${item.completed ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{item.task_name}</p><div className="mt-1.5 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>Due {item.due_date ? new Date(item.due_date).toLocaleDateString() : 'Not set'}</span><span>{item.completed_by_name || 'Unassigned'}</span><span className="capitalize">{item.priority || 'medium'} priority</span></div></div></div></article>)}</div>}
     </section>
   )
 }
 
-function OffboardingChecklistModal({ record, onClose, onUpdated }) {
+function OffboardingChecklistModal({ record, onClose, onUpdated, initialStage }) {
   useEffect(() => {
     const handleEscape = event => event.key === 'Escape' && onClose()
     document.addEventListener('keydown', handleEscape)
@@ -3324,7 +1598,7 @@ function OffboardingChecklistModal({ record, onClose, onUpdated }) {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm" onClick={onClose}>
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl" role="dialog" aria-modal="true" aria-label={`${record.employee_name || 'Employee'} offboarding checklist`} onClick={event => event.stopPropagation()}>
         <header className="flex items-center justify-between gap-3 bg-gradient-to-r from-rose-600 to-pink-600 px-5 py-4 text-white">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white/20"><HeroIcons.UserMinusIcon className="h-6 w-6" /></div>
@@ -3333,7 +1607,7 @@ function OffboardingChecklistModal({ record, onClose, onUpdated }) {
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-white/80 transition hover:bg-white/15 hover:text-white" title="Close offboarding checklist"><HeroIcons.XMarkIcon className="h-5 w-5" /></button>
         </header>
         <main className="flex-1 overflow-y-auto p-4">
-          <OffboardingChecklistPanel recordId={record.id} onUpdated={onUpdated} />
+          <OffboardingChecklistPanel key={record.id} recordId={record.id} onUpdated={onUpdated} initialStage={initialStage} />
         </main>
       </div>
     </div>
@@ -4385,7 +2659,7 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
   // Handle employee selection
   // ✅ ENHANCED: Smart field mapping from EmployeeMaster to offboarding fields
   const handleEmployeeSelect = (employeeId) => {
-    const employee = employees.find(emp => emp.user_id === parseInt(employeeId))
+    const employee = employees.find(emp => String(emp.user_id) === String(employeeId))
     if (employee) {
       setSelectedEmployee(employee)
       
@@ -4699,7 +2973,7 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
                     {/* ✨ Info banner when using fallback to all employees */}
                     {showAllEmployeesForPM && (
                       <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
-                        ℹ️ <strong>Note:</strong> Showing all active employees. No users assigned the "Project Manager" role yet.
+                        ℹ️ <strong>Note:</strong> Showing all active employees. No users assigned the &quot;Project Manager&quot; role yet.
                       </div>
                     )}
                     
@@ -4856,7 +3130,7 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
           </div>
         )
       
-      case 'multi-select':
+      case 'multi-select': {
         // ✨ Multi-select for project managers (DEPRECATED - use project-assignments instead)
         const selectedValues = []
         return (
@@ -4882,6 +3156,7 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
           </div>
         )
       
+      }
       case 'select':
         return (
           <select
@@ -5089,658 +3364,7 @@ export function InitiateExitModal({ onClose, onSuccess, initialEmployeeId = null
   )
 }
 
-// ── Create Employee Tab ────────────────────────────────────────────────────
-function CreateEmployeeTab() {
-  const [formData, setFormData] = useState({
-    // Contact Information
-    first_name: '',
-    surname: '',
-    preferred_given_name: '',
-    manager_id: '',
-    country: '',
-    
-    // Other Information
-    mobile_phone: '',
-    email: '',
-    
-    // Organization Information
-    company: DEFAULT_COMPANY,
-    business_unit: '',
-    division: '',
-    business_area: '',
-    office: '',
-    job_title_finland: '',
-    job_title_uae: '',
-    
-    // Flags
-    protected_identity: false,
-    is_test_person: false,
-    not_signed: false,
-    
-    // Testing fields
-    implementation_test: '',
-    hrm_test: '',
-    process_testing: '',
-    
-    // Onboarding
-    joining_date: '',
-    branch: 'RAD',
-    notes: ''
-  })
-  
-  const [managers, setManagers] = useState([])
-  const [managerSearch, setManagerSearch] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [error, setError] = useState(null)
-  
-  // Passport photo upload states
-  const [photo, setPhoto] = useState(null)
-  const [photoPreview, setPhotoPreview] = useState(null)
-  
-  useEffect(() => {
-    // Load managers list from active employees (EmployeeMaster)
-    apiClient.get('/users/employees/active_employees/')
-      .then((res) => {
-        // Response includes results array with employee data
-        const employees = res.data.results || []
-        // All active employees can potentially be managers
-        setManagers(employees)
-      })
-      .catch((err) => console.error('Failed to load managers:', err))
-  }, [])
-  
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }))
-  }
-
-  const handlePhoneChange = (e) => {
-    const localNumber = e.target.value.replace(/\D/g, '').slice(0, 9)
-    setFormData(prev => ({
-      ...prev,
-      mobile_phone: localNumber ? `+971${localNumber}` : '',
-    }))
-  }
-
-  const managerOptions = useMemo(() => managers.map(manager => ({
-    id: String(manager.user_id),
-    label: `${manager.first_name} ${manager.last_name} - ${manager.designation || 'Employee'} (${manager.employee_number})`,
-  })), [managers])
-
-  const handleManagerChange = (e) => {
-    const value = e.target.value
-    const selectedManager = managerOptions.find(option => option.label === value)
-    setManagerSearch(value)
-    setFormData(prev => ({ ...prev, manager_id: selectedManager?.id || '' }))
-  }
-  
-  // Handle passport photo selection with preview
-  const handlePhotoChange = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      // Validate file type
-      const validTypes = ['image/jpeg', 'image/jpg', 'image/png']
-      if (!validTypes.includes(file.type)) {
-        setError('Please upload a valid image file (JPG or PNG)')
-        return
-      }
-      
-      // Validate file size (max 5MB)
-      const maxSize = 5 * 1024 * 1024 // 5MB
-      if (file.size > maxSize) {
-        setError('Photo size must be less than 5MB')
-        return
-      }
-      
-      setPhoto(file)
-      
-      // Generate preview
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result)
-      }
-      reader.readAsDataURL(file)
-      setError(null)
-    }
-  }
-  
-  // Remove selected photo
-  const handleRemovePhoto = () => {
-    setPhoto(null)
-    setPhotoPreview(null)
-  }
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-
-    if (!/^[^@\s]+@rejlers\.ae$/i.test(formData.email.trim())) {
-      setError('Email address must use the @rejlers.ae domain')
-      return
-    }
-    if (!/^\+9715\d{8}$/.test(formData.mobile_phone)) {
-      setError('Mobile Phone (Work) must use UAE format +9715XXXXXXXX')
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-    setSuccess(false)
-    
-    try {
-      // Use FormData for file upload support
-      const submitData = new FormData()
-      
-      // Append all form fields
-      Object.keys(formData).forEach(key => {
-        if (formData[key] !== null && formData[key] !== undefined && formData[key] !== '') {
-          submitData.append(key, formData[key])
-        }
-      })
-      
-      // Append passport photo if selected
-      if (photo) {
-        submitData.append('photo', photo)
-      }
-      
-      const response = await apiClient.post(`${API_BASE}/onboarding/create_employee/`, submitData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      })
-      setSuccess(true)
-      setError(null)
-      
-      // Reset form
-      setFormData({
-        first_name: '',
-        surname: '',
-        preferred_given_name: '',
-        manager_id: '',
-        country: '',
-        mobile_phone: '',
-        email: '',
-        company: DEFAULT_COMPANY,
-        business_unit: '',
-        division: '',
-        business_area: '',
-        office: '',
-        job_title_finland: '',
-        job_title_uae: '',
-        protected_identity: false,
-        is_test_person: false,
-        not_signed: false,
-        implementation_test: '',
-        hrm_test: '',
-        process_testing: '',
-        joining_date: '',
-        branch: 'RAD',
-        notes: ''
-      })
-      setPhoto(null)
-      setPhotoPreview(null)
-      setManagerSearch('')
-      
-      // Show enhanced success message with role assignment and navigation info
-      const successDetails = [
-        `✅ Employee Created Successfully!`,
-        ``,
-        `📧 Email: ${response.data.email}`,
-        `🔢 Employee Number: ${response.data.employee_number}`,
-        `🆔 Employee Code: ${response.data.employee_code}`,
-        `📋 Employment ID: ${response.data.employment_id}`,
-        `🏢 Branch: ${response.data.branch}`,
-        response.data.reporting_manager ? `👤 Reports to: ${response.data.reporting_manager}` : '',
-        `📋 Onboarding ID: ${response.data.onboarding_id}`,
-        ``,
-        `🎯 RBAC: ${SUCCESS_CONFIG.defaultRole} role automatically assigned`,
-        `📍 Employee now visible in:`,
-        ...SUCCESS_CONFIG.visibilityLocations.map(loc => `   • ${loc}`),
-        ``,
-        `💡 The employee will receive login credentials via email.`
-      ].filter(Boolean).join('\n')
-      
-      await radaiAlert(successDetails)
-      
-      // Reload the page to refresh the Overview tab
-      setTimeout(() => {
-        window.location.reload()
-      }, SUCCESS_CONFIG.autoReloadDelay)
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create employee')
-      setSuccess(false)
-    } finally {
-      setLoading(false)
-    }
-  }
-  
-  return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 lg:p-5 space-y-3.5">
-      <OrganizationSuggestions id="onboarding-create" />
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm">
-            <HeroIcons.UserPlusIcon className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Create Employee Onboarding</h2>
-            <p className="text-xs text-slate-500">Employee profile, organisation, and joining information</p>
-          </div>
-        </div>
-        <p className="hidden text-xs text-slate-500 sm:block"><span className="text-rose-500">*</span> Required fields</p>
-      </div>
-      {/* Success/Error Messages */}
-      {success && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-          <div className="flex items-center gap-2 text-emerald-700">
-            <HeroIcons.CheckCircleIcon className="w-5 h-5" />
-            <span className="font-medium">Employee created successfully!</span>
-          </div>
-        </div>
-      )}
-      
-      {error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
-          <div className="flex items-center gap-2 text-rose-700">
-            <HeroIcons.ExclamationCircleIcon className="w-5 h-5" />
-            <span className="font-medium">{error}</span>
-          </div>
-        </div>
-      )}
-      
-      {/* Contact Information */}
-      <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-100 text-blue-700">
-            <HeroIcons.UserIcon className="w-4 h-4" />
-          </span>
-          Contact Information
-        </h3>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_7.5rem]">
-          {/* Left Side - All Form Fields */}
-          <div className="grid grid-cols-1 gap-x-3 gap-y-3 md:grid-cols-2 xl:grid-cols-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                First Names <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                name="first_name"
-                value={formData.first_name}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                placeholder="Enter first names"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Surname <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                name="surname"
-                value={formData.surname}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                placeholder="Enter surname"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Preferred Given Name
-              </label>
-              <input
-                type="text"
-                name="preferred_given_name"
-                value={formData.preferred_given_name}
-                onChange={handleChange}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                placeholder="Optional"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Rejlers Email <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                pattern=".+@rejlers[.]ae"
-                placeholder="name@rejlers.ae"
-                title="Email address must end with @rejlers.ae"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Mobile Phone <span className="text-rose-500">*</span>
-              </label>
-              <div className="flex rounded-lg border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-blue-500">
-                <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">+971</span>
-                <input
-                  type="tel"
-                  value={formData.mobile_phone.replace('+971', '')}
-                  onChange={handlePhoneChange}
-                  inputMode="numeric"
-                  maxLength={9}
-                  pattern="5[0-9]{8}"
-                  placeholder="5XXXXXXXX"
-                  title="Enter 9 digits beginning with 5 after +971"
-                  required
-                  className="min-w-0 flex-1 rounded-r-lg px-3 py-2.5 text-sm focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="xl:col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Manager
-              </label>
-              <input
-                type="search"
-                list="onboarding-manager-options"
-                value={managerSearch}
-                onChange={handleManagerChange}
-                placeholder="Type to search reporting managers"
-                autoComplete="off"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-              />
-              <datalist id="onboarding-manager-options">
-                {managerOptions.map(option => (
-                  <option key={option.id} value={option.label} />
-                ))}
-              </datalist>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Country
-              </label>
-              <input
-                type="search"
-                list="onboarding-country-options"
-                name="country"
-                value={formData.country}
-                onChange={handleChange}
-                placeholder="Type to search countries"
-                autoComplete="off"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-              />
-              <datalist id="onboarding-country-options">
-                {COUNTRIES.map(country => (
-                  <option key={country} value={country} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-          
-          {/* Right Side - Passport Photo */}
-          <div className="flex flex-col items-center justify-center xl:border-l xl:border-slate-200 xl:pl-4">
-            <input
-              type="file"
-              accept="image/jpeg,image/jpg,image/png"
-              onChange={handlePhotoChange}
-              className="hidden"
-              id="passport-photo-upload"
-            />
-            <label
-              htmlFor="passport-photo-upload"
-              className="h-32 w-full min-w-28 bg-white rounded-xl border border-dashed border-blue-300 overflow-hidden hover:border-blue-500 hover:shadow-sm transition-all cursor-pointer group relative"
-              title="Click to upload passport photo"
-            >
-              {photoPreview ? (
-                <div className="relative w-full h-full">
-                  <img
-                    src={photoPreview}
-                    alt="Passport Photo"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all"></div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      handleRemovePhoto()
-                    }}
-                    className="absolute top-2 right-2 p-2 bg-rose-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg hover:bg-rose-700 hover:scale-110"
-                    title="Remove photo"
-                  >
-                    <HeroIcons.XMarkIcon className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center w-full h-full text-slate-400 group-hover:text-blue-600 transition-all">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center mb-2 transition-all">
-                    <HeroIcons.CameraIcon className="w-5 h-5" />
-                  </div>
-                  <span className="text-sm font-medium">Click to upload</span>
-                  <span className="text-xs text-slate-400 mt-1">Photo</span>
-                </div>
-              )}
-            </label>
-          </div>
-        </div>
-      </section>
-      
-      {/* System-generated identifiers */}
-      <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-blue-100 bg-blue-50/60 text-xs md:grid-cols-4 md:divide-x md:divide-blue-100">
-        {[
-          ['Employee Number', 'Auto-generated'],
-          ['Employee Code', '2302 + sequence'],
-          ['Employment ID', '2302 + sequence'],
-          ['Account Name', 'From Rejlers email'],
-        ].map(([label, value]) => (
-          <div key={label} className="flex items-center gap-2.5 px-3 py-2.5">
-            <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />
-            <div>
-              <div className="font-medium text-slate-700">{label}</div>
-              <div className="text-blue-700">{value}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-      
-      {/* Organization Information */}
-      <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
-            <HeroIcons.BuildingOfficeIcon className="w-4 h-4" />
-          </span>
-          Organisation Information
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="xl:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Company
-            </label>
-            <input
-              type="text"
-              name="company"
-              value={formData.company}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Business Unit
-            </label>
-            <input
-              type="text"
-              name="business_unit"
-              value={formData.business_unit}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Division
-            </label>
-            <input
-              type="text"
-              name="division"
-              list="onboarding-create-departments"
-              value={formData.division}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Business Area
-            </label>
-            <input
-              type="text"
-              name="business_area"
-              value={formData.business_area}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Office
-            </label>
-            <input
-              type="text"
-              name="office"
-              value={formData.office}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Organizational role / Job title (Finland)
-            </label>
-            <input
-              type="text"
-              name="job_title_finland"
-              list="onboarding-create-roles"
-              value={formData.job_title_finland}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Organizational role / Job title (UAE)
-            </label>
-            <input
-              type="text"
-              name="job_title_uae"
-              list="onboarding-create-roles"
-              value={formData.job_title_uae}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-      </section>
-      
-      {/* Onboarding Details */}
-      <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-100 text-amber-700">
-            <HeroIcons.CalendarDaysIcon className="w-4 h-4" />
-          </span>
-          Onboarding Details
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Joining Date
-            </label>
-            <DatePicker
-              name="joining_date"
-              value={formData.joining_date}
-              onChange={handleChange}
-              placeholder="Select joining date"
-              minDate={new Date('2020-01-01').toISOString().split('T')[0]}
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Branch
-            </label>
-            <select
-              name="branch"
-              value={formData.branch}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="RAD">Rejlers Abu Dhabi</option>
-              <option value="RIN">Rejlers India</option>
-            </select>
-          </div>
-          
-          <div className="md:col-span-2 xl:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Notes
-            </label>
-            <textarea
-              name="notes"
-              value={formData.notes}
-              onChange={handleChange}
-              rows={2}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-      </section>
-      
-      {/* Submit Button */}
-      <div className="flex justify-end gap-3 border-t border-slate-100 pt-3">
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="px-6 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {loading ? (
-            <>
-              <Spinner />
-              <span>Creating Employee...</span>
-            </>
-          ) : (
-            <>
-              <HeroIcons.PlusCircleIcon className="w-5 h-5" />
-              <span>Create Employee</span>
-            </>
-          )}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// ── Document Management Section ────────────────────────────────────────────
+// Employee document management
 function DocumentManagementSection({ employeeId, employeeEmail }) {
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(false)
