@@ -139,6 +139,7 @@ const workbook = page => page.locator('.ar-workbook-summary');
 const workbookAmount = (page, id) => page.getByTestId(`workbook-total-${id}`).locator('strong');
 async function workbookValues(page, available = true) {
   const text = await workbook(page).innerText();
+  assert.deepEqual(await workbook(page).locator('h3').allTextContents(), ['Total amount', 'Total amount in AED', 'Total amount received', 'Total projects'], 'Workbook card titles omit spreadsheet column letters');
   const panel = page.locator('.ar-payment-status-panel');
   assert.equal(await page.getByRole('heading', { name: 'Ageing by due period', exact: true }).count(), 0, 'Payment status replaces the former ageing chart');
   if (!available) {
@@ -175,7 +176,8 @@ async function geometry(page, width, dark) {
       kpis: [...element.querySelectorAll('[data-testid^="finance-kpi-"]')].map(box),
       workbookCards: [...element.querySelectorAll('[data-testid^="workbook-total-"]')].map(node => ({ ...box(node), fits: node.scrollWidth <= node.clientWidth + 1 })),
       paymentStatus: (() => { const panel = element.querySelector('.ar-payment-status-panel'), table = panel.querySelector('.ar-payment-status-table'); return { panel: box(panel), table: box(table), minWidth: getComputedStyle(table).minWidth, rows: [...table.rows].map(row => box(row)), fits: table.scrollWidth <= panel.clientWidth + 1 && table.getBoundingClientRect().bottom <= panel.getBoundingClientRect().bottom + 1 }; })(),
-      panels: [...element.querySelectorAll('.ar-analysis-grid > .ar-panel')].map(node => ({ name: node.className, ...box(node) })),
+      panels: [...element.querySelectorAll('.ar-analysis-grid > .ar-panel, .ar-invoice-overview > .ar-panel')].map(node => ({ name: node.className, ...box(node) })),
+      invoiceOverview: (() => { const node = element.querySelector('.ar-invoice-overview'), history = node.querySelector('.ar-history-panel'), register = node.querySelector('.ar-customer-register'), scroller = register.querySelector('.ar-customer-register-scroll'); return { wrapper: box(node), history: box(history), register: box(register), columns: register.querySelectorAll('thead th').length, scrollerFits: scroller.getBoundingClientRect().right <= register.getBoundingClientRect().right + 1, plot: box(history.querySelector('svg[role="img"]')), monthLabels: [...history.querySelectorAll('text.ar-chart-axis-label')].map(box) }; })(),
       tables: [...element.querySelectorAll('.ar-table')].map(table => ({ className: table.className, ...box(table), rows: [...table.querySelectorAll('tr')].map(row => ({ ...box(row), cells: [...row.children].map(cell => { const style = getComputedStyle(cell); return { text: cell.textContent.trim(), height: cell.getBoundingClientRect().height, fontSize: style.fontSize, lineHeight: style.lineHeight, padding: style.padding, border: style.borderWidth }; }) })) })),
       svgs: [...element.querySelectorAll('.ar-panel svg[role="img"]')].map(svg => ({ chart: svg.closest('.ar-chart')?.className, ...box(svg) })),
       chartTextOverflow: [...element.querySelectorAll('.ar-panel svg[role="img"]')].flatMap(svg => { const bounds = svg.getBoundingClientRect(); return [...svg.querySelectorAll('text')].flatMap(node => { const textBounds = node.getBoundingClientRect(); return textBounds.width > 0 && (textBounds.left < bounds.left - 2 || textBounds.right > bounds.right + 2 || textBounds.top < bounds.top - 2 || textBounds.bottom > bounds.bottom + 2) ? [{ chart: svg.closest('.ar-chart')?.className, text: node.textContent, chartBox: box(svg), textBox: box(node) }] : []; }); }),
@@ -195,6 +197,17 @@ async function geometry(page, width, dark) {
   assert.equal(result.paymentStatus.rows.length, 7, 'Status heading, all five states and total remain in the panel');
   assert.equal(result.paymentStatus.fits, true, 'Payment status rows fit in the panel at each viewport');
   assert.equal(result.panels.length, 7, 'All seven dashboard panels render');
+  assert.equal(result.invoiceOverview.columns, 15, 'The paired register retains all source columns');
+  assert.equal(result.invoiceOverview.scrollerFits, true, 'The invoice scroller remains contained by its panel');
+  assert.ok(result.invoiceOverview.plot.height >= 250, 'Payment history uses a readable tall plot beside the register');
+  assert.ok(result.invoiceOverview.monthLabels.every((label, index, labels) => index === 0 || label.x >= labels[index - 1].right - 1), 'Payment history month labels do not overlap');
+  if (width > 1100) {
+    assert.equal(Math.round(result.invoiceOverview.history.y), Math.round(result.invoiceOverview.register.y), 'History and Customer invoices share their desktop row');
+    assert.ok(result.invoiceOverview.register.x >= result.invoiceOverview.history.right - 1, 'Paired invoice panels do not overlap');
+  } else {
+    assert.ok(result.invoiceOverview.register.y >= result.invoiceOverview.history.bottom - 1, 'Invoice panels stack on narrow screens');
+    assert.equal(Math.round(result.invoiceOverview.history.x), Math.round(result.invoiceOverview.register.x));
+  }
   assert.equal(result.svgs.length, 4, 'Four financial charts remain after payment status replaces ageing');
   assert.ok(result.svgs.every(svg => svg.width >= (svg.chart.includes('ar-chart-exposure') ? 150 : 200) && svg.height >= 50), 'Cartesian plots and the responsive donut have usable dimensions');
   assert.deepEqual(result.chartTextOverflow, [], 'Chart labels fit within each SVG without clipping');
@@ -211,8 +224,7 @@ async function geometry(page, width, dark) {
     }
     const history = result.panels.find(panel => panel.name.includes('ar-history-panel'));
     const leftPanel = result.panels.find(panel => panel.name.includes('ar-customer-panel'));
-    const rightPanel = result.panels.find(panel => panel.name.includes('ar-exposure-panel'));
-    assert.ok(Math.abs(history.x - leftPanel.x) < 1 && Math.abs(history.right - rightPanel.right) < 1, 'Payment history spans both desktop columns');
+    assert.ok(Math.abs(history.x - leftPanel.x) < 1 && Math.abs(history.right - leftPanel.right) < 1, 'Payment history aligns with the left desktop column');
     assert.ok(history.bottom > history.y, 'Payment history remains reachable below the expanded summary');
   }
   for (const panel of await page.locator('.ar-panel').all()) {
@@ -230,7 +242,8 @@ async function axe(page, name) {
 
 async function visualChecks() {
   for (const width of [1672, 1440, 1024, 390]) {
-    const state = await open({ width }); await registerReady(state.page); await capture(state.page, `receivables-${width}`); await geometry(state.page, width, false); await axe(state.page, `light-${width}`);
+    const state = await open({ width }); await registerReady(state.page); await workbookValues(state.page); await capture(state.page, `receivables-${width}`); await geometry(state.page, width, false); await axe(state.page, `light-${width}`);
+    await state.page.locator('.ar-invoice-overview').screenshot({ path: path.join(artifacts, `invoice-overview-${width}.png`), animations: 'disabled' });
     await registerSection(state.page).screenshot({ path: path.join(artifacts, `customer-invoices-${width}.png`), animations: 'disabled' });
     if (width === 390) {
       await state.page.locator('.ar-exposure-panel').screenshot({ path: path.join(artifacts, 'receivables-390-exposure.png'), animations: 'disabled' });
@@ -244,7 +257,7 @@ async function visualChecks() {
     await state.close();
     record(`${width}px light layout: four workbook totals, four receivables KPIs, seven panels and unchanged sidebar geometry`);
   }
-  const state = await open({ dark: true }); await registerReady(state.page); await capture(state.page, 'receivables-dark'); await geometry(state.page, 1672, true); await axe(state.page, 'dark-1672'); await registerSection(state.page).screenshot({ path: path.join(artifacts, 'customer-invoices-dark.png'), animations: 'disabled' }); await state.close();
+  const state = await open({ dark: true }); await registerReady(state.page); await capture(state.page, 'receivables-dark'); await geometry(state.page, 1672, true); await axe(state.page, 'dark-1672'); await registerSection(state.page).screenshot({ path: path.join(artifacts, 'customer-invoices-dark.png'), animations: 'disabled' }); await state.page.locator('.ar-invoice-overview').screenshot({ path: path.join(artifacts, 'invoice-overview-dark.png'), animations: 'disabled' }); await state.close();
   record('Dark theme remains readable and accessible');
 }
 

@@ -17,6 +17,7 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
   const workbook = page => page.locator('.ar-workbook-summary');
   const workbookValues = async (page, available = true) => {
     const panel = page.locator('.ar-payment-status-panel');
+    assert.deepEqual(await workbook(page).locator('h3').allTextContents(), ['Total amount', 'Total amount in AED', 'Total amount received', 'Total projects']);
     const text = await workbook(page).innerText();
     assert.equal(await page.getByRole('heading', { name: 'Ageing by due period', exact: true }).count(), 0);
     if (!available) {
@@ -57,20 +58,47 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
     await pending; await ready(state.page); return new URLSearchParams(requests(state.control).at(-1).query);
   };
   const download = async (page, button) => { const event = page.waitForEvent('download'); await button.click(); const file = await event; return { filename: file.suggestedFilename(), bytes: await readFile(await file.path()) }; };
+  const invoiceOverviewLayout = async (page, printing = false) => {
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const result = await page.locator('.ar-invoice-overview').evaluate(node => { const box = element => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height }; }; const history = node.querySelector('.ar-history-panel'), register = node.querySelector('.ar-customer-register'), plot = history.querySelector('svg[role="img"]'); return { viewport: innerWidth, wrapper: box(node), history: box(history), register: box(register), plot: box(plot), columns: register.querySelectorAll('thead th').length, monthLabels: [...history.querySelectorAll('text.ar-chart-axis-label')].map(box) }; });
+    assert.equal(result.columns, 15); assert.ok(result.plot.height >= 250);
+    assert.ok(result.monthLabels.every((label, index, labels) => index === 0 || label.x >= labels[index - 1].right - 1), 'Payment month labels remain distinct');
+    if (printing || result.viewport <= 1100) {
+      assert.ok(result.register.y >= result.history.bottom - 1, 'Invoice panels stack for mobile and print');
+      assert.equal(Math.round(result.register.x), Math.round(result.history.x));
+      assert.equal(Math.round(result.register.width), Math.round(result.wrapper.width));
+    } else {
+      assert.equal(Math.round(result.register.y), Math.round(result.history.y), 'Invoice panels share their desktop row');
+      assert.ok(result.register.x >= result.history.right - 1, 'Desktop invoice panels do not overlap');
+    }
+    geometries.push({ invoiceOverview: result, printing });
+  };
   await verification?.assertProtected?.();
 
-  if (process.argv.includes('--print-only')) {
+  if (process.argv.includes('--print-only') || process.argv.includes('--invoice-layout-only')) {
     const state = await open(); const { page } = state; await registerReady(page);
+    if (process.argv.includes('--invoice-layout-only')) {
+      for (const width of [1672, 1440, 1024, 390]) {
+        await assertGeometry(page, width); await workbookValues(page); await invoiceOverviewLayout(page);
+        await page.locator('.ar-invoice-overview').screenshot({ path: path.join(artifacts, `financial-invoice-overview-${width}.png`), animations: 'disabled' });
+        if (width === 1672 || width === 390) await axe(page, `financial-invoice-overview-${width}`);
+      }
+      await assertGeometry(page, 1672); await page.evaluate(() => document.documentElement.classList.add('dark')); await invoiceOverviewLayout(page); await axe(page, 'financial-invoice-overview-dark');
+      await page.locator('.ar-invoice-overview').screenshot({ path: path.join(artifacts, 'financial-invoice-overview-dark.png'), animations: 'disabled' });
+      await page.evaluate(() => document.documentElement.classList.remove('dark'));
+      record('Clean workbook labels and paired invoice panels fit desktop, tablet, mobile and dark layouts');
+    }
     await page.setViewportSize({ width: 1123, height: 794 });
     await page.evaluate(() => window.dispatchEvent(new Event('beforeprint'))); await page.emulateMedia({ media: 'print' });
     await workbookValues(page);
+    await invoiceOverviewLayout(page, true);
     const geometry = await register(page).evaluate(node => { const table = node.querySelector('table'), bounds = table.getBoundingClientRect(), viewport = node.getBoundingClientRect(); return { tableFits: bounds.left >= viewport.left - 1 && bounds.right <= viewport.right + 1, columns: [...table.querySelectorAll('thead th')].map(cell => ({ field: cell.dataset.field, visible: getComputedStyle(cell).display !== 'none', width: cell.getBoundingClientRect().width })), clipped: [...node.querySelectorAll('[class*="scroll"]')].some(element => { const style = getComputedStyle(element); return /auto|scroll|hidden/.test(style.overflowX) && element.scrollWidth > element.clientWidth + 2 || /auto|scroll|hidden/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 2; }) }; });
     assert.equal(geometry.tableFits, true); assert.equal(geometry.clipped, false); assert.equal(geometry.columns.length, 15); assert.ok(geometry.columns.every(column => column.visible && column.width > 0), 'All fifteen printed columns fit the landscape report width');
     await register(page).screenshot({ path: path.join(artifacts, 'financial-customer-invoices-print.png'), animations: 'disabled' });
     await capture(page, 'financial-board-print', true); await page.pdf({ path: path.join(artifacts, 'financial-board-report.pdf'), format: 'A4', preferCSSPageSize: true, printBackground: true });
     await close(state); await verification?.assertProtected?.();
     record('All fifteen customer invoice columns remain visible and unclipped in the landscape printed report');
-    await writeFile(path.join(artifacts, 'print-checks.json'), JSON.stringify({ passed: true, checks, geometry, protectedHashesUnchanged: true }, null, 2));
+    await writeFile(path.join(artifacts, process.argv.includes('--invoice-layout-only') ? 'invoice-layout-checks.json' : 'print-checks.json'), JSON.stringify({ passed: true, checks, geometry, geometries, accessibility, protectedHashesUnchanged: true }, null, 2));
     return;
   }
 
@@ -80,7 +108,7 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
   assert.equal(await page.getByLabel('Financial reporting currency', { exact: true }).count(), 0, 'Legacy duplicate currency control is removed');
   assert.equal(await page.getByLabel('Comparison basis', { exact: true }).count(), 0, 'Unavailable target control is not duplicated above live receivables');
   for (const [id, expected] of [['unpaid', 380828], ['overdue', 313499], ['over30', 286591], ['over90', 148983]]) assert.equal(await amount(page, id), expected);
-  assert.equal(await page.locator('[data-testid^="finance-kpi-"]').count(), 4); assert.equal(await page.locator('.ar-analysis-grid > .ar-panel').count(), 7);
+  assert.equal(await page.locator('[data-testid^="finance-kpi-"]').count(), 4); assert.equal(await page.locator('.ar-analysis-grid > .ar-panel').count(), 6); assert.equal(await page.locator('.ar-invoice-overview > .ar-panel').count(), 1);
   await workbookValues(page);
   assert.deepEqual(await page.locator('.ar-invoices-panel tbody th[scope="row"]').allTextContents(), receivablesFixture().data.priority_invoices.map(row => row.company));
   assert.deepEqual(await register(page).locator('tbody th[scope="row"]').allTextContents(), customerInvoicesFixture().data.rows.map(row => row.company));
@@ -91,6 +119,7 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
 
   for (const width of [1672, 1440, 1024, 390]) {
     await assertGeometry(page, width);
+    await invoiceOverviewLayout(page);
     const geometry = await finance(page).evaluate(node => ({ width: node.getBoundingClientRect().width, charts: [...node.querySelectorAll('.ar-panel svg[role="img"]')].map(svg => ({ width: svg.getBoundingClientRect().width, height: svg.getBoundingClientRect().height, text: [...svg.querySelectorAll('text')].map(text => { const rect = text.getBoundingClientRect(), bounds = svg.getBoundingClientRect(); return { text: text.textContent, inside: rect.left >= bounds.left - 2 && rect.right <= bounds.right + 2 && rect.top >= bounds.top - 2 && rect.bottom <= bounds.bottom + 2 }; }) })) }));
     assert.equal(geometry.charts.length, 4);
     const summaryFits = await workbook(page).evaluate(node => [...node.querySelectorAll('[data-testid^="workbook-total-"]')].every(card => { const rect = card.getBoundingClientRect(); return card.scrollWidth <= card.clientWidth + 1 && rect.left >= 0 && rect.right <= innerWidth + 1; }));
@@ -124,6 +153,7 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
   assert.equal(printed.title, 'Financial Performance'); assert.deepEqual(printed.actions, []); assert.equal(printed.receivablesCurrency, 'AED'); assert.equal(printed.receivablesCompany, 'Stripe Inc.'); assert.match(printed.receivablesText, /Stripe Inc\./); assert.equal(printed.receivablesKpis.length, 4); assert.ok(printed.customerInvoices.length > 0);
   assert.equal(await page.locator('.ar-print-scope').isVisible(), false, 'Print scope does not duplicate screen filters');
   await page.evaluate(() => window.dispatchEvent(new Event('beforeprint'))); await page.emulateMedia({ media: 'print' });
+  await invoiceOverviewLayout(page, true);
   await workbookValues(page);
   const workbookPrint = await workbook(page).evaluate(node => { const bounds = node.getBoundingClientRect(); return [...node.querySelectorAll('[data-testid^="workbook-total-"]')].map(card => { const rect = card.getBoundingClientRect(); return { inside: rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1, visible: getComputedStyle(card).display !== 'none', fits: card.scrollWidth <= card.clientWidth + 1 }; }); });
   assert.equal(workbookPrint.length, 4); assert.ok(workbookPrint.every(card => card.inside && card.visible && card.fits), 'All four workbook values fit in the printed report');

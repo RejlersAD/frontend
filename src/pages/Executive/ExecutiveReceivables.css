@@ -147,7 +147,7 @@
   .cc-financial-page .ar-dashboard-embedded .ar-exposure-panel .ar-chart { --ar-chart-height: 181px; }
   .cc-financial-page .ar-dashboard-embedded .ar-ageing-panel .ar-chart,
   .cc-financial-page .ar-dashboard-embedded .ar-trend-panel .ar-chart { --ar-chart-height: 127px; }
-  .cc-financial-page .ar-dashboard-embedded .ar-history-panel .ar-chart { --ar-chart-height: 82px; }
+  .cc-financial-page .ar-dashboard-embedded .ar-history-panel .ar-chart { --ar-chart-height: 300px; }
   .cc-financial-page .ar-dashboard-embedded .ar-table-scroll,
   .cc-financial-page .ar-dashboard-embedded .ar-customer-register-scroll,
   .cc-financial-page .ar-dashboard-embedded .ar-customer-register-panel { height: auto; max-height: none; overflow: visible; }

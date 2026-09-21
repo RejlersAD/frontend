@@ -5,9 +5,9 @@ import { outgoingReviewMoney } from './outgoingReviewPresentation';
 import './WorkbookSummary.css';
 
 const METRICS = [
-  { id: 'invoice_amount', label: 'Total amount — L', note: 'Mixed original currencies', icon: DocumentTextIcon, tone: 'blue' },
-  { id: 'invoice_amount_aed', label: 'Total amount in AED — M', note: 'Recorded AED amounts', icon: DocumentCurrencyDollarIcon, tone: 'cyan' },
-  { id: 'actual_payment_received', label: 'Total amount received — AA', note: 'Mixed original currencies', icon: BanknotesIcon, tone: 'green' },
+  { id: 'invoice_amount', label: 'Total amount', note: 'Mixed original currencies', icon: DocumentTextIcon, tone: 'blue' },
+  { id: 'invoice_amount_aed', label: 'Total amount in AED', note: 'Recorded AED amounts', icon: DocumentCurrencyDollarIcon, tone: 'cyan' },
+  { id: 'actual_payment_received', label: 'Total amount received', note: 'Mixed original currencies', icon: BanknotesIcon, tone: 'green' },
   { id: 'project_count', label: 'Total projects', note: 'Unique RAD Project #', icon: BriefcaseIcon, tone: 'violet' },
 ];
 const STATUSES = [['paid', 'Paid'], ['cancelled', 'Cancelled'], ['pending', 'Pending'], ['new', 'New'], ['other', 'Other statuses']];

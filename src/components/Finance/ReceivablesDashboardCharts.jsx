@@ -245,9 +245,9 @@ OverdueTrendChart.propTypes = { rows: PropTypes.arrayOf(PropTypes.shape({ month:
 
 export function PaymentHistoryChart({ rows = [], currency = 'AED', partial = false }) {
   const chart = useChart();
-  const height = 75;
-  const top = 15;
-  const bottom = height - 19;
+  const height = 300;
+  const top = 30;
+  const bottom = height - 32;
   const left = 39;
   const right = chart.width - 12;
   const scale = scaleFor(rows.map(row => finite(row.paid) || finite(row.unpaid) ? (finite(row.paid) ? row.paid : 0) + (finite(row.unpaid) ? row.unpaid : 0) : null), 3);
@@ -255,7 +255,7 @@ export function PaymentHistoryChart({ rows = [], currency = 'AED', partial = fal
   const slot = (right - left) / Math.max(rows.length, 1);
   const barWidth = Math.min(71, slot * 0.72);
   const hasData = rows.some(row => finite(row.paid) || finite(row.unpaid));
-  const tickEvery = Math.max(1, Math.ceil(rows.length / (chart.width < 550 ? 6 : 13)));
+  const tickEvery = Math.max(1, Math.ceil(rows.length / Math.max(1, Math.floor((right - left) / 48))));
   return <div className="ar-chart ar-chart-payments" ref={chart.ref} data-testid="ar-payment-history-chart">
     {hasData ? <><span className="ar-chart-unit">{currency} &apos;000</span><Legend series={[{ key: 'paid', label: 'Paid', colour: '#4aa8fa' }, { key: 'unpaid', label: 'Unpaid', colour: '#c4d9e7' }]} /><svg viewBox={`0 0 ${chart.width} ${height}`} role="img" aria-labelledby={`${chart.id}-title ${chart.id}-description`}>
       <SvgTitle id={chart.id} title={`Paid and unpaid invoices by issue month in ${currency}`} description="Recorded payments and current unpaid balances grouped by invoice issue month. This is not a cash receipts timeline. Values are in thousands. Unrecorded amounts are omitted; their absence does not mean zero." />
@@ -268,7 +268,7 @@ export function PaymentHistoryChart({ rows = [], currency = 'AED', partial = fal
         return <g key={`${row.month}-${index}`}>
           {finite(row.paid) && <rect className="ar-chart-mark" {...chart.mark(`Invoices issued ${month} ${year}, recorded payments: ${money(row.paid, currency)}`)} x={x - barWidth / 2} y={Math.min(y(paid), y(0))} width={barWidth} height={Math.max(paid === 0 ? 1 : 0, Math.abs(y(0) - y(paid)))} fill="#4aa8fa" stroke="var(--ar-panel, white)" strokeWidth="0.75"><title>{`Invoices issued ${month} ${year}, recorded payments: ${money(row.paid, currency)}`}</title></rect>}
           {finite(row.unpaid) && <rect className="ar-chart-mark" {...chart.mark(`Invoices issued ${month} ${year}, currently unpaid: ${money(row.unpaid, currency)}${finite(row.paid) ? '' : '; payments not recorded'}`)} x={x - barWidth / 2} y={Math.min(y(paid + row.unpaid), y(paid))} width={barWidth} height={Math.max(row.unpaid === 0 ? 1 : 0, Math.abs(y(paid) - y(paid + row.unpaid)))} fill="#c4d9e7" stroke="var(--ar-panel, white)" strokeWidth="0.75"><title>{`Invoices issued ${month} ${year}, currently unpaid: ${money(row.unpaid, currency)}`}</title></rect>}
-          {(index % tickEvery === 0 || index === rows.length - 1) && <text className="ar-chart-axis-label" x={x} y={height - 4} textAnchor="middle">{month} {year}</text>}
+          {((index % tickEvery === 0 && index <= rows.length - 1 - tickEvery / 2) || index === rows.length - 1) && <text className="ar-chart-axis-label" x={x} y={height - 17} textAnchor="middle"><tspan x={x}>{month}</tspan><tspan x={x} dy="11">{year}</tspan></text>}
         </g>;
       })}
     </svg></> : <ChartEmpty>No recorded payments or unpaid balances by invoice issue month</ChartEmpty>}
