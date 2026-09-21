@@ -4,12 +4,12 @@ import { Link } from 'react-router-dom';
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import financeService from '../../services/finance.service';
 import { financeCount, financeNumber } from './financeCommandPresentation';
-import { receivableNumber, receivableRawValue, receivableReadable } from './financeReceivablesPresentation';
+import { receivableCustomer, receivableNumber, receivableRawValue, receivableReadable } from './financeReceivablesPresentation';
 import './CustomerInvoicesSection.css';
 
 const PAGE_SIZE = 8;
 const COLUMNS = [
-  { key: 'account', label: 'Customer' },
+  { key: 'company', label: 'Customer' },
   { key: 'invoice_number', label: 'Invoice No.' },
   { key: 'invoice_date', label: 'Date' },
   { key: 'due_date', label: 'Due date' },
@@ -116,10 +116,10 @@ export default function CustomerInvoicesSection({ currency = '', company = '', r
           <tbody>{rows.length > 0 ? rows.map(row => {
             const route = row.id === undefined || row.id === null ? null : `/finance/outgoing-invoices/${encodeURIComponent(row.id)}`;
             const due = financeNumber(row.amount_due_home);
-            const customer = row.account || '—';
+            const customer = receivableCustomer(row);
             const invoice = row.invoice_number || '—';
             return <tr key={row.id || row.invoice_number}>
-              <th scope="row" title={row.account || 'Customer not recorded'}>{route ? <Link to={route} aria-label={`Open customer invoice ${invoice} for ${customer}`}>{customer}</Link> : customer}</th>
+              <th scope="row" title={customer}>{route ? <Link to={route} aria-label={`Open customer invoice ${invoice} for ${customer}`}>{customer}</Link> : customer}</th>
               <td title={row.invoice_number || 'Invoice number not recorded'}>{route ? <Link to={route}>{invoice}</Link> : invoice}</td>
               <td>{formatDate(row.invoice_date)}</td><td>{formatDate(row.due_date)}</td>
               <td className="ar-customer-register-status">{row.payment_status_label || '—'}</td>

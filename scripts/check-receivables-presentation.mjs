@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { receivableAlert, receivableChartRows, receivableCollectionRoute, receivableCustomerRows, receivableMetricNote, receivableNumber, receivableRawValue, receivableValue, receivablesCsv } from '../src/components/Finance/financeReceivablesPresentation.js';
+import { receivableAlert, receivableChartRows, receivableCollectionRoute, receivableCustomer, receivableCustomerRows, receivableMetricNote, receivableNumber, receivableRawValue, receivableValue, receivablesCsv } from '../src/components/Finance/financeReceivablesPresentation.js';
 import { receivablesFixture } from './check-receivables-dashboard-fixtures.mjs';
 
 test('recorded subtotals remain visible without treating unknown balances as zero', () => {
@@ -25,9 +25,26 @@ test('customer and priority drilldowns retain the original currency and company 
   assert.equal(priority.searchParams.get('queue'), 'overdue');
   assert.equal(priority.searchParams.get('currency'), 'USD');
   assert.equal(priority.searchParams.get('company'), 'North & South');
-  const customer = new URL(receivableCollectionRoute(filters, 'Customer A'), 'http://local.test');
+  const customer = new URL(receivableCollectionRoute(filters, ' Customer A '), 'http://local.test');
   assert.equal(customer.searchParams.get('queue'), 'open');
-  assert.equal(customer.searchParams.get('account'), 'Customer A');
+  assert.equal(customer.searchParams.get('company'), 'Customer A');
+  assert.equal(customer.searchParams.get('currency'), 'USD');
+  assert.equal(customer.searchParams.has('account'), false);
+});
+
+test('customer names, charts, alerts and exports use COMPANY even when account is blank or different', () => {
+  assert.equal(receivableCustomer({ company: ' Example Ltd ', account: '' }), 'Example Ltd');
+  assert.equal(receivableCustomer({ company: 'Example Ltd', account: 'Accounting code' }), 'Example Ltd');
+  assert.equal(receivableCustomer({ company: ' ', account: 'Accounting code' }), 'Customer not recorded');
+  const data = { currency: 'AED', sources: { receivables: { status: 'available' } },
+    kpis: { overdue: { amount: '25' } },
+    customers: [{ company: ' Example Ltd ', account: 'Accounting code', amount: '25', buckets: { over90: { amount: '25' } } }],
+    priority_invoices: [{ company: ' Example Ltd ', account: 'Accounting code', invoice_number: 'INV-COMPANY' }] };
+  assert.equal(receivableCustomerRows(data)[0].customer, 'Example Ltd');
+  assert.equal(receivableChartRows(data).customers[0].company, 'Example Ltd');
+  assert.match(receivableAlert(data).detail, /^Example Ltd represents/);
+  assert.ok(receivablesCsv(data).includes('"INV-COMPANY","Example Ltd"'));
+  assert.ok(!receivablesCsv(data).includes('Accounting code'));
 });
 
 test('missing due dates cannot produce an all-clear collection alert', () => {
@@ -53,7 +70,7 @@ test('restricted customer sources never create customer rows', () => {
 
 test('report exports every customer and discloses partial amounts and the date basis', () => {
   const data = receivablesFixture('partial').data;
-  data.customers.push({ ...data.customers[0], account: '=HYPERLINK("unsafe")' });
+  data.customers.push({ ...data.customers[0], company: '=HYPERLINK("unsafe")' });
   const report = receivablesCsv(data);
   assert.match(report, /Current recorded balances; not a historical balance sheet/);
   assert.match(report, /Missing balances/);
