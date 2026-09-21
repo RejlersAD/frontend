@@ -21,6 +21,7 @@ const origin = 'http://receivables-dashboard-check.test';
 const visualsOnly = process.argv.includes('--visuals-only');
 const workflowsOnly = process.argv.includes('--workflows-only');
 const registerMobileOnly = process.argv.includes('--register-mobile-only');
+const currenciesOnly = process.argv.includes('--currency-breakdown-only');
 const protectedFiles = ['src/components/Layout/Sidebar.jsx', 'src/components/Layout/Sidebar.css', 'src/config/layout.config.js', 'src/config/navigationLabels.config.js', 'src/hooks/useSidebarLayout.js', 'src/hooks/useSidebarDrawer.js'];
 await mkdir(artifacts, { recursive: true });
 const startHashes = await snapshotSources(frontend, protectedFiles);
@@ -124,7 +125,7 @@ async function newPage({ fixture = 'full', width = 1672, dark = false, loading =
   });
   control.release = async () => { control.loading = false; await Promise.all(control.pending.splice(0).map(respond)); };
   control.releaseRegister = async () => { control.registerLoading = false; await Promise.all(control.registerPending.splice(0).map(respond)); };
-  await page.goto(origin);
+  await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 30000 });
   return { page, control, close: () => context.close() };
 }
 async function capture(page, name) {
@@ -143,6 +144,7 @@ async function workbookValues(page, available = true) {
   const panel = page.locator('.ar-payment-status-panel');
   assert.equal(await page.getByRole('heading', { name: 'Ageing by due period', exact: true }).count(), 0, 'Payment status replaces the former ageing chart');
   if (!available) {
+    assert.equal(await workbook(page).locator('.ar-workbook-currencies').count(), 0, 'Restricted or unavailable workbook currency values stay hidden');
     assert.doesNotMatch(text + await panel.innerText(), /315,481,678|466,151,390|285,759,742|3,895|4,404/);
     for (const id of ['invoice_amount', 'invoice_amount_aed', 'actual_payment_received', 'project_count']) assert.equal(await workbookAmount(page, id).innerText(), '\u2014');
     return;
@@ -155,11 +157,29 @@ async function workbookValues(page, available = true) {
   assert.doesNotMatch(await workbookAmount(page, 'actual_payment_received').innerText(), /AED|USD/);
   assert.match(await workbookAmount(page, 'invoice_amount_aed').innerText(), /AED/);
   assert.match(text, /full workbook/i); assert.match(text, /unaffected by dashboard filters/i);
-  assert.match(text, /mixed|original currencies/i);
-  for (const row of summary.payment_status) {
-    assert.equal((await panel.locator(`[data-status="${row.id}"]`).innerText()).replace(/\s+/g, ' ').trim(), `${row.label} ${row.count.toLocaleString('en-US')}`);
+  assert.doesNotMatch(text, /Mixed original currencies/);
+  for (const field of ['invoice_amount', 'actual_payment_received']) {
+    const card = page.getByTestId(`workbook-total-${field}`);
+    assert.equal(await card.locator('.ar-workbook-currencies > div').count(), summary.currency_breakdown.length);
+    for (const row of summary.currency_breakdown) {
+      const entry = card.locator(`[data-currency="${row.currency || row.currency_status}"]`);
+      const label = row.currency === 'EUR' ? 'EUR (Euro)' : row.currency || (row.currency_status === 'conflict' ? 'Currency needs review' : 'Currency not recorded');
+      assert.equal(await entry.locator('dt').innerText(), label);
+      assert.equal(await entry.locator('dd').innerText(), `[${Number(row[field]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}]`);
+    }
+    assert.equal(await card.locator('[data-currency="rounding"]').count(), 0);
   }
-  assert.match(await panel.locator('tfoot').innerText(), /Total\s+4,404/);
+  for (const row of summary.payment_status) {
+    const statusRow = panel.locator(`[data-status="${row.id}"]`), excluded = row.amount_coverage.blank_count + row.amount_coverage.text_count + row.amount_coverage.error_count;
+    assert.equal(await statusRow.locator('th').innerText(), row.label);
+    assert.equal(await statusRow.locator('[data-field="invoice_count"]').innerText(), row.count.toLocaleString('en-US'));
+    assert.equal(await statusRow.locator('[data-field="amount_aed"]').innerText(), Number(row.amount_aed).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (excluded ? '*' : ''));
+    assert.equal(await statusRow.locator('[data-field="amount_aed"] abbr').count(), excluded ? 1 : 0);
+    if (excluded) assert.match(await statusRow.locator('[data-field="amount_aed"] abbr').getAttribute('aria-label'), new RegExp(`${excluded} missing or invalid`));
+  }
+  assert.deepEqual(await panel.locator('thead th').allTextContents(), ['Payment status', 'Amount (AED)', 'Invoice rows']);
+  assert.equal(await panel.locator('tfoot [data-field="invoice_count"]').innerText(), '4,404');
+  assert.equal(await panel.locator('tfoot [data-field="amount_aed"]').innerText(), '466,151,390.16*');
   assert.match(await panel.innerText(), /full workbook/i);
 }
 async function loaded(page) { await root(page).waitFor(); await page.waitForFunction(() => document.querySelector('.finance-command-center')?.getAttribute('aria-busy') === 'false'); }
@@ -244,6 +264,8 @@ async function visualChecks() {
   for (const width of [1672, 1440, 1024, 390]) {
     const state = await open({ width }); await registerReady(state.page); await workbookValues(state.page); await capture(state.page, `receivables-${width}`); await geometry(state.page, width, false); await axe(state.page, `light-${width}`);
     await state.page.locator('.ar-invoice-overview').screenshot({ path: path.join(artifacts, `invoice-overview-${width}.png`), animations: 'disabled' });
+    await workbook(state.page).screenshot({ path: path.join(artifacts, `currency-cards-${width}.png`), animations: 'disabled' });
+    await state.page.locator('.ar-payment-status-panel').screenshot({ path: path.join(artifacts, `payment-status-amounts-${width}.png`), animations: 'disabled' });
     await registerSection(state.page).screenshot({ path: path.join(artifacts, `customer-invoices-${width}.png`), animations: 'disabled' });
     if (width === 390) {
       await state.page.locator('.ar-exposure-panel').screenshot({ path: path.join(artifacts, 'receivables-390-exposure.png'), animations: 'disabled' });
@@ -277,7 +299,11 @@ async function changeFilter(page, control, label, value, input = false) {
 async function fixtureConsistency() {
   const data = receivablesFixture().data;
   assert.equal(data.workbook_summary.payment_status.reduce((sum, row) => sum + row.count, 0), data.workbook_summary.invoice_count);
+  assert.equal(data.workbook_summary.payment_status.reduce((sum, row) => sum + BigInt(row.amount_aed.replace('.', '')), 0n), BigInt(data.workbook_summary.totals.invoice_amount_aed.replace('.', '')), 'Status amounts reconcile to the source M total');
   assert.deepEqual(receivablesFixture('full', { currency: 'USD', company: 'Stripe Inc.', months: 6 }).data.workbook_summary, data.workbook_summary, 'Full workbook aggregates are independent of live receivables filters');
+  for (const field of ['invoice_amount', 'actual_payment_received']) {
+    assert.equal(data.workbook_summary.currency_breakdown.reduce((sum, row) => sum + BigInt(row[field].replace('.', '')), 0n), BigInt(data.workbook_summary.totals[field].replace('.', '')), `${field} currency groups reconcile to the exact source total`);
+  }
   assert.deepEqual(Object.values(data.kpis).map(item => Number(item.amount)), [380828, 313499, 286591, 148983]);
   assert.equal(data.customers.reduce((sum, row) => sum + Number(row.amount), 0), Number(data.kpis.unpaid.amount));
   assert.equal(data.ageing.reduce((sum, row) => sum + Number(row.receivables.amount), 0), Number(data.kpis.unpaid.amount));
@@ -556,13 +582,62 @@ async function mobileRegisterStateChecks() {
   record('Mobile customer invoice error, empty, access and loading messages remain visible within the table viewport');
 }
 
+async function currencyBreakdownChecks() {
+  let state = await open(); let { page, control } = state;
+  await workbookValues(page);
+  await workbook(page).screenshot({ path: path.join(artifacts, 'currency-breakdown-desktop.png'), animations: 'disabled' });
+  await changeFilter(page, control, 'Reporting currency', 'USD'); await workbookValues(page);
+  await changeFilter(page, control, 'Customer', 'Stripe Inc.'); await workbookValues(page);
+  const downloadEvent = page.waitForEvent('download'); await root(page).getByRole('button', { name: /^Export/ }).click(); const download = await downloadEvent;
+  const csv = await readFile(await download.path(), 'utf8');
+  assert.ok(csv.includes('"EUR (Euro)","13008426.71","9592153.57"')); assert.ok(csv.includes('"Currency needs review","674340.40","475467.22"'));
+  assert.ok(csv.includes('"Paid","412405138.81","3895","2"')); assert.ok(csv.includes('"Cancelled","39497085.61","368","5"'));
+  await workbook(page).getByText('Workbook source', { exact: true }).click(); assert.match(await workbook(page).innerText(), /Conflicting labels|conflict/i); assert.match(await workbook(page).innerText(), /Payments retain their own currency/);
+  await state.close();
+  record('Independent currency amounts, unknown/review groups, source notes and CSV remain unchanged by dashboard filters');
+
+  const dynamic = receivablesFixture();
+  const euro = dynamic.data.workbook_summary.currency_breakdown.find(row => row.currency === 'EUR'); euro.invoice_amount = '1234.56'; euro.actual_payment_received = null;
+  dynamic.data.workbook_summary.currency_breakdown.push({ currency: 'GBP', currency_status: 'recorded', invoice_amount: '9999999999999999.99', actual_payment_received: '0.00' });
+  dynamic.data.workbook_summary.currency_rounding_adjustment = { invoice_amount: '0.01', actual_payment_received: '-0.01' };
+  dynamic.data.workbook_summary.payment_status[0].amount_aed = '123.45'; dynamic.data.workbook_summary.payment_status[0].amount_coverage.error_count = 0;
+  dynamic.data.workbook_summary.payment_status[1].amount_aed = null;
+  dynamic.data.workbook_summary.payment_status_rounding_adjustment = '0.02';
+  state = await open({ fixture: dynamic }); ({ page } = state);
+  const invoiceCard = page.getByTestId('workbook-total-invoice_amount'), receiptCard = page.getByTestId('workbook-total-actual_payment_received');
+  assert.equal(await invoiceCard.locator('[data-currency="EUR"] dd').innerText(), '[1,234.56]'); assert.equal(await receiptCard.locator('[data-currency="EUR"] dd').innerText(), '[\u2014]');
+  assert.equal(await invoiceCard.locator('[data-currency="GBP"] dd').innerText(), '[9,999,999,999,999,999.99]'); assert.equal(await receiptCard.locator('[data-currency="GBP"] dd').innerText(), '[0.00]');
+  assert.equal(await invoiceCard.locator('[data-currency="rounding"] dd').innerText(), '[0.01]'); assert.equal(await receiptCard.locator('[data-currency="rounding"] dd').innerText(), '[-0.01]');
+  assert.equal(await page.locator('.ar-payment-status-panel [data-status="paid"] [data-field="amount_aed"]').innerText(), '123.45');
+  assert.equal(await page.locator('.ar-payment-status-panel [data-status="cancelled"] [data-field="amount_aed"]').innerText(), '\u2014*');
+  assert.match(await page.locator('.ar-payment-status-content > p').innerText(), /Rounding: AED 0\.02/);
+  await state.close();
+  record('Currency rows are dynamic, retain decimal precision and distinguish absent amounts, zero and rounding adjustments');
+
+  for (const variant of ['missing', 'empty', 'restricted', 'unavailable', 'unsupported']) {
+    const fixture = receivablesFixture();
+    if (variant === 'missing') delete fixture.data.workbook_summary.currency_breakdown;
+    if (variant === 'empty') fixture.data.workbook_summary.currency_breakdown = [];
+    if (variant === 'restricted' || variant === 'unavailable') fixture.data.workbook_summary.status = variant;
+    if (variant === 'unsupported') fixture.data.workbook_summary.schema_version = '2.0';
+    state = await open({ fixture }); ({ page } = state);
+    assert.equal(await workbook(page).locator('.ar-workbook-currencies').count(), 0);
+    assert.equal(await workbook(page).getByText('Currency breakdown unavailable', { exact: true }).count(), 2);
+    if (variant === 'missing' || variant === 'empty') assert.equal(await workbookAmount(page, 'invoice_amount').innerText(), '315,481,678.41'); else await workbookValues(page, false);
+    await state.close();
+  }
+  state = await open({ loading: true }); ({ page, control } = state); await workbook(page).waitFor(); assert.equal(await workbook(page).locator('.ar-workbook-currencies').count(), 0); assert.equal(await workbook(page).getByText('Loading currencies\u2026', { exact: true }).count(), 2); await control.release(); await loaded(page); await workbookValues(page); await state.close();
+  record('Missing breakdowns preserve headline totals; permission, loading and schema guards suppress stale currency values');
+}
+
 try {
   await fixtureConsistency(); browser = await launchBrowser();
-  if (!registerMobileOnly && !workflowsOnly) await visualChecks();
-  if (!registerMobileOnly && !visualsOnly) { await workflowChecks(); await customerInvoiceChecks(); await formulaChecks(); }
+  if (!registerMobileOnly && (!currenciesOnly || visualsOnly) && !workflowsOnly) await visualChecks();
+  if (!registerMobileOnly && !currenciesOnly && !visualsOnly) { await workflowChecks(); await customerInvoiceChecks(); await formulaChecks(); }
+  if (currenciesOnly) await currencyBreakdownChecks();
   if (registerMobileOnly) await mobileRegisterStateChecks();
   await guards(); assert.deepEqual(runtimeErrors, [], 'No browser runtime errors'); assert.deepEqual(unexpectedRequests, [], 'Every request is read-only and explicitly mocked');
-  await writeFile(path.join(artifacts, registerMobileOnly ? 'mobile-state-checks.json' : visualsOnly ? 'visual-checks.json' : workflowsOnly ? 'workflow-checks.json' : 'checks.json'), JSON.stringify({ passed: true, checks, runtimeErrors, unexpectedRequests, geometries, accessibility }, null, 2));
+  await writeFile(path.join(artifacts, currenciesOnly ? 'currency-checks.json' : registerMobileOnly ? 'mobile-state-checks.json' : visualsOnly ? 'visual-checks.json' : workflowsOnly ? 'workflow-checks.json' : 'checks.json'), JSON.stringify({ passed: true, checks, runtimeErrors, unexpectedRequests, geometries, accessibility }, null, 2));
 } catch (error) {
   for (const context of browser?.contexts() || []) { const page = context.pages()[0]; if (page && !page.isClosed()) await page.screenshot({ path: path.join(artifacts, 'failure.png') }).catch(() => {}); }
   await writeFile(path.join(artifacts, 'failure.json'), JSON.stringify({ error: error.stack, checks, runtimeErrors, unexpectedRequests, geometries, accessibility }, null, 2)); throw error;

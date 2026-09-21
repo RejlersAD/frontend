@@ -25,17 +25,36 @@ const bucketFor = (date, asOf) => { const days = daysPastDue(date, asOf); return
 // Workbook aggregates deliberately differ from the scoped synthetic invoice API.
 // This catches accidental reuse of live currency/customer filters for the full file.
 export function workbookSummaryFixture(status = 'available') {
-  if (status !== 'available') return { schema_version: '1.0', status, reason: status === 'restricted' ? 'Access to the full invoice workbook is required.' : 'The invoice workbook summary is unavailable.', source: null, invoice_count: null, totals: null, coverage: {}, payment_status: [], other_statuses: [], project_excluded_rows: null, currency_basis: 'mixed_original' };
+  if (status !== 'available') return { schema_version: '1.0', status, reason: status === 'restricted' ? 'Access to the full invoice workbook is required.' : 'The invoice workbook summary is unavailable.', source: null, invoice_count: null, totals: null, coverage: {}, payment_status: [], other_statuses: [], project_excluded_rows: null, currency_basis: 'mixed_original', currency_breakdown: [], currency_rounding_adjustment: {} };
+  const currencyRows = [
+    ['AED', 'recorded', '256727607.14', '236869176.92', 2020, 1829],
+    ['EUR', 'recorded', '13008426.71', '9592153.57', 1707, 1462],
+    ['SEK', 'recorded', '219000.00', '219000.00', 1, 1],
+    ['USD', 'recorded', '41706207.76', '36175812.14', 639, 549],
+    [null, 'conflict', '674340.40', '475467.22', 11, 10],
+    [null, 'not_recorded', '3146096.40', '2428132.15', 19, 14],
+  ].map(([currency, currency_status, invoice_amount, actual_payment_received, invoiceCount, receiptCount]) => {
+    const unknown = currency_status === 'not_recorded';
+    return { currency, currency_status, invoice_amount, actual_payment_received,
+      row_counts: { invoice_amount: invoiceCount + (unknown ? 7 : 0), actual_payment_received: receiptCount + (unknown ? 539 : 0) },
+      coverage: { invoice_amount: { numeric_count: invoiceCount, blank_count: unknown ? 5 : 0, text_count: unknown ? 2 : 0, error_count: 0 }, actual_payment_received: { numeric_count: receiptCount, blank_count: unknown ? 527 : 0, text_count: unknown ? 12 : 0, error_count: 0 } },
+      exact_amounts: { invoice_amount, actual_payment_received } };
+  });
   return {
-    schema_version: '1.0', status, source: { file_name: 'Synthetic invoice workbook.xlsx', sheet: 'External Invoice ', first_row: 6, last_row: 4409, snapshot_at: RECEIVABLES_CHECK_TIME, sha256: 'a'.repeat(64), scope: 'full_workbook' },
+    schema_version: '1.0', status, source: { file_name: 'Synthetic invoice workbook.xlsx', sheet: 'External Invoice ', first_row: 6, last_row: 4409, snapshot_at: RECEIVABLES_CHECK_TIME, sha256: 'a'.repeat(64), scope: 'full_workbook', currency_method: 'strict_agreement_or_single_source', currency_column: 'AE', currency_header: 'Inv. CUR' },
     invoice_count: 4404, totals: { invoice_amount: '315481678.41', invoice_amount_aed: '466151390.16', actual_payment_received: '285759742.00', project_count: 496 },
     coverage: {
-      invoice_amount: { numeric_count: 4404, blank_count: 0, text_count: 0, error_count: 0 },
-      invoice_amount_aed: { numeric_count: 4402, blank_count: 0, text_count: 0, error_count: 2 },
-      actual_payment_received: { numeric_count: 4320, blank_count: 84, text_count: 0, error_count: 0 },
+      invoice_amount: { numeric_count: 4397, blank_count: 5, text_count: 2, error_count: 0 },
+      invoice_amount_aed: { numeric_count: 4397, blank_count: 5, text_count: 0, error_count: 2 },
+      actual_payment_received: { numeric_count: 3865, blank_count: 527, text_count: 12, error_count: 0 },
     },
-    payment_status: [{ id: 'paid', label: 'Paid', count: 3895 }, { id: 'cancelled', label: 'Cancelled', count: 368 }, { id: 'pending', label: 'Pending', count: 58 }, { id: 'new', label: 'New', count: 34 }, { id: 'other', label: 'Other statuses', count: 49 }],
+    payment_status: [
+      ['paid', 'Paid', 3895, '412405138.81', 3893, 0, 2], ['cancelled', 'Cancelled', 368, '39497085.61', 363, 5, 0],
+      ['pending', 'Pending', 58, '6401792.89', 58, 0, 0], ['new', 'New', 34, '2257559.79', 34, 0, 0], ['other', 'Other statuses', 49, '5589813.06', 49, 0, 0],
+    ].map(([id, label, count, amount_aed, numeric_count, blank_count, error_count]) => ({ id, label, count, amount_aed, exact_amount_aed: amount_aed, amount_coverage: { numeric_count, blank_count, text_count: 0, error_count } })),
+    payment_status_rounding_adjustment: '0.00',
     other_statuses: [{ label: 'Partially paid', count: 30 }, { label: 'Overdue', count: 19 }], project_excluded_rows: 37, currency_basis: 'mixed_original',
+    currency_breakdown: currencyRows, currency_rounding_adjustment: { invoice_amount: '0.00', actual_payment_received: '0.00' },
   };
 }
 

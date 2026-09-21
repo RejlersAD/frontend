@@ -21,6 +21,7 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
     const text = await workbook(page).innerText();
     assert.equal(await page.getByRole('heading', { name: 'Ageing by due period', exact: true }).count(), 0);
     if (!available) {
+      assert.equal(await workbook(page).locator('.ar-workbook-currencies').count(), 0);
       assert.doesNotMatch(text + await panel.innerText(), /315,481,678|466,151,390|285,759,742|3,895|4,404/);
       for (const id of ['invoice_amount', 'invoice_amount_aed', 'actual_payment_received', 'project_count']) assert.equal(await page.getByTestId(`workbook-total-${id}`).locator('strong').innerText(), '\u2014');
       return;
@@ -31,9 +32,25 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
       assert.equal(Number(displayed.replace(/[^\d.-]/g, '')), Number(value));
       if (id === 'invoice_amount_aed') assert.match(displayed, /AED/); else assert.doesNotMatch(displayed, /AED|USD/);
     }
-    assert.match(text, /full workbook/i); assert.match(text, /unaffected by dashboard filters/i); assert.match(text, /mixed|original currencies/i);
-    for (const row of expected.payment_status) assert.equal((await panel.locator(`[data-status="${row.id}"]`).innerText()).replace(/\s+/g, ' ').trim(), `${row.label} ${row.count.toLocaleString('en-US')}`);
-    assert.match(await panel.locator('tfoot').innerText(), /Total\s+4,404/);
+    assert.match(text, /full workbook/i); assert.match(text, /unaffected by dashboard filters/i); assert.doesNotMatch(text, /Mixed original currencies/);
+    for (const field of ['invoice_amount', 'actual_payment_received']) {
+      const card = page.getByTestId(`workbook-total-${field}`);
+      assert.equal(await card.locator('.ar-workbook-currencies > div').count(), expected.currency_breakdown.length);
+      for (const row of expected.currency_breakdown) {
+        const entry = card.locator(`[data-currency="${row.currency || row.currency_status}"]`);
+        assert.equal(await entry.locator('dt').innerText(), row.currency === 'EUR' ? 'EUR (Euro)' : row.currency || (row.currency_status === 'conflict' ? 'Currency needs review' : 'Currency not recorded'));
+        assert.equal(await entry.locator('dd').innerText(), `[${Number(row[field]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}]`);
+      }
+    }
+    for (const row of expected.payment_status) {
+      const statusRow = panel.locator(`[data-status="${row.id}"]`), excluded = row.amount_coverage.blank_count + row.amount_coverage.text_count + row.amount_coverage.error_count;
+      assert.equal(await statusRow.locator('th').innerText(), row.label);
+      assert.equal(await statusRow.locator('[data-field="invoice_count"]').innerText(), row.count.toLocaleString('en-US'));
+      assert.equal(await statusRow.locator('[data-field="amount_aed"]').innerText(), Number(row.amount_aed).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (excluded ? '*' : ''));
+    }
+    assert.deepEqual(await panel.locator('thead th').allTextContents(), ['Payment status', 'Amount (AED)', 'Invoice rows']);
+    assert.equal(await panel.locator('tfoot [data-field="invoice_count"]').innerText(), '4,404');
+    assert.equal(await panel.locator('tfoot [data-field="amount_aed"]').innerText(), '466,151,390.16*');
   };
   const requests = (control, endpoint = '/dashboard/executive/receivables/') => control.requests.filter(row => row.endpoint === endpoint);
   const response = (page, endpoint = 'receivables') => page.waitForResponse(row => new URL(row.url()).pathname === `/fixture-api/dashboard/executive/${endpoint}/`);
