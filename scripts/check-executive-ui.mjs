@@ -78,6 +78,11 @@ window.print = () => {
   window.executivePrintSnapshot = {
     actions:[...document.querySelectorAll('[data-testid^="executive-action-"]')].map(node=>node.dataset.testid),
     financialActions:[...document.querySelectorAll('[data-testid^="financial-action-"]')].map(node=>node.dataset.testid),
+    financialText:document.querySelector('[data-testid="financial-performance"]')?.textContent,
+    financialKpis:[...document.querySelectorAll('[data-testid^="financial-kpi-"] strong')].map(node=>node.textContent),
+    financialCurrency:document.querySelector('select[aria-label="Financial reporting currency"]')?.value,
+    financialProjects:[...document.querySelectorAll('.ef-project-table tbody tr')].map(node=>node.textContent),
+    financialManagementActions:[...document.querySelectorAll('.ef-actions-table tbody tr')].map(node=>node.textContent),
     receivablesText:document.querySelector('.finance-command-center')?.textContent,
     receivablesKpis:[...document.querySelectorAll('[data-testid^="finance-kpi-"] strong')].map(node=>node.textContent),
     customerInvoices:[...document.querySelectorAll('[data-testid="customer-invoices-section"] tbody tr')].map(node=>node.textContent),
@@ -542,7 +547,7 @@ async function runCurrentVisualChecks() {
       const { page } = await newPage({ ...options, route: tab === 'overview' ? '/executive' : `/executive?tab=${tab}` });
       try {
         await page.getByTestId(tab === 'overview' ? 'executive-outcomes' : tab === 'financial' ? 'financial-performance' : `${tab}-outcomes`).waitFor();
-        if (tab === 'financial') await page.waitForFunction(() => document.querySelector('.finance-command-center')?.getAttribute('aria-busy') === 'false');
+        if (tab === 'financial') await page.waitForFunction(() => document.querySelector('[data-testid="financial-performance"]')?.getAttribute('aria-busy') === 'false');
         await page.evaluate(() => document.fonts.ready);
         await assertGeometry(page, options.width);
         const headers = await page.locator('.cc-command-center table:not([data-table-typography="preserve"]) thead th:visible').evaluateAll(nodes => nodes.map(node => ({
