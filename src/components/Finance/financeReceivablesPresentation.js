@@ -88,6 +88,7 @@ const csvCell = value => {
   const text = String(value ?? '');
   return `"${(/^[\s]*[=+\-@\t\r]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
 };
+export const workbookCurrencyLabel = row => row.currency === 'EUR' ? 'EUR (Euro)' : row.currency || ({ conflict: 'Currency needs review', error: 'Currency needs review', unrecognized: 'Currency needs review' }[row.currency_status] || 'Currency not recorded');
 function workbookCsvRows(data) {
   const summary = data?.workbook_summary;
   if (!receivableReadable(data?.sources?.receivables) || summary?.status !== 'available') return [];
@@ -101,9 +102,16 @@ function workbookCsvRows(data) {
     ['Total amount in AED - M', summary.totals?.invoice_amount_aed, 'AED; recorded numeric subtotal'],
     ['Total amount received - AA', summary.totals?.actual_payment_received, 'Original workbook currencies; no conversion'],
     ['Total projects', summary.totals?.project_count, 'Distinct recorded RAD Project codes; N/A excluded'],
-    ['Workbook payment status', 'Invoice rows'],
-    ...(summary.payment_status || []).map(row => [row.label, row.count]),
-    ['Total workbook invoice rows', summary.invoice_count], [],
+    ...(Array.isArray(summary.currency_breakdown) && summary.currency_breakdown.length ? [
+      ['Workbook currency basis', 'Each amount uses its own cell currency label and Inv. CUR. Conflicting or missing labels remain separate; no conversion.'],
+      ['Workbook currency', 'Invoice amount', 'Actual payment received'],
+      ...summary.currency_breakdown.map(row => [workbookCurrencyLabel(row), row.invoice_amount, row.actual_payment_received]),
+      ...(Object.values(summary.currency_rounding_adjustment || {}).some(value => Number.isFinite(Number(value)) && Number(value) !== 0) ? [['Currency rounding adjustment', summary.currency_rounding_adjustment.invoice_amount, summary.currency_rounding_adjustment.actual_payment_received]] : []),
+    ] : []),
+    ['Workbook payment status', 'Amount (AED)', 'Invoice rows', 'Missing or invalid amount cells'],
+    ...(summary.payment_status || []).map(row => [row.label, row.amount_aed, row.count, row.amount_coverage ? ['blank_count', 'text_count', 'error_count'].reduce((sum, key) => sum + (financeCount(row.amount_coverage[key]) || 0), 0) : '']),
+    ['Total workbook invoice rows', summary.totals?.invoice_amount_aed, summary.invoice_count],
+    ...(Number.isFinite(Number(summary.payment_status_rounding_adjustment)) && Number(summary.payment_status_rounding_adjustment) !== 0 ? [['Payment status rounding adjustment (AED)', summary.payment_status_rounding_adjustment]] : []), [],
   ];
 }
 export function receivablesCsv(data) {
