@@ -88,6 +88,24 @@ const csvCell = value => {
   const text = String(value ?? '');
   return `"${(/^[\s]*[=+\-@\t\r]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
 };
+function workbookCsvRows(data) {
+  const summary = data?.workbook_summary;
+  if (!receivableReadable(data?.sources?.receivables) || summary?.status !== 'available') return [];
+  return [
+    ['Workbook summary', 'Entire source workbook; unaffected by dashboard customer, currency, period or ageing filters'],
+    ['Workbook file', summary.source?.file_name], ['Workbook sheet', summary.source?.sheet],
+    ['Workbook invoice rows', summary.invoice_count], ['Workbook snapshot', summary.source?.snapshot_at],
+    ['Workbook basis', 'Numeric workbook subtotals; text amounts, blanks and error cells are excluded. Only column M is in AED.'],
+    ['Workbook metric', 'Amount / count', 'Currency / basis'],
+    ['Total amount - L', summary.totals?.invoice_amount, 'Original workbook currencies; no conversion'],
+    ['Total amount in AED - M', summary.totals?.invoice_amount_aed, 'AED; recorded numeric subtotal'],
+    ['Total amount received - AA', summary.totals?.actual_payment_received, 'Original workbook currencies; no conversion'],
+    ['Total projects', summary.totals?.project_count, 'Distinct recorded RAD Project codes; N/A excluded'],
+    ['Workbook payment status', 'Invoice rows'],
+    ...(summary.payment_status || []).map(row => [row.label, row.count]),
+    ['Total workbook invoice rows', summary.invoice_count], [],
+  ];
+}
 export function receivablesCsv(data) {
   const customers = receivableCustomerRows(data);
   const rows = [
@@ -95,6 +113,7 @@ export function receivablesCsv(data) {
     ['Basis', 'Current recorded balances; not a historical balance sheet. Monthly charts group current balances by invoice or due month.'],
     ['Balance formula', 'Invoice Amount (L) minus Actual Payment Received (AA). Blank payments count as zero; missing invoice amounts remain unknown. Overdue includes positive balances past their due date on unsettled invoices.'],
     ['Customer / COMPANY', data.filters?.company || 'All customers'], [],
+    ...workbookCsvRows(data),
     ['Metric', 'Recorded amount', 'Missing balances', 'Partial'],
     ...RECEIVABLE_KPIS.map(([id, label]) => [label, receivableRawValue(data.kpis?.[id]), data.kpis?.[id]?.missing_count, data.kpis?.[id]?.partial ? 'Yes' : 'No']), [],
     ['Customer', ...RECEIVABLE_AGES.map(([, label]) => label), 'Unknown due date', 'Amount due', 'Partial'],

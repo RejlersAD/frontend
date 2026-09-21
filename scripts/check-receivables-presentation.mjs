@@ -78,3 +78,34 @@ test('report exports every customer and discloses partial amounts and the date b
   assert.match(report, /"Yes"/);
   assert.ok(report.includes('"\'=HYPERLINK(""unsafe"")"'));
 });
+
+test('workbook export retains exact totals, full workbook scope and original currency basis', () => {
+  const data = receivablesFixture('partial').data;
+  data.currency = 'USD';
+  data.filters.company = 'Selected company';
+  data.workbook_summary = { status: 'available', invoice_count: 4404,
+    source: { file_name: '=unsafe.xlsx', sheet: 'External Invoice', snapshot_at: '2026-09-21T00:00:00Z' },
+    totals: { invoice_amount: '315481678.41', invoice_amount_aed: '466151390.16', actual_payment_received: '285759742.00', project_count: 496 },
+    payment_status: [{ label: 'Paid', count: 3895 }, { label: 'Cancelled', count: 368 }, { label: 'Pending', count: 58 }, { label: 'New', count: 34 }, { label: 'Other statuses', count: 49 }],
+  };
+  const report = receivablesCsv(data);
+  assert.match(report, /Entire source workbook; unaffected by dashboard/);
+  assert.ok(report.includes('"Total amount - L","315481678.41","Original workbook currencies; no conversion"'));
+  assert.ok(report.includes('"Total amount in AED - M","466151390.16","AED; recorded numeric subtotal"'));
+  assert.ok(report.includes('"Total amount received - AA","285759742.00","Original workbook currencies; no conversion"'));
+  assert.ok(report.includes('"Total projects","496"'));
+  assert.ok(report.includes('"Total workbook invoice rows","4404"'));
+  assert.ok(report.includes('"Workbook file","\'=unsafe.xlsx"'));
+});
+
+test('restricted or unavailable workbook summaries export no workbook values', () => {
+  const data = receivablesFixture('partial').data;
+  for (const status of ['restricted', 'unavailable']) {
+    data.workbook_summary = { status, totals: { invoice_amount: '123456789.91' } };
+    assert.ok(!receivablesCsv(data).includes('123456789.91'));
+    assert.ok(!receivablesCsv(data).includes('Workbook metric'));
+  }
+  data.workbook_summary.status = 'available';
+  data.sources.receivables.status = 'restricted';
+  assert.ok(!receivablesCsv(data).includes('123456789.91'));
+});
