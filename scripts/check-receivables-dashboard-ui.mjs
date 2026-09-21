@@ -11,7 +11,7 @@ import postcss from 'postcss';
 import tailwind from 'tailwindcss';
 import tailwindConfig from '../tailwind.config.js';
 import { inlineLocalCssImports, checkArtifacts, launchBrowser, sidebarWidth, snapshotSources } from './ui-check-support.mjs';
-import { RECEIVABLES_CHECK_TIME, customerInvoicesFixture, receivablesFixture, receivablesUser } from './check-receivables-dashboard-fixtures.mjs';
+import { RECEIVABLES_CHECK_TIME, customerInvoicesFixture, formulaInvoiceSources, receivablesFixture, receivablesUser } from './check-receivables-dashboard-fixtures.mjs';
 
 // Render the real receivables dashboard, API service, shared shell and unchanged sidebar.
 // All records are synthetic; every network request is intercepted and read-only.
@@ -20,6 +20,7 @@ const artifacts = checkArtifacts(frontend, 'finance-receivables-redesign');
 const origin = 'http://receivables-dashboard-check.test';
 const visualsOnly = process.argv.includes('--visuals-only');
 const workflowsOnly = process.argv.includes('--workflows-only');
+const registerMobileOnly = process.argv.includes('--register-mobile-only');
 const protectedFiles = ['src/components/Layout/Sidebar.jsx', 'src/components/Layout/Sidebar.css', 'src/config/layout.config.js', 'src/config/navigationLabels.config.js', 'src/hooks/useSidebarLayout.js', 'src/hooks/useSidebarDrawer.js'];
 await mkdir(artifacts, { recursive: true });
 const startHashes = await snapshotSources(frontend, protectedFiles);
@@ -234,6 +235,7 @@ async function fixtureConsistency() {
   const register = customerInvoicesFixture().data;
   assert.equal(register.pagination.count, 28); assert.equal(register.rows.length, 8);
   assert.equal(Number(register.totals.amount.amount), 752828);
+  assert.equal(Number(register.totals.actual_payment_received.amount), 372000);
   assert.equal(Number(register.totals.amount_due_home.amount), Number(data.kpis.unpaid.amount));
   assert.ok(register.rows.some(row => row.company === 'Stripe Inc.' && row.account === ''), 'Fixture includes recorded companies with blank legacy accounts');
   const allInvoices = customerInvoicesFixture('full', { page_size: 50 }).data.rows;
@@ -242,7 +244,16 @@ async function fixtureConsistency() {
   assert.equal(receivablesFixture('full', { company: 'LEGACY-SHARED-ACCOUNT' }).data.kpis.unpaid.amount, '0.00', 'Customer filters apply to company, never raw account');
   const foreign = customerInvoicesFixture('full', { currency: 'USD' }).data;
   assert.equal(foreign.rows[0].amount, '5000.00'); assert.equal(foreign.rows[0].amount_home, null); assert.equal(foreign.rows[0].amount_due_home, null);
-  record('Synthetic reference customer, ageing and KPI totals are mathematically consistent');
+  assert.equal(foreign.rows[1].amount_due_home, '0.00', 'An explicitly settled foreign balance has an exact zero without inferred FX');
+  const formula = receivablesFixture('formula').data, formulaRegister = customerInvoicesFixture('formula').data;
+  assert.deepEqual(formulaInvoiceSources().map(row => [row.id, row.amount]), [[901, 7500], [902, 2000], [903, null], [904, 0], [905, -250], [906, 7000], [907, 500], [908, 700]]);
+  assert.equal(formula.kpis.unpaid.amount, null); assert.equal(formula.kpis.unpaid.known_amount, '9500.00'); assert.equal(formula.kpis.unpaid.missing_count, 1);
+  assert.equal(formula.kpis.overdue.known_amount, '9500.00'); assert.equal(formula.kpis.over90.amount, '7500.00');
+  assert.deepEqual(formulaRegister.rows.map(row => row.id).sort(), [901, 902, 903, 904, 905, 906], 'Register preserves paid/settled rows and excludes cancelled invoices and credit notes');
+  assert.equal(formulaRegister.totals.amount.known_amount, '24000.00'); assert.equal(formulaRegister.totals.actual_payment_received.amount, '7850.00');
+  assert.equal(formula.paid_unpaid_by_month.reduce((sum, row) => sum + Number(row.paid.amount), 0), 7850, 'Blank receipts count as zero in payment charts');
+  assert.ok(formulaRegister.rows.every(row => row.balance_to_be_received === '987654.32'), 'Conflicting legacy balances remain present so tests can detect accidental fallback');
+  record('Synthetic balances use invoice amount minus receipts, ignore conflicting stored balances, and preserve unknown invoice amounts');
 }
 
 async function workflowChecks() {
@@ -354,8 +365,10 @@ async function customerInvoiceChecks() {
   assert.deepEqual(await table.locator('tbody th[scope="row"]').allTextContents(), customerInvoicesFixture().data.rows.map(row => row.company), 'Register customer column shows companies despite blank or conflicting raw accounts');
   assert.doesNotMatch(await table.innerText(), /LEGACY-|Customer not recorded/);
   assert.ok((await table.innerText()).includes('Paid'), 'Register includes settled invoices alongside outstanding invoices');
-  const grandTotal = await table.locator('tfoot').innerText(); assert.match(grandTotal, /752,828/); assert.match(grandTotal, /380,828/);
-  for (const label of ['Customer', 'Invoice No.', 'Date', 'Due date', 'Status', 'Currency', 'Amount in currency', 'Amount in home currency', 'Amount due in home currency']) {
+  const grandTotal = await table.locator('tfoot').innerText(); assert.match(grandTotal, /752,828/); assert.match(grandTotal, /372,000/);
+  const columnLabels = ['Invoice #', 'Invoice Date', 'Invoice Sent', 'COMPANY', 'Project Name', 'Invoice Amount', 'Inv Amt. (AED)', 'Due Date', 'Payment terms', 'PM', 'Payment Status', 'Days overdue', 'Payment Date', 'Actual Payment Received', 'Remarks'];
+  assert.deepEqual(await table.locator('thead th button span').allTextContents(), columnLabels, 'All fifteen source columns follow the requested order');
+  for (const label of columnLabels) {
     assert.equal(await section.getByRole('button', { name: `Sort customer invoices by ${label}`, exact: true }).count(), 1);
   }
   const firstPage = await table.locator('tbody').innerText();
@@ -363,23 +376,23 @@ async function customerInvoiceChecks() {
   assert.equal(new URLSearchParams(registerRequests(control).at(-1).query).get('page'), '2');
   assert.notEqual(await table.locator('tbody').innerText(), firstPage, 'Pagination renders the next server page');
   assert.equal(await table.locator('tfoot').innerText(), grandTotal, 'Grand totals cover all filtered invoices on every page');
-  response = registerResponse(page); await section.getByRole('button', { name: 'Sort customer invoices by Customer', exact: true }).click(); await response; await registerReady(page);
+  response = registerResponse(page); await section.getByRole('button', { name: 'Sort customer invoices by COMPANY', exact: true }).click(); await response; await registerReady(page);
   let params = new URLSearchParams(registerRequests(control).at(-1).query); assert.equal(params.get('ordering'), 'company'); assert.equal(params.get('page'), '1');
   assert.match(await table.locator('tbody tr').first().innerText(), /Business Tech/);
-  response = registerResponse(page); await section.getByRole('button', { name: 'Sort customer invoices by Customer', exact: true }).click(); await response; await registerReady(page);
+  response = registerResponse(page); await section.getByRole('button', { name: 'Sort customer invoices by COMPANY', exact: true }).click(); await response; await registerReady(page);
   assert.equal(new URLSearchParams(registerRequests(control).at(-1).query).get('ordering'), '-company');
   assert.match(await table.locator('tbody tr').first().innerText(), /Wozel/);
   await section.screenshot({ path: path.join(artifacts, 'customer-invoices-1672.png'), animations: 'disabled' });
   await axe(page, 'customer-invoice-register');
-  record('Customer invoice register has all nine sortable columns, eight-row pages and consistent totals across all filtered rows');
+  record('Customer invoice register has all fifteen source columns, eight-row pages and invoice/receipt totals across all filtered rows');
 
   response = registerResponse(page); await changeFilter(page, control, 'Reporting currency', 'USD'); await response; await registerReady(page);
   params = new URLSearchParams(registerRequests(control).at(-1).query); assert.equal(params.get('currency'), 'USD'); assert.equal(params.get('page'), '1');
   assert.equal(await table.locator('tbody tr').count(), 2);
   const foreignCells = await table.locator('tbody tr').first().locator('td,th').allTextContents();
   assert.match(foreignCells.join(' '), /5,000/);
-  assert.ok(foreignCells.slice(-2).every(value => value.trim() === '—'), 'Missing home-currency amounts stay unknown instead of inventing FX');
-  assert.equal((await table.locator('tbody tr').nth(1).locator('td').last().innerText()).trim(), '0', 'An explicitly recorded settled foreign balance preserves its valid zero');
+  assert.deepEqual(await table.locator('tbody [data-field="amount_home"]').allTextContents(), ['—', '—'], 'Missing AED invoice amounts stay unknown instead of inventing FX');
+  assert.deepEqual(await table.locator('tbody [data-field="actual_payment_received"]').allTextContents(), ['0', '1,100'], 'Actual receipts remain in the original currency');
   await section.screenshot({ path: path.join(artifacts, 'customer-invoices-foreign-currency.png'), animations: 'disabled' });
   response = registerResponse(page); await changeFilter(page, control, 'Reporting currency', 'AED'); await response; await registerReady(page);
   response = registerResponse(page); await changeFilter(page, control, 'Customer', 'Business Tech'); await response; await registerReady(page);
@@ -409,18 +422,72 @@ async function customerInvoiceChecks() {
       assert.match(await section.innerText(), /unavailable|could not/i); assert.equal(await kpiAmount(page, 'unpaid'), 380828, 'An independent register error preserves successful dashboard metrics');
       control.fixture = 'full'; response = registerResponse(page); await section.getByRole('button', { name: /try again|retry/i }).click(); await response; await registerReady(page); assert.equal(await table.locator('tbody tr').count(), 8);
     }
-    if (fixture === 'partial') { assert.match(await table.locator('tfoot').innerText(), /380,828/); assert.match(await section.innerText(), /recorded|partial|missing/i); }
+    if (fixture === 'partial') { assert.match(await table.locator('tfoot').innerText(), /752,828/); assert.match(await table.locator('tfoot').innerText(), /372,000/); assert.match(await section.innerText(), /recorded|partial|missing/i); }
     await axe(page, fixture); if (fixture !== 'register-loading') await section.screenshot({ path: path.join(artifacts, `customer-invoices-${fixture}.png`), animations: 'disabled' }); await state.close();
   }
   record('Customer invoice loading, empty, access-restricted, partial and independent retry states remain accurate and accessible');
 }
 
+async function formulaChecks() {
+  const state = await open({ fixture: 'formula' }); const { page, control } = state; await registerReady(page);
+  const section = registerSection(page), table = section.getByRole('table', { name: 'Customer invoices', exact: true });
+  for (const id of ['unpaid', 'overdue']) assert.equal(await kpiAmount(page, id), 9500, 'Only positive eligible L minus AA balances contribute to exposure');
+  assert.equal(await kpiAmount(page, 'over90'), 7500);
+  assert.match(await page.getByTestId('finance-kpi-unpaid').innerText(), /recorded|missing|partial/i);
+  assert.doesNotMatch(await root(page).innerText(), /987,654|987654|Cancelled Example|Credit Note Example/, 'The stale stored balance and excluded invoices are never displayed');
+  const invoice = id => table.locator('tbody tr').filter({ has: page.locator(`[data-field="invoice_number"] a[href="/finance/outgoing-invoices/${id}"]`) });
+  const cell = (id, field) => invoice(id).locator(`[data-field="${field}"]`);
+  assert.equal(await table.locator('tbody tr').count(), 6);
+  assert.equal(await cell(901, 'amount').innerText(), '10,000'); assert.equal(await cell(901, 'actual_payment_received').innerText(), '2,500');
+  assert.equal(await cell(902, 'actual_payment_received').innerText(), '—'); assert.match(await cell(902, 'actual_payment_received').getAttribute('title'), /zero/);
+  assert.equal(await cell(903, 'amount').innerText(), '—', 'A missing source invoice amount cannot use grand total as fallback');
+  assert.equal(await cell(903, 'actual_payment_received').innerText(), '100');
+  assert.equal(await cell(905, 'amount').innerText(), '1,000'); assert.equal(await cell(905, 'actual_payment_received').innerText(), '1,250', 'Raw overpayments remain intact in the register');
+  assert.equal(await cell(906, 'payment_status').innerText(), 'Paid'); assert.equal(await cell(906, 'days_overdue').innerText(), '0');
+  assert.equal(await cell(901, 'days_overdue').innerText(), '143'); assert.equal(await cell(902, 'days_overdue').innerText(), '11');
+  assert.match(await table.locator('tfoot').innerText(), /24,000/); assert.match(await table.locator('tfoot').innerText(), /7,850/);
+  const initialTotals = await table.locator('tfoot').innerText();
+  let pending = registerResponse(page); await section.getByRole('button', { name: 'Sort customer invoices by Actual Payment Received', exact: true }).click(); await pending; await registerReady(page);
+  assert.equal(new URLSearchParams(registerRequests(control).at(-1).query).get('ordering'), 'actual_payment_received');
+  assert.equal(await table.locator('tbody tr').last().locator('[data-field="actual_payment_received"]').innerText(), '—', 'Blank source receipts sort last');
+  pending = registerResponse(page); await changeFilter(page, control, 'As of', '2026-09-20', true); await pending; await registerReady(page);
+  assert.equal(new URLSearchParams(registerRequests(control).at(-1).query).get('as_of'), '2026-09-20');
+  assert.equal(await cell(901, 'days_overdue').innerText(), '142'); assert.equal(await cell(902, 'days_overdue').innerText(), '10');
+  assert.equal(await table.locator('tfoot').innerText(), initialTotals, 'Changing the reporting date updates days overdue without changing source totals');
+  await page.getByLabel('More dashboard options', { exact: true }).click(); await page.getByText('Source coverage', { exact: true }).click();
+  await page.getByRole('dialog').waitFor(); assert.match(await page.getByRole('dialog').innerText(), /Invoice Amount|column L/i); assert.match(await page.getByRole('dialog').innerText(), /Actual Payment Received|column AA/i);
+  await page.keyboard.press('Escape');
+  const downloadEvent = page.waitForEvent('download'); await root(page).getByRole('button', { name: /^Export/ }).click(); const download = await downloadEvent;
+  const csv = await readFile(await download.path(), 'utf8'); assert.match(csv, /9500/); assert.doesNotMatch(csv, /987654/); assert.match(csv, /Invoice Amount|column L/i); assert.match(csv, /Actual Payment Received|column AA/i);
+  await writeFile(path.join(artifacts, 'receivables-formula.csv'), csv);
+  await axe(page, 'source-formula-and-fifteen-columns'); await section.screenshot({ path: path.join(artifacts, 'customer-invoices-formula.png'), animations: 'disabled' });
+  await state.close(); record('Formula cases preserve raw source columns, ignore stored Y, handle blank receipts/missing L and update days overdue with the reporting date');
+}
+
+async function mobileRegisterStateChecks() {
+  for (const fixture of ['register-error', 'register-empty', 'register-restricted', 'register-loading']) {
+    const state = await open({ fixture: fixture === 'register-loading' ? 'full' : fixture, width: 390, registerLoading: fixture === 'register-loading' });
+    const { page, control } = state, section = registerSection(page);
+    if (fixture === 'register-loading') await section.waitFor(); else await registerReady(page);
+    await section.scrollIntoViewIfNeeded();
+    const geometry = await section.locator('.ar-customer-register-state > div').evaluate(node => { const box = element => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width }; }; const scroller = node.closest('.ar-customer-register-scroll').getBoundingClientRect(); return { viewport: innerWidth, scroller: { left: scroller.left, right: scroller.right }, state: box(node), children: [...node.querySelectorAll('p, button')].map(element => ({ label: element.textContent, ...box(element) })) }; });
+    geometries.push({ name: fixture, width: 390, registerState: geometry });
+    await section.screenshot({ path: path.join(artifacts, `customer-invoices-mobile-${fixture}.png`), animations: 'disabled' });
+    assert.ok(geometry.children.length > 0 && geometry.children.every(child => child.x >= geometry.scroller.left - 1 && child.right <= geometry.scroller.right + 1), `${fixture}: state text and retry remain visible in the mobile table viewport: ${JSON.stringify(geometry)}`);
+    if (fixture === 'register-error') { control.fixture = 'full'; const pending = registerResponse(page); await section.getByRole('button', { name: /try again|retry/i }).click(); await pending; await registerReady(page); assert.equal(await section.locator('tbody tr').count(), 8); }
+    if (fixture === 'register-loading') { await control.releaseRegister(); await registerReady(page); }
+    await state.close();
+  }
+  record('Mobile customer invoice error, empty, access and loading messages remain visible within the table viewport');
+}
+
 try {
   await fixtureConsistency(); browser = await launchBrowser();
-  if (!workflowsOnly) await visualChecks();
-  if (!visualsOnly) { await workflowChecks(); await customerInvoiceChecks(); }
+  if (!registerMobileOnly && !workflowsOnly) await visualChecks();
+  if (!registerMobileOnly && !visualsOnly) { await workflowChecks(); await customerInvoiceChecks(); await formulaChecks(); }
+  if (registerMobileOnly) await mobileRegisterStateChecks();
   await guards(); assert.deepEqual(runtimeErrors, [], 'No browser runtime errors'); assert.deepEqual(unexpectedRequests, [], 'Every request is read-only and explicitly mocked');
-  await writeFile(path.join(artifacts, visualsOnly ? 'visual-checks.json' : workflowsOnly ? 'workflow-checks.json' : 'checks.json'), JSON.stringify({ passed: true, checks, runtimeErrors, unexpectedRequests, geometries, accessibility }, null, 2));
+  await writeFile(path.join(artifacts, registerMobileOnly ? 'mobile-state-checks.json' : visualsOnly ? 'visual-checks.json' : workflowsOnly ? 'workflow-checks.json' : 'checks.json'), JSON.stringify({ passed: true, checks, runtimeErrors, unexpectedRequests, geometries, accessibility }, null, 2));
 } catch (error) {
   for (const context of browser?.contexts() || []) { const page = context.pages()[0]; if (page && !page.isClosed()) await page.screenshot({ path: path.join(artifacts, 'failure.png') }).catch(() => {}); }
   await writeFile(path.join(artifacts, 'failure.json'), JSON.stringify({ error: error.stack, checks, runtimeErrors, unexpectedRequests, geometries, accessibility }, null, 2)); throw error;

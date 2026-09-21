@@ -286,6 +286,21 @@ async function workflowChecks() {
   await review(page).getByRole('button', { name: 'Open invoice', exact: true }).click(); await page.waitForFunction(() => window.outgoingRoute === '/finance/outgoing-invoices/201');
   assert.equal(control.mutations.length, 0); await state.close();
   record('Late and mismatched invoice details are suppressed; retry and existing detail navigation work');
+
+  const formulaRow = { ...fixture.rows[0], currency: 'AED', invoice_amount: '100.00', actual_payment_received: '40.00', calculated_receivable_balance: '60.00', balance_to_be_received: '999.00', payment_status: 'partial' };
+  state = await open({ fixture: { rows: [formulaRow], summary: outgoingSummary([{ ...formulaRow, balance_to_be_received: '60.00' }]) } }); ({ page, control } = state);
+  await detailReady(page, 201);
+  assert.equal(await rows(page).locator('.oc-money').innerText(), 'AED 60.00');
+  assert.equal(await page.getByTestId('outgoing-review-outstanding').innerText(), 'AED 60.00');
+  downloadEvent = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export', exact: true }).click(); download = await downloadEvent;
+  csv = await readFile(await download.path(), 'utf8'); assert.ok(csv.includes('"60.00"')); assert.ok(!csv.includes('999.00'));
+  await state.close();
+  state = await open({ fixture: { rows: [{ ...formulaRow, invoice_amount: null, calculated_receivable_balance: null }] } }); ({ page } = state);
+  await detailReady(page, 201);
+  assert.equal(await rows(page).locator('.oc-money').innerText(), '—');
+  assert.equal(await page.getByTestId('outgoing-review-outstanding').innerText(), '—');
+  await state.close();
+  record('Collection rows, review and CSV use calculated L minus AA without falling back to stale Y');
 }
 async function sourceChecks() {
   let state = await open({ loading: true }); let { page, control } = state;

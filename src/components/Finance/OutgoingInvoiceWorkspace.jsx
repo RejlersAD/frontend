@@ -6,7 +6,7 @@ import invoiceTrackerService from '../../services/invoiceTracker.service';
 import { PAYMENT_STATUSES } from '../../config/invoiceTracker.config';
 import OutgoingInvoiceReview from './OutgoingInvoiceReview';
 import OutgoingInvoiceCreate, { trapOutgoingDialogFocus } from './OutgoingInvoiceCreate';
-import { OUTGOING_QUEUES, OUTGOING_FILTERS, OUTGOING_AGES, outgoingCollectionCurrency, outgoingCsv, outgoingDate, outgoingMoney, outgoingNumber, outgoingState, outgoingToday, loadOutgoingExport } from './outgoingInvoicePresentation';
+import { OUTGOING_QUEUES, OUTGOING_FILTERS, OUTGOING_AGES, outgoingCollectionCurrency, outgoingCsv, outgoingDate, outgoingMoney, outgoingBalance, outgoingNumber, outgoingState, outgoingToday, loadOutgoingExport } from './outgoingInvoicePresentation';
 import './OutgoingInvoiceWorkspace.css';
 
 const Select = ({ label, value, options, onChange }) => <select aria-label={label} title={label} value={value} onChange={event => onChange(event.target.value)}><option value="">{label}</option>{value && !options.some(option => String(Array.isArray(option) ? option[0] : option.value ?? option) === value) && <option value={value}>{value}</option>}{options.map(option => { const [id, text] = Array.isArray(option) ? option : [option.value ?? option, option.label ?? option.value ?? option]; return <option key={id} value={id}>{text}</option>; })}</select>;
@@ -141,7 +141,7 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
             <td><button type="button" className="oc-invoice-link" onClick={() => selectInvoice(invoice)}>{invoice.invoice_number || 'No reference'}</button></td>
             <td><strong className="oc-customer" title={invoice.account || invoice.company}>{invoice.account || invoice.company || 'Not recorded'}</strong><span className="oc-project" title={invoice.project_name || invoice.rad_project_no}>{invoice.rad_project_no || invoice.project_id || invoice.project_name || '—'}</span></td>
             <td>{outgoingDate(invoice.invoice_date)}</td><td>{outgoingDate(invoice.due_date)}</td>
-            <td className="oc-money" title={!invoice.currency ? 'Currency not recorded' : undefined}>{outgoingMoney(invoice.balance_to_be_received, invoice.currency)}</td>
+            <td className="oc-money" title={!invoice.currency ? 'Currency not recorded' : undefined}>{outgoingMoney(outgoingBalance(invoice), invoice.currency)}</td>
             <td><span className={`oc-badge oc-${state.tone}`}>{state.label}</span></td><td>{invoice.pm || <span className="oc-muted">Not recorded</span>}</td><td>{state.next}</td>
             <td><button type="button" aria-label={`Review invoice ${invoice.invoice_number}`} className={`oc-row-button ${active ? 'oc-primary' : ''}`} onClick={() => selectInvoice(invoice)}>{state.label === 'Settled' ? 'Open' : 'Review'}</button></td>
           </tr>; })}</tbody></table></div>

@@ -4,8 +4,8 @@
 .ar-customer-register-heading > span { display: inline-flex; align-items: center; gap: 5px; color: var(--ar-muted, #4a5f87); font-size: 10px; }
 .ar-customer-register-heading > span svg { width: 13px; height: 13px; color: #176be6; }
 .ar-customer-register-panel { overflow: hidden; border: 1px solid var(--ar-border, #c1dff1); border-radius: 6px; background: var(--ar-panel, white); }
-.ar-customer-register-scroll { width: 100%; overflow-x: auto; scrollbar-width: thin; }
-.ar-customer-register-table { width: 100%; border-spacing: 0; border-collapse: collapse; table-layout: fixed; font-family: inherit; font-size: 11.5px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.ar-customer-register-scroll { width: 100%; overflow-x: auto; scrollbar-width: thin; container-type: inline-size; }
+.ar-customer-register-table { width: 100%; min-width: 2180px; border-spacing: 0; border-collapse: collapse; table-layout: fixed; font-family: inherit; font-size: 11.5px; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .ar-customer-register-col-customer { width: 16%; }
 .ar-customer-register-col-invoice { width: 10%; }
 .ar-customer-register-col-date { width: 10%; }
@@ -17,7 +17,7 @@
 .ar-customer-register-table th,
 .ar-customer-register-table td { height: 28px; padding: 5px 12px; border-bottom: 1px solid var(--ar-grid, #eaf0f6); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .ar-customer-register-table thead th { height: 39px; padding-block: 4px; background: #eaf3ff; color: var(--ar-ink, #0b1545); font-weight: 650; vertical-align: middle; }
-.ar-customer-register-table thead button { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; border: 0; border-radius: 2px; background: none; padding: 0; color: inherit; font: inherit; font-weight: inherit; text-align: inherit; cursor: pointer; line-height: 1.25; }
+.ar-customer-register-table thead button { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; border: 0; border-radius: 2px; background: none; padding: 0; color: inherit; font: inherit; font-weight: inherit; text-align: inherit; cursor: pointer; line-height: 1.25; white-space: normal; }
 .ar-customer-register-table thead button svg { flex: 0 0 11px; width: 11px; height: 11px; color: #6381ac; }
 .ar-customer-register-table thead button[data-active] svg { color: #005de9; }
 .ar-customer-register-table thead button:disabled { cursor: default; opacity: 1; }
@@ -34,7 +34,7 @@
 .ar-customer-register-table tfoot .ar-customer-register-grand-total { text-align: right; }
 .ar-customer-register-table abbr { padding-left: 2px; color: #936115; text-decoration: none; }
 .ar-customer-register-table .ar-customer-register-state { height: 224px; padding: 28px 16px; color: var(--ar-muted, #4a5f87); text-align: center; white-space: normal; }
-.ar-customer-register-state > div { display: flex; flex-direction: column; align-items: center; gap: 9px; }
+.ar-customer-register-state > div { position: sticky; left: 16px; width: min(100%, calc(100cqw - 32px)); display: flex; flex-direction: column; align-items: center; gap: 9px; }
 .ar-customer-register-state p { margin: 0; }
 .ar-customer-register-state button { padding: 6px 11px; border: 1px solid #91b4ee; border-radius: 4px; background: #f5f9ff; color: #005de9; font: inherit; cursor: pointer; }
 .ar-customer-register-spinner { width: 19px; height: 19px; border: 2px solid #d6e7f9; border-top-color: #2875e1; border-radius: 50%; animation: ar-customer-register-spin 850ms linear infinite; }
@@ -51,13 +51,12 @@
 
 @media (max-width: 1400px) {
   .ar-customer-register-table th, .ar-customer-register-table td { padding-inline: 9px; }
-  .ar-customer-register-table { font-size: 11px; min-width: 1000px; }
+  .ar-customer-register-table { font-size: 11px; }
 }
 @media (max-width: 700px) {
   .ar-customer-register-heading { align-items: baseline; gap: 9px; }
   .ar-customer-register-heading h2 { font-size: 15px; }
   .ar-customer-register-heading > span { font-size: 9px; }
-  .ar-customer-register-table { min-width: 1020px; }
   .ar-customer-register-footer { align-items: flex-end; gap: 10px; }
   .ar-customer-register-footer > p { max-width: 190px; font-size: 9px; }
   .ar-customer-register-footer nav { gap: 5px; font-size: 10px; }

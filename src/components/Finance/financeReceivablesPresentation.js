@@ -93,6 +93,7 @@ export function receivablesCsv(data) {
   const rows = [
     ['Accounts Receivable', data.currency], ['Ageing reference date', data.as_of_date],
     ['Basis', 'Current recorded balances; not a historical balance sheet. Monthly charts group current balances by invoice or due month.'],
+    ['Balance formula', 'Invoice Amount (L) minus Actual Payment Received (AA). Blank payments count as zero; missing invoice amounts remain unknown. Overdue includes positive balances past their due date on unsettled invoices.'],
     ['Customer / COMPANY', data.filters?.company || 'All customers'], [],
     ['Metric', 'Recorded amount', 'Missing balances', 'Partial'],
     ...RECEIVABLE_KPIS.map(([id, label]) => [label, receivableRawValue(data.kpis?.[id]), data.kpis?.[id]?.missing_count, data.kpis?.[id]?.partial ? 'Yes' : 'No']), [],
