@@ -109,14 +109,20 @@ export async function checkCreateEmployeeWorkflows({ open, capture, record }) {
     assert.equal(await page.locator('[name="surname"]').inputValue(), 'Andersson');
     assert.equal(await page.locator('[name="country"]').inputValue(), 'United Arab Emirates');
     await capture(page, 'create-employee-draft-restored');
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
+      // Inject after the old document unloads so its pending draft autosave
+      // cannot overwrite the stale-identity fixture before the reload.
+      const marker = 'onboarding-ui-stale-manager-injected';
+      if (sessionStorage.getItem(marker)) return;
       const key = 'employee-create-draft:7001';
       const draft = JSON.parse(sessionStorage.getItem(key));
       draft.data.manager_id = '99999'; draft.step = 0;
       sessionStorage.setItem(key, JSON.stringify(draft));
+      sessionStorage.setItem(marker, 'true');
     });
     await page.reload();
     await page.locator('#employee-manager-options option').first().waitFor({ state: 'attached' });
+    assert.equal(await page.locator('[name="manager_id"]').inputValue(), '99999', 'The restored fixture contains the stale manager identity');
     await page.getByRole('button', { name: 'Continue to organisation', exact: true }).click();
     await page.getByRole('heading', { name: 'Personal details', exact: true }).waitFor();
     await page.getByText('Select an active reporting manager from the list', { exact: true }).waitFor();

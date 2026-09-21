@@ -3,9 +3,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowPathIcon, BanknotesIcon, CalendarDaysIcon, CheckCircleIcon, ChevronDownIcon,
   ExclamationTriangleIcon, HomeModernIcon, InformationCircleIcon,
-  UserGroupIcon, UserIcon, UsersIcon, XMarkIcon,
+  TrashIcon, UserGroupIcon, UserIcon, UsersIcon, XMarkIcon,
 } from '@heroicons/react/24/outline'
 import apiClient from '../../services/api.service'
+import { radaiConfirm } from '../../services/radaiDialog'
 import {
   buildOnboardingDashboard, formatOnboardingDate, getOnboardingFilterOptions,
   getOnboardingInitials, loadOnboardingDashboardRecords,
@@ -83,6 +84,10 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
   const [allJoiners, setAllJoiners] = useState(false)
   const [overdueOnly, setOverdueOnly] = useState(false)
   const [recordSearch, setRecordSearch] = useState('')
+  const [deletingId, setDeletingId] = useState(null)
+  const [deleteMessage, setDeleteMessage] = useState(null)
+  const deleteInFlight = useRef(false)
+  const deletedRecordIds = useRef(new Set())
   const attentionRef = useRef(null)
   const upcomingRef = useRef(null)
   const readinessRef = useRef(null)
@@ -94,7 +99,7 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
     setLoading(true)
     setError('')
     config.load(apiClient, { signal: controller.signal })
-      .then(data => { if (current) setRecords(data) })
+      .then(data => { if (current) setRecords(data.filter(record => !deletedRecordIds.current.has(String(record.id)))) })
       .catch(() => { if (current) setError(`Unable to load ${mode}. Please try again.`) })
       .finally(() => { if (current) setLoading(false) })
     return () => { current = false; controller.abort() }
@@ -103,7 +108,7 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
   useEffect(() => {
     let lastRefresh = 0
     const refresh = () => {
-      if (document.visibilityState === 'visible' && Date.now() - lastRefresh > 1000) {
+      if (!deleteInFlight.current && document.visibilityState === 'visible' && Date.now() - lastRefresh > 1000) {
         lastRefresh = Date.now()
         setRetry(value => value + 1)
       }
@@ -126,6 +131,30 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
   }
   const reveal = ref => { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); ref.current?.focus({ preventScroll: true }) }
   const openActiveRecords = () => { setRecordSearch(''); recordsDialogRef.current?.showModal() }
+  const deleteRecord = async record => {
+    if (record.can_delete !== true || deleteInFlight.current) return
+    deleteInFlight.current = true
+    setDeletingId(record.id)
+    setDeleteMessage(null)
+    try {
+      if (!(await radaiConfirm(`Delete the ${mode} workflow for ${record.employee_name || 'this employee'}? This permanently removes its checklists and case records. The employee account will be kept.`))) return
+      await apiClient.delete(`/onboarding/${mode}/${record.id}/`)
+      deletedRecordIds.current.add(String(record.id))
+      setRecords(current => current.filter(item => String(item.id) !== String(record.id)))
+      setDeleteMessage({ error: false, text: `${record.employee_name || 'Employee'} ${mode} workflow deleted.` })
+    } catch (failure) {
+      setDeleteMessage({ error: true, text: failure.response?.data?.detail || failure.response?.data?.error || `Unable to delete this ${mode} workflow. Please try again.` })
+    } finally {
+      deleteInFlight.current = false
+      setDeletingId(null)
+    }
+  }
+  const deleteButton = record => record.can_delete === true && (
+    <button type="button" className="onboarding-delete" aria-label={`Delete ${record.employee_name || 'employee'} ${mode}`} title={`Delete ${mode} workflow`} disabled={deletingId !== null} onClick={() => deleteRecord(record)}>
+      {deletingId === record.id ? <ArrowPathIcon className="onboarding-loading" aria-hidden="true" /> : <TrashIcon aria-hidden="true" />}<span>Delete</span>
+    </button>
+  )
+  const deletionNotice = deleteMessage && <p className={`onboarding-delete-notice${deleteMessage.error ? ' onboarding-delete-notice--error' : ''}`} role={deleteMessage.error ? 'alert' : 'status'}>{deleteMessage.text}</p>
   const metrics = [
     { id: 'active', label: config.active, value: dashboard.activeCount, description: config.activeDescription, icon: UsersIcon, tone: 'blue', onClick: openActiveRecords },
     { id: 'overdue', label: 'Actions overdue', value: dashboard.overdueCount, description: 'Required actions past due', icon: ExclamationTriangleIcon, tone: 'red', onClick: () => { setOverdueOnly(true); setAllActions(true); reveal(attentionRef) } },
@@ -135,6 +164,8 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
   const actions = dashboard.actions.filter(action => !overdueOnly || action.severity === 'overdue')
   const visibleActions = allActions ? actions : actions.slice(0, 4)
   const visibleJoiners = allJoiners ? dashboard.joiners : dashboard.joiners.slice(0, 4)
+  const showUpcomingDelete = visibleJoiners.some(item => item.record.can_delete === true)
+  const upcomingColumns = showUpcomingDelete ? 5 : 4
   const search = recordSearch.trim().toLowerCase()
   const visibleRecords = dashboard.activeRecords.filter(record => !search || [record.employee_name, record.employee_email, record.employee_id, record.position, record.department].some(value => String(value || '').toLowerCase().includes(search)))
   const joinerGroups = visibleJoiners.reduce((groups, item) => {
@@ -159,10 +190,12 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
           <Filter label="Upcoming date range" ariaLabel="Date range" value={filters.dateRange} calendar onChange={value => updateFilter('dateRange', value)}>
             <option value="30">Next 30 days</option><option value="7">Next 7 days</option><option value="90">Next 90 days</option><option value="all">All dates</option>
           </Filter>
-          <button type="button" className="lifecycle-refresh" aria-label={`Refresh ${mode} dashboard`} title="Refresh employees" disabled={loading} onClick={() => setRetry(value => value + 1)}><ArrowPathIcon aria-hidden="true" /></button>
+          <button type="button" className="lifecycle-refresh" aria-label={`Refresh ${mode} dashboard`} title="Refresh employees" disabled={loading || deletingId !== null} onClick={() => setRetry(value => value + 1)}><ArrowPathIcon aria-hidden="true" /></button>
         </div>
         {startButton}
       </div>
+
+      {deletionNotice}
 
       {error ? (
         <div className="onboarding-state onboarding-state--error" role="alert">
@@ -214,21 +247,22 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
               <PanelHeading title={config.upcoming} expanded={allJoiners} label={config.upcoming.toLowerCase()} onToggle={() => setAllJoiners(value => !value)} />
               <div className="onboarding-table-scroll">
                 <table className="onboarding-joiners-table">
-                  <thead><tr><th scope="col" colSpan={2}><span className="onboarding-joiner-columns"><span>Employee</span><span>Role</span></span></th><th scope="col">{config.dateColumn}</th><th scope="col">Readiness</th></tr></thead>
+                  <thead><tr><th scope="col" colSpan={2}><span className="onboarding-joiner-columns"><span>Employee</span><span>Role</span></span></th><th scope="col">{config.dateColumn}</th><th scope="col">Readiness</th>{showUpcomingDelete && <th scope="col"><span className="sr-only">Delete workflow</span></th>}</tr></thead>
                   <tbody>
                     {joinerGroups.map(group => (
                       <Fragment key={group.date}>
-                        <tr className="onboarding-date-group"><th scope="rowgroup" colSpan={4}>{formatOnboardingDate(group.date)} ({dashboard.joiners.filter(item => item.record[config.dateField] === group.date).length})</th></tr>
+                        <tr className="onboarding-date-group"><th scope="rowgroup" colSpan={upcomingColumns}>{formatOnboardingDate(group.date)} ({dashboard.joiners.filter(item => item.record[config.dateField] === group.date).length})</th></tr>
                         {group.items.map(item => (
                           <tr key={item.record.id}>
                             <td colSpan={2}><Employee record={item.record} onOpen={onOpenRecord} mode={mode} /></td>
                             <td className="onboarding-join-date">{formatOnboardingDate(item.record[config.dateField])}</td>
                             <td><span className={`onboarding-status onboarding-status--${item.tone}`}><i aria-hidden="true" />{item.readiness}</span></td>
+                            {showUpcomingDelete && <td>{deleteButton(item.record)}</td>}
                           </tr>
                         ))}
                       </Fragment>
                     ))}
-                    {!visibleJoiners.length && <tr><td colSpan={4} className="onboarding-empty">{config.emptyUpcoming}</td></tr>}
+                    {!visibleJoiners.length && <tr><td colSpan={upcomingColumns} className="onboarding-empty">{config.emptyUpcoming}</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -271,8 +305,9 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
           <dialog ref={recordsDialogRef} className="onboarding-records-dialog" aria-labelledby="onboarding-records-title" onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close() }}>
             <div className="onboarding-dialog-heading"><h2 id="onboarding-records-title">{config.active} ({dashboard.activeCount})</h2><button type="button" aria-label={`Close ${config.active.toLowerCase()}`} onClick={() => recordsDialogRef.current.close()}><XMarkIcon aria-hidden="true" /></button></div>
             <div className="onboarding-dialog-search"><p>All open cases matching Entity and Department, across all dates. Newest cases first.</p><label htmlFor="onboarding-active-search">Search active employees</label><input id="onboarding-active-search" type="search" value={recordSearch} onChange={event => setRecordSearch(event.target.value)} placeholder="Name, email, employee ID or role" /></div>
+            {deletionNotice}
             <div className="onboarding-dialog-records">
-              {visibleRecords.map(record => <div key={record.id} className="onboarding-dialog-record"><Employee record={record} mode={mode} onOpen={item => { recordsDialogRef.current.close(); onOpenRecord(item) }} /><span>{formatOnboardingDate(record[config.dateField])}</span></div>)}
+              {visibleRecords.map(record => <div key={record.id} className="onboarding-dialog-record"><Employee record={record} mode={mode} onOpen={item => { recordsDialogRef.current.close(); onOpenRecord(item) }} /><span>{formatOnboardingDate(record[config.dateField])}</span>{deleteButton(record)}</div>)}
               {!visibleRecords.length && <p className="onboarding-empty">No {config.active.toLowerCase()} match {search ? 'your search' : 'these filters'}.</p>}
             </div>
             {onOpenRegister && <div className="onboarding-dialog-footer"><button type="button" className="onboarding-row-action" onClick={() => { recordsDialogRef.current.close(); onOpenRegister() }}>Manage exits and history</button></div>}

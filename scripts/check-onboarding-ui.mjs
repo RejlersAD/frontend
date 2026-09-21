@@ -21,6 +21,7 @@ const visualsOnly = process.argv.includes('--visuals-only');
 const workflowsOnly = process.argv.includes('--workflows-only');
 const createOnly = process.argv.includes('--create-only');
 const caseOnly = process.argv.includes('--case-only');
+const deletionOnly = process.argv.includes('--deletion-only');
 const exitCreationOnly = process.argv.includes('--exit-creation-only');
 const creationVisibilityOnly = exitCreationOnly || process.argv.includes('--creation-visibility-only');
 const selectedViewport = Number(process.argv.find(value => value.startsWith('--viewport='))?.split('=')[1]) || null;
@@ -113,7 +114,7 @@ const apiClient = `
 async function request(method,url,body,config={}){
  const target=new URL(url.startsWith('/api/v1')?url:'/api/v1'+url,location.origin);for(const [key,value] of Object.entries(config.params||{}))if(value!==undefined&&value!==null)target.searchParams.set(key,value);
  const multipart=body instanceof FormData;const response=await fetch(target,{method,signal:config.signal,headers:multipart?{}:{'Content-Type':'application/json'},...(body===undefined?{}:{body:multipart?body:JSON.stringify(body)})});
- const data=await response.json();if(!response.ok){const error=new Error(data.detail||'Fixture request failed');error.response={status:response.status,data};throw error;}return {data,status:response.status};
+ const data=response.status===204?null:await response.json();if(!response.ok){const error=new Error(data.detail||'Fixture request failed');error.response={status:response.status,data};throw error;}return {data,status:response.status};
 }export default {get:(url,config)=>request('GET',url,undefined,config),post:(url,body,config)=>request('POST',url,body,config),patch:(url,body,config)=>request('PATCH',url,body,config),delete:(url,config)=>request('DELETE',url,undefined,config)};`;
 const serviceButtons = `import React from 'react';import {BellIcon,ArrowDownTrayIcon} from '@heroicons/react/24/outline';export function NotificationBell(){return <button aria-label='Notifications' className='inline-flex h-9 w-9 items-center justify-center rounded-lg'><BellIcon className='h-5 w-5'/></button>}export default function PWAHeaderInstall(){return <button aria-label='Install RADAI on this device' className='inline-flex h-9 w-9 items-center justify-center rounded-lg'><ArrowDownTrayIcon className='h-5 w-5'/></button>}`;
 const stubs = [
@@ -144,6 +145,7 @@ const classSources = await Promise.all(componentFiles.filter(file => /\.[jm]sx?$
 const utilityCss = await postcss([tailwind({ ...tailwindConfig, content: [{ raw: [entry, serviceButtons, ...classSources].join('\n'), extension: 'jsx' }] })]).process(await inlineLocalCssImports(await readFile(path.join(frontend, 'src/index.css'), 'utf8'), path.join(frontend, 'src/index.css')), { from: undefined });
 const cssFiles = componentFiles.filter(file => file.startsWith('src/components/Layout/') && file.endsWith('.css'));
 cssFiles.push('src/pages/HR/OnboardingDashboard.css');
+cssFiles.push('src/services/radaiDialog.css');
 if (componentFiles.includes('src/pages/HR/CreateEmployeeWizard.css')) cssFiles.push('src/pages/HR/CreateEmployeeWizard.css');
 if (componentFiles.includes('src/pages/HR/FullOnboardingOverview.css')) cssFiles.push('src/pages/HR/FullOnboardingOverview.css');
 const styleBundle = await build({ stdin: { contents: cssFiles.map(file => `@import ${JSON.stringify('./' + file)};`).join('\n'), loader: 'css', resolveDir: frontend }, bundle: true, write: false, external: ['/assets/*', '/fonts/*'], loader: { '.woff2': 'dataurl', '.woff': 'dataurl' } });
@@ -152,14 +154,14 @@ const expectedSidebarWidth = await sidebarWidth(frontend);
 const runtimeErrors = [], unexpectedRequests = [], checks = [], geometries = [], accessibility = [];
 const record = text => { checks.push(text); console.log(`PASS: ${text}`); };
 let browser;
-async function open({ width = 1672, fixture = 'full', dark = false, mode = 'onboarding', permissions = 'default', recordId = null, userId = null, caseScenario = null, managerFixture = 'ready', exitCreation = false } = {}) {
+async function open({ width = 1672, fixture = 'full', dark = false, mode = 'onboarding', permissions = 'default', recordId = null, userId = null, caseScenario = null, managerFixture = 'ready', exitCreation = false, allowDeletion = false, legacyRegister = false } = {}) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 941 }, reducedMotion: 'reduce', timezoneId: 'Asia/Dubai' });
   const page = await context.newPage(); page.setDefaultTimeout(12000);
   await page.clock.setFixedTime(new Date(frozenTime));
   const pageUser = permissions === 'default' ? user : { ...user, is_superuser: false, roles: [{ code: permissions === 'hr' ? 'hr_admin' : 'employee', name: permissions === 'hr' ? 'HR Administrator' : 'Employee' }] };
-  await page.addInitScript(({ user, dark, mode, recordId, userId }) => { window.onboardingUser = user; window.onboardingDark = dark; window.onboardingInitialRoute = mode === 'offboarding' ? `/hr/onboarding?tab=offboarding${recordId ? `&record_id=${recordId}` : ''}` : mode === 'create' ? '/hr/onboarding?tab=create' : recordId ? `/hr/onboarding?tab=onboarding&record_id=${recordId}` : userId ? `/hr/onboarding?tab=onboarding&user_id=${userId}` : '/hr/onboarding'; localStorage.setItem('radai_access_token', 'isolated-onboarding-fixture'); document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.toggle('dark', dark)); }, { user: pageUser, dark, mode, recordId, userId });
+  await page.addInitScript(({ user, dark, mode, recordId, userId, legacyRegister }) => { window.onboardingUser = user; window.onboardingDark = dark; window.onboardingInitialRoute = legacyRegister ? `/hr/onboarding?tab=${mode === 'offboarding' ? 'offboarding-list' : 'onboarding'}` : mode === 'offboarding' ? `/hr/onboarding?tab=offboarding${recordId ? `&record_id=${recordId}` : ''}` : mode === 'create' ? '/hr/onboarding?tab=create' : recordId ? `/hr/onboarding?tab=onboarding&record_id=${recordId}` : userId ? `/hr/onboarding?tab=onboarding&user_id=${userId}` : '/hr/onboarding'; localStorage.setItem('radai_access_token', 'isolated-onboarding-fixture'); document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.toggle('dark', dark)); }, { user: pageUser, dark, mode, recordId, userId, legacyRegister });
   page.on('pageerror', error => runtimeErrors.push(error.message));
-  const control = { fixture, requests: [], allowCreate: mode === 'create', createResult: 'success', createdPayloads: [], identityResult: 'available', managerResult: managerFixture, allowExitCreate: exitCreation, createdExitPayloads: [] };
+  const control = { fixture, requests: [], allowCreate: mode === 'create', createResult: 'success', createdPayloads: [], identityResult: 'available', managerResult: managerFixture, allowExitCreate: exitCreation, createdExitPayloads: [], allowDeletion, deletedRecords: new Set(), deletionResult: 'success', deletionDelayMs: 300 };
   if (caseScenario) {
     control.caseFixture = createOnboardingCaseFixture(rows[0], caseScenario);
     control.allowCaseWrites = ['progress', 'ready', 'edit'].includes(caseScenario);
@@ -168,11 +170,13 @@ async function open({ width = 1672, fixture = 'full', dark = false, mode = 'onbo
   }
   const json = (route, data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
   const list = data => ({ count: data.length, next: null, previous: null, results: data });
+  const canDelete = row => allowDeletion && permissions !== 'viewer' && ![4, 204].includes(row.id);
+  const deletionPermission = row => ({ ...row, can_delete: canDelete(row) });
   const detailPermissions = (row, items, initialStage) => {
-    if (permissions === 'default') return { ...row, checklist_items: items };
+    if (permissions === 'default') return { ...deletionPermission(row), checklist_items: items };
     const stages = initialStage === 'pre_hire' ? ['pre_hire', 'it_provisioning', 'first_day', 'final_validation'] : [initialStage];
     return {
-      ...row, checklist_items: items.filter(item => !stages.includes(item.stage)),
+      ...deletionPermission(row), checklist_items: items.filter(item => !stages.includes(item.stage)),
       checklist_stage_permissions: Object.fromEntries(stages.map(stage => [stage, { owner_label: 'HR', can_start: permissions === 'hr', can_manage: permissions === 'hr', disabled_reason: permissions === 'hr' ? '' : 'Your HR workflow access does not allow changes to this stage.' }])),
     };
   };
@@ -181,6 +185,16 @@ async function open({ width = 1672, fixture = 'full', dark = false, mode = 'onbo
     if (url.origin === origin && url.pathname.startsWith('/api/v1/')) {
       const endpoint = url.pathname.replace(/^\/api\/v1/, ''), method = request.method();
       control.requests.push({ method, endpoint });
+      const deleteRoute = endpoint.match(/^\/onboarding\/(onboarding|offboarding)\/(\d+)\/$/);
+      if (method === 'DELETE' && deleteRoute && control.allowDeletion) {
+        const [, workflow, id] = deleteRoute;
+        const target = (workflow === 'onboarding' ? rows : exits).find(row => String(row.id) === id);
+        if (!target || !canDelete(target)) return json(route, { detail: 'You cannot delete this lifecycle record.' }, 403);
+        if (control.deletionDelayMs) await new Promise(resolve => setTimeout(resolve, control.deletionDelayMs));
+        if (control.deletionResult === 'error') return json(route, { detail: `Synthetic ${workflow} deletion denied by server.` }, 403);
+        control.deletedRecords.add(`${workflow}:${id}`);
+        return route.fulfill({ status: 204, body: '' });
+      }
       const caseRoute = endpoint.match(/^\/onboarding\/onboarding\/(\d+)\/(start-checklist-stage|mark_completed)?\/?$/);
       const caseTaskRoute = endpoint.match(/^\/onboarding\/checklist\/(\d+)\/$/);
       if (control.caseFixture && method !== 'GET' && control.allowCaseWrites && (caseRoute || caseTaskRoute)) {
@@ -239,7 +253,10 @@ async function open({ width = 1672, fixture = 'full', dark = false, mode = 'onbo
         const onboardingRows = (control.caseFixture ? rows.map(row => row.id === control.caseFixture.record.id ? control.caseFixture.snapshot() : row) : rows).filter(row => !url.searchParams.get('user_id') || String(row.user) === url.searchParams.get('user_id'));
         const onboardingTasks = control.caseFixture ? [...checklist.filter(task => task.onboarding_record !== control.caseFixture.record.id), ...control.caseFixture.snapshot().checklist_items] : checklist;
         const lifecycleChecklist = [...onboardingTasks, ...exitChecklist, ...(control.fixture === 'completed-future' ? completedExitChecklist : [])];
-        return json(route, list(control.fixture === 'empty' ? [] : endpoint.endsWith('/checklist/') ? lifecycleChecklist : endpoint.endsWith('/offboarding/') ? exitRows : control.createdEmployee ? [...onboardingRows, control.createdEmployee] : onboardingRows));
+        const filteredTasks = lifecycleChecklist.filter(task => !control.deletedRecords.has(`onboarding:${task.onboarding_record}`) && !control.deletedRecords.has(`offboarding:${task.offboarding_record}`));
+        const currentExits = exitRows.filter(row => !control.deletedRecords.has(`offboarding:${row.id}`)).map(deletionPermission);
+        const currentOnboardings = [...onboardingRows, ...(control.createdEmployee ? [control.createdEmployee] : [])].filter(row => !control.deletedRecords.has(`onboarding:${row.id}`)).map(deletionPermission);
+        return json(route, list(control.fixture === 'empty' ? [] : endpoint.endsWith('/checklist/') ? filteredTasks : endpoint.endsWith('/offboarding/') ? currentExits : currentOnboardings));
       }
       const detail = endpoint.match(/^\/onboarding\/onboarding\/(\d+)\/$/);
       if (detail) {
@@ -255,6 +272,14 @@ async function open({ width = 1672, fixture = 'full', dark = false, mode = 'onbo
         return json(route, list(fixtureEmployees));
       }
       if (endpoint === '/onboarding/onboarding/owner_options/') return json(route, list(fixtureEmployees));
+      if (endpoint === '/onboarding/onboarding/statistics/' && legacyRegister) return json(route, { completed_this_month: 0 });
+      if (endpoint === '/users/employees/active_employees/' && url.searchParams.get('onboarding_active') === 'true' && legacyRegister) {
+        const employees = rows.filter(row => !control.deletedRecords.has(`onboarding:${row.id}`)).map(row => {
+          const [first_name, ...last] = row.employee_name.split(' ');
+          return { id: row.canonical_employee, user_id: row.user, first_name, last_name: last.join(' '), email: row.employee_email, employee_number: row.employee_id, job_title_uae: row.position, designation: row.position, department: row.department, branch: row.branch, onboarding_record_id: row.id, onboarding_status: row.status, onboarding_joining_date: row.joining_date, onboarding_progress_percentage: row.progress_percentage, onboarding_can_delete: canDelete(row) };
+        });
+        return json(route, list(employees));
+      }
       if (endpoint === '/users/employees/active_employees/') return json(route, list(control.allowExitCreate ? url.searchParams.has('role_filter') ? [exitFixtureEmployees[1]] : exitFixtureEmployees : fixtureEmployees));
       if (endpoint === '/rbac/users/organization-catalog/') return json(route, { departments: [], roles: [] });
       unexpectedRequests.push(`${method} ${endpoint}`); return json(route, { detail: 'Unmapped isolated fixture request.' }, 404);
@@ -270,7 +295,8 @@ async function open({ width = 1672, fixture = 'full', dark = false, mode = 'onbo
   const directCase = mode === 'onboarding' && (recordId || userId);
   if (directCase) await page.locator('.onboarding-case').waitFor();
   else await page.getByRole('heading', { name: mode === 'create' ? 'Create new employee' : 'Employee Lifecycle', exact: true }).waitFor();
-  if (fixture === 'full' && mode !== 'create' && !directCase) await page.locator('.onboarding-kpi[data-metric="active"] strong').filter({ hasText: new RegExp(`^${lifecycleFixtures[mode].count}$`) }).waitFor();
+  if (legacyRegister) await page.getByText('Marcus Karlsson', { exact: true }).first().waitFor();
+  if (fixture === 'full' && mode !== 'create' && !directCase && !legacyRegister) await page.locator('.onboarding-kpi[data-metric="active"] strong').filter({ hasText: new RegExp(`^${lifecycleFixtures[mode].count}$`) }).waitFor();
   return { page, control, close: () => context.close() };
 }
 async function capture(page, name) {
@@ -570,6 +596,123 @@ async function dashboardRefreshChecks() {
   }
 }
 
+async function deletionChecks() {
+  for (const mode of ['onboarding', 'offboarding']) {
+    for (const width of [1672, 390]) {
+      const state = await open({ mode, width, allowDeletion: true });
+      try {
+        const upcoming = state.page.locator('.onboarding-panel--upcoming');
+        await upcoming.getByRole('button', { name: `Delete Marcus Karlsson ${mode}`, exact: true }).waitFor();
+        assert.equal(await upcoming.getByRole('button', { name: `Delete Anna Persson ${mode}`, exact: true }).count(), 0, 'A per-record permission denial removes its Delete action');
+        await capture(state.page, `${mode}-delete-controls-${width}`);
+        await geometry(state.page, width, mode);
+        const result = await new AxeBuilder({ page: state.page }).include('main.main-content').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+        accessibility.push({ mode, width, deletion: true, violations: result.violations.map(({ id, impact }) => ({ id, impact })) });
+        assert.deepEqual(result.violations.map(item => item.id), [], `${mode} Delete controls at ${width}px have no accessibility violations`);
+        assert.ok(state.control.requests.every(request => request.method === 'GET'));
+        record(`${mode} ${width}px Delete controls obey per-record permissions and preserve accessible layout without writes`);
+      } finally { await state.close(); }
+    }
+
+    const state = await open({ mode, allowDeletion: true }), { page, control } = state;
+    try {
+      const baseCount = lifecycleFixtures[mode].count;
+      const activeDialog = page.locator('.onboarding-records-dialog');
+      const upcoming = page.locator('.onboarding-panel--upcoming');
+      const confirmation = page.getByRole('dialog', { name: 'Confirm action', exact: true });
+      const deleteLabel = employee => `Delete ${employee} ${mode}`;
+      const openActive = async () => { if (!(await activeDialog.isVisible())) await page.locator('.onboarding-kpi[data-metric="active"]').click(); };
+      await openActive();
+      assert.equal(await activeDialog.getByRole('button', { name: deleteLabel('Anna Persson'), exact: true }).count(), 0);
+      await activeDialog.getByRole('button', { name: deleteLabel('Marcus Karlsson'), exact: true }).click();
+      await confirmation.waitFor();
+      assert.match(await confirmation.innerText(), /Marcus Karlsson/);
+      assert.equal(control.requests.filter(request => request.method === 'DELETE').length, 0, 'Showing the confirmation never deletes a record');
+      await capture(page, `${mode}-delete-confirmation`);
+      const confirmAxe = await new AxeBuilder({ page }).include('.radai-dialog').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+      accessibility.push({ mode, deletionConfirmation: true, violations: confirmAxe.violations.map(({ id, impact }) => ({ id, impact })) });
+      assert.deepEqual(confirmAxe.violations.map(item => item.id), [], `${mode} deletion confirmation is accessible`);
+      await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await confirmation.waitFor({ state: 'detached' });
+      assert.equal(control.requests.filter(request => request.method === 'DELETE').length, 0);
+      await page.locator('.onboarding-kpi[data-metric="active"] strong').filter({ hasText: new RegExp(`^${baseCount}$`) }).waitFor();
+      record(`${mode} deletion confirmation identifies the employee; cancelling keeps all records and issues no DELETE`);
+
+      await openActive();
+      await activeDialog.getByRole('button', { name: deleteLabel('Marcus Karlsson'), exact: true }).evaluate(button => { button.click(); button.click(); });
+      await confirmation.waitFor();
+      assert.equal(await page.locator('.radai-dialog').count(), 1, 'Repeated Delete clicks show one confirmation');
+      await confirmation.getByRole('button', { name: 'Confirm', exact: true }).click();
+      await page.locator('.onboarding-kpi[data-metric="active"] strong').filter({ hasText: new RegExp(`^${baseCount - 1}$`) }).waitFor();
+      assert.equal(control.requests.filter(request => request.method === 'DELETE').length, 1, 'Repeated Delete clicks result in one DELETE');
+      assert.equal(await page.locator('.radai-dialog').count(), 0);
+      await openActive();
+      assert.equal(await activeDialog.getByRole('button', { name: `View Marcus Karlsson ${mode} details`, exact: true }).count(), 0);
+      await activeDialog.getByRole('button', { name: `Close ${lifecycleFixtures[mode].metricLabels[0].toLowerCase()}`, exact: true }).click();
+      assert.equal(await upcoming.getByRole('button', { name: `View Marcus Karlsson ${mode} details`, exact: true }).count(), 0);
+      assert.equal(await page.locator('.onboarding-panel--attention').getByRole('button', { name: `View Marcus Karlsson ${mode} details`, exact: true }).count(), 0);
+      record(`${mode} confirmed deletion removes the workflow from Active and Upcoming, refreshes totals, and resists duplicate clicks`);
+
+      control.deletionResult = 'error';
+      await upcoming.getByRole('button', { name: deleteLabel('Sara Nilsson'), exact: true }).click();
+      await confirmation.getByRole('button', { name: 'Confirm', exact: true }).click();
+      await page.getByText(`Synthetic ${mode} deletion denied by server.`, { exact: true }).first().waitFor();
+      await upcoming.getByRole('button', { name: `View Sara Nilsson ${mode} details`, exact: true }).waitFor();
+      assert.equal(await page.locator('.onboarding-kpi[data-metric="active"] strong').innerText(), String(baseCount - 1));
+      assert.equal(control.requests.filter(request => request.method === 'DELETE').length, 2);
+      await capture(page, `${mode}-delete-error`);
+      control.deletionResult = 'success';
+      await upcoming.getByRole('button', { name: deleteLabel('Sara Nilsson'), exact: true }).click();
+      await confirmation.getByRole('button', { name: 'Confirm', exact: true }).click();
+      await page.locator('.onboarding-kpi[data-metric="active"] strong').filter({ hasText: new RegExp(`^${baseCount - 2}$`) }).waitFor();
+      assert.equal(await upcoming.getByRole('button', { name: `View Sara Nilsson ${mode} details`, exact: true }).count(), 0);
+      assert.equal(control.requests.filter(request => request.method === 'DELETE').length, 3);
+      assert.ok(control.requests.filter(request => request.method !== 'GET').every(request => request.method === 'DELETE' && request.endpoint.startsWith(`/onboarding/${mode}/`)), 'Only explicitly confirmed workflow records are deleted');
+      record(`${mode} failed deletion preserves the workflow and shows the API error; a confirmed retry succeeds without changing employee data`);
+    } finally { await state.close(); }
+
+    const viewer = await open({ mode, permissions: 'viewer', allowDeletion: true });
+    try {
+      assert.equal(await viewer.page.getByRole('button', { name: /^Delete .* (onboarding|offboarding)$/ }).count(), 0);
+      await viewer.page.locator('.onboarding-kpi[data-metric="active"]').click();
+      assert.equal(await viewer.page.getByRole('dialog').getByRole('button', { name: /^Delete .* (onboarding|offboarding)$/ }).count(), 0);
+      assert.ok(viewer.control.requests.every(request => request.method === 'GET'));
+      record(`${mode} view-only permissions expose no Delete action in Upcoming or Active`);
+    } finally { await viewer.close(); }
+
+    for (const permissions of ['default', 'viewer']) {
+      const legacy = await open({ mode, permissions, allowDeletion: true, legacyRegister: true });
+      try {
+        for (const [index, view] of ['list', 'cards'].entries()) {
+          if (view === 'cards') await legacy.page.getByTitle('Card View', { exact: true }).click();
+          const employee = index === 0 ? 'Marcus Karlsson' : 'Sara Nilsson';
+          const label = mode === 'onboarding' && view === 'list' ? `Delete onboarding for ${employee}` : `Delete ${employee} ${mode}`;
+          assert.equal(await legacy.page.getByRole('button', { name: /Delete.*Anna Persson/ }).count(), 0, 'Legacy layouts honor the denied record permission');
+          if (permissions === 'viewer') {
+            assert.equal(await legacy.page.getByRole('button', { name: /Delete.*(?:onboarding|offboarding)|Delete onboarding for/ }).count(), 0);
+            assert.ok(legacy.control.requests.every(request => request.method === 'GET'));
+          } else {
+            await legacy.page.getByRole('button', { name: label, exact: true }).click();
+            const confirm = legacy.page.getByRole('dialog', { name: 'Confirm action', exact: true });
+            assert.match(await confirm.innerText(), /employee account will be kept/i);
+            await confirm.getByRole('button', { name: 'Confirm', exact: true }).click();
+            await legacy.page.getByRole('button', { name: label, exact: true }).waitFor({ state: 'detached' });
+            await legacy.page.getByTitle('Card View', { exact: true }).waitFor();
+            assert.equal(legacy.control.requests.filter(request => request.method === 'DELETE').length, index + 1);
+            assert.equal(await legacy.page.getByText(employee, { exact: true }).count(), 0);
+          }
+        }
+        if (permissions === 'default') {
+          await legacy.page.getByRole('button', { name: 'Back to overview', exact: true }).click();
+          await legacy.page.locator('.onboarding-kpi[data-metric="active"] strong').filter({ hasText: new RegExp(`^${lifecycleFixtures[mode].count - 2}$`) }).waitFor();
+          assert.ok(legacy.control.requests.filter(request => request.method !== 'GET').every(request => request.method === 'DELETE' && request.endpoint.startsWith(`/onboarding/${mode}/`)));
+        }
+        record(`${mode} legacy list and cards ${permissions === 'viewer' ? 'hide Delete for viewers without writes' : 'use authorized workflow DELETE and return to correctly refreshed dashboard totals'}`);
+      } finally { await legacy.close(); }
+    }
+  }
+}
+
 async function workflowPermissionChecks() {
   for (const mode of ['onboarding', 'offboarding']) {
     for (const permissions of ['hr', 'viewer']) {
@@ -625,17 +768,18 @@ async function completedExitChecks() {
 }
 try {
   browser = await launchBrowser();
-  if (!workflowsOnly && !creationVisibilityOnly) {
+  if (!workflowsOnly && !creationVisibilityOnly && !deletionOnly) {
     if (!createOnly && !caseOnly) await visualChecks();
     if (!caseOnly) await checkCreateEmployeeVisuals({ open, capture, geometry, record, accessibility, selectedViewport });
     if (!createOnly) await checkOnboardingCaseVisuals({ open, capture, geometry, record, accessibility, selectedViewport });
   }
-  if (!visualsOnly) {
+  if (!visualsOnly && !deletionOnly) {
     if (!createOnly && !caseOnly && !creationVisibilityOnly) { await workflowChecks(); await offboardingWorkflowChecks(); await workflowPermissionChecks(); await completedExitChecks(); }
     if (!createOnly && !caseOnly) { await exitCreationVisibilityChecks(); await dashboardRefreshChecks(); }
     if (!caseOnly && !exitCreationOnly) await checkCreateEmployeeWorkflows({ open, capture, record });
     if (!createOnly && !creationVisibilityOnly) await checkOnboardingCaseWorkflows({ open, capture, record });
   }
+  if (deletionOnly || (!visualsOnly && !createOnly && !caseOnly && !creationVisibilityOnly)) await deletionChecks();
   assert.deepEqual(runtimeErrors, [], 'No browser runtime errors');
   assert.deepEqual(unexpectedRequests, [], 'All traffic uses isolated fixture endpoints');
   assert.deepEqual(await snapshotSources(frontend, protectedFiles), sourceBefore, 'Shared sidebar and layout sources are unchanged');
