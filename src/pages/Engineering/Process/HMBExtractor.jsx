@@ -47,6 +47,8 @@ const MASTER_TEMPLATE_CFG = {
   importCasesEndpoint: '/process-datasheet/datasheets/import-hmb-cases/',
   projectSummaryEndpoint: (projectId) => `/process-datasheet/datasheets/hmb-projects/${projectId}/summary/`,
   recordsPreviewEndpoint: (projectId) => `/process-datasheet/datasheets/hmb-projects/${projectId}/records-preview/`,
+  streamComparisonEndpoint: (projectId) => `/process-datasheet/datasheets/hmb-projects/${projectId}/stream-comparison/`,
+  streamExportEndpoint: (projectId) => `/process-datasheet/datasheets/hmb-projects/${projectId}/stream-export/`,
   fileKey: 'master_template_file',
   acceptedExt: ['xlsx', 'xlsm'],
   maxSizeMb: 20,
@@ -74,10 +76,6 @@ const UI = {
     background: '#f8fafc',
   },
 };
-
-const getCaseColumnLabelStorageKey = (projectId, templateProfileId) => (
-  `hmbCaseColumnLabels::${projectId || 'no-project'}::${templateProfileId || 'no-template'}`
-);
 
 const SMART_WORKFLOW_STEPS = [
   { key: 'project', label: 'Select Project', icon: Database },
@@ -178,11 +176,11 @@ const HMBExtractorPage = () => {
   const [casePreviewBusy, setCasePreviewBusy] = useState(false);
   const [casePreviewError, setCasePreviewError] = useState('');
   const [casePreviewName, setCasePreviewName] = useState('');
+  const [casePreviewResolvedName, setCasePreviewResolvedName] = useState('');
   const [casePreviewOptions, setCasePreviewOptions] = useState([]);
   const [casePreviewFileOptions, setCasePreviewFileOptions] = useState([]);
   const [casePreviewRecords, setCasePreviewRecords] = useState([]);
   const [casePreviewRelaxed, setCasePreviewRelaxed] = useState(false);
-  const [caseColumnLabels, setCaseColumnLabels] = useState({});
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [templateProfiles, setTemplateProfiles] = useState([]);
   const [selectedTemplateProfileId, setSelectedTemplateProfileId] = useState(null);
@@ -197,6 +195,10 @@ const HMBExtractorPage = () => {
   const caseFileInputRef = useRef(null);
   const [projectSummary, setProjectSummary] = useState(null);
   const [canvasExportError, setCanvasExportError] = useState('');
+  const [comparisonStreamId, setComparisonStreamId] = useState('');
+  const [comparisonData, setComparisonData] = useState(null);
+  const [comparisonBusy, setComparisonBusy] = useState(false);
+  const [comparisonError, setComparisonError] = useState('');
 
   const filteredProfiles = useMemo(() => {
     const q = profileQuery.trim().toLowerCase();
@@ -217,12 +219,16 @@ const HMBExtractorPage = () => {
 
   const templateCanvasModel = useMemo(() => {
     const sections = Array.isArray(templateAnalysis?.sections) ? templateAnalysis.sections : [];
+    const layout = templateAnalysis?.template_layout || null;
+    const layoutCells = new Map(
+      (Array.isArray(layout?.cells) ? layout.cells : []).map((cell) => [`${cell.row}:${cell.column}`, cell])
+    );
     const isBadToken = (v) => {
       const s = String(v || '').trim().toUpperCase();
       return !s || s.startsWith('=') || s.includes('#REF!') || s.includes('HLOOKUP(');
     };
-    const streamColumns = Array.isArray(templateAnalysis?.stream_columns)
-      ? templateAnalysis.stream_columns.filter((s) => !isBadToken(s?.stream_id)).slice(0, 14)
+    const templateStreamColumns = Array.isArray(templateAnalysis?.stream_columns)
+      ? templateAnalysis.stream_columns.filter((s) => !isBadToken(s?.stream_id))
       : [];
     const preview = casePreviewRecords.length > 0
       ? casePreviewRecords.map((item) => ({
@@ -232,7 +238,7 @@ const HMBExtractorPage = () => {
         row: item.row_index,
         property: item.property_name,
         unit: item.unit,
-        stream_id: item.stream_id,
+        stream_id: item.source_stream_id || item.stream_id,
         value: item.value_text,
       }))
       : (Array.isArray(templateAnalysis?.normalized_preview) ? templateAnalysis.normalized_preview : []);
@@ -247,43 +253,30 @@ const HMBExtractorPage = () => {
     };
     const normalizeProp = (v) => normalizeLabel(v).replace(/:+$/g, '');
     const normalizeUnit = (v) => normalizeLabel(v);
-    const asNum = (v) => {
-      const s = String(v || '').trim();
-      if (!/^\d+(\.0+)?$/.test(s)) return null;
-      return Number(s);
+    const columnLetter = (columnIndex) => {
+      let index = columnIndex;
+      let result = '';
+      while (index > 0) {
+        index -= 1;
+        result = String.fromCharCode(65 + (index % 26)) + result;
+        index = Math.floor(index / 26);
+      }
+      return result;
     };
 
-    const templateStreamIds = streamColumns.map((s) => String(s.stream_id || '').trim());
-    const previewStreamIds = Array.from(new Set(preview.map((p) => String(p.stream_id || '').trim()).filter(Boolean)));
-    const templateSet = new Set(templateStreamIds);
-
-    // Heuristic mapping: if incoming case streams are ordinal numbers (1..N),
-    // map them by position to template stream IDs (1001, 1008, ...).
-    const streamAlias = new Map();
-    const numericPreview = previewStreamIds
-      .map((id) => ({ id, n: asNum(id) }))
-      .filter((x) => Number.isFinite(x.n));
-    const exactHits = previewStreamIds.filter((id) => templateSet.has(id)).length;
-    const shouldUseOrdinalMap = previewStreamIds.length > 0
-      && exactHits <= Math.max(1, Math.floor(previewStreamIds.length * 0.2))
-      && numericPreview.length >= Math.max(1, Math.floor(previewStreamIds.length * 0.7));
-
-    if (shouldUseOrdinalMap) {
-      numericPreview
-        .sort((a, b) => a.n - b.n)
-        .forEach((entry, idx) => {
-          const mapped = templateStreamIds[idx];
-          if (mapped) streamAlias.set(entry.id, mapped);
-        });
-    }
-
-    const mapStreamId = (id) => {
-      const raw = String(id || '').trim();
-      if (!raw) return raw;
-      if (templateSet.has(raw)) return raw;
-      if (streamAlias.has(raw)) return streamAlias.get(raw);
-      return raw;
-    };
+    const streamIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+    const previewStreamIds = Array.from(
+      new Set(preview.map((p) => String(p.stream_id || '').trim()).filter(Boolean))
+    ).sort(streamIdCollator.compare);
+    const streamColumns = casePreviewRecords.length > 0
+      ? previewStreamIds.map((streamId, index) => ({
+        column_index: index + 4,
+        column_letter: columnLetter(index + 4),
+        stream_id: streamId,
+        description: '',
+      }))
+      : templateStreamColumns;
+    const canvasStreamIds = streamColumns.map((s) => String(s.stream_id || '').trim());
 
     const caseColumns = Array.from(new Set(
       (casePreviewRecords || [])
@@ -293,12 +286,14 @@ const HMBExtractorPage = () => {
 
     const valueMapExact = new Map();
     const valueMapLoose = new Map();
+    const matrixValueMapExact = new Map();
+    const matrixValueMapLoose = new Map();
     preview.forEach((item) => {
       const section = normalizeLabel(item.section);
       const row = String(item.row || '').trim();
       const property = normalizeProp(item.property);
       const unit = normalizeUnit(item.unit);
-      const stream = mapStreamId(item.stream_id);
+      const stream = String(item.stream_id || '').trim();
       const caseCol = String(item.source_filename || item.case_name || '').trim();
       const exact = `${section}::${row}::${property}::${unit}::${stream}::${caseCol}`;
       const loose = `${section}::${property}::${unit}::${stream}::${caseCol}`;
@@ -306,19 +301,46 @@ const HMBExtractorPage = () => {
       if (clean === '') return;
       valueMapExact.set(exact, clean);
       valueMapLoose.set(loose, clean);
+      const matrixExact = `${section}::${row}::${property}::${unit}::${stream}`;
+      const matrixLoose = `${section}::${property}::${unit}::${stream}`;
+      if (!matrixValueMapExact.has(matrixExact)) matrixValueMapExact.set(matrixExact, clean);
+      if (!matrixValueMapLoose.has(matrixLoose)) matrixValueMapLoose.set(matrixLoose, clean);
     });
 
     const rows = [];
+    const matrixRows = [];
     sections.forEach((section) => {
       const props = Array.isArray(section?.properties) ? section.properties : [];
-      props.forEach((prop) => {
+      const sectionAnchor = layoutCells.get(`${section.start_row}:1`);
+      const workbookSectionSpan = Math.min(
+        props.length,
+        Math.max(1, Number(sectionAnchor?.row_span || props.length))
+      );
+      props.forEach((prop, propertyIndex) => {
         const sectionKey = normalizeLabel(section.label);
         const rowKey = String(prop.row || '').trim();
         const propKey = normalizeProp(prop.property);
         const unitKey = normalizeUnit(prop.unit);
 
-        const streamIdsForRows = templateStreamIds.length > 0
-          ? templateStreamIds
+        matrixRows.push({
+          section: propertyIndex < workbookSectionSpan ? (section.label || '') : '',
+          sectionRowSpan: propertyIndex === 0
+            ? workbookSectionSpan
+            : (propertyIndex >= workbookSectionSpan ? 1 : 0),
+          row: prop.row,
+          property: prop.property || '',
+          unit: prop.unit || '',
+          streamValues: canvasStreamIds.map((resolvedStream) => {
+            const exact = `${sectionKey}::${rowKey}::${propKey}::${unitKey}::${resolvedStream}`;
+            const loose = `${sectionKey}::${propKey}::${unitKey}::${resolvedStream}`;
+            if (matrixValueMapExact.has(exact)) return matrixValueMapExact.get(exact);
+            if (matrixValueMapLoose.has(loose)) return matrixValueMapLoose.get(loose);
+            return '';
+          }),
+        });
+
+        const streamIdsForRows = canvasStreamIds.length > 0
+          ? canvasStreamIds
           : [''];
 
         streamIdsForRows.forEach((resolvedStream) => {
@@ -341,40 +363,40 @@ const HMBExtractorPage = () => {
       });
     });
 
-    return { streamColumns, caseColumns, rows };
+    return {
+      streamColumns,
+      caseColumns,
+      rows,
+      matrixRows,
+      layout,
+      layoutCells,
+    };
   }, [templateAnalysis, casePreviewRecords]);
 
-  const resolvedCaseColumnLabels = useMemo(() => {
-    const next = {};
-    (templateCanvasModel.caseColumns || []).forEach((key, idx) => {
-      next[key] = caseColumnLabels[key] || `Case ${idx + 1}`;
-    });
-    return next;
-  }, [templateCanvasModel.caseColumns, caseColumnLabels]);
+  const masterCellStyle = useCallback((row, column, fallback = {}) => {
+    const cell = templateCanvasModel.layoutCells?.get(`${row}:${column}`);
+    const style = cell?.style || {};
+    const border = (side) => (style[side] ? '1px solid #94a3b8' : '1px solid #cbd5e1');
+    return {
+      color: style.font_color ? `#${String(style.font_color).slice(-6)}` : '#0f172a',
+      background: style.fill ? `#${String(style.fill).slice(-6)}` : '#ffffff',
+      fontWeight: style.bold ? 700 : 400,
+      fontStyle: style.italic ? 'italic' : 'normal',
+      textAlign: style.horizontal || 'center',
+      verticalAlign: style.vertical || 'middle',
+      whiteSpace: style.wrap_text ? 'normal' : 'nowrap',
+      borderTop: border('border_top'),
+      borderRight: border('border_right'),
+      borderBottom: border('border_bottom'),
+      borderLeft: border('border_left'),
+      ...fallback,
+    };
+  }, [templateCanvasModel.layoutCells]);
 
-  useEffect(() => {
-    const storageKey = getCaseColumnLabelStorageKey(activeProject?.project_id, selectedTemplateProfileId);
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (!raw) {
-        setCaseColumnLabels({});
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      setCaseColumnLabels(parsed && typeof parsed === 'object' ? parsed : {});
-    } catch (_) {
-      setCaseColumnLabels({});
-    }
-  }, [activeProject?.project_id, selectedTemplateProfileId]);
-
-  useEffect(() => {
-    const storageKey = getCaseColumnLabelStorageKey(activeProject?.project_id, selectedTemplateProfileId);
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(caseColumnLabels || {}));
-    } catch (_) {
-      // best-effort persistence only
-    }
-  }, [activeProject?.project_id, selectedTemplateProfileId, caseColumnLabels]);
+  const masterColumnWidth = useCallback((columnLetter, fallback = 13) => {
+    const excelWidth = Number(templateCanvasModel.layout?.column_widths?.[columnLetter] || fallback);
+    return Math.max(64, Math.min(220, Math.round(excelWidth * 7)));
+  }, [templateCanvasModel.layout]);
 
   const templateAlignmentAudit = useMemo(() => {
     const normalizeSection = (v) => String(v || '').trim().toLowerCase();
@@ -735,6 +757,7 @@ const HMBExtractorPage = () => {
       );
       await loadProjectSummary();
       setCasePreviewName('');
+      setCasePreviewResolvedName('');
     } catch (err) {
       setCaseError(err?.response?.data?.error || err.message || 'Case import failed.');
     } finally {
@@ -776,71 +799,79 @@ const HMBExtractorPage = () => {
     if (caseFileInputRef.current) caseFileInputRef.current.value = '';
   };
 
-  const resetCaseColumnLabels = () => {
-    setCaseColumnLabels({});
-  };
-
   const exportTemplateCanvasExcel = () => {
     setCanvasExportError('');
     try {
-      const caseKeys = templateCanvasModel.caseColumns || [];
-      const visibleRows = (templateCanvasModel.rows || []).slice(0, 120);
-      if (!visibleRows.length) {
+      const streamColumns = templateCanvasModel.streamColumns || [];
+      const matrixRows = templateCanvasModel.matrixRows || [];
+      if (!matrixRows.length || !streamColumns.length) {
         setCanvasExportError('No canvas rows available to export.');
         return;
       }
 
-      const header = [
-        'Section',
-        'Row',
-        'Property',
-        'Unit',
-        'Stream ID',
-        ...caseKeys.map((k, idx) => (resolvedCaseColumnLabels[k] || `Case ${idx + 1}`)),
-      ];
-
-      const aoa = [];
-      aoa.push(['Project', activeProject?.name || 'N/A']);
-      aoa.push(['Template', templateProfiles.find((p) => p.id === selectedTemplateProfileId)?.template_name
+      const templateLabel = templateProfiles.find((p) => p.id === selectedTemplateProfileId)?.template_name
         || templateProfiles.find((p) => p.id === selectedTemplateProfileId)?.source_filename
-        || 'Default Master Template']);
-      aoa.push(['Exported At', new Date().toLocaleString()]);
-      aoa.push([]);
-      aoa.push(header);
-
-      visibleRows.forEach((row) => {
-        const cells = caseKeys.map((_, idx) => {
-          const val = row.cells?.[idx];
-          return val === '' || val === null || val === undefined ? '' : String(val);
-        });
-        aoa.push([
+        || 'Default Master Template';
+      const selectedCaseLabel = casePreviewName
+        || (casePreviewResolvedName ? `Latest imported case (${casePreviewResolvedName})` : 'Latest imported case');
+      const aoa = [
+        ['Section', 'Property', 'Unit', 'Stream ID', ...streamColumns.slice(1).map(() => '')],
+        ['', '', '', ...streamColumns.map((stream) => stream.stream_id)],
+        ...matrixRows.map((row) => [
           row.section || '',
-          row.row ?? '',
           row.property || '',
           row.unit || '',
-          row.stream_id || '',
-          ...cells,
-        ]);
-      });
+          ...row.streamValues.map((value) => (
+            value === '' || value === null || value === undefined ? '' : value
+          )),
+        ]),
+      ];
 
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       ws['!cols'] = [
-        { wch: 16 },
-        { wch: 8 },
-        { wch: 28 },
-        { wch: 14 },
-        { wch: 14 },
-        ...caseKeys.map(() => ({ wch: 18 })),
+        { wch: Number(templateCanvasModel.layout?.column_widths?.A || 15) },
+        { wch: Number(templateCanvasModel.layout?.column_widths?.B || 33) },
+        { wch: Number(templateCanvasModel.layout?.column_widths?.C || 15) },
+        ...streamColumns.map((stream) => ({
+          wch: Number(templateCanvasModel.layout?.column_widths?.[stream.column_letter] || 13),
+        })),
       ];
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+        { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
+        { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
+        { s: { r: 0, c: 3 }, e: { r: 0, c: streamColumns.length + 2 } },
+      ];
+      matrixRows.forEach((row, index) => {
+        if (row.sectionRowSpan > 1) {
+          ws['!merges'].push({
+            s: { r: index + 2, c: 0 },
+            e: { r: index + row.sectionRowSpan + 1, c: 0 },
+          });
+        }
+      });
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Template_Canvas');
+      const metadataSheet = XLSX.utils.aoa_to_sheet([
+        ['Project', activeProject?.name || 'N/A'],
+        ['Template', templateLabel],
+        ['Case Group', selectedCaseLabel],
+        ['Exported At', new Date().toLocaleString()],
+        ['Stream Count', streamColumns.length],
+        ['Property Rows', matrixRows.length],
+      ]);
+      metadataSheet['!cols'] = [{ wch: 18 }, { wch: 48 }];
+      XLSX.utils.book_append_sheet(wb, metadataSheet, 'Export_Info');
 
       const projectLabel = String(activeProject?.name || 'Project')
         .replace(/[^a-zA-Z0-9_-]+/g, '_')
         .replace(/^_+|_+$/g, '') || 'Project';
+      const caseLabel = selectedCaseLabel
+        .replace(/[^a-zA-Z0-9_-]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'Latest';
       const dateLabel = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(wb, `HMB_Template_Canvas_${projectLabel}_${dateLabel}.xlsx`);
+      XLSX.writeFile(wb, `HMB_Template_Canvas_${projectLabel}_${caseLabel}_${dateLabel}.xlsx`);
     } catch (err) {
       setCanvasExportError(err?.message || 'Excel export failed.');
     }
@@ -857,8 +888,8 @@ const HMBExtractorPage = () => {
     setCasePreviewError('');
     try {
       const params = {
-        limit: 20000,
-        all_cases: true,
+        limit: 50000,
+        all_cases: false,
       };
       if (selectedTemplateProfileId) params.template_profile_id = selectedTemplateProfileId;
       if (casePreviewName) params.case_name = casePreviewName;
@@ -873,12 +904,13 @@ const HMBExtractorPage = () => {
       setCasePreviewOptions(Array.isArray(data.available_cases) ? data.available_cases : []);
       setCasePreviewFileOptions(Array.isArray(data.available_case_files) ? data.available_case_files : []);
       setCasePreviewRelaxed(Boolean(data.template_filter_relaxed));
-      if (!casePreviewName && data?.case_name) setCasePreviewName(data.case_name);
+      setCasePreviewResolvedName(data?.case_name || casePreviewName || '');
     } catch (err) {
       setCasePreviewError(err?.response?.data?.error || err.message || 'Failed to load case preview records.');
       setCasePreviewRecords([]);
       setCasePreviewFileOptions([]);
       setCasePreviewRelaxed(false);
+      setCasePreviewResolvedName('');
     } finally {
       setCasePreviewBusy(false);
     }
@@ -887,6 +919,70 @@ const HMBExtractorPage = () => {
   useEffect(() => {
     loadCasePreview();
   }, [loadCasePreview, caseImportResult]);
+
+  useEffect(() => {
+    const streams = Array.isArray(templateAnalysis?.stream_columns) ? templateAnalysis.stream_columns : [];
+    if (!streams.length) {
+      setComparisonStreamId('');
+      return;
+    }
+    if (!streams.some((stream) => String(stream.stream_id) === String(comparisonStreamId))) {
+      setComparisonStreamId(String(streams[0].stream_id));
+    }
+  }, [templateAnalysis, comparisonStreamId]);
+
+  const loadStreamComparison = useCallback(async () => {
+    if (!activeProject?.project_id || !selectedTemplateProfileId || !comparisonStreamId) {
+      setComparisonData(null);
+      return;
+    }
+    setComparisonBusy(true);
+    setComparisonError('');
+    try {
+      const { data } = await apiClient.get(
+        MASTER_TEMPLATE_CFG.streamComparisonEndpoint(activeProject.project_id),
+        { params: { template_profile_id: selectedTemplateProfileId, stream_id: comparisonStreamId } }
+      );
+      if (!data?.success) throw new Error(data?.error || 'Failed to load stream comparison');
+      setComparisonData(data);
+    } catch (err) {
+      setComparisonData(null);
+      setComparisonError(err?.response?.data?.error || err.message || 'Failed to load stream comparison.');
+    } finally {
+      setComparisonBusy(false);
+    }
+  }, [activeProject?.project_id, selectedTemplateProfileId, comparisonStreamId]);
+
+  useEffect(() => {
+    loadStreamComparison();
+  }, [loadStreamComparison, caseImportResult]);
+
+  const exportStreamComparison = async () => {
+    if (!activeProject?.project_id || !selectedTemplateProfileId || !comparisonStreamId) return;
+    setComparisonBusy(true);
+    setComparisonError('');
+    try {
+      const response = await apiClient.get(
+        MASTER_TEMPLATE_CFG.streamExportEndpoint(activeProject.project_id),
+        {
+          params: { template_profile_id: selectedTemplateProfileId, stream_id: comparisonStreamId },
+          responseType: 'blob',
+        }
+      );
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `HMB_Final_${comparisonStreamId}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setComparisonError(err?.response?.data?.error || err.message || 'Final Excel export failed.');
+    } finally {
+      setComparisonBusy(false);
+    }
+  };
 
   if (!hydrated || loadingProjects) {
     return <div style={{ minHeight: '100vh', background: T.pageBg }} />;
@@ -1229,14 +1325,19 @@ const HMBExtractorPage = () => {
                   <select
                     id="hmb-case-preview"
                     value={casePreviewName}
-                    onChange={(e) => setCasePreviewName(e.target.value)}
+                    onChange={(e) => {
+                      setCasePreviewName(e.target.value);
+                      setCasePreviewResolvedName('');
+                    }}
                     style={{
                       fontSize: 11,
                       border: '1px solid #cbd5e1',
                       borderRadius: 7,
-                      padding: '4px 8px',
+                      padding: '0 8px',
                       background: '#fff',
                       minWidth: 170,
+                      height: 32,
+                      boxSizing: 'border-box',
                     }}
                   >
                     <option value="">Latest imported case</option>
@@ -1256,29 +1357,13 @@ const HMBExtractorPage = () => {
                       background: '#fff',
                       color: '#0f172a',
                       borderRadius: 7,
-                      padding: '4px 8px',
+                      padding: '0 8px',
+                      height: 32,
+                      boxSizing: 'border-box',
                       cursor: 'pointer',
                     }}
                   >
                     <RefreshCw width={12} /> Refresh
-                  </button>
-                  <button
-                    onClick={resetCaseColumnLabels}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      border: '1px solid #cbd5e1',
-                      background: '#fff',
-                      color: '#0f172a',
-                      borderRadius: 7,
-                      padding: '4px 8px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Reset Labels
                   </button>
                   <button
                     onClick={exportTemplateCanvasExcel}
@@ -1293,7 +1378,9 @@ const HMBExtractorPage = () => {
                       background: templateCanvasModel.rows.length === 0 ? '#e2e8f0' : '#0f766e',
                       color: templateCanvasModel.rows.length === 0 ? '#64748b' : '#ffffff',
                       borderRadius: 7,
-                      padding: '4px 8px',
+                      padding: '0 10px',
+                      height: 32,
+                      boxSizing: 'border-box',
                       cursor: templateCanvasModel.rows.length === 0 ? 'not-allowed' : 'pointer',
                     }}
                   >
@@ -1321,13 +1408,13 @@ const HMBExtractorPage = () => {
               {!casePreviewBusy && casePreviewRecords.length > 0 && (
                 <div style={{ marginBottom: 8, fontSize: 11, color: '#065f46', fontWeight: 700 }}>
                   Showing {casePreviewRecords.length} imported record(s)
-                  {casePreviewName ? ` from ${casePreviewName}` : ''}.
+                  {(casePreviewName || casePreviewResolvedName) ? ` from ${casePreviewName || casePreviewResolvedName}` : ''}.
                 </div>
               )}
 
               {!casePreviewBusy && casePreviewFileOptions.length > 0 && (
                 <div style={{ marginBottom: 8, fontSize: 11, color: '#334155' }}>
-                  Case files detected: {casePreviewFileOptions.length}. Column headers are dynamic and editable.
+                  Case files detected: {casePreviewFileOptions.length}. Values are mapped to the Master stream columns.
                 </div>
               )}
 
@@ -1414,60 +1501,61 @@ const HMBExtractorPage = () => {
 
               {!templateCanvasBusy && templateAnalysis?.success && (
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
-                  <div style={{ maxHeight: 280, overflow: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <div style={{ maxHeight: 520, overflow: 'auto' }}>
+                    <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11, tableLayout: 'fixed' }}>
                       <thead>
-                        <tr style={{ background: '#f8fafc', color: '#334155' }}>
-                          <th style={{ textAlign: 'left', padding: 8, position: 'sticky', top: 0, background: '#f8fafc' }}>Section</th>
-                          <th style={{ textAlign: 'left', padding: 8, position: 'sticky', top: 0, background: '#f8fafc' }}>Row</th>
-                          <th style={{ textAlign: 'left', padding: 8, minWidth: 180, position: 'sticky', top: 0, background: '#f8fafc' }}>Property</th>
-                          <th style={{ textAlign: 'left', padding: 8, position: 'sticky', top: 0, background: '#f8fafc' }}>Unit</th>
-                          <th style={{ textAlign: 'left', padding: 8, position: 'sticky', top: 0, background: '#f8fafc' }}>Stream ID</th>
-                          {templateCanvasModel.caseColumns?.map((caseName, idx) => (
+                        <tr>
+                          <th rowSpan={2} style={{ ...masterCellStyle(1, 1), position: 'sticky', left: 0, top: 0, zIndex: 5, width: masterColumnWidth('A', 15), minWidth: masterColumnWidth('A', 15), padding: 8 }}>Section</th>
+                          <th rowSpan={2} style={{ ...masterCellStyle(1, 2), position: 'sticky', left: masterColumnWidth('A', 15), top: 0, zIndex: 5, width: masterColumnWidth('B', 33), minWidth: masterColumnWidth('B', 33), padding: 8 }}>Property</th>
+                          <th rowSpan={2} style={{ ...masterCellStyle(1, 3), position: 'sticky', left: masterColumnWidth('A', 15) + masterColumnWidth('B', 33), top: 0, zIndex: 5, width: masterColumnWidth('C', 15), minWidth: masterColumnWidth('C', 15), padding: 8 }}>Unit</th>
+                          <th colSpan={Math.max(1, templateCanvasModel.streamColumns.length)} style={{ position: 'sticky', top: 0, zIndex: 4, padding: 7, background: '#e2e8f0', color: '#0f172a', border: '1px solid #94a3b8', textAlign: 'left' }}>
+                            Stream ID
+                          </th>
+                        </tr>
+                        <tr>
+                          {templateCanvasModel.streamColumns.map((stream) => (
                             <th
-                              key={caseName}
-                              style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc' }}
+                              key={`${stream.column_letter}-${stream.stream_id}`}
+                              title={stream.description || `Stream ${stream.stream_id}`}
+                              style={{
+                                ...masterCellStyle(1, stream.column_index),
+                                position: 'sticky',
+                                top: 30,
+                                zIndex: 4,
+                                width: masterColumnWidth(stream.column_letter),
+                                minWidth: masterColumnWidth(stream.column_letter),
+                                padding: '7px 5px',
+                                background: '#f8fafc',
+                                fontWeight: 700,
+                              }}
                             >
-                              <div style={{ display: 'grid', gap: 4, minWidth: 140 }}>
-                                <input
-                                  type="text"
-                                  value={resolvedCaseColumnLabels[caseName] || `Case ${idx + 1}`}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    setCaseColumnLabels((prev) => ({ ...prev, [caseName]: v }));
-                                  }}
-                                  style={{
-                                    border: '1px solid #cbd5e1',
-                                    borderRadius: 6,
-                                    padding: '3px 6px',
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    color: '#0f172a',
-                                    background: '#fff',
-                                  }}
-                                  placeholder={`Case ${idx + 1}`}
-                                />
-                                <div
-                                  title={caseName}
-                                  style={{ fontSize: 10, color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                                >
-                                  {caseName}
-                                </div>
-                              </div>
+                              {stream.stream_id}
                             </th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {templateCanvasModel.rows.slice(0, 300).map((row) => (
-                          <tr key={`${row.section}-${row.row}-${row.property}-${row.stream_id}`} style={{ borderTop: '1px solid #e2e8f0' }}>
-                            <td style={{ padding: 8, color: '#0f172a', fontWeight: 600 }}>{row.section}</td>
-                            <td style={{ padding: 8, color: '#334155' }}>{row.row}</td>
-                            <td style={{ padding: 8, color: '#0f172a' }}>{row.property}</td>
-                            <td style={{ padding: 8, color: '#475569' }}>{row.unit || '-'}</td>
-                            <td style={{ padding: 8, color: '#334155', fontWeight: 600 }}>{row.stream_id || '-'}</td>
-                            {row.cells.map((value, idx) => (
-                              <td key={`${row.property}-${idx}`} style={{ padding: 8, color: '#334155' }}>{value === '' ? '-' : String(value)}</td>
+                        {templateCanvasModel.matrixRows.map((row) => (
+                          <tr key={`${row.section}-${row.row}-${row.property}`}>
+                            {row.sectionRowSpan > 0 && (
+                              <td rowSpan={row.sectionRowSpan} style={{ ...masterCellStyle(row.row, 1), position: 'sticky', left: 0, zIndex: 3, width: masterColumnWidth('A', 15), minWidth: masterColumnWidth('A', 15), padding: 8, fontWeight: 700 }}>
+                                {row.section}
+                              </td>
+                            )}
+                            <td style={{ ...masterCellStyle(row.row, 2), position: 'sticky', left: masterColumnWidth('A', 15), zIndex: 2, width: masterColumnWidth('B', 33), minWidth: masterColumnWidth('B', 33), padding: 8, textAlign: 'left' }}>{row.property}</td>
+                            <td style={{ ...masterCellStyle(row.row, 3), position: 'sticky', left: masterColumnWidth('A', 15) + masterColumnWidth('B', 33), zIndex: 2, width: masterColumnWidth('C', 15), minWidth: masterColumnWidth('C', 15), padding: 8 }}>{row.unit || '-'}</td>
+                            {row.streamValues.map((value, idx) => (
+                              <td
+                                key={`${row.row}-${templateCanvasModel.streamColumns[idx]?.stream_id || idx}`}
+                                style={{
+                                  ...masterCellStyle(row.row, templateCanvasModel.streamColumns[idx]?.column_index || idx + 4),
+                                  width: masterColumnWidth(templateCanvasModel.streamColumns[idx]?.column_letter),
+                                  minWidth: masterColumnWidth(templateCanvasModel.streamColumns[idx]?.column_letter),
+                                  padding: '6px 5px',
+                                }}
+                              >
+                                {value === '' ? '' : String(value)}
+                              </td>
                             ))}
                           </tr>
                         ))}
@@ -1475,10 +1563,93 @@ const HMBExtractorPage = () => {
                     </table>
                   </div>
                   <div style={{ padding: '7px 10px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
-                    Showing case-file columns next to Unit with mapped values by section/property.
+                    Stream IDs follow the uploaded Master workbook columns; phase sections retain their workbook row groups.
                   </div>
                 </div>
               )}
+
+              <div style={{ marginTop: 14, border: '1px solid #b9d7d0', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ padding: '12px 14px', background: '#edf7f4', borderBottom: '1px solid #b9d7d0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#123b35' }}>Final Multi-Case Output</div>
+                      <div style={{ marginTop: 3, fontSize: 11, color: '#496b66' }}>
+                        Compare one Master stream across the fixed case sequence and any additional imported cases.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select
+                        aria-label="Comparison stream"
+                        value={comparisonStreamId}
+                        onChange={(event) => setComparisonStreamId(event.target.value)}
+                        style={{ height: 34, minWidth: 190, border: '1px solid #94b8b0', borderRadius: 6, padding: '0 9px', background: '#fff', fontSize: 12 }}
+                      >
+                        {(templateAnalysis?.stream_columns || []).map((stream) => (
+                          <option key={stream.stream_id} value={stream.stream_id}>
+                            {stream.stream_id} {stream.description ? `- ${stream.description}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={loadStreamComparison}
+                        disabled={comparisonBusy || !comparisonStreamId}
+                        title="Refresh comparison"
+                        style={{ height: 34, width: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #94b8b0', borderRadius: 6, background: '#fff', color: '#123b35', cursor: 'pointer' }}
+                      >
+                        <RefreshCw width={15} />
+                      </button>
+                      <button
+                        onClick={exportStreamComparison}
+                        disabled={comparisonBusy || !comparisonData?.rows?.length}
+                        style={{ height: 34, display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #176b5b', borderRadius: 6, padding: '0 11px', background: '#176b5b', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        <Files width={14} /> Export Final Excel
+                      </button>
+                    </div>
+                  </div>
+                  {comparisonData?.stream?.description && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#315b54' }}>
+                      Stream {comparisonData.stream.stream_id}: {comparisonData.stream.description}
+                    </div>
+                  )}
+                </div>
+
+                {comparisonError && (
+                  <div style={{ padding: '9px 12px', background: '#fff1f2', color: '#9f1239', fontSize: 11 }}>{comparisonError}</div>
+                )}
+                {comparisonBusy && (
+                  <div style={{ padding: 12, color: '#496b66', fontSize: 12 }}>Loading multi-case values...</div>
+                )}
+                {!comparisonBusy && comparisonData?.rows?.length > 0 && (
+                  <div style={{ maxHeight: 520, overflow: 'auto', background: '#fff' }}>
+                    <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: '100%', tableLayout: 'fixed', fontSize: 11 }}>
+                      <thead>
+                        <tr>
+                          {['Phase', 'Property', 'Unit', ...(comparisonData.case_names || [])].map((heading, index) => (
+                            <th key={heading} style={{ position: 'sticky', top: 0, zIndex: index < 3 ? 3 : 2, minWidth: index === 1 ? 190 : index < 3 ? 95 : 118, padding: '8px 7px', borderRight: '1px solid #bfd4cf', borderBottom: '1px solid #94b8b0', background: index < 3 ? '#dceee9' : '#edf7f4', color: '#123b35', textAlign: index === 1 ? 'left' : 'center', fontWeight: 800 }}>
+                              {heading}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {comparisonData.rows.map((row) => (
+                          <tr key={`${row.section_key}-${row.row_index}`}>
+                            <td style={{ padding: '6px 7px', borderRight: '1px solid #d9e5e2', borderBottom: '1px solid #e5ecea', background: '#f4faf8', fontWeight: 700, color: '#315b54' }}>{row.section}</td>
+                            <td style={{ padding: '6px 7px', borderRight: '1px solid #d9e5e2', borderBottom: '1px solid #e5ecea', color: '#172b27' }}>{row.property}</td>
+                            <td style={{ padding: '6px 7px', borderRight: '1px solid #d9e5e2', borderBottom: '1px solid #e5ecea', textAlign: 'center', color: '#496b66' }}>{row.unit || '-'}</td>
+                            {(comparisonData.case_names || []).map((caseName) => (
+                              <td key={caseName} style={{ padding: '6px 7px', borderRight: '1px solid #e5ecea', borderBottom: '1px solid #e5ecea', textAlign: 'right', color: row.values?.[caseName] === '' ? '#a8b7b3' : '#172b27', fontVariantNumeric: 'tabular-nums' }}>
+                                {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '-' : row.values[caseName]}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ padding: 16, display: showTemplateManager ? 'block' : 'none', borderTop: '1px solid #e2e8f0', background: '#fcfdff' }}>
