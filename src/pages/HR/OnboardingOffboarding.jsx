@@ -304,6 +304,8 @@ function OnboardingListTab({ onOpenEmployee }) {
   const [stats, setStats] = useState({ total: 0, urgent: 0, overdue: 0, completed: 0 })
   const [saving, setSaving] = useState(false)
   const [deletingRecordId, setDeletingRecordId] = useState(null)
+  const deleteInFlight = useRef(false)
+  const deletedRecordIds = useRef(new Set())
   const [alert, setAlert] = useState(null)
   const [viewMode, setViewMode] = useState('compact') // 'cards' or 'compact'
   const [editingRow, setEditingRow] = useState(null) // userId of row being edited
@@ -321,12 +323,12 @@ function OnboardingListTab({ onOpenEmployee }) {
     if (filters.status) params.append('onboarding_status', filters.status)
     if (filters.branch) params.append('onboarding_branch', filters.branch)
 
-    Promise.all([
+    return Promise.all([
       apiClient.get(`${API_ENDPOINTS.employees}/active_employees/?${params}`),
       apiClient.get(`${API_BASE}/onboarding/statistics/`),
     ])
       .then(([employeeRes, statsRes]) => {
-        const data = employeeRes.data.results || []
+        const data = (employeeRes.data.results || []).filter(employee => !deletedRecordIds.current.has(String(employee.onboarding_record_id)))
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const joiningDays = (value) => value
@@ -434,6 +436,7 @@ function OnboardingListTab({ onOpenEmployee }) {
   }
 
   const handleDeleteOnboarding = async (employee) => {
+    if (employee.onboarding_can_delete !== true || deleteInFlight.current) return
     const recordId = employee.onboarding_record_id
     if (!recordId) {
       setAlert({ type: 'error', message: 'Onboarding record could not be identified' })
@@ -441,15 +444,15 @@ function OnboardingListTab({ onOpenEmployee }) {
     }
 
     const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || employee.email
-    if (!(await radaiConfirm(`Delete onboarding for ${employeeName}? This will remove it from the active onboarding list.`))) return
-
+    deleteInFlight.current = true
     setDeletingRecordId(recordId)
     try {
-      // Preserve a cancelled audit record so sync-missing does not recreate
-      // this workflow the next time the onboarding page is opened.
-      await apiClient.patch(`${API_BASE}/onboarding/${recordId}/`, { status: 'cancelled' })
-      setAlert({ type: 'success', message: `${employeeName} removed from the onboarding list` })
-      loadEmployees()
+      if (!(await radaiConfirm(`Delete the onboarding workflow for ${employeeName}? This permanently removes its checklists and case records. The employee account will be kept.`))) return
+      await apiClient.delete(`${API_BASE}/onboarding/${recordId}/`)
+      deletedRecordIds.current.add(String(recordId))
+      setEmployees(current => current.filter(item => String(item.onboarding_record_id) !== String(recordId)))
+      setAlert({ type: 'success', message: `${employeeName} onboarding workflow deleted.` })
+      await loadEmployees()
       window.setTimeout(() => setAlert(null), 4000)
     } catch (err) {
       setAlert({
@@ -458,6 +461,7 @@ function OnboardingListTab({ onOpenEmployee }) {
       })
       window.setTimeout(() => setAlert(null), 5000)
     } finally {
+      deleteInFlight.current = false
       setDeletingRecordId(null)
     }
   }
@@ -641,6 +645,7 @@ function OnboardingListTab({ onOpenEmployee }) {
                   <HeroIcons.ArrowsPointingOutIcon className="w-4 h-4" />
                   View Full Details
                 </button>
+                {employee.onboarding_can_delete === true && <button type="button" className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 disabled:opacity-50" disabled={deletingRecordId !== null} onClick={() => handleDeleteOnboarding(employee)} aria-label={`Delete ${employee.first_name || ''} ${employee.last_name || ''} onboarding`}><HeroIcons.TrashIcon className="h-4 w-4" />Delete onboarding</button>}
               </div>
             </div>
           ))}
@@ -809,10 +814,10 @@ function OnboardingListTab({ onOpenEmployee }) {
                       >
                         <HeroIcons.UserPlusIcon className="w-5 h-5" />
                       </button>
-                      <button
+                      {employee.onboarding_can_delete === true && <button
                         type="button"
                         onClick={() => handleDeleteOnboarding(employee)}
-                        disabled={deletingRecordId === employee.onboarding_record_id}
+                        disabled={deletingRecordId !== null}
                         className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                         title="Delete Onboarding"
                         aria-label={`Delete onboarding for ${employee.first_name || ''} ${employee.last_name || ''}`}
@@ -822,7 +827,7 @@ function OnboardingListTab({ onOpenEmployee }) {
                         ) : (
                           <HeroIcons.TrashIcon className="w-5 h-5" />
                         )}
-                      </button>
+                      </button>}
                     </>
                   )}
                 </div>
@@ -1635,6 +1640,8 @@ function OffboardingListTab({ initialFilter, focusedRecordId } = {}) {
   const [showInitiateModal, setShowInitiateModal] = useState(false)
   const [checklistRecord, setChecklistRecord] = useState(null)
   const [actionRecordId, setActionRecordId] = useState(null)
+  const deleteInFlight = useRef(false)
+  const deletedRecordIds = useRef(new Set())
   const focusedRecordOpened = useRef(false)
 
   useEffect(() => {
@@ -1678,11 +1685,11 @@ function OffboardingListTab({ initialFilter, focusedRecordId } = {}) {
     if (filters.exit_reason) params.append('exit_reason', filters.exit_reason)
     if (filters.search) params.append('search', filters.search)
 
-    apiClient
+    return apiClient
       .get(`${API_BASE}/offboarding/?${params}`)
       .then((res) => {
         // Handle both paginated response (res.data.results) and direct array (res.data)
-        const data = Array.isArray(res.data) ? res.data : (res.data.results || [])
+        const data = (Array.isArray(res.data) ? res.data : (res.data.results || [])).filter(record => !deletedRecordIds.current.has(String(record.id)))
         setRecords(data)
         
         // Calculate stats from records
@@ -1752,16 +1759,21 @@ function OffboardingListTab({ initialFilter, focusedRecordId } = {}) {
   }
 
   const handleDeleteOffboarding = async (record) => {
-    if (!(await radaiConfirm(`Permanently delete the offboarding process for ${record.employee_name}? This cannot be undone.`))) return
+    if (record.can_delete !== true || deleteInFlight.current || actionRecordId !== null) return
+    deleteInFlight.current = true
     setActionRecordId(record.id)
     try {
+      if (!(await radaiConfirm(`Delete the offboarding workflow for ${record.employee_name}? This permanently removes its checklists and case records. The employee account will be kept.`))) return
       await apiClient.delete(`${API_BASE}/offboarding/${record.id}/`)
+      deletedRecordIds.current.add(String(record.id))
+      setRecords(current => current.filter(item => String(item.id) !== String(record.id)))
       if (checklistRecord?.id === record.id) setChecklistRecord(null)
       setAlert({ type: 'success', message: 'Offboarding process deleted successfully.' })
-      loadRecords()
+      await loadRecords()
     } catch (err) {
       setAlert({ type: 'error', message: err.response?.data?.detail || 'Unable to delete this offboarding process.' })
     } finally {
+      deleteInFlight.current = false
       setActionRecordId(null)
       setTimeout(() => setAlert(null), 5000)
     }
@@ -2213,13 +2225,14 @@ function OffboardingListTab({ initialFilter, focusedRecordId } = {}) {
                         <HeroIcons.XCircleIcon className="h-4 w-4" />Reject
                       </button>
                     )}
-                    {record.can_manage_actions && (
+                    {record.can_delete === true && (
                       <button
                         type="button"
                         onClick={() => handleDeleteOffboarding(record)}
-                        disabled={actionRecordId === record.id}
+                        disabled={actionRecordId !== null}
                         className="flex items-center justify-center rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100 disabled:opacity-50"
                         title="Delete offboarding process"
+                        aria-label={`Delete ${record.employee_name} offboarding`}
                       >
                         <HeroIcons.TrashIcon className="h-4 w-4" />
                       </button>
@@ -2354,13 +2367,14 @@ function OffboardingListTab({ initialFilter, focusedRecordId } = {}) {
                                 <HeroIcons.XCircleIcon className="h-5 w-5" />
                               </button>
                             )}
-                            {record.can_manage_actions && (
+                            {record.can_delete === true && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteOffboarding(record)}
-                                disabled={actionRecordId === record.id}
+                                disabled={actionRecordId !== null}
                                 className="flex h-8 w-8 items-center justify-center rounded-lg text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
                                 title="Delete offboarding process"
+                                aria-label={`Delete ${record.employee_name} offboarding`}
                               >
                                 <HeroIcons.TrashIcon className="h-5 w-5" />
                               </button>
