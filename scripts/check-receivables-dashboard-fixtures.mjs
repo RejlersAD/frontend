@@ -22,6 +22,23 @@ const statusLabels = { pending: 'Pending', partial: 'Partially Paid', paid: 'Pai
 const daysPastDue = (date, asOf) => date ? Math.max(0, Math.floor((Date.parse(asOf) - Date.parse(date)) / 86400000)) : null;
 const bucketFor = (date, asOf) => { const days = daysPastDue(date, asOf); return days === null ? 'unknown_due_date' : days === 0 ? 'current' : days <= 30 ? 'days_1_30' : days <= 60 ? 'days_31_60' : days <= 90 ? 'days_61_90' : 'over90'; };
 
+// Workbook aggregates deliberately differ from the scoped synthetic invoice API.
+// This catches accidental reuse of live currency/customer filters for the full file.
+export function workbookSummaryFixture(status = 'available') {
+  if (status !== 'available') return { schema_version: '1.0', status, reason: status === 'restricted' ? 'Access to the full invoice workbook is required.' : 'The invoice workbook summary is unavailable.', source: null, invoice_count: null, totals: null, coverage: {}, payment_status: [], other_statuses: [], project_excluded_rows: null, currency_basis: 'mixed_original' };
+  return {
+    schema_version: '1.0', status, source: { file_name: 'Synthetic invoice workbook.xlsx', sheet: 'External Invoice ', first_row: 6, last_row: 4409, snapshot_at: RECEIVABLES_CHECK_TIME, sha256: 'a'.repeat(64), scope: 'full_workbook' },
+    invoice_count: 4404, totals: { invoice_amount: '315481678.41', invoice_amount_aed: '466151390.16', actual_payment_received: '285759742.00', project_count: 496 },
+    coverage: {
+      invoice_amount: { numeric_count: 4404, blank_count: 0, text_count: 0, error_count: 0 },
+      invoice_amount_aed: { numeric_count: 4402, blank_count: 0, text_count: 0, error_count: 2 },
+      actual_payment_received: { numeric_count: 4320, blank_count: 84, text_count: 0, error_count: 0 },
+    },
+    payment_status: [{ id: 'paid', label: 'Paid', count: 3895 }, { id: 'cancelled', label: 'Cancelled', count: 368 }, { id: 'pending', label: 'Pending', count: 58 }, { id: 'new', label: 'New', count: 34 }, { id: 'other', label: 'Other statuses', count: 49 }],
+    other_statuses: [{ label: 'Partially paid', count: 30 }, { label: 'Overdue', count: 19 }], project_excluded_rows: 37, currency_basis: 'mixed_original',
+  };
+}
+
 function sourceInvoice(row) {
   const status = row.payment_status || (row.paid ? 'paid' : 'pending');
   const invoiceAmount = Object.hasOwn(row, 'invoice_amount') ? row.invoice_amount : row.amount;
@@ -84,6 +101,7 @@ export function receivablesFixture(name = 'full', params = {}) {
   const payableRows = [15000, 18000, 12000, 6000, 4500, 0].flatMap((amount, index) => amount && !company && currency === 'AED' ? [{ amount, bucket: bucketLabels[index][0], due_date: dates[index] }] : []);
   const data = {
     schema_version: '1.0', generated_at: RECEIVABLES_CHECK_TIME, source_updated_at: RECEIVABLES_CHECK_TIME, as_of_date: asOf, currency, currency_conversion_applied: false,
+    workbook_summary: workbookSummaryFixture(name === 'restricted' || name === 'workbook-restricted' ? 'restricted' : name === 'workbook-unavailable' ? 'unavailable' : 'available'),
     filters: { companies: name === 'formula' ? formulaInvoiceSources().filter(row => !excluded.includes(row.payment_status)).map(row => row.company) : customerRows.map(row => row[0]), currencies: ['AED', 'EUR', 'USD'], company, months: Number(params.months || 12) },
     sources: { receivables: { status: missing ? 'incomplete' : 'available', reason: missing ? `${missing} invoice amount is missing; recorded subtotals exclude it.` : null, route: '/finance/outgoing-invoices', invoice_count: records.length, open_count: rows.length, missing_balance_count: missing, unknown_due_date_count: rows.filter(row => !row.due_date).length, source_updated_at: RECEIVABLES_CHECK_TIME }, payables: { status: 'available', reason: null, route: '/finance/incoming-invoices', invoice_count: payableRows.length, open_count: payableRows.length, missing_balance_count: 0, unknown_due_date_count: 0, source_updated_at: RECEIVABLES_CHECK_TIME } },
     kpis: { unpaid: metric(rows), overdue: metric(overdue), over30: metric(overdue.filter(row => row.bucket !== 'days_1_30')), over90: metric(rows.filter(row => row.bucket === 'over90')) },

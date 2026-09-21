@@ -96,7 +96,7 @@
 .ar-alert-clear { border-color: #a9d7c9; background: #f5fffb; }
 .ar-alert-clear .ar-alert-symbol { color: #138760; }
 
-.ar-analysis-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: 210px 156px minmax(184px, auto) 102px; gap: 8px 9px; }
+.ar-analysis-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: 210px 210px minmax(184px, auto) 102px; gap: 8px 9px; }
 .ar-panel { min-width: 0; border: 1px solid var(--ar-border); border-radius: 6px; background: linear-gradient(120deg, #fff, #ffffffed); overflow: hidden; }
 .ar-panel-heading { display: flex; align-items: center; gap: 14px; min-height: 27px; padding: 4px 11px 1px; }
 .ar-panel-heading h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; line-height: 1.3; color: var(--ar-ink); font-weight: 700; white-space: nowrap; }
@@ -109,7 +109,7 @@
 .ar-history-panel .ar-panel-heading { min-height: 26px; padding-top: 4px; }
 .ar-history-panel .ar-panel-heading > .ar-text-button { margin-left: auto; }
 .ar-customer-panel .ar-chart, .ar-exposure-panel .ar-chart { --ar-chart-height: 181px; }
-.ar-ageing-panel .ar-chart, .ar-trend-panel .ar-chart { --ar-chart-height: 127px; }
+.ar-trend-panel .ar-chart { --ar-chart-height: 181px; }
 .ar-history-panel .ar-chart { --ar-chart-height: 74px; }
 .ar-loading-chart { height: calc(100% - 27px); min-height: 68px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--ar-muted); font-size: 11px; }
 .ar-loading-chart > span { width: 12px; height: 12px; border: 2px solid #c1dff1; border-top-color: #0074d5; border-radius: 50%; animation: ar-rotate .9s linear infinite; }
@@ -208,9 +208,9 @@
   .ar-kpi { height: 88px; }
   .ar-kpi > div > span { max-width: none; }
   .ar-alert-owner, .ar-alert-due { display: none; }
-  .ar-analysis-grid { grid-template-rows: 218px 164px minmax(190px, auto) 112px; }
+  .ar-analysis-grid { grid-template-rows: 218px 210px minmax(190px, auto) 112px; }
   .ar-customer-panel .ar-chart, .ar-exposure-panel .ar-chart { --ar-chart-height: 188px; }
-  .ar-ageing-panel .ar-chart, .ar-trend-panel .ar-chart { --ar-chart-height: 133px; }
+  .ar-trend-panel .ar-chart { --ar-chart-height: 181px; }
   .ar-history-panel .ar-chart { --ar-chart-height: 84px; }
   .ar-table { min-width: 540px; }
   .ar-panel-heading h2 { font-size: 13px; }

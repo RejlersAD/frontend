@@ -135,6 +135,32 @@ async function capture(page, name) {
 }
 const root = page => page.locator('.finance-command-center');
 const kpi = (page, id) => page.getByTestId(`finance-kpi-${id}`).locator('strong');
+const workbook = page => page.locator('.ar-workbook-summary');
+const workbookAmount = (page, id) => page.getByTestId(`workbook-total-${id}`).locator('strong');
+async function workbookValues(page, available = true) {
+  const text = await workbook(page).innerText();
+  const panel = page.locator('.ar-payment-status-panel');
+  assert.equal(await page.getByRole('heading', { name: 'Ageing by due period', exact: true }).count(), 0, 'Payment status replaces the former ageing chart');
+  if (!available) {
+    assert.doesNotMatch(text + await panel.innerText(), /315,481,678|466,151,390|285,759,742|3,895|4,404/);
+    for (const id of ['invoice_amount', 'invoice_amount_aed', 'actual_payment_received', 'project_count']) assert.equal(await workbookAmount(page, id).innerText(), '\u2014');
+    return;
+  }
+  const summary = receivablesFixture().data.workbook_summary;
+  for (const [id, expected] of Object.entries(summary.totals)) {
+    assert.equal(Number((await workbookAmount(page, id).innerText()).replace(/[^\d.-]/g, '')), Number(expected), `${id} uses the independent full-workbook aggregate`);
+  }
+  assert.doesNotMatch(await workbookAmount(page, 'invoice_amount').innerText(), /AED|USD/);
+  assert.doesNotMatch(await workbookAmount(page, 'actual_payment_received').innerText(), /AED|USD/);
+  assert.match(await workbookAmount(page, 'invoice_amount_aed').innerText(), /AED/);
+  assert.match(text, /full workbook/i); assert.match(text, /unaffected by dashboard filters/i);
+  assert.match(text, /mixed|original currencies/i);
+  for (const row of summary.payment_status) {
+    assert.equal((await panel.locator(`[data-status="${row.id}"]`).innerText()).replace(/\s+/g, ' ').trim(), `${row.label} ${row.count.toLocaleString('en-US')}`);
+  }
+  assert.match(await panel.locator('tfoot').innerText(), /Total\s+4,404/);
+  assert.match(await panel.innerText(), /full workbook/i);
+}
 async function loaded(page) { await root(page).waitFor(); await page.waitForFunction(() => document.querySelector('.finance-command-center')?.getAttribute('aria-busy') === 'false'); }
 async function open(options) { const result = await newPage(options); if (!options?.loading) await loaded(result.page); return result; }
 
@@ -147,6 +173,8 @@ async function geometry(page, width, dark) {
       contentX: document.getElementById('application-content').getBoundingClientRect().x, sidebarWidth: document.getElementById('application-sidebar').getBoundingClientRect().width,
       header: header ? box(header) : null, mainPaddingTop: getComputedStyle(main).paddingTop, footerCount: document.querySelectorAll('.app-footer').length,
       kpis: [...element.querySelectorAll('[data-testid^="finance-kpi-"]')].map(box),
+      workbookCards: [...element.querySelectorAll('[data-testid^="workbook-total-"]')].map(node => ({ ...box(node), fits: node.scrollWidth <= node.clientWidth + 1 })),
+      paymentStatus: (() => { const panel = element.querySelector('.ar-payment-status-panel'), table = panel.querySelector('.ar-payment-status-table'); return { panel: box(panel), table: box(table), minWidth: getComputedStyle(table).minWidth, rows: [...table.rows].map(row => box(row)), fits: table.scrollWidth <= panel.clientWidth + 1 && table.getBoundingClientRect().bottom <= panel.getBoundingClientRect().bottom + 1 }; })(),
       panels: [...element.querySelectorAll('.ar-analysis-grid > .ar-panel')].map(node => ({ name: node.className, ...box(node) })),
       tables: [...element.querySelectorAll('.ar-table')].map(table => ({ className: table.className, ...box(table), rows: [...table.querySelectorAll('tr')].map(row => ({ ...box(row), cells: [...row.children].map(cell => { const style = getComputedStyle(cell); return { text: cell.textContent.trim(), height: cell.getBoundingClientRect().height, fontSize: style.fontSize, lineHeight: style.lineHeight, padding: style.padding, border: style.borderWidth }; }) })) })),
       svgs: [...element.querySelectorAll('.ar-panel svg[role="img"]')].map(svg => ({ chart: svg.closest('.ar-chart')?.className, ...box(svg) })),
@@ -161,13 +189,20 @@ async function geometry(page, width, dark) {
   assert.equal(result.footerCount, 0, 'Finance overview uses the full height without the shared footer');
   assert.equal(result.mainPaddingTop, '0px', 'Finance has no inherited gap below the compact top bar');
   assert.equal(result.kpis.length, 4);
+  assert.equal(result.workbookCards.length, 4);
+  assert.ok(result.workbookCards.every(card => card.fits && card.width > 0 && card.x >= result.contentX - 1 && card.right <= width + 1), 'Four workbook cards fit without clipped amounts');
+  assert.equal(result.paymentStatus.minWidth, '0px', 'Status table does not inherit the wide invoice-table minimum');
+  assert.equal(result.paymentStatus.rows.length, 7, 'Status heading, all five states and total remain in the panel');
+  assert.equal(result.paymentStatus.fits, true, 'Payment status rows fit in the panel at each viewport');
   assert.equal(result.panels.length, 7, 'All seven dashboard panels render');
-  assert.equal(result.svgs.length, 5, 'All five financial charts use accessible SVG');
+  assert.equal(result.svgs.length, 4, 'Four financial charts remain after payment status replaces ageing');
   assert.ok(result.svgs.every(svg => svg.width >= (svg.chart.includes('ar-chart-exposure') ? 150 : 200) && svg.height >= 50), 'Cartesian plots and the responsive donut have usable dimensions');
   assert.deepEqual(result.chartTextOverflow, [], 'Chart labels fit within each SVG without clipping');
   assert.ok(result.panels.every(panel => panel.width > 0 && panel.height > 0 && panel.x >= result.contentX - 1 && panel.right <= width + 1), 'Panels fit within the content column');
   if (width >= 1440) {
     assert.equal(new Set(result.kpis.map(card => Math.round(card.y))).size, 1, 'Four outcomes remain on one desktop row');
+    assert.equal(new Set(result.workbookCards.map(card => Math.round(card.y))).size, 1, 'Four workbook totals remain on one desktop row');
+    assert.ok(result.workbookCards.every(card => card.bottom <= result.kpis[0].y), 'Workbook totals appear before scoped receivables outcomes');
     assert.ok(result.header && result.header.height >= 32 && result.header.height <= 45, 'Compact finance top bar remains close to the 37px reference');
     for (const pair of [['ar-customer-panel', 'ar-exposure-panel'], ['ar-ageing-panel', 'ar-trend-panel'], ['ar-summary-panel', 'ar-invoices-panel']]) {
       const panels = pair.map(name => result.panels.find(panel => panel.name.includes(name)));
@@ -178,7 +213,7 @@ async function geometry(page, width, dark) {
     const leftPanel = result.panels.find(panel => panel.name.includes('ar-customer-panel'));
     const rightPanel = result.panels.find(panel => panel.name.includes('ar-exposure-panel'));
     assert.ok(Math.abs(history.x - leftPanel.x) < 1 && Math.abs(history.right - rightPanel.right) < 1, 'Payment history spans both desktop columns');
-    if (width === 1672) assert.ok(history.bottom <= 941, 'All seven dashboard panels, including payment history, fit the 1672×941 reference viewport');
+    assert.ok(history.bottom > history.y, 'Payment history remains reachable below the expanded summary');
   }
   for (const panel of await page.locator('.ar-panel').all()) {
     await panel.scrollIntoViewIfNeeded();
@@ -207,7 +242,7 @@ async function visualChecks() {
       assert.equal(await state.page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open sidebar');
     }
     await state.close();
-    record(`${width}px light layout: four KPI cards, seven panels, unchanged sidebar geometry and accessible controls`);
+    record(`${width}px light layout: four workbook totals, four receivables KPIs, seven panels and unchanged sidebar geometry`);
   }
   const state = await open({ dark: true }); await registerReady(state.page); await capture(state.page, 'receivables-dark'); await geometry(state.page, 1672, true); await axe(state.page, 'dark-1672'); await registerSection(state.page).screenshot({ path: path.join(artifacts, 'customer-invoices-dark.png'), animations: 'disabled' }); await state.close();
   record('Dark theme remains readable and accessible');
@@ -228,6 +263,8 @@ async function changeFilter(page, control, label, value, input = false) {
 
 async function fixtureConsistency() {
   const data = receivablesFixture().data;
+  assert.equal(data.workbook_summary.payment_status.reduce((sum, row) => sum + row.count, 0), data.workbook_summary.invoice_count);
+  assert.deepEqual(receivablesFixture('full', { currency: 'USD', company: 'Stripe Inc.', months: 6 }).data.workbook_summary, data.workbook_summary, 'Full workbook aggregates are independent of live receivables filters');
   assert.deepEqual(Object.values(data.kpis).map(item => Number(item.amount)), [380828, 313499, 286591, 148983]);
   assert.equal(data.customers.reduce((sum, row) => sum + Number(row.amount), 0), Number(data.kpis.unpaid.amount));
   assert.equal(data.ageing.reduce((sum, row) => sum + Number(row.receivables.amount), 0), Number(data.kpis.unpaid.amount));
@@ -261,6 +298,11 @@ async function workflowChecks() {
   await page.getByRole('heading', { name: 'Accounts Receivable', exact: true }).waitFor();
   for (const [id, expected] of [['unpaid', 380828], ['overdue', 313499], ['over30', 286591], ['over90', 148983]]) assert.equal(await kpiAmount(page, id), expected, `${id} uses the server aggregate`);
   assert.equal(await page.getByTestId('finance-kpi-cash').count(), 0);
+  await workbookValues(page);
+  await workbook(page).getByText('Workbook source', { exact: true }).click();
+  assert.match(await workbook(page).innerText(), /Synthetic invoice workbook\.xlsx/);
+  assert.match(await workbook(page).innerText(), /2.*error|error.*2/i);
+  await workbook(page).getByText('Workbook source', { exact: true }).click();
   const text = await root(page).innerText();
   for (const customer of receivablesFixture().data.customers) {
     assert.ok(text.includes(customer.company));
@@ -277,12 +319,14 @@ async function workflowChecks() {
   await page.keyboard.press('Escape'); assert.equal(await page.getByRole('tooltip').count(), 0, 'Chart tooltips support keyboard dismissal');
   let params = await changeFilter(page, control, 'Reporting currency', 'USD');
   assert.equal(params.get('currency'), 'USD'); assert.equal(await kpiAmount(page, 'unpaid'), 5000);
+  await workbookValues(page);
   params = await changeFilter(page, control, 'Reporting currency', 'AED'); assert.equal(params.get('currency'), 'AED');
   params = await changeFilter(page, control, 'Customer', 'Stripe Inc.'); assert.equal(params.get('company'), 'Stripe Inc.'); assert.equal(await kpiAmount(page, 'unpaid'), 127520);
   assert.equal(params.has('account'), false);
   params = await changeFilter(page, control, 'Customer', ''); assert.equal(params.get('company') || '', '');
   params = await changeFilter(page, control, 'Period', '6'); assert.equal(params.get('months'), '6');
   params = await changeFilter(page, control, 'As of', '2026-09-20', true); assert.equal(params.get('as_of'), '2026-09-20');
+  await workbookValues(page);
   record('Company-based customer labels and currency, customer, period and reporting date filters use the authoritative source');
 
   await moreAction(page, 'Source coverage'); const dialog = page.getByRole('dialog'); await dialog.waitFor();
@@ -297,6 +341,7 @@ async function workflowChecks() {
   const download = await downloadPromise; const stream = await download.createReadStream(); const parts = []; for await (const chunk of stream) parts.push(chunk); const csv = Buffer.concat(parts);
   assert.match(download.suggestedFilename(), /\.csv$/i);
   const csvText = csv.toString('utf8'); assert.match(csvText, /380828/); assert.match(csvText, /Stripe Inc\./); assert.match(csvText, /SYN-2026-/); assert.match(csvText, /AED/);
+  for (const value of ['315481678.41', '466151390.16', '285759742.00', '4404', '3895']) assert.ok(csvText.includes(value), `CSV retains the workbook source value ${value}`);
   assert.doesNotMatch(csvText, /LEGACY-|Customer not recorded/, 'Customer CSV columns use company even when source accounts are blank or conflicting');
   await writeFile(path.join(artifacts, download.suggestedFilename()), csv);
   assert.ok(control.requests.every(request => request.method === 'GET'));
@@ -317,25 +362,33 @@ async function workflowChecks() {
   assert.equal(new URL(await page.evaluate(() => window.financeRoute), origin).searchParams.get('company'), 'Stripe Inc.'); await state.close();
   record('Customer ageing drilldowns scope the outgoing register by company without legacy account filters');
 
-  for (const fixture of ['loading', 'empty', 'partial', 'restricted', 'payables-restricted', 'error', 'forbidden']) {
+  for (const fixture of ['loading', 'empty', 'partial', 'restricted', 'payables-restricted', 'workbook-restricted', 'workbook-unavailable', 'error', 'forbidden']) {
     state = await open({ fixture: fixture === 'loading' ? 'full' : fixture, loading: fixture === 'loading' }); ({ page, control } = state);
     if (fixture === 'loading') {
       await root(page).waitFor(); assert.equal(await root(page).getAttribute('aria-busy'), 'true'); assert.equal(await page.getByRole('button', { name: /^Export/ }).isDisabled(), true);
+      await workbookValues(page, false);
       await capture(page, 'state-loading'); await control.release(); await loaded(page); assert.equal(await kpiAmount(page, 'unpaid'), 380828);
     }
-    if (fixture === 'empty') { assert.equal(await kpiAmount(page, 'unpaid'), 0); assert.equal(await page.locator('.ar-invoices-panel a[href^="/finance/outgoing-invoices/"]').count(), 0); }
+    if (fixture === 'empty') { assert.equal(await kpiAmount(page, 'unpaid'), 0); assert.equal(await page.locator('.ar-invoices-panel a[href^="/finance/outgoing-invoices/"]').count(), 0); await workbookValues(page); }
     if (fixture === 'partial') { assert.equal(await kpiAmount(page, 'unpaid'), 380828); assert.match(await page.getByTestId('finance-kpi-unpaid').innerText(), /recorded|partial|missing/i); assert.match(await root(page).innerText(), /missing|partial/i); }
     if (fixture === 'restricted') {
+      await workbookValues(page, false);
       for (const id of ['unpaid', 'overdue', 'over30', 'over90']) assert.equal(await kpi(page, id).innerText(), '—');
       assert.ok(!(await root(page).innerText()).includes('Stripe Inc.')); assert.match(await root(page).innerText(), /restricted|access/i);
       assert.equal(await root(page).locator('a[href^="/finance/outgoing-invoices"]').count(), 0);
     }
     if (fixture === 'payables-restricted') {
+      await workbookValues(page);
       assert.equal(await kpiAmount(page, 'unpaid'), 380828);
       assert.equal(await page.locator('.ar-ageing-panel .ar-chart-mark[aria-label*="Bills"], .ar-trend-panel .ar-chart-mark[aria-label*="Bills"]').count(), 0, 'Restricted payable amounts never become chart marks');
       await moreAction(page, 'Source coverage'); assert.match(await page.getByRole('dialog').innerText(), /restricted|access/i); await page.keyboard.press('Escape');
     }
+    if (fixture === 'workbook-restricted' || fixture === 'workbook-unavailable') {
+      await workbookValues(page, false); assert.equal(await kpiAmount(page, 'unpaid'), 380828, 'Independent workbook failure preserves live receivables');
+      assert.match(await workbook(page).innerText(), /unavailable|access|restricted/i);
+    }
     if (fixture === 'error' || fixture === 'forbidden') {
+      await workbookValues(page, false);
       assert.equal(await kpi(page, 'unpaid').innerText(), '—'); assert.equal(await page.getByRole('button', { name: /^Export/ }).isDisabled(), true);
       await capture(page, `state-${fixture}`); control.fixture = 'full'; await page.getByRole('button', { name: /try again|retry/i }).click(); await loaded(page); assert.equal(await kpiAmount(page, 'unpaid'), 380828);
     } else if (fixture !== 'loading') await capture(page, `state-${fixture}`);
@@ -343,8 +396,17 @@ async function workflowChecks() {
   }
   record('Loading, empty, partial recorded balances, restricted sources and retry states remain accurate and accessible');
 
+  for (const summaryOverride of [{ status: 'restricted' }, { schema_version: '2.0' }]) {
+    const fixture = receivablesFixture(); Object.assign(fixture.data.workbook_summary, summaryOverride);
+    state = await open({ fixture }); ({ page } = state); await workbookValues(page, false);
+    assert.equal(await kpiAmount(page, 'unpaid'), 380828);
+    await state.close();
+  }
+  record('Workbook permission and schema guards hide aggregate values even if a response contains stale totals');
+
   state = await open(); ({ page, control } = state); control.failure = 503; await moreAction(page, 'Refresh data'); await loaded(page);
   assert.equal(await kpi(page, 'unpaid').innerText(), '—'); assert.equal(await page.locator('.ar-invoices-panel a[href^="/finance/outgoing-invoices/"]').count(), 0);
+  await workbookValues(page, false);
   assert.ok(!(await page.locator('.ar-customer-panel, .ar-summary-panel, .ar-invoices-panel').allTextContents()).join(' ').includes('Stripe Inc.'), 'Refresh failures remove stale customer values from financial panels');
   control.failure = null; await page.getByRole('button', { name: /try again|retry/i }).click(); await loaded(page); assert.equal(await kpiAmount(page, 'unpaid'), 380828); await state.close();
   record('Failed refresh clears stale financial amounts and successful retry restores current values');
