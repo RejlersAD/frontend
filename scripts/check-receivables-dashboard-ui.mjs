@@ -235,7 +235,7 @@ async function geometry(page, width, dark) {
   if (width >= 1440) {
     assert.equal(new Set(result.kpis.map(card => Math.round(card.y))).size, 1, 'Four outcomes remain on one desktop row');
     assert.equal(new Set(result.workbookCards.map(card => Math.round(card.y))).size, 1, 'Four workbook totals remain on one desktop row');
-    assert.ok(result.workbookCards.every(card => card.bottom <= result.kpis[0].y), 'Workbook totals appear before scoped receivables outcomes');
+    assert.ok(result.kpis.every(card => card.bottom <= result.workbookCards[0].y), 'Scoped receivables outcomes appear before workbook totals');
     assert.ok(result.header && result.header.height >= 32 && result.header.height <= 45, 'Compact finance top bar remains close to the 37px reference');
     for (const pair of [['ar-customer-panel', 'ar-exposure-panel'], ['ar-ageing-panel', 'ar-trend-panel'], ['ar-summary-panel', 'ar-invoices-panel']]) {
       const panels = pair.map(name => result.panels.find(panel => panel.name.includes(name)));
