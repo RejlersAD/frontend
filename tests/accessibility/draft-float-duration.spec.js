@@ -14,9 +14,9 @@ test('draft float preserves negative, zero, positive and unknown values while du
   const state = await draftFloatHarness(page)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(5)
   const before = structuredClone(state.records[17].simplePlan)
-  for (const [id, text] of [['negative', '31 d'], ['zero', '28 d'], ['positive', '4.25 d'], ['unknown', '—'], ['milestone', '0 d']]) {
+  for (const [id, text] of [['negative', '31 d'], ['zero', '28 d'], ['positive', '4.25 d'], ['unknown', 'Not Specified'], ['milestone', '0 d']]) {
     await expect(duration(page, id)).toHaveText(text)
-    await expect(duration(page, id)).toHaveAttribute('data-duration-kind', 'proposed')
+    await expect(duration(page, id)).toHaveAttribute('data-duration-kind', id === 'unknown' ? 'missing_source' : 'proposed')
   }
   await expect(duration(page, 'negative').getByRole('button')).toHaveAttribute('aria-description', 'Proposed duration; review before approval')
   await expect(grid(page).getByRole('region', { name: 'Schedule sequence legend', exact: true })).toContainText('Proposed durations')
