@@ -132,6 +132,19 @@ const financeService = {
     return response.data;
   },
 
+  /** Executive entry points retain each invoice register's source permissions. */
+  async getExecutiveReceivablesDashboard(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get('/dashboard/executive/receivables/', { params });
+    return response.data;
+  },
+
+  async getExecutiveCustomerInvoiceRegister(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get('/dashboard/executive/customer-invoices/', { params });
+    return response.data;
+  },
+
   /**
    * Get single invoice details
    */

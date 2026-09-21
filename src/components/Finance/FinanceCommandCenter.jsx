@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router-dom';
 import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightIcon, CalendarDaysIcon, ChevronDownIcon, EllipsisHorizontalIcon, InformationCircleIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline';
@@ -41,7 +41,7 @@ function InvoiceTable({ rows, total, currency, count }) {
 }
 InvoiceTable.propTypes = { rows: PropTypes.array.isRequired, total: PropTypes.object, currency: PropTypes.string, count: PropTypes.number };
 
-export default function FinanceCommandCenter() {
+export default function FinanceCommandCenter({ embedded = false, dataScope = 'finance', refreshKey = 0, printing = false, onSnapshotChange }) {
   const [data, setData] = useState(null);
   const [filters, setFilters] = useState({ currency: '', company: '', months: '12', as_of: '' });
   const [loading, setLoading] = useState(true);
@@ -51,11 +51,13 @@ export default function FinanceCommandCenter() {
   const [dismissed, setDismissed] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
   const [options, setOptions] = useState({ currencies: [], companies: [] });
+  const [registerSnapshot, setRegisterSnapshot] = useState({ data: null, loading: true, error: '' });
   const sequence = useRef(0), dialogRef = useRef(null), menuRef = useRef(null);
   useEffect(() => {
     const request = ++sequence.current;
     setLoading(true); setError(''); setData(null); setDismissed(false); setExportMessage('');
-    financeService.getReceivablesDashboard(filters).then(response => {
+    const fetchDashboard = dataScope === 'executive' ? financeService.getExecutiveReceivablesDashboard : financeService.getReceivablesDashboard;
+    fetchDashboard(filters).then(response => {
       if (request !== sequence.current) return;
       if (response?.schema_version !== '1.0' || !response.sources || !response.kpis || !Array.isArray(response.customers)) throw new Error('The receivables response is incomplete. Please refresh.');
       setData(response); setOptions({ currencies: [...new Set([...(response.filters?.currencies || []), ...(receivableReadable(response.sources.receivables) && response.currency ? [response.currency] : [])])], companies: response.filters?.companies || [] });
@@ -65,7 +67,7 @@ export default function FinanceCommandCenter() {
       setError(typeof detail?.detail === 'string' ? detail.detail : requestError?.response?.status === 403 ? 'You do not have access to this finance dashboard.' : detail && typeof detail === 'object' ? Object.values(detail).flat().join(' ') : requestError?.message || 'The receivables dashboard could not be loaded.');
     }).finally(() => { if (request === sequence.current) setLoading(false); });
     return () => { sequence.current += 1; };
-  }, [filters, refresh]);
+  }, [filters, refresh, refreshKey, dataScope]);
   useEffect(() => {
     if (!dialog) return undefined;
     const previous = document.activeElement, element = dialogRef.current;
@@ -76,6 +78,11 @@ export default function FinanceCommandCenter() {
   const currency = data?.currency || filters.currency || options.currencies[0] || '';
   const asOf = filters.as_of || data?.as_of_date || receivablesToday();
   const readable = receivableReadable(data?.sources?.receivables);
+  const registerScope = JSON.stringify([currency, filters.company, `${refreshKey}:${refresh}`, dataScope]);
+  const registerCurrent = !loading && readable && registerSnapshot.scope === registerScope;
+  useLayoutEffect(() => {
+    onSnapshotChange?.({ receivables: data, customer_invoice_register: registerCurrent ? registerSnapshot.data : null, customer_invoice_register_error: registerCurrent ? registerSnapshot.error : '', loading: loading || (readable && (!registerCurrent || registerSnapshot.loading)), error });
+  }, [data, loading, error, readable, registerCurrent, registerSnapshot, onSnapshotChange]);
   const customers = receivableCustomerRows(data), charts = receivableChartRows(data), alert = receivableAlert(data);
   const partial = readable && !!data?.kpis?.unpaid?.partial;
   const comparisonPartial = rows => (rows || []).some(row => (receivableReadable(data?.sources?.receivables) && row.receivables?.partial) || (receivableReadable(data?.sources?.payables) && row.payables?.partial));
@@ -95,8 +102,9 @@ export default function FinanceCommandCenter() {
   };
   const chartState = children => loading ? <div className="ar-loading-chart" role="status"><span />Loading recorded balances…</div> : !data ? <div className="ar-table-empty">Financial data is unavailable.</div> : children;
 
-  return <div className="finance-command-center ar-dashboard" aria-busy={loading}>
-    <header className="ar-page-header"><div className="ar-page-title"><h1>Accounts Receivable</h1><p>Monitor collections, ageing and customer exposure</p></div>
+  return <div className={`finance-command-center ar-dashboard${embedded ? ' ar-dashboard-embedded' : ''}`} aria-busy={loading}>
+    {embedded && <p className="ar-print-scope">{filters.company || 'All customers'} · {currency || 'Currency unavailable'} · Ageing as of {receivableDate(asOf)} · Monthly charts: last {filters.months} months</p>}
+    <header className="ar-page-header">{!embedded && <div className="ar-page-title"><h1>Accounts Receivable</h1><p>Monitor collections, ageing and customer exposure</p></div>}
       <div className="ar-filters" role="group" aria-label="Receivables filters">
         <label className="ar-filter ar-entity"><span>Customer</span><div><select aria-label="Customer" title="Customer from the invoice COMPANY column" value={filters.company} onChange={event => change('company', event.target.value)}><option value="">All customers</option>{options.companies.map(option => { const value = typeof option === 'string' ? option : option.value; return <option key={value} value={value}>{value}</option>; })}</select><ChevronDownIcon aria-hidden="true" /></div></label>
         <label className="ar-filter ar-currency"><span>Reporting currency <button type="button" className="ar-info" aria-label="About reporting currency" title="Amounts retain their original invoice currency. Currency conversion is not applied." onClick={() => setDialog('sources')}><InformationCircleIcon aria-hidden="true" /></button></span><div><select aria-label="Reporting currency" value={currency} disabled={!options.currencies.length} onChange={event => change('currency', event.target.value)}>{!options.currencies.length && <option value="">{loading ? 'Loading…' : 'No currency'}</option>}{options.currencies.map(code => <option key={code} value={code}>{code === 'UNSPECIFIED' ? 'Unspecified' : code}</option>)}</select><ChevronDownIcon aria-hidden="true" /></div></label>
@@ -114,14 +122,14 @@ export default function FinanceCommandCenter() {
       <Panel title="Exposure concentration" className="ar-exposure-panel" info={partial ? 'Shares use recorded balances only; missing balances may change the distribution.' : 'Share of unpaid customer balances in the selected currency.'}>{chartState(<ExposureDonut rows={charts.customers} total={receivableValue(data?.kpis?.unpaid)} currency={currency} partial={partial} />)}</Panel>
       <Panel title="Ageing by due period" className="ar-ageing-panel" info="Current recorded customer invoices and supplier bills grouped by contractual due date. Missing balances are excluded from recorded subtotals.">{chartState(<AgeingComparisonChart rows={charts.ageing} currency={currency} partial={comparisonPartial(data?.ageing)} />)}</Panel>
       <Panel title="Overdue amount over time" className="ar-trend-panel" info="Current overdue balances grouped by due month. This chart is not a historical month-end balance series." extra={<span className="ar-panel-caption">By due month</span>}>{chartState(<OverdueTrendChart rows={charts.overdue} currency={currency} partial={comparisonPartial(data?.overdue_by_month)} />)}</Panel>
-      <Panel title="AR ageing summary" className="ar-summary-panel" extra={<><span className="ar-panel-currency">{currency}</span>{customers.length > 5 && <button type="button" className="ar-text-button" onClick={() => setDialog('customers')}>Top 5 of {customers.length}<ArrowRightIcon /></button>}</>}><CustomerTable rows={customers.slice(0, 5)} totals={data?.ageing} total={data?.kpis?.unpaid} currency={currency} allCount={customers.length} collectionRoute={collectionRoute} /></Panel>
-      <Panel title="Unpaid invoices requiring action" className="ar-invoices-panel" extra={<span className="ar-panel-currency">{currency}</span>}><InvoiceTable rows={invoices.slice(0, 5)} total={data?.kpis?.unpaid} currency={currency} count={unpaidCount} /></Panel>
+      <Panel title="AR ageing summary" className="ar-summary-panel" extra={<><span className="ar-panel-currency">{currency}</span>{!printing && customers.length > 5 && <button type="button" className="ar-text-button" onClick={() => setDialog('customers')}>Top 5 of {customers.length}<ArrowRightIcon /></button>}</>}><CustomerTable rows={printing ? customers : customers.slice(0, 5)} totals={data?.ageing} total={data?.kpis?.unpaid} currency={currency} allCount={customers.length} collectionRoute={collectionRoute} /></Panel>
+      <Panel title="Unpaid invoices requiring action" className="ar-invoices-panel" extra={<span className="ar-panel-currency">{currency}</span>}><InvoiceTable rows={printing ? invoices : invoices.slice(0, 5)} total={data?.kpis?.unpaid} currency={currency} count={unpaidCount} /></Panel>
       <Panel title="Paid vs unpaid invoices" className="ar-history-panel" info="Recorded payments and current unpaid balances grouped by invoice issue month. This is not a cash receipts timeline." extra={readable && <Link className="ar-text-button" to={receivableCollectionRoute({ currency, company: filters.company }).replace('queue=overdue', 'queue=all')}>View invoice register<ArrowRightIcon /></Link>}>{chartState(<PaymentHistoryChart rows={charts.payments} currency={currency} partial={paymentsPartial} />)}</Panel>
     </div>
     {partial && <p className="ar-data-note">* Recorded subtotals exclude missing balances. <button type="button" onClick={() => setDialog('sources')}>View source coverage</button></p>}
     {unknownDueDates > 0 && <p className="ar-data-note">{unknownDueDates} open {unknownDueDates === 1 ? 'invoice has' : 'invoices have'} no due date and cannot be classified as overdue.</p>}
     {asOf !== receivablesToday() && <p className="ar-data-note">Ageing uses {receivableDate(asOf)} with current recorded balances. Historical balance snapshots are not available.</p>}
-    <CustomerInvoicesSection currency={currency} company={filters.company} refreshKey={refresh} enabled={!loading && readable} />
+    <CustomerInvoicesSection currency={currency} company={filters.company} refreshKey={`${refreshKey}:${refresh}`} enabled={!loading && readable} dataScope={dataScope} onSnapshotChange={setRegisterSnapshot} />
     {dialog && <dialog ref={dialogRef} className="ar-dialog" aria-labelledby="ar-dialog-title" onCancel={() => setDialog(null)} onKeyDown={event => {
       if (event.key !== 'Tab') return;
       const elements = [...event.currentTarget.querySelectorAll('button:not(:disabled), a[href], [tabindex="0"]')].filter(element => element.getClientRects().length), first = elements[0], last = elements.at(-1);
@@ -132,3 +140,5 @@ export default function FinanceCommandCenter() {
     </div><footer><button type="button" className="ar-button" onClick={() => setDialog(null)}>Close</button><button type="button" className="ar-button ar-primary" onClick={exportReport} disabled={!readable}><ArrowDownTrayIcon />Export</button></footer></dialog>}
   </div>;
 }
+
+FinanceCommandCenter.propTypes = { embedded: PropTypes.bool, dataScope: PropTypes.oneOf(['finance', 'executive']), refreshKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), printing: PropTypes.bool, onSnapshotChange: PropTypes.func };

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router-dom';
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
@@ -36,15 +36,15 @@ function RegisterTotal({ metric, descriptionId }) {
 }
 RegisterTotal.propTypes = { metric: PropTypes.object, descriptionId: PropTypes.string.isRequired };
 
-export default function CustomerInvoicesSection({ currency = '', company = '', refreshKey = 0, enabled = true }) {
+export default function CustomerInvoicesSection({ currency = '', company = '', refreshKey = 0, enabled = true, dataScope = 'finance', onSnapshotChange }) {
   const headingId = useId();
   const noteId = useId();
-  const scope = JSON.stringify([currency, company, refreshKey]);
+  const scope = JSON.stringify([currency, company, refreshKey, dataScope]);
   const [position, setPosition] = useState({ scope, page: 1 });
   const page = position.scope === scope ? position.page : 1;
   const [ordering, setOrdering] = useState('-invoice_date');
   const [retry, setRetry] = useState(0);
-  const requestKey = JSON.stringify([scope, page, ordering, retry]);
+  const requestKey = JSON.stringify([scope, page, ordering, retry, enabled]);
   const sequence = useRef(0);
   const [response, setResponse] = useState({ key: '', loading: true, data: null, error: '' });
 
@@ -59,7 +59,8 @@ export default function CustomerInvoicesSection({ currency = '', company = '', r
       return () => { sequence.current += 1; };
     }
     setResponse({ key: requestKey, loading: true, data: null, error: '' });
-    financeService.getCustomerInvoiceRegister({ currency, company, page, page_size: PAGE_SIZE, ordering }).then(data => {
+    const fetchRegister = dataScope === 'executive' ? financeService.getExecutiveCustomerInvoiceRegister : financeService.getCustomerInvoiceRegister;
+    fetchRegister({ currency, company, page, page_size: PAGE_SIZE, ordering }).then(data => {
       if (request !== sequence.current) return;
       if (data?.schema_version !== '1.0' || !Array.isArray(data.rows) || !data.source || !data.pagination || !data.totals) {
         throw new Error('The customer invoice register response is incomplete. Please try again.');
@@ -75,12 +76,13 @@ export default function CustomerInvoicesSection({ currency = '', company = '', r
       setResponse({ key: requestKey, loading: false, data: null, error: message });
     });
     return () => { sequence.current += 1; };
-  }, [enabled, currency, company, page, ordering, requestKey]);
+  }, [enabled, currency, company, page, ordering, requestKey, dataScope]);
 
   const current = enabled && response.key === requestKey;
   const data = current ? response.data : null;
   const loading = enabled && (!current || response.loading);
   const error = current ? response.error : '';
+  useLayoutEffect(() => { onSnapshotChange?.({ data, loading, error, scope }); }, [data, loading, error, scope, onSnapshotChange]);
   const readable = enabled && receivableReadable(data?.source);
   const rows = readable ? data.rows : [];
   const count = readable ? financeCount(data.pagination.count) : null;
@@ -138,4 +140,4 @@ export default function CustomerInvoicesSection({ currency = '', company = '', r
     </div>
   </section>;
 }
-CustomerInvoicesSection.propTypes = { currency: PropTypes.string, company: PropTypes.string, refreshKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), enabled: PropTypes.bool };
+CustomerInvoicesSection.propTypes = { currency: PropTypes.string, company: PropTypes.string, refreshKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), enabled: PropTypes.bool, dataScope: PropTypes.oneOf(['finance', 'executive']), onSnapshotChange: PropTypes.func };
