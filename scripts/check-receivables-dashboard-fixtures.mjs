@@ -102,6 +102,81 @@ function sourceRecords(name, currency) {
   return name === 'empty' || currency === 'EUR' ? [] : rows.filter(row => !excluded.includes(row.payment_status));
 }
 
+// Invoice-date cohorts are separate from the existing receivables balance DTO.
+// Keep original finance fixtures intact while exercising the executive presentation.
+export function invoicePerformanceFixture(name = 'full', params = {}) {
+  const currency = params.currency || 'AED', company = params.company || '', asOf = params.as_of || '2026-09-21';
+  const [year, month] = asOf.split('-').map(Number);
+  const monthAt = offset => new Date(Date.UTC(year, month - 1 + offset, 1)).toISOString().slice(0, 7);
+  const periodMonths = Array.from({ length: 12 }, (_, index) => monthAt(index - 11));
+  const futureMonths = Array.from({ length: 12 }, (_, index) => monthAt(index + 1));
+  const unknownRate = () => ({ value: null, status: 'unavailable', unit: 'percent' });
+  const definitions = {
+    invoiced: 'Invoiced revenue is recorded Invoice Amount in its original currency, grouped by invoice issue month. This is invoice value, not recognised accounting revenue. No currency conversion is applied.',
+    received: 'Current cumulative Actual Payment Received against invoices issued in each month. Missing receipts remain unknown. This is not cash collected during that month.',
+    outstanding: 'Sum of max(Invoice Amount minus Actual Payment Received, 0) per invoice. Paid-labelled invoices are included. Missing values remain unknown.',
+    collection_rate: 'Recorded receipts divided by invoiced value for the same invoice-date cohort; both must be complete and invoiced value positive.',
+    period: 'Monthly invoice-date cohorts. YTD means 1 January through the selected cutoff. Current receipts do not reconstruct historical cash flows.',
+    estimate: 'Illustrative estimate from the average invoiced value of the three completed calendar months, repeated for the next 12 months. Not an approved Finance forecast.',
+    margin: 'Only Finance-approved recognised revenue and matching operating costs establish operating margin.',
+    plan: 'Only Finance-approved budget and forecast on the same invoice-value basis and original currency are used.',
+    scope: 'Complete authorised external invoice register, including paid invoices; cancelled and credit-note invoices are excluded.',
+  };
+  const empty = status => ({
+    schema_version: '1.0', status, reason: status === 'restricted' ? 'Read access to customer invoices is required.' : 'No dated external customer invoices are available in this currency and scope.',
+    currency, company, as_of_date: asOf, period_basis: 'calendar_year', basis: 'invoice_date', currency_conversion_applied: false,
+    source_updated_at: status === 'restricted' ? null : RECEIVABLES_CHECK_TIME,
+    source: { kind: 'customer_invoice_register', label: 'Authorised customer invoice register', route: status === 'restricted' ? null : '/finance/outgoing-invoices' },
+    kpis: { monthly_invoiced: unavailable(), ytd_invoiced: unavailable(), ytd_received: unavailable(), ytd_outstanding: unavailable(), collection_rate: unknownRate() },
+    monthly: [], forecast: { status: 'unavailable', rows: [], method: null, basis_months: [], description: definitions.estimate },
+    budget: { status: 'unavailable', rows: [], description: definitions.plan }, operating_margin: { status: 'unavailable', rows: [], description: definitions.margin },
+    coverage: {}, definitions,
+  });
+  if (name === 'restricted' || name === 'performance-restricted') return empty('restricted');
+  if (name === 'performance-unavailable') return empty('unavailable');
+  let records = sourceRecords(name, currency).filter(row => !company || row.company === company);
+  if (name === 'performance-zero') records = records.map(row => ({ ...row, invoice_amount: '0.00', actual_payment_received: '0.00' }));
+  if (name === 'performance-missing') records = records.map(row => row.invoice_date?.startsWith(monthAt(0)) ? { ...row, invoice_amount: null, actual_payment_received: null } : row);
+  const eligible = records.filter(row => row.invoice_date && row.invoice_date <= asOf);
+  if (!eligible.length) return empty('unavailable');
+  const result = empty('available');
+  const totals = rows => {
+    const invoiced = metric(rows.map(row => ({ amount: row.invoice_amount === null ? null : Number(row.invoice_amount) })));
+    const received = metric(rows.map(row => ({ amount: row.actual_payment_received === null ? null : Number(row.actual_payment_received) })));
+    const outstanding = metric(rows.map(row => ({ amount: row.invoice_amount === null || row.actual_payment_received === null ? null : Math.max(Number(row.invoice_amount) - Number(row.actual_payment_received), 0) })));
+    const rate = invoiced.amount !== null && received.amount !== null && Number(invoiced.amount) > 0 ? { value: Number((Number(received.amount) / Number(invoiced.amount) * 100).toFixed(2)), status: 'available', unit: 'percent' } : unknownRate();
+    return { invoiced, received, outstanding, collection_rate: rate };
+  };
+  result.monthly = periodMonths.map(period => ({ month: period, ...totals(eligible.filter(row => row.invoice_date.startsWith(period))), partial_period: period === monthAt(0), budget: null, forecast: null, operating_margin: null }));
+  const ytd = totals(eligible.filter(row => row.invoice_date.startsWith(String(year))));
+  result.kpis = { monthly_invoiced: result.monthly.at(-1).invoiced, ytd_invoiced: ytd.invoiced, ytd_received: ytd.received, ytd_outstanding: ytd.outstanding, collection_rate: ytd.collection_rate };
+  result.coverage = {
+    source_row_count: records.length, eligible_invoice_count: eligible.length, excluded_internal_count: 0, excluded_cancelled_count: 0, excluded_credit_note_count: 0,
+    missing_invoice_date_count: records.filter(row => !row.invoice_date).length, future_invoice_date_count: records.filter(row => row.invoice_date > asOf).length,
+    outside_window_count: eligible.filter(row => !periodMonths.includes(row.invoice_date.slice(0, 7))).length,
+    missing_invoice_amount_count: eligible.filter(row => row.invoice_amount === null).length, missing_receipt_count: eligible.filter(row => row.actual_payment_received === null).length,
+    overpaid_invoice_count: eligible.filter(row => row.invoice_amount !== null && row.actual_payment_received !== null && Number(row.actual_payment_received) > Number(row.invoice_amount)).length,
+    negative_invoice_amount_count: 0, negative_receipt_count: 0,
+    first_invoice_date: eligible.map(row => row.invoice_date).sort()[0], last_invoice_date: eligible.map(row => row.invoice_date).sort().at(-1),
+  };
+  const incomplete = ['missing_invoice_date_count', 'missing_invoice_amount_count', 'missing_receipt_count'].some(key => result.coverage[key]);
+  result.status = incomplete ? 'partial' : 'available';
+  result.reason = incomplete ? 'Missing source values remain unknown; see coverage.' : null;
+  const baseline = result.monthly.slice(-4, -1);
+  if (baseline.every(row => row.invoiced.amount !== null) && result.coverage.first_invoice_date <= `${baseline[0].month}-01`) {
+    const average = baseline.reduce((total, row) => total + Number(row.invoiced.amount), 0) / 3;
+    if (average > 0) result.forecast = { status: 'estimated', rows: futureMonths.map(period => ({ month: period, value: decimal(average) })), method: 'three_completed_calendar_month_average', basis_months: baseline.map(row => row.month), partial: false, description: definitions.estimate };
+  }
+  if (name === 'performance-approved' || name === 'performance-unapproved') {
+    const status = name === 'performance-approved' ? 'approved' : 'unavailable';
+    result.monthly = result.monthly.map((row, index) => ({ ...row, budget: decimal(100000 + index * 1000), operating_margin: 20 }));
+    result.budget = { status, rows: result.monthly.map(row => ({ month: row.month, value: row.budget })), description: definitions.plan };
+    result.operating_margin = { status, rows: result.monthly.map(row => ({ month: row.month, value: 20, recognised_revenue: '100000.00', operating_costs: '80000.00', actual_through: row.month === monthAt(0) ? asOf : new Date(Date.UTC(Number(row.month.slice(0, 4)), Number(row.month.slice(5, 7)), 0)).toISOString().slice(0, 10) })), description: definitions.margin };
+    result.forecast = { status, rows: futureMonths.map(period => ({ month: period, value: '125000.00' })), method: 'finance_approved_invoice_forecast', basis_months: [], partial: false, description: definitions.plan };
+  }
+  return result;
+}
+
 export function receivablesFixture(name = 'full', params = {}) {
   const currency = params.currency || 'AED';
   const company = params.company || '';
@@ -121,6 +196,7 @@ export function receivablesFixture(name = 'full', params = {}) {
   const data = {
     schema_version: '1.0', generated_at: RECEIVABLES_CHECK_TIME, source_updated_at: RECEIVABLES_CHECK_TIME, as_of_date: asOf, currency, currency_conversion_applied: false,
     workbook_summary: workbookSummaryFixture(name === 'restricted' || name === 'workbook-restricted' ? 'restricted' : name === 'workbook-unavailable' ? 'unavailable' : 'available'),
+    invoice_performance: invoicePerformanceFixture(name, params),
     filters: { companies: name === 'formula' ? formulaInvoiceSources().filter(row => !excluded.includes(row.payment_status)).map(row => row.company) : customerRows.map(row => row[0]), currencies: ['AED', 'EUR', 'USD'], company, months: Number(params.months || 12) },
     sources: { receivables: { status: missing ? 'incomplete' : 'available', reason: missing ? `${missing} invoice amount is missing; recorded subtotals exclude it.` : null, route: '/finance/outgoing-invoices', invoice_count: records.length, open_count: rows.length, missing_balance_count: missing, unknown_due_date_count: rows.filter(row => !row.due_date).length, source_updated_at: RECEIVABLES_CHECK_TIME }, payables: { status: 'available', reason: null, route: '/finance/incoming-invoices', invoice_count: payableRows.length, open_count: payableRows.length, missing_balance_count: 0, unknown_due_date_count: 0, source_updated_at: RECEIVABLES_CHECK_TIME } },
     kpis: { unpaid: metric(rows), overdue: metric(overdue), over30: metric(overdue.filter(row => row.bucket !== 'days_1_30')), over90: metric(rows.filter(row => row.bucket === 'over90')) },

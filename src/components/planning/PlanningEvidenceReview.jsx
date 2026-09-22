@@ -5,6 +5,8 @@ import { AlertTriangle, CheckCircle2, ExternalLink, FileText, Link2, Loader2, Re
 import { planningIntelligenceService as service } from '../../services/planningIntelligence.service'
 import { ProvenanceBadge, factProvenance } from './PlanningFieldProvenance'
 import PlanningExtractionSummary from './PlanningExtractionSummary'
+import PlanningBulkEvidenceReview from './PlanningBulkEvidenceReview'
+import useBulkEvidenceReview from '../../hooks/useBulkEvidenceReview'
 import './PlanningEvidenceReview.css'
 
 const text = value => value == null || value === '' ? 'Not Specified'
@@ -163,7 +165,7 @@ function ValueField({ schema, value, onChange, name, required = true, property }
 }
 ValueField.propTypes = { schema: PropTypes.object.isRequired, value: PropTypes.any, onChange: PropTypes.func.isRequired, name: PropTypes.string.isRequired, required: PropTypes.bool, property: PropTypes.string }
 
-export default function PlanningEvidenceReview({ projectId, readOnly = false, focusFactId, scheduleVersionId, onScheduleCreated }) {
+function EvidenceReview({ projectId, readOnly = false, focusFactId, scheduleVersionId, onScheduleCreated }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -174,6 +176,7 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
   const [reload, setReload] = useState(0)
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
+  const [group, setGroup] = useState('')
   const [selectedIssueId, setSelectedIssueId] = useState(null)
   const [selectedFactId, setSelectedFactId] = useState(null)
   const [action, setAction] = useState('')
@@ -184,18 +187,30 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
   const [createdSchedule, setCreatedSchedule] = useState(null)
   const requestNumber = useRef(0)
   const formRef = useRef(null)
+  const detailRef = useRef(null)
+  const focusPreparedReview = useRef(false)
 
   useEffect(() => {
     const controller = new AbortController()
     const request = ++requestNumber.current
     setLoading(true); setError(''); setAction('')
     if (!projectId) { setLoading(false); setData(null); return () => controller.abort() }
-    service.getEvidenceReview(projectId, { offset, limit: 100, ...(focusFactId ? { fact_id: focusFactId } : {}) }, controller.signal)
-      .then(result => { if (request === requestNumber.current) { setData(result); setStale(Boolean(result.graph_id && result.readiness?.stale)) } })
+    service.getEvidenceReview(projectId, { offset, limit: 100, ...(group ? { group } : {}), ...(focusFactId && !group ? { fact_id: focusFactId } : {}) }, controller.signal)
+      .then(result => { if (!controller.signal.aborted && request === requestNumber.current) { setData(result); setStale(Boolean(result.graph_id && result.readiness?.stale)) } })
       .catch(caught => { if (!controller.signal.aborted && request === requestNumber.current) { setError(errorMessage(caught)); setData(null) } })
       .finally(() => { if (!controller.signal.aborted && request === requestNumber.current) setLoading(false) })
     return () => controller.abort()
-  }, [projectId, offset, reload, focusFactId])
+  }, [projectId, offset, reload, focusFactId, group])
+
+  const bulk = useBulkEvidenceReview({ projectId, data,
+    onComplete: () => { setAction(''); setReload(current => current + 1) },
+    onConflict: caught => handleError(caught),
+  })
+  const activeBulkJob = data?.bulk_review?.active_job
+  const bulkRunning = bulk.running || activeBulkJob?.job_type === 'evidence_bulk'
+    && String(activeBulkJob.project) === String(projectId) && ['queued', 'running'].includes(activeBulkJob.status)
+  const reviewParams = { offset, limit: 100, ...(group ? { group } : {}), ...(focusFactId && !group ? { fact_id: focusFactId } : {}) }
+  const showGroup = key => { setGroup(key); setOffset(0); setFilter('all'); setQuery(''); setSelectedIssueId(null); setAction('') }
 
   const facts = useMemo(() => list(data?.facts), [data])
   const factMap = useMemo(() => new Map(facts.map(fact => [String(fact.id), fact])), [facts])
@@ -217,20 +232,41 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
   const property = selectedFact?.property || issue?.field
   const permissions = data?.permissions || {}
   const capabilities = data?.capabilities || {}
-  const editable = !readOnly && !loading && !busy && !stale && Number.isInteger(data?.revision)
+  const editable = !readOnly && !loading && !busy && !bulkRunning && !stale && Number.isInteger(data?.revision)
   const allowed = name => (name !== 'link' || selectedFact?.property === 'identity')
     && (!issue?.allowed_actions || issue.allowed_actions.includes(name))
     && (!selectedFact?.allowed_actions || selectedFact.allowed_actions.includes(name))
   const canReview = editable && permissions.can_review === true
-  const canContinueExtraction = !readOnly && !loading && !busy && permissions.can_review === true && Boolean(data?.extraction?.run_id && data.extraction.resume_available)
+  const canContinueExtraction = !readOnly && !loading && !busy && !bulkRunning && permissions.can_review === true && Boolean(data?.extraction?.run_id && data.extraction.resume_available)
   const canCorrect = editable && permissions.can_supply_inputs === true && capabilities.correct === true && supportedSchema(schema, property)
   const canLink = editable && permissions.can_link === true && capabilities.link === true
+  const decisionHelp = readOnly ? 'This saved schedule is read only. Open the current working plan to record decisions.'
+    : permissions.can_review !== true ? 'Your account can view this evidence but cannot record review decisions.'
+      : stale ? 'Refresh evidence before accepting a value because the source inputs have changed.'
+        : bulkRunning ? 'Bulk review is running. You can inspect evidence while review decisions are being recorded.'
+        : !unresolved(issue || {}) ? 'This issue has a recorded decision. Select another open issue to continue.'
+          : !candidates.length || candidates.every(fact => fact.value == null) ? 'No extracted value is available to accept. Use Correct / supply value to provide the missing planning input when available.'
+            : candidates.length > 1 && !selectedFact ? 'Select one of the source values below to enable Accept value.'
+              : selectedFact?.validation?.error ? `This value needs correction: ${selectedFact.validation.error}`
+                : !allowed('accept') ? 'This issue requires the action shown below before a value can be accepted.'
+                  : 'Check the selected value and its source, then select Accept value and record your reason.'
   const pagination = data?.pagination || { offset: 0, total: issues.length, limit: issues.length, has_more: false }
   const pageOffset = Number(pagination.offset) || 0
-  const total = Number(pagination.total) || 0
+  const total = Number(pagination.total_filtered ?? pagination.total) || 0
   const selectedIssueKey = issue?.id
   useEffect(() => { setSelectedFactId(null); setAction(''); setReason(''); setTarget('') }, [selectedIssueKey])
   useEffect(() => { if (action) formRef.current?.querySelector('input, select, textarea')?.focus() }, [action])
+  const focusReview = () => {
+    detailRef.current?.focus({ preventScroll: true })
+    detailRef.current?.scrollIntoView({ block: 'nearest' })
+  }
+  useEffect(() => {
+    if (focusPreparedReview.current && data?.graph_id && !loading) {
+      focusPreparedReview.current = false
+      detailRef.current?.focus({ preventScroll: true })
+      detailRef.current?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [data, loading])
 
   const openAction = next => {
     setAction(next); setReason(''); setTarget(''); setError(''); setNotice('')
@@ -248,9 +284,11 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
     else setError(errorMessage(caught))
   }
   const refresh = async () => {
+    if (bulkRunning) return
+    focusPreparedReview.current = !data?.graph_id
     setBusy(true); setError(''); setNotice(''); ++requestNumber.current
     try {
-      acceptResponse(await service.refreshEvidenceReview(projectId, { ...(Number.isInteger(data?.revision) ? { revision: data.revision } : {}) }, { offset, limit: 100, ...(focusFactId ? { fact_id: focusFactId } : {}) }))
+      acceptResponse(await service.refreshEvidenceReview(projectId, { ...(Number.isInteger(data?.revision) ? { revision: data.revision } : {}) }, reviewParams))
       setNotice('Evidence refreshed. Review the findings before calculation or approval.')
     } catch (caught) { handleError(caught) } finally { setBusy(false) }
   }
@@ -265,7 +303,7 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
         payload.target_fact_id = target.trim()
       }
       setBusy(true); setError(''); setNotice('')
-      acceptResponse(await service.decideEvidenceReview(projectId, payload, { offset, limit: 100, ...(focusFactId ? { fact_id: focusFactId } : {}) }))
+      acceptResponse(await service.decideEvidenceReview(projectId, payload, reviewParams))
       setNotice('Review decision saved. Schedule values and project dates have not been changed.')
     } catch (caught) { handleError(caught) } finally { setBusy(false) }
   }
@@ -278,7 +316,7 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
       setCreatedSchedule(result)
       setNotice(result.message || `${result.created ? 'A new schedule draft was created' : 'The schedule for these accepted inputs is available'}. Calculation and approval are separate actions.`)
       if (onScheduleCreated) onScheduleCreated(result)
-      else acceptResponse(await service.getEvidenceReview(projectId, { offset, limit: 100, ...(focusFactId ? { fact_id: focusFactId } : {}) }))
+      else acceptResponse(await service.getEvidenceReview(projectId, reviewParams))
     } catch (caught) { handleError(caught) } finally { setBusy(false) }
   }
   const continueExtraction = async () => {
@@ -286,20 +324,26 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
     setBusy(true); setError(''); setNotice('')
     try {
       await service.resumeIntelligenceRun(data.extraction.run_id)
-      acceptResponse(await service.getEvidenceReview(projectId, { offset, limit: 100, ...(focusFactId ? { fact_id: focusFactId } : {}) }))
+      acceptResponse(await service.getEvidenceReview(projectId, reviewParams))
       setNotice('Extraction pass completed. Refresh evidence to review the latest findings.')
     } catch (caught) { handleError(caught) } finally { setBusy(false) }
   }
 
   return <section className="planning-evidence-review" aria-label="Document evidence review" aria-busy={loading || busy}>
     <header className="per-heading"><div><h3>Evidence review</h3><p>Resolve missing information and conflicting source values before calculating or approving the plan.</p></div>
-      <button type="button" disabled={readOnly || busy || loading || !projectId || data?.permissions?.can_review === false} onClick={refresh}>{busy ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}Refresh evidence</button>
+      <div className="per-heading-actions">
+        {data?.graph_id && issue && permissions.can_review && !readOnly && <button type="button" className="per-primary" disabled={busy || loading} onClick={focusReview}><CheckCircle2 size={15} />Review &amp; accept</button>}
+        <button type="button" className={!data?.graph_id ? 'per-primary' : undefined} disabled={readOnly || busy || bulkRunning || loading || !projectId || data?.permissions?.can_review === false} onClick={refresh}>{busy ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}{data && !data.graph_id ? 'Prepare review' : 'Refresh evidence'}</button>
+      </div>
     </header>
     {error && <div className="per-message is-error" role="alert"><AlertTriangle size={17} /><span>{error}</span><button type="button" disabled={busy || loading} onClick={() => { setAction(''); setReload(current => current + 1) }}>Reload review</button></div>}
     {notice && <p className="per-message" role="status"><CheckCircle2 size={17} />{notice}</p>}
     {loading ? <p className="per-loading" role="status"><Loader2 size={18} className="animate-spin" />Loading evidence review…</p>
       : !projectId ? <p className="per-empty">Link a planning project to review its source evidence.</p>
         : data && <>
+          <PlanningBulkEvidenceReview summary={data.bulk_review} review={data} operation={bulk} group={group} onGroup={showGroup}
+            onReload={() => { bulk.clearError(); setAction(''); setReload(current => current + 1) }}
+            disabledReason={readOnly ? 'Open the current working plan to run bulk evidence review.' : permissions.can_review !== true ? 'Planning update permission is required for bulk acceptance.' : !data.graph_id ? 'Prepare review first to load source candidates.' : stale ? 'Refresh evidence before bulk acceptance because the source inputs changed.' : busy || loading ? 'Wait for the current review request to finish.' : !Number.isInteger(data.revision) ? 'Reload review to obtain its current revision.' : ''} />
           {readOnly && <p className="per-message"><ShieldCheck size={17} />Read only. Evidence below belongs to the current project review; it does not change this saved schedule.</p>}
           {data.graph_id && data.readiness?.stale && <p className="per-message is-warning"><AlertTriangle size={17} />Sources or planning inputs changed. Refresh evidence before making decisions.</p>}
           {list(data.warnings).map((warning, index) => <p className="per-message is-warning" key={warning.code || index}><AlertTriangle size={17} />{message(warning)}</p>)}
@@ -309,7 +353,7 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
           {permissions.can_review && <div className="per-materialize"><button type="button" className="per-primary" disabled={!canReview || data.readiness?.calculation?.ready !== true || !Number.isInteger(data.master_revision)} onClick={createSchedule}>Create schedule from accepted inputs</button><span>{!Number.isInteger(data.master_revision) ? 'Refresh evidence to load the current Master Schedule revision.' : data.readiness?.calculation?.ready === true ? 'Opens an active draft here in Master Schedule. Calculation and approval remain separate.' : 'Resolve calculation readiness issues first.'}</span></div>}
           {createdSchedule?.schedule_version_id && <p className="per-message">Master Schedule version {createdSchedule.schedule_version_id} is available for calculation and review.</p>}
           {list(data.category_summary).length > 0 && <details className="per-audit"><summary>Extracted document content</summary><ul>{data.category_summary.map(item => <li key={item.category}><strong>{item.label || label(item.category)}</strong>: {item.count}</li>)}</ul></details>}
-          {!data.graph_id && <p className="per-empty">Evidence review has not been prepared. Select Refresh evidence to build the review queue from the uploaded documents.</p>}
+          {!data.graph_id && <div className="per-prepare-notice"><FileText size={20} aria-hidden="true" /><div><strong>Prepare the review to see acceptance controls</strong><p>{readOnly ? 'Open the current working plan to prepare and review its evidence.' : permissions.can_review ? 'Select Prepare review above to load the review queue from your uploaded documents. Select a source value in the queue to review and accept it.' : 'A project member with planning update permission must prepare this review.'}</p><small>Preparing the queue does not accept evidence or change schedule dates.</small></div></div>}
           {data.graph_id && <>
             <div className="per-workspace">
               <aside className="per-queue" aria-label="Evidence review queue">
@@ -321,21 +365,13 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
                 </button>)}{!visibleIssues.length && <p className="per-empty">{issues.length ? 'No matching issues on this page.' : 'No issues returned. Check the readiness assessment above.'}</p>}</div>
                 <nav className="per-pagination" aria-label="Evidence queue pages"><span>{total ? `${pageOffset + 1}–${Math.min(pageOffset + issues.length, total)} of ${total}` : '0 issues'}</span><button type="button" disabled={busy || pageOffset <= 0} onClick={() => { setOffset(Math.max(0, pageOffset - (Number(pagination.limit) || 100))); setSelectedIssueId(null) }}>Previous</button><button type="button" disabled={busy || !pagination.has_more} onClick={() => { setOffset(pagination.next_offset ?? pageOffset + (Number(pagination.limit) || 100)); setSelectedIssueId(null) }}>Next</button></nav>
               </aside>
-              <section className="per-detail" aria-label="Selected evidence issue">
+              <section ref={detailRef} className="per-detail" tabIndex={-1} aria-label="Selected evidence issue">
                 {issue ? <>
                   <header><span className="per-eyebrow">{label(issue.kind)} · {label(issue.status || 'open')}</span><h4>{issue.title || 'Review source evidence'}</h4><p>{issue.message}</p>{issue.required_decision && <p className="per-required">{message(issue.required_decision) || label(issue.required_decision)}</p>}</header>
                   {list(issue.affected_entities).length > 0 && <p className="per-affected">Applies to: {issue.affected_entities.map(entity => typeof entity === 'object' ? entity.name || entity.id : entity).join(', ')}</p>}
-                  <div className="per-candidates">{candidates.map(fact => <article className={`per-fact ${selectedFact?.id === fact.id ? 'is-selected' : ''}`} key={fact.id} aria-label={`Evidence value ${text(fact.value)}`}>
-                    <header><span className="per-provenance">{provenance(fact.provenance_type)}</span><ProvenanceBadge provenance={factProvenance(fact)} /></header>
-                    {fact.category && <small className="per-muted">Category: {label(fact.category)}</small>}
-                    <h5>{fact.entity_name || issue.field || label(fact.property)}</h5><span className="per-property">{label(fact.property)}</span><p className="per-value">{factValue(fact)}</p>
-                    {candidates.length > 1 && <button type="button" className="per-select-fact" aria-pressed={selectedFact?.id === fact.id} disabled={busy} onClick={() => { setSelectedFactId(fact.id); setAction('') }}>Select this value</button>}
-                    {list(fact.sources).map((source, index) => <Citation key={`${source.file_id || index}-${index}`} source={source} canPreview={capabilities.source_preview === true} />)}
-                    {!list(fact.sources).length && <p className="per-muted">{fact.provenance_type === 'approved_planning_input' ? 'Entered and reviewed as planning input.' : 'Source evidence not available.'}</p>}
-                    <details className="per-technical"><summary>Fact details</summary><dl><div><dt>Fact ID</dt><dd>{fact.id}</dd></div><div><dt>Entity ID</dt><dd>{text(fact.entity_id)}</dd></div>{fact.confidence != null && <div><dt>Extraction confidence (reported)</dt><dd>{text(fact.confidence)}</dd></div>}</dl></details>
-                    {fact.validation?.error && <p className="per-muted">Validation: {fact.validation.error}</p>}
-                  </article>)}</div>
-                  {!candidates.length && <p className="per-empty">Not Specified. No candidate fact was provided for this issue.</p>}
+                  <div className="per-decision-bar">
+                    {selectedFact && <p className="per-selected-value"><strong>Selected value</strong><span title={factValue(selectedFact)}>{label(selectedFact.property)}: {factValue(selectedFact)}</span></p>}
+                    <p className="per-decision-help">{decisionHelp}</p>
                   {unresolved(issue) && !readOnly && <div className="per-actions" aria-label="Evidence decision actions">
                     {permissions.can_review && allowed('accept') && <button type="button" disabled={!canReview || !selectedFact || selectedFact.value == null || Boolean(selectedFact.validation?.error)} onClick={() => openAction('accept')}><CheckCircle2 size={15} />Accept value</button>}
                     {permissions.can_review && allowed('reject') && <button type="button" disabled={!canReview || !selectedFact} onClick={() => openAction('reject')}><X size={15} />Reject value</button>}
@@ -347,8 +383,21 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
                   {action && !stale && <form ref={formRef} className="per-decision-form" onSubmit={decide} aria-label="Record evidence decision"><h5>{({ accept: 'Accept selected value', reject: 'Reject selected value', correct: 'Correct or supply a planning value', link: 'Link selected fact' })[action]}</h5>
                     {action === 'correct' && <><p>A supplied value is recorded as planning input. The original source remains unchanged.</p><ValueField schema={schema} property={property} value={value} onChange={setValue} name={schema.title || 'Reviewed value'} /></>}
                     {action === 'link' && <><p>Select the exact identity fact ID for the same entity in another source. This records a reviewed identity link; it does not merge activities or add a dependency.</p><label>Target fact ID<input aria-label="Target fact ID" list="per-target-facts" required value={target} onChange={event => setTarget(event.target.value)} /><datalist id="per-target-facts">{facts.filter(fact => fact.property === 'identity' && fact.entity_id !== selectedFact?.entity_id).map(fact => <option key={fact.id} value={fact.id}>{fact.entity_name} · {text(fact.value)}</option>)}</datalist></label><small>Enter an exact fact ID for evidence on another page.</small></>}
-                    <label>Reason<textarea aria-label="Decision reason" required maxLength={4000} value={reason} onChange={event => setReason(event.target.value)} placeholder="Explain the evidence and your decision" /></label><div><button type="submit" className="per-primary" disabled={busy || !reason.trim()}>{busy && <Loader2 size={14} className="animate-spin" />}Save decision</button><button type="button" disabled={busy} onClick={() => setAction('')}>Cancel</button></div>
+                    <label>Reason<textarea aria-label="Decision reason" required maxLength={4000} value={reason} onChange={event => setReason(event.target.value)} placeholder="Explain the evidence and your decision" /></label><div><button type="submit" className="per-primary" disabled={!editable || !reason.trim()}>{busy && <Loader2 size={14} className="animate-spin" />}Save decision</button><button type="button" disabled={busy} onClick={() => setAction('')}>Cancel</button></div>
                   </form>}
+                  </div>
+                  <div className="per-candidates">{candidates.map(fact => <article className={`per-fact ${selectedFact?.id === fact.id ? 'is-selected' : ''}`} key={fact.id} aria-label={`Evidence value ${text(fact.value)}`}>
+                    <header><span className="per-provenance">{provenance(fact.provenance_type)}</span><ProvenanceBadge provenance={factProvenance(fact)} /></header>
+                    {fact.category && <small className="per-muted">Category: {label(fact.category)}</small>}
+                    <h5>{fact.entity_name || issue.field || label(fact.property)}</h5><span className="per-property">{label(fact.property)}</span><p className="per-value">{factValue(fact)}</p>
+                    {candidates.length > 1 && <button type="button" className="per-select-fact" aria-pressed={selectedFact?.id === fact.id} disabled={busy} onClick={() => { setSelectedFactId(fact.id); setAction('') }}>Select this value</button>}
+                    {list(fact.sources).map((source, index) => <Citation key={`${source.file_id || index}-${index}`} source={source} canPreview={capabilities.source_preview === true} />)}
+                    {!list(fact.sources).length && <p className="per-muted">{fact.provenance_type === 'approved_planning_input' ? 'Entered and reviewed as planning input.' : 'Source evidence not available.'}</p>}
+                    <details className="per-technical"><summary>Fact details</summary><dl><div><dt>Fact ID</dt><dd>{fact.id}</dd></div><div><dt>Entity ID</dt><dd>{text(fact.entity_id)}</dd></div>{fact.confidence != null && <div><dt>Extraction confidence (reported)</dt><dd>{text(fact.confidence)}</dd></div>}</dl></details>
+                    {fact.validation?.error && <p className="per-muted">Validation: {fact.validation.error}</p>}
+                  </article>)}</div>
+                  {!candidates.length && <p className="per-empty">Not Specified. No candidate fact was provided for this issue.</p>}
+
                 </> : <p className="per-empty">Select a review issue to inspect its values and source evidence.</p>}
               </section>
             </div>
@@ -359,4 +408,9 @@ export default function PlanningEvidenceReview({ projectId, readOnly = false, fo
         </>}
   </section>
 }
-PlanningEvidenceReview.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), readOnly: PropTypes.bool, focusFactId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), scheduleVersionId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), onScheduleCreated: PropTypes.func }
+EvidenceReview.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), readOnly: PropTypes.bool, focusFactId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), scheduleVersionId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), onScheduleCreated: PropTypes.func }
+
+export default function PlanningEvidenceReview(props) {
+  return <EvidenceReview key={String(props.projectId)} {...props} />
+}
+PlanningEvidenceReview.propTypes = EvidenceReview.propTypes

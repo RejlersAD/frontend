@@ -4,7 +4,7 @@ import { buildPrimaveraModel, flattenPrimaveraModel, isScheduleMilestone, schedu
 import { buildPrimaveraTimeline } from '../../utils/primaveraTimeline'
 import { buildPrimaveraDependencies, scheduleSequenceStyle } from '../../utils/primaveraDependencies'
 import { durationEvidenceLabel, durationUnit, durationUnitLabel, missingSourceDuration } from '../../utils/planningDurationEvidence'
-import { dateEvidenceLabel, missingDateLabel } from '../../utils/planningDateEvidence'
+import { dateEvidenceLabel, floatEvidenceLabel, missingDateLabel, missingFloatLabel } from '../../utils/planningDateEvidence'
 import './PrimaveraActivitiesGantt.css'
 
 const DAY = 86400000
@@ -125,15 +125,17 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
   }))
   const dependencies = showTimeline && showLogic ? buildPrimaveraDependencies(rows, taskPositions, 16, timelineWidth, { sourceOnly }) : []
   const phases = [...new Map(rows.filter(row => row.kind === 'task').map(row => {
-    const phase = scheduleSequenceStyle(row.task)
+    const phase = scheduleSequenceStyle(row.task, { unspecifiedLabel: plan.source_logic ? 'Other activities' : 'Unspecified phase' })
     return [phase.key, phase]
   })).values()]
   const originalDurations = tasks.length > 0 && tasks.every(hasOriginalDuration)
     && rows.filter(row => row.kind === 'wbs').every(row => hasOriginalDuration(row.node.summary))
   const durationHeading = originalDurations ? 'Original Duration' : 'Duration'
-  const durationHelp = originalDurations ? 'Original working-day durations preserved from the source schedule.'
+  const durationHelp = originalDurations ? 'Original durations preserved in their source units; this does not verify a working calendar.'
     : 'Working days in the current plan. WBS durations are calendar spans, not summed effort. Proposed durations remain estimates for review.'
-  const floatHelp = plan.calculation_basis === 'draft_cpm'
+  const floatHelp = plan.calculation_basis === 'source_rule_cpm'
+    ? 'Draft total float calculated using the selected planning calendar, source release dates and stage rules. The partial project network still needs dependency review.'
+    : plan.calculation_basis === 'draft_cpm'
     ? 'Draft total float in working days, calculated from the current calendar, dependencies and project target. Not verified against the original source schedule.'
     : plan.calculation_basis === 'saved_version_cpm'
       ? 'Total float in working days from the calculated saved schedule version. This does not verify the original source schedule.'
@@ -160,9 +162,9 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
             />
           </span>)}
         </div></div><div className="p6-divider-cell" />{showTimeline && <div className="p6-right-clip" role="columnheader" aria-label="Schedule timeline"><div className="p6-timescale" data-start-date={timeline.startDate} data-finish-date={timeline.finishDate} data-horizon-finish-date={timeline.horizonFinishDate} style={{ width: timelineWidth }}>
-          {years.map(item => <span key={`year-${item.offset}`} className="p6-year" style={{ left: item.offset * dayWidth, width: item.length * dayWidth }}>{item.label}</span>)}
-          {months.map(item => <span key={`month-${item.offset}`} className="p6-month" title={item.label} style={{ left: item.offset * dayWidth, width: item.length * dayWidth }}>{item.length * dayWidth < 70 ? item.shortLabel : item.label}</span>)}
-          {ticks.map(item => <span key={item.offset} className="p6-tick" style={{ left: item.offset * dayWidth, width: Math.min(tickStep, days - item.offset) * dayWidth }} title={scheduleDate(item.date)}>{item.label}</span>)}
+          {years.map(item => <span key={`year-${item.offset}`} className="p6-year" style={{ left: item.offset * dayWidth, width: item.length * dayWidth }}><span>{item.label}</span></span>)}
+          {months.map(item => <span key={`month-${item.offset}`} className="p6-month" title={item.label} style={{ left: item.offset * dayWidth, width: item.length * dayWidth }}><span>{item.length * dayWidth < 70 ? item.shortLabel : item.label}</span></span>)}
+          {ticks.map(item => <span key={item.offset} className="p6-tick" style={{ left: item.offset * dayWidth, width: Math.min(tickStep, days - item.offset) * dayWidth }} title={scheduleDate(item.date)}><span>{item.label}</span></span>)}
           {!timeline.hasDates && <span className="p6-no-dates">Dates have not been set</span>}
         </div></div>}</div>
         <div className="p6-rows" role="rowgroup">{rows.map((row, index) => {
@@ -172,9 +174,12 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
           const dateHelp = dateEvidenceLabel(item)
           const sourceDates = item.display_date_basis === 'source'
           const title = summary ? row.node.name : row.task.title
-          const code = summary ? row.node.code : row.task.activity_code
+          const printedSummary = summary && row.node.code_source === 'printed_row_reference'
+          const code = printedSummary ? row.node.is_project ? plan.project?.code || '' : '' : summary ? row.node.code : row.task.activity_code
+          const codeTitle = printedSummary ? `Source summary, printed row ${row.node.source_row_number}; no WBS code printed` : code
+          const treeLabel = printedSummary ? `${title}, source row ${row.node.source_row_number}` : [row.node?.code, title].filter(Boolean).join(' ')
           const position = barPosition(row)
-          const phase = summary ? null : scheduleSequenceStyle(row.task)
+          const phase = summary ? null : scheduleSequenceStyle(row.task, { unspecifiedLabel: plan.source_logic ? 'Other activities' : 'Unspecified phase' })
           const stageLabel = summary ? null : row.task.workflow_stage_name || row.task.metadata?.workflow_stage_name
             || (row.task.workflow_stage_code || row.task.metadata?.workflow_stage_code)?.replaceAll('_', ' ')
           const originalDuration = hasOriginalDuration(item)
@@ -195,16 +200,16 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
             onDoubleClick={() => edit()} onKeyDown={event => { if (event.key === 'F2' && !summary && !locked) { event.preventDefault(); edit() } }}>
             <div className="p6-left-clip"><div className="p6-table-row" role="presentation">
               <span role="gridcell" className="p6-row-number">{index + 1}</span>
-              <span role="gridcell" className="p6-code-cell" data-column="activity-code" style={{ paddingLeft: `${Math.min(row.depth, 8) * 6 + 3}px` }} title={code}>
+              <span role="gridcell" className="p6-code-cell" data-column="activity-code" style={{ paddingLeft: `${Math.min(row.depth, 8) * 6 + 3}px` }} title={codeTitle}>
                 <span className="p6-ancestor-rails" aria-hidden="true">{row.ancestors.slice(0, 8).map((ancestor, depth) => <i key={ancestor.id} style={{ background: PALETTE[depth % PALETTE.length] }} />)}</span>
-                {summary && level !== 'project' && <button type="button" className="p6-expand" aria-label={`${collapsed.has(row.id) ? 'Expand' : 'Collapse'} ${[row.node.code, title].filter(Boolean).join(' ')}`} aria-expanded={!collapsed.has(row.id)} onClick={() => toggle(row.id)}>{collapsed.has(row.id) ? '+' : '−'}</button>}
+                {summary && level !== 'project' && <button type="button" className="p6-expand" aria-label={`${collapsed.has(row.id) ? 'Expand' : 'Collapse'} ${treeLabel}`} aria-expanded={!collapsed.has(row.id)} onClick={() => toggle(row.id)}>{collapsed.has(row.id) ? '+' : '−'}</button>}
                 <span>{code || '—'}</span>
               </span>
               <span role="gridcell" data-column="activity-name" className="p6-name-cell" title={title}>{summary ? <><strong>{title}</strong>{deliverable && <small className="p6-stage-count">{row.node.descendantTasks.length} {row.node.descendantTasks.length === 1 ? 'task' : 'tasks'}</small>}</> : <button type="button" className={`sc-task-name p6-task-name ${stageLabel ? 'has-workflow' : ''}`} aria-label={title} onClick={select}>{stageLabel && <span className="p6-workflow-label" style={{ borderColor: phase.color }}>{stageLabel}</span>}<span className="p6-task-title">{title}</span></button>}</span>
-              <span role="gridcell" className="p6-numeric" data-column="duration" data-duration-kind={missingDuration ? 'missing_source' : originalDuration ? 'original' : proposedDuration ? 'proposed' : summary ? 'calculated' : 'planned'} title={durationTitle}>{summary ? durationDays(durationValue) : <button type="button" disabled={locked} onClick={() => edit('duration')} aria-label={`Edit duration for ${title}`} aria-description={durationTitle} title={durationTitle}>{missingDuration ? 'Not Specified' : durationDays(durationValue, durationUnit(item))}</button>}</span>
+              <span role="gridcell" className="p6-numeric" data-column="duration" data-duration-kind={missingDuration ? 'missing_source' : originalDuration ? 'original' : proposedDuration ? 'proposed' : summary ? 'calculated' : 'planned'} title={durationTitle}>{summary ? durationDays(durationValue, durationUnit(item)) : <button type="button" disabled={locked} onClick={() => edit('duration')} aria-label={`Edit duration for ${title}`} aria-description={durationTitle} title={durationTitle}>{missingDuration ? 'Not Specified' : durationDays(durationValue, durationUnit(item))}</button>}</span>
               <span role="gridcell" data-column="start" data-date-basis={item.display_date_basis} title={dateHelp}>{summary || sourceDates ? displayedDate(item, 'start', summary) : <button type="button" disabled={locked} onClick={() => edit('start')} aria-label={`Edit start for ${title}`}>{displayedDate(item, 'start', summary)}</button>}</span>
               <span role="gridcell" data-column="finish" data-date-basis={item.display_date_basis} title={dateHelp}>{displayedDate(item, 'finish', summary)}</span>
-              <span role="gridcell" className="p6-numeric" data-column="float" data-calculation-basis={plan.calculation_basis} title={item.total_float_days == null ? 'Total float has not been calculated for this row.' : floatHelp}>{item.total_float_days == null && sourceOnly ? 'Not calculated' : scheduleNumber(item.total_float_days)}</span>
+              <span role="gridcell" className="p6-numeric" data-column="float" data-float-basis={item.display_float_basis} data-calculation-basis={item.display_float_basis === 'source' ? 'source_document' : plan.calculation_basis} title={item.display_float_basis === 'calculated' ? floatHelp : floatEvidenceLabel(item)}>{item.display_total_float_days == null ? missingFloatLabel(item, { sourceOnly }) : scheduleNumber(item.display_total_float_days)}</span>
             </div></div>
             <div className="p6-divider-cell" />
             {showTimeline && <div className="p6-right-clip" role="gridcell" aria-label={`${title} timeline`}><div className="p6-timeline-row" data-timeline-row-id={row.id} style={{ width: timelineWidth, backgroundSize: `${dayWidth * tickStep}px 3px` }}>
@@ -238,7 +243,7 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
         onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); adjustSplit(event.key === 'Home' ? minSplit : event.key === 'End' ? maxSplit : tablePane + (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 60 : 20)) } }} />}
       <div className="p6-scrollbars"><div ref={leftScroll} className="p6-horizontal-scroll" role="region" aria-label="Scroll activity columns" tabIndex={0} onScroll={event => scroll('table', event)}><div style={{ width: tableContentWidth }} /></div><span />{showTimeline && <div ref={rightScroll} className="p6-horizontal-scroll" role="region" aria-label="Scroll Gantt timeline" tabIndex={0} onScroll={event => scroll('timeline', event)}><div style={{ width: timelineWidth }} /></div>}</div>
     </div>
-    {showTimeline && <div className="p6-legend" role="region" aria-label="Schedule sequence legend" tabIndex={0}>{rows.some(row => (row.kind === 'wbs' ? row.node.summary : row.task).display_date_basis === 'source') && <span title="Dates copied from uploaded source evidence; calendar and logic remain unverified."><i style={{ borderStyle: 'dotted' }} aria-hidden="true" />Source dates · not calculated</span>}{phases.map(phase => <span key={phase.key} data-phase={phase.key}><i style={{ background: phase.color }} aria-hidden="true" />{phase.label}</span>)}{tasks.some(isScheduleMilestone) && <span><i className="p6-legend-milestone" aria-hidden="true" />Milestone</span>}{rows.some(row => row.kind === 'task' && row.task.is_critical === true) && <span><i className="p6-legend-critical" aria-hidden="true" />Critical path</span>}{proposed && <span title="Dashed bars indicate proposed duration estimates."><i style={{ borderStyle: 'dashed' }} aria-hidden="true" />Proposed durations</span>}{showLogic && <span className="p6-legend-links">{dependencies.length} visible {dependencies.length === 1 ? 'dependency' : 'dependencies'}</span>}</div>}
+    {showTimeline && <div className="p6-legend" role="region" aria-label="Schedule sequence legend" tabIndex={0}>{rows.some(row => (row.kind === 'wbs' ? row.node.summary : row.task).display_date_basis === 'source') && <span title="Dates copied from uploaded source evidence; calendar and logic remain unverified."><i style={{ borderStyle: 'dotted' }} aria-hidden="true" />Source dates · not calculated</span>}{plan.source_logic && <span title="Dates and float calculated from the planning calendar, source release dates and deterministic stage rules; dependency review remains required.">{plan.calculation_available === true ? 'Calculated planning draft' : 'Planning rules: calculation pending'}</span>}{phases.map(phase => <span key={phase.key} data-phase={phase.key}><i style={{ background: phase.color }} aria-hidden="true" />{phase.label}</span>)}{tasks.some(isScheduleMilestone) && <span title="Zero-duration events retained from the schedule."><i className="p6-legend-milestone" aria-hidden="true" />Milestone</span>}{rows.some(row => row.kind === 'task' && row.task.is_critical === true) && <span><i className="p6-legend-critical" aria-hidden="true" />Critical path</span>}{proposed && <span title="Dashed bars indicate proposed duration estimates."><i style={{ borderStyle: 'dashed' }} aria-hidden="true" />Proposed durations</span>}{showLogic && <span className="p6-legend-links">{dependencies.length} visible {dependencies.length === 1 ? 'dependency' : 'dependencies'}</span>}</div>}
   </section>
 }
 

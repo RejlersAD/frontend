@@ -168,3 +168,96 @@ test('saved calculated schedules retain their calculated dates and float', async
   await expect(activity.locator('.p6-activity-bar')).not.toHaveAttribute('title', /Source dates/i)
   clean(state)
 })
+
+test('printed zero and negative float remain source evidence when duration and CPM are missing', async ({ page }) => {
+  const state = await sourceHarness(page, plan => {
+    Object.assign(plan.tasks[0], { source_total_float_days: '0', source_total_float_status: 'extracted', source_total_float_references: dateReferences,
+      total_float_days: 143, is_critical: true })
+    Object.assign(plan.tasks[1], { source_total_float_days: '-3', source_total_float_status: 'extracted', source_total_float_references: dateReferences })
+    Object.assign(plan.tasks[2], { source_total_float_days: '7', source_total_float_status: 'conflicting' })
+  })
+  const [zero, negative, conflict, missing] = state.records[17].simplePlan.tasks
+  for (const [task, value] of [[zero, '0'], [negative, '-3']]) {
+    const float = row(page, task.id).locator('[data-column="float"]')
+    await expect(float).toHaveText(value)
+    await expect(float).toHaveAttribute('data-float-basis', 'source')
+    await expect(float).toHaveAttribute('title', /as printed; not calculated by RADAI/)
+    await expect(row(page, task.id).locator('[data-column="duration"]')).toHaveText('Not Specified')
+    await expect(row(page, task.id).locator('.p6-activity-bar')).toHaveCount(0)
+  }
+  await expect(row(page, conflict.id).locator('[data-column="float"]')).toHaveText('Review source')
+  await expect(row(page, missing.id).locator('[data-column="float"]')).toHaveText('Not calculated')
+  await workspace(page).getByRole('button', { name: zero.title, exact: true }).click()
+  await expect(page.getByRole('complementary', { name: 'Activity details' })).toContainText('Source value · not calculated')
+  clean(state)
+})
+
+test('native project WBS retains independent printed project duration dates and float without rolling up missing child dates', async ({ page }) => {
+  const state = await sourceHarness(page, plan => {
+    Object.assign(plan.wbs_nodes.find(node => node.id === 1111), { code: 'PDF-12', code_source: 'printed_row_reference', source_row_number: 12 })
+    Object.assign(plan.project_summary, explicitDates('2026-01-06', '2026-09-04'), {
+      original_duration_days: 165, duration_unit: 'days', source_total_float_days: '0', source_total_float_status: 'extracted',
+      source_total_float_references: dateReferences,
+    })
+  })
+  const project = row(page, 1000)
+  await expect(project.locator('[data-column="duration"]')).toHaveText('165 d')
+  await expect(project.locator('[data-column="start"]')).toHaveText('06-Jan-26')
+  await expect(project.locator('[data-column="finish"]')).toHaveText('04-Sept-26')
+  await expect(project.locator('[data-column="float"]')).toHaveText('0')
+  await expect(project.locator('[data-column="float"]')).toHaveAttribute('data-float-basis', 'source')
+  await expect(row(page, 1111).locator('[data-column="start"]')).toHaveText('Not calculated')
+  await expect(row(page, 1111).locator('[data-column="float"]')).toHaveText('Not calculated')
+  await expect(row(page, 1111).locator('[data-column="activity-code"] > span:last-child')).toHaveText('\u2014')
+  await expect(row(page, 1111).locator('[data-column="activity-code"]')).toHaveAttribute('title', 'Source summary, printed row 12; no WBS code printed')
+  await expect(row(page, 1111).getByRole('button', { name: 'Collapse Process Engineering, source row 12' })).toHaveCount(1)
+  await expect(grid(page).locator('[data-row-kind="wbs"][data-row-id="1000"]')).toHaveCount(1)
+  clean(state)
+})
+
+test('evidence-identified source project root keeps the printed title without a duplicate enterprise wrapper', async ({ page }) => {
+  const state = await sourceHarness(page, plan => {
+    Object.assign(plan.wbs_nodes[0], { code: 'PDF-1', name: 'RUWAIS source scope (FEED)',
+      is_source_project: true, code_source: 'printed_row_reference', source_row_number: 1 })
+    Object.assign(plan.project_summary, explicitDates('2026-01-06', '2026-09-04'), {
+      original_duration_days: 165, source_total_float_days: '0', source_total_float_status: 'extracted',
+    })
+  })
+  await expect(grid(page).locator('[data-row-kind="wbs"]')).toHaveCount(13)
+  await expect(grid(page).locator('[data-row-id^="project:"]')).toHaveCount(0)
+  const project = row(page, 1000)
+  await expect(project.locator('[data-column="activity-name"]')).toHaveText('RUWAIS source scope (FEED)')
+  await expect(project.locator('[data-column="duration"]')).toHaveText('165 d')
+  await expect(project.locator('[data-column="start"]')).toHaveText('06-Jan-26')
+  await expect(project.locator('[data-column="finish"]')).toHaveText('04-Sept-26')
+  await expect(project.locator('[data-column="float"]')).toHaveText('0')
+  clean(state)
+})
+
+test('calculated float takes precedence over a different printed source float', async ({ page }) => {
+  const state = await primaveraScheduleHarness(page, { prepare(current) {
+    for (const record of Object.values(current.records)) Object.assign(record.simplePlan.tasks[0], {
+      source_total_float_days: '50', source_total_float_status: 'extracted', source_total_float_references: dateReferences,
+    })
+  } })
+  const float = row(page, state.records[17].simplePlan.tasks[0].id).locator('[data-column="float"]')
+  await expect(float).toHaveText('0')
+  await expect(float).toHaveAttribute('data-float-basis', 'calculated')
+  clean(state)
+})
+
+test('confirmed blank milestone source cells remain blank without inventing the other endpoint', async ({ page }) => {
+  const state = await sourceHarness(page, plan => {
+    Object.assign(plan.tasks[0], explicitDates('2026-01-06', null), { is_milestone: true,
+      duration_days: 0, duration_source: 'source_document', source_finish_status: 'explicit_none' })
+    Object.assign(plan.tasks[1], explicitDates(null, '2026-01-06'), { is_milestone: true,
+      duration_days: 0, duration_source: 'source_document', source_start_status: 'explicit_none' })
+  })
+  const [start, finish] = state.records[17].simplePlan.tasks
+  await expect(row(page, start.id).locator('[data-column="start"]')).toHaveText('06-Jan-26')
+  await expect(row(page, start.id).locator('[data-column="finish"]')).toHaveText('\u2014')
+  await expect(row(page, finish.id).locator('[data-column="start"]')).toHaveText('\u2014')
+  await expect(row(page, finish.id).locator('[data-column="finish"]')).toHaveText('06-Jan-26')
+  for (const task of [start, finish]) await expect(row(page, task.id).locator('.p6-milestone')).toHaveCount(1)
+  clean(state)
+})

@@ -8,7 +8,7 @@ const lateProject = {
   id: 149, code: '5901999', name: 'Replacement and Upgrade of Wellhead SCADA System at Central Control Room and Offshore Production Facilities including Telecommunications Integration',
   client_name: 'ADNOC Offshore', status: 'planning',
 }
-const picker = page => page.getByRole('combobox', { name: 'Active Project', exact: true })
+const picker = page => page.getByRole('combobox', { name: 'Active Project', exact: true, includeHidden: true })
 const options = page => page.getByRole('listbox', { name: 'Active Project results', exact: true })
 const reply = (route, body) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) })
 
@@ -29,8 +29,9 @@ async function harness(page) {
   } })
   state.pageErrors = []
   page.on('pageerror', error => state.pageErrors.push(error.message))
+  await expect(page.getByRole('heading', { name: 'Residue Yield Improvement Project', exact: true })).toBeVisible()
+  await page.locator('summary[aria-label="More project actions"]').click()
   await expect(picker(page)).toBeEnabled()
-  await expect(page.getByRole('heading', { name: 'Project Performance', exact: true })).toBeVisible()
   return state
 }
 
@@ -82,7 +83,7 @@ test('long project names wrap fully and keyboard matching selects the correct na
   expect(state.pageErrors).toEqual([])
 })
 
-test('a project beyond the first API page keeps its selected identity from Schedule into Planning', async ({ page }) => {
+test('a project beyond the first API page keeps its selected identity when opening Master Schedule', async ({ page }) => {
   const state = await harness(page)
   const projectPages = []
   const records = Object.values(state.records).map(record => record.project)
@@ -91,14 +92,16 @@ test('a project beyond the first API page keeps its selected identity from Sched
     projectPages.push(pageNumber)
     return reply(route, { count: records.length, next: pageNumber === 1 ? '/api/v1/projects/?page=2' : null, previous: pageNumber === 2 ? '/api/v1/projects/?page=1' : null, results: pageNumber === 1 ? records.slice(0, 50) : records.slice(50) })
   })
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Refresh project', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Update progress', exact: true })).toBeEnabled()
   expect(projectPages).toEqual([1, 2])
+  await page.locator('summary[aria-label="More project actions"]').click()
   const selector = picker(page)
   await selector.fill(lateProject.code)
   await options(page).getByRole('option', { name: new RegExp(lateProject.code) }).click()
   await expect(page).toHaveURL(/project=149/)
   await expect(selector).toHaveValue(`${lateProject.code} — ${lateProject.name}`)
+  await page.locator('summary[aria-label="More project actions"]').click()
   await selector.press('ArrowDown')
   const activeId = await selector.getAttribute('aria-activedescendant')
   const activeOption = page.locator(`[id="${activeId}"]`)
@@ -109,17 +112,15 @@ test('a project beyond the first API page keeps its selected identity from Sched
   await selector.press('Escape')
   const target = state.records[lateProject.id]
   await page.route('**/planning-intelligence/projects/1071/enterprise-contract/', route => reply(route, { project: target.planningProject, enterprise_project: target.project, linked: true, in_sync: true, differences: [], lifecycle: 'baselined', baseline_locked: true, baseline: target.baselines[0] }))
-  await page.getByRole('navigation', { name: 'Project work areas' }).getByRole('button', { name: 'Schedule', exact: true }).click()
+  await page.route(`**/planning-intelligence/projects/${target.planningProject.id}/simple-plan/`, route => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return reply(route, { project_id: target.planningProject.id, state: 'inputs', revision: 0, tasks: [], disciplines: [], permissions: { can_edit: false } })
+  })
+  const beforePlanner = state.requests.length
+  await page.getByRole('navigation', { name: 'Project work areas', exact: true }).getByRole('button', { name: 'Schedule', exact: true }).click()
   await expect(page).toHaveURL(/project=149/)
   await expect(page).toHaveURL(/view=plan-baseline/)
-  await expect(page.getByRole('heading', { name: 'Schedule Performance', exact: true })).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Compare', exact: true })).toHaveValue('1091')
-  const beforePlanner = state.requests.length
-  await page.getByRole('button', { name: 'Planning', exact: true }).click()
-  await expect(page).toHaveURL(/project=149/)
-  await expect(page).toHaveURL(/scheduleMode=planner/)
-  await expect(page.getByRole('heading', { name: 'Project Planning', exact: true })).toBeVisible()
-  await expect(page.getByRole('textbox', { name: 'Scope summary', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Master schedule workspace', exact: true }).getByRole('heading', { name: 'Master Schedule', exact: true })).toBeVisible()
   await expect(selector).toHaveValue(`${lateProject.code} — ${lateProject.name}`)
   await expect.poll(() => state.requests.slice(beforePlanner).some(request => request.path.endsWith('/planning-intelligence/projects/') && request.query.enterprise_project === String(lateProject.id))).toBe(true)
   expect(state.requests.filter(request => request.method !== 'GET')).toEqual([])

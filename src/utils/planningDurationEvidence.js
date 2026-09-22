@@ -29,6 +29,7 @@ export const durationEvidenceLabel = (task, row) => {
 }
 
 export const dependencyEvidenceLabel = evidence => {
+  if (evidence?.source === 'source_stage_rule' || evidence?.metadata?.source === 'source_stage_rule') return 'Deterministic stage rule · planning assumption'
   if (evidence?.source === 'workflow_template' || evidence?.evidence_type === 'workflow_template') return 'User-configured workflow'
   if (evidence?.evidence_type === 'planning_inference' || evidence?.status === 'proposed') return 'Unverified inference'
   if (['planner', 'manual', 'user'].includes(evidence?.source) || evidence?.evidence_type === 'planner_defined') return 'Planner-defined relationship'

@@ -52,6 +52,94 @@ async function harness(page, options = {}) {
 }
 const clean = state => { expect(state.pageErrors).toEqual([]); expect(state.unknown).toEqual([]); expect(state.unknownWrites).toEqual([]) }
 
+const unprepared = () => ({ ...envelope(), graph_id: null, revision: 0, issues: [], facts: [], warnings: [], pagination: { offset: 0, limit: 100, total: 0, has_more: false } })
+
+test('an unprepared review explicitly prepares candidates before showing acceptance and requires a separate reasoned decision', async ({ page }) => {
+  const state = await harness(page, {
+    prepare(current) { current.evidence = unprepared() },
+    async write({ path, reply, route, state: current }, body) {
+      if (path.endsWith('/refresh/')) current.evidence = envelope()
+      else {
+        current.evidence.revision += 1
+        current.evidence.issues.find(issue => issue.id === body.issue_id).status = 'resolved'
+        current.evidence.decisions.push({ id: 5, ...body, actor_name: 'Maya Hassan' })
+      }
+      await reply(route, current.evidence)
+      return true
+    },
+  })
+  const original = structuredClone(state.records[17].simplePlan)
+  await scheduleArea(page, 'evidence')
+  await expect(review(page)).toContainText('Prepare the review to see acceptance controls')
+  await expect(review(page)).toContainText('Preparing the queue does not accept evidence or change schedule dates.')
+  await expect(review(page).getByRole('button', { name: 'Accept value', exact: true })).toHaveCount(0)
+  expect(state.evidenceWrites).toEqual([])
+  await review(page).getByRole('button', { name: 'Prepare review', exact: true }).click()
+  await expect(review(page).getByRole('button', { name: 'Review & accept', exact: true })).toBeVisible()
+  await expect(review(page).getByRole('button', { name: 'Refresh evidence', exact: true })).toBeVisible()
+  await expect(review(page).getByRole('button', { name: 'Accept value', exact: true })).toBeDisabled()
+  expect(state.evidenceWrites).toHaveLength(1)
+  expect(state.evidenceWrites[0]).toMatchObject({ path: expect.stringMatching(/\/evidence-review\/refresh\/$/), body: { revision: 0 } })
+  expect(state.evidence.decisions).toEqual([])
+
+  await review(page).getByRole('button', { name: 'Review & accept', exact: true }).click()
+  await expect(review(page).getByRole('region', { name: 'Selected evidence issue', exact: true })).toBeFocused()
+  await review(page).getByRole('article').first().getByRole('button', { name: 'Select this value' }).click()
+  const accept = review(page).getByRole('button', { name: 'Accept value', exact: true })
+  await expect(accept).toBeEnabled()
+  expect(await accept.evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector('.per-candidates')) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true)
+  await accept.click()
+  const form = review(page).getByRole('form', { name: 'Record evidence decision', exact: true })
+  await expect(form.getByRole('button', { name: 'Save decision', exact: true })).toBeDisabled()
+  await form.getByRole('textbox', { name: 'Decision reason', exact: true }).fill('Checked the signed source before accepting the printed duration.')
+  await form.getByRole('button', { name: 'Save decision', exact: true }).click()
+  await expect(review(page)).toContainText('Review decision saved.')
+  expect(state.evidenceWrites).toHaveLength(2)
+  expect(state.evidenceWrites[1].body).toEqual({ revision: 4, action: 'accept', issue_id: 'conflict-1', fact_id: 'duration-a', reason: 'Checked the signed source before accepting the printed duration.' })
+  expect(state.records[17].simplePlan).toEqual(original)
+  expect(state.writes).toEqual([])
+  clean(state)
+})
+
+for (const guard of ['permission', 'history']) test(`an unprepared ${guard === 'history' ? 'historical schedule' : 'review without update permission'} cannot prepare or accept evidence`, async ({ page }) => {
+  const state = await harness(page, {
+    history: guard === 'history',
+    prepare(current) {
+      current.evidence = unprepared()
+      if (guard === 'permission') current.evidence.permissions = { can_review: false, can_supply_inputs: false, can_link: false }
+    },
+  })
+  if (guard === 'history') await scheduleVersion(page, '90')
+  await scheduleArea(page, 'evidence')
+  await expect(review(page).getByRole('button', { name: 'Prepare review', exact: true })).toBeDisabled()
+  await expect(review(page).getByRole('button', { name: 'Accept value', exact: true })).toHaveCount(0)
+  await expect(review(page).getByRole('button', { name: 'Review & accept', exact: true })).toHaveCount(0)
+  await expect(review(page)).toContainText(guard === 'history' ? 'Open the current working plan to prepare and review its evidence.' : 'A project member with planning update permission must prepare this review.')
+  expect(state.evidenceWrites).toEqual([])
+  expect(state.writes).toEqual([])
+  clean(state)
+})
+
+test('a prepared review with no candidate or no review permission explains why acceptance is unavailable', async ({ page }) => {
+  const state = await harness(page, { prepare(current) {
+    current.evidence.issues = [{ ...current.evidence.issues[0], candidate_fact_ids: [] }]
+    current.evidence.facts = []
+  } })
+  await scheduleArea(page, 'evidence')
+  await expect(review(page)).toContainText('No candidate fact was provided for this issue.')
+  await expect(review(page).getByRole('button', { name: 'Accept value', exact: true })).toBeDisabled()
+  state.evidence = envelope()
+  state.evidence.permissions = { can_review: false, can_supply_inputs: false, can_link: false }
+  await scheduleArea(page, 'activities')
+  await scheduleArea(page, 'evidence')
+  await expect(review(page).getByRole('button', { name: 'Accept value', exact: true })).toHaveCount(0)
+  await expect(review(page).getByRole('button', { name: 'Review & accept', exact: true })).toHaveCount(0)
+  await expect(review(page)).toContainText('Your account can view this evidence but cannot record review decisions.')
+  expect(state.evidenceWrites).toEqual([])
+  expect(state.writes).toEqual([])
+  clean(state)
+})
+
 test('Evidence tab loads only when opened, compares verbatim citations and never accepts a conflict automatically', async ({ page }) => {
   const state = await harness(page)
   expect(state.evidenceReads).toEqual([])

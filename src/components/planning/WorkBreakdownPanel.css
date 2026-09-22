@@ -113,6 +113,9 @@
 .wbd-dependencies legend { padding: 0 3px; color: #355680; font-size: 12px; }
 .wbd-dependencies label { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 4px 0; color: #0b2153; }
 .wbd-dependencies input { accent-color: #0751ff; }
+.wbd-dependencies .wbd-form-grid { margin: 3px 0 10px 24px; }
+.wbd-dependencies .wbd-form-grid label { flex-direction: column; align-items: stretch; min-width: 0; }
+.wbd-dependencies .wbd-form-grid select, .wbd-dependencies .wbd-form-grid input { width: 100%; }
 .wbd-dialog .wbd-delete { margin-right: auto; color: #a43030; border-color: #ecc2c2; }
 .wbd-template-preview { margin: 0; padding-left: 23px; line-height: 2; }
 .wbd-note { display: flex; align-items: center; gap: 7px; color: #58729b; font-size: 12px; }

@@ -46,6 +46,31 @@ function summarize(tasks, calendar) {
   }
 }
 
+function withProjectSourceSummary(summary, projectSummary) {
+  if (!projectSummary) return summary
+  const result = { ...(summary || {}) }
+  // Reusing a native project WBS must not discard independent, documented
+  // project values. Preserve its own dates, conflicts and calculated values.
+  let copiedDates = false
+  for (const endpoint of ['start', 'finish']) {
+    const status = `source_${endpoint}_status`, field = `source_${endpoint}_date`
+    if ((!result[status] || result[status] === 'not_specified') && projectSummary[status]) {
+      result[status] = projectSummary[status]
+      result[field] = projectSummary[field]
+      copiedDates = true
+    }
+  }
+  if (copiedDates) result.source_date_references = [...(result.source_date_references || []), ...(projectSummary.source_date_references || [])]
+  if ((!result.source_total_float_status || result.source_total_float_status === 'not_specified') && projectSummary.source_total_float_status) {
+    for (const field of ['source_total_float_days', 'source_total_float_status', 'source_total_float_evidence', 'source_total_float_references']) result[field] = projectSummary[field]
+  }
+  if (!finite(result.original_duration_days) && finite(projectSummary.original_duration_days)) {
+    result.original_duration_days = projectSummary.original_duration_days
+    result.duration_unit = projectSummary.duration_unit || result.duration_unit
+  }
+  return result
+}
+
 // The tree retains source WBS identity. Discipline labels are not unique keys:
 // two different branches may both legitimately contain Process Engineering.
 export function buildPrimaveraModel(plan, tasks, disciplines) {
@@ -137,7 +162,8 @@ export function buildPrimaveraModel(plan, tasks, disciplines) {
   })
   projectRoot.tasks.sort(order)
   const matchingProjectRoot = roots.length === 1 && (
-    (project.code && normalize(roots[0].code) === normalize(project.code))
+    roots[0].is_source_project === true
+    || (project.code && normalize(roots[0].code) === normalize(project.code))
     || (project.name && normalize(roots[0].name) === normalize(project.name))
   )
   let tree
@@ -162,7 +188,7 @@ export function buildPrimaveraModel(plan, tasks, disciplines) {
     const allTasks = [...node.tasks, ...node.children.flatMap(child => prepare(child, [...ancestors, node]))]
     node.descendantTasks = allTasks
     // A supplied null means unknown; never replace it with an inferred total.
-    node.summary = node.summary || summarize(allTasks, calendar)
+    node.summary = withProjectSourceSummary(node.summary || summarize(allTasks, calendar), node.is_project ? plan.project_summary : null)
     if (allTasks.some(missingSourceDuration) && !finite(node.summary.original_duration_days)) {
       node.summary = { ...node.summary, planned_start_date: null, planned_finish_date: null,
         duration_days: null, total_float_days: null, complete: false }

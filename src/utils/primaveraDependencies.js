@@ -9,12 +9,12 @@ const EXTRA_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#b45309', '#087e8b', '#4
 const RELATIONSHIPS = { FS: 'Finish to start', SS: 'Start to start', FF: 'Finish to finish', SF: 'Start to finish' }
 const valueKey = value => value == null ? '' : String(value)
 
-export function scheduleSequenceStyle(task) {
+export function scheduleSequenceStyle(task, { unspecifiedLabel = 'Unspecified phase' } = {}) {
   const stage = task.stage
   const workflowCode = task.workflow_stage_code || task.metadata?.workflow_stage_code
   const source = workflowCode || task.schedule_phase
     || task.stage_code || (typeof stage === 'string' ? stage : stage?.code)
-  if (!source) return { key: 'unspecified', label: 'Unspecified phase', color: '#475569' }
+  if (!source) return { key: 'unspecified', label: unspecifiedLabel, color: '#475569' }
   const key = String(source).toLowerCase().replaceAll(' ', '_')
   const label = workflowCode
     ? task.workflow_stage_name || task.workflow_stage_label || task.metadata?.workflow_stage_name || task.metadata?.workflow_stage_label || String(workflowCode).replaceAll('_', ' ')
@@ -22,6 +22,26 @@ export function scheduleSequenceStyle(task) {
       : stage?.name || String(source).replaceAll('_', ' ')
   const hash = [...key].reduce((total, letter) => total + letter.charCodeAt(0), 0)
   return { key, label: label[0].toUpperCase() + label.slice(1), color: COLORS[key] || EXTRA_COLORS[hash % EXTRA_COLORS.length] }
+}
+
+// A predecessor pair can carry multiple relationship types (for example FS
+// and FF). Preserve each type while avoiding duplicate compatibility IDs.
+export function scheduleDependencyEntries(task, { sourceOnly = false } = {}) {
+  const details = task.dependency_details || []
+  const incoming = new Set([...(task.depends_on || []), ...details.map(item => item.task_id ?? item.predecessor_id)]
+    .filter(id => id != null).map(valueKey))
+  return [...incoming].flatMap(predecessorId => {
+    const matched = details.filter(item => valueKey(item.task_id ?? item.predecessor_id) === predecessorId)
+    const reason = task.dependency_rationales?.[predecessorId]
+    const seen = new Set()
+    return (matched.length ? matched : [{}]).flatMap(detail => {
+      const type = String(detail.type || detail.relationship_type || reason?.relationship_type || (sourceOnly ? '' : 'FS')).toUpperCase()
+      if (seen.has(type)) return []
+      seen.add(type)
+      const matchingReason = reason?.relationship_type && String(reason.relationship_type).toUpperCase() !== type ? undefined : reason
+      return [{ predecessorId, detail, reason: matchingReason, type, lagValue: detail.lag_days ?? matchingReason?.lag_days }]
+    })
+  })
 }
 
 function referenceLabel(reference) {
@@ -72,21 +92,15 @@ export function buildPrimaveraDependencies(rows, positions, rowHeight = 16, time
   for (const [successorId, successor] of tasks) {
     const target = positions.get(successorId)
     if (!target) continue
-    const details = successor.dependency_details || []
-    const incoming = new Set([...(successor.depends_on || []), ...details.map(item => item.task_id ?? item.predecessor_id)]
-      .filter(id => id != null).map(valueKey))
-    for (const predecessorId of incoming) {
+    for (const { predecessorId, detail, reason, type, lagValue } of scheduleDependencyEntries(successor, { sourceOnly })) {
       const predecessor = tasks.get(predecessorId), source = positions.get(predecessorId)
       if (!predecessor || !source || predecessorId === successorId) continue
-      const detail = details.find(item => valueKey(item.task_id ?? item.predecessor_id) === predecessorId) || {}
-      const reason = successor.dependency_rationales?.[predecessorId]
-      const specifiedType = detail.type || detail.relationship_type || reason?.relationship_type
-      const type = String(specifiedType || (sourceOnly ? '' : 'FS')).toUpperCase()
       if (!RELATIONSHIPS[type]) continue
-      const lagValue = detail.lag_days ?? reason?.lag_days
       if (sourceOnly && (lagValue == null || lagValue === '' || !Number.isFinite(Number(lagValue)))) continue
       const lag = Number.isFinite(Number(lagValue)) ? Number(lagValue) : 0
-      const rationale = typeof reason === 'string' ? reason : reason?.rationale || reason?.message || reason?.description
+      const rationale = detail.rationale || detail.metadata?.rationale || (typeof reason === 'string' ? reason : reason?.rationale || reason?.message || reason?.description)
+      const origin = detail.source || detail.metadata?.source || reason?.source
+      const evidenceType = detail.evidence_type || detail.metadata?.evidence_type || reason?.evidence_type
       const sourceReferences = detail.source_references || reason?.source_references || []
       const sourceCode = predecessor.activity_code || predecessor.external_id || predecessorId
       const targetCode = successor.activity_code || successor.external_id || successorId
@@ -96,9 +110,10 @@ export function buildPrimaveraDependencies(rows, positions, rowHeight = 16, time
         `${RELATIONSHIPS[type]} (${type}); lag ${lag > 0 ? '+' : ''}${lag} working days`,
         predecessor.display_date_basis === 'source' || successor.display_date_basis === 'source'
           ? 'Source dates shown; this relationship has not been verified against those dates' : null,
-        detail.source === 'workflow_template' || reason?.source === 'workflow_template' ? 'User-configured workflow' : null,
-        reason?.status === 'proposed' ? 'Proposed relationship' : null,
-        reason?.evidence_type === 'planning_inference' ? 'Planning inference' : null,
+        origin === 'workflow_template' ? 'User-configured workflow' : null,
+        origin === 'source_stage_rule' ? 'Deterministic stage rule; planning relationship, not printed source logic' : null,
+        detail.status === 'proposed' || reason?.status === 'proposed' ? 'Proposed relationship' : null,
+        evidenceType === 'planning_inference' ? 'Planning inference' : null,
         rationale, ...sourceReferences.map(referenceLabel),
       ].filter(Boolean).join('. ')
       const geometry = route(source, target, type, rowHeight, timelineWidth)

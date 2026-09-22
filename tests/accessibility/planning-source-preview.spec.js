@@ -73,6 +73,23 @@ test('source rows paginate and search without hidden replacements of the draft',
   expect(state.writes).toEqual([]); expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([])
 })
 
+test('preview retains printed float evidence without declaring a CPM calculation', async ({ page }) => {
+  const state = await harness(page, async ({ route, reply }) => {
+    await reply(route, { summary: { activity_count: 1 }, project_window: {}, pagination: { total: 1 },
+      rows: [{ ...sample('PRINTED-ZERO'), source_total_float_days: '0', source_total_float_status: 'extracted',
+        source_total_float_references: [{ file_id: 904, filename: 'Execution schedule.csv', locator: { row: 12 } }] }] })
+    return true
+  })
+  await workspace(page).getByRole('button', { name: 'Review extracted schedule', exact: true }).click()
+  const row = preview(page).locator('[data-row-id="PRINTED-ZERO"]')
+  await expect(row.locator('[data-column="float"]')).toHaveText('0')
+  await expect(row.locator('[data-column="float"]')).toHaveAttribute('data-float-basis', 'source')
+  await row.getByRole('button', { name: 'Source package PRINTED-ZERO', exact: true }).click()
+  await expect(preview(page).getByRole('complementary', { name: 'Extracted activity evidence' })).toContainText('Source total float: 0 days as printed.')
+  expect(state.writes).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
+
 test('an extraction preview error remains visible and can be retried', async ({ page }) => {
   let attempts = 0
   const state = await harness(page, async context => {

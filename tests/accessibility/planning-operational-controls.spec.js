@@ -125,6 +125,26 @@ test('stale source rejection preserves review reason and never silently retries 
   expect(state.operationalWrites).toHaveLength(1); clean(state)
 })
 
+test('review displays planned actual remaining progress and all core control metrics from the report', async ({ page }) => {
+  const state = await operationalHarness(page, { prepare(current) {
+    Object.assign(current.controls.report.preview.metrics, { planned_progress_pct: '60.00', progress_pct: '35.00', remaining_progress_pct: '65.00', bac: '200.00', eac: '160.00', etc: '80.00', spi: '0.8333', cpi: '1.2500' })
+    current.controls.report.preview.activity_comparisons = [
+      { activity_id: 101, external_id: 'ACT-001', name: 'Engineering design', planned_progress_pct: '60.00', physical_progress_pct: '20.00', remaining_progress_pct: '80.00' },
+      { activity_id: 102, external_id: 'ACT-002', name: 'Unreported inspection', planned_progress_pct: '60.00', physical_progress_pct: null, remaining_progress_pct: null },
+    ]
+  } })
+  await open(page); await view(page, 'Review & publish')
+  const panel = controls(page)
+  await expect(panel.locator('.poc-metrics > div').filter({ hasText: 'Remaining progress' })).toContainText('65%')
+  for (const text of ['Budget at completion (BAC)', 'Estimate at completion (EAC)', 'Estimate to complete (ETC)', 'SPI', 'CPI']) await expect(panel.locator('dt').filter({ hasText: text })).toBeVisible()
+  const table = panel.getByRole('region', { name: 'Planned actual and remaining progress', exact: true })
+  const measured = table.getByRole('row').filter({ hasText: 'ACT-001' })
+  await expect(measured).toContainText('60%'); await expect(measured).toContainText('20%'); await expect(measured).toContainText('80%')
+  const unknown = table.getByRole('row').filter({ hasText: 'ACT-002' })
+  await expect(unknown.getByRole('cell', { name: 'Not Specified', exact: true })).toHaveCount(2)
+  expect(state.operationalWrites).toEqual([]); clean(state)
+})
+
 test('cost-restricted readers see approved hour evidence without monetary fields or self-approval actions', async ({ page }) => {
   const state = await operationalHarness(page, { prepare(current) { current.controls.permissions.can_view_costs = false; Object.assign(current.controls.policies[0], { status: 'draft', created_by_id: 7, can_approve: false }); current.controls.report.source_actuals.hours = [{ id: 8, source_type: 'approved_hour', source_reference: 'TS-081', work_date: '2026-09-21', hours: '6', control_account_id: 4, approved_by_id: 8, approved_at: '2026-09-21T09:00:00Z' }]; current.controls.report.source_actuals.total_hours = '6' } })
   await open(page); await view(page, 'Source actuals')

@@ -32,6 +32,10 @@ const editableTask = task => ({
   task_type: task.task_type || 'deliverable', priority: task.priority || 'medium', due_date: task.due_date || null,
   effort_hours: task.effort_hours ?? null, duration_days: task.duration_days ?? null,
   planned_start_date: task.planned_start_date || null, depends_on: task.depends_on || [],
+  ...(task.dependency_details?.every(link => ['FS', 'SS', 'FF', 'SF'].includes(link.type) && link.lag_days != null)
+    ? { dependency_details: task.dependency_details } : {}),
+  ...(task.constraint_type !== undefined ? { constraint_type: task.constraint_type, constraint_date: task.constraint_date || null } : {}),
+  wbs_phase: task.wbs_phase || '', wbs_deliverable: task.wbs_deliverable || '',
   acceptance_criteria: task.acceptance_criteria || '', source_references: task.source_references || [],
 })
 const stateLabel = { inputs: 'Inputs required', review: 'Draft plan', submitted: 'Awaiting approval', baselined: 'Baseline published' }
@@ -210,7 +214,7 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
       const result = await saveTasks(dialog.isNew ? [...tasks, task] : tasks.map(row => row.id === task.id ? task : row))
       if (result) { setDialog(null); setNotice(task.assignee_id ? 'Task saved and assigned in My Work Hub.' : 'Task saved.') }
     }} onDelete={async id => {
-      const result = await saveTasks(tasks.filter(task => task.id !== id).map(task => ({ ...task, depends_on: (task.depends_on || []).filter(value => value !== id) })))
+      const result = await saveTasks(tasks.filter(task => task.id !== id).map(task => ({ ...task, depends_on: (task.depends_on || []).filter(value => value !== id), ...(task.dependency_details ? { dependency_details: task.dependency_details.filter(link => link.task_id !== id) } : {}) })))
       if (result) { setDialog(null); setNotice('Task removed from this plan and My Work Hub.') }
     }} />}
     {dialog?.type === 'sources' && <PlanningSourceVerification plan={plan} onClose={() => setDialog(null)} onInputs={() => { setDialog(null); inputs() }} />}

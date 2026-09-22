@@ -58,7 +58,12 @@ function Dialog({ title, children, onClose, footer, busy = false }) {
 Dialog.propTypes = { title: PropTypes.string.isRequired, children: PropTypes.node, onClose: PropTypes.func.isRequired, footer: PropTypes.node, busy: PropTypes.bool }
 
 export function TaskDialog({ projectId, task, tasks, disciplines, manual, scheduleEditing = false, isNew, initialField, onSave, onDelete, onClose, busy, saveError }) {
-  const [draft, setDraft] = useState({ task_type: 'deliverable', due_date: null, priority: 'medium', assignee_id: null, reviewer_id: null, ...task, depends_on: [...task.depends_on] })
+  const [draft, setDraft] = useState(() => ({ task_type: 'deliverable', due_date: null, priority: 'medium', assignee_id: null, reviewer_id: null, constraint_type: task.planned_start_date ? 'start_no_earlier' : 'none', constraint_date: task.planned_start_date || null, wbs_phase: '', wbs_deliverable: '', ...task, depends_on: [...(task.depends_on || [])],
+    dependency_details: (task.depends_on || []).flatMap(id => {
+      const details = (task.dependency_details || []).filter(link => String(link.task_id ?? link.predecessor_id) === String(id))
+      return details.length ? details.map(link => ({ ...link, task_id: id, type: link.type ?? link.relationship_type ?? '', lag_days: link.lag_days ?? '' })) : [{ task_id: id, type: 'FS', lag_days: 0 }]
+    }),
+  }))
   const [error, setError] = useState('')
   const workflowStage = task.parent_deliverable_id != null || Boolean(task.workflow_stage_code || task.metadata?.workflow_stage_code)
   const milestone = isScheduleMilestone(task)
@@ -67,6 +72,11 @@ export function TaskDialog({ projectId, task, tasks, disciplines, manual, schedu
     if (selectors[initialField]) document.querySelector(`#wbd-task-form ${selectors[initialField]}`)?.focus()
   }, [initialField])
   const change = (key, value) => setDraft(current => ({ ...current, [key]: value }))
+  const toggleDependency = (id, selected) => setDraft(current => ({ ...current,
+    depends_on: selected ? [...current.depends_on, id] : current.depends_on.filter(key => key !== id),
+    dependency_details: selected ? [...current.dependency_details, { task_id: id, type: 'FS', lag_days: 0 }] : current.dependency_details.filter(link => link.task_id !== id),
+  }))
+  const changeLink = (index, field, value) => setDraft(current => ({ ...current, dependency_details: current.dependency_details.map((link, position) => position === index ? { ...link, [field]: value } : link) }))
   const save = event => {
     event.preventDefault()
     if (busy) return
@@ -76,6 +86,11 @@ export function TaskDialog({ projectId, task, tasks, disciplines, manual, schedu
     if (manual && !scheduleEditing && value.planned_start_date && value.due_date && value.planned_start_date > value.due_date) { setError('Due date must be on or after the planned start.'); return }
     if (scheduleEditing && value.due_date !== task.due_date && value.planned_start_date && value.due_date && value.planned_start_date > value.due_date) { setError('Due date must be on or after the planned start.'); return }
     if ((manual || scheduleEditing) && value.duration_days != null && (!Number.isFinite(value.duration_days) || value.duration_days < 0)) { setError('Enter a duration of zero or more working days.'); return }
+    if (value.constraint_type !== 'none' && !value.constraint_date) { setError('Choose a date for the selected constraint.'); return }
+    if (value.wbs_deliverable && !value.wbs_phase.trim()) { setError('Enter the phase that contains this deliverable.'); return }
+    if (value.dependency_details.some(link => !['FS', 'SS', 'FF', 'SF'].includes(link.type))) { setError('Choose the relationship type for each selected predecessor.'); return }
+    if (value.dependency_details.some(link => link.lag_days === '' || !Number.isFinite(Number(link.lag_days)) || Math.abs(Number(link.lag_days)) > 365)) { setError('Enter relationship lag between -365 and 365 working days.'); return }
+    if (new Set(value.dependency_details.map(link => `${link.task_id}:${link.type}`)).size !== value.dependency_details.length) { setError('A predecessor cannot repeat the same relationship type.'); return }
     const graph = new Map([...tasks.filter(row => row.id !== value.id), value].map(row => [row.id, row.depends_on]))
     const visiting = new Set(), visited = new Set()
     const cycle = id => { if (visiting.has(id)) return true; if (visited.has(id)) return false; visiting.add(id); if ((graph.get(id) || []).some(cycle)) return true; visiting.delete(id); visited.add(id); return false }
@@ -90,18 +105,31 @@ export function TaskDialog({ projectId, task, tasks, disciplines, manual, schedu
       {(error || saveError) && <p className="wbd-error" role="alert">{error || saveError}</p>}
       <fieldset className="wbd-task-fields" disabled={busy}>
       <label>Task / deliverable<input required maxLength={500} value={draft.title} onChange={event => change('title', event.target.value)} /></label>
+      {manual && !workflowStage && <><div className="wbd-form-grid"><label>WBS phase<input list="wbd-phase-options" maxLength={120} value={draft.wbs_phase} onChange={event => change('wbs_phase', event.target.value)} placeholder="e.g. Engineering" /></label><label>WBS deliverable<input list="wbd-deliverable-options" maxLength={255} value={draft.wbs_deliverable} onChange={event => change('wbs_deliverable', event.target.value)} placeholder="e.g. Approved design package" /></label></div><datalist id="wbd-phase-options">{[...new Set(tasks.map(row => row.wbs_phase).filter(Boolean))].map(name => <option key={name} value={name} />)}</datalist><datalist id="wbd-deliverable-options">{[...new Set(tasks.filter(row => row.wbs_phase === draft.wbs_phase).map(row => row.wbs_deliverable).filter(Boolean))].map(name => <option key={name} value={name} />)}</datalist><p className="wbd-note">Organize this activity under Project → Phase → Deliverable. Enter an existing name to group activities together.</p></>}
       <div className="wbd-form-grid"><label>Work type<select value={draft.task_type} onChange={event => change('task_type', event.target.value)}><option value="task">Task</option><option value="deliverable">Deliverable</option></select></label>
         <label>{manual ? 'Workstream' : 'Discipline'}<select value={draft.discipline} onChange={event => change('discipline', event.target.value)}>{disciplines.map(row => <option key={row.code} value={row.code}>{row.name}</option>)}</select></label>
         <PlanningEmployeePicker projectId={projectId} label="Assigned to" value={draft.assignee} disabled={busy} legacyName={draft.assignee_id ? '' : draft.owner} onChange={employee => setDraft(current => ({ ...current, assignee: employee, assignee_id: employee?.user_id ?? null, owner: employee?.name || '' }))} />
         <PlanningEmployeePicker projectId={projectId} label="Reviewer" value={draft.reviewer_user} disabled={busy} legacyName={draft.reviewer_id ? '' : draft.reviewer} onChange={employee => setDraft(current => ({ ...current, reviewer_user: employee, reviewer_id: employee?.user_id ?? null, reviewer: employee?.name || '' }))} />
         <label>Due date<input type="date" value={draft.due_date || ''} onChange={event => change('due_date', event.target.value)} /></label>
-        {(manual || scheduleEditing) && <label>Planned start<input name="planned_start_date" type="date" value={draft.planned_start_date || ''} onChange={event => change('planned_start_date', event.target.value || null)} /></label>}
+        {(manual || scheduleEditing) && <label>Planned start<input name="planned_start_date" type="date" value={draft.planned_start_date || ''} onChange={event => setDraft(current => ({ ...current, planned_start_date: event.target.value || null, constraint_type: event.target.value ? 'start_no_earlier' : 'none', constraint_date: event.target.value || null }))} /></label>}
         {(manual || scheduleEditing) && <label>Duration (working days)<input name="duration_days" type="number" min={scheduleEditing && !milestone ? '0.25' : '0'} readOnly={scheduleEditing && milestone} title={scheduleEditing && milestone ? 'Milestones have zero duration.' : undefined} step="0.25" value={draft.duration_days ?? ''} onChange={event => change('duration_days', event.target.value === '' ? null : Number(event.target.value))} placeholder="Leave blank when the duration is unknown" /></label>}
+        {(manual || scheduleEditing) && <><label>Schedule constraint<select value={draft.constraint_type} onChange={event => setDraft(current => ({ ...current, constraint_type: event.target.value, constraint_date: event.target.value === 'none' ? null : current.constraint_date }))}><option value="none">None</option><option value="start_no_earlier">Start no earlier than</option><option value="start_no_later">Start no later than</option><option value="finish_no_later">Finish no later than</option><option value="must_start">Must start on</option><option value="must_finish">Must finish on</option></select></label>{draft.constraint_type !== 'none' && <label>Constraint date<input required type="date" value={draft.constraint_date || ''} onChange={event => change('constraint_date', event.target.value || null)} /></label>}</>}
         {scheduleEditing && <p className="wbd-note">Finish dates recalculate from durations, dependencies and the project calendar when saved.</p>}
+        {(manual || scheduleEditing) && <p className="wbd-note">Entering a planned start sets a start-no-earlier constraint. Choose None to release the date constraint. Date calculations use whole working days: fractional durations and lags round up for calculation; entered values are retained.</p>}
         <label>Priority<select value={draft.priority} onChange={event => change('priority', event.target.value)}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
         <label>Planned effort (hours)<input type="number" min="0" step="0.01" value={draft.effort_hours ?? ''} onChange={event => change('effort_hours', event.target.value)} placeholder="Enter hours" /></label>
         <div className="wbd-task-status"><span>Status</span><span className={`wbd-task-badge is-${draft.status || 'todo'}`}>{statusLabels[draft.status] || statusLabels.todo}</span></div></div>
-      <fieldset className="wbd-dependencies"><legend>Depends on</legend>{tasks.filter(row => row.id !== task.id).length ? tasks.filter(row => row.id !== task.id).map(row => <label key={row.id}><input type="checkbox" checked={draft.depends_on.includes(row.id)} onChange={event => change('depends_on', event.target.checked ? [...draft.depends_on, row.id] : draft.depends_on.filter(id => id !== row.id))} />{row.title}</label>) : <p>No other tasks yet.</p>}</fieldset>
+      <fieldset className="wbd-dependencies"><legend>Depends on</legend>
+        {tasks.filter(row => row.id !== task.id).length ? tasks.filter(row => row.id !== task.id).map(row => <div key={row.id}>
+          <label><input type="checkbox" checked={draft.depends_on.includes(row.id)} onChange={event => toggleDependency(row.id, event.target.checked)} />{row.title}</label>
+          {draft.dependency_details.map((link, index) => link.task_id === row.id && <div className="wbd-form-grid" key={index}>
+            <label>Relationship to {row.title}<select required value={link.type} onChange={event => changeLink(index, 'type', event.target.value)}>
+              <option value="">Not specified — choose type</option><option value="FS">FS — Finish to start</option><option value="SS">SS — Start to start</option><option value="FF">FF — Finish to finish</option><option value="SF">SF — Start to finish</option>
+            </select></label>
+            <label>Lag for {row.title} (working days)<input required type="number" min="-365" max="365" step="0.01" value={link.lag_days} onChange={event => changeLink(index, 'lag_days', event.target.value === '' ? '' : Number(event.target.value))} /></label>
+          </div>)}
+        </div>) : <p>No other tasks yet.</p>}
+      </fieldset>
       <label>Acceptance criteria<textarea rows={3} maxLength={5000} value={draft.acceptance_criteria} onChange={event => change('acceptance_criteria', event.target.value)} placeholder="Describe what must be checked before this task is complete" /></label>
       <p className="wbd-note"><Info size={15} />{draft.assignee_id ? 'Saving assigns this work to the employee’s My Work Hub immediately.' : 'Select an employee to assign this work, or save it as unassigned.'}</p>
       </fieldset>
@@ -205,11 +233,14 @@ export default function WorkBreakdownPanel({ projectId, intelligenceRunId, previ
         intelligence_run_id: intelligenceRunId, preview_confirmed_at: previewConfirmedAt,
         ...(manual ? { disciplines } : {}),
         revision: draft.revision,
-        tasks: nextTasks.map(({ id, discipline, title, owner, assignee_id, reviewer_id, task_type, due_date, priority, effort_hours, depends_on, acceptance_criteria, reviewer, source_references, duration_days, planned_start_date }) => ({
+        tasks: nextTasks.map(({ id, discipline, title, owner, assignee_id, reviewer_id, task_type, due_date, priority, effort_hours, depends_on, acceptance_criteria, reviewer, source_references, duration_days, planned_start_date, dependency_details, constraint_type, constraint_date, wbs_phase, wbs_deliverable }) => ({
           id, discipline, title, owner, assignee_id: assignee_id ?? null, reviewer_id: reviewer_id ?? null,
           task_type: task_type || 'deliverable', due_date: due_date || null, priority: priority || 'medium',
           effort_hours, depends_on, acceptance_criteria, reviewer, source_references,
-          ...(manual ? { duration_days: duration_days ?? null, planned_start_date: planned_start_date || null } : {}),
+          ...(dependency_details !== undefined ? { dependency_details } : {}),
+          ...(manual ? { duration_days: duration_days ?? null, planned_start_date: planned_start_date || null,
+            ...(constraint_type !== undefined ? { constraint_type, constraint_date: constraint_date || null } : {}),
+            wbs_phase: wbs_phase || '', wbs_deliverable: wbs_deliverable || '' } : {}),
         })), ...(advance ? { advance: true } : {}),
       })
       if (!mounted.current) return
@@ -279,7 +310,7 @@ export default function WorkBreakdownPanel({ projectId, intelligenceRunId, previ
         setDialog(null); setNotice(task.assignee_id ? 'Task saved and assigned in My Work Hub.' : 'Task saved as unassigned.')
       }
     }} onDelete={async id => {
-      const result = await save(false, tasks.filter(task => task.id !== id).map(task => ({ ...task, depends_on: task.depends_on.filter(value => value !== id) })))
+      const result = await save(false, tasks.filter(task => task.id !== id).map(task => ({ ...task, depends_on: task.depends_on.filter(value => value !== id), ...(task.dependency_details ? { dependency_details: task.dependency_details.filter(link => link.task_id !== id) } : {}) })))
       if (result) { setDialog(null); setNotice('Task removed from this work breakdown and My Work Hub.') }
     }} />}
     {dialog?.type === 'workstream' && <WorkstreamDialog disciplines={disciplines} onClose={() => setDialog(null)} onAdd={row => { setDraft(current => ({ ...current, disciplines: [...disciplines, row] })); setDirty(true); setDialog(null); setNotice('Workstream added. Add tasks or save draft to keep it.'); }} />}

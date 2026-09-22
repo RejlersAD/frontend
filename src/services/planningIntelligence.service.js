@@ -21,9 +21,9 @@ export const planningIntelligenceService = {
   getSourceSchedulePreview: async (projectId, params = {}, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/source-preview/`, { params, signal, suppressErrorToast: true })).data,
   previewSourceScheduleImport: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/preview-source-import/`, payload, { suppressErrorToast: true })).data,
   applySourceScheduleImport: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/apply-source-import/`, payload, { suppressErrorToast: true })).data,
+  previewSourceLogic: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/preview-source-logic/`, payload, { suppressErrorToast: true })).data,
+  applySourceLogic: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/apply-source-logic/`, payload, { suppressErrorToast: true })).data,
   getCurrentMasterSchedule: async projectId => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/`, { suppressErrorToast: true })).data,
-  proposeIntelligentSequence: async (projectId, payload) => (await apiClientLongTimeout.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/propose-intelligent-sequence/`, payload, { suppressErrorToast: true, timeout: 600000 })).data,
-  applyIntelligentSequence: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/apply-intelligent-sequence/`, payload, { suppressErrorToast: true })).data,
   getOperationalControls: async (projectId, params = {}, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}operational-controls/`, { params, signal, suppressErrorToast: true })).data,
   actOnOperationalControls: async (projectId, payload) => (await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}operational-controls/`, payload, { suppressErrorToast: true })).data,
   getDelayAnalysis: async (projectId, params = {}, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}delay-analysis/`, { params, signal, suppressErrorToast: true })).data,
@@ -59,6 +59,9 @@ export const planningIntelligenceService = {
   ).data,
   decideEvidenceReview: async (projectId, payload, params = {}) => (
     await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/decisions/`, payload, { params, suppressErrorToast: true })
+  ).data,
+  startBulkEvidenceReview: async (projectId, payload, signal) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/bulk/`, payload, { signal, suppressErrorToast: true })
   ).data,
   materializeAcceptedEvidence: async (projectId, revision, activate = false, masterRevision) => (
     await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/materialize/`, { revision, ...(activate ? { activate: true, master_revision: masterRevision } : {}) }, { suppressErrorToast: true })
@@ -103,7 +106,7 @@ export const planningIntelligenceService = {
   decideScheduleDefaultProposal: async (id, decision, comment = '') => (
     await apiClient.post(PLANNING_ENDPOINTS.scheduleDefaultProposalDecision(id), { decision, comment })
   ).data,
-  getJob: async (jobId) => (await apiClient.get(PLANNING_ENDPOINTS.job(jobId))).data,
+  getJob: async (jobId, signal) => (await apiClient.get(PLANNING_ENDPOINTS.job(jobId), { signal, suppressErrorToast: true })).data,
   listJobs: async projectId => unwrapList(await apiClient.get(
     PLANNING_ENDPOINTS.jobs, { params: projectId ? { project: projectId } : {} },
   )),
@@ -343,7 +346,10 @@ export const planningIntelligenceService = {
   listResources: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.resources, { params: { project: projectId } })),
   createResource: async (payload) => (await apiClient.post(PLANNING_ENDPOINTS.resources, payload)).data,
   updateResource: async (id, payload) => (await apiClient.patch(PLANNING_ENDPOINTS.resource(id), payload)).data,
+  getResourcePlan: async (projectId, versionId, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.resources}plan/`, { params: { project: projectId, ...(versionId ? { version: versionId } : {}) }, signal })).data,
+  deleteResource: async id => apiClient.delete(PLANNING_ENDPOINTS.resource(id)),
   createAssignment: async (payload) => (await apiClient.post(PLANNING_ENDPOINTS.assignments, payload)).data,
+  updateAssignment: async (id, payload) => (await apiClient.patch(PLANNING_ENDPOINTS.assignment(id), payload)).data,
   deleteAssignment: async (id) => apiClient.delete(PLANNING_ENDPOINTS.assignment(id)),
   listBaselines: async (scheduleId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.baselines, { params: { schedule: scheduleId } })),
   listCalculationRuns: async (versionId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.calculationRuns, { params: { version: versionId } })),

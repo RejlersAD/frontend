@@ -31,7 +31,7 @@ test('desktop timeline receives approximately 60% width while project tabs and a
   expect(before.ratio).toBeLessThan(.61)
   expect((await page.locator('.compact-real-shell').boundingBox()).x).toBe(198)
   const areas = page.getByRole('navigation', { name: 'Project work areas', exact: true })
-  for (const name of ['Overview', 'Schedule', 'Cost & Commercial', 'Milestones', 'Risks & Changes', 'Estimates', 'Documents', 'EPC lifecycle']) await expect(areas.getByRole('button', { name, exact: true })).toBeVisible()
+  for (const name of ['Overview', 'Cost & Commercial', 'Milestones', 'Risks & Changes', 'Estimates', 'Documents', 'EPC lifecycle']) await expect(areas.getByRole('button', { name, exact: true })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Project section', exact: true })).toHaveCount(0)
   const scroll = grid(page).getByLabel('Scroll activity columns', { exact: true })
   await scroll.evaluate(element => { element.scrollLeft = element.scrollWidth; element.dispatchEvent(new Event('scroll')) })

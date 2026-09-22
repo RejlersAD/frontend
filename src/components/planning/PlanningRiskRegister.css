@@ -11,5 +11,12 @@
 .prr-form textarea { min-height: 70px; resize: vertical; }
 .prr-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .planning-risk-register pre { max-width: 300px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
-.planning-resource-requirements td { max-width: 380px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.planning-risk-register td { max-width: 380px; white-space: pre-wrap; overflow-wrap: anywhere; vertical-align: top; }
+.prr-analysis { margin: 14px 0; padding: 14px; border: 1px solid #dce6f3; border-radius: 5px; }
+.prr-analysis h4, .prr-form h4 { margin: 5px 0; }
+.prr-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.prr-summary dt { font-size: 12px; color: #52657d; }
+.prr-summary dd { margin: 4px 0 0; font-size: 18px; font-weight: 600; }
+.planning-risk-register .prr-help { font-size: 12px; color: #52657d; line-height: 1.5; }
+@media(max-width: 600px) { .prr-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media(max-width: 600px) { .prr-fields { grid-template-columns: 1fr; } }
