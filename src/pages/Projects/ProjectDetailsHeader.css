@@ -27,7 +27,7 @@
 .pd-button.pd-primary { background: #0063ff; border-color: #0063ff; color: white; }
 .pd-button.pd-primary:hover:not(:disabled) { background: #0053dc; }
 .pd-icon-button { width: 48px; padding-inline: 10px; }
-.pd-project-facts { display: flex; align-items: center; gap: 0; min-height: 35px; font-size: 12px; }
+.pd-project-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 0; min-height: 35px; font-size: 12px; }
 .pd-project-facts > div { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 32px; padding: 0 22px; border-left: 1px solid #cbdcf4; }
 .pd-project-facts > div:first-child { padding-left: 0; border-left: 0; font-weight: 600; }
 .pd-project-facts strong { display: block; font-weight: 400; line-height: 17px; }
@@ -46,6 +46,9 @@
 .pd-health-neutral, .pd-status-cancelled { background: #e7edf6; color: #476087; }
 .pd-project-facts .pd-unavailable { color: #a04d00; font-size: 11px; white-space: nowrap; }
 .pd-report-date, .pd-baseline { white-space: nowrap; }
+.pd-project-facts .pd-agreement-action { flex-direction: column; align-items: flex-end; flex-shrink: 0; gap: 3px; margin-left: auto; padding: 0 0 0 12px; border-left: 0; }
+.pd-agreement-action .pd-button { min-height: 33px; padding: 6px 11px; font-size: 12px; }
+.pd-project-facts .pd-agreement-action .pd-button svg { color: inherit; }
 .pd-tabs { border-top: 1px solid #dce8f7; border-bottom: 1px solid #d6e5f8; padding: 0 16px; background: #ffffffc9; overflow-x: auto; scrollbar-width: thin; }
 .pd-tabs ul { display: flex; justify-content: space-between; gap: 7px; list-style: none; margin: 0; padding: 0; min-width: 990px; }
 .pd-tabs li { display: flex; }
@@ -118,11 +121,12 @@
   .pd-project-facts strong, .pd-project-facts .pd-client { overflow: hidden; text-overflow: ellipsis; }
   .pd-project-facts .pd-baseline, .pd-project-facts .pd-report-date { white-space: normal; }
   .pd-project-facts .pd-unavailable { white-space: normal; }
+  .pd-project-facts .pd-agreement-action { grid-column: 1 / -1; align-items: flex-start; margin-left: 0; padding: 0; }
   .pd-tabs { padding-inline: 10px; }
   .pd-menu-content { position: fixed; top: 160px; left: 10px; right: 10px; width: auto; max-height: calc(100dvh - 180px); }
   .pd-add-menu .pd-menu-content { left: 10px; right: 10px; }
 }
 @media print {
-  .pd-header-actions, .pd-location, .pd-tabs { display: none; }
+  .pd-header-actions, .pd-location, .pd-tabs, .pd-project-facts .pd-agreement-action { display: none; }
   .pd-header h1 { margin-right: 0; white-space: normal; }
 }

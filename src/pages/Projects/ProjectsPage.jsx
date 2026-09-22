@@ -13,7 +13,7 @@ import ProjectPortfolio from './ProjectPortfolio'
 import PhaseStubCard from './components/PhaseStubCard'
 import ProjectFormModal from './components/ProjectFormModal'
 import AIProjectSetupDialog from './components/AIProjectSetupDialog'
-import AgreementWorkspace, { AgreementCreateDialog } from './components/AgreementWorkspace'
+import { AgreementCreateDialog, AgreementSetupDialog } from './components/AgreementWorkspace'
 import useAgreementWorkspace from '../../hooks/useAgreementWorkspace'
 import QhseImportModal from './components/QhseImportModal'
 import ProjectDetailsOverview from './ProjectDetailsOverview'
@@ -93,6 +93,7 @@ export default function ProjectsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [aiSetup, setAiSetup] = useState(null)
   const [agreementSetup, setAgreementSetup] = useState(null)
+  const [agreementReviewOpen, setAgreementReviewOpen] = useState(false)
   const [formMode, setFormMode] = useState('create')
   const [editingProject, setEditingProject] = useState(null)
   const [toast, setToast] = useState(null)
@@ -230,6 +231,13 @@ export default function ProjectsPage() {
     [isPortfolio, projects, selectedProjectId]
   )
   const agreementWorkspace = useAgreementWorkspace(selectedProject?.id, () => setRefreshVersion(value => value + 1))
+  const agreementJob = agreementWorkspace.data?.active_job || agreementWorkspace.data?.latest_job
+  const agreementStatus = agreementWorkspace.busy === 'analyze' ? 'Uploading agreement…'
+    : agreementWorkspace.busy === 'accept' ? 'Building draft…'
+      : agreementWorkspace.running ? `Analyzing · ${Number(agreementJob?.progress || 0)}%`
+        : agreementWorkspace.error || ['failed', 'cancelled'].includes(agreementJob?.status) ? 'Analysis needs attention'
+          : agreementWorkspace.data?.workspace?.stale ? 'Sources changed · review'
+            : agreementWorkspace.data?.workspace && agreementWorkspace.data.workspace.status !== 'accepted' ? 'Draft ready to review' : ''
   const performance = useProjectPerformance(selectedProject, refreshVersion)
   const schedulePerformance = useSchedulePerformance(selectedProject, performance, refreshVersion, {
     enabled: view === 'plan-baseline' || view === 'milestones' || view === 'risk', baselineId: scheduleBaselineId, versionId: scheduleVersionId,
@@ -243,6 +251,7 @@ export default function ProjectsPage() {
   const documentControl = useDocumentControl(selectedProject, refreshVersion, { enabled: view === 'documents', documentId })
   useEffect(() => { setMilestoneDialog(null); setRiskDialog(null); setEstimateDialog(null); setEstimateId(null); setCompareEstimateId(null); setDocumentDialog(null); setDocumentId(null) }, [selectedProjectId])
   useEffect(() => { setScheduleBaselineId(''); setScheduleVersionId('') }, [selectedProjectId])
+  useEffect(() => { setAgreementReviewOpen(false) }, [selectedProjectId])
   useEffect(() => {
     if (selectedProject && !performance.loading && performance.model) setLastRefreshed(new Date().toISOString())
   }, [selectedProject, performance.loading, performance.model])
@@ -335,6 +344,8 @@ export default function ProjectsPage() {
         onNavigate={navigate}
         onCreate={handleOpenCreate}
         onCreateWithAI={() => setAiSetup({ initialValues: {} })}
+        onAnalyzeAgreement={() => setAgreementReviewOpen(true)}
+        agreementStatus={agreementStatus}
         onEdit={handleOpenEdit}
         onImport={() => setQhseImportOpen(true)}
         onArchive={handleDelete}
@@ -360,7 +371,8 @@ export default function ProjectsPage() {
         onOpenDialog={setOverviewDialog}
       />
 
-      {selectedProject && <AgreementWorkspace key={selectedProject.id} workspace={agreementWorkspace} view={view} />}
+      {selectedProject && <AgreementSetupDialog key={selectedProject.id} open={agreementReviewOpen}
+        workspace={agreementWorkspace} view={view} onClose={() => setAgreementReviewOpen(false)} />}
 
       {/* Body */}
       <div className="pp-body">
