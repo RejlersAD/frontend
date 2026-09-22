@@ -9,6 +9,11 @@ const inputs = page => page.getByRole('dialog', { name: 'Documents & project inp
 const rebuildName = 'Rebuild draft from inputs'
 const clean = state => { expect(state.pageErrors).toEqual([]); expect(state.unknown).toEqual([]); expect(state.unknownWrites).toEqual([]) }
 const rebuildWrites = state => state.writes.filter(item => item.path.endsWith('/simple-plan/analyse/'))
+const generation = page => page.getByRole('dialog', { name: 'Generate project plan', exact: true })
+const canonicalSnapshot = (plan, canGenerate = plan.state === 'review') => ({
+  ...plan, canonical_version: true,
+  permissions: { ...plan.permissions, can_edit: false, can_reopen: plan.state === 'baselined', can_generate_plan: canGenerate },
+})
 
 test('a current workflow draft can be explicitly rebuilt without a stale flag or extra confirmation steps', async ({ page }) => {
   const state = await workflowStageHarness(page, { async handleRequest({ path, route, state: current, record, reply }) {
@@ -78,6 +83,137 @@ test('Analyze and update uses the same single rebuild confirmation when a docume
   await expect(inputs(page)).toHaveCount(0)
   expect(rebuildWrites(state)).toHaveLength(1)
   expect(rebuildWrites(state)[0].data).toEqual({ revision: 4, rebuild: true })
+  clean(state)
+})
+
+test('a new canonical draft opens reviewed plan generation from project inputs without rebuilding the simple plan', async ({ page }) => {
+  const fingerprint = 'a'.repeat(64)
+  const state = await masterScheduleHarness(page, {
+    prepare(current) {
+      current.buildWrites = []
+      Object.assign(current.records[17].simplePlan, {
+        state: 'baselined', version_id: 90, version_number: 2, master_revision: 7,
+        baseline: { id: 601, name: 'Approved project baseline', version_id: 90 },
+      })
+    },
+    decorateSnapshot: plan => canonicalSnapshot(plan),
+    async handleRequest({ path, route, record, state: current, reply }) {
+      const method = route.request().method()
+      if (path.endsWith('/simple-plan/reopen/') && method === 'POST') {
+        const data = route.request().postDataJSON()
+        current.writes.push({ method, path, data })
+        expect(data).toEqual({ revision: 4 })
+        Object.assign(record.simplePlan, { state: 'review', revision: 5, version_id: 91, version_number: 3, master_revision: 8 })
+        await reply(route, canonicalSnapshot(record.simplePlan))
+        return true
+      }
+      if (!path.includes('/planning-builds/')) return false
+      if (method === 'GET') {
+        await reply(route, {
+          master_revision: 8, builds: [], permissions: { can_preview: true, can_apply: true },
+          options: { graph_revision: 11, profile_selection_revision: 4, profile: { profile_id: 8, name: 'Reviewed delivery policy', profile_version: 2, valid: true },
+            deliverables: [{ entity_id: 'deliverable-1', name: 'Pump package', fact_id: 'source-1' }], source_activities: [], dependency_rules: [] },
+        })
+        return true
+      }
+      current.buildWrites.push({ method, path, data: route.request().postDataJSON() })
+      if (path.endsWith('/81/apply/')) {
+        Object.assign(record.simplePlan, { revision: 6, version_id: 92, version_number: 4, master_revision: 9,
+          tasks: [{ ...record.simplePlan.tasks[0], title: 'Pump package IFR' }] })
+        await reply(route, { schedule_version_id: 92, activated: true, master_revision: 9 })
+      } else {
+        await reply(route, { id: 81, revision: 1, fingerprint, status: 'preview', ready_to_apply: true,
+          summary: { activities: 1, relationships: 0 }, issues: [],
+          plan: { activities: [{ id: 'generated-1', name: 'Pump package IFR', duration: { value: 8, unit: 'working_days' }, responsible_role: 'Equipment engineer' }], wbs: [], relationships: [], resources: [], risks: [], project_inputs: {} },
+        })
+      }
+      return true
+    },
+  })
+  const baseline = structuredClone(state.records[17].simplePlan.baseline)
+  await scheduleAction(page, 'New version')
+  await expect(page.getByRole('status').filter({ hasText: 'A new draft version is ready.' })).toBeVisible()
+  const draft = structuredClone(state.records[17].simplePlan)
+  await scheduleAction(page, 'Project inputs')
+  await inputs(page).getByRole('button', { name: 'Generate new schedule draft', exact: true }).click()
+  await expect(generation(page)).toBeVisible()
+  await expect(inputs(page)).toHaveCount(0)
+  expect(rebuildWrites(state)).toEqual([])
+  expect(state.buildWrites).toEqual([])
+  expect(state.records[17].simplePlan).toEqual(draft)
+  await generation(page).getByRole('checkbox', { name: 'Pump package deliverable-1', exact: true }).check()
+  await generation(page).getByLabel('Planning reason', { exact: true }).fill('Reviewed scope for the new draft.')
+  await generation(page).getByRole('button', { name: 'Preview generated plan', exact: true }).click()
+  await expect(generation(page).getByRole('region', { name: 'Generated plan preview', exact: true })).toContainText('Pump package IFR')
+  expect(state.records[17].simplePlan).toEqual(draft)
+  expect(state.buildWrites).toEqual([{ method: 'POST', path: '/api/v1/planning-intelligence/projects/71/planning-builds/',
+    data: { evidence_revision: 11, profile_selection_revision: 4, options: { deliverable_entity_ids: ['deliverable-1'], source_activity_entity_ids: [], dependency_bindings: {}, independent_entity_ids: [] }, reason: 'Reviewed scope for the new draft.' } }])
+  await generation(page).getByRole('button', { name: 'Apply reviewed plan', exact: true }).click()
+  await expect(generation(page)).toHaveCount(0)
+  await expect(scheduleWorkspace(page).getByRole('button', { name: 'Pump package IFR', exact: true })).toBeVisible()
+  expect(state.buildWrites[1]).toEqual({ method: 'POST', path: '/api/v1/planning-intelligence/projects/71/planning-builds/81/apply/',
+    data: { fingerprint, master_revision: 8, reason: 'Reviewed scope for the new draft.' } })
+  expect(state.buildWrites).toHaveLength(2)
+  expect(state.records[17].simplePlan.baseline).toEqual(baseline)
+  expect(rebuildWrites(state)).toEqual([])
+  clean(state)
+})
+
+test('an imported canonical draft opens source logic from project inputs without requiring a generation profile', async ({ page }) => {
+  const state = await masterScheduleHarness(page, {
+    prepare(current) {
+      Object.assign(current.records[17].simplePlan, { version_id: 91, master_revision: 7, source_import: { source_file_id: 801 } })
+    },
+    decorateSnapshot(plan) {
+      const current = canonicalSnapshot(plan, false)
+      current.permissions.can_build_source_logic = true
+      return current
+    },
+  })
+  const original = structuredClone(state.records[17].simplePlan)
+  await scheduleAction(page, 'Project inputs')
+  await inputs(page).getByRole('button', { name: 'Generate new schedule draft', exact: true }).click()
+  const logic = page.getByRole('dialog', { name: 'Build logic & sequence', exact: true })
+  await expect(logic).toBeVisible()
+  await expect(logic.getByRole('button', { name: 'Preview logic & sequence', exact: true })).toBeEnabled()
+  await expect(inputs(page)).toHaveCount(0)
+  await expect(generation(page)).toHaveCount(0)
+  expect(state.requests.filter(item => item.path.includes('/planning-builds/'))).toEqual([])
+  expect(rebuildWrites(state)).toEqual([])
+  expect(state.writes).toEqual([])
+  expect(state.records[17].simplePlan).toEqual(original)
+  clean(state)
+})
+
+for (const mode of ['baselined', 'unauthorized']) test(`project inputs cannot regenerate a ${mode} canonical schedule`, async ({ page }) => {
+  const state = await masterScheduleHarness(page, {
+    prepare(current) {
+      Object.assign(current.records[17].simplePlan, { state: mode === 'baselined' ? 'baselined' : 'review', version_id: 91, master_revision: 7 })
+    },
+    decorateSnapshot: plan => canonicalSnapshot(plan, mode !== 'unauthorized'),
+  })
+  const original = structuredClone(state.records[17].simplePlan)
+  await scheduleAction(page, 'Project inputs')
+  await inputs(page).getByRole('button', { name: 'Generate new schedule draft', exact: true }).click()
+  await expect(inputs(page).getByRole('alert').filter({ hasText: mode === 'unauthorized' ? 'Your access does not permit generating a schedule draft.' : 'read only' })).toBeVisible()
+  await expect(generation(page)).toHaveCount(0)
+  expect(rebuildWrites(state)).toEqual([])
+  expect(state.requests.filter(item => item.path.includes('/planning-builds/'))).toEqual([])
+  expect(state.records[17].simplePlan).toEqual(original)
+  expect(state.writes).toEqual([])
+  clean(state)
+})
+
+test('an empty simple draft analyzes its documents without asking to rebuild an existing schedule', async ({ page }) => {
+  const state = await masterScheduleHarness(page, { prepare(current) {
+    Object.assign(current.records[17].simplePlan, { state: 'inputs', revision: 0, tasks: [] })
+  } })
+  await scheduleAction(page, 'Project inputs')
+  await inputs(page).getByRole('button', { name: 'Analyze & update schedule', exact: true }).click()
+  await expect(inputs(page)).toHaveCount(0)
+  await expect(scheduleWorkspace(page).getByRole('button', { name: state.records[17].simplePlan.tasks[0].title, exact: true })).toBeVisible()
+  await expect(generation(page)).toHaveCount(0)
+  expect(rebuildWrites(state)).toEqual([{ method: 'POST', path: '/api/v1/planning-intelligence/projects/71/simple-plan/analyse/', data: { revision: 0, rebuild: false } }])
   clean(state)
 })
 
