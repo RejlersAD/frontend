@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
+import { Link } from 'react-router-dom';
 import { ArrowPathIcon, ArrowUpTrayIcon, BoltIcon, CheckCircleIcon, DocumentArrowUpIcon, ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import invoiceTrackerService from '../../services/invoiceTracker.service';
 import OutgoingInvoiceWorkspace from '../../components/Finance/OutgoingInvoiceWorkspace';
 
 const ImportExcelModal = ({ open, onClose, onImported }) => {
   const [file, setFile]         = useState(null)
+  const [mode, setMode]         = useState('workbook')
   const [sheets, setSheets]     = useState('')
   const [busy, setBusy]         = useState(false)
   const [result, setResult]     = useState(null)
@@ -21,7 +23,7 @@ const ImportExcelModal = ({ open, onClose, onImported }) => {
     const keydown = event => {
       if (event.key === 'Escape') { event.preventDefault(); if (!busy) onClose(); }
       if (event.key !== 'Tab') return;
-      const fields = [...modal.querySelectorAll('button:not(:disabled), input:not(.hidden), [tabindex="0"]')];
+      const fields = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled):not(.hidden), a[href], [tabindex="0"]')].filter(element => element.getClientRects().length > 0);
       const first = fields[0]; const last = fields[fields.length - 1];
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -33,29 +35,46 @@ const ImportExcelModal = ({ open, onClose, onImported }) => {
 
   useEffect(() => {
     if (!open) {
-      setFile(null); setSheets(''); setResult(null); setError(null); setBusy(false); setDragOver(false)
+      setFile(null); setMode('workbook'); setSheets(''); setResult(null); setError(null); setBusy(false); setDragOver(false)
     }
   }, [open])
 
   if (!open) return null
 
   const handleFiles = (files) => {
+    if (busy) return
     const f = files?.[0]
-    if (f) setFile(f)
+    if (!f) return
+    setResult(null)
+    if (!/\.xlsx$/i.test(f.name)) {
+      setFile(null); setError('Choose an Excel workbook (.xlsx).')
+    } else {
+      setFile(f); setError(null)
+    }
+    if (inputRef.current) inputRef.current.value = ''
   }
 
   const handleSubmit = async () => {
-    if (!file) return
+    if (!file || busy) return
     setBusy(true); setError(null); setResult(null)
+    let imported
     try {
-      const res = await invoiceTrackerService.importExcel(file, sheets.trim())
+      const res = await invoiceTrackerService.importExcel(file, { mode, sheets: sheets.trim() })
+      if (mode === 'workbook' && (res?.mode !== 'workbook' || !Number.isInteger(res.rows_published) || res.rows_published <= 0)) {
+        throw new Error('The upload response did not confirm publication. Check receivables before trying again.')
+      }
       setResult(res)
-      onImported?.()
+      imported = res
     } catch (err) {
-      setError(err?.response?.data?.error || err?.message || 'Import failed')
+      const detail = err?.response?.data
+      const message = typeof detail === 'string' ? detail : detail?.detail || detail?.error
+      const fields = detail && typeof detail === 'object' ? Object.values(detail).flat().filter(value => typeof value === 'string').join(' ') : ''
+      setError(typeof message === 'string' ? message : fields || err?.message || 'The workbook could not be imported. Please try again.')
     } finally {
       setBusy(false)
     }
+    // Publication is complete even if a subsequent register refresh fails.
+    if (imported) onImported?.(imported)
   }
 
   return (
@@ -67,8 +86,8 @@ const ImportExcelModal = ({ open, onClose, onImported }) => {
               <DocumentArrowUpIcon className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-lg">Import Customer-Invoice Excel</h3>
-              <p className="text-[11px] text-white/80">Bulk upsert by invoice number · headers auto-detected</p>
+              <h3 className="font-bold text-lg">Import invoice workbook</h3>
+              <p className="text-[11px] text-white/80">Choose where to use your workbook</p>
             </div>
           </div>
           <button aria-label="Close invoice import" disabled={busy} onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/15">
@@ -77,15 +96,26 @@ const ImportExcelModal = ({ open, onClose, onImported }) => {
         </div>
 
         <div className="p-6 space-y-4">
+          <fieldset disabled={busy} className="space-y-2">
+            <legend className="mb-2 text-sm font-semibold text-gray-800">Import purpose</legend>
+            {[
+              ['workbook', 'Receivables reporting', 'Publish the External Invoice sheet to the receivables dashboards.'],
+              ['operational', 'Invoice register', 'Add or update invoices in the collection register.'],
+            ].map(([value, label, description]) => <label key={value} className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3">
+              <input type="radio" name="invoice-import-purpose" value={value} checked={mode === value} onChange={() => { setMode(value); setResult(null); setError(null); }} className="mt-1" />
+              <span><span className="block text-sm font-semibold text-gray-800">{label}</span><span className="block text-xs text-gray-600">{description}</span></span>
+            </label>)}
+          </fieldset>
           <div
             role="button"
-            tabIndex={0}
+            tabIndex={busy ? -1 : 0}
+            aria-disabled={busy}
             aria-label="Choose invoice workbook"
-            onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); inputRef.current?.click(); } }}
+            onKeyDown={event => { if (!busy && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); inputRef.current?.click(); } }}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files) }}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => { if (!busy) inputRef.current?.click(); }}
             className={`cursor-pointer rounded-2xl py-10 px-6 text-center border-2 border-dashed transition-all ${
               dragOver
                 ? 'border-indigo-500 bg-indigo-50 scale-[1.01]'
@@ -105,18 +135,19 @@ const ImportExcelModal = ({ open, onClose, onImported }) => {
             <p className="text-[11px] text-gray-500 mt-1">
               {file
                 ? `${(file.size / 1024).toFixed(1)} KB · ready to import`
-                : 'External + Internal sheets supported · header row found automatically'}
+                : mode === 'workbook' ? 'External Invoice sheet · .xlsx format' : 'External and internal sheets · .xlsx format'}
             </p>
             <input
               ref={inputRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx"
+              disabled={busy}
               className="hidden"
               onChange={(e) => handleFiles(e.target.files)}
             />
           </div>
 
-          <div>
+          {mode === 'operational' && <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5">
               Restrict to sheets (optional)
             </label>
@@ -124,26 +155,27 @@ const ImportExcelModal = ({ open, onClose, onImported }) => {
               type="text"
               aria-label="Restrict to sheets"
               value={sheets}
+              disabled={busy}
               onChange={(e) => setSheets(e.target.value)}
               placeholder="e.g. ExternalInvoice,InternalInvoice2018"
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
             />
-          </div>
+          </div>}
 
           {error && (
-            <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-700">
+            <div role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-700">
               <ExclamationTriangleIcon className="w-4 h-4 mt-0.5 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {result && (
-            <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 p-4">
+            <div role="status" className="rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 p-4">
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircleIcon className="w-5 h-5 text-emerald-600" />
-                <p className="font-bold text-emerald-900">Import complete</p>
+                <p className="font-bold text-emerald-900">{result.mode === 'workbook' ? `${result.rows_published.toLocaleString('en-GB')} invoice rows published` : 'Import complete'}</p>
               </div>
-              <div className="grid grid-cols-4 gap-2 text-center">
+              {result.mode === 'workbook' ? <p className="text-sm text-emerald-900">Receivables now uses {result.source?.file_name || file.name}.</p> : <div className="grid grid-cols-4 gap-2 text-center">
                 <div className="bg-white/70 rounded-lg p-2">
                   <p className="text-[10px] uppercase text-gray-500">Created</p>
                   <p className="text-lg font-extrabold text-emerald-700 tabular-nums">{result.rows_created}</p>
@@ -162,7 +194,7 @@ const ImportExcelModal = ({ open, onClose, onImported }) => {
                     {result.errors?.length || 0}
                   </p>
                 </div>
-              </div>
+              </div>}
             </div>
           )}
         </div>
@@ -171,14 +203,14 @@ const ImportExcelModal = ({ open, onClose, onImported }) => {
           <button disabled={busy} onClick={onClose} className="px-4 py-2 text-sm rounded-xl border border-gray-200 text-gray-700 hover:bg-white">
             Close
           </button>
-          <button
+          {result?.mode === 'workbook' ? <Link to="/finance" onClick={onClose} className="px-4 py-2 text-sm rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500">View receivables</Link> : <button
             onClick={handleSubmit}
             disabled={!file || busy}
             className="px-4 py-2 text-sm rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-sm inline-flex items-center gap-1.5"
           >
             {busy ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <BoltIcon className="w-4 h-4" />}
-            {busy ? 'Importing…' : 'Start Import'}
-          </button>
+            {busy ? mode === 'workbook' ? 'Publishing…' : 'Importing…' : mode === 'workbook' ? 'Publish workbook' : 'Start import'}
+          </button>}
         </div>
       </div>
     </div>
