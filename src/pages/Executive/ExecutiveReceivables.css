@@ -128,9 +128,9 @@
   .cc-financial-page .ar-dashboard-embedded .ar-data-note button,
   .cc-financial-page .ar-dashboard-embedded .ar-customer-register-footer button,
   .cc-financial-page .ar-dashboard-embedded .ar-customer-register-state button { display: none !important; }
-  .cc-financial-page .ar-dashboard-embedded .ar-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .cc-financial-page .ar-dashboard-embedded .ar-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
   .cc-financial-page .ar-dashboard-embedded .ar-kpi { height: auto; min-height: 74px; padding: 10px 12px; break-inside: avoid; }
-  .cc-financial-page .ar-dashboard-embedded .ar-kpi strong { font-size: 23px; }
+  .cc-financial-page .ar-dashboard-embedded .ar-kpi strong { font-size: clamp(14px, 8.8cqi, 23px); }
   .cc-financial-page .ar-dashboard-embedded .ar-kpi > div { align-items: flex-start; flex-direction: column; gap: 2px; }
   .cc-financial-page .ar-dashboard-embedded .ar-kpi > div > span { max-width: none; text-align: left; }
   .cc-financial-page .ar-dashboard-embedded .ar-collection-alert { break-inside: avoid; background: #fff9f5; border-color: #ffb58d; }

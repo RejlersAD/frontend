@@ -17,7 +17,7 @@ const countText = value => outgoingNumber(value)?.toLocaleString('en-GB') ?? 'â€
 export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [filters, setFilters] = useState(() => ({ ...OUTGOING_FILTERS, ...Object.fromEntries(['currency', 'company', 'account'].filter(key => searchParams.has(key)).map(key => [key, searchParams.get(key)])) }));
+  const [filters, setFilters] = useState(() => ({ ...OUTGOING_FILTERS, ...Object.fromEntries(['currency', 'company', 'account', 'payment_status'].filter(key => searchParams.has(key)).map(key => [key, searchParams.get(key)])) }));
   const [queue, setQueue] = useState(() => ['all', 'open', 'overdue', 'due_soon', 'partial', 'paid'].includes(searchParams.get('queue')) ? searchParams.get('queue') : 'overdue');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(7);

@@ -12,6 +12,7 @@ import tailwind from 'tailwindcss';
 import tailwindConfig from '../tailwind.config.js';
 import { inlineLocalCssImports, checkArtifacts, historicalGuardsEnabled, launchBrowser, loadSnapshot, sidebarWidth, snapshotSources } from './ui-check-support.mjs';
 import { OUTGOING_CHECK_TIME, outgoingFixture, outgoingSummary, filterOutgoingRows, outgoingUser } from './check-outgoing-invoices-fixtures.mjs';
+import { receivableCollectionRoute } from '../src/components/Finance/financeReceivablesPresentation.js';
 
 // Real Outgoing Invoice page, service and shared shell; all network traffic stays in this fixture context.
 const frontend = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -20,6 +21,7 @@ const origin = 'http://outgoing-invoices-check.test';
 const visualsOnly = process.argv.includes('--visuals-only');
 const workflowsOnly = process.argv.includes('--workflows-only');
 const sourcesOnly = process.argv.includes('--sources-only');
+const drilldownOnly = process.argv.includes('--drilldown-only');
 const selectedViewport = Number(process.argv.find(value => value.startsWith('--viewport='))?.split('=')[1]) || null;
 const protectedFiles = ["src/components/Layout/Sidebar.jsx", "src/components/Layout/Sidebar.css", "src/components/Layout/Header.jsx", "src/components/Layout/Layout.jsx", "src/config/layout.config.js", "src/config/navigationLabels.config.js", "src/hooks/useSidebarLayout.js", "src/hooks/useSidebarDrawer.js", "src/pages/UserDetail.jsx", "src/pages/Finance/ProcurementInvoiceTracker.jsx", "src/components/Finance/InvoiceContextPanel.jsx", "src/components/Finance/IncomingInvoiceWorkspace.jsx", "src/components/Finance/IncomingInvoiceReview.jsx", "src/components/Finance/IncomingInvoiceReview.css", "src/components/Finance/incomingInvoiceRegister.js", "src/components/Finance/incomingReviewPresentation.js", "src/pages/Finance/IncomingInvoices.css", "src/pages/Finance/InvoiceManagementHub.jsx", "src/components/Finance/FinanceCommandCenter.jsx", "src/components/Finance/FinanceCommandCenter.css", "src/components/Finance/financeCommandPresentation.js", "src/components/Finance/financeCommandPdf.js", "src/components/Finance/FinanceCommandCharts.jsx", "src/components/Finance/FinanceCommandCharts.css", "src/components/Finance/financeCommandChartPresentation.js", "src/services/finance.service.js"];
 await mkdir(artifacts, { recursive: true });
@@ -40,7 +42,7 @@ import Layout from './src/components/Layout/Layout.jsx';import InvoiceTracker fr
 const state={auth:{user:window.outgoingUser,isAuthenticated:true},theme:{mode:'light'},rbac:{currentUser:{user:window.outgoingUser,roles:window.outgoingUser.roles,modules:[]}}};
 const store={getState:()=>state,subscribe:()=>()=>{},dispatch:()=>{}};
 function Observer(){const location=useLocation();window.outgoingRoute=location.pathname+location.search;return null;}
-createRoot(document.getElementById('root')).render(<Provider store={store}><MemoryRouter initialEntries={['/finance/outgoing-invoices']}><Observer/><Routes><Route element={<Layout/>}><Route path='/finance/outgoing-invoices' element={<InvoiceTracker/>}/><Route path='*' element={<h1>Source destination</h1>}/></Route></Routes></MemoryRouter></Provider>);
+createRoot(document.getElementById('root')).render(<Provider store={store}><MemoryRouter initialEntries={[window.outgoingInitialRoute]}><Observer/><Routes><Route element={<Layout/>}><Route path='/finance/outgoing-invoices' element={<InvoiceTracker/>}/><Route path='*' element={<h1>Source destination</h1>}/></Route></Routes></MemoryRouter></Provider>);
 `;
 const apiClient = `
 async function request(method,url,body,config={}){
@@ -81,11 +83,11 @@ const expectedSidebarWidth = await sidebarWidth(frontend);
 let browser;
 const runtimeErrors = [], unexpectedRequests = [], allMutations = [], checks = [], geometries = [], accessibility = [];
 const record = message => { checks.push(message); console.log(`PASS: ${message}`); };
-async function newPage({ fixture = 'full', width = 1672, dark = false, loading = false } = {}) {
+async function newPage({ fixture = 'full', width = 1672, dark = false, loading = false, initialRoute = '/finance/outgoing-invoices' } = {}) {
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 941 }, reducedMotion: 'reduce', timezoneId: 'Asia/Dubai' });
   const page = await context.newPage(); page.setDefaultTimeout(12000);
   await page.clock.setFixedTime(new Date(OUTGOING_CHECK_TIME));
-  await page.addInitScript(({ user, dark }) => { window.outgoingUser = user; localStorage.setItem('radai_access_token', 'isolated-outgoing-test-token'); document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.toggle('dark', dark)); }, { user: outgoingUser, dark });
+  await page.addInitScript(({ user, dark, initialRoute }) => { window.outgoingUser = user; window.outgoingInitialRoute = initialRoute; localStorage.setItem('radai_access_token', 'isolated-outgoing-test-token'); document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.toggle('dark', dark)); }, { user: outgoingUser, dark, initialRoute });
   page.on('pageerror', error => runtimeErrors.push(error.message));
   const control = { fixture, requests: [], expectedMutations: [], mutations: [], failures: {}, detailOverrides: {}, deferredDetails: new Map(), loading, listPending: [] };
   const json = (route, data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
@@ -402,11 +404,31 @@ async function mutationChecks() {
   record('Original Excel import remains explicit, focus-contained and refreshes only after its synthetic response');
 }
 
+async function dashboardDrilldownChecks() {
+  const fixture = outgoingFixture();
+  fixture.rows = fixture.rows.slice(0, 3).map((row, index) => ({ ...row, company: 'Dashboard Customer', currency: 'AED', payment_status: index < 2 ? 'overdue' : 'pending', payment_status_label: index < 2 ? 'Overdue' : 'Pending', due_date: ['2026-10-01', null, '2026-01-01'][index] }));
+  const state = await open({ fixture, initialRoute: receivableCollectionRoute({ currency: 'AED', company: 'Dashboard Customer' }) });
+  const { page, control } = state;
+  assert.equal(await page.getByLabel('Collection queue', { exact: true }).inputValue(), 'all');
+  assert.equal(await page.getByLabel('Status', { exact: true }).inputValue(), 'overdue');
+  await expectRows(page, 2);
+  const register = control.requests.find(request => request.endpoint === '/invoice-tracker/invoices/');
+  const query = new URLSearchParams(register.query);
+  assert.equal(query.get('queue'), 'all'); assert.equal(query.get('payment_status'), 'overdue');
+  assert.equal(query.get('currency'), 'AED'); assert.equal(query.get('company'), 'Dashboard Customer');
+  assert.match(await rows(page).allTextContents().then(values => values.join(' ')), /AR-SYN-201/);
+  assert.match(await rows(page).allTextContents().then(values => values.join(' ')), /AR-SYN-202/);
+  assert.doesNotMatch(await rows(page).allTextContents().then(values => values.join(' ')), /AR-SYN-203/);
+  await state.close();
+  record('Dashboard drilldown loads recorded Overdue invoices with future or missing due dates and excludes past-due Pending invoices');
+}
+
 try {
   browser = await launchBrowser();
-  if (!workflowsOnly && !sourcesOnly) await visualChecks();
-  if (sourcesOnly) await sourceChecks();
-  else if (!visualsOnly) { await workflowChecks(); await sourceChecks(); await mutationChecks(); }
+  if (!workflowsOnly && !sourcesOnly && !drilldownOnly) await visualChecks();
+  if (drilldownOnly) await dashboardDrilldownChecks();
+  else if (sourcesOnly) await sourceChecks();
+  else if (!visualsOnly) { await dashboardDrilldownChecks(); await workflowChecks(); await sourceChecks(); await mutationChecks(); }
   await guards(); assert.deepEqual(runtimeErrors, [], 'No browser runtime errors'); assert.deepEqual(unexpectedRequests, [], 'Every network request is explicitly intercepted');
   await writeFile(path.join(artifacts, 'checks.json'), JSON.stringify({ passed: true, checks, runtimeErrors, unexpectedRequests, mutations: allMutations, geometries, accessibility }, null, 2));
 } catch (error) {
