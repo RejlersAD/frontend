@@ -117,7 +117,8 @@ CustomerBalancesChart.propTypes = { rows: PropTypes.arrayOf(PropTypes.shape({ cu
 
 export function ExposureDonut({ rows = [], total, currency = 'AED', partial = false }) {
   const chart = useChart();
-  const recorded = rows.filter(row => finite(row.amount) && row.amount > 0);
+  const signedBalances = rows.some(row => finite(row.amount) && row.amount < 0);
+  const recorded = rows.slice(0, 5).filter(row => finite(row.amount) && row.amount > 0);
   const recordedTotal = recorded.reduce((sum, row) => sum + row.amount, 0);
   const denominator = finite(total) && total > recordedTotal ? total : recordedTotal;
   const remainder = denominator - recordedTotal;
@@ -125,7 +126,7 @@ export function ExposureDonut({ rows = [], total, currency = 'AED', partial = fa
   const circumference = 2 * Math.PI * 65;
   let offset = 0;
   return <div className="ar-chart ar-chart-exposure" ref={chart.ref} data-testid="ar-exposure-chart">
-    {denominator > 0 ? <div className="ar-chart-donut-layout"><svg className="ar-chart-donut" viewBox="0 0 238 186" role="img" aria-labelledby={`${chart.id}-title ${chart.id}-description`}>
+    {signedBalances ? <ChartEmpty>Negative customer balances are included in unpaid totals. See the customer balances and ageing summary; percentage shares do not apply.</ChartEmpty> : denominator > 0 ? <div className="ar-chart-donut-layout"><svg className="ar-chart-donut" viewBox="0 0 238 186" role="img" aria-labelledby={`${chart.id}-title ${chart.id}-description`}>
       <SvgTitle id={chart.id} title={`Customer exposure concentration in ${currency}`} description={`Shares of ${money(denominator, currency)} in ${partial ? 'recorded' : 'unpaid'} customer balances. Any remaining balance is shown as other customers.`} />
       {data.map((row, index) => {
         const share = row.amount / denominator;
@@ -250,7 +251,8 @@ export function PaymentHistoryChart({ rows = [], currency = 'AED', partial = fal
   const bottom = height - 32;
   const left = 39;
   const right = chart.width - 12;
-  const scale = scaleFor(rows.map(row => finite(row.paid) || finite(row.unpaid) ? (finite(row.paid) ? row.paid : 0) + (finite(row.unpaid) ? row.unpaid : 0) : null), 3);
+  const unpaidBase = row => finite(row.paid) && row.paid * row.unpaid >= 0 ? row.paid : 0;
+  const scale = scaleFor(rows.flatMap(row => [row.paid, finite(row.unpaid) ? unpaidBase(row) + row.unpaid : null]), 3);
   const y = value => top + (scale.max - value) / (scale.max - scale.min) * (bottom - top);
   const slot = (right - left) / Math.max(rows.length, 1);
   const barWidth = Math.min(71, slot * 0.72);
@@ -264,10 +266,11 @@ export function PaymentHistoryChart({ rows = [], currency = 'AED', partial = fal
       {rows.map((row, index) => {
         const x = left + slot * (index + 0.5);
         const paid = finite(row.paid) ? row.paid : 0;
+        const base = unpaidBase(row);
         const [month, year] = monthParts(row.month);
         return <g key={`${row.month}-${index}`}>
           {finite(row.paid) && <rect className="ar-chart-mark" {...chart.mark(`Invoices issued ${month} ${year}, recorded payments: ${money(row.paid, currency)}`)} x={x - barWidth / 2} y={Math.min(y(paid), y(0))} width={barWidth} height={Math.max(paid === 0 ? 1 : 0, Math.abs(y(0) - y(paid)))} fill="#4aa8fa" stroke="var(--ar-panel, white)" strokeWidth="0.75"><title>{`Invoices issued ${month} ${year}, recorded payments: ${money(row.paid, currency)}`}</title></rect>}
-          {finite(row.unpaid) && <rect className="ar-chart-mark" {...chart.mark(`Invoices issued ${month} ${year}, currently unpaid: ${money(row.unpaid, currency)}${finite(row.paid) ? '' : '; payments not recorded'}`)} x={x - barWidth / 2} y={Math.min(y(paid + row.unpaid), y(paid))} width={barWidth} height={Math.max(row.unpaid === 0 ? 1 : 0, Math.abs(y(paid) - y(paid + row.unpaid)))} fill="#c4d9e7" stroke="var(--ar-panel, white)" strokeWidth="0.75"><title>{`Invoices issued ${month} ${year}, currently unpaid: ${money(row.unpaid, currency)}`}</title></rect>}
+          {finite(row.unpaid) && <rect className="ar-chart-mark" {...chart.mark(`Invoices issued ${month} ${year}, currently unpaid: ${money(row.unpaid, currency)}${finite(row.paid) ? '' : '; payments not recorded'}`)} x={x - barWidth / 2} y={Math.min(y(base + row.unpaid), y(base))} width={barWidth} height={Math.max(row.unpaid === 0 ? 1 : 0, Math.abs(y(base) - y(base + row.unpaid)))} fill="#c4d9e7" stroke="var(--ar-panel, white)" strokeWidth="0.75"><title>{`Invoices issued ${month} ${year}, currently unpaid: ${money(row.unpaid, currency)}`}</title></rect>}
           {((index % tickEvery === 0 && index <= rows.length - 1 - tickEvery / 2) || index === rows.length - 1) && <text className="ar-chart-axis-label" x={x} y={height - 17} textAnchor="middle"><tspan x={x}>{month}</tspan><tspan x={x} dy="11">{year}</tspan></text>}
         </g>;
       })}

@@ -22,6 +22,8 @@ const visualsOnly = process.argv.includes('--visuals-only');
 const workflowsOnly = process.argv.includes('--workflows-only');
 const registerMobileOnly = process.argv.includes('--register-mobile-only');
 const currenciesOnly = process.argv.includes('--currency-breakdown-only');
+const signedOnly = process.argv.includes('--signed-only');
+const sourceOnly = process.argv.includes('--source-only');
 const protectedFiles = ['src/components/Layout/Sidebar.jsx', 'src/components/Layout/Sidebar.css', 'src/config/layout.config.js', 'src/config/navigationLabels.config.js', 'src/hooks/useSidebarLayout.js', 'src/hooks/useSidebarDrawer.js'];
 await mkdir(artifacts, { recursive: true });
 const startHashes = await snapshotSources(frontend, protectedFiles);
@@ -210,7 +212,7 @@ async function geometry(page, width, dark) {
   if (width >= 1024) assert.equal(Math.round(result.sidebarWidth), expectedSidebarWidth, 'Existing desktop sidebar width is preserved');
   assert.equal(result.footerCount, 0, 'Finance overview uses the full height without the shared footer');
   assert.equal(result.mainPaddingTop, '0px', 'Finance has no inherited gap below the compact top bar');
-  assert.equal(result.kpis.length, 4);
+  assert.equal(result.kpis.length, 5);
   assert.equal(result.workbookCards.length, 4);
   assert.ok(result.workbookCards.every(card => card.fits && card.width > 0 && card.x >= result.contentX - 1 && card.right <= width + 1), 'Four workbook cards fit without clipped amounts');
   assert.equal(result.paymentStatus.minWidth, '0px', 'Status table does not inherit the wide invoice-table minimum');
@@ -233,7 +235,7 @@ async function geometry(page, width, dark) {
   assert.deepEqual(result.chartTextOverflow, [], 'Chart labels fit within each SVG without clipping');
   assert.ok(result.panels.every(panel => panel.width > 0 && panel.height > 0 && panel.x >= result.contentX - 1 && panel.right <= width + 1), 'Panels fit within the content column');
   if (width >= 1440) {
-    assert.equal(new Set(result.kpis.map(card => Math.round(card.y))).size, 1, 'Four outcomes remain on one desktop row');
+    assert.equal(new Set(result.kpis.map(card => Math.round(card.y))).size, 1, 'Five outcomes remain on one desktop row');
     assert.equal(new Set(result.workbookCards.map(card => Math.round(card.y))).size, 1, 'Four workbook totals remain on one desktop row');
     assert.ok(result.kpis.every(card => card.bottom <= result.workbookCards[0].y), 'Scoped receivables outcomes appear before workbook totals');
     assert.ok(result.header && result.header.height >= 32 && result.header.height <= 45, 'Compact finance top bar remains close to the 37px reference');
@@ -277,7 +279,7 @@ async function visualChecks() {
       assert.equal(await state.page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open sidebar');
     }
     await state.close();
-    record(`${width}px light layout: four workbook totals, four receivables KPIs, seven panels and unchanged sidebar geometry`);
+    record(`${width}px light layout: four workbook totals, five receivables KPIs, seven panels and unchanged sidebar geometry`);
   }
   const state = await open({ dark: true }); await registerReady(state.page); await capture(state.page, 'receivables-dark'); await geometry(state.page, 1672, true); await axe(state.page, 'dark-1672'); await registerSection(state.page).screenshot({ path: path.join(artifacts, 'customer-invoices-dark.png'), animations: 'disabled' }); await state.page.locator('.ar-invoice-overview').screenshot({ path: path.join(artifacts, 'invoice-overview-dark.png'), animations: 'disabled' }); await state.close();
   record('Dark theme remains readable and accessible');
@@ -304,7 +306,7 @@ async function fixtureConsistency() {
   for (const field of ['invoice_amount', 'actual_payment_received']) {
     assert.equal(data.workbook_summary.currency_breakdown.reduce((sum, row) => sum + BigInt(row[field].replace('.', '')), 0n), BigInt(data.workbook_summary.totals[field].replace('.', '')), `${field} currency groups reconcile to the exact source total`);
   }
-  assert.deepEqual(Object.values(data.kpis).map(item => Number(item.amount)), [380828, 313499, 286591, 148983]);
+  assert.deepEqual(Object.values(data.kpis).map(item => Number(item.amount)), [380828, 313499, 286591, 211174, 148983]);
   assert.equal(data.customers.reduce((sum, row) => sum + Number(row.amount), 0), Number(data.kpis.unpaid.amount));
   assert.equal(data.ageing.reduce((sum, row) => sum + Number(row.receivables.amount), 0), Number(data.kpis.unpaid.amount));
   for (const customer of data.customers) assert.equal(Object.values(customer.buckets).reduce((sum, row) => sum + Number(row.amount), 0), Number(customer.amount));
@@ -323,19 +325,20 @@ async function fixtureConsistency() {
   assert.equal(foreign.rows[1].amount_due_home, '0.00', 'An explicitly settled foreign balance has an exact zero without inferred FX');
   const formula = receivablesFixture('formula').data, formulaRegister = customerInvoicesFixture('formula').data;
   assert.deepEqual(formulaInvoiceSources().map(row => [row.id, row.amount]), [[901, 7500], [902, 2000], [903, null], [904, 0], [905, -250], [906, 7000], [907, 500], [908, 700]]);
-  assert.equal(formula.kpis.unpaid.amount, null); assert.equal(formula.kpis.unpaid.known_amount, '9500.00'); assert.equal(formula.kpis.unpaid.missing_count, 1);
-  assert.equal(formula.kpis.overdue.known_amount, '9500.00'); assert.equal(formula.kpis.over90.amount, '7500.00');
+  assert.equal(formula.kpis.unpaid.amount, null); assert.equal(formula.kpis.unpaid.known_amount, '12200.00'); assert.equal(formula.kpis.unpaid.missing_count, 1);
+  assert.equal(formula.kpis.overdue.known_amount, '2000.00'); assert.equal(formula.kpis.over90.amount, '6200.00');
   assert.deepEqual(formulaRegister.rows.map(row => row.id).sort(), [901, 902, 903, 904, 905, 906], 'Register preserves paid/settled rows and excludes cancelled invoices and credit notes');
   assert.equal(formulaRegister.totals.amount.known_amount, '24000.00'); assert.equal(formulaRegister.totals.actual_payment_received.amount, '7850.00');
   assert.equal(formula.paid_unpaid_by_month.reduce((sum, row) => sum + Number(row.paid.amount), 0), 7850, 'Blank receipts count as zero in payment charts');
-  assert.ok(formulaRegister.rows.every(row => row.balance_to_be_received === '987654.32'), 'Conflicting legacy balances remain present so tests can detect accidental fallback');
-  record('Synthetic balances use invoice amount minus receipts, ignore conflicting stored balances, and preserve unknown invoice amounts');
+  assert.equal(formulaRegister.rows.find(row => row.id === 901).balance_to_be_received, '6200.00', 'Partial uses recorded balance even when it differs from invoice amount minus receipts');
+  assert.ok(formulaRegister.rows.filter(row => row.id !== 901).every(row => row.balance_to_be_received === '987654.32'), 'Other payment statuses use invoice amount, ignoring recorded balance');
+  record('Synthetic balances use invoice amounts for New/Overdue/Pending, recorded balances for Partial, and preserve unknown amounts');
 }
 
 async function workflowChecks() {
   let state = await open(); let { page, control } = state;
   await page.getByRole('heading', { name: 'Accounts Receivable', exact: true }).waitFor();
-  for (const [id, expected] of [['unpaid', 380828], ['overdue', 313499], ['over30', 286591], ['over90', 148983]]) assert.equal(await kpiAmount(page, id), expected, `${id} uses the server aggregate`);
+  for (const [id, expected] of [['unpaid', 380828], ['overdue', 313499], ['over30', 286591], ['over60', 211174], ['over90', 148983]]) assert.equal(await kpiAmount(page, id), expected, `${id} uses the server aggregate`);
   assert.equal(await page.getByTestId('finance-kpi-cash').count(), 0);
   await workbookValues(page);
   await workbook(page).getByText('Workbook source', { exact: true }).click();
@@ -390,7 +393,7 @@ async function workflowChecks() {
   await invoiceLink.click(); await page.getByRole('heading', { name: 'Source destination', exact: true }).waitFor(); assert.equal(await page.evaluate(() => window.financeRoute), invoiceHref);
   assert.equal(await page.locator('.app-footer').count(), 1, 'Existing footer remains on invoice detail routes'); await state.close();
   state = await open(); ({ page, control } = state); await root(page).getByRole('link', { name: /collection queue/i }).click(); await page.getByRole('heading', { name: 'Source destination', exact: true }).waitFor();
-  const queueRoute = new URL(await page.evaluate(() => window.financeRoute), origin); assert.equal(queueRoute.pathname, '/finance/outgoing-invoices'); assert.equal(queueRoute.searchParams.get('queue'), 'overdue'); assert.equal(queueRoute.searchParams.get('currency'), 'AED'); await state.close();
+  const queueRoute = new URL(await page.evaluate(() => window.financeRoute), origin); assert.equal(queueRoute.pathname, '/finance/outgoing-invoices'); assert.equal(queueRoute.searchParams.get('queue'), 'all'); assert.equal(queueRoute.searchParams.get('payment_status'), 'overdue'); assert.equal(queueRoute.searchParams.get('currency'), 'AED'); await state.close();
   record('Invoice review and collection queue navigate to existing outgoing invoice routes; shell changes stay on /finance');
 
   state = await open(); ({ page } = state);
@@ -412,7 +415,7 @@ async function workflowChecks() {
     if (fixture === 'partial') { assert.equal(await kpiAmount(page, 'unpaid'), 380828); assert.match(await page.getByTestId('finance-kpi-unpaid').innerText(), /recorded|partial|missing/i); assert.match(await root(page).innerText(), /missing|partial/i); }
     if (fixture === 'restricted') {
       await workbookValues(page, false);
-      for (const id of ['unpaid', 'overdue', 'over30', 'over90']) assert.equal(await kpi(page, id).innerText(), '—');
+      for (const id of ['unpaid', 'overdue', 'over30', 'over60', 'over90']) assert.equal(await kpi(page, id).innerText(), '—');
       assert.ok(!(await root(page).innerText()).includes('Stripe Inc.')); assert.match(await root(page).innerText(), /restricted|access/i);
       assert.equal(await root(page).locator('a[href^="/finance/outgoing-invoices"]').count(), 0);
     }
@@ -532,8 +535,11 @@ async function customerInvoiceChecks() {
 async function formulaChecks() {
   const state = await open({ fixture: 'formula' }); const { page, control } = state; await registerReady(page);
   const section = registerSection(page), table = section.getByRole('table', { name: 'Customer invoices', exact: true });
-  for (const id of ['unpaid', 'overdue']) assert.equal(await kpiAmount(page, id), 9500, 'Only positive eligible L minus AA balances contribute to exposure');
-  assert.equal(await kpiAmount(page, 'over90'), 7500);
+  assert.equal(await kpiAmount(page, 'unpaid'), 12200, 'New, Overdue and Pending use invoice amounts; Partial uses the recorded balance');
+  assert.equal(await kpiAmount(page, 'overdue'), 2000, 'Only recorded Overdue payment status contributes to overdue amount');
+  assert.equal(await kpiAmount(page, 'over30'), 10200, 'Ageing uses Due Date across unpaid payment statuses');
+  assert.equal(await kpiAmount(page, 'over60'), 10200);
+  assert.equal(await kpiAmount(page, 'over90'), 6200);
   assert.match(await page.getByTestId('finance-kpi-unpaid').innerText(), /recorded|missing|partial/i);
   assert.doesNotMatch(await root(page).innerText(), /987,654|987654|Cancelled Example|Credit Note Example/, 'The stale stored balance and excluded invoices are never displayed');
   const invoice = id => table.locator('tbody tr').filter({ has: page.locator(`[data-field="invoice_number"] a[href="/finance/outgoing-invoices/${id}"]`) });
@@ -556,13 +562,13 @@ async function formulaChecks() {
   assert.equal(await cell(901, 'days_overdue').innerText(), '142'); assert.equal(await cell(902, 'days_overdue').innerText(), '10');
   assert.equal(await table.locator('tfoot').innerText(), initialTotals, 'Changing the reporting date updates days overdue without changing source totals');
   await page.getByLabel('More dashboard options', { exact: true }).click(); await page.getByText('Source coverage', { exact: true }).click();
-  await page.getByRole('dialog').waitFor(); assert.match(await page.getByRole('dialog').innerText(), /Invoice Amount|column L/i); assert.match(await page.getByRole('dialog').innerText(), /Actual Payment Received|column AA/i);
+  await page.getByRole('dialog').waitFor(); assert.match(await page.getByRole('dialog').innerText(), /Invoice Amount|column L/i); assert.match(await page.getByRole('dialog').innerText(), /Balance to be received.*Partial/i); assert.match(await page.getByRole('dialog').innerText(), /recorded payment status Overdue/i); assert.match(await page.getByRole('dialog').innerText(), /more than 90 days past the Due Date/i);
   await page.keyboard.press('Escape');
   const downloadEvent = page.waitForEvent('download'); await root(page).getByRole('button', { name: /^Export/ }).click(); const download = await downloadEvent;
-  const csv = await readFile(await download.path(), 'utf8'); assert.match(csv, /9500/); assert.doesNotMatch(csv, /987654/); assert.match(csv, /Invoice Amount|column L/i); assert.match(csv, /Actual Payment Received|column AA/i);
+  const csv = await readFile(await download.path(), 'utf8'); assert.match(csv, /12200/); assert.doesNotMatch(csv, /987654/); assert.match(csv, /Invoice Amount|column L/i); assert.match(csv, /Balance to be received.*Partial/i);
   await writeFile(path.join(artifacts, 'receivables-formula.csv'), csv);
   await axe(page, 'source-formula-and-fifteen-columns'); await section.screenshot({ path: path.join(artifacts, 'customer-invoices-formula.png'), animations: 'disabled' });
-  await state.close(); record('Formula cases preserve raw source columns, ignore stored Y, handle blank receipts/missing L and update days overdue with the reporting date');
+  await state.close(); record('Formula cases use recorded payment statuses, the Partial balance column and Due Date ageing while preserving register source values');
 }
 
 async function mobileRegisterStateChecks() {
@@ -630,10 +636,69 @@ async function currencyBreakdownChecks() {
   record('Missing breakdowns preserve headline totals; permission, loading and schema guards suppress stale currency values');
 }
 
+async function signedAmountChecks() {
+  const state = await open({ fixture: 'signed' });
+  const { page } = state;
+  for (const id of ['unpaid', 'overdue', 'over30', 'over60', 'over90']) assert.equal(await kpiAmount(page, id), -50, `${id} retains signed amounts`);
+  assert.equal(receivablesFixture('signed').data.kpis.unpaid.count, 3, 'Zero amounts remain in the status-selected count');
+  const exposure = page.getByTestId('ar-exposure-chart');
+  assert.match(await exposure.innerText(), /Negative customer balances are included/);
+  assert.equal(await exposure.locator('.ar-chart-donut-segment').count(), 0, 'Signed balances do not become misleading positive-only percentage shares');
+  const chart = page.getByTestId('ar-payment-history-chart');
+  const paid = chart.locator('rect[aria-label*="Sep 2026, recorded payments"]');
+  const unpaid = chart.locator('rect[aria-label*="Sep 2026, currently unpaid"]');
+  assert.match(await paid.getAttribute('aria-label'), /AED 150/);
+  assert.match(await unpaid.getAttribute('aria-label'), /AED -50/);
+  const geometry = await chart.evaluate(element => {
+    const svg = element.querySelector('svg');
+    const baseline = Number(svg.querySelector('.ar-chart-baseline').getAttribute('y1'));
+    return { baseline, height: svg.viewBox.baseVal.height, bars: [...svg.querySelectorAll('rect.ar-chart-mark')].map(rect => ({ label: rect.getAttribute('aria-label'), y: Number(rect.getAttribute('y')), height: Number(rect.getAttribute('height')) })) };
+  });
+  assert.ok(geometry.bars.every(bar => bar.y >= 0 && bar.height >= 0 && bar.y + bar.height <= geometry.height), 'Signed payment bars remain within the chart');
+  assert.ok(Number(await unpaid.getAttribute('y')) >= geometry.baseline, 'Negative unpaid amount is below zero');
+  assert.doesNotMatch(await root(page).innerText(), /NaN|Infinity/);
+  await axe(page, 'signed-dashboard-balances'); await state.close();
+  record('Signed and zero amounts remain in KPIs; negative customer balances suppress percentage shares and mixed-sign history bars stay within the plot');
+}
+
+async function workbookSourceChecks() {
+  const state = await open({ fixture: 'workbook' });
+  const { page, control } = state;
+  await registerReady(page);
+  const section = registerSection(page), table = section.getByRole('table', { name: 'Customer invoices', exact: true });
+  assert.equal(await kpiAmount(page, 'overdue'), 4672.5, 'AED uses recorded M for both USD and AED Overdue invoices');
+  assert.equal(await kpiAmount(page, 'over60'), 5506.55);
+  assert.match(await page.getByTestId('finance-kpi-overdue').innerText(), /recorded AED amounts/);
+  assert.equal(await root(page).locator('a[href^="/finance/outgoing-invoices"]').count(), 0, 'Source records do not link to operational invoice IDs');
+  assert.equal(await table.locator('tbody tr').count(), 3);
+  assert.match(await section.innerText(), /All original currencies/);
+  assert.match(await table.locator('[data-field="amount"]').filter({ hasText: '1,000' }).first().getAttribute('title'), /USD/);
+  let pending = registerResponse(page);
+  await page.getByRole('button', { name: 'Review overdue invoices', exact: true }).click();
+  await pending; await registerReady(page);
+  assert.equal(new URLSearchParams(registerRequests(control).at(-1).query).get('payment_status'), 'overdue');
+  assert.equal(await table.locator('tbody tr').count(), 2);
+  assert.match(await table.locator('tfoot').innerText(), /4,672.5/);
+  assert.equal(await section.getByLabel('Customer invoice payment status', { exact: true }).inputValue(), 'overdue');
+  assert.equal(await page.evaluate(() => window.financeRoute), '/finance');
+  assert.ok(await table.locator('tfoot [title="Recorded values use multiple currencies."]').count() > 0);
+  pending = registerResponse(page);
+  await section.getByLabel('Customer invoice payment status', { exact: true }).selectOption('');
+  await pending; await registerReady(page); assert.equal(await table.locator('tbody tr').count(), 3);
+  await moreAction(page, 'Source coverage');
+  assert.match(await page.getByRole('dialog').innerText(), /recorded Inv Amt\. \(AED\).*all original invoice currencies/);
+  assert.match(await page.getByRole('dialog').innerText(), /Verified source invoices.xlsx/);
+  await page.keyboard.press('Escape');
+  await axe(page, 'workbook-source-reporting'); await state.close();
+  record('Stored AED reporting reconciles cross-currency source invoices; overdue drilldown stays on the source register and preserves mixed-currency totals');
+}
+
 try {
   await fixtureConsistency(); browser = await launchBrowser();
-  if (!registerMobileOnly && (!currenciesOnly || visualsOnly) && !workflowsOnly) await visualChecks();
-  if (!registerMobileOnly && !currenciesOnly && !visualsOnly) { await workflowChecks(); await customerInvoiceChecks(); await formulaChecks(); }
+  if (!registerMobileOnly && (!currenciesOnly || visualsOnly) && !workflowsOnly && !signedOnly && !sourceOnly) await visualChecks();
+  if (!registerMobileOnly && !currenciesOnly && !visualsOnly && !signedOnly && !sourceOnly) { await workflowChecks(); await customerInvoiceChecks(); await formulaChecks(); await workbookSourceChecks(); }
+  if (signedOnly) await signedAmountChecks();
+  if (sourceOnly) await workbookSourceChecks();
   if (currenciesOnly) await currencyBreakdownChecks();
   if (registerMobileOnly) await mobileRegisterStateChecks();
   await guards(); assert.deepEqual(runtimeErrors, [], 'No browser runtime errors'); assert.deepEqual(unexpectedRequests, [], 'Every request is read-only and explicitly mocked');

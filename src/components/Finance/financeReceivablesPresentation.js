@@ -7,8 +7,15 @@ export const RECEIVABLE_AGES = [
 ];
 export const RECEIVABLE_KPIS = [
   ['unpaid', 'Unpaid invoices', 'blue'], ['overdue', 'Overdue amount', 'cyan'],
-  ['over30', 'Overdue 30+ days', 'amber'], ['over90', 'Overdue 90+ days', 'red'],
+  ['over30', 'Overdue 30+ days', 'amber'], ['over60', 'Overdue 60+ days', 'orange'], ['over90', 'Overdue 90+ days', 'red'],
 ];
+export const RECEIVABLE_DEFINITIONS = {
+  unpaid: 'Payment status New, Overdue, Pending or Partial. Partial invoices contribute only their remaining balance to be received. Signed and zero amounts are retained.',
+  overdue: 'Amounts for invoices whose recorded payment status is Overdue, regardless of their due date.',
+  over30: 'Unpaid balances more than 30 days past the Due Date, relative to the selected as-of date.',
+  over60: 'Unpaid balances more than 60 days past the Due Date, relative to the selected as-of date.',
+  over90: 'Unpaid balances more than 90 days past the Due Date, relative to the selected as-of date.',
+};
 export const receivablesToday = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -25,13 +32,20 @@ export const receivableMoney = (value, currency) => financeNumber(value) === nul
 export const receivableDate = value => value ? financeDate(String(value).slice(0, 10)) : 'Not recorded';
 export const receivableCustomer = row => String(row?.company ?? '').trim() || 'Customer not recorded';
 export const receivableReadable = source => ['available', 'incomplete'].includes(source?.status);
-export function receivableMetricNote(metric) {
+export const receivableInvoiceRoute = row => row?.source_snapshot || String(row?.id || '').startsWith('source:')
+  ? row.invoice_route || null
+  : row && Object.hasOwn(row, 'invoice_route') ? row.invoice_route
+    : row?.id === undefined || row?.id === null ? null : `/finance/outgoing-invoices/${encodeURIComponent(row.id)}`;
+export const receivableAmountBasis = data => data?.amount_basis === 'recorded_aed'
+  ? 'AED invoice amounts use recorded Inv Amt. (AED) values across all original invoice currencies. No live exchange-rate conversion is applied.'
+  : 'Amounts use the selected original invoice currency. No currency conversion is applied.';
+export function receivableMetricNote(metric, amountBasis = 'original_currency') {
   if (financeCount(metric?.count) === null && receivableValue(metric) === null) return 'Balance not available';
   if (metric?.partial) {
     const missing = financeCount(metric.missing_count);
     return missing > 0 ? `Recorded amount · ${missing} ${missing === 1 ? 'balance' : 'balances'} missing` : 'Recorded amount · incomplete data';
   }
-  return receivableValue(metric) === null ? 'Balance not available' : 'in original currency';
+  return receivableValue(metric) === null ? 'Balance not available' : amountBasis === 'recorded_aed' ? 'recorded AED amounts' : 'in original currency';
 }
 export function receivableCustomerRows(data) {
   if (!receivableReadable(data?.sources?.receivables)) return [];
@@ -56,7 +70,8 @@ export function receivableChartRows(data) {
 }
 export function receivableCollectionRoute(filters = {}, company = '') {
   const customer = company.trim();
-  const query = new URLSearchParams({ queue: customer ? 'open' : 'overdue' });
+  const query = new URLSearchParams({ queue: customer ? 'open' : 'all' });
+  if (!customer) query.set('payment_status', 'overdue');
   if (filters.currency) query.set('currency', filters.currency);
   if (customer || filters.company) query.set('company', customer || filters.company);
   return `/finance/outgoing-invoices?${query.toString()}`;
@@ -68,15 +83,15 @@ export function receivableAlert(data) {
   };
   const overdue = data.kpis?.overdue;
   const unknownDueDates = financeCount(data.sources?.receivables?.unknown_due_date_count);
-  const customers = (data.customers || []).map(row => {
-    const buckets = RECEIVABLE_AGES.slice(1).map(([id]) => receivableValue(row.buckets?.[id]));
-    return { customer: receivableCustomer(row), value: buckets.some(value => value !== null) ? buckets.reduce((sum, value) => sum + (value ?? 0), 0) : null };
-  }).filter(row => row.value > 0).sort((a, b) => b.value - a.value);
-  if (!customers.length && unknownDueDates > 0) return { title: `${unknownDueDates} ${unknownDueDates === 1 ? 'invoice needs a due date' : 'invoices need due dates'}`, detail: 'Record the missing due dates to assess overdue exposure. These invoices remain in unpaid balances.' };
+  const recordedCustomers = (data.customers || []).map(row => ({ customer: receivableCustomer(row), value: receivableValue(row.overdue) }));
+  const customers = recordedCustomers.filter(row => row.value > 0).sort((a, b) => b.value - a.value);
+  if (!customers.length && unknownDueDates > 0) return { title: `${unknownDueDates} ${unknownDueDates === 1 ? 'invoice needs a due date' : 'invoices need due dates'}`, detail: 'Record the missing due dates to assess 30+, 60+ and 90+ day ageing. Recorded Overdue payment statuses still contribute to the overdue amount.' };
+  if (!customers.length && receivableValue(overdue) < 0 && !overdue?.partial) return { title: 'No positive overdue balances in this view', detail: 'The overdue amount includes recorded negative amounts. Review the invoice register for the signed balances.' };
   if (!customers.length) return { title: receivableValue(overdue) === 0 && !overdue?.partial ? 'No overdue balances in this view' : 'Complete the missing balances to assess overdue exposure', detail: receivableValue(overdue) === 0 && !overdue?.partial ? 'Keep track of upcoming payments in the collection queue.' : 'Recorded invoice amounts remain visible; missing balances are excluded from subtotals.' };
   const top = customers.slice(0, 5);
   const total = receivableValue(overdue);
-  const share = total > 0 ? Math.min(100, top.reduce((sum, row) => sum + row.value, 0) / total * 100) : null;
+  const signed = recordedCustomers.some(row => row.value < 0);
+  const share = total > 0 && !signed ? Math.min(100, top.reduce((sum, row) => sum + row.value, 0) / total * 100) : null;
   const percentage = share === null ? '' : `${share === 100 ? '100' : Math.min(99.9, Math.round(share * 10) / 10)}% of `;
   return {
     title: `${top.length} ${top.length === 1 ? 'customer drives' : 'customers drive'} ${percentage}${overdue?.partial ? 'recorded ' : ''}overdue exposure`,
@@ -118,8 +133,10 @@ export function receivablesCsv(data) {
   const customers = receivableCustomerRows(data);
   const rows = [
     ['Accounts Receivable', data.currency], ['Ageing reference date', data.as_of_date],
+    ['Reporting amount basis', receivableAmountBasis(data)],
+    ...(data.sources?.receivables?.mode === 'workbook' ? [['Source workbook', data.sources.receivables.file_name], ['Source sheet', data.sources.receivables.sheet_name]] : []),
     ['Basis', 'Current recorded balances; not a historical balance sheet. Monthly charts group current balances by invoice or due month.'],
-    ['Balance formula', 'Invoice Amount (L) minus Actual Payment Received (AA). Blank payments count as zero; missing invoice amounts remain unknown. Overdue includes positive balances past their due date on unsettled invoices.'],
+    ...RECEIVABLE_KPIS.map(([id, label]) => [`${label} formula`, data.definitions?.[id] || RECEIVABLE_DEFINITIONS[id]]),
     ['Customer / COMPANY', data.filters?.company || 'All customers'], [],
     ...workbookCsvRows(data),
     ['Metric', 'Recorded amount', 'Missing balances', 'Partial'],

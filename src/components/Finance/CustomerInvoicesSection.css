@@ -75,3 +75,5 @@
 @keyframes ar-customer-register-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ar-customer-register-spinner { animation: none; } }
 @media print { .ar-customer-register-scroll { overflow: visible; } .ar-customer-register-table { min-width: 0; } .ar-customer-register-footer nav { display: none; } }
+.ar-register-status-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--ar-ink); }
+.ar-register-status-filter select { max-width: 100%; border: 1px solid var(--ar-border); border-radius: 4px; padding: 4px 6px; color: var(--ar-ink); background: var(--ar-panel); }

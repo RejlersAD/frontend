@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import process from 'node:process';
 import AxeBuilder from '@axe-core/playwright';
 import { receivablesFixture } from './check-receivables-dashboard-fixtures.mjs';
 import { assertInvoiceKpiGraphics } from './check-executive-reference-overview.mjs';
@@ -178,6 +179,10 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
   assert.ok(requests(control).length, 'The board reads its authorized Executive receivables endpoint');
   assert.ok(!control.requests.some(row => row.endpoint.startsWith('/finance/dashboard/')), 'Executive reporting does not borrow Finance-only endpoint access');
   assert.equal(requests(control, '/dashboard/executive/customer-invoices/').length, 0, 'The executive board does not load the full invoice register');
+  const registerRoute = new URL(await board(page).getByRole('link', { name: 'Open client balances', exact: true }).getAttribute('href'), 'http://executive-check.test');
+  assert.equal(registerRoute.searchParams.get('queue'), 'all');
+  assert.equal(registerRoute.searchParams.get('currency'), 'AED');
+  assert.equal(registerRoute.searchParams.has('payment_status'), false, 'The complete register link must not inherit the Overdue status filter');
   assert.match(await board(page).locator('.ef-action-banner').innerText(), /AED 313,499/);
   assert.match(await board(page).locator('.ef-cash-stats').innerText(), /AED 380,828/);
   await page.getByRole('button', { name: 'Review financial actions', exact: true }).click();
@@ -306,10 +311,14 @@ export async function runFinancialPerformanceChecks({ frontend, newPage, assertG
     await capture(page, `financial-reference-${fixture}`); await close(state);
   }
   state = await open({ financeFixture: 'formula' }); ({ page } = state);
-  assert.match(await board(page).locator('.ef-action-banner').innerText(), /AED 9,500\*/);
-  assert.match(await board(page).locator('.ef-cash-stats').innerText(), /AED 9,500\*/);
-  assert.match(await board(page).locator('.ef-cash-stats').innerText(), /AED 7,500/);
+  assert.match(await board(page).locator('.ef-action-banner').innerText(), /AED 2,000/);
+  assert.match(await board(page).locator('.ef-cash-stats').innerText(), /AED 12,200\*/);
+  assert.match(await board(page).locator('.ef-cash-stats').innerText(), /AED 10,200/);
   assert.doesNotMatch(await board(page).innerText(), /987,654|Cancelled Example|Credit Note Example/); await close(state);
+  state = await open({ financeFixture: 'workbook' }); ({ page } = state);
+  assert.equal(await board(page).locator('a[href^="/finance/outgoing-invoices"]').count(), 0, 'Workbook source balances never drill into operational invoices');
+  assert.match(await board(page).locator('.ef-invoice-table').innerText(), /Workbook row/);
+  await close(state);
   state = await open(); ({ page, control } = state); control.financeStatus = 503;
   await page.getByLabel('More financial options', { exact: true }).click(); pending = response(page);
   await page.locator('.ef-header-menu').getByRole('button', { name: 'Refresh financial performance', exact: true }).click(); await pending; await ready(page);

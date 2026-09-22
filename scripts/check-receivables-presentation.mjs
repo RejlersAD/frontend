@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { receivableAlert, receivableChartRows, receivableCollectionRoute, receivableCustomer, receivableCustomerRows, receivableMetricNote, receivableNumber, receivableRawValue, receivableValue, receivablesCsv, workbookCurrencyLabel } from '../src/components/Finance/financeReceivablesPresentation.js';
+import { RECEIVABLE_KPIS, receivableAlert, receivableAmountBasis, receivableChartRows, receivableCollectionRoute, receivableCustomer, receivableCustomerRows, receivableInvoiceRoute, receivableMetricNote, receivableNumber, receivableRawValue, receivableValue, receivablesCsv, workbookCurrencyLabel } from '../src/components/Finance/financeReceivablesPresentation.js';
 import { receivablesFixture } from './check-receivables-dashboard-fixtures.mjs';
 
 test('recorded subtotals remain visible without treating unknown balances as zero', () => {
@@ -22,11 +22,13 @@ test('recorded decimal amounts retain cents beyond JavaScript integer precision'
 test('customer and priority drilldowns retain the original currency and company scope', () => {
   const filters = { currency: 'USD', company: 'North & South' };
   const priority = new URL(receivableCollectionRoute(filters), 'http://local.test');
-  assert.equal(priority.searchParams.get('queue'), 'overdue');
+  assert.equal(priority.searchParams.get('queue'), 'all');
+  assert.equal(priority.searchParams.get('payment_status'), 'overdue');
   assert.equal(priority.searchParams.get('currency'), 'USD');
   assert.equal(priority.searchParams.get('company'), 'North & South');
   const customer = new URL(receivableCollectionRoute(filters, ' Customer A '), 'http://local.test');
   assert.equal(customer.searchParams.get('queue'), 'open');
+  assert.equal(customer.searchParams.has('payment_status'), false);
   assert.equal(customer.searchParams.get('company'), 'Customer A');
   assert.equal(customer.searchParams.get('currency'), 'USD');
   assert.equal(customer.searchParams.has('account'), false);
@@ -38,13 +40,39 @@ test('customer names, charts, alerts and exports use COMPANY even when account i
   assert.equal(receivableCustomer({ company: ' ', account: 'Accounting code' }), 'Customer not recorded');
   const data = { currency: 'AED', sources: { receivables: { status: 'available' } },
     kpis: { overdue: { amount: '25' } },
-    customers: [{ company: ' Example Ltd ', account: 'Accounting code', amount: '25', buckets: { over90: { amount: '25' } } }],
+    customers: [{ company: ' Example Ltd ', account: 'Accounting code', amount: '25', overdue: { amount: '25' }, buckets: { over90: { amount: '25' } } }],
     priority_invoices: [{ company: ' Example Ltd ', account: 'Accounting code', invoice_number: 'INV-COMPANY' }] };
   assert.equal(receivableCustomerRows(data)[0].customer, 'Example Ltd');
   assert.equal(receivableChartRows(data).customers[0].company, 'Example Ltd');
   assert.match(receivableAlert(data).detail, /^Example Ltd represents/);
   assert.ok(receivablesCsv(data).includes('"INV-COMPANY","Example Ltd"'));
   assert.ok(!receivablesCsv(data).includes('Accounting code'));
+});
+
+test('signed and zero KPI amounts remain visible and signed overdue does not imply missing data', () => {
+  assert.equal(receivableNumber(receivableRawValue({ amount: '-561255.06', partial: false })), '-561,255.06');
+  assert.equal(receivableValue({ amount: '0.00', count: 5, partial: false }), 0);
+  const data = { currency: 'AED', sources: { receivables: { status: 'available' } }, kpis: { overdue: { amount: '-20', partial: false } }, customers: [{ company: 'Signed Customer', overdue: { amount: '-20' } }] };
+  assert.match(receivableAlert(data).title, /No positive overdue balances/);
+  data.customers.push({ company: 'Positive Customer', overdue: { amount: '100' } });
+  data.kpis.overdue.amount = '80';
+  assert.doesNotMatch(receivableAlert(data).title, /100%|125%/);
+});
+
+test('collection alerts use recorded Overdue amounts independently of due-date ageing', () => {
+  const data = { currency: 'AED', sources: { receivables: { status: 'available', unknown_due_date_count: 1 } },
+    kpis: { overdue: { amount: '300', partial: false } },
+    customers: [
+      { company: 'Old Pending Customer', overdue: { amount: '0' }, buckets: { over90: { amount: '900' } } },
+      { company: 'Future Overdue Customer', overdue: { amount: '100' }, buckets: { current: { amount: '100' } } },
+      { company: 'Undated Overdue Customer', overdue: { amount: '200' }, buckets: { unknown_due_date: { amount: '200' } } },
+    ] };
+  assert.match(receivableAlert(data).title, /2 customers drive 100% of overdue exposure/);
+  assert.match(receivableAlert(data).detail, /Undated Overdue Customer represents AED 200/);
+  data.sources.receivables.unknown_due_date_count = 0;
+  data.kpis.overdue.amount = '0';
+  data.customers = data.customers.slice(0, 1);
+  assert.match(receivableAlert(data).title, /No overdue balances/);
 });
 
 test('missing due dates cannot produce an all-clear collection alert', () => {
@@ -77,6 +105,44 @@ test('report exports every customer and discloses partial amounts and the date b
   assert.match(report, /Recorded amount/);
   assert.match(report, /"Yes"/);
   assert.ok(report.includes('"\'=HYPERLINK(""unsafe"")"'));
+});
+
+test('report formula explanations follow the backend definitions with status and Due Date fallbacks', () => {
+  const data = receivablesFixture().data;
+  data.definitions.unpaid = 'Authoritative unpaid formula supplied by the invoice register.';
+  assert.match(receivablesCsv(data), /Authoritative unpaid formula supplied by the invoice register/);
+  delete data.definitions;
+  const report = receivablesCsv(data);
+  assert.match(report, /Payment status New, Overdue, Pending or Partial/);
+  assert.match(report, /recorded payment status is Overdue, regardless of their due date/);
+  assert.match(report, /more than 30 days past the Due Date/);
+  assert.match(report, /more than 60 days past the Due Date/);
+  assert.match(report, /more than 90 days past the Due Date/);
+});
+
+test('60+ days is displayed and exported between 30+ and 90+ using the server amount', () => {
+  assert.deepEqual(RECEIVABLE_KPIS.map(([id]) => id), ['unpaid', 'overdue', 'over30', 'over60', 'over90']);
+  const data = receivablesFixture().data;
+  data.kpis.over60.amount = '1846363.06';
+  assert.match(receivablesCsv(data), /"Overdue 60\+ days","1846363.06"/);
+});
+
+test('recorded AED reporting is identified independently from original invoice currencies', () => {
+  const data = receivablesFixture().data;
+  data.amount_basis = 'recorded_aed';
+  assert.match(receivableAmountBasis(data), /Inv Amt\. \(AED\).*all original invoice currencies/);
+  assert.match(receivablesCsv(data), /Reporting amount basis.*recorded Inv Amt\. \(AED\)/);
+  assert.equal(receivableMetricNote(data.kpis.overdue, data.amount_basis), 'recorded AED amounts');
+  data.amount_basis = 'original_currency';
+  assert.equal(receivableMetricNote(data.kpis.overdue, data.amount_basis), 'in original currency');
+  assert.match(receivableAmountBasis(data), /selected original invoice currency/);
+});
+
+test('source invoice IDs never become operational invoice routes', () => {
+  assert.equal(receivableInvoiceRoute({ id: 'source:12', invoice_route: null, source_snapshot: true }), null);
+  assert.equal(receivableInvoiceRoute({ id: 'source:12' }), null);
+  assert.equal(receivableInvoiceRoute({ id: 12, invoice_route: null }), null);
+  assert.equal(receivableInvoiceRoute({ id: 12 }), '/finance/outgoing-invoices/12');
 });
 
 test('workbook export retains exact totals, full workbook scope and original currency basis', () => {
