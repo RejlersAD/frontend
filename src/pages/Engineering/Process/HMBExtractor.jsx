@@ -56,6 +56,12 @@ const MASTER_TEMPLATE_CFG = {
   maxSizeMb: 20,
 };
 
+const CASE_UPLOAD_CFG = {
+  acceptedExt: ['xlsx', 'xlsm', 'csv', 'pdf'],
+  maxFiles: 12,
+  maxSizeMb: 50,
+};
+
 // Soft-coded UI visibility toggles for page sections.
 const HMB_UI_CFG = {
   showSmartWorkflowManager: false,
@@ -582,11 +588,7 @@ const HMBExtractorPage = () => {
     try {
       const params = activeProject?.project_id ? { project_id: activeProject.project_id } : undefined;
       const { data } = await apiClient.get(MASTER_TEMPLATE_CFG.listEndpoint, { params });
-      let rows = Array.isArray(data?.results) ? data.results : [];
-      if (rows.length === 0) {
-        const fallback = await apiClient.get(MASTER_TEMPLATE_CFG.listEndpoint);
-        rows = Array.isArray(fallback?.data?.results) ? fallback.data.results : [];
-      }
+      const rows = Array.isArray(data?.results) ? data.results : [];
       const analysedId = templateAnalysis?.template_profile_id || templateAnalysis?.template_profile?.id || null;
       setTemplateProfiles(rows);
       setSelectedTemplateProfileId((prev) => {
@@ -594,9 +596,10 @@ const HMBExtractorPage = () => {
         if (analysedId && rows.some((p) => p.id === analysedId)) return analysedId;
         return rows[0]?.id || null;
       });
-    } catch (_) {
+    } catch (err) {
       setTemplateProfiles([]);
       setSelectedTemplateProfileId(null);
+      setTemplateError(err?.response?.data?.error || 'Could not load templates for this project.');
     } finally {
       setLoadingProfiles(false);
     }
@@ -681,7 +684,8 @@ const HMBExtractorPage = () => {
       }
       setTemplateAnalysis(data);
       setSelectedTemplateProfileId(data?.template_profile_id || data?.template_profile?.id || null);
-      setTemplateNotice(`Saved to backend database as profile ${data?.template_profile_id || ''}`.trim());
+      const retention = data?.source_stored ? ' Original retained in private storage.' : '';
+      setTemplateNotice(`Saved as profile ${data?.template_profile_id || ''}.${retention}`.trim());
       await loadTemplateProfiles();
       await loadProjectSummary();
     } catch (err) {
@@ -752,6 +756,7 @@ const HMBExtractorPage = () => {
     if (!resolvedTemplateProfileId) {
       setCaseError('Analyze or select a Master template before analyzing case files.');
       setShowTemplateManager(true);
+      setWorkspaceView('template');
       return;
     }
 
@@ -822,22 +827,42 @@ const HMBExtractorPage = () => {
     const picked = Array.from(event.target.files || []);
     if (!picked.length) return;
 
-    setCaseError('');
+    const invalid = picked.find((file) => {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      return !CASE_UPLOAD_CFG.acceptedExt.includes(ext);
+    });
+    if (invalid) {
+      setCaseError(`${invalid.name} is not a supported HMB file.`);
+      if (event.target) event.target.value = '';
+      return;
+    }
+    const oversized = picked.find((file) => file.size > CASE_UPLOAD_CFG.maxSizeMb * 1024 * 1024);
+    if (oversized) {
+      setCaseError(`${oversized.name} exceeds the ${CASE_UPLOAD_CFG.maxSizeMb}MB limit.`);
+      if (event.target) event.target.value = '';
+      return;
+    }
+
+    const merged = [...caseFiles, ...picked];
+    const seen = new Set();
+    const deduped = [];
+    merged.forEach((file) => {
+      const key = `${file.name}::${file.size}::${file.lastModified}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      deduped.push(file);
+    });
+    if (deduped.length > CASE_UPLOAD_CFG.maxFiles) {
+      setCaseError(`Select no more than ${CASE_UPLOAD_CFG.maxFiles} files per analysis.`);
+      if (event.target) event.target.value = '';
+      return;
+    }
+
     setCaseNotice('');
     setCaseAnalysisResult(null);
     setCasePreviewConfirmed(false);
-    setCaseFiles((prev) => {
-      const merged = [...prev, ...picked];
-      const seen = new Set();
-      const deduped = [];
-      merged.forEach((f) => {
-        const key = `${f.name}::${f.size}::${f.lastModified}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        deduped.push(f);
-      });
-      return deduped;
-    });
+    setCaseFiles(deduped);
+    setCaseError('');
 
     // Allow selecting the same file again in a later pick action.
     if (event.target) event.target.value = '';
@@ -1934,16 +1959,16 @@ const HMBExtractorPage = () => {
                   </button>
                   <button
                     onClick={handleAnalyzeCases}
-                    disabled={caseBusy || !caseFiles.length || !selectedTemplateProfileId}
+                    disabled={caseBusy || !caseFiles.length}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 8,
                       background: `linear-gradient(135deg, ${T.accent}, ${T.accentAlt})`,
                       color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 8,
-                      fontSize: 13, fontWeight: 600, cursor: caseBusy || !caseFiles.length || !selectedTemplateProfileId ? 'not-allowed' : 'pointer',
-                      opacity: caseBusy || !caseFiles.length || !selectedTemplateProfileId ? 0.6 : 1,
+                      fontSize: 13, fontWeight: 600, cursor: caseBusy || !caseFiles.length ? 'not-allowed' : 'pointer',
+                      opacity: caseBusy || !caseFiles.length ? 0.6 : 1,
                     }}
                   >
-                    <Sparkles width={15} /> {caseBusy ? 'Analyzing...' : 'Analyze Files'}
+                    <Sparkles width={15} /> {caseBusy ? 'Analyzing...' : selectedTemplateProfileId ? 'Analyze Files' : 'Set Up Template'}
                   </button>
                   <span style={{ fontSize: 12, color: selectedTemplateProfileId ? '#176b5b' : '#92400e', fontWeight: 700 }}>
                     {selectedTemplateProfileId ? 'Master template ready' : 'Template setup required'}
