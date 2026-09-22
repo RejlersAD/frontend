@@ -96,7 +96,7 @@
 .aw-dialog::backdrop { background: #0f234466; }
 .aw-dialog > header { justify-content: space-between; padding: 18px; border-bottom: 1px solid #d8e5f5; }
 .aw-dialog-body { padding: 18px; }
-.aw-setup-dialog { width: min(960px, calc(100vw - 32px)); }
+.aw-setup-dialog { width: min(960px, calc(100vw - 32px)); margin: auto; }
 .aw-setup-dialog > header { position: sticky; top: 0; z-index: 2; background: #fff; }
 .aw-setup-body { padding: 14px; }
 .aw-setup-dialog .aw-workspace { margin: 0; border: 0; }
