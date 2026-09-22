@@ -3,8 +3,9 @@ import React, { useEffect, useRef } from 'react'
 import { AlertTriangle, ArrowRight, X } from 'lucide-react'
 import { ActivityTable, ManagementActions } from '../tabs/ProjectDashboardTab'
 import { formatDate, formatDateTime } from '../useProjectPerformance'
+import { AgreementSection } from './AgreementWorkspace'
 
-export default function ProjectPerformanceDialogs({ type, model, onClose, onAction }) {
+export default function ProjectPerformanceDialogs({ type, model, agreementDraft, agreementFiles, onClose, onAction }) {
   const ref = useRef(null)
   useEffect(() => {
     const dialog = ref.current
@@ -18,6 +19,7 @@ export default function ProjectPerformanceDialogs({ type, model, onClose, onActi
   const titles = { milestones: 'Project milestones', risk: 'Risks & changes', actions: 'Management actions', activity: 'Project activity', 'data-quality': 'Data quality review', 'reporting-source': 'Reporting source' }
   const act = (view, documentId) => { onClose(); onAction(view, documentId) }
   return <dialog ref={ref} className="pp-dialog" aria-label={titles[type]} onCancel={event => { event.preventDefault(); onClose() }} onClick={event => { if (event.target === ref.current) onClose() }}><header className="pp-dialog-header"><h2>{titles[type]}</h2><button type="button" className="pp-button pp-icon-button" aria-label="Close dialog" onClick={onClose}><X size={18} /></button></header><div className="pp-dialog-body">
+    {type === 'activity' && agreementDraft && <AgreementSection draft={agreementDraft} files={agreementFiles} area="activity" compact />}
     {!model ? <p className="pp-empty">Project data is still loading.</p> : <>
       {type === 'reporting-source' && <><p>{model.reportingNote}</p>{model.reportingCostNote && <p className="pp-cost-warning">{model.reportingCostNote}</p>}<dl className="pp-source-facts">{[
         ['Source', model.progressSource], ['Reporting data date', formatDate(model.dataDate)],

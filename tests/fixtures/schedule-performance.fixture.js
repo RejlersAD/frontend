@@ -131,6 +131,8 @@ export async function scheduleHarness(page, options = {}) {
     const failed = [...state.failures].find(resource => path.includes(resource))
     if (failed) return reply(route, { detail: 'Schedule service temporarily unavailable: ' + failed }, 503)
     if (await options.handleRequest?.({ route, url, path, record, state, reply })) return
+    const agreementMatch = path.match(/\/agreement-workspaces\/projects\/(\d+)\/$/)
+    if (agreementMatch && route.request().method() === 'GET') return reply(route, { enterprise_project_id: Number(agreementMatch[1]), planning_project_id: null, workspace: null, active_job: null, latest_job: null, files: [], permissions: { can_analyze: true, can_accept: false }, ai: { available: false, reason: 'Project AI is not configured.' } })
     if (path.endsWith('/project-control/phase-flags/')) return reply(route, { phase_flags: flags })
     if (path.endsWith('/planning-intelligence/projects/')) return reply(route, pageOf(state.noLinked ? [] : [record.planningProject]))
     if (path.endsWith('/planning-intelligence/schedules/')) return reply(route, pageOf([record.schedule]))

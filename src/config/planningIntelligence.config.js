@@ -147,6 +147,7 @@ export const PLANNING_ENDPOINTS = {
 
 // File categories — mirrors backend/apps/planning_intelligence/config.py FILE_CATEGORIES
 export const PLANNING_FILE_CATEGORIES = [
+  { value: 'agreement', label: 'Agreement / Contract', icon: '📄' },
   { value: 'sow', label: 'Scope of Work (SOW)', icon: '📜' },
   { value: 'wbs', label: 'WBS Structure', icon: '🗂️' },
   { value: 'mdr', label: 'Master Deliverable Register (MDR)', icon: '📚' },
