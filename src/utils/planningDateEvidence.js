@@ -37,6 +37,18 @@ export function missingFloatLabel(task, { sourceOnly = false } = {}) {
 // Display evidence without assigning source dates to editable/calculated fields.
 // A duration is not needed to display two independently documented dates.
 export function dateDisplayTask(task, { summary = false } = {}) {
+  // A planner anchor is separate from the immutable printed dates. Without a
+  // completed CPM run, showing the other printed endpoint would imply a new
+  // duration/calendar calculation which has not happened.
+  const plannerTiming = task.planner_timing || task.metadata?.planner_timing
+  if (plannerTiming?.date && task.calculated !== true && ['start', 'finish'].includes(plannerTiming.anchor)) {
+    const anchor = validDate(plannerTiming.date)
+    const milestone = task.is_milestone === true || ['milestone', 'start_milestone', 'finish_milestone'].includes(task.activity_type)
+    if (anchor) return { ...durationDisplayTask(task), planner_timing: plannerTiming, total_float_days: null, is_critical: null,
+      display_start_date: milestone || plannerTiming.anchor === 'start' ? anchor : null,
+      display_finish_date: milestone || plannerTiming.anchor === 'finish' ? anchor : null,
+      display_date_basis: 'planner', display_total_float_days: null, display_float_basis: null }
+  }
   // Proposed timing has its own display basis. It must not change source
   // duration provenance or pretend that the source calendar was verified.
   if (task.proposal_timing === true) {
@@ -62,6 +74,7 @@ export function dateDisplayTask(task, { summary = false } = {}) {
 }
 
 export function missingDateLabel(task, field, { sourceOnly = false, summary = false } = {}) {
+  if (task.display_date_basis === 'planner') return 'Not calculated'
   if (['explicit_none', 'blank'].includes(task[`source_${field}_status`])) return '\u2014'
   if (['ambiguous', 'invalid', 'conflicting'].includes(task[`source_${field}_status`])) return 'Review source'
   if (task.display_date_basis === 'source') return 'Not Specified'
@@ -74,6 +87,7 @@ export function dateEvidenceLabel(task) {
     ? 'Review source: the documented dates need clarification before they can be displayed.'
     : 'No dates to display. A missing source value is Not Specified; a pending schedule calculation is Not calculated.'
   if (task.display_date_basis === 'proposed') return 'Proposed dates for review; source timing and calendar verification remain separate.'
+  if (task.display_date_basis === 'planner') return `Planner ${task.planner_timing?.anchor || 'date'} anchor; other dates and float await calculation. Original source evidence is retained.`
   if (task.display_date_basis !== 'source') return task.display_date_basis === 'calculated' ? 'Calculated dates' : 'Planned dates'
   const references = (task.source_date_references || []).map(sourceReferenceLabel).join('; ')
   return `Source dates${references ? ` · ${references}` : ''}. Calendar and dependency calculations are not verified.`

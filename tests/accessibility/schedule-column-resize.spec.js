@@ -11,6 +11,7 @@ const columns = [
   { label: 'Start', key: 'start', initial: 80, min: 70, max: 240 },
   { label: 'Finish', key: 'finish', initial: 80, min: 70, max: 240 },
   { label: 'Total Float', key: 'float', initial: 64, min: 50, max: 240 },
+  { label: 'Logic', key: 'logic', initial: 64, min: 50, max: 240 },
 ]
 const grid = page => scheduleWorkspace(page).getByRole('region', { name: 'Schedule activities and Gantt', exact: true })
 const handle = (page, column) => grid(page).getByRole('separator', { name: `Resize ${column.label} column`, exact: true })
@@ -44,7 +45,7 @@ function clean(state) {
   expect(state.writes).toEqual([])
 }
 
-test('all six activity columns resize independently by keyboard, respect bounds and reset only the chosen column', async ({ page }) => {
+test('all activity columns resize independently by keyboard, respect bounds and reset only the chosen column', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   const state = await wideTimelineHarness(page)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(44)
@@ -111,10 +112,9 @@ test('clicking a partly clipped duration opens its editor without losing the cli
   await expect(nameResize).toHaveAttribute('aria-valuenow', '300')
   const title = state.records[17].simplePlan.tasks[0].title
   await grid(page).getByRole('button', { name: `Edit duration for ${title}`, exact: true }).click()
-  const editor = page.getByRole('dialog', { name: 'Edit task', exact: true })
+  const editor = page.getByRole('spinbutton', { name: `Duration for ${title}`, exact: true })
   await expect(editor).toBeVisible()
-  await expect(editor.getByLabel('Task / deliverable', { exact: true })).toHaveValue(title)
-  await expect(editor.getByLabel('Duration (working days)', { exact: true })).toHaveValue('5')
-  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(editor).toHaveValue('5')
+  await editor.press('Escape')
   clean(state)
 })
