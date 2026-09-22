@@ -27,7 +27,7 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
   performance, onOpenDialog, activeView = 'project-dashboard', scheduleMode = 'planner',
   schedulePerformance, onUpdateSchedule, commercialPerformance, onUpdateCommercial,
   milestoneControl, onAddMilestone, riskControl, onAddRiskRecord, estimateControl, onNewEstimate,
-  documentControl, onAddDocument }) {
+  documentControl, onAddDocument, onAnalyzeAgreement, agreementStatus }) {
   const menu = useRef(null), addMenu = useRef(null)
   const [scheduleState, setScheduleState] = useState(null)
   useEffect(() => {
@@ -132,6 +132,7 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
         <div className="pd-status"><small>Status</small><span className={`pd-pill pd-status-${project.status}`}>{status}</span></div>
         <div className="pd-health"><small>Overall health</small><span className={`pd-pill pd-health-${health?.tone || 'neutral'}`}>{health && <HealthIcon size={15} />}{health?.label || 'Not assessed'}</span></div>
         <div className="pd-report-date"><CalendarDays size={21} /><span><small>{model?.workingFallback ? 'Working data date' : 'Last reporting date'}</small><strong>{formatDate(model?.dataDate, 'Not recorded')}</strong></span></div>
+        {onAnalyzeAgreement && <div className="pd-agreement-action"><button type="button" className="pd-button pd-primary" onClick={onAnalyzeAgreement} disabled={loading} aria-haspopup="dialog"><Sparkles size={16} aria-hidden="true" />Analyze &amp; set up project</button>{agreementStatus && <small role="status">{agreementStatus}</small>}</div>}
       </div>}
     </div>
     {project && <nav className="pd-tabs" aria-label="Project work areas"><ul>{AREAS.filter(area => area.dialog || enabled(area.key)).map(({ key, label, icon: Icon, dialog }) => <li key={key}><button type="button" aria-current={!dialog && (key === activeView || key === 'commercial-dashboard' && activeView === 'cost-dashboard') ? 'page' : undefined} onClick={() => dialog ? onOpenDialog(key) : onSelectView(key)}><Icon size={18} />{label}</button></li>)}</ul></nav>}

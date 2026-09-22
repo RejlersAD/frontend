@@ -6,8 +6,20 @@ import { pageOf } from '../fixtures/schedule-performance.fixture.js'
 test.setTimeout(60000)
 test.use({ viewport: { width: 1672, height: 941 } })
 const root = '/api/v1/planning-intelligence/agreement-workspaces/'
-const panel = page => page.getByRole('region', { name: 'Agreement project setup', exact: true })
+const dialog = page => page.getByRole('dialog', { name: 'Analyze & set up project', exact: true })
+const setup = page => page.locator('header.pd-header').getByRole('button', { name: 'Analyze & set up project', exact: true })
+const panel = page => dialog(page).getByRole('region', { name: 'Agreement project setup', exact: true })
 const tabs = page => page.getByRole('navigation', { name: 'Project work areas', exact: true })
+async function openSetup(page) {
+  if (!await dialog(page).isVisible()) await setup(page).click()
+  await expect(dialog(page)).toBeVisible()
+  await expect(panel(page)).toBeVisible()
+}
+async function closeSetup(page) {
+  await page.keyboard.press('Escape')
+  await expect(dialog(page)).toBeHidden()
+  await expect(setup(page)).toBeFocused()
+}
 const document = { name: 'agreement.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nsynthetic agreement browser fixture') }
 const source = page => [{ file_id: 35, filename: 'agreement.pdf', page, quote: page === 4 ? 'Commencement 1 December 2025. Provisional acceptance eight months from commencement.' : 'The final FEED package is due at week 28 from effective award.', quote_verified: true }]
 const input = (id, label, display, extra = {}) => ({ id, label, display_value: display, value: { text: display }, basis: 'document_fact', status: 'supported', sources: source(4), ...extra })
@@ -78,7 +90,11 @@ async function open(page, options = {}) {
       return false
     },
   })
-  if (!options.query?.includes('portfolio')) await expect(panel(page)).toBeVisible()
+  if (!options.query?.includes('portfolio')) {
+    await expect(setup(page)).toBeVisible()
+    await expect(page.locator('.aw-workspace')).toBeHidden()
+    if (options.openSetup !== false) await openSetup(page)
+  }
   return state
 }
 const clean = state => { expect(state.pageErrors).toEqual([]); expect(state.unknown).toEqual([]); expect(state.unknownWrites).toEqual([]); expect(state.writes).toEqual([]) }
@@ -107,15 +123,19 @@ test('single upload analyzes in the background and accepts supported inputs toge
 test('all eight existing work areas show shared inputs with basis and source pages while relative dates stay relative', async ({ page }) => {
   const state = await open(page, { draft: true })
   for (const [label, expected] of [['Overview', 'Project 17 fire and gas engineering'], ['Schedule', '28 weeks from effective award'], ['Cost & Commercial', 'USD 877,512.79'], ['Milestones', '28 weeks from effective award'], ['Risks & Changes', 'Client review delay'], ['Estimates', '±15% accuracy'], ['Documents', 'Project definition report']]) {
+    await closeSetup(page)
     await tabs(page).getByRole('button', { name: label, exact: true }).click()
+    await expect(tabs(page).getByRole('button')).toHaveCount(8)
+    await openSetup(page)
     const section = panel(page).getByRole('region', { name: `Agreement ${label}`, exact: true })
     await expect(section).toContainText(expected)
-    await expect(tabs(page).getByRole('button')).toHaveCount(8)
   }
+  await closeSetup(page)
   await tabs(page).getByRole('button', { name: 'Activity & Audit', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Project activity', exact: true }).getByRole('region', { name: 'Agreement Activity & Audit', exact: true })).toContainText('Agreement analyzed')
   await page.keyboard.press('Escape')
   await tabs(page).getByRole('button', { name: 'Schedule', exact: true }).click()
+  await openSetup(page)
   await expect(panel(page)).toContainText('8 months from commencement')
   await expect(panel(page)).toContainText('28 weeks from effective award')
   await panel(page).getByText('Draft work breakdown · 1 deliverable', { exact: true }).click()
@@ -131,6 +151,10 @@ test('all eight existing work areas show shared inputs with basis and source pag
 test('saved agreement starts analysis without uploading the file again, including a file categorized as other', async ({ page }) => {
   const state = await open(page, { prepare(current) { current.agreements[17].files[0].category = 'other' } })
   await panel(page).getByLabel('Saved agreement', { exact: true }).selectOption('35')
+  await closeSetup(page)
+  await openSetup(page)
+  await expect(panel(page).getByLabel('Saved agreement', { exact: true })).toHaveValue('35')
+  expect(state.agreementWrites).toEqual([])
   await panel(page).getByRole('button', { name: 'Analyze & set up project', exact: true }).click()
   await expect(panel(page).getByRole('progressbar')).toBeVisible()
   expect(state.agreementWrites[0].body).toMatchObject({ file_ids: [35], idempotency_key: expect.any(String) })
@@ -153,8 +177,10 @@ test('changed sources remain clearly marked after acceptance and can be analyzed
 test('active analysis resumes on refresh and across tabs without repeating the start request', async ({ page }) => {
   const state = await open(page, { prepare(current) { startJob(current) } })
   await expect(panel(page).getByRole('progressbar')).toBeVisible()
+  await closeSetup(page)
   await tabs(page).getByRole('button', { name: 'Documents', exact: true }).click()
   await page.reload()
+  await openSetup(page)
   await expect(panel(page).getByRole('progressbar')).toBeVisible()
   complete(state)
   await expect(panel(page)).toContainText('Project definition report')
@@ -263,6 +289,7 @@ test('new project can be created from one agreement through the existing create-
   await dialog.getByLabel('Project name', { exact: false }).fill('Agreement created project')
   await dialog.getByRole('button', { name: 'Analyze & set up project', exact: true }).click()
   await expect(page).toHaveURL(/project=99/)
+  await openSetup(page)
   await expect(panel(page).getByRole('progressbar')).toBeVisible()
   expect(state.agreementWrites).toHaveLength(1)
   expect(state.agreementWrites[0].path).toBe(root + 'create/')
@@ -344,12 +371,18 @@ test('switching projects hides the previous agreement immediately and ignores a 
   } })
   await expect(panel(page)).toContainText('Project 17 fire and gas engineering')
   await page.evaluate(() => { window.history.pushState({}, '', '/projects?project=18'); window.dispatchEvent(new PopStateEvent('popstate')) })
+  await expect(dialog(page)).toBeHidden()
+  await openSetup(page)
   await expect(panel(page)).toContainText('Project 18 fire and gas engineering')
   await expect(panel(page)).not.toContainText('Project 17 fire and gas engineering')
   block = true
   await page.evaluate(() => { window.history.pushState({}, '', '/projects?project=17'); window.dispatchEvent(new PopStateEvent('popstate')) })
+  await expect(dialog(page)).toBeHidden()
+  await openSetup(page)
   await expect(panel(page)).toContainText('Loading saved agreement workspace')
   await page.evaluate(() => { window.history.pushState({}, '', '/projects?project=18'); window.dispatchEvent(new PopStateEvent('popstate')) })
+  await expect(dialog(page)).toBeHidden()
+  await openSetup(page)
   await expect(panel(page)).toContainText('Project 18 fire and gas engineering')
   release()
   await expect(panel(page)).not.toContainText('Project 17 fire and gas engineering')
@@ -357,18 +390,46 @@ test('switching projects hides the previous agreement immediately and ignores a 
   clean(state)
 })
 
-test('agreement inputs remain compact, use the project font and pass accessibility checks', async ({ page }) => {
-  const state = await open(page, { draft: true })
+test('header setup action replaces the panel, restores keyboard focus and stays accessible at desktop and narrow widths', async ({ page }) => {
+  const state = await open(page, { draft: true, openSetup: false })
   await page.evaluate(() => window.document.fonts.ready)
+  const dateBox = await page.locator('.pd-report-date').boundingBox()
+  const actionBox = await setup(page).boundingBox()
+  expect(actionBox.x).toBeGreaterThanOrEqual(dateBox.x + dateBox.width - 1)
+  expect(Math.abs(actionBox.y + actionBox.height / 2 - dateBox.y - dateBox.height / 2)).toBeLessThan(24)
+  await expect(page.getByText('Set up project from an agreement', { exact: true })).toHaveCount(0)
+  await page.screenshot({ path: 'artifacts/agreement-header-action-desktop.png', fullPage: false })
+  await setup(page).focus()
+  await page.keyboard.press('Enter')
+  await expect(dialog(page)).toBeVisible()
+  const dialogBox = await dialog(page).boundingBox()
+  expect(Math.abs(dialogBox.x - (1672 - dialogBox.width) / 2)).toBeLessThan(2)
+  expect(Math.abs(dialogBox.y - (941 - dialogBox.height) / 2)).toBeLessThan(2)
   const font = await panel(page).evaluate(element => getComputedStyle(element).fontFamily)
   expect(font).toContain('IBM Plex Sans')
-  const result = await new AxeBuilder({ page }).include('.aw-workspace').analyze()
+  const result = await new AxeBuilder({ page }).include('dialog[open]').analyze()
   expect(result.violations).toEqual([])
   const width = await page.evaluate(() => ({ body: window.document.body.scrollWidth, viewport: window.innerWidth }))
   expect(width.body).toBeLessThanOrEqual(width.viewport)
   await page.screenshot({ path: 'artifacts/agreement-workspace-desktop.png', fullPage: false })
+  await closeSetup(page)
   await page.setViewportSize({ width: 760, height: 900 })
+  await expect(setup(page)).toBeVisible()
+  const narrowWidth = await page.evaluate(() => ({ body: window.document.body.scrollWidth, viewport: window.innerWidth }))
+  expect(narrowWidth.body).toBeLessThanOrEqual(narrowWidth.viewport)
+  await openSetup(page)
   await expect(panel(page).getByRole('button', { name: 'Accept supported inputs & build draft', exact: true })).toBeVisible()
   await expect(panel(page).getByRole('region', { name: 'Overview agreement inputs', exact: true })).toBeVisible()
+  await closeSetup(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openSetup(page)
+  const mobileBox = await dialog(page).boundingBox()
+  expect(mobileBox.x).toBeGreaterThanOrEqual(0)
+  expect(mobileBox.x + mobileBox.width).toBeLessThanOrEqual(390)
+  expect(mobileBox.y).toBeGreaterThanOrEqual(0)
+  expect(mobileBox.y + mobileBox.height).toBeLessThanOrEqual(844)
+  await expect(dialog(page).getByRole('button', { name: 'Close agreement setup', exact: true })).toBeVisible()
+  await page.screenshot({ path: 'artifacts/agreement-header-mobile-dialog.png', fullPage: false })
+  await closeSetup(page)
   clean(state)
 })
