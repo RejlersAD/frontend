@@ -103,6 +103,8 @@ async function harness(page, query = 'project=17', options = {}) {
     const record = state.records[id] || state.records[17]
     state.requests.push({ path, id, method: route.request().method() })
     if (await options.handleRequest?.({ path, route, state, record, reply: fulfil })) return
+    const agreementMatch = path.match(/\/agreement-workspaces\/projects\/(\d+)\/$/)
+    if (agreementMatch && route.request().method() === 'GET') return fulfil(route, { enterprise_project_id: Number(agreementMatch[1]), planning_project_id: null, workspace: null, active_job: null, latest_job: null, files: [], permissions: { can_analyze: true, can_accept: false }, ai: { available: false, reason: 'Project AI is not configured.' } })
     if (path.endsWith('/project-control/phase-flags/')) return fulfil(route, { phase_flags: flags })
     if (path.endsWith('/planning-intelligence/projects/')) return fulfil(route, pageOf(state.linkedRegister ? [state.linkedRegister.project] : []))
     if (state.linkedRegister) {

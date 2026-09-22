@@ -13,6 +13,8 @@ import ProjectPortfolio from './ProjectPortfolio'
 import PhaseStubCard from './components/PhaseStubCard'
 import ProjectFormModal from './components/ProjectFormModal'
 import AIProjectSetupDialog from './components/AIProjectSetupDialog'
+import AgreementWorkspace, { AgreementCreateDialog } from './components/AgreementWorkspace'
+import useAgreementWorkspace from '../../hooks/useAgreementWorkspace'
 import QhseImportModal from './components/QhseImportModal'
 import ProjectDetailsOverview from './ProjectDetailsOverview'
 import CostDashboardTab from './tabs/CostDashboardTab'
@@ -90,6 +92,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
   const [aiSetup, setAiSetup] = useState(null)
+  const [agreementSetup, setAgreementSetup] = useState(null)
   const [formMode, setFormMode] = useState('create')
   const [editingProject, setEditingProject] = useState(null)
   const [toast, setToast] = useState(null)
@@ -226,6 +229,7 @@ export default function ProjectsPage() {
     () => isPortfolio ? null : projects.find((p) => String(p.id) === String(selectedProjectId)) || null,
     [isPortfolio, projects, selectedProjectId]
   )
+  const agreementWorkspace = useAgreementWorkspace(selectedProject?.id, () => setRefreshVersion(value => value + 1))
   const performance = useProjectPerformance(selectedProject, refreshVersion)
   const schedulePerformance = useSchedulePerformance(selectedProject, performance, refreshVersion, {
     enabled: view === 'plan-baseline' || view === 'milestones' || view === 'risk', baselineId: scheduleBaselineId, versionId: scheduleVersionId,
@@ -356,6 +360,8 @@ export default function ProjectsPage() {
         onOpenDialog={setOverviewDialog}
       />
 
+      {selectedProject && <AgreementWorkspace key={selectedProject.id} workspace={agreementWorkspace} view={view} />}
+
       {/* Body */}
       <div className="pp-body">
         {loadingProjects || loadingFlags ? (
@@ -429,7 +435,7 @@ export default function ProjectsPage() {
           />
         )}
       </div>
-      {overviewDialog && selectedProject && <ProjectPerformanceDialogs key={`${selectedProject.id}:${overviewDialog}`} type={overviewDialog} model={performance.model} onClose={() => setOverviewDialog(null)} onAction={handlePerformanceAction} />}
+      {overviewDialog && selectedProject && <ProjectPerformanceDialogs key={`${selectedProject.id}:${overviewDialog}`} type={overviewDialog} model={performance.model} agreementDraft={agreementWorkspace.data?.workspace} agreementFiles={agreementWorkspace.data?.files} onClose={() => setOverviewDialog(null)} onAction={handlePerformanceAction} />}
       </>}
 
       <ProjectFormModal
@@ -439,7 +445,19 @@ export default function ProjectsPage() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmitForm}
         onAISetup={values => { setFormOpen(false); setAiSetup({ initialValues: values }) }}
+        onAgreementSetup={values => { setFormOpen(false); setAgreementSetup(values) }}
       />
+
+      {agreementSetup && <AgreementCreateDialog initialValues={agreementSetup} onClose={() => setAgreementSetup(null)} onCreated={result => {
+        const project = result.enterprise_project
+        if (!project?.id) throw new Error('The project setup response was incomplete. Refresh the portfolio to check your saved project.')
+        setProjects(current => [...current.filter(item => String(item.id) !== String(project.id)), project])
+        setSelectedProjectId(project.id)
+        setAgreementSetup(null)
+        setToast({ type: 'success', message: `Agreement uploaded. ${project.name || 'Your project'} is being prepared.` })
+        navigate(`/projects?project=${project.id}`)
+        setRefreshVersion(value => value + 1)
+      }} />}
 
       {aiSetup && <AIProjectSetupDialog initialValues={aiSetup.initialValues} onClose={() => setAiSetup(null)} onCreated={result => {
         const project = result.enterprise_project
