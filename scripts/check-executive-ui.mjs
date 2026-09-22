@@ -17,14 +17,17 @@ import { runProjectPortfolioChecks } from './check-project-portfolio.mjs';
 import { runCommercialPipelineChecks } from './check-commercial-pipeline.mjs';
 import { runWorkforcePerformanceChecks } from './check-workforce-performance.mjs';
 import { runRiskComplianceChecks } from './check-risk-compliance.mjs';
+import { runReferenceOverviewChecks, assertReferenceOverviewPrint, assertReferenceOverviewAfterPrint } from './check-executive-reference-overview.mjs';
 
 // Real executive page, Layout, Header and Sidebar; synthetic API responses only.
 // All requests are intercepted, so this script cannot write to a live service.
 const frontend = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const visualsOnly = process.argv.includes('--visuals-only');
+const referenceOverview = process.argv.includes('--reference-overview');
 const overviewPolish = process.argv.includes('--overview-polish') || process.argv.includes('--overview-polish-baseline');
 const tabsPolishBaseline = process.argv.includes('--tabs-polish-baseline');
 const tabsPolish = tabsPolishBaseline || process.argv.includes('--tabs-polish') || process.argv.includes('--tabs-polish-visuals');
+const dedicatedMode = visualsOnly || overviewPolish || tabsPolish || ['risk', 'workforce', 'commercial', 'portfolio', 'financial', 'print'].some(name => process.argv.includes(`--${name}-only`));
 const artifacts = checkArtifacts(frontend, tabsPolish ? 'executive-tabs-polish' : overviewPolish ? 'executive-overview-polish' : 'executive-reference');
 const origin = 'http://executive-check.test';
 const guardedFiles = [
@@ -548,13 +551,18 @@ async function runCurrentVisualChecks() {
       try {
         await page.getByTestId(tab === 'overview' ? 'executive-outcomes' : tab === 'financial' ? 'financial-performance' : `${tab}-outcomes`).waitFor();
         if (tab === 'financial') await page.waitForFunction(() => document.querySelector('[data-testid="financial-performance"]')?.getAttribute('aria-busy') === 'false');
+        if (tab === 'overview' && await page.locator('.eov-board').count()) await page.waitForFunction(() => document.querySelector('.eov-board')?.getAttribute('aria-busy') !== 'true');
         await page.evaluate(() => document.fonts.ready);
         await assertGeometry(page, options.width);
         const headers = await page.locator('.cc-command-center table:not([data-table-typography="preserve"]) thead th:visible').evaluateAll(nodes => nodes.map(node => ({
           label: node.textContent.trim(), size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight,
+          referenceOverview: !!node.closest('.eov-table'),
         })));
-        assert.ok(headers.length || (tab === 'financial' && await page.locator('.cc-command-center table[data-table-typography="preserve"] thead th:visible').count()), `${tab} renders real table headings`);
-        for (const header of headers) assert.deepEqual([header.size, header.weight], ['13px', '600'], `${tab}: ${header.label}`);
+        assert.ok(headers.length || (['financial', 'overview'].includes(tab) && await page.locator('.cc-command-center table[data-table-typography="preserve"] thead th:visible').count()), `${tab} renders real table headings`);
+        for (const header of headers) {
+          if (header.referenceOverview) assert.ok(parseFloat(header.size) >= 10 && Number(header.weight) >= 500, `${tab}: ${header.label} retains readable compact reference typography`);
+          else assert.deepEqual([header.size, header.weight], ['13px', '600'], `${tab}: ${header.label}`);
+        }
         const actions = page.locator('.cc-command-center table tbody button:not([disabled]):visible, .cc-command-center table tbody a[href]:visible');
         if (await actions.count()) {
           await actions.last().focus();
@@ -589,7 +597,16 @@ async function runCurrentVisualChecks() {
 try {
   const { page } = await newPage();
   await ready(page);
-  if (visualsOnly) {
+  if (referenceOverview || (!dedicatedMode && await page.locator('.eov-board').count())) {
+    await page.context().close();
+    await runReferenceOverviewChecks({ newPage, assertGeometry, assertSidebarUnchanged, artifacts, errors, unexpectedRequests });
+    if (!referenceOverview) {
+      for (const [name, run] of [['financial', runFinancialPerformanceChecks], ['portfolio', runProjectPortfolioChecks], ['commercial', runCommercialPipelineChecks], ['workforce', runWorkforcePerformanceChecks], ['risk', runRiskComplianceChecks]]) {
+        await run(suiteOptions(name));
+        await Promise.all(browser.contexts().map(context => context.close()));
+      }
+    }
+  } else if (visualsOnly) {
     await page.context().close();
     await runCurrentVisualChecks();
   } else if (tabsPolishBaseline) {
@@ -626,10 +643,15 @@ try {
     await runFinancialPerformanceChecks(suiteOptions('financial'));
     await Promise.all(browser.contexts().map(context => context.close()));
   } else if (process.argv.includes('--print-only')) {
-    await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
-    await page.emulateMedia({ media: 'print' });
+    const referencePrint = await page.locator('.eov-board').count();
+    if (referencePrint) await assertReferenceOverviewPrint(page);
+    else {
+      await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+      await page.emulateMedia({ media: 'print' });
+    }
     await screenshot(page, 'board-print');
     await page.pdf({ path: path.join(artifacts, 'board-print.pdf'), format: 'A4', preferCSSPageSize: true, printBackground: true });
+    if (referencePrint) await assertReferenceOverviewAfterPrint(page);
     await assertSidebarUnchanged();
     console.log('PASS: Board print artifacts use the CSS page size; all sidebar hashes unchanged.');
   } else {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { ArrowRightIcon, ChartBarIcon, ChartPieIcon, Cog6ToothIcon, CreditCardIcon, DocumentTextIcon, InformationCircleIcon, RectangleStackIcon, ShieldCheckIcon, UsersIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import financeService from '../../services/finance.service';
@@ -6,19 +6,27 @@ import { financeCount, financeDate, financeNumber } from '../../components/Finan
 import { receivableCollectionRoute, receivableRawValue, receivableReadable, receivableValue } from '../../components/Finance/financeReceivablesPresentation';
 import { outgoingReviewMoney } from '../../components/Finance/outgoingReviewPresentation';
 import { WorkbookSummaryCards, PaymentStatusSummary } from '../../components/Finance/WorkbookSummary';
-import { financialMetric, financialReport, unavailableFinancialMetric } from './financialPresentation';
-import { portfolioReport } from './portfolioPresentation';
+import { unavailableFinancialMetric } from './financialPresentation';
+import { financialInvoiceModel } from './financialInvoicePresentation';
+import { invoiceMonthLabel } from './invoicePerformancePresentation';
 import { RouteLink } from './ExecutivePrimitives';
-import { RevenueMarginChart, ForecastWaterfall, BusinessUnitBars, WorkingCapitalChart } from './ExecutiveFinancialCharts';
+import { InvoiceOutlookChart, CustomerReceivablesChart, ReceivablesAgeingChart } from './ExecutiveFinancialCharts';
+import { CompanyPerformanceChart } from './OverviewCharts';
+import PortfolioKpiGraphic from './PortfolioKpiGraphic';
 import '../../components/Finance/FinanceCommandCenter.css';
 import './ExecutiveFinancialBoard.css';
 
 const count = value => financeCount(value)?.toLocaleString('en-GB') ?? '—';
 const compact = (value, currency = '') => financeNumber(value) === null ? '—' : `${currency ? `${currency} ` : ''}${Number(value).toLocaleString('en-GB', { notation: Math.abs(Number(value)) >= 1000000 ? 'compact' : 'standard', maximumFractionDigits: Math.abs(Number(value)) >= 1000000 ? 1 : 2 }).replace(/[kmb]$/i, suffix => suffix.toUpperCase())}`;
 const exact = (value, currency = '') => outgoingReviewMoney(value, 'AED').replace(/^AED /, currency ? `${currency} ` : '');
-const sourceReason = 'Approved revenue, budget and operating profit for a common reporting period are not connected.';
-const forecastReason = 'An approved fiscal-year forecast, budget and forecast assumptions are not connected.';
-const marginReason = 'Project names and owners come from the authorised project register. Recognised revenue, remaining cost and approved margin forecasts are not connected.';
+const metricMoney = (metric, currency) => `${compact(metric?.value, currency)}${metric?.status === 'partial' && financeNumber(metric?.value) !== null ? '*' : ''}`;
+const cohortMoney = (metric, currency) => `${compact(metric?.amount ?? metric?.known_amount, currency)}${metric?.partial && financeNumber(metric?.known_amount) !== null ? '*' : ''}`;
+const percent = value => financeNumber(value) === null ? '—' : `${Number(value).toLocaleString('en-GB', { maximumFractionDigits: 1 })}%`;
+
+function PeriodToggle({ mode, onChange, label }) {
+  return <div className="ef-period-toggle" role="group" aria-label={label}><button type="button" aria-pressed={mode === 'monthly'} onClick={() => onChange('monthly')}>Monthly</button><button type="button" aria-pressed={mode === 'ytd'} onClick={() => onChange('ytd')}>YTD</button></div>;
+}
+PeriodToggle.propTypes = { mode: PropTypes.string.isRequired, onChange: PropTypes.func.isRequired, label: PropTypes.string.isRequired };
 
 function agedTotal(rows) {
   if (rows.length !== 2 || rows.some(row => receivableValue(row.receivables) === null)) return null;
@@ -30,15 +38,15 @@ function HourglassIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 3h14M5 21h14M7 3v4c0 2 3 4 5 5-2 1-5 3-5 5v4M17 3v4c0 2-3 4-5 5 2 1 5 3 5 5v4M8 18h8" /></svg>;
 }
 
-function Info({ title, description, onExplain }) {
-  return <button type="button" className="ef-info" aria-label={`About ${title}`} onClick={() => onExplain(unavailableFinancialMetric(title, title, description))}><InformationCircleIcon aria-hidden="true" /></button>;
+function Info({ title, description, onExplain, status = 'unavailable' }) {
+  return <button type="button" className="ef-info" aria-label={`About ${title}`} onClick={() => onExplain({ ...unavailableFinancialMetric(title, title, description), status })}><InformationCircleIcon aria-hidden="true" /></button>;
 }
-Info.propTypes = { title: PropTypes.string.isRequired, description: PropTypes.string.isRequired, onExplain: PropTypes.func.isRequired };
+Info.propTypes = { title: PropTypes.string.isRequired, description: PropTypes.string.isRequired, onExplain: PropTypes.func.isRequired, status: PropTypes.string };
 
-function Panel({ title, icon: Icon, children, extra, description, onExplain, id, className = '' }) {
-  return <section className={`ef-panel ${className}`} aria-label={title} id={id} tabIndex={id ? -1 : undefined}><header className="ef-panel-heading"><Icon aria-hidden="true" /><h2>{title}</h2>{extra}{description && <Info title={title} description={description} onExplain={onExplain} />}</header>{children}</section>;
+function Panel({ title, icon: Icon, children, extra, description, onExplain, status, id, className = '' }) {
+  return <section className={`ef-panel ${className}`} aria-label={title} id={id} tabIndex={id ? -1 : undefined}><header className="ef-panel-heading"><Icon aria-hidden="true" /><h2>{title}</h2>{extra}{description && <Info title={title} description={description} onExplain={onExplain} status={status} />}</header>{children}</section>;
 }
-Panel.propTypes = { title: PropTypes.string.isRequired, icon: PropTypes.elementType.isRequired, children: PropTypes.node, extra: PropTypes.node, description: PropTypes.string, onExplain: PropTypes.func, id: PropTypes.string, className: PropTypes.string };
+Panel.propTypes = { title: PropTypes.string.isRequired, icon: PropTypes.elementType.isRequired, children: PropTypes.node, extra: PropTypes.node, description: PropTypes.string, onExplain: PropTypes.func, status: PropTypes.string, id: PropTypes.string, className: PropTypes.string };
 
 function WorkbookDialog({ open, onClose, summary, loading }) {
   const ref = useRef(null);
@@ -57,9 +65,10 @@ function WorkbookDialog({ open, onClose, summary, loading }) {
 }
 WorkbookDialog.propTypes = { open: PropTypes.bool.isRequired, onClose: PropTypes.func.isRequired, summary: PropTypes.object, loading: PropTypes.bool };
 
-export default function FinancialPerformance({ report, currency = 'AED', refreshKey = 0, printing = false, onSnapshotChange, onExplain }) {
+export default function FinancialPerformance({ currency = 'AED', refreshKey = 0, printing = false, onSnapshotChange, onExplain }) {
   const [data, setData] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [retry, setRetry] = useState(0), [mode, setMode] = useState('monthly'), [workbookOpen, setWorkbookOpen] = useState(false);
+  const [month, setMonth] = useState('');
   const sequence = useRef(0);
   useEffect(() => {
     const request = ++sequence.current;
@@ -68,31 +77,30 @@ export default function FinancialPerformance({ report, currency = 'AED', refresh
       if (request !== sequence.current) return;
       if (response?.schema_version !== '1.0' || !response.sources || !response.kpis || !Array.isArray(response.customers)) throw new Error('Incomplete financial response');
       setData(response);
+      if (response.invoice_performance?.schema_version !== '1.0') setError('The server has not supplied invoice performance data. Refresh after the Finance service is updated; current workbook totals remain available.');
     }).catch(problem => {
       if (request === sequence.current) setError(problem?.response?.status === 403 ? 'You do not have access to the financial invoice summary.' : 'The financial invoice summary could not be loaded. Please try again.');
     }).finally(() => { if (request === sequence.current) setLoading(false); });
     return () => { sequence.current += 1; };
   }, [currency, refreshKey, retry]);
-  useLayoutEffect(() => { onSnapshotChange?.({ receivables: data?.currency === currency ? data : null, loading: loading || !!(data && data.currency !== currency), error }); }, [data, currency, loading, error, onSnapshotChange]);
+  const model = useMemo(() => financialInvoiceModel(loading ? null : data, currency, mode, month), [data, currency, loading, mode, month]);
+  useLayoutEffect(() => { onSnapshotChange?.({ receivables: data?.currency === currency ? data : null, loading: loading || !!(data && data.currency !== currency), error,
+    revenue: model.revenue, reporting_period: { mode, month: model.performance.selectedMonth }, source_description: 'Invoice-date performance and current receivables in their original currency.' }); }, [data, currency, loading, error, onSnapshotChange, model, mode]);
 
   const readable = !loading && data?.currency === currency && receivableReadable(data?.sources?.receivables);
   const summary = data?.workbook_summary;
   const workbookReadable = !loading && summary?.status === 'available' && summary?.schema_version === '1.0';
-  const totals = workbookReadable ? summary.totals : {};
-  const statusRow = id => workbookReadable ? summary.payment_status?.find(row => row.id === id) : null;
-  const paid = statusRow('paid'), pending = statusRow('pending');
   const invoiceCount = workbookReadable ? financeCount(summary.invoice_count) : null;
-  const revenue = financialMetric(financialReport(report), 'revenue_ytd', currency);
-  const revenueReadable = ['available', 'partial'].includes(revenue.status);
+  const revenue = model.revenue;
   const workbookNote = loading ? 'Loading workbook…' : summary?.status === 'restricted' ? 'Access restricted' : 'Workbook not available';
   const openWorkbook = () => setWorkbookOpen(true);
   const explain = (label, description) => onExplain(unavailableFinancialMetric(label, label, description));
   const cards = [
-    { id: 'revenue', label: 'Revenue', icon: ChartBarIcon, tone: 'blue', value: compact(revenueReadable ? revenue.value : null, revenue.currency || currency), note: revenueReadable ? 'Recognised revenue' : 'Revenue source not connected', explain: () => onExplain(revenue) },
-    { id: 'total_amount', label: 'Total amount', icon: RectangleStackIcon, tone: 'violet', value: compact(totals?.invoice_amount), note: workbookReadable ? `${compact(totals?.invoice_amount_aed, 'AED')} recorded subtotal` : workbookNote, currencies: true },
-    { id: 'amount_received', label: 'Total amount received', icon: CreditCardIcon, tone: 'green', value: compact(totals?.actual_payment_received), note: workbookReadable ? `${count(paid?.count)} invoice rows marked paid` : workbookNote, currencies: true, progress: invoiceCount > 0 && financeCount(paid?.count) !== null ? paid.count / invoiceCount * 100 : null },
-    { id: 'amount_pending', label: 'Total amount pending', icon: HourglassIcon, tone: 'amber', value: compact(pending?.amount_aed, 'AED'), note: workbookReadable ? `${count(pending?.count)} invoice rows marked pending` : workbookNote, progress: invoiceCount > 0 && financeCount(pending?.count) !== null ? pending.count / invoiceCount * 100 : null },
-    { id: 'total_projects', label: 'Total projects', icon: UsersIcon, tone: 'blue', value: count(totals?.project_count), note: workbookReadable ? 'Unique RAD project numbers' : workbookNote },
+    { id: 'revenue', label: 'Invoiced revenue', icon: ChartBarIcon, tone: 'blue', value: metricMoney(revenue, currency), raw: revenue.value, note: model.note, explain: () => onExplain(revenue), graphic: 'contract_value', graphValues: model.performance.rows.map(row => row.invoiced), graphLabel: `Invoiced revenue by invoice month, ${mode === 'ytd' ? 'YTD' : 'Monthly'}, ${currency}`, graphColor: '#1674ff' },
+    { id: 'total_amount', label: 'Total amount', icon: RectangleStackIcon, tone: 'violet', value: metricMoney(model.amount, currency), raw: model.amount.value, note: workbookReadable ? `All workbook periods · ${currency} invoice value${model.amount.status === 'partial' ? ' · known subtotal*' : ''}` : workbookNote, currencies: true, explain: () => onExplain(model.amount), graphic: 'contract_value', graphColor: '#7774f5' },
+    { id: 'amount_received', label: 'Total amount received', icon: CreditCardIcon, tone: 'green', value: metricMoney(model.received, currency), raw: model.received.value, note: workbookReadable ? `All workbook periods · ${model.received.status === 'partial' ? 'known receipts*' : 'recorded receipts'}` : workbookNote, currencies: true, explain: () => onExplain(model.received), graphic: 'revenue_remaining', graphColor: '#00a977' },
+    { id: 'amount_pending', label: 'Total amount pending', icon: HourglassIcon, tone: 'amber', value: metricMoney(model.pending, currency), raw: model.pending.value, note: model.receivablesReadable ? `${count(model.pendingSource?.count)} open invoices${model.pendingSource?.partial ? ' · known balance*' : ''}` : 'Current receivables unavailable', explain: () => onExplain(model.pending), graphic: 'forecast_margin', graphColor: '#f7a400' },
+    { id: 'total_projects', label: 'Total projects', icon: UsersIcon, tone: 'blue', value: count(model.projectCount), note: workbookReadable ? 'Unique RAD project numbers · all currencies' : workbookNote, graphic: 'active_projects', graphColor: '#1674ff' },
   ];
   const overdue = readable ? data.kpis.overdue : null;
   const overdueAmount = receivableValue(overdue);
@@ -101,9 +109,6 @@ export default function FinancialPerformance({ report, currency = 'AED', refresh
   const registerRoute = collectionRoute.replace('queue=overdue', 'queue=all');
   const agedRows = readable ? (data.ageing || []).filter(row => ['days_61_90', 'over90'].includes(row.id)) : [];
   const agedPartial = agedRows.some(row => row.receivables?.partial);
-  const portfolio = portfolioReport(report);
-  const projectsReadable = ['available', 'partial'].includes(portfolio.register?.status);
-  const projects = projectsReadable ? portfolio.register.projects || [] : [];
   const missing = readable ? financeCount(data.kpis.unpaid?.missing_count) : null;
   const currencyIssues = workbookReadable ? (summary.currency_breakdown || []).filter(row => !row.currency).reduce((total, row) => total + (financeCount(row.coverage?.invoice_amount?.numeric_count) || 0) + (financeCount(row.coverage?.actual_payment_received?.numeric_count) || 0), 0) : 0;
   const actions = [
@@ -111,34 +116,45 @@ export default function FinancialPerformance({ report, currency = 'AED', refresh
     ...(missing > 0 ? [{ label: 'Complete invoice balances', impact: `${count(missing)} ${missing === 1 ? 'invoice' : 'invoices'}`, status: 'Review', tone: 'review', route: registerRoute }] : []),
     ...(currencyIssues > 0 ? [{ label: 'Review currency labels', impact: `${count(currencyIssues)} amount cells`, status: 'Review', tone: 'review', onClick: openWorkbook }] : []),
   ];
-  const numericAmounts = workbookReadable ? financeCount(summary.coverage?.invoice_amount_aed?.numeric_count) : null;
-  const coverage = invoiceCount > 0 && numericAmounts !== null ? numericAmounts / invoiceCount * 100 : null;
+  const coverage = model.amountCoverage;
+  const lastPerformance = model.performance.rows.at(-1);
+  const approvedMargin = lastPerformance?.operating_margin;
 
   return <div className="financial-performance ef-board" data-testid="financial-performance" aria-busy={loading}>
     {error && <div className="ef-error" role="alert"><InformationCircleIcon /><span>{error}</span><button className="cc-button" type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>}
-    <section className="ef-kpis" aria-label="Financial performance indicators">{cards.map(({ id, label, icon: Icon, tone, value, note, progress, currencies, explain: explainCard }) => <article className={`ef-kpi ef-kpi-${tone}`} key={id} data-testid={`financial-kpi-${id}`}>
-      <div className="ef-kpi-icon"><Icon aria-hidden="true" /></div><div className="ef-kpi-content"><div className="ef-kpi-heading"><h2>{label}</h2><button type="button" onClick={explainCard || openWorkbook} aria-label={`How ${label} is calculated`}><InformationCircleIcon aria-hidden="true" /><span>How calculated</span></button></div><strong className="ef-kpi-value" title={id === 'total_amount' ? exact(totals?.invoice_amount) : id === 'amount_received' ? exact(totals?.actual_payment_received) : id === 'amount_pending' ? exact(pending?.amount_aed, 'AED') : undefined}>{value}</strong><p>{note}</p>{progress !== null && progress !== undefined && <div className="ef-progress" role="img" aria-label={`${progress.toFixed(1)}% of workbook invoice rows`}><i style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} /></div>}{currencies && <button className="ef-text-button ef-currency-detail" type="button" onClick={openWorkbook}>View currency breakdown<ArrowRightIcon /></button>}</div>
+    <section className="ef-kpis" aria-label="Financial performance indicators">{cards.map(({ id, label, icon: Icon, tone, value, raw, note, currencies, explain: explainCard, graphic, graphValues, graphLabel, graphColor }) => <article className={`ef-kpi ef-kpi-${tone}`} key={id} data-testid={`financial-kpi-${id}`}>
+      <div className="ef-kpi-icon"><Icon aria-hidden="true" /></div><div className="ef-kpi-content"><div className="ef-kpi-heading"><h2>{label}</h2><button type="button" onClick={explainCard || openWorkbook} aria-label={`How ${label} is calculated`}><InformationCircleIcon aria-hidden="true" /><span>How calculated</span></button></div><strong className="ef-kpi-value" title={raw == null ? undefined : exact(raw, currency)}>{value}</strong><p>{note}</p>{id === 'revenue' && <PeriodToggle mode={mode} onChange={setMode} label="Invoiced revenue period" />}{currencies && <button className="ef-text-button ef-currency-detail" type="button" onClick={openWorkbook}>View currency breakdown<ArrowRightIcon /></button>}</div>
+      <PortfolioKpiGraphic id={graphic} values={graphValues} label={graphLabel || label} color={graphColor} kind={id === 'total_projects' ? 'bars' : 'line'} />
     </article>)}</section>
-    <p className="ef-scope-note">Invoice cards: {workbookReadable ? <>full workbook · {count(invoiceCount)} rows · Snapshot {financeDate(summary.source?.snapshot_at)}</> : workbookNote}. Receivables: {currency === 'UNSPECIFIED' ? 'unspecified currency' : currency} · {data?.as_of_date ? `As of ${financeDate(data.as_of_date)}` : 'Current snapshot'}. No currency conversion applied.</p>
+    <p className="ef-scope-note">{currency === 'UNSPECIFIED' ? 'Unspecified currency' : currency} · Revenue: {model.performance.period}. Workbook totals: {workbookReadable ? <>all periods · {count(invoiceCount)} rows across currencies · Snapshot {financeDate(summary.source?.snapshot_at)}</> : workbookNote}. Receivables: {data?.as_of_date ? `current as of ${financeDate(data.as_of_date)}` : 'current snapshot'}. No currency conversion applied.</p>
 
     <section className={`ef-action-banner${overdueAmount > 0 ? '' : ' ef-banner-neutral'}`} aria-label="Executive financial priority"><span className="ef-priority-icon" aria-hidden="true">!</span><p><strong>{overdueAmount > 0 ? 'Executive action required:' : 'Receivables position:'}</strong> {loading ? 'Loading current balances…' : overdueAmount === null ? data?.sources?.receivables?.status === 'restricted' ? 'Access restricted' : 'Balances unavailable' : overdueAmount > 0 ? `${overdueText} overdue receivables` : 'No recorded overdue balance'}</p>{readable && <span className="ef-action-context">{count(overdue?.count)} invoices · Owner unassigned · Review not scheduled</span>}{readable && <RouteLink route={collectionRoute} className="cc-button cc-button--primary">Open receivables</RouteLink>}</section>
     {overdue?.partial && <p className="ef-basis-note">* Recorded subtotal; missing invoice balances are excluded.</p>}
 
     <div className="ef-panel-row ef-primary-row">
-      <Panel title="Revenue and margin performance" icon={ChartBarIcon} description={sourceReason} onExplain={onExplain} extra={<div className="ef-period-toggle" role="group" aria-label="Revenue reporting period"><button type="button" aria-pressed={mode === 'monthly'} onClick={() => setMode('monthly')}>Monthly</button><button type="button" aria-pressed={mode === 'ytd'} onClick={() => setMode('ytd')}>YTD</button></div>}><RevenueMarginChart rows={[]} currency={currency} mode={mode} /></Panel>
-      <Panel title="FY forecast" icon={DocumentTextIcon} description={forecastReason} onExplain={onExplain}><div className="ef-forecast-stats">{['Forecast revenue', 'Budget', 'Forecast profit', 'Forecast margin', 'Confidence'].map(label => <div key={label}><span>{label}</span>{label === 'Confidence' ? <strong className="ef-confidence">Not assessed</strong> : <strong>—</strong>}</div>)}</div><p className="ef-chart-caption">Revenue bridge ({currency})</p><ForecastWaterfall rows={[]} currency={currency} /><button className="ef-text-button ef-panel-link" type="button" onClick={() => explain('Forecast assumptions', forecastReason)}>Review forecast assumptions<ArrowRightIcon /></button></Panel>
+      <Panel title="Invoicing and collections" status={model.performance.status} icon={ChartBarIcon} description={model.performance.metric.description} onExplain={onExplain} extra={<div className="ef-invoice-period-controls"><select aria-label="Financial invoicing month" value={model.performance.selectedMonth} disabled={!model.performance.months.length} onChange={event => setMonth(event.target.value)}>{!model.performance.months.length && <option value="">No invoice periods</option>}{model.performance.months.map(value => <option key={value} value={value}>{invoiceMonthLabel(value)}</option>)}</select><PeriodToggle mode={mode} onChange={setMode} label="Revenue reporting period" /></div>}>
+        <div className="ef-invoice-stats"><span>Collected against invoices <strong>{cohortMoney(model.performance.amounts.received, currency)}</strong></span><span>Outstanding <strong>{cohortMoney(model.performance.amounts.outstanding, currency)}</strong></span><span>Collection rate <strong>{percent(model.performance.collectionRate)}</strong></span></div>
+        <CompanyPerformanceChart rows={model.performance.rows} currency={currency} mode={mode} />
+        <div className="ef-finance-inputs"><button type="button" onClick={() => onExplain(model.performance.budget.metric)}><InformationCircleIcon />{lastPerformance?.budget != null ? `Approved budget: ${compact(lastPerformance.budget, currency)}` : model.performance.budget.status === 'restricted' ? 'Budget: access restricted' : model.performance.budget.status === 'error' ? 'Budget: source unavailable' : 'Budget: awaiting Finance plan'}</button><button type="button" onClick={() => onExplain(model.performance.margin.metric)}><InformationCircleIcon />{financeNumber(approvedMargin) !== null ? `Operating margin: ${percent(approvedMargin)}` : model.performance.margin.status === 'restricted' ? 'Operating margin: access restricted' : model.performance.margin.status === 'error' ? 'Operating margin: source unavailable' : 'Operating margin: awaiting matching Finance costs'}</button></div>
+        <p className="ef-basis-note">{model.performance.period}. Invoiced value, not recognised accounting revenue. Current collections grouped by invoice month.{model.performance.partial && ' *Known incomplete subtotals; rates require complete amounts.'} {model.performance.coverageNote}{model.performance.latestInvoice && ` Latest invoice: ${financeDate(model.performance.latestInvoice)}.`}</p>
+      </Panel>
+      <Panel title="Invoicing outlook" status={model.forecast.basis} icon={DocumentTextIcon} description={model.forecast.description} onExplain={onExplain}>
+        <div className="ef-forecast-stats ef-invoice-outlook-stats"><div><span>{model.forecast.partial ? 'Known forecast subtotal' : 'Next 12 months'}</span><strong>{compact(model.forecast.total, currency)}{model.forecast.partial ? '*' : ''}</strong></div><div><span>Basis</span><strong className="ef-confidence">{model.forecast.basis === 'estimated' ? 'Estimate · 3-month average' : model.forecast.basis === 'approved' ? 'Finance approved' : 'Awaiting Finance / history'}</strong></div><div><span>Months covered</span><strong>{model.forecast.coveredMonths} / 12</strong></div></div>
+        <InvoiceOutlookChart rows={model.forecast.rows} currency={currency} basis={model.forecast.basis} />
+        <p className="ef-basis-note">{model.forecast.basis === 'estimated' ? 'Illustrative estimate from the last three completed invoice months; not a Finance-approved plan.' : model.forecast.basis === 'approved' ? 'Approved Finance invoicing plan; unprovided months stay blank.' : model.forecast.description}{model.forecast.partial && ' *Only supplied forecast months are included.'}</p><button className="ef-text-button ef-panel-link" type="button" onClick={() => onExplain(model.forecast.metric)}>Review forecast assumptions<ArrowRightIcon /></button>
+      </Panel>
     </div>
     <div className="ef-panel-row ef-secondary-row">
-      <Panel title="Business unit performance" icon={RectangleStackIcon} description="Recognised revenue, approved budgets and operating margins by business unit are not connected." onExplain={onExplain}><BusinessUnitBars rows={[]} currency={currency} /></Panel>
-      <Panel title="Cash & working capital" icon={ChartPieIcon} description="Receivables use Invoice Amount minus Actual Payment Received on unsettled invoices in the selected currency. Over 60 days uses due dates more than 60 days before the snapshot date. Blank payments count as zero; missing invoice amounts remain unknown. Treasury, unbilled work, credit sales and historical working-capital snapshots are not connected." onExplain={onExplain}>
-        <div className="ef-cash-stats"><div><span>Receivables</span><strong>{compact(readable ? receivableRawValue(data.kpis.unpaid) : null, currency)}{readable && data.kpis.unpaid?.partial ? '*' : ''}</strong></div><div><span>Over 60 days</span><strong>{compact(agedTotal(agedRows), currency)}{agedPartial ? '*' : ''}</strong></div><div><span>Unbilled WIP</span><strong>—</strong></div><div><span>DSO</span><strong>—</strong></div></div><p className="ef-chart-caption">Working capital ({currency})</p><WorkingCapitalChart rows={[]} currency={currency} />{(agedPartial || (readable && data.kpis.unpaid?.partial)) && <p className="ef-basis-note">* Recorded subtotals; missing balances excluded.</p>}
+      <Panel title="Receivables by client" status={model.receivablesReadable ? model.pending.status : data?.sources?.receivables?.status || 'unavailable'} icon={RectangleStackIcon} description={model.definitions.customer} onExplain={onExplain}><CustomerReceivablesChart rows={printing ? model.customers : model.customers.slice(0, 6)} currency={currency} /><p className="ef-basis-note">{model.customers.length ? `${printing ? model.customers.length : Math.min(6, model.customers.length)} of ${model.customers.length} clients · Current outstanding balances.` : model.receivablesReadable ? 'No open client balances in this currency.' : 'Client balances unavailable.'} Business-unit financial attribution awaits Finance mapping.</p><RouteLink route={registerRoute} className="ef-text-button ef-panel-link">Open client balances<ArrowRightIcon /></RouteLink></Panel>
+      <Panel title="Receivables ageing" status={model.receivablesReadable ? model.pending.status : data?.sources?.receivables?.status || 'unavailable'} icon={ChartPieIcon} description={model.definitions.ageing} onExplain={onExplain}>
+        <div className="ef-cash-stats"><div><span>Receivables</span><strong>{metricMoney(model.pending, currency)}</strong></div><div><span>Over 60 days</span><strong>{compact(agedTotal(agedRows), currency)}{agedPartial ? '*' : ''}</strong></div><div><span>Overdue invoices</span><strong>{readable ? count(data.kpis.overdue?.count) : '—'}</strong></div><div><span>Missing due dates</span><strong>{readable ? count(data.sources.receivables.unknown_due_date_count) : '—'}</strong></div></div><ReceivablesAgeingChart rows={model.ageing} currency={currency} /><p className="ef-basis-note">Current collection register: blank receipts count as zero; missing invoice amounts remain unknown. This is not a cash balance or historical working-capital trend.</p>
       </Panel>
     </div>
     <div className="ef-panel-row ef-tertiary-row">
-      <Panel title="Project margin exposure" icon={DocumentTextIcon} description={marginReason} onExplain={onExplain}><div className="ef-table-scroll" role="region" aria-label="Project margin register" tabIndex={0}><table className="ef-table ef-project-table" data-table-typography="preserve"><thead><tr>{['Project', 'Revenue remaining', 'Current margin', 'Forecast margin', 'Variance', 'Owner', 'Status', 'Action'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{(printing ? projects : projects.slice(0, 5)).map(project => <tr key={project.id}><th scope="row" title={project.name || project.project_name}>{project.name || project.project_name || project.project_code || 'Unnamed project'}</th><td>—</td><td>—</td><td>—</td><td>—</td><td title={project.owner || ''}>{project.owner || 'Unassigned'}</td><td>Not assessed</td><td><RouteLink className="ef-table-open" route={project.route}>Open</RouteLink></td></tr>)}</tbody></table>{!projects.length && <p className="ef-empty-table">{projectsReadable ? 'No projects recorded in this register.' : portfolio.register?.status === 'restricted' ? 'Project register access restricted.' : 'Project register unavailable.'}</p>}</div><p className="ef-basis-note">Project register · Margin reporting not connected</p></Panel>
+      <Panel title="Invoice collection priorities" status={model.receivablesReadable ? model.pending.status : data?.sources?.receivables?.status || 'unavailable'} icon={DocumentTextIcon} description={model.definitions.priorities} onExplain={onExplain}><div className="ef-table-scroll" role="region" aria-label="Invoice collection register" tabIndex={0}><table className="ef-table ef-invoice-table" data-table-typography="preserve"><thead><tr>{['Invoice', 'Client', 'Balance due', 'Due date', 'Days overdue', 'Project manager', 'Action'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{model.priorities.map(invoice => <tr key={invoice.id}><th scope="row" title={invoice.invoice_number}>{invoice.invoice_number || 'Not recorded'}</th><td title={invoice.customer}>{invoice.customer || 'Customer not recorded'}</td><td>{compact(invoice.balance, currency)}</td><td>{invoice.due_date ? financeDate(invoice.due_date) : 'Not recorded'}</td><td>{financeNumber(invoice.days_overdue) === null ? '—' : Number(invoice.days_overdue) > 0 ? count(invoice.days_overdue) : 'Current'}</td><td title={invoice.owner || ''}>{invoice.owner || 'Unassigned'}</td><td><RouteLink className="ef-table-open" route={receivableCollectionRoute({ currency }, invoice.company || '').replace('queue=overdue', 'queue=open')}>Open</RouteLink></td></tr>)}</tbody></table>{!model.priorities.length && <p className="ef-empty-table">{model.receivablesReadable ? 'No open invoices recorded in this currency.' : 'Invoice register unavailable or access restricted.'}</p>}</div><p className="ef-basis-note">{model.priorities.length ? `Top ${model.priorities.length} of ${count(data?.priority_invoice_count)} open invoices by days past due and balance. ` : ''}Project profitability requires approved project revenue and matching costs.</p></Panel>
       <Panel title="Management actions" icon={ShieldCheckIcon} id="ef-management-actions"><div className="ef-table-scroll" role="region" aria-label="Financial management actions" tabIndex={0}><table className="ef-table ef-actions-table" data-table-typography="preserve"><thead><tr>{['#', 'Action', 'Impact', 'Owner', 'Due date', 'Status', 'Open'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{actions.map((action, index) => <tr key={action.label}><td>{index + 1}</td><th scope="row">{action.label}</th><td className={action.tone === 'high' ? 'ef-danger' : ''}>{action.impact}</td><td>Unassigned</td><td>Not scheduled</td><td><span className={`ef-action-status ef-status-${action.tone}`}>{action.status}</span></td><td>{action.onClick ? <button className="ef-table-open" type="button" onClick={action.onClick} aria-label={`Open ${action.label}`}>Open</button> : <RouteLink route={action.route} className="ef-table-open">Open</RouteLink>}</td></tr>)}</tbody></table>{!actions.length && <p className="ef-empty-table">{loading ? 'Reviewing financial priorities…' : readable ? 'No recorded financial actions in this view.' : 'Financial actions unavailable.'}</p>}</div></Panel>
     </div>
-    <section className="ef-controls" aria-label="Financial controls"><div className="ef-controls-title"><Cog6ToothIcon /><h2>Financial controls</h2><Info title="Financial controls" description="Month-end close and forecast submission workflows are not connected. No currency conversion is applied. Invoice amount coverage measures numeric recorded AED amount cells divided by all workbook invoice rows; it does not measure the completeness of the balance sheet." onExplain={onExplain} /></div><div><span>Month-end close</span><strong>Not connected</strong></div><div><span>Forecast submissions</span><strong>Not connected</strong></div><div><span>Currency conversion</span><strong>Not applied</strong></div><div className="ef-coverage-control"><span>Invoice amount coverage</span>{coverage !== null && <i className="ef-control-track" aria-hidden="true"><b style={{ width: `${coverage}%` }} /></i>}<strong>{coverage === null ? '—' : `${coverage.toFixed(1)}%`}</strong></div><button type="button" className="ef-text-button" onClick={() => explain('Financial controls', 'Close and forecast workflows are not connected. Invoice amount coverage is the count of numeric Inv Amt. (AED) cells divided by full workbook invoice rows. Blank, text and error cells are excluded. No exchange rates are assumed.')}>View financial controls<ArrowRightIcon /></button></section>
+    <section className="ef-controls" aria-label="Financial controls"><div className="ef-controls-title"><Cog6ToothIcon /><h2>Financial controls</h2><Info title="Financial controls" description="Month-end close, bank balances, unbilled WIP and DSO are not connected. Invoice amount coverage measures numeric original-currency invoice cells within the selected verified currency group; it does not measure balance-sheet completeness. Business-unit and project profitability need approved mapping and matched costs." onExplain={onExplain} /></div><div><span>Month-end close</span><strong>Awaiting Finance</strong></div><div><span>Forecast basis</span><strong>{model.forecast.basis === 'approved' ? 'Finance approved' : model.forecast.basis === 'estimated' ? 'Estimate' : 'Awaiting Finance'}</strong></div><div><span>Currency conversion</span><strong>Not applied</strong></div><div className="ef-coverage-control"><span>{currency} invoice amount coverage</span>{coverage !== null && <i className="ef-control-track" aria-hidden="true"><b style={{ width: `${coverage}%` }} /></i>}<strong>{coverage === null ? '—' : `${coverage.toFixed(1)}%`}</strong></div><button type="button" className="ef-text-button" onClick={() => explain('Financial controls', 'Close, cash balances, WIP and DSO await Finance sources. Business-unit attribution and project profitability require approved financial mapping and matching costs. No exchange rates are assumed.')}>View financial controls<ArrowRightIcon /></button></section>
     <WorkbookDialog open={workbookOpen && !printing} onClose={() => setWorkbookOpen(false)} summary={summary} loading={loading} />
   </div>;
 }

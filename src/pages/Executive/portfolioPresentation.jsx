@@ -23,6 +23,20 @@ export function portfolioMetric(portfolio, id) {
     || unknownPortfolioMetric(id, fallback?.label || id, fallback?.reason || 'The required reporting measure is not connected.', fallback?.unit);
 }
 
+// Amount cards select an original currency; counts and health retain open-project scope.
+export function portfolioCurrencyMetric(portfolio, id, currency) {
+  const metric = portfolioMetric(portfolio, id);
+  if (['restricted', 'error'].includes(portfolio?.status)) return { ...metric, status: portfolio.status, value: null, by_currency: [] };
+  if (metric.unit !== 'currency' || !currency) return metric;
+  if (!['available', 'partial'].includes(metric.status)) return { ...metric, currency, value: null, by_currency: undefined };
+  const group = metric.by_currency?.find(row => row.currency === currency);
+  const missing = metric.incomplete_currencies?.includes(currency);
+  const value = group ? group.amount : !metric.by_currency && metric.currency === currency ? metric.value : null;
+  return { ...metric, currency, value: missing ? null : value, by_currency: undefined,
+    status: !missing && numberPresent(value) ? 'available' : 'unavailable',
+    description: `${metric.description || metric.reason || ''} Displayed in ${currency}; no currency conversion is applied.${missing ? ' This currency total is withheld because contract values are missing.' : ''}` };
+}
+
 export function portfolioReport(report) {
   if (report?.portfolio_performance) return report.portfolio_performance;
   const original = report?.portfolio || {};
@@ -45,7 +59,7 @@ export function portfolioReport(report) {
 
 export function PortfolioMetricValue({ metric, compact = true }) {
   if (!metric || !['available', 'partial'].includes(metric.status)) return '—';
-  const value = amount => formatNumber(amount, { notation: compact && Math.abs(Number(amount)) >= 1000000 ? 'compact' : 'standard', maximumFractionDigits: 1 });
+  const value = amount => formatNumber(amount, { notation: compact && Math.abs(Number(amount)) >= 1000000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).replace(/[kmb]$/i, suffix => suffix.toUpperCase());
   if (metric.unit === 'currency' && metric.by_currency) {
     const rows = metric.by_currency.filter(row => numberPresent(row.amount));
     if (!rows.length) return '—';
