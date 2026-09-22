@@ -1,0 +1,17 @@
+.pde-summary { margin: 10px 0; padding: 10px 12px; border: 1px solid #cbdbee; border-radius: 4px; background: #f7faff; color: #355681; font-size: 12px; }
+.pde-summary > strong { color: #153464; }
+.pde-summary > div { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 5px; }
+.pde-summary p { margin: 5px 0 0; }
+.pde-activity { margin-top: 4px; font-size: 11px; color: #526987; }
+.pde-activity > strong, .pde-activity > small { display: block; }
+.pde-activity[data-duration-source="missing_source"] > strong, .pde-activity[data-duration-source="missing"] > strong { color: #875410; }
+.pde-activity[data-duration-source="source_document"] > strong, .pde-activity[data-duration-source="source_backed"] > strong, .pde-activity[data-duration-source="source_verified"] > strong { color: #087047; }
+.pde-activity q { display: block; border-left: 2px solid #ccd9ef; padding-left: 7px; margin: 3px 0; }
+.pde-packages { margin-top: 8px; }
+.pde-packages summary { color: #0751d7; cursor: pointer; }
+.pde-package-scroll { max-height: 280px; overflow: auto; margin-top: 8px; }
+.pde-package-scroll table { width: 100%; min-width: 690px; border-collapse: collapse; text-align: left; }
+.pde-package-scroll th, .pde-package-scroll td { padding: 7px; border: 1px solid #dce6f3; vertical-align: top; }
+.pde-package-scroll thead th { position: sticky; top: 0; background: #edf3fb; }
+.pde-package-scroll tbody th { font-weight: 500; }
+.pde-package-scroll small { display: block; }

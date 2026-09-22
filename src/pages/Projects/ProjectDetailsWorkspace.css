@@ -1,0 +1,223 @@
+/* Shared project-detail theme. Domain grids, timeline geometry and row density
+   remain owned by the individual work areas. The portfolio and sidebar are out
+   of scope; this sheet is loaded after the project workspace styles. */
+.project-performance-workspace.pp-details-workspace {
+  --pdw-ink: #10264d;
+  --pdw-muted: #526b94;
+  --pdw-blue: #0063ff;
+  --pdw-action: #0757cd;
+  --pdw-surface: #fff;
+  --pdw-soft: #f3f7fd;
+  --pdw-selected: #eaf2ff;
+  --pdw-line: #d8e5f5;
+  --pdw-rule: #e5edf8;
+  --pp-blue: var(--pdw-blue);
+  --pp-navy: var(--pdw-ink);
+  --pp-muted: var(--pdw-muted);
+  --pp-border: var(--pdw-line);
+  color: var(--pdw-ink);
+  background: #f4f8fe;
+  font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+}
+
+.project-performance-workspace.pp-details-workspace > .pp-body {
+  padding: 12px 16px 14px;
+}
+.project-performance-workspace.pp-details-workspace > .pp-body:has(> .pd-overview) {
+  padding: 0;
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-workspace, .sp-workspace, .cp-workspace, .dc-workspace, .rc-workspace, .ec-workspace, .epc-workspace, .simple-planning-workspace, .schedule-canvas) {
+  color: var(--pdw-ink);
+  font-family: inherit;
+}
+.project-performance-workspace.pp-details-workspace .pp-body :is(button, input, select, textarea, table) {
+  font-family: inherit;
+}
+.project-performance-workspace.pp-details-workspace .pp-body :is(input[type=checkbox], input[type=radio]) {
+  accent-color: var(--pdw-blue);
+}
+.project-performance-workspace.pp-details-workspace .pp-body :is(button, input, select, textarea, summary):focus-visible {
+  outline-color: var(--pdw-blue);
+}
+
+/* The existing controls retain their sizes, including compact table actions. */
+.project-performance-workspace.pp-details-workspace .pp-button {
+  border-color: #c5d8f3;
+  border-radius: 5px;
+  background: var(--pdw-surface);
+  color: var(--pdw-action);
+  font-weight: 500;
+}
+.project-performance-workspace.pp-details-workspace .pp-button:hover:not(:disabled) {
+  border-color: #97b9ec;
+  background: var(--pdw-selected);
+}
+.project-performance-workspace.pp-details-workspace .pp-button.pp-primary:not(:disabled) {
+  border-color: var(--pdw-blue);
+  background: var(--pdw-blue);
+  color: #fff;
+}
+.project-performance-workspace.pp-details-workspace .pp-button.pp-primary:hover:not(:disabled) {
+  border-color: #0053dc;
+  background: #0053dc;
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-panel, .sp-panel, .cp-panel, .dc-panel, .rc-panel, .ec-panel, .epc-panel, .pp-panel, .mc-toolbar, .sp-toolbar, .cp-toolbar, .dc-toolbar, .rc-toolbar, .ec-toolbar, .mc-filters, .sp-filters, .cp-filters, .dc-filters, .rc-filters, .ec-filters) {
+  border-color: var(--pdw-line);
+  border-radius: 6px;
+  background: var(--pdw-surface);
+  box-shadow: 0 1px 3px rgb(25 60 111 / 2%);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-kpi, .sp-kpi, .cp-kpi, .dc-kpi, .rc-kpi, .ec-kpi) {
+  border-color: var(--pdw-line);
+  border-radius: 6px;
+  background: var(--pdw-surface);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-panel, .sp-panel, .cp-panel, .dc-panel, .rc-panel, .ec-panel, .epc-panel) > header {
+  border-color: var(--pdw-rule);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-panel, .sp-panel, .cp-panel, .dc-panel, .rc-panel, .ec-panel, .epc-panel) > header h2 {
+  color: var(--pdw-ink);
+  font-weight: 600;
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-panel, .sp-panel, .cp-panel, .dc-panel, .rc-panel, .ec-panel, .epc-panel) > header h2 > svg {
+  color: var(--pdw-action);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table, .epc-table) {
+  color: var(--pdw-ink);
+  font-variant-numeric: tabular-nums;
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table, .epc-table) th {
+  border-color: var(--pdw-rule);
+  background: var(--pdw-soft);
+  color: var(--pdw-muted);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table, .epc-table) td {
+  border-color: var(--pdw-rule);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-workspace, .sp-workspace, .cp-workspace, .dc-workspace, .rc-workspace, .ec-workspace, .epc-workspace) :is(input:not([type=checkbox]):not([type=radio]), select, textarea) {
+  border-color: #c5d8f3;
+  border-radius: 4px;
+  background-color: var(--pdw-surface);
+  color: var(--pdw-ink);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-mode-switch, .sp-mode-switch, .cp-mode-switch, .dc-mode-switch, .rc-mode-switch, .ec-mode-switch, .mc-segmented, .sp-segmented, .cp-segmented, .dc-segmented, .rc-segmented, .ec-segmented) {
+  border-color: var(--pdw-line);
+  background: var(--pdw-soft);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-mode-switch, .sp-mode-switch, .cp-mode-switch, .dc-mode-switch, .rc-mode-switch, .ec-mode-switch, .mc-segmented, .sp-segmented, .cp-segmented, .dc-segmented, .rc-segmented, .ec-segmented) button {
+  border-color: var(--pdw-line);
+  background: transparent;
+  color: var(--pdw-muted);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-mode-switch, .sp-mode-switch, .cp-mode-switch, .dc-mode-switch, .rc-mode-switch, .ec-mode-switch, .mc-segmented, .sp-segmented, .cp-segmented, .dc-segmented, .rc-segmented, .ec-segmented) button[aria-pressed=true] {
+  background: var(--pdw-selected);
+  color: var(--pdw-action);
+}
+.project-performance-workspace.pp-details-workspace :is(.mc-text-button, .sp-text-button, .cp-text-button, .dc-text-button, .rc-text-button, .ec-text-button, .mc-row-link, .sp-row-link, .cp-row-link, .dc-row-link, .rc-row-link, .ec-row-link, .pp-text-action) {
+  color: var(--pdw-action);
+}
+
+/* Master Schedule keeps its stage, critical-path and evidence colors. Only its
+   frame, typography and command surfaces adopt the shared project theme. */
+.project-performance-workspace.pp-details-workspace .schedule-canvas {
+  --sc-blue: var(--pdw-blue);
+  --sc-ink: var(--pdw-ink);
+  --sc-muted: var(--pdw-muted);
+  --sc-border: var(--pdw-line);
+  border-radius: 6px;
+}
+.project-performance-workspace.pp-details-workspace :is(.sc-commandbar, .sc-toolbar, .sc-footer) {
+  border-color: var(--pdw-line);
+  background: var(--pdw-surface);
+}
+.project-performance-workspace.pp-details-workspace .schedule-canvas button.sc-primary:not(:disabled) {
+  border-color: var(--pdw-blue);
+  background: var(--pdw-blue);
+  color: #fff;
+}
+
+/* Cost ledger and reporting-period forms still use utility classes. Limit the
+   adaptation to their direct body roots, excluding nested schedule controls. */
+.project-performance-workspace.pp-details-workspace .pp-body > :is(.space-y-5, .space-y-6) :is(.bg-white, .bg-slate-50) {
+  background-color: var(--pdw-surface);
+}
+.project-performance-workspace.pp-details-workspace .pp-body > :is(.space-y-5, .space-y-6) :is(.border-slate-200, .border-slate-300) {
+  border-color: var(--pdw-line);
+}
+.project-performance-workspace.pp-details-workspace .pp-body > :is(.space-y-5, .space-y-6) :is(.rounded-xl, .rounded-2xl) {
+  border-radius: 6px;
+}
+.project-performance-workspace.pp-details-workspace .pp-body > :is(.space-y-5, .space-y-6) :is(.text-slate-900, .text-slate-800, .text-slate-700) {
+  color: var(--pdw-ink);
+}
+.project-performance-workspace.pp-details-workspace .pp-body > :is(.space-y-5, .space-y-6) :is(.text-slate-600, .text-slate-500) {
+  color: var(--pdw-muted);
+}
+.project-performance-workspace.pp-details-workspace .pp-body > :is(.space-y-5, .space-y-6) button:is(.bg-indigo-600, .bg-indigo-700, .bg-blue-600) {
+  background-color: var(--pdw-blue);
+  color: #fff;
+}
+.project-performance-workspace.pp-details-workspace .pp-body > :is(.space-y-5, .space-y-6) :is(.text-indigo-600, .text-indigo-700, .text-indigo-800) {
+  color: var(--pdw-action);
+}
+
+.dark .project-performance-workspace.pp-details-workspace {
+  --pdw-ink: #e1ecff;
+  --pdw-muted: #b5c8e7;
+  --pdw-blue: #0063ff;
+  --pdw-action: #acd0ff;
+  --pdw-surface: #18283f;
+  --pdw-soft: #20334e;
+  --pdw-selected: #294976;
+  --pdw-line: #385172;
+  --pdw-rule: #304763;
+  background: #111e31;
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-kpi-copy, .sp-kpi-copy, .cp-kpi-copy, .dc-kpi-copy, .rc-kpi-copy, .ec-kpi-copy) > :is(strong, span, label),
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table, .epc-table) :is(td, strong) {
+  color: var(--pdw-ink);
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-kpi-copy, .sp-kpi-copy, .cp-kpi-copy, .dc-kpi-copy, .rc-kpi-copy, .ec-kpi-copy) > small,
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table, .epc-table) small,
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-toolbar-field, .sp-toolbar-field, .cp-toolbar-field, .dc-toolbar-field, .rc-toolbar-field, .ec-toolbar-field, .mc-toolbar-date, .sp-toolbar-date, .cp-toolbar-date, .dc-toolbar-date, .rc-toolbar-date, .ec-toolbar-date) {
+  color: var(--pdw-muted);
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table, .epc-table) tr.is-selected td {
+  background-color: var(--pdw-selected);
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table, .epc-table) tbody tr:hover td {
+  background-color: var(--pdw-soft);
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table) :is(.mc-danger, .sp-danger, .cp-danger, .dc-danger, .rc-danger, .ec-danger) {
+  color: #ffb8c4;
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table) :is(.mc-warning, .sp-warning, .cp-warning, .dc-warning, .rc-warning, .ec-warning) {
+  color: #ffce8d;
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-table, .sp-table, .cp-table, .dc-table, .rc-table, .ec-table) :is(.mc-success, .sp-success, .cp-success, .dc-success, .rc-success, .ec-success) {
+  color: #a9e2bf;
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-status, .sp-status, .cp-status, .dc-status, .rc-status, .ec-status) {
+  background: #293c58;
+  color: #d3e2f9;
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-status, .sp-status, .cp-status, .dc-status, .rc-status, .ec-status):is(.mc-danger, .sp-danger, .cp-danger, .dc-danger, .rc-danger, .ec-danger) {
+  background: #4a2938;
+  color: #ffb8c4;
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-status, .sp-status, .cp-status, .dc-status, .rc-status, .ec-status):is(.mc-warning, .sp-warning, .cp-warning, .dc-warning, .rc-warning, .ec-warning) {
+  background: #493820;
+  color: #ffce8d;
+}
+.dark .project-performance-workspace.pp-details-workspace :is(.mc-status, .sp-status, .cp-status, .dc-status, .rc-status, .ec-status):is(.mc-success, .sp-success, .cp-success, .dc-success, .rc-success, .ec-success) {
+  background: #214330;
+  color: #a9e2bf;
+}
+.dark .project-performance-workspace.pp-details-workspace .pp-button:hover:not(:disabled) {
+  border-color: #6d94c7;
+}
+
+@media (max-width: 760px) {
+  .project-performance-workspace.pp-details-workspace > .pp-body { padding: 10px; }
+  .project-performance-workspace.pp-details-workspace > .pp-body:has(> .pd-overview) { padding: 0; }
+}

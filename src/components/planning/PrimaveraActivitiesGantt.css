@@ -43,10 +43,12 @@
 .p6-heading { position: sticky; top: 0; z-index: 5; height: var(--p6-heading-height); min-height: var(--p6-heading-height); background: #e7e7e7; }
 .p6-divider-cell { height: 100%; background: #bdbdbd; border-left: 1px solid #777; border-right: 1px solid #eee; }
 .p6-timescale { position: relative; height: var(--p6-heading-height); transform: translateX(calc(-1 * var(--p6-timeline-scroll))); background: #eee; color: #000; }
-.p6-timescale > span { position: absolute; display: flex; align-items: center; justify-content: center; height: 14px; overflow: hidden; padding: 0 3px; border-top: 1px solid #fff; border-right: 1px solid #999; border-bottom: 1px solid #aaa; white-space: nowrap; font: 10px/1 Arial, sans-serif; }
-.p6-timescale > .p6-year { top: 0; justify-content: flex-start; padding-left: 7px; background: #d7d7d7; font-weight: 700; }
+.p6-timescale > span { position: absolute; display: flex; align-items: center; justify-content: center; height: 14px; overflow: hidden; padding: 0; border-top: 1px solid #fff; border-right: 1px solid #999; border-bottom: 1px solid #aaa; white-space: nowrap; font: 10px/1 Arial, sans-serif; }
+.p6-timescale > span > span { flex-shrink: 0; padding: 0 3px; }
+.p6-timescale > .p6-year { top: 0; justify-content: flex-start; background: #d7d7d7; font-weight: 700; }
+.p6-timescale > .p6-year > span { padding-left: 7px; }
 .p6-timescale > .p6-month { top: 14px; background: #e1e1e1; }
-.p6-timescale > .p6-tick { top: 28px; justify-content: flex-start; padding-left: 3px; background: #eee; }
+.p6-timescale > .p6-tick { top: 28px; justify-content: flex-start; background: #eee; }
 .p6-timescale > .p6-no-dates { inset: 0 auto auto 0; height: 42px; padding: 8px 12px; border: 0; color: #444; }
 .p6-timeline-row { position: relative; height: var(--p6-row-height); min-height: var(--p6-row-height); transform: translateX(calc(-1 * var(--p6-timeline-scroll))); background-image: radial-gradient(circle at 0 0, #909090 .65px, transparent .95px); border-bottom: 1px solid #eee; }
 .p6-wbs .p6-timeline-row { border-bottom: 1px solid #777; background-color: #f5f5f5; }
@@ -74,6 +76,8 @@
 .p6-legend i.p6-legend-critical { border: 1px solid #b91c1c; background: #fff; }
 .p6-legend i.p6-legend-milestone { width: 7px; height: 7px; margin: 0 2px; background: #475569; border-color: #475569; transform: rotate(45deg); }
 .p6-legend-links { margin-left: auto; }
+.p6-table-row > [data-date-basis="source"] { text-decoration: underline dotted; text-underline-offset: 2px; }
+.p6-activity-bar.is-source-date, .p6-milestone.is-source-date { outline: 1px dotted #334155; outline-offset: 1px; }
 .p6-splitter { position: absolute; top: 0; bottom: 17px; z-index: 10; width: 6px; border-left: 1px solid #777; border-right: 1px solid #eee; background: #bdbdbd; cursor: col-resize; touch-action: none; }
 .p6-splitter:hover { background: #8a8a8a; }.p6-splitter:focus-visible { outline: 2px solid #0751ff; outline-offset: 0; }
 .p6-scrollbars { display: grid; grid-template-columns: var(--p6-left-width) var(--p6-split-width) minmax(0, 1fr); height: 17px; padding-right: var(--p6-gutter, 0px); background: #dfdfdf; }

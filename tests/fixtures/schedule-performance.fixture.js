@@ -150,7 +150,7 @@ export async function scheduleHarness(page, options = {}) {
     if (path.endsWith('/analytics/commercial-dashboard/')) return reply(route, { currency: 'AED', actual: '4600000.00', committed: '6800000.00', recent_events: [] })
     const support = [['/projects/tasks/', 'tasks'], ['/projects/milestones/', 'milestones'], ['/change-events/', 'changes'], ['/integrated-snapshots/', 'snapshots']].find(([suffix]) => path.endsWith(suffix))
     if (support) return reply(route, pageOf(record[support[1]]))
-    if (['/files/', '/generations/', '/jobs/', '/intelligence-runs/', '/intelligence-facts/', '/intelligence-conflicts/', '/control-accounts/', '/reporting-periods/', '/approved-hours/', '/cost-ledger/', '/budget-allocations/', '/wbs-nodes/'].some(suffix => path.endsWith(suffix))) return reply(route, pageOf([]))
+    if (['/project-control/documents/', '/files/', '/generations/', '/jobs/', '/intelligence-runs/', '/intelligence-facts/', '/intelligence-conflicts/', '/control-accounts/', '/reporting-periods/', '/approved-hours/', '/cost-ledger/', '/budget-allocations/', '/wbs-nodes/'].some(suffix => path.endsWith(suffix))) return reply(route, pageOf([]))
     if (path.endsWith('/ai-settings/')) return reply(route, { enabled: false, key_configured: false, model: null })
     if (path.endsWith('/enterprise-contract/')) return reply(route, { project: record.planningProject, enterprise_project: record.project, differences: [], lifecycle: 'baselined', baseline_locked: true, baseline: record.baselines[0] || null })
     state.unknown.push(path)

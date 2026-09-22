@@ -14,11 +14,11 @@ test('draft float preserves negative, zero, positive and unknown values while du
   const state = await draftFloatHarness(page)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(5)
   const before = structuredClone(state.records[17].simplePlan)
-  for (const [id, text] of [['negative', '31 d'], ['zero', '28 d'], ['positive', '4.25 d'], ['unknown', '—'], ['milestone', '0 d']]) {
+  for (const [id, text] of [['negative', '31 d'], ['zero', '28 d'], ['positive', '4.25 d'], ['unknown', 'Not Specified'], ['milestone', '0 d']]) {
     await expect(duration(page, id)).toHaveText(text)
-    await expect(duration(page, id)).toHaveAttribute('data-duration-kind', 'proposed')
+    await expect(duration(page, id)).toHaveAttribute('data-duration-kind', id === 'unknown' ? 'missing_source' : 'proposed')
   }
-  await expect(duration(page, 'negative').getByRole('button')).toHaveAttribute('aria-description', 'Proposed duration; review before approval')
+  await expect(duration(page, 'negative').getByRole('button')).toHaveAttribute('aria-description', 'Unverified template duration. Duration in working days.')
   await expect(grid(page).getByRole('region', { name: 'Schedule sequence legend', exact: true })).toContainText('Proposed durations')
   await expect(grid(page)).not.toContainText('*')
   const columns = grid(page).getByLabel('Scroll activity columns', { exact: true })
@@ -33,7 +33,7 @@ test('draft float preserves negative, zero, positive and unknown values while du
     expect(cell.x).toBeGreaterThanOrEqual(pane.x)
     expect(cell.x + cell.width).toBeLessThanOrEqual(pane.x + pane.width + 1)
   }
-  await expect(float(page, 'unknown')).toHaveAttribute('title', 'Total float has not been calculated for this row.')
+  await expect(float(page, 'unknown')).toHaveAttribute('title', 'Total float has not been calculated for this row; no verified printed value is available.')
   await scheduleCritical(page, true)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(3)
   for (const id of ['negative', 'zero', 'milestone']) await expect(row(page, id)).toHaveCount(1)

@@ -6,13 +6,18 @@ import apiClient, { apiClientLongTimeout } from '../../services/api.service'
 import { CLAUDE_MODEL_OPTIONS, DEFAULT_CLAUDE_MODEL, PLANNING_ENDPOINTS } from '../../config/planningIntelligence.config'
 import PlanningInputsPanel from './PlanningInputsPanel'
 import PlanningReviewPanel from './PlanningReviewPanel'
+import PlanningExtractionCoverage from './PlanningExtractionCoverage'
+import PlanningExtractionSummary from './PlanningExtractionSummary'
+import { ProvenanceBadge, factProvenance } from './PlanningFieldProvenance'
+import ScheduleNotice from './ScheduleNotice'
 import PlannerWorkspacePage from '../../pages/PlannerWorkspacePage'
 import './SimplePlanningWorkspace.css'
 
 const list = response => response.data?.results ?? response.data ?? []
 const errorText = error => {
   const flatten = value => typeof value === 'string' ? value : Array.isArray(value) ? value.map(flatten).join(' ') : value && typeof value === 'object' ? Object.values(value).map(flatten).join(' ') : ''
-  return flatten(error?.response?.data) || error?.message || 'The schedule could not be loaded. Please retry.'
+  const body = error?.response?.data
+  return flatten(body?.error || body?.detail || body) || error?.message || 'The schedule could not be loaded. Please retry.'
 }
 async function allRows(endpoint, params, signal) {
   const rows = []
@@ -85,7 +90,7 @@ function EvidencePreview({ projectId }) {
   }, [projectId])
   if (loading) return <p role="status">Loading document intelligence…</p>
   if (error) return <p className="ssd-error" role="alert">{error}</p>
-  return <section className="ssd-evidence"><p>{run ? `${facts.length} extracted findings. Review the resulting activities in Master Schedule before approval.` : 'Analyze the reference documents to see their extracted content.'}</p><div className="ssd-table"><table><thead><tr><th>Finding</th><th>Type</th><th>Source</th><th>Status</th></tr></thead><tbody>{facts.map(fact => <tr key={fact.id}><td><strong>{typeof fact.value === 'object' && fact.value !== null ? fact.value.name || fact.value.title || fact.value.description || fact.normalized_value || JSON.stringify(fact.value) : String(fact.value ?? fact.normalized_value ?? '')}</strong>{fact.source_excerpt && <details><summary>Source excerpt</summary><blockquote>{fact.source_excerpt}</blockquote></details>}</td><td>{fact.fact_type?.replaceAll('_', ' ')}</td><td>{fact.source_filename}<small>{Object.entries(fact.source_locator || {}).filter(([, value]) => typeof value !== 'object').map(([name, value]) => `${name} ${value}`).join(' · ')}</small></td><td>{fact.status?.replaceAll('_', ' ')}</td></tr>)}</tbody></table></div></section>
+  return <section className="ssd-evidence"><PlanningExtractionSummary summary={run?.intelligence?.extraction_summary} />{run && <PlanningExtractionCoverage coverage={run.intelligence?.processing_coverage} aiCoverage={run.intelligence?.ai_processing_coverage} />}<p>{run ? `${facts.length} extracted findings. Review the resulting activities in Master Schedule before approval.` : 'Analyze the reference documents to see their extracted content.'}</p><div className="ssd-table"><table><thead><tr><th>Finding</th><th>Type</th><th>Source</th><th>Planning basis</th><th>Status</th></tr></thead><tbody>{facts.map(fact => <tr key={fact.id}><td><strong>{typeof fact.value === 'object' && fact.value !== null ? fact.value.name || fact.value.title || fact.value.description || fact.normalized_value || JSON.stringify(fact.value) : String(fact.value ?? fact.normalized_value ?? '')}</strong>{fact.source_excerpt && <details><summary>Source excerpt</summary><blockquote>{fact.source_excerpt}</blockquote></details>}</td><td>{fact.fact_type?.replaceAll('_', ' ')}</td><td>{fact.source_filename}<small>{Object.entries(fact.source_locator || {}).filter(([, value]) => typeof value !== 'object').map(([name, value]) => `${name} ${value}`).join(' · ')}</small></td><td><ProvenanceBadge provenance={factProvenance(fact)} />{fact.extraction_method && <small>{fact.extraction_method.replaceAll('_', ' ')}</small>}</td><td>{fact.status?.replaceAll('_', ' ')}</td></tr>)}</tbody></table></div></section>
 }
 
 export default function SimplePlanningWorkspace({ enterpriseProject, comparison, onRefreshComparison }) {
@@ -96,6 +101,9 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
   const [category, setCategory] = useState('sow'), [dialog, setDialog] = useState(null), [overlay, setOverlay] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0), [plan, setPlan] = useState(null), [panelBusy, setPanelBusy] = useState(false), [rebuild, setRebuild] = useState(null)
   const [advancedPlan, setAdvancedPlan] = useState(null)
+  const [selectedVersionId, setSelectedVersionId] = useState('current')
+  const [notice, setNotice] = useState('')
+  const dismissNotice = useCallback(() => setNotice(''), [])
   const alive = useRef(true), operation = useRef(false)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   useEffect(() => {
@@ -154,23 +162,40 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
     try { await apiClient.delete(PLANNING_ENDPOINTS.file(fileId)); await loadFiles(project.id) }
     catch (reason) { if (alive.current) setError(errorText(reason)) }
   }
-  const analyze = async ({ projectId, replace = false }) => {
+  const analyze = async ({ projectId, replace = false, revision, confirmRebuild = false }) => {
     if (operation.current) return null
-    operation.current = true; setAnalyzing(true); setError('')
+    operation.current = true; setAnalyzing(true); setError(''); setNotice('')
     try {
       const endpoint = `${PLANNING_ENDPOINTS.project(projectId)}simple-plan/`
-      const current = (await apiClient.get(endpoint)).data
-      // Rebuilding an edited draft must be an explicit decision inside the workspace.
-      if (!replace && current.stale_inputs && current.tasks?.length) {
-        setRebuild({ projectId, revision: current.revision }); return { requires_rebuild: true }
+      // The confirmation is bound to the reviewed revision. Do not quietly
+      // replace a newer draft if another user edits it while confirmation is open.
+      let request
+      if (replace) {
+        if (!Number.isInteger(revision)) throw new Error('Open Rebuild draft from inputs and review the current draft before rebuilding.')
+        request = { revision, rebuild: true }
+      } else {
+        const current = (await apiClient.get(endpoint)).data
+        if (current.tasks?.length && (confirmRebuild || current.stale_inputs || project?.planning_mode !== 'manual')) {
+          if (!current.permissions?.can_edit || current.state === 'baselined' || current.viewing_history || current.legacy_read_only) throw new Error('This schedule is read only. Open a current editable draft before rebuilding.')
+          setRebuild({ projectId, revision: current.revision }); return { requires_rebuild: true }
+        }
+        request = { revision: current.revision, rebuild: Boolean(current.stale_inputs) }
       }
-      const { data } = await apiClientLongTimeout.post(`${endpoint}analyse/`, { revision: current.revision, rebuild: replace || Boolean(current.stale_inputs) })
-      if (alive.current) { setPlan(data); setRebuild(null); setRefreshKey(value => value + 1); setDialog(null) }
+      const { data } = await apiClientLongTimeout.post(`${endpoint}analyse/`, request)
+      if (alive.current) {
+        setPlan(data); setRebuild(null); setRefreshKey(value => value + 1); setDialog(null)
+        if (replace) setNotice('Draft rebuilt from current documents. Review the updated activities before approval.')
+      }
       return data
     } catch (reason) { if (alive.current) setError(errorText(reason)); return null }
     finally { operation.current = false; if (alive.current) setAnalyzing(false) }
   }
   const close = () => { setDialog(null); setRebuild(null); setRefreshKey(value => value + 1) }
+  const requestRebuild = () => {
+    if (!project?.id || operation.current) return
+    setDialog('inputs')
+    analyze({ projectId: project.id, confirmRebuild: true })
+  }
   const busy = uploading || analyzing || panelBusy
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('radai:master-schedule-state', { detail: {
@@ -181,15 +206,16 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
   if (loading) return <div className="simple-planning-loading" role="status"><Loader2 size={18} className="animate-spin" />Loading Master Schedule…</div>
   if (connectionFailed) return <div className="ssd-error" role="alert">{error}<button type="button" onClick={() => setLoadAttempt(value => value + 1)}><RefreshCw size={15} />Retry</button></div>
   return <div className="simple-planning-workspace">
+    {notice && <ScheduleNotice message={notice} onClose={dismissNotice} />}
     {error && !dialog && <div className="ssd-error" role="alert"><AlertTriangle size={17} />{error}<button type="button" onClick={() => { setLoadAttempt(value => value + 1); setRefreshKey(value => value + 1) }}><RefreshCw size={15} />Retry</button></div>}
-    <PlanningReviewPanel key={`${project?.id || 'new'}:${refreshKey}`} projectId={project?.id || null} enterpriseProject={enterpriseProject} planningMode={project?.planning_mode || 'document'} stage="review" onInputs={() => setDialog('inputs')} onAnalyze={() => setDialog('inputs')} onBack={() => setDialog('inputs')} onCompare={comparison ? () => { onRefreshComparison?.(); setDialog('compare') } : undefined} onOpenAdvanced={selected => { setAdvancedPlan(selected); setDialog('advanced') }} onContinue={() => setDialog('approval')} onLoaded={setPlan} onSavingChanged={setPanelBusy} />
+    <PlanningReviewPanel key={`${project?.id || 'new'}:${refreshKey}`} projectId={project?.id || null} enterpriseProject={enterpriseProject} planningMode={project?.planning_mode || 'document'} stage="review" selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onInputs={() => setDialog('inputs')} onAnalyze={() => setDialog('inputs')} onRebuild={requestRebuild} onBack={() => setDialog('inputs')} onCompare={comparison ? () => { onRefreshComparison?.(); setDialog('compare') } : undefined} onOpenAdvanced={selected => { setAdvancedPlan(selected); setDialog('advanced') }} onContinue={() => setDialog('approval')} onLoaded={setPlan} onSavingChanged={setPanelBusy} />
     {dialog && <ScheduleDialog title={{ inputs: 'Documents & project inputs', approval: 'Review & publish baseline', compare: 'Schedule comparison', advanced: 'Schedule Controls' }[dialog]} onClose={close} busy={busy}>
       {error && <div className="ssd-error" role="alert">{error}</div>}
       {dialog === 'inputs' && <>
-        {rebuild && <div className="ssd-rebuild" role="alert"><strong>Update the draft from these inputs?</strong><p>Analysis will refresh activities from the current documents. Matching activities retain their assignments and edits; removed source activities will leave this draft. Published baselines stay unchanged.</p><div className="ssd-actions"><button type="button" disabled={analyzing} onClick={() => setRebuild(null)}>Keep current draft</button><button type="button" disabled={analyzing} onClick={() => analyze({ projectId: rebuild.projectId, replace: true })}>Rebuild draft from inputs</button></div></div>}
+        {rebuild && <div className="ssd-rebuild" role="alert"><strong>Rebuild this draft from current inputs?</strong><p>Rebuild using the current uploaded documents and saved project inputs. Existing workflows, assignments and progress are kept only for matching source rows in the same document version. New, changed or ambiguous rows become unassigned draft activities.</p><p>Replaced or removed work is archived with its employee history. Published baselines stay unchanged.</p><div className="ssd-actions"><button type="button" disabled={analyzing} onClick={() => setRebuild(null)}>Keep current draft</button><button type="button" disabled={analyzing} onClick={() => analyze({ projectId: rebuild.projectId, revision: rebuild.revision, replace: true })}>{analyzing ? 'Rebuilding draft…' : 'Rebuild draft from inputs'}</button></div></div>}
         <PlanningInputsPanel simple project={project} enterpriseProject={enterpriseProject} contract={contract} loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} analysisRevision={refreshKey} uploadCategory={category} onUploadCategory={setCategory} onUpload={upload} onDeleteFile={removeFile} onSaved={setProject} onAnalyze={analyze} onBack={close} onOpenIntelligencePreview={() => setOverlay('evidence')} onAiSettings={() => setOverlay('ai')} />
       </>}
-      {dialog === 'approval' && project && <PlanningReviewPanel projectId={project.id} enterpriseProject={enterpriseProject} planningMode={project.planning_mode || 'document'} stage="approval" onBack={close} onInputs={() => setDialog('inputs')} onLoaded={setPlan} onSavingChanged={setPanelBusy} />}
+      {dialog === 'approval' && project && <PlanningReviewPanel projectId={project.id} enterpriseProject={enterpriseProject} planningMode={project.planning_mode || 'document'} stage="approval" selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onBack={close} onInputs={() => setDialog('inputs')} onLoaded={setPlan} onSavingChanged={setPanelBusy} />}
       {dialog === 'compare' && (React.isValidElement(comparison) ? React.cloneElement(comparison, { onScheduleMode: close }) : comparison)}
       {dialog === 'advanced' && project && <PlannerWorkspacePage embedded planningProjectId={project.id} initialVersionId={advancedPlan?.version_id} initialScheduleId={advancedPlan?.schedule_id || advancedPlan?.versions?.find(version => version.id === advancedPlan.version_id)?.schedule_id} onBack={close} />}
     </ScheduleDialog>}

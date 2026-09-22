@@ -379,7 +379,7 @@ export const PROJECT_COPY = {
   saving:              'Saving…',
   createTitle:         'Create Project',
   editTitle:           'Edit Project',
-  deleteConfirm:       (name) => `Delete project “${name}”? This cannot be undone.`,
+  deleteConfirm:       (name) => `Archive project “${name}”? It will leave active project lists. Planning and reporting history will be retained.`,
   phaseStubTitle:      (label) => `${label} — Coming Soon`,
   phaseStubBody:       (label, flag) =>
     `${label} ships in a later phase. Set environment variable ` +
