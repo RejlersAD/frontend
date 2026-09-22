@@ -82,6 +82,7 @@ export default function PlanningBuildDrawer({ projectId, readOnly = false, onClo
   }
   return <PlanningContextDrawer title="Generate project plan" busy={busy} onClose={onClose}><section className="planning-build-drawer" aria-label="Project plan generation" aria-busy={loading || busy}>
     <p>Choose accepted document scope and the approved planning profile. Review every generated activity and relationship before applying the draft.</p>
+    {onEvidence && <button type="button" className="pbd-link" disabled={busy} onClick={() => onEvidence()}>Review source evidence</button>}
     {error && <div className="pbd-message is-error" role="alert"><AlertTriangle size={16} /><span>{error}</span><button type="button" disabled={busy} onClick={() => setReload(value => value + 1)}>Reload build inputs</button></div>}
     {loading ? <p role="status"><Loader2 size={16} className="animate-spin" />Loading accepted scope and approved profile…</p> : data && <>
       <div className="pbd-profile"><strong>Approved profile</strong><span>{text(options.profile?.name)}{(options.profile?.profile_version ?? options.profile?.version) != null && ` · Version ${options.profile.profile_version ?? options.profile.version}`}</span>{onProfile && <button type="button" disabled={busy} onClick={onProfile}>Review profile</button>}</div>

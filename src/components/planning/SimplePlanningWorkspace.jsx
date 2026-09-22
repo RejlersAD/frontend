@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react'
 import apiClient, { apiClientLongTimeout } from '../../services/api.service'
+import { planningIntelligenceService as planningService } from '../../services/planningIntelligence.service'
 import { CLAUDE_MODEL_OPTIONS, DEFAULT_CLAUDE_MODEL, PLANNING_ENDPOINTS } from '../../config/planningIntelligence.config'
 import PlanningInputsPanel from './PlanningInputsPanel'
 import PlanningReviewPanel from './PlanningReviewPanel'
@@ -101,6 +102,8 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
   const [category, setCategory] = useState('sow'), [dialog, setDialog] = useState(null), [overlay, setOverlay] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0), [plan, setPlan] = useState(null), [panelBusy, setPanelBusy] = useState(false), [rebuild, setRebuild] = useState(null)
   const [advancedPlan, setAdvancedPlan] = useState(null)
+  const [generationRequest, setGenerationRequest] = useState(null)
+  const generationOpened = useCallback(() => setGenerationRequest(null), [])
   const [selectedVersionId, setSelectedVersionId] = useState('current')
   const [notice, setNotice] = useState('')
   const dismissNotice = useCallback(() => setNotice(''), [])
@@ -175,8 +178,32 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
         request = { revision, rebuild: true }
       } else {
         const current = (await apiClient.get(endpoint)).data
+        if (selectedVersionId !== 'current' || current.state === 'baselined' || current.viewing_history || current.legacy_read_only) {
+          throw new Error('This schedule is read only. Open a current editable draft before rebuilding.')
+        }
+        if (current.canonical_version) {
+          // Saved schedule drafts use reviewed generation, not the independent
+          // working-draft analysis endpoint. can_edit only describes that editor.
+          if (current.state === 'submitted') throw new Error('Complete the current schedule review before generating a new draft.')
+          const canBuildSourceLogic = current.permissions?.can_build_source_logic === true
+          let canGenerate = current.permissions?.can_generate_plan
+          // Older schedule responses omit this capability. Ask the generation
+          // endpoint instead of mistaking a missing field for an access denial.
+          // An explicit denial must never fall back to a different permission.
+          if (canGenerate === undefined && !canBuildSourceLogic) {
+            const generation = await planningService.listPlanningBuilds(projectId)
+            canGenerate = generation.permissions?.can_preview === true
+          }
+          if (canGenerate !== true && !canBuildSourceLogic) throw new Error('Your access does not permit generating a schedule draft.')
+          if (alive.current) {
+            setRebuild(null); setDialog(null)
+            setGenerationRequest(canBuildSourceLogic ? 'source_logic' : 'plan')
+            setRefreshKey(value => value + 1)
+          }
+          return { requires_generation: true }
+        }
         if (current.tasks?.length && (confirmRebuild || current.stale_inputs || project?.planning_mode !== 'manual')) {
-          if (!current.permissions?.can_edit || current.state === 'baselined' || current.viewing_history || current.legacy_read_only) throw new Error('This schedule is read only. Open a current editable draft before rebuilding.')
+          if (!current.permissions?.can_edit) throw new Error('This schedule is read only. Open a current editable draft before rebuilding.')
           setRebuild({ projectId, revision: current.revision }); return { requires_rebuild: true }
         }
         request = { revision: current.revision, rebuild: Boolean(current.stale_inputs) }
@@ -208,12 +235,12 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
   return <div className="simple-planning-workspace">
     {notice && <ScheduleNotice message={notice} onClose={dismissNotice} />}
     {error && !dialog && <div className="ssd-error" role="alert"><AlertTriangle size={17} />{error}<button type="button" onClick={() => { setLoadAttempt(value => value + 1); setRefreshKey(value => value + 1) }}><RefreshCw size={15} />Retry</button></div>}
-    <PlanningReviewPanel key={`${project?.id || 'new'}:${refreshKey}`} projectId={project?.id || null} enterpriseProject={enterpriseProject} planningMode={project?.planning_mode || 'document'} stage="review" selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onInputs={() => setDialog('inputs')} onAnalyze={() => setDialog('inputs')} onRebuild={requestRebuild} onBack={() => setDialog('inputs')} onCompare={comparison ? () => { onRefreshComparison?.(); setDialog('compare') } : undefined} onOpenAdvanced={selected => { setAdvancedPlan(selected); setDialog('advanced') }} onContinue={() => setDialog('approval')} onLoaded={setPlan} onSavingChanged={setPanelBusy} />
+    <PlanningReviewPanel key={`${project?.id || 'new'}:${refreshKey}`} projectId={project?.id || null} enterpriseProject={enterpriseProject} planningMode={project?.planning_mode || 'document'} stage="review" selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onInputs={() => setDialog('inputs')} onAnalyze={() => setDialog('inputs')} onRebuild={requestRebuild} onBack={() => setDialog('inputs')} onCompare={comparison ? () => { onRefreshComparison?.(); setDialog('compare') } : undefined} onOpenAdvanced={selected => { setAdvancedPlan(selected); setDialog('advanced') }} onContinue={() => setDialog('approval')} onLoaded={setPlan} onSavingChanged={setPanelBusy} generationRequest={generationRequest} onGenerationOpened={generationOpened} />
     {dialog && <ScheduleDialog title={{ inputs: 'Documents & project inputs', approval: 'Review & publish baseline', compare: 'Schedule comparison', advanced: 'Schedule Controls' }[dialog]} onClose={close} busy={busy}>
       {error && <div className="ssd-error" role="alert">{error}</div>}
       {dialog === 'inputs' && <>
         {rebuild && <div className="ssd-rebuild" role="alert"><strong>Rebuild this draft from current inputs?</strong><p>Rebuild using the current uploaded documents and saved project inputs. Existing workflows, assignments and progress are kept only for matching source rows in the same document version. New, changed or ambiguous rows become unassigned draft activities.</p><p>Replaced or removed work is archived with its employee history. Published baselines stay unchanged.</p><div className="ssd-actions"><button type="button" disabled={analyzing} onClick={() => setRebuild(null)}>Keep current draft</button><button type="button" disabled={analyzing} onClick={() => analyze({ projectId: rebuild.projectId, revision: rebuild.revision, replace: true })}>{analyzing ? 'Rebuilding draft…' : 'Rebuild draft from inputs'}</button></div></div>}
-        <PlanningInputsPanel simple project={project} enterpriseProject={enterpriseProject} contract={contract} loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} analysisRevision={refreshKey} uploadCategory={category} onUploadCategory={setCategory} onUpload={upload} onDeleteFile={removeFile} onSaved={setProject} onAnalyze={analyze} onBack={close} onOpenIntelligencePreview={() => setOverlay('evidence')} onAiSettings={() => setOverlay('ai')} />
+        <PlanningInputsPanel simple generateSchedule={Boolean(plan?.canonical_version)} project={project} enterpriseProject={enterpriseProject} contract={contract} loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} analysisRevision={refreshKey} uploadCategory={category} onUploadCategory={setCategory} onUpload={upload} onDeleteFile={removeFile} onSaved={setProject} onAnalyze={analyze} onBack={close} onOpenIntelligencePreview={() => setOverlay('evidence')} onAiSettings={() => setOverlay('ai')} />
       </>}
       {dialog === 'approval' && project && <PlanningReviewPanel projectId={project.id} enterpriseProject={enterpriseProject} planningMode={project.planning_mode || 'document'} stage="approval" selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onBack={close} onInputs={() => setDialog('inputs')} onLoaded={setPlan} onSavingChanged={setPanelBusy} />}
       {dialog === 'compare' && (React.isValidElement(comparison) ? React.cloneElement(comparison, { onScheduleMode: close }) : comparison)}

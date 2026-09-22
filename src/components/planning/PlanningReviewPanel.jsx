@@ -42,7 +42,7 @@ const editableTask = task => ({
 })
 const stateLabel = { inputs: 'Inputs required', review: 'Draft plan', submitted: 'Awaiting approval', baselined: 'Baseline published' }
 
-export default function PlanningReviewPanel({ projectId, enterpriseProject, stage = 'review', planningMode = 'document', canEdit = true, refreshKey = 0, selectedVersionId: controlledVersionId, onVersionChange, onBack, onInputs, onAnalyze, onRebuild, onCompare, onOpenAdvanced, onContinue, onLoaded, onSavingChanged }) {
+export default function PlanningReviewPanel({ projectId, enterpriseProject, stage = 'review', planningMode = 'document', canEdit = true, refreshKey = 0, generationRequest = null, onGenerationOpened, selectedVersionId: controlledVersionId, onVersionChange, onBack, onInputs, onAnalyze, onRebuild, onCompare, onOpenAdvanced, onContinue, onLoaded, onSavingChanged }) {
   const [plan, setPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -218,7 +218,7 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
       onCalculate={calculate} onValidate={validate} onActivateVersion={activateVersion}
       selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onOpenAdvanced={onOpenAdvanced ? () => onOpenAdvanced(plan) : undefined} onAddWorkstream={planningMode === 'manual' ? () => { setError(''); setDialog({ type: 'workstream' }) } : undefined}
       onApproval={plan.state === 'baselined' || plan.viewing_history || plan.legacy_read_only || selectedVersionId !== 'current' ? null : () => onContinue ? onContinue(plan) : submit()}
-      checksOpenRequest={checksOpenRequest} checking={loading}
+      checksOpenRequest={checksOpenRequest} checking={loading} generationRequest={generationRequest} onGenerationOpened={onGenerationOpened}
       approvalDisabled={!tasks.length || (!onContinue && !canSubmit)} approvalLabel="Review & approve" />}
     {approval && (otherWarnings.length > 0 || (plan.assumptions || []).length > 0) && <section className="wbd-card prv-review-notes"><h2>{otherWarnings.length ? 'Review warnings' : 'Planning assumptions'}</h2>{otherWarnings.length > 0 && <ul className="prv-blockers">{otherWarnings.map((item, index) => <li key={index}><AlertTriangle size={17} /><span>{item.message || item.description || item.detail || item.code}</span></li>)}</ul>}{(plan.assumptions || []).length > 0 && <ul className="prv-assumptions">{plan.assumptions.map((item, index) => <li key={index}><Sparkles size={15} /><span>{typeof item === 'string' ? item : item.message || item.description || item.label}</span></li>)}</ul>}</section>}
     {approval && plan.state === 'review' && plan.approvers?.length > 0 && <label className="prv-approver">Approver<select aria-label="Plan approver" value={approverId} disabled={saving} onChange={event => setApproverId(event.target.value)}><option value="">Project approval authority</option>{plan.approvers.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}
@@ -245,6 +245,7 @@ PlanningReviewPanel.propTypes = {
   projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   enterpriseProject: PropTypes.object,
   stage: PropTypes.oneOf(['review', 'approval']), planningMode: PropTypes.oneOf(['document', 'manual']), canEdit: PropTypes.bool,
+  generationRequest: PropTypes.oneOf(['plan', 'source_logic']), onGenerationOpened: PropTypes.func,
   refreshKey: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), onBack: PropTypes.func, onInputs: PropTypes.func, onAnalyze: PropTypes.func, onRebuild: PropTypes.func, onCompare: PropTypes.func, onOpenAdvanced: PropTypes.func,
   onContinue: PropTypes.func, onLoaded: PropTypes.func, onSavingChanged: PropTypes.func, selectedVersionId: PropTypes.string, onVersionChange: PropTypes.func,
 }

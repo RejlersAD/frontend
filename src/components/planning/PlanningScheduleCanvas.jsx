@@ -43,7 +43,7 @@ const tabs = [
 ]
 const relationshipNames = { FS: 'Finish to start', SS: 'Start to start', FF: 'Finish to finish', SF: 'Start to finish' }
 
-export default function PlanningScheduleCanvas({ plan, tasks, disciplines, saving, saveError, locked, ganttLocked = locked, onEdit, onCellEdit, onLogicEdit, onEmployee, onAdd, onInputs, onAnalyze, onRebuild, onRefresh, onSave, onNewVersion, onCompare, onApproval, approvalDisabled, approvalLabel, selectedVersionId = 'current', onVersionChange, onAddWorkstream, onOpenAdvanced, onOpenCreatedSchedule, onBuildSchedule, onCalculate, onValidate, onActivateVersion, buildingSchedule = false, onVerifySources, checksOpenRequest = 0, checking = false }) {
+export default function PlanningScheduleCanvas({ plan, tasks, disciplines, saving, saveError, locked, ganttLocked = locked, onEdit, onCellEdit, onLogicEdit, onEmployee, onAdd, onInputs, onAnalyze, onRebuild, onRefresh, onSave, onNewVersion, onCompare, onApproval, approvalDisabled, approvalLabel, selectedVersionId = 'current', onVersionChange, onAddWorkstream, onOpenAdvanced, onOpenCreatedSchedule, onBuildSchedule, onCalculate, onValidate, onActivateVersion, buildingSchedule = false, onVerifySources, checksOpenRequest = 0, checking = false, generationRequest = null, onGenerationOpened }) {
   const [tab, setTab] = useState('activities')
   const [controlsVisited, setControlsVisited] = useState(false)
   const [delayVisited, setDelayVisited] = useState(false)
@@ -67,6 +67,13 @@ export default function PlanningScheduleCanvas({ plan, tasks, disciplines, savin
   const sourceOnly = plan.duration_policy === 'source_only' || plan.evidence_policy === 'document_driven' || Boolean(plan.duration_review)
   const canvasRef = useRef(null)
   useEffect(() => { if (checksOpenRequest) setTab('assurance') }, [checksOpenRequest])
+  useEffect(() => {
+    if (generationRequest) {
+      if (generationRequest === 'source_logic') setSourceLogicOpen(true)
+      else setBuildOpen(true)
+      onGenerationOpened?.()
+    }
+  }, [generationRequest, onGenerationOpened])
   useScheduleViewport(canvasRef, tab)
   const drawerRef = useRef(null)
   const triggerRef = useRef(null)
@@ -207,5 +214,6 @@ PlanningScheduleCanvas.propTypes = {
   onApproval: PropTypes.func, approvalDisabled: PropTypes.bool, approvalLabel: PropTypes.string,
   selectedVersionId: PropTypes.string, onVersionChange: PropTypes.func, onAddWorkstream: PropTypes.func, onOpenAdvanced: PropTypes.func,
   onBuildSchedule: PropTypes.func, buildingSchedule: PropTypes.bool, onVerifySources: PropTypes.func,
+  generationRequest: PropTypes.oneOf(['plan', 'source_logic']), onGenerationOpened: PropTypes.func,
   checksOpenRequest: PropTypes.number, checking: PropTypes.bool, onOpenCreatedSchedule: PropTypes.func, onCalculate: PropTypes.func, onValidate: PropTypes.func, onActivateVersion: PropTypes.func,
 }
