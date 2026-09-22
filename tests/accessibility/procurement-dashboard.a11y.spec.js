@@ -26,11 +26,11 @@ test.describe('authenticated procurement command centre', () => {
 
   test('supports keyboard operation and WCAG 2.2 AA', async ({ page }) => {
     await page.goto('/procurement', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Procurement Overview' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Action required' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Procurement', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Action required' })).toBeVisible()
     await expect(page.getByRole('table', { name: /recent procurement approvals/i })).toBeVisible()
 
-    await page.getByRole('button', { name: /metric definitions and reporting controls/i }).focus()
+    await page.getByRole('button', { name: 'View procurement controls' }).focus()
     await page.keyboard.press('Enter')
     await expect(page.getByText(/controlled definitions/i)).toBeVisible()
 

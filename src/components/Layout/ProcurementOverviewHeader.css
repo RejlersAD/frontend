@@ -1,0 +1,68 @@
+.procurement-overview-main {
+  background: #f2f6fb;
+}
+
+.procurement-overview-header {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  flex: none;
+  height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #dce5ef;
+  padding: 0 20px;
+  background: #fff;
+  color: #425b81;
+  font-size: 12px;
+}
+
+.procurement-overview-breadcrumb,
+.procurement-overview-account-area,
+.procurement-overview-account-trigger {
+  display: flex;
+  align-items: center;
+}
+
+.procurement-overview-breadcrumb { gap: 7px; white-space: nowrap; }
+.procurement-overview-breadcrumb > a { color: #0067ef; font-weight: 600; }
+.procurement-overview-account-area { gap: 15px; }
+.procurement-overview-notifications { padding-right: 14px; border-right: 1px solid #b5c5db; }
+.procurement-overview-notifications > div > button { height: 25px; width: 25px; }
+.procurement-overview-notifications > div > button > svg { height: 17px; width: 17px; }
+.procurement-overview-account { position: relative; }
+.procurement-overview-account-trigger { height: 38px; gap: 9px; text-align: left; border-radius: 5px; }
+.procurement-overview-account-trigger > svg { height: 13px; width: 13px; margin-left: 12px; }
+.procurement-overview-avatar { position: relative; display: grid; height: 32px; width: 32px; flex: none; overflow: hidden; place-items: center; border: 1px solid #d5e0ee; border-radius: 50%; background: #eaf2fc; color: #1d4c87; font-size: 10px; font-weight: 700; }
+.procurement-overview-avatar img { position: absolute; inset: 0; height: 100%; width: 100%; object-fit: cover; }
+.procurement-overview-account-name { display: grid; min-width: 104px; gap: 1px; }
+.procurement-overview-account-name strong { color: #15294b; font-size: 11px; line-height: 14px; }
+.procurement-overview-account-name > span { color: #61718e; font-size: 10px; line-height: 13px; }
+.procurement-overview-account-menu { position: absolute; top: calc(100% + 5px); right: 0; width: min(272px, calc(100vw - 24px)); border: 1px solid #dce5ef; border-radius: 8px; padding: 6px; background: #fff; color: #243c61; box-shadow: 0 12px 32px #09254126; }
+.procurement-overview-account-details { display: grid; gap: 3px; padding: 10px; border-bottom: 1px solid #e8edf4; margin-bottom: 4px; }
+.procurement-overview-account-details span { overflow: hidden; color: #64748b; text-overflow: ellipsis; }
+.procurement-overview-account-menu > a,
+.procurement-overview-account-menu > button { display: flex; width: 100%; align-items: center; gap: 9px; border-radius: 4px; padding: 9px 10px; text-align: left; font-size: 12px; }
+.procurement-overview-account-menu > a:hover,
+.procurement-overview-account-menu > button:hover { background: #eff5fc; }
+.procurement-overview-account-menu svg { height: 17px; width: 17px; }
+.procurement-overview-account-menu .procurement-overview-signout { color: #bd233d; }
+.procurement-overview-header a:focus-visible,
+.procurement-overview-header button:focus-visible { outline: 2px solid #0067ef; outline-offset: 2px; }
+.procurement-overview-drawer-toggle { display: none; height: 30px; width: 28px; align-items: center; justify-content: center; border-radius: 4px; }
+.procurement-overview-drawer-toggle svg { height: 20px; width: 20px; }
+
+@media (max-width: 1023px) {
+  .procurement-overview-drawer-toggle { display: inline-flex; }
+  .procurement-overview-header { height: 48px; padding-inline: 12px; }
+}
+
+@media (max-width: 540px) {
+  .procurement-overview-header { gap: 6px; padding-inline: 8px; }
+  .procurement-overview-breadcrumb { gap: 5px; font-size: 11px; }
+  .procurement-overview-account-area { gap: 8px; }
+  .procurement-overview-notifications { padding-right: 8px; }
+  .procurement-overview-account-name { display: none; }
+  .procurement-overview-account-trigger > svg { margin-left: 0; }
+}

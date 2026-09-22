@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import Header from './Header'
 import FinanceCommandHeader from '../Finance/FinanceCommandHeader'
+import ProcurementOverviewHeader from './ProcurementOverviewHeader'
 import Footer from './Footer'
 import Sidebar from './Sidebar'
 import ProcurementApprovalReminder from '../ProcurementApprovalReminder'
@@ -81,8 +82,9 @@ const Layout = () => {
   const isVendorWorkspace = location.pathname === '/procurement/vendors'
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
   const isFinanceCommandWorkspace = ['/finance', '/finance/'].includes(location.pathname)
+  const isProcurementOverview = ['/procurement', '/procurement/'].includes(location.pathname)
   // Hide the shared footer on public pages that render their own or are auth flow pages.
-  const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isPurchaseOrderFormRoute && !isViewportWorkspace && !isFlushWorkspace && !isFinanceCommandWorkspace
+  const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isPurchaseOrderFormRoute && !isViewportWorkspace && !isFlushWorkspace && !isFinanceCommandWorkspace && !isProcurementOverview
 
   const application = (
     <div className={`${isApplicationShell ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex bg-gray-50 dark:bg-gray-900`}>
@@ -102,7 +104,8 @@ const Layout = () => {
         className="isolate flex min-h-0 min-w-0 flex-1 flex-col"
       >
         {showHeader && isFinanceCommandWorkspace && <FinanceCommandHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} profilePhotoUrl={authenticatedProfilePhoto} />}
-        {showHeader && !isFinanceCommandWorkspace && (
+        {showHeader && isProcurementOverview && <ProcurementOverviewHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} profilePhotoUrl={authenticatedProfilePhoto} />}
+        {showHeader && !isFinanceCommandWorkspace && !isProcurementOverview && (
           <Header
             sidebarOpen={sidebarOpen}
             setSidebarOpen={setSidebarOpen}
@@ -110,7 +113,7 @@ const Layout = () => {
             profilePhotoUrl={authenticatedProfilePhoto}
           />
         )}
-        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace && !isFinanceCommandWorkspace ? 'pt-2 sm:pt-3' : ''}`}>
+        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isProcurementOverview ? 'procurement-overview-main' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace && !isFinanceCommandWorkspace && !isProcurementOverview ? 'pt-2 sm:pt-3' : ''}`}>
           <Outlet />
         </main>
         {showFooter && <Footer />}

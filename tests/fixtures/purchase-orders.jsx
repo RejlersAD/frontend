@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import ProcurementRegister from '../../src/pages/Procurement/ProcurementRegister'
 import '../../src/index.css'
 
@@ -12,6 +12,8 @@ const action = name => value => window.purchaseOrderActions.push({ name, value: 
 function Harness() {
   const [props, setProps] = useState(null)
   const location = useLocation()
+  const navigate = useNavigate()
+  useEffect(() => { window.navigatePurchaseOrders = navigate }, [navigate])
   useEffect(() => { window.purchaseOrderRoute = location.pathname }, [location])
   useEffect(() => {
     window.setPurchaseOrderProps = update => setProps(previous => ({ ...previous, ...update }))
@@ -27,6 +29,6 @@ function Harness() {
   </main>
 }
 
-createRoot(document.getElementById('purchase-orders-test')).render(<MemoryRouter initialEntries={['/procurement/orders']}>
+createRoot(document.getElementById('purchase-orders-test')).render(<MemoryRouter initialEntries={[parameters.get('route') || '/procurement/orders']}>
   <style>{'@media (min-width:1101px){.purchase-order-test-shell{margin-left:198px;}}'}</style><Harness />
 </MemoryRouter>)

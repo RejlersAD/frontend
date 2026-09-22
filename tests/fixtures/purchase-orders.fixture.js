@@ -68,7 +68,7 @@ export async function purchaseOrderHarness(page, options = {}) {
     state.unknown.push({ path, method: request.method() })
     return reply(route, { detail: 'Unexpected isolated test request.' }, 400)
   })
-  const parameters = new URLSearchParams({ ...(options.shell ? { shell: 'true' } : {}), ...(options.integration ? { integration: 'true' } : {}) })
+  const parameters = new URLSearchParams({ ...(options.shell ? { shell: 'true' } : {}), ...(options.integration ? { integration: 'true' } : {}), ...(options.route ? { route: options.route } : {}) })
   await page.goto(`/tests/fixtures/purchase-orders.html?${parameters}`)
   return state
 }
