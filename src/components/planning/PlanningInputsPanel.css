@@ -83,7 +83,7 @@
 .planning-inputs .pln-document-name small { display: block; margin-top: 1px; color: #5974a7; font-size: 10px; }
 .planning-inputs .pln-file-icon { position: relative; display: grid; flex: 0 0 26px; height: 31px; place-items: center; color: #0751ff; }
 .planning-inputs .pln-file-icon.is-pdf { color: #e11926; }
-.planning-inputs .pln-file-icon.is-sheet { color: #009252; }
+.planning-inputs .pln-file-icon.is-sheet { color: #007f47; }
 .planning-inputs .pln-file-icon small { position: absolute; bottom: 2px; padding: 0 2px; background: #fff; color: inherit; font-size: 7px; line-height: 10px; font-weight: 750; }
 .planning-inputs .pln-status, .planning-input-dialog .pln-status { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; text-transform: capitalize; }
 .planning-inputs .pln-status svg { flex-shrink: 0; }

@@ -1,3 +1,5 @@
+import { dateDisplayTask } from './planningDateEvidence'
+
 const DAY = 86400000
 const day = value => value ? Date.parse(`${String(value).slice(0, 10)}T00:00:00Z`) : NaN
 const iso = value => new Date(value).toISOString().slice(0, 10)
@@ -21,9 +23,11 @@ function calendarBands(start, end, kind) {
 // Project boundaries extend the viewport; they never supply missing task dates.
 export function buildPrimaveraTimeline({ plan, tasks, paneWidth, zoom = 'week', fit = false }) {
   const project = plan.project || {}
-  const sources = [project, plan.project_summary, ...(plan.wbs_nodes || []).map(node => node.summary), ...tasks].filter(Boolean)
-  const dates = sources.flatMap(source => [source.planned_start_date, source.planned_finish_date])
-    .concat([project.start_date, project.end_date]).map(day).filter(Number.isFinite)
+  const sources = [plan.project_summary, ...(plan.wbs_nodes || []).map(node => node.summary),
+    ...(plan.deliverables || []).map(parent => parent.summary)].filter(Boolean).map(source => dateDisplayTask(source, { summary: true }))
+    .concat(tasks.map(task => dateDisplayTask(task)))
+  const dates = sources.flatMap(source => [source.display_start_date, source.display_finish_date])
+    .concat([project.start_date, project.end_date, project.planned_start_date, project.planned_finish_date]).map(day).filter(Number.isFinite)
   const available = Math.max(1, paneWidth)
   if (!dates.length) return { hasDates: false, start: NaN, finish: NaN, days: 1, dayWidth: available,
     width: available, tickStep: 1, ticks: [], years: [], months: [], startDate: null, finishDate: null, horizonFinishDate: null }

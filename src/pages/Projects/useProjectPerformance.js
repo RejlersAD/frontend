@@ -4,6 +4,7 @@ import * as PC from '../../services/projectControl.service'
 import { PROJECT_CONTROL_ENDPOINTS } from '../../config/projectControl.config'
 import { PLANNING_ENDPOINTS } from '../../config/planningIntelligence.config'
 import { buildRiskChangeModel } from './useRiskChangeControl'
+import { buildProjectDetailsData } from './projectDetailsPresentation'
 
 const rowsOf = value => Array.isArray(value) ? value : value?.results || []
 const numeric = value => (typeof value === 'number' || typeof value === 'string') && String(value).trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null
@@ -58,6 +59,25 @@ async function allPages(firstRequest, nextRequest, isCurrent) {
   return rows
 }
 
+async function loadOverviewDocuments(projectId, signal, isCurrent) {
+  const rows = []
+  for (let page = 1; page <= 100 && isCurrent(); page += 1) {
+    const { data } = await apiClient.get(PROJECT_CONTROL_ENDPOINTS.documents, { params: { project: projectId, page }, signal })
+    const records = Array.isArray(data) ? data : data?.results
+    if (!Array.isArray(records)) {
+      throw new Error('The document register response is unavailable for this project.')
+    }
+    rows.push(...records)
+    if (!data?.next) {
+      if (!Array.isArray(data) && Number.isInteger(data.count) && data.count !== rows.length) {
+        throw new Error('The complete document register could not be loaded.')
+      }
+      return rows
+    }
+  }
+  throw new Error('The document register exceeds the supported page limit.')
+}
+
 function latestPeriods(rows) {
   const periods = new Map()
   for (const row of rows) {
@@ -104,12 +124,24 @@ export function buildProjectPerformanceModel(project, data, issues = []) {
   const eac = legacyCostBasis ? null : numeric(latestSnapshot?.estimate_at_completion)
   const budget = firstNumber(kpis?.budget, commercial?.budget)
   const actual = firstNumber(kpis?.spent, commercial?.actual)
+  const budgetRecord = numeric(kpis?.budget) !== null ? kpis : commercial
+  const actualRecord = numeric(kpis?.spent) !== null ? kpis : commercial
+  const recordedCurrency = record => typeof record?.currency === 'string' && /^[A-Z]{3}$/.test(record.currency) ? record.currency : null
+  const budgetCurrency = recordedCurrency(budgetRecord), actualCurrency = recordedCurrency(actualRecord)
+  const costPositionComparable = budget !== null && budget > 0 && actual !== null && actual >= 0
+    && budgetCurrency !== null && budgetCurrency === actualCurrency
+    && !budgetRecord?.currency_exceptions?.length && !actualRecord?.currency_exceptions?.length
+    && !budgetRecord?.controls?.currency_exceptions?.length && !actualRecord?.controls?.currency_exceptions?.length
   const committed = firstNumber(kpis?.committed, commercial?.committed)
   const remaining = firstNumber(kpis?.remaining, commercial?.remaining_budget, budget !== null && actual !== null ? budget - actual : null)
   // The commercial endpoint converts a missing contract to zero. Prefer the
   // project field so an unknown contract is never represented as a real zero.
   const contract = numeric(project?.contract_value)
-  const baselineFinish = dateOnly(project?.end_date)
+  const baseline = project?.portfolio?.baseline
+  const baselineKnown = Boolean(project?.portfolio && Object.prototype.hasOwnProperty.call(project.portfolio, 'baseline'))
+  const baselineApproved = baselineKnown && baseline?.approved === true
+  const baselineStart = dateOnly(baselineApproved ? baseline.start_date : project?.start_date)
+  const baselineFinish = dateOnly(baselineApproved ? baseline.finish_date : project?.end_date)
   const forecastFinish = dateOnly(forecast.forecast_finish || forecast.finish_date || project?.custom_fields?.forecast_finish)
   const dataDate = latestSnapshot?.data_date || (workingFallback ? dateOnly(project?.custom_fields?.data_date) : null)
   const variance = progress !== null && plannedProgress !== null ? Math.round((progress - plannedProgress) * 100) / 100 : null
@@ -122,6 +154,7 @@ export function buildProjectPerformanceModel(project, data, issues = []) {
       ? 'No sealed reporting periods exist. Progress is the manually reported working project value; no planned progress, variance or performance indices are inferred.'
       : 'Sealed reporting history could not be verified. Working project progress is not substituted for a governed report.'
   const risk = buildRiskChangeModel(project, data.changes, {}, data.governance)
+  const details = buildProjectDetailsData(project, data, risk)
   const riskAvailable = risk.availability.governance
   const milestones = [...(data.milestones || [])].sort((a, b) => (a.target_date || '9999').localeCompare(b.target_date || '9999'))
   const tasks = data.tasks || []
@@ -169,7 +202,9 @@ export function buildProjectPerformanceModel(project, data, issues = []) {
   const readinessCompleted = confidence.filter(row => row.ready).length
   const readinessTotal = confidence.length
   const actions = []
-  const addAction = (id, priority, title, detail, owner, button, view, dueDate = null) => actions.push({ id, priority, title, detail, owner, dueDate, button, view })
+  const addAction = (id, priority, title, detail, owner, button, view, dueDate = null) => actions.push({
+    id, priority, title, detail, owner, suggestedOwner: owner, ownerConfirmed: false, dueDate, button, view,
+  })
   if (issues.length) addAction('data-unavailable', 'high', 'Review unavailable project data', issues.join(' '), 'Project Controls', 'Review data', 'data-quality')
   if (costWarning) addAction('budget-review', 'high', budgetAboveContract ? 'Review project budget' : budget > 0 ? 'Review cost currency' : 'Establish control budget', budgetAboveContract ? `Contract ${formatMoney(contract, project?.currency || currency)}; budget ${formatMoney(budget, currency)}` : budget > 0 ? 'Cost and contract currencies differ.' : 'No control budget recorded.', 'Project Controls', 'Review', 'cost-dashboard')
   if (project && (!project.client_name || !project.scope_type)) addAction('project-details', 'medium', 'Complete project details', [!project.client_name && 'Client is missing.', !project.scope_type && 'Scope type is missing.'].filter(Boolean).join(' '), manager, 'Edit project', 'edit-project')
@@ -197,9 +232,12 @@ export function buildProjectPerformanceModel(project, data, issues = []) {
 
   return {
     progress, plannedProgress, spi, cpi, eac, budget, actual, committed, remaining, contract,
-    currency, contractCurrency, dataDate, baselineFinish, baselineApproved: false,
-    baselineSource: 'Recorded project plan', forecastFinish, variance, varianceUnit: 'percentage points',
+    currency, contractCurrency, dataDate, baselineStart, baselineFinish, baselineApproved, baselineKnown,
+    baselineName: baselineApproved ? baseline.name || null : null,
+    baselineSource: baselineApproved ? 'Approved saved schedule baseline' : 'Recorded project plan',
+    forecastFinish, variance, varianceUnit: 'percentage points',
     chartPoints, chartSource: 'Sealed reporting periods', chartNote, latestSnapshot,
+    spiHistory: periods.map(row => ({ date: row.data_date, spi: numeric(row.spi) })),
     progressSource, reportingNote, reportingView: latestSnapshot ? 'controls-periods' : workingFallback ? 'edit-project' : 'data-quality',
     workingProgress: currentProgress, workingProgressConfirmed, workingDataDate: workingProgressConfirmed ? dateOnly(project?.custom_fields?.data_date) : null, workingUpdatedAt: project?.updated_at || null,
     reportingCurrency: latestSnapshot?.currency || currency, reportingVersion: latestSnapshot?.version ?? null,
@@ -212,18 +250,20 @@ export function buildProjectPerformanceModel(project, data, issues = []) {
     openChanges: data.changes === null ? null : openChanges,
     recentEvents: commercial === null || commercial === undefined ? null : recentEvents,
     actions, health, costWarning, forecastWarning,
+    costPositionComparable, costPositionCurrency: costPositionComparable ? budgetCurrency : null,
     confidence, readinessScore: Math.round(readinessCompleted / readinessTotal * 100),
     readinessCompleted, readinessTotal, readinessNote: 'Completeness of the five listed data checks; not a prediction confidence score.',
     riskAvailable, risk, manager, overdueMilestones, dueMilestones,
+    ...details,
     availability: {
       costs: costKnown, milestones: data.milestones !== null, tasks: data.tasks !== null,
       changes: data.changes !== null, activity: commercial !== null && commercial !== undefined,
-      snapshots: data.snapshots !== null,
+      snapshots: data.snapshots !== null, documents: details.deliverables.available,
     },
   }
 }
 
-const emptyData = () => ({ kpis: null, commercial: null, milestones: null, tasks: null, changes: null, snapshots: null, governance: null })
+const emptyData = () => ({ kpis: null, commercial: null, milestones: null, tasks: null, changes: null, snapshots: null, governance: null, documents: null })
 
 // Resolve the same default scope as Schedule and Risks & Changes: latest linked
 // planning project, active schedule, newest non-superseded version. Do not merge
@@ -268,6 +308,7 @@ export default function useProjectPerformance(project, revision = 0) {
       ['milestones', 'Project milestones', () => allPages(() => PC.listProjectMilestones(projectId), page => PC.listProjectMilestones(projectId, { page }), active)],
       ['tasks', 'Project tasks', () => allPages(() => PC.listProjectTasks(projectId), page => PC.listProjectTasks(projectId, { page }), active)],
       ['changes', 'Project changes', () => allPages(() => PC.listChangeEvents(projectId), page => PC.listChangeEvents(projectId, { page }), active)],
+      ['documents', 'Project documents', () => loadOverviewDocuments(projectId, controller.signal, active)],
       ['governance', 'Risk register', () => loadCurrentGovernance(projectId, controller.signal, active)],
       ['snapshots', 'Reporting history', () => allPages(
         () => PC.listIntegratedSnapshots(projectId),

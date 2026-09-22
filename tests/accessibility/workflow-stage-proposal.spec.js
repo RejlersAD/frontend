@@ -7,13 +7,13 @@ const review = page => page.getByRole('dialog', { name: 'Review proposed schedul
 const grid = page => scheduleWorkspace(page).getByRole('region', { name: 'Schedule activities and Gantt', exact: true })
 const clean = state => { expect(state.pageErrors).toEqual([]); expect(state.unknownWrites).toEqual([]); expect(state.unknown).toEqual([]) }
 
-test('Build schedule requests the standard five-stage workflow and applies separate deliverable and activity counts', async ({ page }) => {
+test('Build schedule requests source evidence without forcing a workflow and preserves reviewed stage counts', async ({ page }) => {
   await page.setViewportSize({ width: 1740, height: 950 })
   const state = await workflowProposalHarness(page)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(3)
   await scheduleWorkspace(page).getByRole('button', { name: 'Build schedule', exact: true }).click()
   await expect(review(page)).toBeVisible()
-  expect(state.writes[0].data).toEqual({ revision: 4, workflow_mode: 'standard_five' })
+  expect(state.writes[0].data).toEqual({ revision: 4, workflow_mode: 'source_only' })
   await expect(review(page).locator('.psq-summary')).toContainText('3 deliverables')
   await expect(review(page).locator('.psq-summary')).toContainText('15 activities')
   await expect(review(page).locator('.psq-summary')).toContainText('5 stages per deliverable')

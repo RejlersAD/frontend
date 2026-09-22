@@ -1,0 +1,22 @@
+.planning-risk-register > header { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.planning-risk-register h3 { margin: 0 0 5px; }
+.planning-risk-register p { margin: 5px 0; }
+.prr-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.prr-message { display: flex; gap: 7px; align-items: center; padding: 10px; border: 1px solid #cbd9ed; border-radius: 4px; background: #f6f9fe; }
+.prr-message.is-error { border-color: #e9c1bc; background: #fff5f3; color: #902f29; }
+.prr-form { max-width: 720px; border: 1px solid #dce6f3; border-radius: 5px; padding: 15px; margin-top: 14px; }
+.prr-form fieldset { border: 0; padding: 0; margin: 12px 0; }
+.prr-form label { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; font-size: 12px; }
+.prr-form input, .prr-form select, .prr-form textarea { width: 100%; padding: 7px; border: 1px solid #c7d7eb; border-radius: 4px; color: #153464; background: #fff; font: inherit; }
+.prr-form textarea { min-height: 70px; resize: vertical; }
+.prr-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.planning-risk-register pre { max-width: 300px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.planning-risk-register td { max-width: 380px; white-space: pre-wrap; overflow-wrap: anywhere; vertical-align: top; }
+.prr-analysis { margin: 14px 0; padding: 14px; border: 1px solid #dce6f3; border-radius: 5px; }
+.prr-analysis h4, .prr-form h4 { margin: 5px 0; }
+.prr-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.prr-summary dt { font-size: 12px; color: #52657d; }
+.prr-summary dd { margin: 4px 0 0; font-size: 18px; font-weight: 600; }
+.planning-risk-register .prr-help { font-size: 12px; color: #52657d; line-height: 1.5; }
+@media(max-width: 600px) { .prr-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media(max-width: 600px) { .prr-fields { grid-template-columns: 1fr; } }

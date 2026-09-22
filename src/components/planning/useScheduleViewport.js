@@ -12,8 +12,10 @@ export default function useScheduleViewport(ref, tab) {
       const main = canvas.closest('.main-content')
       const mainBottom = main?.getBoundingClientRect().bottom ?? window.innerHeight
       const viewportBottom = window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight
-      const reserved = ['.p6-scrollbars', '.p6-legend', '.sc-footer'].reduce((sum, selector) => sum + (canvas.querySelector(selector)?.getBoundingClientRect().height || 0), 6)
-      const height = Math.max(200, Math.floor(Math.min(mainBottom, viewportBottom) - viewport.getBoundingClientRect().top - reserved))
+      const body = canvas.closest('.pp-body')
+      const bottomSpace = Math.max(6, body ? parseFloat(getComputedStyle(body).paddingBottom) || 0 : 0)
+      const reserved = ['.p6-scrollbars', '.p6-legend', '.sc-footer'].reduce((sum, selector) => sum + (canvas.querySelector(selector)?.getBoundingClientRect().height || 0), bottomSpace)
+      const height = Math.max(100, Math.floor(Math.min(mainBottom, viewportBottom) - viewport.getBoundingClientRect().top - reserved))
       canvas.style.setProperty('--p6-viewport-height', `${height}px`)
     }
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update) }

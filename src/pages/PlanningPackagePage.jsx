@@ -1,3 +1,4 @@
+import PlanningExtractionCoverage from '../components/planning/PlanningExtractionCoverage'
 import { radaiConfirm } from '../services/radaiDialog'
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import PropTypes from 'prop-types';
@@ -680,8 +681,9 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
       const generatedSchedule = await planningIntelligenceService.getGeneration(generationId);
       setGeneration(generatedSchedule);
       await loadEnterpriseContract(selectedProjectId);
-      setBanner({ type: 'success', message: `Schedule generated (version ${generatedSchedule.version}).` });
-      setCurrentStep('schedule');
+      const needsEvidenceReview = job.result_data?.state === 'needs_evidence_review' || !job.result_data?.schedule_version_id;
+      setBanner({ type: 'success', message: needsEvidenceReview ? 'Document evidence ready for review. Resolve Not Specified values using the source documents.' : `Schedule generated (version ${generatedSchedule.version}).` });
+      setCurrentStep(needsEvidenceReview ? 'intelligence' : 'schedule');
       return { generation: generatedSchedule, job };
     } catch (err) {
       setBanner({
@@ -1703,6 +1705,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         )}
         {embedded && intelligencePreview && <button type="button" className="pln-button" disabled={savingPreview} onClick={() => setReviewRequest(value => value + 1)}>{previewReviewState.conflicts ? 'Review clarification' : 'Review source findings'}</button>}
       </div>
+      {intelligencePreview && <PlanningExtractionCoverage coverage={intelligencePreview.processing_coverage} aiCoverage={intelligencePreview.ai_processing_coverage} />}
       {previewSaveError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{previewSaveError}</p>}
       {embedded && previewReviewState.conflicts > 0 && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Resolve the source clarification before confirming this preview.</p>}
       {embedded && intelligenceOutdated && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">Project inputs or source documents have changed. Return to Scope &amp; inputs and run Document Intelligence to refresh this preview.</p>}
@@ -4081,6 +4084,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
       <GenerationWizard open={showGenerationWizard} project={selectedProject} files={files}
         intelligence={intelligencePreview || generation?.intelligence} intelligenceOverrides={buildIntelligenceOverrides()}
         onClose={() => setShowGenerationWizard(false)} onGenerate={handleGenerate}
+        onReviewEvidence={() => { setShowGenerationWizard(false); setShowPlannerWorkspace(false); setCurrentStep('intelligence'); }}
         onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)} />
       {showPlannerWorkspace && selectedProjectId && <PlannerWorkspacePage embedded planningProjectId={selectedProjectId}
         initialScheduleId={planningSchedule?.schedule_id} initialVersionId={planningSchedule?.schedule_version_id} initialTab={workspaceInitialTab}
@@ -4175,7 +4179,8 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           intelligenceOverrides={buildIntelligenceOverrides()}
           onClose={() => setShowGenerationWizard(false)}
           onGenerate={handleGenerate}
-          onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)}
+          onReviewEvidence={() => { setShowGenerationWizard(false); setShowPlannerWorkspace(false); setCurrentStep('intelligence'); }}
+        onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)}
         />
 
         {loadingProjects ? (
@@ -4236,4 +4241,3 @@ PlanningPackagePage.propTypes = {
 };
 
 export default PlanningPackagePage;
-

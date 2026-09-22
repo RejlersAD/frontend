@@ -85,6 +85,11 @@ export async function masterScheduleHarness(page, options = {}) {
       const send = async (body, status = 200) => { await reply(route, body, status); return true }
       const json = () => route.request().postDataJSON()
       const write = data => state.writes.push({ method, path, data })
+      if (path.endsWith('/evidence-review/') && method === 'GET') return send({
+        graph_id: null, revision: 0, readiness: { calculation: { ready: false, reasons: ['Evidence has not been prepared.'] }, baseline: { eligible: false, reasons: ['Evidence has not been reviewed.'] } },
+        issues: [], facts: [], decisions: [], warnings: [], permissions: { can_review: true, can_supply_inputs: true, can_link: true },
+        capabilities: { correct: true, link: true, source_preview: false }, pagination: { offset: 0, limit: 100, total: 0, has_more: false, next_offset: null },
+      })
       if (path.endsWith('/planning-intelligence/projects/')) {
         if (method === 'GET') return state.projectListError ? send({ detail: 'Planning workspace connection temporarily unavailable.' }, 503) : send(pageOf(state.missingPlanning ? [] : [record.planningProject]))
         if (method === 'POST') {

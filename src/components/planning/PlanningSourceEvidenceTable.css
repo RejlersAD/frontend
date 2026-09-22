@@ -1,0 +1,92 @@
+.planning-source-evidence {
+  --pse-ink: #17365f;
+  --pse-muted: #526987;
+  --pse-blue: #0759d8;
+  --pse-border: #d5e2f2;
+  --pse-surface: #fff;
+  --pse-soft: #f4f8fe;
+  margin-top: 14px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--pse-border);
+  border-radius: 6px;
+  background: var(--pse-surface);
+  color: var(--pse-ink);
+  font: 12px/1.4 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+}
+.planning-source-evidence * { box-sizing: border-box; }
+.planning-source-evidence :is(button, input, select) { font-family: inherit; }
+.planning-source-evidence :is(button, input, select, [tabindex]):focus-visible { outline: 2px solid var(--pse-blue); outline-offset: -2px; }
+.planning-source-evidence button { cursor: pointer; }
+.planning-source-evidence button:disabled { opacity: .45; cursor: not-allowed; }
+.planning-source-evidence .pse-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; }
+.planning-source-evidence .pse-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px; min-width: 0; }
+.planning-source-evidence .pse-heading h4 { margin: 0; color: var(--pse-ink); font-size: 13px; font-weight: 600; }
+.planning-source-evidence .pse-heading > span { color: var(--pse-muted); font-size: 11px; white-space: nowrap; }
+.planning-source-evidence .pse-search { position: relative; display: flex; align-items: center; flex: 0 1 310px; min-width: 160px; color: var(--pse-muted); }
+.planning-source-evidence .pse-search > svg { position: absolute; left: 8px; pointer-events: none; }
+.planning-source-evidence .pse-search input { width: 100%; min-width: 0; height: 30px; padding: 4px 29px; border: 1px solid var(--pse-border); border-radius: 4px; background: var(--pse-surface); color: var(--pse-ink); font-size: 12px; }
+.planning-source-evidence .pse-search input::placeholder { color: var(--pse-muted); opacity: 1; }
+.planning-source-evidence .pse-search input::-webkit-search-cancel-button { display: none; }
+.planning-source-evidence .pse-search button { position: absolute; right: 3px; display: grid; place-items: center; width: 25px; height: 25px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--pse-muted); }
+.planning-source-evidence .pse-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.planning-source-evidence .pse-table-scroll { position: relative; min-width: 0; max-height: 400px; overflow: auto; scrollbar-width: thin; scrollbar-color: #b8ccea transparent; }
+.planning-source-evidence .pse-table { width: 100%; min-width: 580px; border-collapse: collapse; table-layout: fixed; text-align: left; font-family: inherit; font-size: 12px; }
+.planning-source-evidence .pse-table th { position: sticky; top: 0; z-index: 1; padding: 6px 10px; border-block: 1px solid var(--pse-border); background: var(--pse-soft); color: var(--pse-muted); font-size: 11px; font-weight: 500; line-height: 16px; }
+.planning-source-evidence .pse-table th:first-child { width: 43%; }
+.planning-source-evidence .pse-table th:nth-child(2) { width: 37%; }
+.planning-source-evidence .pse-table th:last-child { width: 20%; }
+.planning-source-evidence .pse-table td { padding: 5px 10px; border-bottom: 1px solid var(--pse-border); color: var(--pse-ink); vertical-align: middle; }
+.planning-source-evidence .pse-row { height: 38px; }
+.planning-source-evidence .pse-row:last-child td { border-bottom: 0; }
+.planning-source-evidence .pse-row.is-expanded td { background: var(--pse-soft); }
+.planning-source-evidence .pse-disclosure { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--pse-ink); text-align: left; }
+.planning-source-evidence .pse-disclosure > svg { flex: 0 0 auto; color: var(--pse-blue); transform: rotate(-90deg); }
+.planning-source-evidence .pse-disclosure[aria-expanded=true] > svg { transform: none; }
+.planning-source-evidence .pse-disclosure > span { min-width: 0; overflow: hidden; }
+.planning-source-evidence .pse-disclosure strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; line-height: 17px; }
+.planning-source-evidence .pse-disclosure small { display: block; color: var(--pse-muted); font-size: 10px; line-height: 13px; }
+.planning-source-evidence .pse-reference { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--pse-muted); }
+.planning-source-evidence .pse-reference > svg, .planning-source-evidence .pse-reference > small { flex-shrink: 0; }
+.planning-source-evidence .pse-reference > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.planning-source-evidence .pse-reference > small { padding: 0 4px; border-radius: 3px; background: var(--pse-soft); color: var(--pse-blue); font-size: 10px; }
+.planning-source-evidence .pse-status { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 5px; border-radius: 3px; background: #edf2f8; color: #4e6382; font-size: 11px; line-height: 16px; vertical-align: middle; }
+.planning-source-evidence .pse-status.pse-verified { background: #eaf5ee; color: #246c44; }
+.planning-source-evidence .pse-status.pse-warning { background: #fff4df; color: #89530c; }
+.planning-source-evidence .pse-duration-value { margin-left: 6px; color: var(--pse-muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.planning-source-evidence .pse-detail-row > td { padding: 0; background: var(--pse-soft); }
+.planning-source-evidence .pse-details { padding: 11px 13px; }
+.planning-source-evidence .pse-details h5 { margin: 0 0 9px; color: var(--pse-ink); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.planning-source-evidence .pse-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.planning-source-evidence .pse-details-grid > section { min-width: 0; }
+.planning-source-evidence .pse-details h6 { margin: 0 0 5px; color: var(--pse-muted); font-size: 11px; font-weight: 600; }
+.planning-source-evidence .pse-full-sources { margin: 0; padding: 0; list-style: none; }
+.planning-source-evidence .pse-full-sources li + li { margin-top: 9px; }
+.planning-source-evidence .pse-full-sources li > span { display: flex; align-items: flex-start; gap: 5px; overflow-wrap: anywhere; }
+.planning-source-evidence .pse-full-sources svg { flex-shrink: 0; margin-top: 2px; color: var(--pse-muted); }
+.planning-source-evidence .pse-full-sources blockquote, .planning-source-evidence .pde-activity q { display: block; margin: 5px 0; padding: 3px 8px; border-left: 2px solid var(--pse-border); color: var(--pse-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.planning-source-evidence .pse-unavailable { margin: 0; color: var(--pse-muted); }
+.planning-source-evidence .pde-activity { margin-top: 0; color: var(--pse-muted); }
+.planning-source-evidence .pde-activity > small { margin-top: 4px; font-size: 11px; overflow-wrap: anywhere; }
+.planning-source-evidence .pse-table .pse-empty { padding: 22px 12px; color: var(--pse-muted); text-align: center; }
+.planning-source-evidence .pse-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 7px 10px; border-top: 1px solid var(--pse-border); background: var(--pse-surface); color: var(--pse-muted); font-size: 11px; }
+.planning-source-evidence .pse-footer > span { margin-right: auto; }
+.planning-source-evidence .pse-footer label, .planning-source-evidence .pse-footer nav { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.planning-source-evidence .pse-footer select { height: 27px; padding: 2px 20px 2px 6px; border: 1px solid var(--pse-border); border-radius: 4px; background-color: var(--pse-surface); color: var(--pse-ink); font-size: 11px; }
+.planning-source-evidence .pse-footer nav button { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; border: 1px solid var(--pse-border); border-radius: 4px; background: var(--pse-surface); color: var(--pse-blue); }
+.planning-source-evidence .pse-footer nav button:hover:not(:disabled) { background: var(--pse-soft); }
+.dark .planning-source-evidence { --pse-ink: #dce9ff; --pse-muted: #b5c9e7; --pse-blue: #a6cdff; --pse-border: #3c5476; --pse-surface: #17273f; --pse-soft: #20334e; }
+.dark .planning-source-evidence .pse-status { background: #2e415f; color: #d5e4f9; }
+.dark .planning-source-evidence .pse-status.pse-verified { background: #254633; color: #b5e8c9; }
+.dark .planning-source-evidence .pse-status.pse-warning { background: #483921; color: #ffdb9f; }
+.dark .planning-source-evidence .pde-activity > strong { color: #dce9ff; }
+.dark .planning-source-evidence .pde-activity:is([data-duration-source=missing_source], [data-duration-source=missing]) > strong { color: #ffdb9f; }
+.dark .planning-source-evidence .pde-activity:is([data-duration-source=source_document], [data-duration-source=source_backed], [data-duration-source=source_verified]) > strong { color: #b5e8c9; }
+@media (max-width: 700px) {
+  .planning-source-evidence .pse-toolbar { align-items: stretch; flex-direction: column; gap: 7px; }
+  .planning-source-evidence .pse-search { flex: 0 0 auto; min-width: 0; }
+  .planning-source-evidence .pse-footer { gap: 7px 12px; }
+  .planning-source-evidence .pse-footer > span { flex-basis: 100%; }
+  .planning-source-evidence .pse-footer nav { margin-left: auto; }
+  .planning-source-evidence .pse-details-grid { grid-template-columns: 1fr; gap: 13px; }
+}

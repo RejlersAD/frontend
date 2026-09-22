@@ -15,6 +15,7 @@
 .psc-issue-title h4 { margin: 0; font-size: 14px; }
 .psc-issue-title svg { flex-shrink: 0; }
 .psc-issue .psc-resolution { color: #536a8f; }
+.psc-issue .psc-advisory { color: #805014; font-weight: 600; }
 .psc-affected { font-weight: 600; padding-top: 8px; }
 .psc-table { overflow: auto; max-height: 420px; border: 1px solid #dce6f3; border-radius: 5px; margin-top: 8px; }
 .psc-table table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }

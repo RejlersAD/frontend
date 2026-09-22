@@ -9,11 +9,12 @@ import * as PC from '../../services/projectControl.service'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import ProjectControlHeader from './components/ProjectControlHeader'
+import ProjectPortfolio from './ProjectPortfolio'
 import PhaseStubCard from './components/PhaseStubCard'
 import ProjectFormModal from './components/ProjectFormModal'
 import AIProjectSetupDialog from './components/AIProjectSetupDialog'
 import QhseImportModal from './components/QhseImportModal'
-import ProjectDashboardTab from './tabs/ProjectDashboardTab'
+import ProjectDetailsOverview from './ProjectDetailsOverview'
 import CostDashboardTab from './tabs/CostDashboardTab'
 import CommercialDashboardTab, { downloadCommercialCsv } from './tabs/CommercialDashboardTab'
 import MilestoneControlTab, { downloadMilestoneCsv } from './tabs/MilestoneControlTab'
@@ -43,6 +44,8 @@ import './RiskChangeControl.css'
 import './EstimateControl.css'
 import './DocumentControl.css'
 import './ProjectPlanningHeader.css'
+import './ProjectPortfolioShell.css'
+import './ProjectDetailsWorkspace.css'
 
 const loadProjectList = async () => {
   const projects = []
@@ -58,7 +61,7 @@ const loadProjectList = async () => {
 }
 
 const TAB_COMPONENTS = {
-  'project-dashboard': ProjectDashboardTab,
+  'project-dashboard': ProjectDetailsOverview,
   'plan-baseline':     PlanBaselineTab,
   'controls-periods':  ControlsPeriodsTab,
   'epc-lifecycle': EPCLifecycleTab,
@@ -76,6 +79,8 @@ const TAB_COMPONENTS = {
 export default function ProjectsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const isPortfolio = searchParams.get('view') === 'portfolio'
+    || (!searchParams.get('project') && !searchParams.get('view'))
   const [projects, setProjects] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState(() => searchParams.get('project'))
   const [phaseFlags, setPhaseFlags] = useState({})
@@ -163,7 +168,7 @@ export default function ProjectsPage() {
   // The portfolio endpoint returns a compact row. Hydrate the selected project
   // so the overview and header receive the complete controlled record.
   useEffect(() => {
-    if (!selectedProjectId) return
+    if (isPortfolio || loadingProjects || !selectedProjectId) return
     let cancelled = false
     PC.getProject(selectedProjectId)
       .then((detail) => {
@@ -174,7 +179,7 @@ export default function ProjectsPage() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [selectedProjectId, refreshVersion])
+  }, [isPortfolio, loadingProjects, selectedProjectId, refreshVersion])
 
   useEffect(() => {
     if (!toast) return
@@ -209,16 +214,17 @@ export default function ProjectsPage() {
     if (!(await radaiConfirm(PROJECT_COPY.deleteConfirm(selectedProject.name)))) return
     try {
       await PC.deleteProject(selectedProject.id)
-      setToast({ type: 'success', message: `Deleted “${selectedProject.name}”.` })
+      setToast({ type: 'success', message: `Archived “${selectedProject.name}”.` })
       await reloadProjects({ selectId: null })
     } catch (e) {
-      setToast({ type: 'error', message: e?.message || 'Delete failed.' })
+      const detail = e?.response?.data?.detail || e?.response?.data?.error
+      setToast({ type: 'error', message: typeof detail === 'string' ? detail : 'Unable to archive this project. Please try again.' })
     }
   }
 
   const selectedProject = useMemo(
-    () => projects.find((p) => String(p.id) === String(selectedProjectId)) || null,
-    [projects, selectedProjectId]
+    () => isPortfolio ? null : projects.find((p) => String(p.id) === String(selectedProjectId)) || null,
+    [isPortfolio, projects, selectedProjectId]
   )
   const performance = useProjectPerformance(selectedProject, refreshVersion)
   const schedulePerformance = useSchedulePerformance(selectedProject, performance, refreshVersion, {
@@ -244,6 +250,12 @@ export default function ProjectsPage() {
     nextParams.set('project', id)
     setSearchParams(nextParams, { replace: true })
   }, [searchParams, setSearchParams])
+
+  const handleOpenPortfolioProject = project => {
+    setSelectedProjectId(project.id)
+    setView(PROJECT_DEFAULT_VIEW)
+    setSearchParams({ project: String(project.id) })
+  }
 
   useEffect(() => {
     const requested = searchParams.get('project')
@@ -291,14 +303,20 @@ export default function ProjectsPage() {
   const ActiveTab = TAB_COMPONENTS[view] || CostDashboardTab
   const activeMode = PROJECT_VIEW_MODES.find((m) => m.key === view)
   const isActiveFlagOn = activeMode ? phaseFlags[activeMode.phaseFlag] !== false : true
-  const handlePerformanceAction = nextView => {
-    if (nextView === 'edit-project') handleOpenEdit()
+  const handlePerformanceAction = (nextView, nextDocumentId) => {
+    if (nextView === 'documents' && nextDocumentId != null) {
+      setDocumentId(nextDocumentId)
+      handleSelectView('documents')
+    } else if (nextView === 'edit-project') handleOpenEdit()
     else if (['actions', 'activity', 'data-quality', 'reporting-source'].includes(nextView)) setOverviewDialog(nextView)
     else handleSelectView(nextView || PROJECT_DEFAULT_VIEW)
   }
 
   return (
-    <div className={`project-control-workspace project-performance-workspace${view === 'plan-baseline' ? ` pp-schedule-workspace${scheduleMode === 'planner' ? ' pp-planning-workspace' : ''}` : view === 'commercial-dashboard' ? ' pp-commercial-workspace' : view === 'milestones' ? ' pp-milestone-workspace' : view === 'risk' ? ' pp-risk-workspace' : view === 'estimates' ? ' pp-estimate-workspace' : view === 'documents' ? ' pp-document-workspace' : ''}`}>
+    <div className={`project-control-workspace project-performance-workspace${isPortfolio ? ' pp-portfolio-workspace' : ` pp-details-workspace${view === 'plan-baseline' ? ` pp-schedule-workspace${scheduleMode === 'planner' ? ' pp-planning-workspace' : ''}` : view === 'commercial-dashboard' ? ' pp-commercial-workspace' : view === 'milestones' ? ' pp-milestone-workspace' : view === 'risk' ? ' pp-risk-workspace' : view === 'estimates' ? ' pp-estimate-workspace' : view === 'documents' ? ' pp-document-workspace' : ''}`}`}>
+      {isPortfolio ? <ProjectPortfolio projects={projects} loading={loadingProjects} error={error}
+        onCreate={handleOpenCreate} onOpen={handleOpenPortfolioProject}
+        onRefresh={() => reloadProjects({})} onImport={() => setQhseImportOpen(true)} /> : <>
       <ProjectControlHeader
         projects={projects}
         selectedProject={selectedProject}
@@ -380,7 +398,6 @@ export default function ProjectsPage() {
               setProjects(current => current.map(row => String(row.id) === String(selectedProject.id) ? { ...row, ...detail } : row))
               setRefreshVersion(value => value + 1)
             }}
-            onOpenDocument={id => { setDocumentId(id); handleSelectView('documents') }}
             performance={performance}
             onOpenDialog={setOverviewDialog}
             schedulePerformance={schedulePerformance}
@@ -395,6 +412,7 @@ export default function ProjectsPage() {
             documentDialog={documentDialog}
             onDocumentDialog={setDocumentDialog}
             onSelectDocument={setDocumentId}
+            onOpenDocument={id => handlePerformanceAction('documents', id)}
             refreshVersion={refreshVersion}
             estimateControl={estimateControl}
             estimateDialog={estimateDialog}
@@ -412,6 +430,7 @@ export default function ProjectsPage() {
         )}
       </div>
       {overviewDialog && selectedProject && <ProjectPerformanceDialogs key={`${selectedProject.id}:${overviewDialog}`} type={overviewDialog} model={performance.model} onClose={() => setOverviewDialog(null)} onAction={handlePerformanceAction} />}
+      </>}
 
       <ProjectFormModal
         open={formOpen}
