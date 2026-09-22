@@ -188,6 +188,7 @@ test('printed zero and negative float remain source evidence when duration and C
   await expect(row(page, conflict.id).locator('[data-column="float"]')).toHaveText('Review source')
   await expect(row(page, missing.id).locator('[data-column="float"]')).toHaveText('Not calculated')
   await workspace(page).getByRole('button', { name: zero.title, exact: true }).click()
+  await page.getByRole('complementary', { name: 'Activity details' }).getByRole('tab', { name: 'Logic', exact: true }).click()
   await expect(page.getByRole('complementary', { name: 'Activity details' })).toContainText('Source value · not calculated')
   clean(state)
 })

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import AxeBuilder from '@axe-core/playwright'
 import { masterScheduleHarness, registerNames } from '../fixtures/master-schedule.fixture'
-import { scheduleAction, scheduleArea, scheduleMenu, closeScheduleMenu, scheduleVersion } from '../fixtures/schedule-controls.js'
+import { scheduleAction, scheduleActionButton, scheduleArea, scheduleMenu, closeScheduleMenu, scheduleVersion } from '../fixtures/schedule-controls.js'
 
 test.setTimeout(60000)
 const workspace = page => page.getByRole('region', { name: 'Master schedule workspace', exact: true })
@@ -91,7 +91,7 @@ test('scope-only planning opens without uploads and assigns a saved activity to 
   await setDates(dialog)
   await dialog.getByRole('button', { name: 'Open schedule', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await workspace(page).getByRole('button', { name: 'Add activity', exact: true }).click()
+  await scheduleAction(page, 'Add activity')
   const task = page.getByRole('dialog', { name: 'Add task', exact: true })
   await task.getByLabel('Task / deliverable', { exact: true }).fill('Verify employee onboarding workflow')
   await task.getByRole('combobox', { name: 'Assigned to', exact: true }).fill('Omar')
@@ -142,9 +142,10 @@ test('failed activity save keeps edits then the reviewed revision is submitted a
   await expect(approval.getByRole('heading', { name: 'Baseline published', exact: true })).toBeVisible()
   expect(simpleWrites(state).find(item => item.path.endsWith('/approve-publish/')).data).toEqual({ revision: 6 })
   await approval.getByRole('button', { name: 'Close Review & publish baseline', exact: true }).click()
-  await expect(workspace(page).getByRole('button', { name: 'Add activity', exact: true })).toBeDisabled()
+  await expect(await scheduleActionButton(page, 'Add activity')).toBeDisabled()
   await scheduleAction(page, 'New version')
-  await expect(workspace(page).getByRole('button', { name: 'Add activity', exact: true })).toBeEnabled()
+  await expect(await scheduleActionButton(page, 'Add activity')).toBeEnabled()
+  await closeScheduleMenu(page, 'Schedule actions')
   expect(simpleWrites(state).find(item => item.path.endsWith('/reopen/')).data).toEqual({ revision: 7 })
   expect(state.records[17].simplePlan.baseline.name).toBe('Approved Phase 1 baseline')
   clean(state)
@@ -168,7 +169,7 @@ test('saving an unchanged submitted plan preserves its approval request', async 
     current.records[17].simplePlan.state = 'submitted'
     current.records[17].simplePlan.review = { id: 505, status: 'pending' }
   } })
-  await workspace(page).getByRole('button', { name: 'Save', exact: true }).click()
+  await scheduleAction(page, 'Save draft')
   await expect(page.getByRole('status').filter({ hasText: 'The plan is saved and awaiting approval.' })).toBeVisible()
   expect(simpleWrites(state)).toEqual([])
   expect(state.records[17].simplePlan.review.status).toBe('pending')
@@ -181,15 +182,17 @@ test('saved schedule versions are fetched explicitly and stay read only', async 
   await expect(workspace(page).getByRole('checkbox', { name: 'Critical only', exact: true })).toBeDisabled()
   await closeScheduleMenu(page, 'Schedule filters')
   await scheduleVersion(page, '90')
-  await expect(workspace(page).getByRole('button', { name: 'Add activity', exact: true })).toBeDisabled()
-  await expect(workspace(page).getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await expect(await scheduleActionButton(page, 'Add activity')).toBeDisabled()
+  await expect(await scheduleActionButton(page, 'Save draft')).toBeDisabled()
+  await closeScheduleMenu(page, 'Schedule actions')
   await expect(page.getByText('You are viewing a saved schedule version.', { exact: false })).toBeVisible()
   expect(state.requests.some(item => item.path.endsWith('/simple-plan/') && item.query.version_id === '90')).toBe(true)
   await scheduleMenu(page, 'Schedule filters')
   await expect(workspace(page).getByRole('checkbox', { name: 'Critical only', exact: true })).toBeEnabled()
   await closeScheduleMenu(page, 'Schedule filters')
   await scheduleVersion(page, 'current')
-  await expect(workspace(page).getByRole('button', { name: 'Add activity', exact: true })).toBeEnabled()
+  await expect(await scheduleActionButton(page, 'Add activity')).toBeEnabled()
+  await closeScheduleMenu(page, 'Schedule actions')
   await scheduleMenu(page, 'Schedule filters')
   await expect(workspace(page).getByRole('checkbox', { name: 'Critical only', exact: true })).toBeDisabled()
   await closeScheduleMenu(page, 'Schedule filters')
