@@ -122,6 +122,10 @@ test('resource requirements retain missing quantities and risk management preser
   const decisions = []
   const register = { version_id: 91, revision: 'register-fingerprint', permissions: { can_edit: true, can_create: true }, owners: [{ id: '7', name: 'Maya Hassan' }], items: [{ id: 4, version_id: 91, title: 'Supplier lead time uncertainty', description: 'Vendor duration remains subject to confirmation.', status: 'open', priority: null, owner_id: null, owner_name: null, response: '', resolution: '', revision: 3, provenance: { type: 'document', label: 'Approved procurement register' } }] }
   const state = await masterScheduleHarness(page, { decorateSnapshot(plan) { return { ...plan, version_id: 91, resource_requirements: [{ activity_id: 'register-1', role: 'Process engineer', quantity: null, unit: null, lineage: { type: 'approved_rule', rule_id: 'resource-role-IFR' } }] } }, async handleRequest({ path, route, reply }) {
+    if (path.endsWith('/resources/plan/') && route.request().method() === 'GET') {
+      await reply(route, { project_id: 71, version_id: 91, resources: [], assignments: [], activities: [], permissions: { can_manage_resources: false, can_allocate: false }, basis: 'current_catalog' })
+      return true
+    }
     if (!path.endsWith('/risk-register/')) return false
     if (route.request().method() === 'GET') { await reply(route, register); return true }
     const body = route.request().postDataJSON(); decisions.push(body)
@@ -143,7 +147,7 @@ test('resource requirements retain missing quantities and risk management preser
   await risk.getByLabel('Risk decision reason', { exact: true }).fill('Procurement lead reviewed the source requirement.')
   await risk.getByRole('button', { name: 'Save risk review', exact: true }).click()
   await expect(risk.getByRole('status')).toContainText('Risk register decision saved')
-  expect(decisions).toEqual([{ version_id: 91, item_id: 4, revision: 3, status: 'monitoring', priority: null, owner_id: '7', response: 'Obtain the supplier commitment before the release gate.', resolution: '', reason: 'Procurement lead reviewed the source requirement.' }])
+  expect(decisions).toEqual([{ version_id: 91, item_id: 4, revision: 3, status: 'monitoring', priority: null, owner_id: '7', response: 'Obtain the supplier commitment before the release gate.', resolution: '', reason: 'Procurement lead reviewed the source requirement.', probability_percent: null, schedule_impact_days: null, impact_basis: '', mitigation_status: 'not_planned', mitigation_due_date: null }])
   expect(register.items[0].description).toBe('Vendor duration remains subject to confirmation.')
   expect(state.writes).toEqual([]); clean(state)
 })

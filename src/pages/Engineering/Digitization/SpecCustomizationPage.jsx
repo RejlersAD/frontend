@@ -24,7 +24,6 @@ import {
   WrenchScrewdriverIcon,
   ArrowPathIcon,
   FunnelIcon,
-  CheckCircleIcon,
   FolderIcon,
   FolderOpenIcon,
   PlusIcon,
@@ -66,7 +65,6 @@ const PROJECT_HUB_CFG = {
 
 // ─── Soft-coded visual theme (align with HR Employees look) ───────────────
 const SPEC_UI_THEME = {
-  pageBg: 'bg-gray-50 dark:bg-gray-900',
   headerIconGradient: 'from-slate-900 via-blue-900 to-indigo-900',
   primaryGradient: 'from-blue-600 to-indigo-600',
   primaryGradientHover: 'hover:from-blue-700 hover:to-indigo-700',
@@ -243,6 +241,19 @@ const SpecCustomizationPage = () => {
     setWorkspaceMode(new URLSearchParams(location.search).get('stage') === 'reference' ? 'reference' : 'extract');
   }, [location.search]);
 
+  const handleWorkspaceModeChange = (mode) => {
+    const params = new URLSearchParams(location.search);
+    if (mode === 'reference') {
+      params.set('stage', 'reference');
+      setViewingJobId(null);
+    } else {
+      params.delete('stage');
+    }
+    setWorkspaceMode(mode);
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' });
+  };
+
   // Persist active project for cross-page handoff.
   useEffect(() => {
     try {
@@ -282,7 +293,7 @@ const SpecCustomizationPage = () => {
     setActiveProject(p);
     setSwitcherOpen(false);
     setViewingJobId(null);
-    setWorkspaceMode('extract');
+    handleWorkspaceModeChange('extract');
   };
 
   // ── Fetch job history for the selected project ──
@@ -317,44 +328,21 @@ const SpecCustomizationPage = () => {
   };
 
   return (
-    <div className={`min-h-screen px-3 py-5 sm:px-4 sm:py-6 ${SPEC_UI_THEME.pageBg}`}>
+    <div>
       <div className="w-full">
-
-        {/* ── Header ────────────────────────────────────────────────── */}
-        <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl bg-gradient-to-br ${SPEC_UI_THEME.headerIconGradient} text-white shadow-md`}>
-              <SparklesIcon className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Spec Customization</h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                AI-powered specification generation and quality assurance — project-organised.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <ProjectSwitcher
-              projects={projects}
-              activeProject={activeProject}
-              open={switcherOpen}
-              loading={loadingProjects}
-              onToggle={() => setSwitcherOpen((v) => !v)}
-              onClose={() => setSwitcherOpen(false)}
-              onSwitch={handleSwitch}
-              onCreate={() => { setSwitcherOpen(false); setCreateOpen(true); }}
-              onClear={handleClearActive}
-              onManage={() => navigate(PROJECT_HUB_CFG.manageRoute)}
-            />
-            <span className="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-medium">
-              Digitization
-            </span>
-            <span className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-full text-xs font-medium inline-flex items-center gap-1">
-              <CheckCircleIcon className="w-3.5 h-3.5" />
-              1 Live
-            </span>
-          </div>
+        <div className="mb-4 flex justify-end">
+          <ProjectSwitcher
+            projects={projects}
+            activeProject={activeProject}
+            open={switcherOpen}
+            loading={loadingProjects}
+            onToggle={() => setSwitcherOpen((value) => !value)}
+            onClose={() => setSwitcherOpen(false)}
+            onSwitch={handleSwitch}
+            onCreate={() => { setSwitcherOpen(false); setCreateOpen(true); }}
+            onClear={handleClearActive}
+            onManage={() => navigate(PROJECT_HUB_CFG.manageRoute)}
+          />
         </div>
 
         {loadError && (
@@ -426,7 +414,7 @@ const SpecCustomizationPage = () => {
               <div className="inline-flex w-full sm:w-auto rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-1" role="tablist" aria-label="Customization workflow">
                 <button
                   type="button"
-                  onClick={() => { setWorkspaceMode('reference'); setViewingJobId(null); }}
+                  onClick={() => handleWorkspaceModeChange('reference')}
                   role="tab"
                   aria-selected={workspaceMode === 'reference'}
                   className={`flex-1 sm:flex-none rounded px-3 py-2 text-left transition-colors ${workspaceMode === 'reference'
@@ -440,7 +428,7 @@ const SpecCustomizationPage = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setWorkspaceMode('extract')}
+                  onClick={() => handleWorkspaceModeChange('extract')}
                   role="tab"
                   aria-selected={workspaceMode === 'extract'}
                   className={`flex-1 sm:flex-none rounded px-3 py-2 text-left transition-colors ${workspaceMode === 'extract'

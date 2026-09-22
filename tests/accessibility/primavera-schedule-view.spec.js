@@ -41,7 +41,7 @@ async function aligned(page) {
 test('dense Primavera schedule preserves four WBS levels, exact activity names and stable IDs', async ({ page }) => {
   const state = await open(page)
   await expect(page.getByRole('heading', { name: 'Project Planning', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toBeVisible()
   const shell = page.locator('.performance-test-shell')
   expect((await shell.boundingBox()).x).toBe(198)
   await expect(grid(page).locator('[data-row-kind="wbs"]')).toHaveCount(13)
@@ -79,7 +79,7 @@ test('milestone zero and float zero remain distinct from unknown values; summari
   await expect(cell(milestone, 'duration')).toHaveText('0 d')
   await expect(milestone.locator('.p6-milestone')).toHaveCount(1)
   const unknown = taskRow(page, primaveraTitles.unknown)
-  await expect(cell(unknown, 'duration')).toHaveText('—')
+  await expect(cell(unknown, 'duration')).toHaveText('Not Specified')
   await expect(cell(unknown, 'float')).toHaveText('—')
   await expect(unknown.locator('.p6-milestone')).toHaveCount(0)
   await expect(unknown.locator('.p6-activity-bar')).toHaveCount(0)

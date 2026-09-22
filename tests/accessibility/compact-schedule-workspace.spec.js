@@ -20,7 +20,8 @@ async function measure(page) {
   return scheduleWorkspace(page).evaluate(element => {
     const rect = selector => { const box = element.querySelector(selector).getBoundingClientRect(); return { top: box.top, bottom: box.bottom, height: box.height } }
     const viewport = rect('.p6-viewport'), calendar = rect('.p6-heading'), footer = rect('.sc-footer')
-    return { viewport, calendar, footer, activities: Math.min(viewport.bottom, window.innerHeight, footer.top) - Math.max(calendar.bottom, 0), pageWidth: document.documentElement.scrollWidth, width: window.innerWidth, height: window.innerHeight }
+    const rowHeight = element.querySelector('[data-row-kind="task"]').getBoundingClientRect().height
+    return { viewport, calendar, footer, rowHeight, activities: Math.min(viewport.bottom, window.innerHeight, footer.top) - Math.max(calendar.bottom, 0), pageWidth: document.documentElement.scrollWidth, pageHeight: document.documentElement.scrollHeight, width: window.innerWidth, height: window.innerHeight }
   })
 }
 
@@ -39,14 +40,18 @@ async function alignedArrows(page) {
 }
 
 for (const size of [{ width: 1900, height: 950 }, { width: 1440, height: 900 }]) {
-  test(`compact desktop ${size.width} keeps horizontal project tabs and gains approximately 40% of usable schedule height`, async ({ page }, testInfo) => {
+  test(`compact desktop ${size.width} retains a useful schedule viewport below the shared project header`, async ({ page }, testInfo) => {
     await page.setViewportSize(size)
     const state = await open(page)
     await expect.poll(async () => (await measure(page)).footer.bottom).toBeLessThanOrEqual(size.height)
     const actual = await measure(page), baseline = scheduleHeightBaseline[`${size.width}x${size.height}`]
-    // Restoring the user's horizontal project tabs intentionally uses 36px.
-    expect(actual.activities / baseline.activities).toBeGreaterThan(1.35)
+    // The shared project header is intentional. The grid should use the space
+    // beneath its actual calendar header, allowing only its legend/scrollbar gap.
+    const availableBody = Math.min(size.height, actual.footer.top) - actual.calendar.bottom
+    expect(availableBody - actual.activities).toBeLessThanOrEqual(64)
+    expect(actual.activities / actual.rowHeight).toBeGreaterThanOrEqual(25)
     expect(actual.pageWidth).toBeLessThanOrEqual(size.width)
+    expect(actual.pageHeight).toBeLessThanOrEqual(size.height)
     expect((await page.locator('.performance-test-shell').boundingBox()).x).toBe(198)
     await expect(page.getByRole('combobox', { name: 'Project section', exact: true })).toHaveCount(0)
     const projectAreas = page.getByRole('navigation', { name: 'Project work areas', exact: true })
@@ -156,18 +161,32 @@ test('save uses a floating transient notification without moving the schedule an
   clean(state)
 })
 
-test('real application Footer stays below the schedule across historical view and mobile menu wrapping', async ({ page }, testInfo) => {
+test('shared project shell contains the schedule across historical view and mobile menu wrapping', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1900, height: 950 })
   const state = await open(page, { realShell: true, history: true })
   const footer = page.locator('.app-footer')
-  await expect(footer).toBeVisible()
+  // The shared project shell intentionally hides the global application footer.
+  await expect(footer).toBeHidden()
   const checkFit = async () => {
-    await expect.poll(async () => (await measure(page)).footer.bottom - (await footer.boundingBox()).y).toBeLessThanOrEqual(0)
+    try {
+      await expect.poll(async () => {
+        const main = await page.locator('.main-content').boundingBox()
+        return (await measure(page)).footer.bottom - (main.y + main.height)
+      }).toBeLessThanOrEqual(1)
+    } catch (error) {
+      const geometry = await page.evaluate(() => ({ viewportHeight: innerHeight, visualViewport: visualViewport ? { height: visualViewport.height, offsetTop: visualViewport.offsetTop } : null,
+        elements: ['.main-content', '.project-performance-workspace', '.pd-header', '.pp-body', '.schedule-canvas', '.sc-body', '.p6-viewport', '.p6-scrollbars', '.p6-legend', '.sc-footer'].map(selector => {
+          const element = document.querySelector(selector), style = getComputedStyle(element)
+          return { selector, rect: element.getBoundingClientRect().toJSON(), clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, height: style.height, minHeight: style.minHeight, padding: style.padding, overflowY: style.overflowY, gridHeight: style.getPropertyValue('--p6-viewport-height') }
+        }),
+      }))
+      await testInfo.attach('overflow-geometry.json', { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' })
+      throw error
+    }
     expect(await page.locator('.main-content').evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
   await checkFit()
-  expect((await footer.boundingBox()).height).toBeLessThanOrEqual(25)
   await scheduleVersion(page, '90')
   await expect(scheduleWorkspace(page)).toContainText('You are viewing a saved schedule version.')
   await checkFit()

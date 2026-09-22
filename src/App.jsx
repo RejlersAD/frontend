@@ -168,7 +168,6 @@ import MechanicalDatasheetPage from './pages/Engineering/Mechanical/MechanicalDa
 // Civil Datasheet Components
 import CivilDatasheetPage from './pages/Engineering/Civil/CivilDatasheetPage'
 // Digitization Components
-import SpecCustomizationPage from './pages/Engineering/Digitization/SpecCustomizationPage'
 import SpecProjectsPage from './pages/Engineering/Digitization/SpecProjectsPage'
 import DigitizationDatasheetPage from './pages/Engineering/Digitization/DigitizationDatasheetPage'
 import NonTeffMetadataPage from './pages/Engineering/Digitization/NonTeffMetadataPage'
@@ -219,6 +218,18 @@ const PUBLIC_PATH_REDIRECTS = {
 
 // Back-compat alias (kept for any external reference to this constant)
 const REGISTER_REDIRECT_TARGET = PUBLIC_PATH_REDIRECTS.register
+
+function LegacyPaperSpecificationRedirect() {
+  const location = useLocation()
+  const params = new URLSearchParams(location.search)
+  params.set('tab', 'paper-specification')
+  return (
+    <Navigate
+      to={`/engineering/digitization/smart-plant-3d?${params.toString()}`}
+      replace
+    />
+  )
+}
 
 const ModuleAccessContext = React.createContext(null)
 function LoginRedirect() {
@@ -1400,11 +1411,7 @@ function App() {
         {/* Digitization Routes — Coming Soon hubs (soft-coded: cards configured in each page file) */}
         <Route
           path="engineering/digitization/spec-customization"
-          element={
-            <ProtectedRoute>
-              <SpecCustomizationPage />
-            </ProtectedRoute>
-          }
+          element={<LegacyPaperSpecificationRedirect />}
         />
         <Route
           path="engineering/digitization/spec-customization/projects"
@@ -1443,7 +1450,7 @@ function App() {
         <Route
           path="engineering/digitization/smart-plant-3d"
           element={
-            <ModuleProtectedRoute moduleCode="smart_plant_3d">
+            <ModuleProtectedRoute moduleCode="spec_customization">
               <SmartPlant3DPage />
             </ModuleProtectedRoute>
           }

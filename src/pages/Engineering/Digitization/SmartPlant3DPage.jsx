@@ -11,8 +11,9 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../../config/routes.config';
+import SpecCustomizationPage from './SpecCustomizationPage';
 import {
   CloudArrowUpIcon,
   CheckCircleIcon,
@@ -24,10 +25,8 @@ import {
   LightBulbIcon,
   XMarkIcon,
   DocumentTextIcon,
-  TableCellsIcon,
   CubeTransparentIcon,
   BookOpenIcon,
-  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import { getApiBaseUrl } from '../../../config/environment.config';
@@ -37,14 +36,6 @@ import { getApiBaseUrl } from '../../../config/environment.config';
 // ---------------------------------------------------------------------------
 const FEATURE_CARDS = [
   {
-    id: 'document-validation',
-    title: 'Document Validation',
-    description: 'Validate engineering documents with AI-assisted checks for tags, structure, and consistency',
-    icon: ShieldCheckIcon,
-    path: ROUTES.DOCUMENT_VALIDATION,
-    badge: 'Live',
-  },
-  {
     id: 'valve-standards-reference',
     title: 'Valve Standards Reference',
     description: 'Browse and validate ASME B16.34 pressure-temperature ratings, wall thickness & material specs',
@@ -53,17 +44,18 @@ const FEATURE_CARDS = [
     badge: 'New',
   },
   {
+    id: 'paper-specification',
+    title: 'Paper Specification',
+    description: 'Extract, review, and publish SmartPlant-ready specifications from engineering documents',
+    icon: DocumentTextIcon,
+    path: `${ROUTES.SMART_PLANT_3D}?tab=paper-specification`,
+    badge: 'Live',
+  },
+  {
     id: 'model-import',
     title: '3D Model Import',
     description: 'Import and extract data from SmartPlant 3D models and databases',
     icon: CubeIcon,
-    comingSoon: true,
-  },
-  {
-    id: 'equipment-extract',
-    title: 'Equipment Extraction',
-    description: 'Extract equipment specifications, tags, and attributes from 3D models',
-    icon: TableCellsIcon,
     comingSoon: true,
   },
   {
@@ -84,7 +76,32 @@ const FEATURE_CARDS = [
 
 const SmartPlant3DPage = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('overview');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(() => (
+    new URLSearchParams(location.search).get('tab') === 'paper-specification'
+      ? 'paper-specification'
+      : 'overview'
+  ));
+
+  useEffect(() => {
+    setActiveTab(
+      new URLSearchParams(location.search).get('tab') === 'paper-specification'
+        ? 'paper-specification'
+        : 'overview',
+    );
+  }, [location.search]);
+
+  const handleTabChange = (tab) => {
+    const params = new URLSearchParams(location.search);
+    if (tab === 'paper-specification') {
+      params.set('tab', 'paper-specification');
+    } else {
+      params.delete('tab');
+      params.delete('stage');
+    }
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 p-8">
@@ -141,6 +158,37 @@ const SmartPlant3DPage = () => {
 
       {/* Main Content Area */}
       <div className="max-w-7xl mx-auto">
+        <div className="mb-6 border-b border-slate-200" role="tablist" aria-label="Smart Plant 3D sections">
+          <div className="flex gap-6">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'overview'}
+              onClick={() => handleTabChange('overview')}
+              className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition-colors ${activeTab === 'overview'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}
+            >
+              <CubeIcon className="h-5 w-5" />
+              Overview
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'paper-specification'}
+              onClick={() => handleTabChange('paper-specification')}
+              className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition-colors ${activeTab === 'paper-specification'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}
+            >
+              <DocumentTextIcon className="h-5 w-5" />
+              Paper Specification
+            </button>
+          </div>
+        </div>
+
+        {activeTab === 'overview' ? (
+          <>
         {/* Feature Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           {FEATURE_CARDS.map((card) => (
@@ -249,6 +297,10 @@ const SmartPlant3DPage = () => {
             </div>
           </div>
         </div>
+          </>
+        ) : (
+          <SpecCustomizationPage />
+        )}
       </div>
     </div>
   );

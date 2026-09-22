@@ -231,6 +231,7 @@ test('a delayed check response from the previous project cannot replace the newl
   await issues(page).getByRole('button', { name: 'Check again', exact: true }).click()
   await expect.poll(() => Boolean(state.releaseChecks)).toBe(true)
   try {
+    await page.locator('summary[aria-label="More project actions"]').click()
     const selector = page.getByRole('combobox', { name: 'Active Project', exact: true })
     await selector.fill('5900738')
     await selector.press('Enter')

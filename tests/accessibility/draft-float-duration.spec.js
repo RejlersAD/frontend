@@ -33,7 +33,7 @@ test('draft float preserves negative, zero, positive and unknown values while du
     expect(cell.x).toBeGreaterThanOrEqual(pane.x)
     expect(cell.x + cell.width).toBeLessThanOrEqual(pane.x + pane.width + 1)
   }
-  await expect(float(page, 'unknown')).toHaveAttribute('title', 'Total float has not been calculated for this row.')
+  await expect(float(page, 'unknown')).toHaveAttribute('title', 'Total float has not been calculated for this row; no verified printed value is available.')
   await scheduleCritical(page, true)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(3)
   for (const id of ['negative', 'zero', 'milestone']) await expect(row(page, id)).toHaveCount(1)
