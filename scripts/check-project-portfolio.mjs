@@ -76,6 +76,12 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   };
   const rows = page => page.locator('[data-testid^="portfolio-project-"]');
   const actionRows = page => page.locator('[data-testid^="portfolio-action-"]');
+  const openRegisterTools = async (page, filters = false) => {
+    const all = page.getByRole('button', { name: 'All projects', exact: true });
+    if (await all.count()) await all.click();
+    const filter = page.getByRole('button', { name: 'Filter projects', exact: true });
+    if (filters && await filter.getAttribute('aria-expanded') !== 'true') await filter.click();
+  };
   const unknownOutcomes = async page => {
     for (const id of ['forecast_margin', 'schedule_confidence', 'revenue_remaining']) assert.equal(await page.getByTestId(`portfolio-kpi-${id}`).locator('.pp-outcome-value').innerText(), '—');
   };
@@ -86,23 +92,76 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   await unknownOutcomes(page);
   for (const width of [1672, 1440, 1024, 390]) {
     await assertGeometry(page, width);
+    const graphics = page.locator('.pp-kpi-graphic');
+    assert.equal(await graphics.count(), 5, 'Each portfolio outcome has a mini chart');
+    for (const [index, graphic] of (await graphics.all()).entries()) {
+      assert.equal(await graphic.isVisible(), true, `Mini chart ${index + 1} is visible at ${width}px`);
+      const svg = graphic.locator('svg');
+      const box = await svg.boundingBox();
+      assert.ok(box.width > 30 && box.height > 20, `Mini chart ${index + 1} retains useful dimensions at ${width}px`);
+      const card = await graphic.locator('xpath=ancestor::*[starts-with(@data-testid, "portfolio-kpi-")]').boundingBox();
+      assert.ok(box.x + box.width / 2 > card.x + card.width / 2, 'Mini charts remain right aligned within their cards');
+      assert.equal(await graphic.locator('.pp-kpi-graphic-caption').innerText(), 'Illustrative', 'Missing histories are visibly identified as illustrations');
+      assert.equal(await graphic.locator('.pp-kpi-graphic-caption').isVisible(), true);
+      assert.match(await svg.locator('title').textContent(), /illustrative reference graphic, not historical data/i);
+      if (index === 0) assert.ok(await svg.locator('rect').count() > 1, 'Active projects uses a bar mini chart');
+      else {
+        assert.ok(await svg.locator('path[stroke]').count() > 0, 'Other portfolio outcomes use line mini charts');
+        assert.ok(await svg.locator('path[fill^="url"]').count() > 0, 'Line mini charts include the reference area fill');
+      }
+    }
     if (width === 1672) {
-      const main = await page.getByTestId('portfolio-main-column').boundingBox();
-      const right = await page.getByTestId('portfolio-right-column').boundingBox();
-      assert.ok(main.width / (main.width + right.width) >= .65 && main.width / (main.width + right.width) <= .76, 'Portfolio reference uses approximately 70/30 columns');
-      assert.ok(Math.abs(main.y - right.y) < 3, 'Health aligns with the five portfolio outcomes');
-      const boxes = await Promise.all(['portfolio-outcomes', 'portfolio-decisions', 'portfolio-register', 'portfolio-delivery-outlook'].map(id => page.getByTestId(id).boundingBox()));
-      assert.ok(boxes.every((box, index) => !index || box.y >= boxes[index - 1].y + boxes[index - 1].height), 'Portfolio outcomes, decisions, register, then charts');
-      const outlook = boxes[3];
-      const exposure = await page.getByTestId('portfolio-margin-schedule').boundingBox();
-      assert.ok(exposure.x >= outlook.x + outlook.width && Math.abs(exposure.y - outlook.y) < 3, 'Lower two charts follow the reference side by side');
+      const outlook = await page.getByTestId('portfolio-delivery-outlook').boundingBox();
+      const health = await page.getByTestId('portfolio-health-summary').boundingBox();
+      const outcomes = await page.getByTestId('portfolio-outcomes').boundingBox();
+      const intervention = await page.locator('.pp-intervention-banner').boundingBox();
+      const register = await page.getByTestId('portfolio-register').boundingBox();
+      const decisions = await page.locator('.pp-interventions-panel').boundingBox();
+      const trend = await page.getByTestId('portfolio-margin-schedule').boundingBox();
+      const capacity = await page.getByTestId('portfolio-delivery-capacity').boundingBox();
+      assert.ok(outlook.width / (outlook.width + health.width) >= .54 && outlook.width / (outlook.width + health.width) <= .60, 'Portfolio uses the reference 57/43 paired layout');
+      assert.ok(Math.abs(outlook.y - health.y) < 3 && health.x >= outlook.x + outlook.width, 'Delivery outlook and health share the first content row');
+      assert.ok(outcomes.width >= outlook.width + health.width, 'Five KPI cards span the full content width');
+      assert.ok(intervention.y >= outcomes.y + outcomes.height && outlook.y >= intervention.y + intervention.height, 'Intervention strip sits between full-width KPIs and charts');
+      assert.ok(register.y >= outlook.y + outlook.height && Math.abs(register.y - decisions.y) < 3, 'Intervention register and decisions share the second row');
+      assert.ok(trend.y >= register.y + register.height && Math.abs(trend.y - capacity.y) < 3, 'Historical trend and capacity share the third row');
+      const cards = await page.locator('[data-testid^="portfolio-kpi-"]').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
+      assert.ok(cards.every(y => Math.abs(y - cards[0]) < 1), 'All five cards align on the desktop row');
     }
     await capture(page, `portfolio-${width}`);
+    if (width === 1672) await page.getByTestId('portfolio-outcomes').screenshot({ path: path.join(artifacts, 'portfolio-kpi-row.png') });
+    if (width === 390) {
+      const result = await new AxeBuilder({ page }).include('main.main-content').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+      if (result.violations.length) accessibilityIssues.push({ mode: 'mobile', violations: result.violations });
+    }
   }
   await assertGeometry(page, 1672);
-  checks.push('Five outcomes and 70/30 reference geometry at 1672; 1440/1024/390 responsive layouts preserve the configured sidebar width');
+  checks.push('Full-width five outcomes, intervention banner and 57/43 paired chart/register/capacity rows; 1440/1024/390 layouts preserve the sidebar');
+  checks.push('All five right-aligned mini charts remain visible at every viewport: one bar chart, four line/area charts, and explicit illustrative captions for unavailable histories');
+
+  if (process.argv.includes('--portfolio-visuals-only')) {
+    for (const [mode, dark] of [['light', false], ['dark', true]]) {
+      const state = await openPortfolio({ dark });
+      await assertGeometry(state.page, 1672);
+      await capture(state.page, `portfolio-${mode}`);
+      const result = await new AxeBuilder({ page: state.page }).include('main.main-content').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+      if (result.violations.length) accessibilityIssues.push({ mode, violations: result.violations });
+      await state.page.context().close();
+    }
+    await checkProtectedFiles();
+    await writeFile(path.join(artifacts, 'accessibility.json'), JSON.stringify(accessibilityIssues, null, 2));
+    assert.deepEqual(accessibilityIssues, [], 'Portfolio responsive light/dark accessibility');
+    checks.push('Final desktop/mobile layout and light/dark WCAG scans; protected sources unchanged');
+    await writeFile(path.join(artifacts, 'checks.json'), JSON.stringify({ checks, mode: 'portfolio_visuals_only', protectedHashesUnchanged: true }, null, 2));
+    await page.context().close();
+    for (const check of checks) console.log(`PASS portfolio: ${check}`);
+    return;
+  }
 
   const register = page.getByTestId('portfolio-register');
+  assert.equal(await page.getByRole('button', { name: 'Filter projects', exact: true }).getAttribute('aria-expanded'), 'false');
+  assert.match(await register.getByRole('heading').innerText(), /requiring intervention/);
+  await openRegisterTools(page, true);
   const search = page.getByRole('searchbox', { name: 'Search portfolio', exact: true });
   const health = page.getByRole('combobox', { name: 'Portfolio health', exact: true });
   const owner = page.getByRole('combobox', { name: 'Portfolio project owner', exact: true });
@@ -157,23 +216,33 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   checks.push('Real register search/client/code filtering, health/owner intersection, disabled unknown phase/business unit, pagination and currency-aware sorting');
 
   const contractText = await page.getByTestId('portfolio-kpi-contract_value').locator('.pp-outcome-value').innerText();
-  assert.match(contractText, /AED/); assert.match(contractText, /USD/);
+  assert.match(contractText, /AED/); assert.doesNotMatch(contractText, /USD/);
+  const projectCurrency = page.getByRole('combobox', { name: 'Portfolio reporting currency', exact: true });
+  const currencyRowsBefore = await rows(page).evaluateAll(nodes => nodes.map(node => node.dataset.testid));
+  await projectCurrency.selectOption('USD');
+  assert.match(await page.getByTestId('portfolio-kpi-contract_value').locator('.pp-outcome-value').innerText(), /USD 3\.9M/i);
+  assert.deepEqual(await rows(page).evaluateAll(nodes => nodes.map(node => node.dataset.testid)), currencyRowsBefore, 'Amount currency selector does not filter the original-currency project register');
+  await projectCurrency.selectOption('AED');
   assert.equal(await page.getByTestId('portfolio-kpi-active_projects').locator('.pp-outcome-value').innerText(), '7');
   for (const row of await rows(page).all()) {
-    assert.equal(await row.locator('td').nth(3).innerText(), '—', 'Forecast margins remain unknown');
-    assert.equal(await row.locator('td').nth(4).innerText(), '—', 'Schedule variances remain unknown');
+    assert.equal(await row.locator('td').nth(3).innerText(), '—', 'Schedule variances remain unknown');
+    assert.equal(await row.locator('td').nth(4).innerText(), '—', 'Forecast margins remain unknown');
   }
   assert.match(await page.getByTestId('portfolio-project-portfolio-4').innerText(), /No exceptions/);
   assert.doesNotMatch(await page.getByTestId('project-portfolio').innerText(), /On track|NaN|Infinity|undefined/);
   assert.match(await page.getByTestId('portfolio-delivery-capacity').innerText(), /not connected|unavailable/i);
-  assert.match(await page.getByTestId('portfolio-delivery-outlook').innerText(), /Completion forecast not connected/);
-  assert.equal(await page.getByRole('img', { name: 'Margin and schedule exposure chart unavailable', exact: true }).count(), 1);
+  assert.match(await page.getByTestId('portfolio-delivery-outlook').innerText(), /Awaiting approved margin and schedule reports/);
+  assert.match(await page.getByTestId('portfolio-margin-schedule').innerText(), /Awaiting approved monthly margin and schedule reports/);
+  assert.equal(await page.locator('.ppr-chart-mark').count(), 0, 'Unavailable source charts contain no invented project positions or historical points');
   assert.equal(await page.getByTestId('portfolio-health-count-critical').locator('strong').innerText(), '3');
   assert.equal(await page.getByTestId('portfolio-health-count-unknown').locator('strong').innerText(), '2');
-  const distribution = await page.locator('.pp-health-segment').evaluateAll(nodes => nodes.map(node => parseFloat(node.style.width)));
+  assert.equal(await page.getByTestId('portfolio-health-count-review').locator('strong').innerText(), '6', 'Needs review combines high, medium and low without double counting');
+  const distribution = await page.locator('.pp-health-segment').evaluateAll(nodes => nodes.map(node => parseFloat(node.getAttribute('stroke-dasharray'))));
   assert.ok(Math.abs(distribution.reduce((sum, number) => sum + number, 0) - 100) < .01);
-  assert.match(await page.getByTestId('portfolio-health-cause-governance').innerText(), /7 projects/);
+  assert.match(await page.getByTestId('portfolio-health-cause-governance').getAttribute('title'), /7 projects/);
+  await page.locator('.pp-health-details > summary').click();
   assert.equal(await page.getByTestId('portfolio-side-metric-revenue_at_risk').locator('strong').innerText(), '—');
+  await page.locator('.pp-additional-details > summary').click();
   assert.match(await page.getByTestId('portfolio-concentration-USD').innerText(), /100%/);
   assert.equal(await page.locator('[data-testid^="portfolio-milestone-"]').count(), 3);
   await page.getByRole('button', { name: 'View returned milestones', exact: true }).click();
@@ -182,7 +251,7 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   await page.getByTestId('portfolio-milestones').getByRole('button', { name: 'Show top 3', exact: true }).click();
   checks.push('Original currencies, actual active count and zero progress; financial forecast, schedule, phase and capacity gaps never become invented values');
 
-  const explain = page.getByRole('button', { name: 'About Contract value', exact: true });
+  const explain = page.getByRole('button', { name: 'About Total contract value', exact: true });
   await explain.click();
   const dialog = page.getByRole('dialog');
   await dialog.waitFor();
@@ -198,8 +267,8 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   assert.equal(await dialog.evaluate(node => node.getBoundingClientRect().right <= innerWidth), true);
   await page.getByRole('button', { name: 'Close definitions', exact: true }).click();
   await assertGeometry(page, 1672);
-  await page.getByRole('button', { name: 'View project register', exact: true }).click();
-  assert.equal(await register.evaluate(node => node === document.activeElement), true);
+  await page.getByRole('button', { name: 'Review interventions', exact: true }).click();
+  assert.equal(await page.getByTestId('portfolio-decisions').evaluate(node => node === document.activeElement), true);
   assert.equal(await actionRows(page).count(), 3);
   await page.getByRole('button', { name: 'Show 7 interventions', exact: true }).click();
   assert.equal(await actionRows(page).count(), 7);
@@ -218,7 +287,8 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   await portfolioReady(page);
   await page.reload();
   await portfolioReady(page);
-  checks.push('Definition focus/Escape/mobile containment, action expansion/context, register focus shortcut, authorized project links and persistent portfolio route');
+  await openRegisterTools(page, true);
+  checks.push('Definition focus/Escape/mobile containment, action expansion/context, intervention focus shortcut, authorized project links and persistent portfolio route');
 
   await search.fill('PRJ-001');
   assert.equal(await rows(page).count(), 1);
@@ -250,12 +320,14 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   for (const mode of ['light', 'dark']) {
     await page.evaluate(dark => document.documentElement.classList.toggle('dark', dark), mode === 'dark');
     await capture(page, `portfolio-${mode}`);
-    const result = await new AxeBuilder({ page }).include('main.main-content').withRules(['color-contrast', 'button-name', 'label', 'aria-valid-attr-value']).analyze();
+    const result = await new AxeBuilder({ page }).include('main.main-content').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
     if (result.violations.length) accessibilityIssues.push({ mode, violations: result.violations });
   }
 
   for (const fixture of ['portfolio-zero', 'portfolio-zero-contract', 'portfolio-incomplete', 'portfolio-missing', 'portfolio-restricted', 'portfolio-error', 'portfolio-health-error', 'portfolio-health-partial', 'portfolio-milestone-error', 'portfolio-unavailable', 'portfolio-truncated']) {
     const state = await openPortfolio({ fixture });
+    await openRegisterTools(state.page);
+    await state.page.locator('.pp-additional-details > summary').click();
     await unknownOutcomes(state.page);
     assert.doesNotMatch(await state.page.getByTestId('project-portfolio').innerText(), /NaN|Infinity|undefined/);
     if (fixture === 'portfolio-zero') {
@@ -269,9 +341,13 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
     }
     if (fixture === 'portfolio-incomplete') {
       const kpi = state.page.getByTestId('portfolio-kpi-contract_value');
+      assert.equal(await kpi.locator('.pp-outcome-value').innerText(), '—');
+      assert.match(await kpi.innerText(), /Contract data incomplete/);
+      assert.equal(await state.page.getByRole('combobox', { name: 'Portfolio reporting currency', exact: true }).inputValue(), 'AED', 'Incomplete amount remains withheld in the selected original currency');
+      await state.page.getByRole('combobox', { name: 'Portfolio reporting currency', exact: true }).selectOption('USD');
       assert.match(await kpi.locator('.pp-outcome-value').innerText(), /USD/);
       assert.doesNotMatch(await kpi.locator('.pp-outcome-value').innerText(), /AED|UNSPECIFIED/);
-      assert.match(await kpi.innerText(), /AED, UNSPECIFIED total withheld/);
+      await state.page.getByRole('combobox', { name: 'Portfolio reporting currency', exact: true }).selectOption('AED');
       assert.equal(await state.page.getByTestId('portfolio-project-portfolio-1').locator('td').nth(1).innerText(), '—');
       assert.deepEqual(await state.page.getByTestId('portfolio-concentration-AED').locator('td').allTextContents(), ['—', '—', '—']);
       assert.match(await state.page.getByTestId('portfolio-concentration-USD').innerText(), /100%/);
@@ -281,7 +357,10 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
     }
     if (fixture === 'portfolio-zero-contract') {
       const amounts = await state.page.getByTestId('portfolio-kpi-contract_value').locator('.pp-outcome-value').innerText();
-      assert.match(amounts, /AED 0/); assert.match(amounts, /USD 0/);
+      assert.equal(amounts, 'AED 0');
+      await state.page.getByRole('combobox', { name: 'Portfolio reporting currency', exact: true }).selectOption('USD');
+      assert.equal(await state.page.getByTestId('portfolio-kpi-contract_value').locator('.pp-outcome-value').innerText(), 'USD 0');
+      await state.page.getByRole('combobox', { name: 'Portfolio reporting currency', exact: true }).selectOption('AED');
       assert.equal(await state.page.getByTestId('portfolio-project-portfolio-1').locator('td').nth(1).innerText(), 'AED 0');
       assert.deepEqual(await state.page.getByTestId('portfolio-concentration-AED').locator('td').allTextContents(), ['—', '—', '—'], 'Zero denominator does not become a percentage share');
     }
@@ -304,7 +383,7 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
     }
     if (fixture === 'portfolio-missing') {
       assert.equal(await state.page.getByTestId('portfolio-kpi-active_projects').locator('.pp-outcome-value').innerText(), '5', 'Legacy fallback uses actual recorded active count');
-      assert.match(await state.page.getByTestId('project-portfolio').innerText(), /preview|extended reporting source/i);
+      assert.match(await state.page.getByTestId('portfolio-register').innerText(), /3 of 8 projects/, 'Legacy preview explicitly discloses its partial register coverage');
     }
     if (['portfolio-restricted', 'portfolio-error', 'portfolio-unavailable'].includes(fixture)) {
       assert.equal(await rows(state.page).count(), 0);

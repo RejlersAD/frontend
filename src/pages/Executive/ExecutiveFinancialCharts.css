@@ -25,6 +25,27 @@
 .cc-financial-page .ef-chart-empty > span { padding: 6px 12px; border: 1px solid #e7eef6; border-radius: 4px; background: #ffffffeb; }
 .cc-financial-page .ef-chart-working-capital .ef-chart-empty { inset-block: 21px 10px; font-size: 10px; }
 .cc-financial-page .ef-chart-working-capital .ef-chart-empty > span { padding-block: 4px; }
+.cc-financial-page .ef-chart-invoice-outlook { --ef-chart-height: 150px; --ef-invoice-colour: #1672ef; }
+.cc-financial-page .ef-chart-receivables-bars { --ef-invoice-colour: #1672ef; }
+.cc-financial-page .ef-chart-subtotal-note { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; color: var(--cc-muted, #536b8c); font-size: 9px; line-height: 12px; }
+.cc-financial-page .ef-chart-receivables-bars .ef-chart-tooltip { bottom: 34px; }
+
+/* The shared invoice-cohort chart keeps the financial board's typography and theme. */
+.cc-financial-page .eov-chart-company { position: relative; min-width: 0; --eov-chart-budget: #98a3b8; --eov-chart-collection: #00a76f; --eov-chart-margin: #8b5cf6; }
+.cc-financial-page .eov-chart-company > svg { display: block; width: 100%; height: 160px; overflow: visible; }
+.cc-financial-page .eov-chart-company .eov-chart-grid line,
+.cc-financial-page .eov-chart-company .eov-chart-grid-line { stroke: var(--cc-border, #e7eff7); stroke-width: 1; }
+.cc-financial-page .eov-chart-company :is(.eov-chart-grid text, .eov-chart-axis, .eov-chart-month, .eov-chart-axis-title) { fill: var(--cc-muted, #536b8c); font-family: inherit; font-size: 9px; font-weight: 400; }
+.cc-financial-page .eov-chart-company .eov-chart-axis-title { font-size: 8.5px; }
+.cc-financial-page .eov-chart-company .eov-chart-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 13px; min-height: 18px; margin-top: -7px; color: var(--cc-muted, #536b8c); font-size: 9px; line-height: 1.25; }
+.cc-financial-page .eov-chart-company .eov-chart-legend > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.cc-financial-page .eov-chart-company .eov-chart-legend i { display: inline-block; flex: 0 0 13px; width: 13px; height: 9px; border-radius: 1px; }
+.cc-financial-page .eov-chart-company .eov-chart-legend .eov-chart-key-budget { flex-basis: 24px; width: 24px; height: 0; border-top: 2px dashed var(--eov-chart-budget); }
+.cc-financial-page .eov-chart-company .eov-chart-legend :is(.eov-chart-key-collection, .eov-chart-key-margin) { position: relative; flex-basis: 24px; width: 24px; height: 0; border-top: 2px solid var(--eov-chart-collection); }
+.cc-financial-page .eov-chart-company :is(.eov-chart-key-collection, .eov-chart-key-margin)::after { position: absolute; top: -4px; left: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--eov-chart-collection); content: ''; }
+.cc-financial-page .eov-chart-company .eov-chart-legend .eov-chart-key-margin { border-color: var(--eov-chart-margin); }
+.cc-financial-page .eov-chart-company .eov-chart-key-margin::after { background: var(--eov-chart-margin); }
+.cc-financial-page .eov-chart-company .eov-chart-empty { position: absolute; inset: 25px 0 28px; display: flex; align-items: center; justify-content: center; color: var(--cc-muted, #536b8c); font-size: 11px; text-align: center; pointer-events: none; }
 @media (max-width: 600px) {
   .cc-financial-page .ef-chart-legend { gap: 3px 7px; font-size: 8px; }
   .cc-financial-page .ef-chart-empty { font-size: 10px; }
@@ -40,6 +61,8 @@
 .dark .cc-financial-page .ef-chart-empty > span { border-color: #294058; background: #132b44ed; }
 .dark .cc-financial-page .ef-chart-tooltip { border-color: #436483; color: #e0eeff; background: #183650; }
 .dark .cc-financial-page .ef-chart-mark:focus-visible { stroke: #e1efff; filter: none; }
+.dark .cc-financial-page :is(.ef-chart-invoice-outlook, .ef-chart-receivables-bars) { --ef-invoice-colour: #82b3ff; }
+.dark .cc-financial-page .eov-chart-company { --eov-chart-budget: #b4c6e5; --eov-chart-collection: #39d7a0; --eov-chart-margin: #c4a7ff; }
 @media print {
   .cc-financial-page .ef-chart { break-inside: avoid; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .cc-financial-page .ef-chart-tooltip { display: none; }
@@ -50,4 +73,6 @@
   .dark .cc-financial-page .ef-chart-margin-tick, .dark .cc-financial-page .ef-chart-business-margin { fill: #00877d; }
   .dark .cc-financial-page .ef-chart-empty { color: #61718b; }
   .dark .cc-financial-page .ef-chart-empty > span { border-color: #e7eef6; background: #ffffffeb; }
+  .cc-financial-page :is(.ef-chart-invoice-outlook, .ef-chart-receivables-bars) { --ef-invoice-colour: #1672ef; }
+  .cc-financial-page .eov-chart-company { --eov-chart-budget: #98a3b8; --eov-chart-collection: #00a76f; --eov-chart-margin: #8b5cf6; break-inside: avoid; print-color-adjust: exact; }
 }

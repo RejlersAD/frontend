@@ -192,3 +192,83 @@ export function WorkingCapitalChart({ rows = [], currency = '' }) {
   })}</g>)}</g>)}<MonthLabels rows={rows} x={x} y={height - 16} width={chart.width} /></svg>{!hasData && <EmptyState message="Working capital data not connected" />}<Tooltip text={chart.tooltip} /></div>;
 }
 WorkingCapitalChart.propTypes = { rows: PropTypes.arrayOf(PropTypes.shape({ month: PropTypes.string.isRequired, actual: numberProp, plan: numberProp })), currency: currencyProp };
+
+/** Next-period invoicing, preserving the Finance approval or estimate basis. */
+export function InvoiceOutlookChart({ rows = [], currency = 'AED', basis = 'unavailable' }) {
+  const chart = useChart();
+  const records = ['estimated', 'approved'].includes(basis) ? rows : [];
+  const label = basis === 'estimated' ? 'Estimated invoicing' : basis === 'approved' ? 'Approved forecast' : 'Invoicing forecast';
+  const colour = 'var(--ef-invoice-colour, #1672ef)';
+  const height = 150, left = 43, right = chart.width - 12, top = 28, bottom = 117;
+  const hasData = hasValues(records, ['value']);
+  const scale = extent(records.map(row => row.value));
+  const x = index => left + (index + 0.5) / Math.max(records.length, 1) * (right - left);
+  const y = value => top + (scale.max - value) / (scale.max - scale.min) * (bottom - top);
+  const description = basis === 'estimated'
+    ? `Estimated invoice amounts for the next calendar months in ${currency}. Dashed lines indicate estimates, not an approved Finance forecast.`
+    : `Finance-approved invoice forecast for the next calendar months in ${currency}.`;
+  return <div className="ef-chart ef-chart-invoice-outlook" ref={chart.ref} data-testid="ef-invoice-outlook-chart" data-basis={basis}>
+    <span className="ef-chart-unit">{currency}</span>
+    {basis !== 'unavailable' && <Legend series={[{ label, colour, line: true, dashed: basis === 'estimated' }]} />}
+    <svg viewBox={`0 0 ${chart.width} ${height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby={`${chart.id}-title ${chart.id}-description`}>
+      <ChartTitle id={chart.id} title={label} description={hasData ? description : `${label} unavailable.`} />
+      <Grid scale={scale} left={left} right={right} top={top} bottom={bottom} showValues={hasData} />
+      {lines(records, 'value').map((segment, segmentIndex) => <g key={segmentIndex}>
+        {segment.length > 1 && <polyline points={segment.map(point => `${x(point.index)},${y(point.value)}`).join(' ')} fill="none" stroke={colour} strokeWidth="1.8" strokeDasharray={basis === 'estimated' ? '5 3' : undefined} />}
+        {segment.map(point => {
+          const title = `${monthParts(records[point.index].month).join(' ')}, ${label}: ${money(point.value, currency)}`;
+          return <circle key={point.index} className="ef-chart-mark" {...chart.mark(title)} cx={x(point.index)} cy={y(point.value)} r="3.2" fill={colour} stroke="var(--cc-surface, #fff)" strokeWidth="1"><title>{title}</title></circle>;
+        })}
+      </g>)}
+      <MonthLabels rows={records} x={x} y={height - 17} width={chart.width} />
+    </svg>
+    {!hasData && <EmptyState message={`${label} unavailable`} />}
+    <Tooltip text={chart.tooltip} />
+  </div>;
+}
+InvoiceOutlookChart.propTypes = { rows: PropTypes.arrayOf(PropTypes.shape({ month: PropTypes.string.isRequired, value: numberProp })), currency: currencyProp, basis: PropTypes.oneOf(['estimated', 'approved', 'unavailable']) };
+
+function ReceivablesBars({ rows, currency, title, description, testId }) {
+  const chart = useChart();
+  const height = Math.max(150, rows.length * 19 + 45);
+  const left = Math.min(146, chart.width * 0.34), right = chart.width - 76, top = 25, bottom = height - 37;
+  const hasData = hasValues(rows, ['value']);
+  const partial = rows.some(row => row.partial && numeric(row.value) !== null);
+  const colour = 'var(--ef-invoice-colour, #1672ef)';
+  const scale = extent(rows.map(row => row.value));
+  const x = value => left + (value - scale.min) / (scale.max - scale.min) * (right - left);
+  const slot = (bottom - top) / Math.max(rows.length, 1);
+  return <div className="ef-chart ef-chart-receivables-bars" ref={chart.ref} data-testid={testId} style={{ '--ef-chart-height': `${height}px` }}>
+    <span className="ef-chart-unit">{currency}</span><Legend series={[{ label: 'Current receivables', colour }]} />
+    <svg viewBox={`0 0 ${chart.width} ${height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby={`${chart.id}-title ${chart.id}-description`}>
+      <ChartTitle id={chart.id} title={title} description={`${description} Amounts are in ${currency}. ${partial ? 'Asterisks mark known subtotals with missing balances excluded.' : ''}`} />
+      {scale.ticks.map(tick => <g key={tick}><line className="ef-chart-vertical-grid" x1={x(tick)} x2={x(tick)} y1={top - 3} y2={bottom} />{hasData && <text className="ef-chart-category" x={x(tick)} y={height - 23} textAnchor="middle">{compact(tick)}</text>}</g>)}
+      {rows.map((row, index) => {
+        const value = numeric(row.value), y = top + slot * (index + 0.5);
+        const label = `${row.label}, current receivables: ${money(value, currency)}${row.partial && value !== null ? '; known subtotal, missing balances excluded' : ''}`;
+        return <g key={row.id || `${row.label}-${index}`}>
+          <text className="ef-chart-business-name" x={left - 8} y={y + 3} textAnchor="end"><title>{row.label}</title>{short(row.label, chart.width < 380 ? 15 : 25)}</text>
+          {value !== null && (value === 0
+            ? <line className="ef-chart-mark" {...chart.mark(label)} x1={x(0)} x2={x(0)} y1={y - 4} y2={y + 4} stroke={colour} strokeWidth="2"><title>{label}</title></line>
+            : <rect className="ef-chart-mark" {...chart.mark(label)} x={Math.min(x(0), x(value))} y={y - 4} width={Math.abs(x(value) - x(0))} height="8" fill={colour} fillOpacity={row.partial ? 0.75 : 1} rx="1"><title>{label}</title></rect>)}
+          <text className="ef-chart-value" x={right + 9} y={y + 3}>{value === null ? '—' : `${compact(value)}${row.partial ? '*' : ''}`}</text>
+        </g>;
+      })}
+    </svg>
+    {!hasData && <EmptyState message="Receivables data unavailable" />}
+    {partial && <p className="ef-chart-subtotal-note">* Known subtotals; missing balances excluded.</p>}
+    <Tooltip text={chart.tooltip} />
+  </div>;
+}
+const receivablesRowsProp = PropTypes.arrayOf(PropTypes.shape({ id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), label: PropTypes.string.isRequired, value: numberProp, partial: PropTypes.bool }));
+ReceivablesBars.propTypes = { rows: receivablesRowsProp.isRequired, currency: currencyProp.isRequired, title: PropTypes.string.isRequired, description: PropTypes.string.isRequired, testId: PropTypes.string.isRequired };
+
+export function ReceivablesAgeingChart({ rows = [], currency = 'AED' }) {
+  return <ReceivablesBars rows={rows} currency={currency} title="Current receivables ageing" description="Current outstanding invoice balances grouped by days past due; this is a current balance distribution, not a historical working-capital trend." testId="ef-receivables-ageing-chart" />;
+}
+ReceivablesAgeingChart.propTypes = { rows: receivablesRowsProp, currency: currencyProp };
+
+export function CustomerReceivablesChart({ rows = [], currency = 'AED' }) {
+  return <ReceivablesBars rows={rows} currency={currency} title="Receivables by client" description="Current outstanding invoice balances for the displayed clients; these are receivables, not business-unit revenue." testId="ef-customer-receivables-chart" />;
+}
+CustomerReceivablesChart.propTypes = { rows: receivablesRowsProp, currency: currencyProp };
