@@ -60,6 +60,9 @@ export const planningIntelligenceService = {
   decideEvidenceReview: async (projectId, payload, params = {}) => (
     await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/decisions/`, payload, { params, suppressErrorToast: true })
   ).data,
+  startBulkEvidenceReview: async (projectId, payload, signal) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/bulk/`, payload, { signal, suppressErrorToast: true })
+  ).data,
   materializeAcceptedEvidence: async (projectId, revision, activate = false, masterRevision) => (
     await apiClient.post(`${PLANNING_ENDPOINTS.project(projectId)}evidence-review/materialize/`, { revision, ...(activate ? { activate: true, master_revision: masterRevision } : {}) }, { suppressErrorToast: true })
   ).data,
@@ -103,7 +106,7 @@ export const planningIntelligenceService = {
   decideScheduleDefaultProposal: async (id, decision, comment = '') => (
     await apiClient.post(PLANNING_ENDPOINTS.scheduleDefaultProposalDecision(id), { decision, comment })
   ).data,
-  getJob: async (jobId) => (await apiClient.get(PLANNING_ENDPOINTS.job(jobId))).data,
+  getJob: async (jobId, signal) => (await apiClient.get(PLANNING_ENDPOINTS.job(jobId), { signal, suppressErrorToast: true })).data,
   listJobs: async projectId => unwrapList(await apiClient.get(
     PLANNING_ENDPOINTS.jobs, { params: projectId ? { project: projectId } : {} },
   )),

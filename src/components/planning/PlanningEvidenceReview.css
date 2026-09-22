@@ -122,3 +122,30 @@
 @media (max-width: 650px) { .per-heading-actions { width: 100%; justify-content: flex-start; } }
 .dark .planning-evidence-review :is(.per-prepare-notice, .per-decision-bar) { background: #14273f; border-color: #365170; color: #e5efff; }
 .dark .planning-evidence-review :is(.per-prepare-notice p, .per-prepare-notice small, .per-decision-help) { color: #b6c9e2; }
+.per-bulk { margin: 12px 0; padding: 13px; border: 1px solid #b8cdeb; border-radius: 6px; background: #f6f9ff; min-width: 0; }
+.per-bulk-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.per-bulk-heading h4 { margin: 0 0 5px; font-size: 13px; color: #163660; }
+.per-bulk-heading p { max-width: 650px; color: #405d80; font-size: 11px; line-height: 1.5; }
+.per-bulk-actions { display: flex; flex-wrap: wrap; gap: 7px; flex-shrink: 0; }
+.planning-evidence-review .per-bulk-counts { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 12px 0; }
+.planning-evidence-review .per-bulk-counts > div { display: flex; flex-direction: column; gap: 4px; padding: 0; }
+.per-bulk-counts dt { font-size: 11px; }
+.per-bulk-counts dd { font-size: 17px; font-weight: 600; color: #163660; }
+.per-bulk-reason { font-size: 11px; margin: 7px 0; }
+.per-bulk-reason label { display: flex; flex-direction: column; gap: 5px; margin: 7px 0; }
+.per-bulk-reason textarea { min-height: 62px; max-width: 700px; resize: vertical; }
+.per-bulk-note, .per-bulk-reason small { display: block; font-size: 11px; color: #405d80; line-height: 1.5; overflow-wrap: anywhere; }
+.per-bulk-result { border-top: 1px solid #cddcf0; margin-top: 10px; padding-top: 10px; }
+.per-bulk-status { display: flex; align-items: center; gap: 7px; margin-bottom: 7px !important; }
+.per-bulk progress { width: 100%; max-width: 700px; height: 9px; accent-color: #0751df; margin: 3px 0 6px; }
+.per-bulk-groups, .per-bulk-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0; }
+.per-bulk-groups > span, .per-bulk-filter > span { font-size: 11px; color: #405d80; margin-right: 4px; }
+.per-bulk-groups button { font-size: 11px; }
+.per-bulk-groups button[aria-pressed="true"] { background: #e7efff; border-color: #0751df; }
+.dark .planning-evidence-review .per-bulk { background: #14273f; border-color: #365170; color: #e5efff; }
+.dark .planning-evidence-review .per-bulk :is(h4, dd) { color: #e5efff; }
+.dark .planning-evidence-review .per-bulk :is(.per-bulk-heading p, .per-bulk-note, dt, small, .per-bulk-groups > span, .per-bulk-filter > span) { color: #b6c9e2; }
+.dark .planning-evidence-review .per-bulk-result { border-color: #365170; }
+.dark .planning-evidence-review .per-bulk-reason > summary { color: #aacbff; }
+@media (max-width: 1100px) { .per-bulk-heading { flex-direction: column; } .per-bulk-actions { flex-shrink: 1; } }
+@media (max-width: 650px) { .per-bulk { padding: 10px; } .per-bulk-actions { width: 100%; } .per-bulk-actions button { flex: 1 1 180px; } .planning-evidence-review .per-bulk-counts { gap: 10px 18px; } }
