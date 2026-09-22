@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react'
 import apiClient, { apiClientLongTimeout } from '../../services/api.service'
+import { planningIntelligenceService as planningService } from '../../services/planningIntelligence.service'
 import { CLAUDE_MODEL_OPTIONS, DEFAULT_CLAUDE_MODEL, PLANNING_ENDPOINTS } from '../../config/planningIntelligence.config'
 import PlanningInputsPanel from './PlanningInputsPanel'
 import PlanningReviewPanel from './PlanningReviewPanel'
@@ -183,12 +184,20 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
         if (current.canonical_version) {
           // Saved schedule drafts use reviewed generation, not the independent
           // working-draft analysis endpoint. can_edit only describes that editor.
-          if ((!current.permissions?.can_generate_plan && !current.permissions?.can_build_source_logic) || current.state === 'submitted') {
-            throw new Error(current.state === 'submitted' ? 'Complete the current schedule review before generating a new draft.' : 'Your access does not permit generating a schedule draft.')
+          if (current.state === 'submitted') throw new Error('Complete the current schedule review before generating a new draft.')
+          const canBuildSourceLogic = current.permissions?.can_build_source_logic === true
+          let canGenerate = current.permissions?.can_generate_plan
+          // Older schedule responses omit this capability. Ask the generation
+          // endpoint instead of mistaking a missing field for an access denial.
+          // An explicit denial must never fall back to a different permission.
+          if (canGenerate === undefined && !canBuildSourceLogic) {
+            const generation = await planningService.listPlanningBuilds(projectId)
+            canGenerate = generation.permissions?.can_preview === true
           }
+          if (canGenerate !== true && !canBuildSourceLogic) throw new Error('Your access does not permit generating a schedule draft.')
           if (alive.current) {
             setRebuild(null); setDialog(null)
-            setGenerationRequest(current.permissions?.can_build_source_logic ? 'source_logic' : 'plan')
+            setGenerationRequest(canBuildSourceLogic ? 'source_logic' : 'plan')
             setRefreshKey(value => value + 1)
           }
           return { requires_generation: true }
