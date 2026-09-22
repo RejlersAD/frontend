@@ -13,6 +13,7 @@ import PlanningProfilePanel from './PlanningProfilePanel'
 import PlanningBuildDrawer from './PlanningBuildDrawer'
 import PlanningContextDrawer from './PlanningContextDrawer'
 import PlanningExportPanel from './PlanningExportPanel'
+import GanttPdfExportPanel from './GanttPdfExportPanel'
 import PlanningRiskRegister from './PlanningRiskRegister'
 import PlanningResourceRequirements from './PlanningResourceRequirements'
 import PlanningResourcePlan from './PlanningResourcePlan'
@@ -227,7 +228,7 @@ export default function PlanningScheduleCanvas({ plan, tasks, disciplines, savin
     {warningsOpen && <ScheduleWarnings issues={[...blockerGroups, ...warnings]} staleInputs={Boolean(plan.stale_inputs)} sourceTimingGap={Boolean(sourceTimingGap)} onClose={closeWarnings} onReview={() => setTab('assurance')} onInputs={onInputs} onSources={() => setTab('source-schedule')}>
       {plan.source_logic && <PlanningSourceLogicSummary logic={plan.source_logic} onViewSource={onVersionChange} />}
     </ScheduleWarnings>}
-    {exportOpen && <PlanningContextDrawer title="Export schedule" onClose={() => setExportOpen(false)}><PlanningExportPanel versionId={plan.version_id} /></PlanningContextDrawer>}
+    {exportOpen && <PlanningContextDrawer title="Export schedule" onClose={() => setExportOpen(false)}><GanttPdfExportPanel plan={plan} tasks={tasks} disciplines={disciplines} filters={{ search, discipline, criticalOnly }} zoom={zoom} showLogic={showLogic} showBaseline={showBaseline} /><PlanningExportPanel versionId={plan.version_id} /></PlanningContextDrawer>}
     {sourceLogicOpen && <PlanningSourceLogic key={`${plan.version_id}:${plan.master_revision}`} projectId={plan.project_id || plan.project?.id} sourceVersionId={plan.version_id} masterRevision={plan.master_revision} readOnly={!canBuildSourceLogic || saving || buildingSchedule} onClose={() => setSourceLogicOpen(false)} onApplied={result => { setSourceLogicOpen(false); setSelectedId(null); setTab('activities'); onOpenCreatedSchedule?.(result) }} />}
     {buildOpen && <PlanningBuildDrawer projectId={plan.project_id || plan.project?.id} readOnly={contextReadOnly} onClose={() => setBuildOpen(false)} onProfile={() => { setBuildOpen(false); setProfileOpen(true) }} onEvidence={id => { setBuildOpen(false); setEvidenceFactId(id); setTab('evidence') }} onApplied={result => { setBuildOpen(false); setSelectedId(null); setTab('activities'); onOpenCreatedSchedule?.(result) }} />}
     {profileOpen && <PlanningProfilePanel projectId={plan.project_id || plan.project?.id} readOnly={contextReadOnly} onClose={() => setProfileOpen(false)} onChanged={onRefresh} />}

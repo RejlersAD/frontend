@@ -85,6 +85,7 @@ export async function masterScheduleHarness(page, options = {}) {
       const send = async (body, status = 200) => { await reply(route, body, status); return true }
       const json = () => route.request().postDataJSON()
       const write = data => state.writes.push({ method, path, data })
+      if (path.endsWith('/rbac/users/me/') && method === 'GET') return send({ module_actions: { planning_package: ['read', 'export'] } })
       if (path.endsWith('/evidence-review/') && method === 'GET') return send({
         graph_id: null, revision: 0, readiness: { calculation: { ready: false, reasons: ['Evidence has not been prepared.'] }, baseline: { eligible: false, reasons: ['Evidence has not been reviewed.'] } },
         issues: [], facts: [], decisions: [], warnings: [], permissions: { can_review: true, can_supply_inputs: true, can_link: true },
