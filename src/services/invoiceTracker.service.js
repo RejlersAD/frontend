@@ -46,6 +46,16 @@ const invoiceTrackerService = {
     return r.data
   },
 
+  async duplicates(filters = {}) {
+    const r = await apiClient.get(`${BASE}/invoices/duplicates/?${buildParams(filters).toString()}`)
+    return r.data
+  },
+
+  async resolveDuplicates({ group_token, keep_token }) {
+    const r = await apiClient.delete(`${BASE}/invoices/duplicates/`, { data: { group_token, keep_token } })
+    return r.data
+  },
+
   async stats(filters = {}) {
     const p = buildParams(filters)
     const r = await apiClient.get(`${BASE}/invoices/stats/?${p.toString()}`)
