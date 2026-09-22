@@ -96,6 +96,16 @@
 .aw-dialog::backdrop { background: #0f234466; }
 .aw-dialog > header { justify-content: space-between; padding: 18px; border-bottom: 1px solid #d8e5f5; }
 .aw-dialog-body { padding: 18px; }
+.aw-setup-dialog { width: min(960px, calc(100vw - 32px)); }
+.aw-setup-dialog > header { position: sticky; top: 0; z-index: 2; background: #fff; }
+.aw-setup-body { padding: 14px; }
+.aw-setup-dialog .aw-workspace { margin: 0; border: 0; }
+.aw-setup-dialog .aw-header { padding: 0 0 12px; }
+.aw-setup-dialog .aw-upload { padding: 0; }
+.aw-setup-dialog .aw-content { padding: 12px 0 0; }
+.aw-setup-dialog .aw-upload .aw-file { flex: 1 1 360px; }
+.aw-setup-dialog .aw-saved-file { flex: 1 1 100%; flex-wrap: wrap; }
+.aw-setup-dialog .aw-saved-file select { min-width: 0; max-width: min(480px, 100%); }
 .aw-dialog .aw-error { margin: 0 0 12px; }
 .aw-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 15px 0; }
 .aw-fields label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }

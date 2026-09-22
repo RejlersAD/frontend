@@ -74,7 +74,7 @@ function AgreementFileInput({ file, onChange, disabled, label = 'Agreement docum
   return <label className="aw-file" htmlFor={id}><span><Upload size={16} aria-hidden="true" />{file?.name || 'Choose agreement document'}</span><input id={id} aria-label={label} type="file" accept=".pdf,.docx,.xlsx,.csv,.txt" disabled={disabled} onChange={event => onChange(event.target.files?.[0] || null)} /></label>
 }
 
-export default function AgreementWorkspace({ workspace, view }) {
+export default function AgreementWorkspace({ workspace, view, embedded = false }) {
   const { data, loading, error, busy, running, reload, analyze, accept } = workspace
   const [file, setFile] = useState(null)
   const [savedFile, setSavedFile] = useState('')
@@ -99,7 +99,9 @@ export default function AgreementWorkspace({ workspace, view }) {
   const submit = async () => { if ((file || savedFile) && !fileError(file) && await analyze(file || Number(savedFile), token)) { setFile(null); setSavedFile(''); setReplace(false) } }
   const acceptInputs = () => accept(selectedIds.length ? { selected_fact_ids: selectedIds, reason: reason.trim() } : undefined)
   return <section className="aw-workspace" aria-label="Agreement project setup" aria-busy={Boolean(busy || loading)}>
+    {(!embedded || draft) && <>
     <header className="aw-header"><div className="aw-heading"><Sparkles size={18} aria-hidden="true" /><div><h2>{draft ? 'Agreement project draft' : 'Set up project from an agreement'}</h2><p>{draft ? 'One source, shared across all project work areas.' : 'Upload once to extract scope, timing, commercial terms, milestones and requirements.'}</p></div>{accepted && <span className="aw-badge aw-accepted"><CheckCircle2 size={13} aria-hidden="true" />Supported inputs accepted</span>}</div><div className="aw-actions">{draft && (!accepted || hasConflictChoices) && <button type="button" className="aw-button aw-primary" disabled={locked || !canAccept || (supported === 0 && !selectedIds.length) || (selectedIds.length > 0 && reason.trim().length < 20)} onClick={acceptInputs}>{busy === 'accept' ? <><Loader2 size={15} className="aw-spin" aria-hidden="true" />Building draft…</> : 'Accept supported inputs & build draft'}</button>}{draft && <button type="button" className="aw-button aw-icon" aria-label={expanded ? 'Collapse agreement draft' : 'Expand agreement draft'} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}><ChevronDown size={17} className={expanded ? 'aw-chevron-open' : ''} aria-hidden="true" /></button>}</div></header>
+    </>}
     {error && <div className="aw-error" role="alert"><AlertTriangle size={16} aria-hidden="true" /><span>{error}</span><button type="button" className="aw-button" onClick={reload} disabled={Boolean(busy)}><RefreshCw size={14} aria-hidden="true" />Check progress</button></div>}
     {draft?.stale && <div className="aw-error" role="alert"><AlertTriangle size={16} aria-hidden="true" /><span>Agreement sources have changed. Analyze the current document to refresh these inputs.</span></div>}
     {loading && !data && <p className="aw-status" role="status"><Loader2 size={16} className="aw-spin" aria-hidden="true" />Loading saved agreement workspace…</p>}
@@ -116,6 +118,21 @@ export default function AgreementWorkspace({ workspace, view }) {
       {!canAccept && !accepted && <p className="aw-note">{data.permissions?.accept_reason || (draft.stale ? 'Analyze the current source files before accepting inputs.' : running ? 'Agreement analysis is in progress.' : 'Project update permission is required to accept supported inputs.')}</p>}
     </div>}
   </section>
+}
+
+export function AgreementSetupDialog({ open, workspace, view, onClose }) {
+  const ref = useRef(null)
+  const id = useId()
+  useEffect(() => {
+    if (!open) return undefined
+    const dialog = ref.current, opener = document.activeElement
+    dialog.showModal()
+    return () => { dialog.close(); if (opener?.isConnected) opener.focus({ preventScroll: true }) }
+  }, [open])
+  return <dialog className="aw-dialog aw-setup-dialog" ref={ref} aria-labelledby={`${id}-title`} onCancel={event => { event.preventDefault(); onClose() }}>
+    <header><div><h2 id={`${id}-title`}>Analyze &amp; set up project</h2><p>Choose an agreement to prepare project inputs, or review the saved analysis.</p></div><button type="button" className="aw-button aw-icon" aria-label="Close agreement setup" onClick={onClose}><X size={18} aria-hidden="true" /></button></header>
+    <div className="aw-setup-body"><AgreementWorkspace workspace={workspace} view={view} embedded /></div>
+  </dialog>
 }
 
 export function AgreementCreateDialog({ initialValues = {}, onClose, onCreated }) {
