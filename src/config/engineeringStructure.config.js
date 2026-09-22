@@ -328,16 +328,6 @@ export const ENGINEERING_DISCIPLINES = {
     gradient: 'from-pink-500 to-pink-600',
     order: 7,
     subFeatures: [
-      {
-        id: 'specCustomization',
-        name: 'Spec Customization',
-        fullName: 'Specification Customization',
-        icon: CircleStackIcon,
-        path: '/engineering/digitization/spec-customization',
-        description: 'AI-powered spec generation and customization',
-        moduleCode: 'spec_customization',
-        badge: ''
-      },
       ...(ENABLE_DIGITIZATION_DATASHEET_FEATURE
         ? [{
           id: 'digitizationDatasheet',
@@ -366,8 +356,8 @@ export const ENGINEERING_DISCIPLINES = {
         fullName: 'SmartPlant 3D Integration',
         icon: CubeIcon,
         path: '/engineering/digitization/smart-plant-3d',
-        description: 'Extract and synchronize data from SmartPlant 3D models and databases',
-        moduleCode: 'smart_plant_3d',
+        description: 'SmartPlant 3D integration and paper specification workflows',
+        moduleCode: 'spec_customization',
         badge: ''
       }
       // SOFT-CODED: 'Valve Standards Reference' is NOT a separate sidebar entry —

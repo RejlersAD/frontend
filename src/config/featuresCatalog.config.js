@@ -180,11 +180,11 @@ export const FEATURES_CATALOG = {
         }
       },
       {
-        id: 'eng-spec-customization',
-        name: 'Spec Customization',
-        shortName: 'Specs',
-        description: 'AI-powered specification generation and customization',
-        path: '/engineering/digitization/spec-customization',
+        id: 'eng-smart-plant-3d',
+        name: 'Smart Plant 3D',
+        shortName: 'SP3D',
+        description: 'SmartPlant 3D integration and AI-powered paper specification workflows',
+        path: '/engineering/digitization/smart-plant-3d?tab=paper-specification',
         moduleCode: 'spec_customization',
         status: FEATURE_STATUS.BETA,
         badges: [FEATURE_BADGES.AI_POWERED, FEATURE_BADGES.BETA],
