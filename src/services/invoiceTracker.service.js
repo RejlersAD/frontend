@@ -59,16 +59,17 @@ const invoiceTrackerService = {
   },
 
   /**
-   * Bulk-import a customer-invoice Excel master file.
+   * Publish a receivables workbook or explicitly update the invoice register.
    *
    * @param {File}    file        the .xlsx upload
-   * @param {string}  sheetsCsv   optional comma-separated sheet whitelist
-   * @returns import counters: {rows_created, rows_updated, rows_skipped, errors[]}
+   * @param {object} options  purpose and optional register sheet whitelist
+   * @returns publication details or invoice-register import counters
    */
-  async importExcel(file, sheetsCsv = '') {
+  async importExcel(file, { mode = 'workbook', sheets = '' } = {}) {
     const fd = new FormData()
     fd.append('file', file)
-    if (sheetsCsv) fd.append('sheets', sheetsCsv)
+    fd.append('mode', mode)
+    if (mode === 'operational' && sheets) fd.append('sheets', sheets)
     const r = await apiClient.post(`${BASE}/invoices/import-excel/`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
