@@ -26,7 +26,8 @@ test('manual activities save phase, deliverable, typed dependencies and constrai
     dependency_details: [{ task_id: 'register-1', type: 'FF', lag_days: 1.1 }],
   })
   await page.reload()
-  await workspace.getByRole('button', { name: 'Edit duration for Validate commissioned package', exact: true }).click()
+  await workspace.getByRole('button', { name: 'Validate commissioned package', exact: true }).click()
+  await page.getByRole('complementary', { name: 'Activity details', exact: true }).getByRole('button', { name: 'Edit activity', exact: true }).click()
   const reopened = page.getByRole('dialog', { name: 'Edit task', exact: true })
   await expect(reopened.getByLabel('WBS phase', { exact: true })).toHaveValue('Commissioning')
   await expect(reopened.getByLabel('WBS deliverable', { exact: true })).toHaveValue('Accepted system')
@@ -37,7 +38,7 @@ test('manual activities save phase, deliverable, typed dependencies and constrai
   await reopened.getByRole('button', { name: 'Save task', exact: true }).click()
   await expect(reopened).toHaveCount(0)
   for (const type of ['SS', 'SF']) {
-    await workspace.getByRole('button', { name: 'Edit duration for Validate commissioned package', exact: true }).click()
+    await page.getByRole('complementary', { name: 'Activity details', exact: true }).getByRole('button', { name: 'Edit activity', exact: true }).click()
     await reopened.getByRole('combobox', { name: `Relationship to ${registerNames[0]}`, exact: true }).selectOption(type)
     await reopened.getByRole('button', { name: 'Save task', exact: true }).click()
     await expect(reopened).toHaveCount(0)

@@ -2,9 +2,10 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
 import { buildPrimaveraModel, flattenPrimaveraModel, isScheduleMilestone, scheduleDate, scheduleNumber } from '../../utils/primaveraSchedule'
 import { buildPrimaveraTimeline } from '../../utils/primaveraTimeline'
-import { buildPrimaveraDependencies, scheduleSequenceStyle } from '../../utils/primaveraDependencies'
+import { buildPrimaveraDependencies, scheduleDependencyEntries, scheduleSequenceStyle } from '../../utils/primaveraDependencies'
 import { durationEvidenceLabel, durationUnit, durationUnitLabel, missingSourceDuration } from '../../utils/planningDurationEvidence'
 import { dateEvidenceLabel, floatEvidenceLabel, missingDateLabel, missingFloatLabel } from '../../utils/planningDateEvidence'
+import GanttCellEditor from './GanttCellEditor'
 import './PrimaveraActivitiesGantt.css'
 
 const DAY = 86400000
@@ -14,7 +15,8 @@ const iso = value => new Date(value).toISOString().slice(0, 10)
 const rowTone = depth => `p6-level-${depth % PALETTE.length}`
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const defaultSplit = available => Math.max(400, available * .4)
-const hasOriginalDuration = item => item?.original_duration_days != null && item.original_duration_days !== '' && Number.isFinite(Number(item.original_duration_days))
+const hasOriginalDuration = item => !['planner', 'manual', 'retained_manual', 'manual_unverified'].includes(item?.duration_source)
+  && item?.original_duration_days != null && item.original_duration_days !== '' && Number.isFinite(Number(item.original_duration_days))
 const durationDays = (value, unit = 'days') => {
   const formatted = scheduleNumber(value)
   const suffix = { hours: 'h', weeks: 'w', months: 'mo', calendar_days: 'cd' }[unit] || 'd'
@@ -27,12 +29,16 @@ const COLUMNS = [
   { key: 'start', label: 'Start', width: 80, min: 70, max: 240 },
   { key: 'finish', label: 'Finish', width: 80, min: 70, max: 240 },
   { key: 'float', label: 'Total Float', width: 64, min: 50, max: 240 },
+  { key: 'logic', label: 'Logic', width: 64, min: 50, max: 240 },
 ]
 
 export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, search = '', discipline = 'all', criticalOnly = false,
   display = 'deliverables', level = 'activities', zoom = 'week', fitTimeline = false, selectedId, locked = false, showTimeline = true, showLogic = true,
-  timelineFocus = false, onTimelineFocusChange, onSelect, onEdit, onInputs }) {
+  timelineFocus = false, onTimelineFocusChange, onSelect, onEdit, onInputs, onCellEdit, onLogicEdit }) {
   const [collapsed, setCollapsed] = useState(new Set())
+  const [editing, setEditing] = useState(null)
+  const editTrigger = useRef(null)
+  const closeCell = () => { setEditing(null); requestAnimationFrame(() => editTrigger.current?.querySelector('button')?.focus({ preventScroll: true })) }
   const sourceOnly = plan.duration_policy === 'source_only' || plan.evidence_policy === 'document_driven' || Boolean(plan.duration_review)
   const displayedDate = (item, field, summary) => item[`display_${field}_date`]
     ? scheduleDate(item[`display_${field}_date`]) : missingDateLabel(item, field, { sourceOnly, summary })
@@ -142,6 +148,7 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
       : 'Calculated total float in working days. A dash means the value is not available.'
 
   return <section className="primavera-gantt" aria-label="Schedule activities and Gantt" data-view-level={level} data-timeline-focus={timelineFocus && showTimeline ? 'true' : 'false'} style={{ '--p6-left-width': `${tablePane}px`, '--p6-table-width': `${tableContentWidth}px`, '--p6-column-tracks': columnTracks, '--p6-gutter': `${gutter}px`, '--p6-split-width': showTimeline ? '6px' : '0px' }}>
+    {onCellEdit && (!locked || editing) && <p className="p6-edit-hint">Click Duration, Start or Finish to edit. Enter or leave the cell to save; Escape cancels. Use Logic to change relationships.</p>}
     <div ref={shellRef} className="p6-shell">
       <div ref={viewportRef} className="p6-viewport" role="region" aria-label="Scroll project activities and dependencies" tabIndex={0}
         onPointerDownCapture={event => { pointerFocus.current = event.target.closest?.('button, [tabindex]') }}
@@ -149,7 +156,7 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
         onKeyDownCapture={() => { pointerFocus.current = null }}
         onFocusCapture={event => { if (pointerFocus.current !== event.target) revealColumn(event) }}
         onClickCapture={event => { pointerFocus.current = null; if (!event.target.closest?.('.p6-column-resizer')) revealColumn(event) }}>
-        <div className="p6-grid-content"><div role="treegrid" aria-label="Project activity schedule" aria-colcount={showTimeline ? 8 : 7}>
+        <div className="p6-grid-content"><div role="treegrid" aria-label="Project activity schedule" aria-colcount={showTimeline ? 9 : 8}>
         <div className="p6-heading p6-row" role="row"><div className="p6-left-clip"><div className="p6-table-row" role="presentation">
           <span role="columnheader" aria-label="Row number">#</span>{COLUMNS.map(column => <span key={column.key} role="columnheader" data-column={column.key} aria-label={column.key === 'duration' ? durationHeading : column.label} title={column.key === 'duration' ? durationHelp : column.key === 'float' ? floatHelp : column.label} className="p6-resizable-header">
             <span className="p6-column-label">{column.key === 'duration' ? originalDurations ? <>Original <br />Duration</> : 'Duration' : column.key === 'float' ? <>Total <br />Float</> : column.label}</span>
@@ -182,7 +189,8 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
           const phase = summary ? null : scheduleSequenceStyle(row.task, { unspecifiedLabel: plan.source_logic ? 'Other activities' : 'Unspecified phase' })
           const stageLabel = summary ? null : row.task.workflow_stage_name || row.task.metadata?.workflow_stage_name
             || (row.task.workflow_stage_code || row.task.metadata?.workflow_stage_code)?.replaceAll('_', ' ')
-          const originalDuration = hasOriginalDuration(item)
+          const plannerDuration = ['planner', 'manual', 'retained_manual', 'manual_unverified'].includes(item.duration_source)
+          const originalDuration = !plannerDuration && hasOriginalDuration(item)
           const missingDuration = !summary && missingSourceDuration(row.task)
           const proposedDuration = !originalDuration && (summary ? row.node.descendantTasks.some(task => task.duration_source === 'proposed') : row.task.duration_source === 'proposed')
           const durationValue = originalDuration ? item.original_duration_days : item.duration_days
@@ -193,6 +201,17 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
           const rawTask = row.task?.originalTask
           const select = () => { if (!summary) onSelect(rawTask) }
           const edit = field => { if (!summary && !locked) onEdit(rawTask, field) }
+          const startCell = (field, event) => {
+            if (summary || locked || editing) return
+            if (!onCellEdit) { edit(field); return }
+            editTrigger.current = event.currentTarget.parentElement
+            setEditing({ id: row.id, field })
+          }
+          const editableCell = (field, value, displayValue, help) => editing?.id === row.id && editing.field === field
+            ? <GanttCellEditor key={`${row.id}:${field}`} field={field} title={title} initialValue={value} milestone={isScheduleMilestone(rawTask)}
+              onSave={next => onCellEdit(rawTask, field, next)} onClose={closeCell} />
+            : <button type="button" disabled={locked || (field === 'duration' && isScheduleMilestone(rawTask))} onClick={event => startCell(field, event)}
+              onDoubleClick={event => event.stopPropagation()} aria-label={`Edit ${field} for ${title}`} aria-description={help} title={help}>{displayValue}</button>
           return <div key={`${row.kind}:${row.id}`} role="row" aria-level={display === 'activities' ? 1 : row.depth + 1} aria-expanded={summary ? !collapsed.has(row.id) : undefined} aria-selected={rowSelected}
             data-row-kind={deliverable ? 'deliverable' : row.kind} data-row-id={row.id} data-wbs-node-id={summary ? row.id : row.task.wbs_node_id ?? row.ancestors.at(-1)?.id}
             data-deliverable-id={deliverable ? row.node.deliverable_id : undefined} data-parent-deliverable-id={summary ? undefined : row.task.parent_deliverable_id}
@@ -206,10 +225,13 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
                 <span>{code || '—'}</span>
               </span>
               <span role="gridcell" data-column="activity-name" className="p6-name-cell" title={title}>{summary ? <><strong>{title}</strong>{deliverable && <small className="p6-stage-count">{row.node.descendantTasks.length} {row.node.descendantTasks.length === 1 ? 'task' : 'tasks'}</small>}</> : <button type="button" className={`sc-task-name p6-task-name ${stageLabel ? 'has-workflow' : ''}`} aria-label={title} onClick={select}>{stageLabel && <span className="p6-workflow-label" style={{ borderColor: phase.color }}>{stageLabel}</span>}<span className="p6-task-title">{title}</span></button>}</span>
-              <span role="gridcell" className="p6-numeric" data-column="duration" data-duration-kind={missingDuration ? 'missing_source' : originalDuration ? 'original' : proposedDuration ? 'proposed' : summary ? 'calculated' : 'planned'} title={durationTitle}>{summary ? durationDays(durationValue, durationUnit(item)) : <button type="button" disabled={locked} onClick={() => edit('duration')} aria-label={`Edit duration for ${title}`} aria-description={durationTitle} title={durationTitle}>{missingDuration ? 'Not Specified' : durationDays(durationValue, durationUnit(item))}</button>}</span>
-              <span role="gridcell" data-column="start" data-date-basis={item.display_date_basis} title={dateHelp}>{summary || sourceDates ? displayedDate(item, 'start', summary) : <button type="button" disabled={locked} onClick={() => edit('start')} aria-label={`Edit start for ${title}`}>{displayedDate(item, 'start', summary)}</button>}</span>
-              <span role="gridcell" data-column="finish" data-date-basis={item.display_date_basis} title={dateHelp}>{displayedDate(item, 'finish', summary)}</span>
+              <span role="gridcell" className="p6-numeric" data-column="duration" data-duration-kind={missingDuration ? 'missing_source' : originalDuration ? 'original' : proposedDuration ? 'proposed' : summary ? 'calculated' : 'planned'} title={durationTitle}>{summary ? durationDays(durationValue, durationUnit(item)) : editableCell('duration', rawTask.duration_days, missingDuration ? 'Not Specified' : durationDays(durationValue, plannerDuration ? 'working_days' : durationUnit(item)), isScheduleMilestone(rawTask) ? 'Milestones have zero duration. Edit Start or Finish to move the milestone.' : `${durationTitle} Enter the planner duration in working days.`)}</span>
+              <span role="gridcell" data-column="start" data-date-basis={item.display_date_basis} title={dateHelp}>{summary ? displayedDate(item, 'start', true) : editableCell('start', item.display_start_date, displayedDate(item, 'start', false), `${dateHelp}. Set an exact start; finish recalculates from duration and calendar.`)}</span>
+              <span role="gridcell" data-column="finish" data-date-basis={item.display_date_basis} title={dateHelp}>{summary ? displayedDate(item, 'finish', true) : editableCell('finish', item.display_finish_date, displayedDate(item, 'finish', false), `${dateHelp}. Set an exact finish; start recalculates from duration and calendar.`)}</span>
               <span role="gridcell" className="p6-numeric" data-column="float" data-float-basis={item.display_float_basis} data-calculation-basis={item.display_float_basis === 'source' ? 'source_document' : plan.calculation_basis} title={item.display_float_basis === 'calculated' ? floatHelp : floatEvidenceLabel(item)}>{item.display_total_float_days == null ? missingFloatLabel(item, { sourceOnly }) : scheduleNumber(item.display_total_float_days)}</span>
+              <span role="gridcell" data-column="logic">{!summary && <button type="button" disabled={locked} aria-label={`Edit logic for ${title}`}
+                title="Edit predecessors, successors, relationship types and lag" onClick={() => onLogicEdit ? onLogicEdit(rawTask) : edit('dependencies')}
+                onDoubleClick={event => event.stopPropagation()}>{scheduleDependencyEntries(rawTask, { sourceOnly }).length} links</button>}</span>
             </div></div>
             <div className="p6-divider-cell" />
             {showTimeline && <div className="p6-right-clip" role="gridcell" aria-label={`${title} timeline`}><div className="p6-timeline-row" data-timeline-row-id={row.id} style={{ width: timelineWidth, backgroundSize: `${dayWidth * tickStep}px 3px` }}>
@@ -223,7 +245,7 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
         {showTimeline && dependencies.length > 0 && <div className="p6-dependency-clip" style={{ left: tablePane + 6, width: ganttPane, height: rows.length * 16 }}>
           <svg className="p6-dependency-layer" width={timelineWidth} height={rows.length * 16} role="group" aria-label="Activity dependency links">
             <defs><marker id={markerId} viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#53677f" /></marker></defs>
-            {dependencies.map(link => <g key={link.id} className="p6-dependency" role="button" tabIndex={0} aria-label={link.description} onClick={() => onSelect(link.successor)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(link.successor) } }}>
+            {dependencies.map(link => <g key={link.id} className="p6-dependency" role="button" tabIndex={0} aria-label={link.description} onClick={() => !locked && onLogicEdit ? onLogicEdit(link.successor) : onSelect(link.successor)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!locked && onLogicEdit) onLogicEdit(link.successor); else onSelect(link.successor) } }}>
               <title>{link.description}</title>
               <path className="p6-dependency-hit" d={link.path} />
               <path className="p6-dependency-link" data-predecessor-id={link.predecessorId} data-successor-id={link.successorId} data-relationship={link.type} data-lag-days={link.lag} data-source-x={link.sourceX} data-source-y={link.sourceY} data-target-x={link.targetX} data-target-y={link.targetY} d={link.path} markerEnd={`url(#${markerId})`} />
@@ -252,5 +274,5 @@ PrimaveraActivitiesGantt.propTypes = {
   search: PropTypes.string, discipline: PropTypes.string, criticalOnly: PropTypes.bool, display: PropTypes.string, level: PropTypes.oneOf(['project', 'wbs', 'activities']),
   zoom: PropTypes.oneOf(['day', 'week', 'month']), fitTimeline: PropTypes.bool, selectedId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   locked: PropTypes.bool, showTimeline: PropTypes.bool, showLogic: PropTypes.bool, onSelect: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onInputs: PropTypes.func.isRequired,
-  timelineFocus: PropTypes.bool, onTimelineFocusChange: PropTypes.func,
+  timelineFocus: PropTypes.bool, onTimelineFocusChange: PropTypes.func, onCellEdit: PropTypes.func, onLogicEdit: PropTypes.func,
 }

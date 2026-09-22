@@ -116,7 +116,8 @@ test('scope-only planning opens without uploads and assigns a saved activity to 
 
 test('failed activity save keeps edits then the reviewed revision is submitted and published', async ({ page }) => {
   const state = await open(page)
-  await workspace(page).getByRole('button', { name: `Edit duration for ${registerNames[0]}`, exact: true }).click()
+  await workspace(page).getByRole('button', { name: registerNames[0], exact: true }).click()
+  await page.getByRole('complementary', { name: 'Activity details', exact: true }).getByRole('button', { name: 'Edit activity', exact: true }).click()
   const editor = page.getByRole('dialog', { name: 'Edit task', exact: true })
   await editor.getByLabel('Duration (working days)', { exact: true }).fill('4')
   state.saveError = { error: 'The plan changed in another session. Your edits have not been saved.', code: 'simple_plan_revision_conflict' }

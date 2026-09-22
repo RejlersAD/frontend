@@ -1,6 +1,31 @@
 .primavera-gantt { --p6-row-height: 16px; --p6-heading-height: 42px; min-width: 0; width: 100%; color: #000; background: #fff; font: 10px/1.15 Arial, Helvetica, sans-serif; }
 .primavera-gantt *, .primavera-gantt *::before, .primavera-gantt *::after { box-sizing: border-box; }
 .primavera-gantt button { font: inherit; color: inherit; }
+.p6-edit-hint { margin: 0; padding: 4px 8px; border-bottom: 1px solid #dbe6f6; background: #f7faff; color: #355680; font: 11px/16px Arial, sans-serif; }
+.p6-cell-editor { display: block; width: 100%; min-width: 0; height: 100%; }
+.p6-cell-editor input { display: block; width: 100%; min-width: 0; height: 100%; margin: 0; padding: 0 1px; border: 1px solid #0751ff; border-radius: 0; background: #fff; color: #0b2153; font: 10px/14px Arial, sans-serif; }
+.p6-cell-editor input[aria-invalid="true"] { border-color: #b91c1c; background: #fff1f2; }
+.p6-cell-error { position: fixed; z-index: 45; right: 24px; bottom: 48px; max-width: min(420px, calc(100vw - 48px)); padding: 10px 12px; border: 1px solid #fecaca; border-radius: 4px; background: #fff7f7; color: #991b1b; box-shadow: 0 3px 12px #0b21531a; white-space: normal; font: 12px/18px Arial, sans-serif; }
+.p6-logic-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.p6-logic-activity { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; color: #0b2153; font-weight: 600; }
+.p6-logic-activity svg { flex-shrink: 0; }
+.p6-logic-directions { display: flex; gap: 0; margin: 12px 0; }
+.p6-logic-directions button { padding: 6px 12px; border: 1px solid #c9dbf5; background: #fff; color: #0b2153; }
+.p6-logic-directions button[aria-pressed="true"] { background: #0751ff; color: #fff; border-color: #0751ff; }
+.p6-logic-form .p6-logic-search { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.p6-logic-search input { width: 100%; padding: 8px; border: 1px solid #c9dbf5; border-radius: 4px; }
+.p6-logic-results { max-height: 150px; overflow: auto; margin: 4px 0 8px; border: 1px solid #c9dbf5; border-radius: 4px; }
+.p6-logic-results button { display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px; border: 0; border-bottom: 1px solid #eef3fb; background: #fff; color: #0b2153; text-align: left; font-size: 12px; }
+.p6-logic-results button:hover { background: #eef5ff; }
+.p6-logic-results p { padding: 8px; font-size: 12px; }
+.p6-logic-table { max-height: 300px; margin-top: 12px; overflow: auto; border: 1px solid #dbe6f6; border-radius: 4px; }
+.p6-logic-table table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+.p6-logic-table th, .p6-logic-table td { padding: 7px 5px; border-bottom: 1px solid #e6edf7; text-align: left; vertical-align: middle; }
+.p6-logic-table th { position: sticky; top: 0; color: #355680; background: #f4f8ff; font-weight: 500; }
+.p6-logic-table th:first-child { width: 44%; }.p6-logic-table th:nth-child(2) { width: 29%; }.p6-logic-table th:nth-child(3) { width: 19%; }.p6-logic-table th:last-child { width: 8%; }
+.p6-logic-table td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p6-logic-table select, .p6-logic-table input { width: 100%; min-width: 0; padding: 5px 3px; border: 1px solid #c9dbf5; border-radius: 3px; background: #fff; color: #0b2153; }
+.p6-logic-remove { padding: 4px; border: 0; background: transparent; color: #b91c1c; }
 .schedule-canvas .primavera-gantt button:disabled { color: inherit; opacity: 1; cursor: default; }
 .primavera-gantt :focus-visible { outline: 2px solid #0860ce; outline-offset: -2px; }
 .p6-shell { position: relative; min-width: 0; --p6-table-scroll: 0px; --p6-timeline-scroll: 0px; }

@@ -11,6 +11,7 @@ import PlanningScheduleChecks from './PlanningScheduleChecks'
 import { scheduleChecks } from './scheduleCheckPolicy'
 import ScheduleNotice from './ScheduleNotice'
 import PlanningEmployeeActivity from './PlanningEmployeeActivity'
+import GanttLogicDialog from './GanttLogicDialog'
 import './PlanningReviewPanel.css'
 
 const formatNumber = value => new Intl.NumberFormat('en', { maximumFractionDigits: 2 }).format(Number(value || 0))
@@ -32,6 +33,7 @@ const editableTask = task => ({
   task_type: task.task_type || 'deliverable', priority: task.priority || 'medium', due_date: task.due_date || null,
   effort_hours: task.effort_hours ?? null, duration_days: task.duration_days ?? null,
   planned_start_date: task.planned_start_date || null, depends_on: task.depends_on || [],
+  ...(task.timing_edit ? { timing_edit: task.timing_edit } : {}),
   ...(task.dependency_details?.every(link => ['FS', 'SS', 'FF', 'SF'].includes(link.type) && link.lag_days != null)
     ? { dependency_details: task.dependency_details } : {}),
   ...(task.constraint_type !== undefined ? { constraint_type: task.constraint_type, constraint_date: task.constraint_date || null } : {}),
@@ -105,13 +107,15 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
   const start = dates[0], finish = dates.at(-1)
   const editLocked = loading || saving || buildingSchedule || !canEdit || !plan?.permissions?.can_edit || plan?.state === 'baselined' || plan?.viewing_history || plan?.legacy_read_only || selectedVersionId !== 'current'
   const locked = editLocked || approval
+  const ganttLocked = loading || saving || buildingSchedule || !canEdit || approval || !(plan?.permissions?.can_edit_gantt || plan?.permissions?.can_edit)
+    || plan?.state === 'baselined' || plan?.viewing_history || plan?.legacy_read_only || selectedVersionId !== 'current'
   const repairLocked = editLocked || plan?.state !== 'review'
   const canSubmit = Boolean(plan?.permissions?.can_submit && !plan?.stale_inputs && tasks.length && !blockers.length)
   const canPublish = Boolean(plan?.permissions?.can_approve_publish && plan?.state === 'submitted' && !plan?.stale_inputs && !blockers.length)
-  const edit = (task, field) => { if (!(approval ? repairLocked : locked)) { setError(''); setDialog({ type: 'task', task: { ...task, depends_on: task.depends_on || [] }, field }) } }
+  const edit = (task, field) => { if (!(field === 'dependencies' ? ganttLocked : approval ? repairLocked : locked)) { setError(''); setDialog({ type: field === 'dependencies' ? 'logic' : 'task', task: { ...task, depends_on: task.depends_on || [] }, field }) } }
   const employee = task => setDialog({ type: 'employee', task })
   const accept = data => { setPlan(data); setSubmissionChecks(null); callbacks.current.onLoaded?.(data) }
-  const mutate = async (request, success) => {
+  const mutate = async (request, success, preserveEditor = false) => {
     if (pending.current) return null
     const requestEndpoint = endpoint
     const requestContext = viewContext
@@ -126,8 +130,8 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
         const findings = reason?.response?.data?.blockers
         if (Array.isArray(findings) && findings.length) {
           setSubmissionChecks({ endpoint: requestEndpoint, revision: plan.revision, blockers: findings })
-          setChecksOpenRequest(value => value + 1)
-          setError('Review the schedule issues below before submitting.')
+          if (!preserveEditor) setChecksOpenRequest(value => value + 1)
+          setError(preserveEditor ? messageFor(reason) : 'Review the schedule issues below before submitting.')
         } else setError(messageFor(reason))
       }
       return null
@@ -135,6 +139,19 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
     finally { pending.current = false; if (alive.current) setSaving(false) }
   }
   const saveTasks = (nextTasks, nextDisciplines = disciplines) => mutate(() => apiClient.put(endpoint, { revision: plan.revision, tasks: nextTasks.map(editableTask), disciplines: nextDisciplines }), 'All changes saved.')
+  const saveCell = (task, field, value) => {
+    if (ganttLocked) return Promise.resolve(null)
+    const changes = field === 'duration' ? { duration_days: value } : { timing_edit: { field, value } }
+    return mutate(() => apiClient.post(`${endpoint}edit-activity/`, { revision: plan.revision, task_id: task.id, ...changes }), 'Activity change saved.', true)
+  }
+  const saveLogic = nextTasks => {
+    if (ganttLocked) return Promise.resolve(null)
+    const currentTasks = new Map(tasks.map(task => [task.id, task]))
+    const updates = nextTasks.filter(row => row !== currentTasks.get(row.id))
+      .map(row => ({ task_id: row.id, dependency_details: row.dependency_details.map(link => ({ task_id: link.task_id, type: link.type, lag_days: link.lag_days })) }))
+    if (!updates.length) return Promise.resolve(plan)
+    return mutate(() => apiClient.post(`${endpoint}edit-activity/`, { revision: plan.revision, updates }), 'Activity logic saved.', true)
+  }
   const submit = async () => {
     const result = await mutate(() => apiClient.post(`${endpoint}submit/`, { revision: plan.revision, ...(approverId ? { approver_id: Number(approverId) } : {}) }), 'Plan submitted for approval.')
     if (result) onContinue?.(result)
@@ -179,7 +196,7 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
   if (!plan) return <section className="planning-review work-breakdown"><div className={error ? 'wbd-error' : 'wbd-loading'} role={error ? 'alert' : 'status'}>{error || 'Add your project inputs and build a plan to begin the review.'}</div><div className="wbd-actions"><button type="button" className="wbd-button" onClick={onBack}><ArrowLeft size={16} />Back to inputs</button><button type="button" className="wbd-button" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16} />Refresh</button></div></section>
 
   return <section className="planning-review work-breakdown" aria-label={approval ? 'Approve and publish plan' : 'Review project plan'} aria-busy={saving || loading || buildingSchedule}>
-    {error && !['task', 'sequence'].includes(dialog?.type) && <p className="wbd-error" role="alert">{error}</p>}
+    {error && !['task', 'sequence', 'logic'].includes(dialog?.type) && <p className="wbd-error" role="alert">{error}</p>}
     {buildingSchedule && <div className="prv-build-notice" role="status"><Loader2 size={18} className="animate-spin" />Reviewing source activities, durations, dates and dependencies…</div>}
     {notice && <ScheduleNotice message={notice} onClose={dismissNotice} />}
     {plan.stale_inputs && <p className="prv-stale" role="alert"><AlertTriangle size={18} /><span>Project inputs have changed. Return to inputs and rebuild the plan before submitting or publishing.</span><button type="button" className="wbd-link" disabled={saving} onClick={onBack}>Review inputs<ArrowRight size={15} /></button></p>}
@@ -193,8 +210,8 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
       phase: enterpriseProject?.custom_fields?.project_phase || '',
       start_date: enterpriseProject?.start_date || null, end_date: enterpriseProject?.end_date || null,
       ...(plan.project || {}),
-    } }} tasks={tasks} disciplines={disciplines} saving={saving} locked={locked} onBuildSchedule={buildSchedule} buildingSchedule={buildingSchedule}
-      onEdit={edit} onEmployee={employee} onAdd={() => { setError(''); setDialog({ type: 'task', task: newTask(disciplines[0].code), isNew: true }) }}
+    } }} tasks={tasks} disciplines={disciplines} saving={saving} saveError={error} locked={locked} ganttLocked={ganttLocked} onBuildSchedule={buildSchedule} buildingSchedule={buildingSchedule}
+      onEdit={edit} onCellEdit={saveCell} onLogicEdit={task => edit(task, 'dependencies')} onEmployee={employee} onAdd={() => { setError(''); setDialog({ type: 'task', task: newTask(disciplines[0].code), isNew: true }) }}
       onInputs={inputs} onAnalyze={onAnalyze} onRebuild={planningMode === 'document' && !locked ? onRebuild : undefined} onRefresh={() => setRefresh(value => value + 1)} onSave={saveCurrent} onNewVersion={reopen} onCompare={onCompare}
       onVerifySources={() => setDialog({ type: 'sources' })}
       onOpenCreatedSchedule={result => { setSelectedVersionId('current'); setRefresh(value => value + 1); setNotice(result?.notice || 'Accepted inputs opened in Master Schedule. Calculate and review this draft before approval.') }}
@@ -210,6 +227,7 @@ export default function PlanningReviewPanel({ projectId, enterpriseProject, stag
       const result = await mutate(() => apiClient.post(`${endpoint}apply-schedule/`, { revision: dialog.proposal.revision, proposal_token: dialog.proposal.token }), 'Proposed schedule saved as a draft. Review the timing and logic before approval.')
       if (result) setDialog(null)
     }} />}
+    {dialog?.type === 'logic' && <GanttLogicDialog task={dialog.task} tasks={tasks} sourceOnly={plan.duration_policy === 'source_only' || plan.evidence_policy === 'document_driven' || Boolean(plan.duration_review)} busy={saving} saveError={error} onClose={() => { if (!saving) { setDialog(null); setError('') } }} onSave={saveLogic} />}
     {dialog?.type === 'task' && <TaskDialog projectId={projectId} task={dialog.task} tasks={tasks} disciplines={disciplines} manual={planningMode === 'manual'} scheduleEditing isNew={dialog.isNew} initialField={dialog.field} busy={saving} saveError={error} onClose={() => setDialog(null)} onSave={async task => {
       const result = await saveTasks(dialog.isNew ? [...tasks, task] : tasks.map(row => row.id === task.id ? task : row))
       if (result) { setDialog(null); setNotice(task.assignee_id ? 'Task saved and assigned in My Work Hub.' : 'Task saved.') }

@@ -39,7 +39,7 @@ export function EmployeeActivityLink({ task, onOpen, disabled }) {
 }
 EmployeeActivityLink.propTypes = { task: PropTypes.object.isRequired, onOpen: PropTypes.func.isRequired, disabled: PropTypes.bool }
 
-function Dialog({ title, children, onClose, footer, busy = false }) {
+export function Dialog({ title, children, onClose, footer, busy = false }) {
   // Keep the editor inside an open native modal; portals outside it are inert.
   const portalHost = useRef(document.activeElement?.closest('dialog[open]') || document.body)
   const ref = useModalAccessibility(true, onClose, busy)
