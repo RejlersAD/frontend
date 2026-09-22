@@ -8,6 +8,7 @@ import { buildPrimaveraDependencies, scheduleDependencyEntries, scheduleSequence
 import { durationEvidenceLabel, durationUnit, durationUnitLabel, missingSourceDuration } from '../../utils/planningDurationEvidence'
 import { dateEvidenceLabel, floatEvidenceLabel, missingDateLabel, missingFloatLabel } from '../../utils/planningDateEvidence'
 import { scheduleActivityColor, scheduleGroupColor } from '../../utils/primaveraColors'
+import { emptyScheduleAnalysis } from '../../utils/planningAnalysisResult'
 import GanttCellEditor from './GanttCellEditor'
 import './PrimaveraActivitiesGantt.css'
 
@@ -53,6 +54,7 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
   const editTrigger = useRef(null)
   const closeCell = () => { setEditing(null); requestAnimationFrame(() => editTrigger.current?.querySelector('button')?.focus({ preventScroll: true })) }
   const sourceOnly = plan.duration_policy === 'source_only' || plan.evidence_policy === 'document_driven' || Boolean(plan.duration_review)
+  const analysisResult = emptyScheduleAnalysis(plan)
   const displayedDate = (item, field, summary) => item[`display_${field}_date`]
     ? scheduleDate(item[`display_${field}_date`]) : missingDateLabel(item, field, { sourceOnly, summary })
   const [width, setWidth] = useState(1100)
@@ -390,7 +392,7 @@ export default function PrimaveraActivitiesGantt({ plan, tasks, disciplines, sea
           </svg>
         </div>}
         </div>
-        {(!rows.length || !tasks.length) && <div className="p6-empty">{tasks.length ? 'No activities match the selected filters.' : <>Add an activity or upload the project documents.<button type="button" onClick={onInputs}>Upload documents / Project inputs</button></>}</div>}
+        {(!rows.length || !tasks.length) && <div className="p6-empty">{tasks.length ? 'No activities match the selected filters.' : analysisResult ? <><p role="status">{analysisResult.message}</p><button type="button" onClick={onInputs}>Review analysis / Project inputs</button></> : <>Add an activity or upload the project documents.<button type="button" onClick={onInputs}>Upload documents / Project inputs</button></>}</div>}
       </div>
       {showTimeline && <div role="separator" aria-label="Resize activity table and Gantt" aria-orientation="vertical" aria-valuemin={Math.round(minSplit)} aria-valuemax={Math.round(maxSplit)} aria-valuenow={Math.round(tablePane)} aria-valuetext={`Activity table ${Math.round(tablePane)} pixels`} tabIndex={0} className="p6-splitter" style={{ left: tablePane }}
         onPointerDown={event => { event.preventDefault(); dragging.current = { x: event.clientX, width: tablePane }; event.currentTarget.setPointerCapture(event.pointerId) }}

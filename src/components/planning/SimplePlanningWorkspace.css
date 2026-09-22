@@ -26,6 +26,7 @@
 .ssd-evidence td:first-child { min-width: 300px; }
 .ssd-evidence small { display: block; color: #60779b; }
 .ssd-evidence blockquote { white-space: pre-wrap; margin-top: 8px; max-width: 650px; }
+.ssd-programmatic-summary { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #cbd9ef; border-radius: 5px; background: #f5f8ff; color: #254677; font-size: 12px; line-height: 1.5; }
 .planning-inputs-simple .pln-metrics, .planning-inputs-simple .pln-date-help { display: none; }
 .simple-schedule-dialog .sp-mode-switch { display: none; }
 .simple-schedule-dialog .planning-inputs .pln-bottom-bar { bottom: -16px; padding: 12px 0; }

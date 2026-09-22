@@ -6,6 +6,7 @@ import apiClient from '../../services/api.service'
 import planningService from '../../services/planningIntelligence.service'
 import { PLANNING_ENDPOINTS, PLANNING_FILE_CATEGORIES, PLANNING_MAX_FILE_MB } from '../../config/planningIntelligence.config'
 import { calculatePlanningDuration } from '../../utils/planningProjectDates'
+import { emptyScheduleAnalysis } from '../../utils/planningAnalysisResult'
 import './PlanningInputsPanel.css'
 
 const draftFrom = (project, enterprise) => ({
@@ -25,6 +26,31 @@ const sourceText = fact => {
     .filter(([key]) => locator[key] !== undefined && locator[key] !== null)
     .map(([key, label]) => `${label} ${locator[key]}`).join(' · ')
   return [fact.source_filename || (fact.extraction_method === 'manual' ? 'Planner input' : 'Source document'), location].filter(Boolean).join(' · ')
+}
+function SourceDeliverables({ deliverables }) {
+  if (!deliverables.length) return null
+  const groups = new Map()
+  for (const deliverable of deliverables) {
+    const source = deliverable.source_references?.[0] || {}
+    const filename = source.filename || 'Source document'
+    const heading = deliverable.source_heading || 'Ungrouped source deliverables'
+    const key = JSON.stringify([deliverable.source_file_id ?? source.file_id ?? filename, heading])
+    if (!groups.has(key)) groups.set(key, { key, filename, heading, items: [] })
+    groups.get(key).items.push(deliverable)
+  }
+  return <details className="pln-source-deliverables">
+    <summary>View {deliverables.length} source deliverables</summary>
+    <p>Source deliverable headings; final WBS requires review. Item numbers and titles follow the source document. Dates are provisional planning assumptions.</p>
+    <div className="pln-source-deliverable-groups">{Array.from(groups.values(), group => <section key={group.key} aria-label={group.heading}>
+      <h3>{group.heading}</h3><p className="pln-source-filename">{group.filename}</p>
+      <ul className="pln-review-list">{group.items.map(deliverable => <li key={deliverable.id}><FileText size={19} aria-hidden="true" /><div>
+        {deliverable.source_item_number != null && <small>Source item {deliverable.source_item_number}</small>}
+        <strong>{deliverable.title}</strong>
+        <small>{deliverable.planned_start_date || 'Unscheduled'} – {deliverable.planned_finish_date || 'Unscheduled'}{deliverable.duration_days ? ` · ${deliverable.duration_days} working days` : ''}</small>
+        {(deliverable.source_references || []).map((source, index) => <small key={index}>{sourceText({ source_filename: source.filename, source_locator: source.locator })}</small>)}
+      </div></li>)}</ul>
+    </section>)}</div>
+  </details>
 }
 const errorText = (error, fallback) => {
   const data = error?.response?.data
@@ -74,7 +100,7 @@ function InputReviewDialog({ facts, conflicts, busy, error, stale, previewAvaila
   </dialog>
 }
 
-export default function PlanningInputsPanel({ project, enterpriseProject, contract, loadingContract, files, uploading, analyzing, analysisRevision, uploadCategory, onUploadCategory, onUpload, onDeleteFile, onAnalyze, onSaved, onOpenWorkBreakdown, onOpenIntelligencePreview, onPreviewStaleChanged, onReviewStateChanged, reviewRequest = 0, onReadinessChanged, onBack, onAiSettings, onRevealInputs, onIntelligenceLoaded, hidden = false, simple = false, generateSchedule = false }) {
+export default function PlanningInputsPanel({ project, enterpriseProject, contract, loadingContract, files, uploading, analyzing, creatingProgrammatic = false, analysisRevision, analysisResult, programmaticSummary, documentDeliverables = [], uploadCategory, onUploadCategory, onUpload, onDeleteFile, onAnalyze, onCreateProgrammatic, onSaved, onOpenWorkBreakdown, onOpenIntelligencePreview, onPreviewStaleChanged, onReviewStateChanged, reviewRequest = 0, onReadinessChanged, onBack, onAiSettings, onRevealInputs, onIntelligenceLoaded, hidden = false, simple = false, generateSchedule = false }) {
   const [draft, setDraft] = useState(() => draftFrom(project, enterpriseProject))
   const [saving, setSaving] = useState(false)
   const [preparingUpload, setPreparingUpload] = useState(false)
@@ -93,7 +119,7 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
   const duration = calculatePlanningDuration(draft.effective_date, draft.planned_end_date)
   const savedDraft = draftFrom(project, enterpriseProject)
   const hasChanges = Object.keys(draft).some(key => String(draft[key]) !== String(savedDraft[key]))
-  const editingDisabled = saving || analyzing || preparingUpload
+  const editingDisabled = saving || analyzing || creatingProgrammatic || preparingUpload
   const documentsProcessing = files.some(file => ['pending', 'processing'].includes(file.parse_status))
   useEffect(() => {
     const pending = uploadDraftRef.current
@@ -137,20 +163,22 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
 
   const save = async event => {
     event.preventDefault()
-    if (saveInFlight.current || analyzing || uploading) return
+    if (saveInFlight.current || analyzing || creatingProgrammatic || uploading) return
     onRevealInputs?.()
     const runAnalysis = event.nativeEvent?.submitter?.value === 'analyze'
+    const createProgrammatic = event.nativeEvent?.submitter?.value === 'programmatic'
     const continueManual = event.nativeEvent?.submitter?.value === 'manual-continue'
     if (project && (loadingContract || !contract)) { setNotice({ error: true, text: 'Wait for the project connection check to finish, then save again. Your inputs are still here.' }); return }
     if (!duration) { setNotice({ error: true, text: 'Enter a project start date and a later project end date.' }); return }
     if (continueManual && (!draft.scope_summary.trim() || !draft.phase.trim())) { setNotice({ error: true, text: 'Enter the project scope and phase before continuing to Work breakdown.' }); return }
     if (runAnalysis && documentsProcessing) { setNotice({ error: true, text: 'Wait for the reference documents to finish processing before running Document Intelligence.' }); return }
     if (runAnalysis && !simple && !files.some(file => file.parse_status === 'done')) { setNotice({ error: true, text: 'Upload a reference document and wait for parsing to finish before running Document Intelligence.' }); return }
+    if (createProgrammatic && (!onCreateProgrammatic || unknown || stale || documentsProcessing || !requirements.length)) { setNotice({ error: true, text: 'Load the extracted requirements from the current source documents before creating the draft.' }); return }
     saveInFlight.current = true; setSaving(true); setNotice(null)
     try {
       const payload = { ...draft, effective_date: draft.effective_date || null, planned_end_date: draft.planned_end_date || null, budgeted_effort_hours: draft.budgeted_effort_hours === '' ? null : draft.budgeted_effort_hours }
       if (baselineLocked) { delete payload.effective_date; delete payload.planned_end_date }
-      const response = project?.id ? runAnalysis && !hasChanges ? { data: project } : await apiClient.patch(PLANNING_ENDPOINTS.project(project.id), payload) : await apiClient.post(PLANNING_ENDPOINTS.projects, {
+      const response = project?.id ? (runAnalysis || createProgrammatic) && !hasChanges ? { data: project } : await apiClient.patch(PLANNING_ENDPOINTS.project(project.id), payload) : await apiClient.post(PLANNING_ENDPOINTS.projects, {
         ...payload, enterprise_project: enterpriseProject.id, name: enterpriseProject.name,
         client: enterpriseProject.client_name || '', location: enterpriseProject.location || '',
       })
@@ -159,9 +187,17 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
       if (hasChanges) setAnalysisNeeded(true)
       setNotice({ error: false, text: 'Planning draft saved.' })
       if (continueManual) onOpenWorkBreakdown?.(response.data)
+      if (createProgrammatic) {
+        const result = await onCreateProgrammatic({ projectId: response.data.id })
+        setAnalysisNeeded(!result)
+        setNotice(result ? null : { error: true, text: 'Your inputs are saved. The draft could not be created; review the message above and retry.' })
+      }
       if (runAnalysis) {
         const result = await onAnalyze({ projectId: response.data.id })
         if (result?.requires_rebuild || result?.requires_generation) {
+          setNotice(null)
+        } else if (simple && emptyScheduleAnalysis(result)) {
+          setAnalysisNeeded(true)
           setNotice(null)
         } else if (result) {
           setAnalysisNeeded(false)
@@ -254,11 +290,15 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
       <p>{reviewLoading ? 'Loading extracted inputs…' : review.run ? `Extracted from ${analyzedCount} source ${analyzedCount === 1 ? 'document' : 'documents'}` : 'Analyze source documents to extract project requirements.'}</p>
       {reviewError && <div className="pln-error" role="alert">{reviewError}<button type="button" className="pln-text-button" onClick={loadReview}>Retry input review</button></div>}
       {stale && <p className="pln-note"><Info size={15} />Documents have changed. Analyze again to refresh the findings.</p>}
+      {analysisResult?.status === 'no_activities' && <div className="pln-clarification" role="status"><h3><AlertTriangle size={19} />No schedule activities created</h3><p>{analysisResult.message}</p>{analysisResult.next_action === 'ai_settings' && <button type="button" className="pln-button" disabled={!project || editingDisabled} onClick={onAiSettings}><Settings2 size={15} />Configure AI settings</button>}</div>}
       <h3>Requirements found</h3><ul className="pln-requirements">{requirements.slice(0, 3).map(fact => <li key={fact.id}><span className="pln-evidence-icon"><FileText size={19} /></span><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small></div></li>)}</ul>
       {!requirements.length && <div className="pln-empty pln-review-empty"><FileText size={25} /><p>{reviewLoading ? 'Loading extracted requirements…' : reviewError ? 'Requirements could not be loaded. Retry input review.' : review.run ? 'No requirements were extracted. Review the source documents and other findings.' : 'Your extracted requirements will appear here with their source references.'}</p></div>}
       {review.facts.length > 0 && <button type="button" className="pln-text-button pln-view-all" onClick={openReview}>View all {requirements.length || review.facts.length} {requirements.length ? 'requirements' : 'findings'}<ArrowRight size={15} /></button>}
+      {simple && onCreateProgrammatic && requirements.length > 0 && <div className="pln-clarification"><h3>Create a draft from these requirements</h3><p>Create all {requirements.length} statements as draft activities, including contract clauses. Dates are distributed within your project dates as provisional planning assumptions. No AI connection is needed.</p><button type="submit" form="project-planning-inputs-form" name="planning-action" value="programmatic" className="pln-button" disabled={editingDisabled || uploading || unknown || stale || documentsProcessing || Boolean(project && (loadingContract || !contract))}>{creatingProgrammatic ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{creatingProgrammatic ? 'Creating draft…' : 'Create draft without AI'}</button></div>}
+      {programmaticSummary && <p className="pln-note"><Info size={16} />{programmaticSummary.activity_count} draft activities were created from {programmaticSummary.requirement_count} requirement statements without AI. Dates and durations are provisional; review each activity before approval.</p>}
+      <SourceDeliverables deliverables={documentDeliverables} />
       <div className={`pln-clarification ${!review.conflicts.length && !unknown ? 'is-clear' : ''}`}><h3>{review.conflicts.length ? <AlertTriangle size={21} /> : reviewLoading ? <Loader2 size={20} className="animate-spin" /> : reviewError ? <Info size={20} /> : <CheckCircle2 size={20} />}{review.conflicts.length ? 'Clarification required' : 'Clarifications'}</h3>{review.conflicts.length ? <><p>{review.conflicts[0].description}</p>{review.conflicts[0].facts?.[0] && <small><FileText size={14} />{sourceText(review.conflicts[0].facts[0])}</small>}<button type="button" className="pln-button" onClick={openReview}>Review clarification<ArrowRight size={14} /></button></> : <p>{reviewLoading ? 'Loading clarification status…' : reviewError ? 'Clarification status is unavailable.' : review.run ? 'No open clarifications in the latest analysis.' : 'Any missing or conflicting inputs will be listed after analysis.'}</p>}</div>
-      <p className="pln-note"><Info size={16} />AI findings remain draft until reviewed.</p>
+      <p className="pln-note"><Info size={16} />Extracted findings remain draft until reviewed.</p>
       <button type="button" className="pln-text-button pln-ai-settings" disabled={!project} onClick={onAiSettings}><Settings2 size={14} />AI settings</button>
     </aside></div>
     {simple && generateSchedule && <p className="pln-note">Build a new draft from the schedule’s source inputs. Review the preview before applying; existing schedule versions are retained.</p>}
