@@ -96,12 +96,21 @@ export function buildPrimaveraModel(plan, tasks, disciplines) {
     const workflowIds = deliverable.workflow_task_ids || deliverable.task_ids || []
     workflowIds.forEach(taskId => { if (!parentByTask.has(key(taskId))) parentByTask.set(key(taskId), deliverableId) })
     const existing = nodeMap.get(key(deliverable.wbs_node_id))
-    // A persisted deliverable WBS already owns its children. Preserve that
-    // identity; draft deliverables get presentation-only summary nodes.
-    const reuse = existing && !existing.is_derived && !existing.is_deliverable
+    const projectWbs = existing && (existing.is_source_project === true || existing.is_project === true
+      || ((!nodeMap.has(existing.parent_id) || existing.parent_id === existing.id) && (
+        (project.code && normalize(existing.code) === normalize(project.code))
+        || (project.name && normalize(existing.name) === normalize(project.name))
+      )))
+    // Only a dedicated leaf WBS doubles as its deliverable summary. Shared
+    // groups and native project roots retain their identity and child ownership.
+    const members = new Set(workflowIds.map(key))
+    const belongsToDeliverable = task => key(task.parent_deliverable_id) === deliverableId || members.has(key(task.id))
+    const reuse = existing && !projectWbs && !existing.is_derived && !existing.is_deliverable
+      && !source.some(node => key(node.parent_id) === existing.id)
+      && tasks.filter(task => key(task.wbs_node_id) === existing.id).every(belongsToDeliverable)
     const enclosing = nodeMap.get(key(deliverable.parent_wbs_node_id))
     const candidates = [...nodeMap.values()].filter(node => !node.is_deliverable && node.discipline === deliverable.discipline)
-    const parent = enclosing || (candidates.length === 1 ? candidates[0] : null)
+    const parent = existing || enclosing || (candidates.length === 1 ? candidates[0] : null)
     const node = reuse ? existing : {
       id: `deliverable:${deliverableId}`, parent_id: parent?.id || null,
       children: [], tasks: [], sourceIndex: index, sort_order: deliverable.sort_order ?? index,

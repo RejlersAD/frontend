@@ -1,0 +1,18 @@
+.schedule-warnings { position: fixed; z-index: 150; right: 24px; top: 205px; width: 390px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 230px); display: flex; flex-direction: column; border: 1px solid #ffd28a; border-radius: 7px; background: #fff; box-shadow: 0 12px 36px #10255026; color: #102550; font: 12px/1.5 'IBM Plex Sans', 'Segoe UI', sans-serif; }
+.schedule-warnings header { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border-bottom: 1px solid #ffe1b0; border-radius: 7px 7px 0 0; background: #fff8ec; color: #a24b00; }
+.schedule-warnings header > svg { margin-top: 2px; flex-shrink: 0; }
+.schedule-warnings h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.schedule-warnings header span { font-size: 11px; }
+.schedule-warnings header button { margin-left: auto; padding: 1px; border: 0; background: transparent; color: #173363; cursor: pointer; }
+.schedule-warnings-content { min-height: 0; overflow: auto; padding: 0 14px; }
+.schedule-warnings article { padding: 12px 0; border-bottom: 1px solid #e7edf7; }
+.schedule-warnings article:last-child { border-bottom: 0; }
+.schedule-warnings p { margin: 0; }
+.schedule-warnings strong + p { margin-top: 3px; }
+.schedule-warnings article button { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 0; border: 0; background: none; color: #005bfa; font: inherit; cursor: pointer; }
+.schedule-warnings-more, .schedule-warnings-clear { padding: 12px 0; }
+.schedule-warnings-clear { display: flex; align-items: center; gap: 8px; color: #147b52; }
+.schedule-warnings footer { padding: 11px 14px; border-top: 1px solid #e4ebf6; }
+.schedule-warnings footer button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 34px; padding: 6px 12px; border: 1px solid #005bff; border-radius: 4px; background: #005bff; color: #fff; font: inherit; cursor: pointer; }
+.schedule-warnings button:focus-visible { outline: 2px solid #005bff; outline-offset: 3px; }
+@media (max-width: 600px) { .schedule-warnings { top: auto; bottom: 16px; right: 16px; max-height: min(520px, 75dvh); } }

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { compactRelations, compactScheduleHarness, scheduleHeightBaseline } from '../fixtures/compact-schedule.fixture.js'
-import { scheduleMenu, closeScheduleMenu, scheduleVersion, scheduleWorkspace, timelineScale } from '../fixtures/schedule-controls.js'
+import { scheduleAction, scheduleMenu, closeScheduleMenu, scheduleVersion, scheduleWorkspace, timelineScale } from '../fixtures/schedule-controls.js'
 
 test.setTimeout(60000)
 const grid = page => scheduleWorkspace(page).getByRole('region', { name: 'Schedule activities and Gantt', exact: true })
@@ -49,20 +49,29 @@ for (const size of [{ width: 1900, height: 950 }, { width: 1440, height: 900 }])
     // beneath its actual calendar header, allowing only its legend/scrollbar gap.
     const availableBody = Math.min(size.height, actual.footer.top) - actual.calendar.bottom
     expect(availableBody - actual.activities).toBeLessThanOrEqual(64)
-    expect(actual.activities / actual.rowHeight).toBeGreaterThanOrEqual(25)
+    expect(actual.rowHeight).toBe(32)
+    // Keep at least the former 25 x 16px body capacity while giving each row
+    // the more readable 32px height used by the redesigned schedule.
+    expect(actual.activities).toBeGreaterThanOrEqual(400)
     expect(actual.pageWidth).toBeLessThanOrEqual(size.width)
     expect(actual.pageHeight).toBeLessThanOrEqual(size.height)
     expect((await page.locator('.performance-test-shell').boundingBox()).x).toBe(198)
     await expect(page.getByRole('combobox', { name: 'Project section', exact: true })).toHaveCount(0)
     const projectAreas = page.getByRole('navigation', { name: 'Project work areas', exact: true })
     for (const name of ['Overview', 'Cost & Commercial', 'Milestones', 'Risks & Changes', 'Estimates', 'Documents']) await expect(projectAreas.getByRole('button', { name, exact: true })).toBeVisible()
-    await expect(grid(page).locator('.p6-controls')).toHaveCount(0)
-    await expect(grid(page).getByRole('button', { name: /^(Expand|Collapse) all$/ })).toHaveCount(0)
-    for (const name of ['Build schedule', 'Add activity', 'Fit timeline', 'Save']) await expect(scheduleWorkspace(page).getByRole('button', { name, exact: true })).toBeVisible()
+    await expect(scheduleWorkspace(page).getByRole('button', { name: 'Fit timeline', exact: true })).toBeVisible()
     await expect(scheduleWorkspace(page).getByRole('combobox', { name: 'Schedule workspace area', exact: true }).locator('option')).toHaveCount(10)
+    await expect(scheduleWorkspace(page).getByRole('combobox', { name: 'Schedule detail level', exact: true })).toBeVisible()
+    await expect(scheduleWorkspace(page).getByRole('checkbox', { name: 'Critical only', exact: true })).toBeVisible()
+    const filters = await scheduleMenu(page, 'Schedule filters')
+    await expect(filters.getByRole('combobox', { name: 'Schedule discipline', exact: true })).toBeVisible()
+    for (const name of ['Deliverables', 'All activities']) await expect(filters.getByRole('button', { name, exact: true })).toBeVisible()
+    await closeScheduleMenu(page, 'Schedule filters')
     const actions = await scheduleMenu(page, 'Schedule actions')
-    for (const name of ['New version', 'Validate', 'Project inputs']) await expect(actions.getByRole('button', { name, exact: true })).toBeVisible()
-    await closeScheduleMenu(page, 'Schedule actions')
+    for (const name of ['Build schedule', 'Add activity', 'Save draft', 'New version', 'Validate', 'Project inputs', 'Expand all', 'Collapse all', 'Fit columns', 'Show dependency links']) await expect(actions.getByRole('button', { name, exact: true })).toBeVisible()
+    await actions.getByRole('button', { name: 'Fit columns', exact: true }).focus()
+    await page.keyboard.press('Escape')
+    await expect(actions).not.toHaveAttribute('open')
     await expect(scheduleWorkspace(page).getByLabel('Schedule actions', { exact: true })).toBeFocused()
     await testInfo.attach('schedule-height-comparison.json', { body: JSON.stringify({ baseline, actual, bodyHeightIncreasePercent: 100 * (actual.activities / baseline.activities - 1) }, null, 2), contentType: 'application/json' })
     await page.screenshot({ path: `../artifacts/compact-after-${size.width}x${size.height}.png`, animations: 'disabled' })
@@ -108,14 +117,20 @@ test('FS, SS, FF and SF arrows join real bar edges through zoom, scrolling, resi
 test('phase legend uses supplied metadata and dependency keyboard actions retain evidence and employee history', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   const state = await open(page)
-  for (const [id, phase] of [[1, 'basis'], [2, 'engineering'], [3, 'review'], [4, 'ifr'], [5, 'company_review'], [22, 'unspecified']]) {
+  const displayOptions = await scheduleMenu(page, 'Schedule actions')
+  await displayOptions.getByRole('checkbox', { name: 'Color bars by workflow stage', exact: true }).check()
+  await closeScheduleMenu(page, 'Schedule actions')
+  await scheduleWorkspace(page).getByLabel('Schedule legend', { exact: true }).click()
+  for (const [id, phase] of [[1, 'basis'], [2, 'engineering'], [3, 'review'], [4, 'ifr'], [5, 'company_review'], [22, 'discipline:mechanical']]) {
     await expect(row(page, `activity-${id}`).locator('.p6-activity-bar')).toHaveAttribute('data-phase', phase)
-    await expect(grid(page).getByRole('region', { name: 'Schedule sequence legend', exact: true }).locator(`[data-phase="${phase}"]`)).toBeVisible()
+    await expect(scheduleWorkspace(page).getByRole('region', { name: 'Schedule sequence legend', exact: true }).locator(`[data-phase="${phase}"]`)).toBeVisible()
   }
   await expect(row(page, 'activity-1').locator('.p6-activity-bar')).toHaveClass(/is-critical/)
-  const colors = await Promise.all([1, 2, 3, 22].map(id => row(page, `activity-${id}`).locator('.p6-activity-bar').evaluate(element => getComputedStyle(element).backgroundColor)))
+  const colors = await Promise.all([1, 2, 3, 23].map(id => row(page, `activity-${id}`).locator('.p6-activity-bar').evaluate(element => getComputedStyle(element).backgroundColor)))
   expect(new Set(colors).size).toBe(4)
-  expect(colors[3]).toBe('rgb(71, 85, 105)')
+  expect(colors[0]).toBe('rgb(239, 68, 68)')
+  expect(colors[3]).toBe('rgb(124, 58, 237)')
+  expect(await row(page, 'activity-22').locator('.p6-activity-bar').evaluate(element => getComputedStyle(element).backgroundColor)).toBe(colors[0])
   const ss = grid(page).getByRole('button', { name: /Start to start \(SS\); lag \+2 working days/ })
   await expect(ss).toHaveAccessibleName(/Planning inference.*Logic Review.pdf.*Page 3/)
   await expect(ss.locator('.p6-dependency-label')).toHaveText('SS +2d')
@@ -124,12 +139,19 @@ test('phase legend uses supplied metadata and dependency keyboard actions retain
   expect(label.x).toBeGreaterThanOrEqual(plot.x)
   expect(label.x + label.width).toBeLessThanOrEqual(plot.x + plot.width)
   await ss.focus(); await page.keyboard.press('Enter')
+  const logic = page.getByRole('dialog', { name: 'Activity logic', exact: true })
+  await expect(logic).toContainText(state.records[17].simplePlan.tasks[2].title)
+  await page.keyboard.press('Escape')
+  await expect(logic).toHaveCount(0)
+  await expect(ss).toBeFocused()
+  const activity = grid(page).getByRole('button', { name: state.records[17].simplePlan.tasks[2].title, exact: true })
+  await activity.click()
   const drawer = page.getByRole('complementary', { name: 'Activity details', exact: true })
   await expect(drawer).toContainText(state.records[17].simplePlan.tasks[2].title)
   await expect(drawer.getByRole('button', { name: 'View activity for Omar Saleh', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(drawer).toHaveCount(0)
-  await expect(ss).toBeFocused()
+  await expect(activity).toBeFocused()
   const scan = await new AxeBuilder({ page }).include('.schedule-canvas').analyze()
   expect(scan.violations.filter(item => ['serious', 'critical'].includes(item.impact))).toEqual([])
   const filters = await scheduleMenu(page, 'Schedule filters')
@@ -137,6 +159,13 @@ test('phase legend uses supplied metadata and dependency keyboard actions retain
   await closeScheduleMenu(page, 'Schedule filters')
   await expect(links(page)).toHaveCount(0)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(44)
+  const columns = await scheduleMenu(page, 'Schedule actions')
+  const logicToggle = columns.getByRole('button', { name: 'Show dependency links', exact: true })
+  await expect(logicToggle).toHaveAttribute('aria-pressed', 'false')
+  await logicToggle.click()
+  await expect(logicToggle).toHaveAttribute('aria-pressed', 'true')
+  await closeScheduleMenu(page, 'Schedule actions')
+  await expect(links(page)).toHaveCount(4)
   clean(state)
 })
 
@@ -145,7 +174,7 @@ test('save uses a floating transient notification without moving the schedule an
   const state = await open(page)
   await page.clock.install()
   const before = await measure(page)
-  await scheduleWorkspace(page).getByRole('button', { name: 'Save', exact: true }).click()
+  await scheduleAction(page, 'Save draft')
   const toast = page.locator('.prv-toast')
   await expect(toast.getByRole('status')).toContainText('saved')
   expect((await measure(page)).viewport.top).toBe(before.viewport.top)
@@ -158,6 +187,75 @@ test('save uses a floating transient notification without moving the schedule an
   await expect(toast).toHaveCount(0)
   expect(state.writes).toHaveLength(1)
   expect(state.writes[0].method).toBe('PUT')
+  clean(state)
+})
+
+test('schedule warnings float above unchanged rows and stale inputs still prevent approval', async ({ page }) => {
+  const state = await open(page, {
+    prepare(current) {
+      for (const record of Object.values(current.records)) {
+        record.simplePlan.stale_inputs = true
+        record.simplePlan.tasks[0].total_float_days = -2
+        record.simplePlan.warnings = [{ code: 'negative_float', message: 'Negative float requires review.' }]
+      }
+    },
+    decorateSnapshot(plan) {
+      return { ...plan, blockers: [{ code: 'inputs_changed', message: 'Confirm the revised source inputs before approval.' }] }
+    },
+  })
+  const oldBanner = 'Project inputs have changed. Return to inputs and rebuild the plan before submitting or publishing.'
+  await expect(page.getByText(oldBanner, { exact: true })).toHaveCount(0)
+  await expect(page.locator('.prv-stale')).toHaveCount(0)
+  await expect(scheduleWorkspace(page)).not.toContainText('Negative float requires review.')
+  const before = await measure(page)
+  const review = scheduleWorkspace(page).getByRole('button', { name: /^Review \d+ issues$/ })
+  await review.click()
+  const warnings = page.getByRole('dialog', { name: 'Schedule warnings', exact: true })
+  await expect(warnings).toContainText('Negative float requires review.')
+  await expect(warnings).toContainText('Confirm the revised source inputs before approval.')
+  expect(await warnings.evaluate(element => getComputedStyle(element).position)).toBe('fixed')
+  expect((await measure(page)).viewport.top).toBe(before.viewport.top)
+  await page.keyboard.press('Escape')
+  await expect(warnings).toHaveCount(0)
+  await expect(review).toBeFocused()
+  await scheduleWorkspace(page).getByRole('button', { name: 'Review & approve', exact: true }).click()
+  const approval = page.getByRole('dialog', { name: 'Review & publish baseline', exact: true })
+  await expect(approval.getByRole('button', { name: 'Submit for approval', exact: true })).toBeDisabled()
+  await approval.getByRole('button', { name: 'Close Review & publish baseline', exact: true }).click()
+  await page.locator('.pd-schedule-header').getByRole('button', { name: /^Resolve/ }).click()
+  await expect(warnings).toBeVisible()
+  await warnings.getByRole('button', { name: 'Review inputs', exact: true }).click()
+  await expect(warnings).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Documents & project inputs', exact: true })).toBeVisible()
+  expect(state.writes).toEqual([])
+  clean(state)
+})
+
+test('baseline overlay uses only valid explicit dates and preserves the working schedule', async ({ page }) => {
+  const state = await open(page, { prepare(current) {
+    for (const record of Object.values(current.records)) {
+      Object.assign(record.simplePlan.tasks[0], { baseline_start_date: '2026-08-03', baseline_finish_date: '2027-02-01' })
+      Object.assign(record.simplePlan.tasks[1], { baseline_start_date: 'invalid', baseline_finish_date: '2026-10-02' })
+      Object.assign(record.simplePlan.tasks[2], { baseline_start_date: '2026-10-02', baseline_finish_date: '2026-09-21' })
+      Object.assign(record.simplePlan.tasks[3], { baseline_start_date: '2026-09-21' })
+      Object.assign(record.simplePlan.tasks[4], { baseline_start_date: '2026-02-30', baseline_finish_date: '2026-10-02' })
+    }
+  } })
+  const workingDates = await grid(page).locator('[data-row-kind="task"] [data-column="start"], [data-row-kind="task"] [data-column="finish"]').allTextContents()
+  const baseline = scheduleWorkspace(page).getByRole('checkbox', { name: 'Baseline', exact: true })
+  await expect(grid(page).locator('.p6-baseline-bar')).toHaveCount(0)
+  await baseline.check()
+  await expect(grid(page).locator('.p6-baseline-bar')).toHaveCount(1)
+  const overlay = row(page, 'activity-1').locator('.p6-baseline-bar')
+  await expect(overlay).toHaveAttribute('data-baseline-start-date', '2026-08-03')
+  await expect(overlay).toHaveAttribute('data-baseline-finish-date', '2027-02-01')
+  const scale = grid(page).locator('.p6-timescale')
+  expect(await scale.getAttribute('data-start-date')).toBe('2026-08-03')
+  expect(await scale.getAttribute('data-horizon-finish-date')).toBe('2027-02-01')
+  expect(await grid(page).locator('[data-row-kind="task"] [data-column="start"], [data-row-kind="task"] [data-column="finish"]').allTextContents()).toEqual(workingDates)
+  await baseline.uncheck()
+  await expect(grid(page).locator('.p6-baseline-bar')).toHaveCount(0)
+  expect(state.writes).toEqual([])
   clean(state)
 })
 
@@ -195,8 +293,10 @@ test('shared project shell contains the schedule across historical view and mobi
   await checkFit()
   await testInfo.attach('real-shell-geometry.json', { body: JSON.stringify({ schedule: await measure(page), appFooter: await footer.boundingBox() }, null, 2), contentType: 'application/json' })
   await page.screenshot({ path: '../artifacts/compact-real-shell-desktop.png', animations: 'disabled' })
+  await page.locator('.project-performance-workspace').screenshot({ path: '../artifacts/reference-schedule-final.png', animations: 'disabled' })
   await page.setViewportSize({ width: 390, height: 844 })
   await checkFit()
+  await expect(scheduleWorkspace(page).getByRole('combobox', { name: 'Schedule workspace area', exact: true })).toBeVisible()
   const summary = scheduleWorkspace(page).getByLabel('Schedule filters', { exact: true })
   await summary.focus(); await page.keyboard.press('Enter')
   const content = summary.locator('..').locator('.sc-menu-content')

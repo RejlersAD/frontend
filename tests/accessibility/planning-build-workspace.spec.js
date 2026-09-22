@@ -218,6 +218,7 @@ test('derived activity values retain accepted fact and approved rule references 
   } })
   await scheduleWorkspace(page).getByRole('button', { name: state.records[17].simplePlan.tasks[0].title, exact: true }).click()
   const details = page.getByRole('complementary', { name: 'Activity details', exact: true })
+  await details.getByText('Field provenance', { exact: true }).click()
   await expect(details).toContainText('Derived from accepted inputs')
   await expect(details).toContainText('Planning profile 8')
   await expect(details).toContainText('Rule stage-name')

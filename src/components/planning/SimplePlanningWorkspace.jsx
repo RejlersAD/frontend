@@ -11,6 +11,8 @@ import PlanningExtractionCoverage from './PlanningExtractionCoverage'
 import PlanningExtractionSummary from './PlanningExtractionSummary'
 import { ProvenanceBadge, factProvenance } from './PlanningFieldProvenance'
 import ScheduleNotice from './ScheduleNotice'
+import { scheduleChecks, scheduleIssueGroups } from './scheduleCheckPolicy'
+import { dateDisplayTask } from '../../utils/planningDateEvidence'
 import PlannerWorkspacePage from '../../pages/PlannerWorkspacePage'
 import './SimplePlanningWorkspace.css'
 
@@ -225,11 +227,17 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
   }
   const busy = uploading || analyzing || panelBusy
   useEffect(() => {
+    const { blockers, warnings } = scheduleChecks(plan || {})
+    const timingGap = plan && !plan.viewing_history && !plan.legacy_read_only && selectedVersionId === 'current' && plan.state !== 'baselined'
+      && !plan.canonical_version && plan.source_preview_available && plan.tasks?.length > 0
+      && plan.tasks.every(task => { const display = dateDisplayTask(task); return !display.display_start_date && !display.display_finish_date })
     window.dispatchEvent(new CustomEvent('radai:master-schedule-state', { detail: {
       projectId: enterpriseProject.id, state: plan?.state, updatedAt: plan?.updated_at,
+      issueCount: scheduleIssueGroups(blockers).length + warnings.length + Number(Boolean(plan?.stale_inputs)) + Number(Boolean(timingGap)),
+      hasActivities: Boolean(plan?.tasks?.length),
       canSave: Boolean(project && plan?.permissions?.can_edit && !loading && !busy),
     } }))
-  }, [enterpriseProject.id, project, plan, loading, busy])
+  }, [enterpriseProject.id, project, plan, loading, busy, selectedVersionId])
   if (loading) return <div className="simple-planning-loading" role="status"><Loader2 size={18} className="animate-spin" />Loading Master Schedule…</div>
   if (connectionFailed) return <div className="ssd-error" role="alert">{error}<button type="button" onClick={() => setLoadAttempt(value => value + 1)}><RefreshCw size={15} />Retry</button></div>
   return <div className="simple-planning-workspace">
