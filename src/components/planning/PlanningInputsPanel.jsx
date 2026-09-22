@@ -168,7 +168,9 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
           setNotice({ error: false, text: simple ? 'Schedule updated. Review the activities, dates and assignments in Master Schedule.' : 'Document Intelligence completed. Review the full preview, then confirm and save.' })
         } else {
           setAnalysisNeeded(true)
-          setNotice({ error: true, text: 'Your draft is saved. Document Intelligence did not complete; review the message above and retry.' })
+          setNotice({ error: true, text: simple
+            ? generateSchedule ? 'Your inputs are saved. Schedule generation did not start; review the message above and retry.' : 'Your inputs are saved. The schedule could not be updated; review the message above and retry.'
+            : 'Your draft is saved. Document Intelligence did not complete; review the message above and retry.' })
         }
       }
     } catch (error) { setNotice({ error: true, text: errorText(error, 'The draft could not be saved. Your inputs are still here; please retry.') }) }

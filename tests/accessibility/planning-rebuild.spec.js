@@ -196,11 +196,82 @@ for (const mode of ['baselined', 'unauthorized']) test(`project inputs cannot re
   await scheduleAction(page, 'Project inputs')
   await inputs(page).getByRole('button', { name: 'Generate new schedule draft', exact: true }).click()
   await expect(inputs(page).getByRole('alert').filter({ hasText: mode === 'unauthorized' ? 'Your access does not permit generating a schedule draft.' : 'read only' })).toBeVisible()
+  await expect(inputs(page)).toContainText('Your inputs are saved. Schedule generation did not start; review the message above and retry.')
+  await expect(inputs(page)).not.toContainText('Document Intelligence did not complete')
   await expect(generation(page)).toHaveCount(0)
   expect(rebuildWrites(state)).toEqual([])
   expect(state.requests.filter(item => item.path.includes('/planning-builds/'))).toEqual([])
   expect(state.records[17].simplePlan).toEqual(original)
   expect(state.writes).toEqual([])
+  clean(state)
+})
+
+for (const capability of ['present', 'missing']) test(`an authorized canonical draft without a profile opens setup when its generation capability is ${capability}`, async ({ page }) => {
+  const state = await masterScheduleHarness(page, {
+    prepare(current) {
+      current.buildReads = 0
+      Object.assign(current.records[17].simplePlan, { version_id: 91, master_revision: 7, baseline: { id: 601, name: 'Preserved baseline', version_id: 90 } })
+    },
+    decorateSnapshot(plan) {
+      const current = canonicalSnapshot(plan, true)
+      if (capability === 'missing') delete current.permissions.can_generate_plan
+      return current
+    },
+    async handleRequest({ path, route, state: current, reply }) {
+      if (!path.endsWith('/planning-builds/') || route.request().method() !== 'GET') return false
+      current.buildReads += 1
+      await reply(route, { master_revision: 7, builds: [], permissions: { can_preview: true, can_apply: true },
+        options: { graph_revision: 3, profile_selection_revision: 0, profile: { valid: false }, deliverables: [], source_activities: [], dependency_rules: [] } })
+      return true
+    },
+  })
+  const original = structuredClone(state.records[17].simplePlan)
+  await scheduleAction(page, 'Project inputs')
+  await inputs(page).getByRole('button', { name: 'Generate new schedule draft', exact: true }).click()
+  await expect(generation(page)).toBeVisible()
+  await expect(generation(page)).toContainText('Select a valid approved planning profile before generating a plan.')
+  await expect(generation(page).getByRole('button', { name: 'Review profile', exact: true })).toBeEnabled()
+  await expect(generation(page).getByRole('button', { name: 'Review source evidence', exact: true })).toBeEnabled()
+  await expect(generation(page).getByRole('button', { name: 'Preview generated plan', exact: true })).toBeDisabled()
+  await expect(inputs(page)).toHaveCount(0)
+  await expect(page.getByText('Your access does not permit generating a schedule draft.', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Your draft is saved. Document Intelligence did not complete; review the message above and retry.', { exact: true })).toHaveCount(0)
+  expect(state.buildReads).toBeGreaterThanOrEqual(capability === 'missing' ? 2 : 1)
+  expect(rebuildWrites(state)).toEqual([])
+  expect(state.writes).toEqual([])
+  expect(state.records[17].simplePlan).toEqual(original)
+  clean(state)
+})
+
+for (const result of ['denied', 'unavailable']) test(`a missing generation capability stays blocked when the permission endpoint is ${result}`, async ({ page }) => {
+  const state = await masterScheduleHarness(page, {
+    prepare(current) {
+      current.buildReads = 0
+      Object.assign(current.records[17].simplePlan, { version_id: 91, master_revision: 7 })
+    },
+    decorateSnapshot(plan) {
+      const current = canonicalSnapshot(plan)
+      delete current.permissions.can_generate_plan
+      return current
+    },
+    async handleRequest({ path, route, state: current, reply }) {
+      if (!path.endsWith('/planning-builds/') || route.request().method() !== 'GET') return false
+      current.buildReads += 1
+      await reply(route, result === 'denied' ? { permissions: { can_preview: false, can_apply: false } } : { detail: 'Schedule generation access is temporarily unavailable.' }, result === 'denied' ? 200 : 503)
+      return true
+    },
+  })
+  const original = structuredClone(state.records[17].simplePlan)
+  await scheduleAction(page, 'Project inputs')
+  await inputs(page).getByRole('button', { name: 'Generate new schedule draft', exact: true }).click()
+  await expect(inputs(page).getByRole('alert').filter({ hasText: result === 'denied' ? 'Your access does not permit generating a schedule draft.' : 'Schedule generation access is temporarily unavailable.' })).toBeVisible()
+  await expect(inputs(page)).toContainText('Your inputs are saved. Schedule generation did not start; review the message above and retry.')
+  await expect(inputs(page)).not.toContainText('Document Intelligence did not complete')
+  await expect(generation(page)).toHaveCount(0)
+  expect(state.buildReads).toBe(1)
+  expect(rebuildWrites(state)).toEqual([])
+  expect(state.writes).toEqual([])
+  expect(state.records[17].simplePlan).toEqual(original)
   clean(state)
 })
 
