@@ -24,7 +24,7 @@ const Field = ({ label, children, note }) => <div className="outgoing-review-fie
 </div>;
 Field.propTypes = { label: PropTypes.string.isRequired, children: PropTypes.node, note: PropTypes.string };
 
-export default function OutgoingInvoiceReview({ invoice, onClose, onOpen, onChanged, asOfDate }) {
+export default function OutgoingInvoiceReview({ invoice, onClose, onOpen, onChanged, onReviewDuplicates, asOfDate }) {
   const [request, setRequest] = useState({ source: null, status: 'idle', data: null, error: '' });
   const [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -36,7 +36,8 @@ export default function OutgoingInvoiceReview({ invoice, onClose, onOpen, onChan
       if (!data || String(data.id) !== String(invoice.id)) throw new Error('Unexpected invoice response.');
       setRequest({ source: invoice, status: 'ready', data, error: '' });
     }).catch(error => {
-      if (active) setRequest({ source: invoice, status: 'error', data: null, error: reviewError(error) });
+      if (active) setRequest({ source: invoice, status: 'error', data: null, error: reviewError(error),
+        identityConflict: error?.response?.status === 409 && error?.response?.data?.code === 'invoice_identity_conflict' });
     });
     return () => { active = false; };
   }, [invoice, retry]);
@@ -70,8 +71,11 @@ export default function OutgoingInvoiceReview({ invoice, onClose, onOpen, onChan
         </div>
         <div className="outgoing-review-body" role="region" aria-label="Collection review details" tabIndex={0} aria-busy={current.status === 'loading'}>
           {current.status === 'loading' ? <div className="outgoing-review-state" role="status"><ArrowPathIcon className="outgoing-review-spinner" aria-hidden="true" /><p>Loading invoice details…</p></div>
-            : current.status === 'error' ? <div className="outgoing-review-state outgoing-review-state--error" role="alert"><ExclamationTriangleIcon aria-hidden="true" /><h3>Invoice could not be loaded</h3><p>{current.error}</p>
-              <button type="button" className="outgoing-review-button" onClick={() => setRetry(value => value + 1)}>Retry invoice details</button></div>
+            : current.status === 'error' ? <div className="outgoing-review-state outgoing-review-state--error" role="alert"><ExclamationTriangleIcon aria-hidden="true" /><h3>{current.identityConflict ? 'Duplicate invoice records need review' : 'Invoice could not be loaded'}</h3><p>{current.error}</p>
+              {current.identityConflict ? <><p>Choose the correct copy to keep, then confirm deletion of the extras.</p>
+                {onReviewDuplicates ? <button type="button" className="outgoing-review-button outgoing-review-button--primary" onClick={() => onReviewDuplicates(invoice.id)}>Review duplicates for invoice ID {invoice.id}</button>
+                  : <a className="outgoing-review-button outgoing-review-button--primary" href={`/finance/outgoing-invoices?review_duplicates=${encodeURIComponent(invoice.id)}`}>Review duplicates for invoice ID {invoice.id}</a>}</>
+                : <button type="button" className="outgoing-review-button" onClick={() => setRetry(value => value + 1)}>Retry invoice details</button>}</div>
               : ready && <>
                 <section className="outgoing-review-summary"><div><h3>Invoice details</h3><dl><Field label="Invoice date">{outgoingReviewDate(data.invoice_date)}</Field><Field label="Sent date">{outgoingReviewDate(data.invoice_sent_date)}</Field>
                   <Field label="Due date">{outgoingReviewDate(data.due_date)}</Field><Field label="Payment terms">{data.payment_terms || 'Not recorded'}</Field></dl></div>
@@ -122,4 +126,4 @@ export default function OutgoingInvoiceReview({ invoice, onClose, onOpen, onChan
   </aside>;
 }
 
-OutgoingInvoiceReview.propTypes = { invoice: PropTypes.object, onClose: PropTypes.func.isRequired, onOpen: PropTypes.func.isRequired, onChanged: PropTypes.func, asOfDate: PropTypes.string };
+OutgoingInvoiceReview.propTypes = { invoice: PropTypes.object, onClose: PropTypes.func.isRequired, onOpen: PropTypes.func.isRequired, onChanged: PropTypes.func, onReviewDuplicates: PropTypes.func, asOfDate: PropTypes.string };

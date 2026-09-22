@@ -44,14 +44,20 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
   const checkRef = useRef(null);
   const analysisRef = useRef(null);
   const moreActionsRef = useRef(null);
+  const duplicateTriggerRef = useRef(null);
   const requestFilters = { ...filters, queue, ordering };
 
   const refresh = useCallback(() => { setRefreshKey(value => value + 1); setMessage(''); }, []);
+  const reviewDuplicates = id => { duplicateTriggerRef.current = document.activeElement; setDuplicateFilter(String(id ?? '')); };
   useEffect(() => { if (searchParams.has('review_duplicates')) setDuplicateFilter(searchParams.get('review_duplicates')); }, [searchParams]);
   const closeDuplicates = () => {
     setDuplicateFilter(null);
     if (searchParams.has('review_duplicates')) { const params = new URLSearchParams(searchParams); params.delete('review_duplicates'); setSearchParams(params, { replace: true }); }
-    requestAnimationFrame(() => moreActionsRef.current?.focus());
+    requestAnimationFrame(() => {
+      const trigger = duplicateTriggerRef.current;
+      if (trigger?.isConnected && !trigger.closest('details:not([open])')) trigger.focus();
+      else moreActionsRef.current?.focus();
+    });
   };
   useEffect(() => {
     const request = ++sequence.current;
@@ -120,7 +126,7 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
       <button type="button" className="oc-button" onClick={exportInvoices} disabled={loading || !!error || exporting || !count || !canExport}><ArrowDownTrayIcon />{exporting ? 'Exporting…' : 'Export'}</button>
       <button type="button" className="oc-button" onClick={refresh} disabled={loading}><ArrowPathIcon className={loading ? 'oc-spin' : ''} />Refresh</button>
       <button type="button" className="oc-button oc-primary" disabled={!canCreate} title={canCreate ? undefined : "Invoice creation is not available for your access"} onClick={() => setCreateOpen(true)}><PlusCircleIcon />Create invoice</button>
-      <details className="oc-overflow"><summary ref={moreActionsRef} className="oc-button" aria-label="More invoice actions"><EllipsisHorizontalIcon /></summary><div><button type="button" disabled={!canImport} title={canImport ? undefined : "Invoice import is not available for your access"} onClick={event => { if (canImport) { event.currentTarget.closest('details').open = false; onImport(); } }}><ArrowUpTrayIcon />Import Excel</button><button type="button" onClick={event => { event.currentTarget.closest('details').open = false; setDuplicateFilter(''); }}>Review duplicates</button><button type="button" onClick={() => changeQueue('all')}>View complete register</button></div></details>
+      <details className="oc-overflow"><summary ref={moreActionsRef} className="oc-button" aria-label="More invoice actions"><EllipsisHorizontalIcon /></summary><div><button type="button" disabled={!canImport} title={canImport ? undefined : "Invoice import is not available for your access"} onClick={event => { if (canImport) { event.currentTarget.closest('details').open = false; onImport(); } }}><ArrowUpTrayIcon />Import Excel</button><button type="button" onClick={event => { event.currentTarget.closest('details').open = false; reviewDuplicates(''); }}>Review duplicates</button><button type="button" onClick={() => changeQueue('all')}>View complete register</button></div></details>
     </div></header>
 
     <div className="oc-queues" aria-label="Invoice queues">{OUTGOING_QUEUES.map(([id, label]) => <button type="button" key={id} className={`${queue === id ? 'is-active' : ''} ${id === 'overdue' || id === 'disputed' ? 'oc-danger' : ''}`} aria-pressed={queue === id} disabled={id === 'disputed'} title={id === 'disputed' ? unavailable('disputes') : id === 'due_soon' ? `Due through ${outgoingDate(summary?.due_soon_through)}` : undefined} onClick={() => changeQueue(id)}><span>{label}</span><strong>{countText(summary?.counts?.[id])}</strong></button>)}</div>
@@ -164,7 +170,7 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
           <div title={unavailable('dso')}><strong>—</strong><span>DSO</span><small>Not available</small></div><div className="oc-red"><strong>{countText(health?.overdue_count)}</strong><span>overdue</span></div><div className="oc-red"><strong>{outgoingMoney(currencyHealth?.overdue, currency)}</strong><label>overdue<select aria-label="Health currency" value={currency} disabled={!!filters.currency || !currencies.length} onChange={event => setHealthCurrency(event.target.value)}>{!currencies.length && <option value="">No currency</option>}{currencies.map(unit => <option key={unit}>{unit}</option>)}</select></label></div><div title={unavailable('disputes')}><strong>—</strong><span>disputes</span><small>Not recorded</small></div><div title={unavailable('promises')}><strong>—</strong><span>promises pending</span><small>Not recorded</small></div><div title={unavailable('contacted')}><strong>—</strong><span>contacted within SLA</span><small>Not recorded</small></div>
         </div><p className="oc-health-scope">Across filtered invoices, before queue selection. Amounts remain in their original currency.{health?.missing_balance_count > 0 ? ` ${health.missing_balance_count} balances missing.` : ''}{health?.missing_currency_count > 0 ? ` ${health.missing_currency_count} currencies missing.` : ''}</p></section>
       </div>
-      {selected && <OutgoingInvoiceReview invoice={selected} asOfDate={summary?.as_of_date} onClose={() => setPanelClosed(true)} onOpen={openInvoice} onChanged={refresh} />}
+      {selected && <OutgoingInvoiceReview invoice={selected} asOfDate={summary?.as_of_date} onClose={() => setPanelClosed(true)} onOpen={openInvoice} onChanged={refresh} onReviewDuplicates={reviewDuplicates} />}
     </div>
     <dialog ref={analysisRef} onKeyDown={trapOutgoingDialogFocus} className="oc-dialog" aria-labelledby="oc-ageing-title"><header><h2 id="oc-ageing-title">Receivables ageing</h2><button type="button" aria-label="Close ageing analysis" onClick={() => analysisRef.current.close()}><XMarkIcon /></button></header><p>Open invoices by contractual due date. Amounts are shown in the selected original currency.</p><Select label="Analysis currency" value={currency} options={currencies} onChange={value => { if (filters.currency) change('currency', value); setHealthCurrency(value); }} /><div className="oc-ageing-rows">{currencyHealth?.buckets?.map(bucket => <div key={bucket.id}><span>{bucket.label}</span><span>{bucket.count} invoices</span><strong>{outgoingMoney(bucket.amount, currency)}</strong></div>) || <p>Ageing data is not available.</p>}</div>{currencyHealth?.status === 'incomplete' && <p>Some balances or currencies are missing. Incomplete monetary totals are withheld.</p>}<button type="button" className="oc-button" onClick={() => analysisRef.current.close()}>Close</button></dialog>
     <OutgoingInvoiceCreate open={createOpen && canCreate} onClose={() => setCreateOpen(false)} onCreated={invoice => { setCreateOpen(false); openInvoice(invoice); }} />
