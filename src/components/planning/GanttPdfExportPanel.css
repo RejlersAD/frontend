@@ -1,0 +1,23 @@
+.gantt-pdf-export { margin-bottom: 22px; padding: 0 0 20px; border-bottom: 1px solid #dce6f3; color: #153464; }
+.gantt-pdf-export > header { display: flex; align-items: center; gap: 8px; }
+.gantt-pdf-export h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.gantt-pdf-export p { margin: 9px 0; }
+.gantt-pdf-export fieldset { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 15px 0 6px; padding: 0; border: 0; }
+.gantt-pdf-export legend { margin-bottom: 7px; font-weight: 600; }
+.gantt-pdf-export .gpe-radio { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.gantt-pdf-export input[type="radio"] { margin: 0; accent-color: #075bff; }
+.gantt-pdf-export .gpe-note { color: #64748b; font-size: 12px; }
+.gpe-options { display: flex; align-items: end; gap: 16px; margin: 14px 0; }
+.gpe-options > label { display: flex; flex: 0 0 150px; flex-direction: column; gap: 5px; font-weight: 600; }
+.gpe-options select { min-height: 35px; padding: 6px 8px; border: 1px solid #ccdaed; border-radius: 5px; background: #fff; color: #153464; font: inherit; font-weight: 400; }
+.gpe-options > p { margin: 0 0 3px; }
+.gantt-pdf-export button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 7px 12px; border: 1px solid #ccdaed; border-radius: 5px; background: #fff; color: #153464; font: inherit; font-weight: 600; cursor: pointer; }
+.gantt-pdf-export .gpe-download { margin-top: 6px; border-color: #075bff; background: #075bff; color: #fff; }
+.gantt-pdf-export .gpe-download:hover:not(:disabled) { background: #084acc; border-color: #084acc; }
+.gantt-pdf-export .gpe-error { color: #b42318; }
+.gantt-pdf-export .gpe-success { color: #167348; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .gpe-options { align-items: stretch; flex-direction: column; gap: 8px; }
+  .gpe-options > label { flex-basis: auto; }
+  .gantt-pdf-export .gpe-download { width: 100%; }
+}
