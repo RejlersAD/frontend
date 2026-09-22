@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import process from 'node:process';
 import AxeBuilder from '@axe-core/playwright';
 import { receivablesFixture } from './check-receivables-dashboard-fixtures.mjs';
 import { assertInvoiceKpiGraphics } from './check-executive-reference-overview.mjs';
