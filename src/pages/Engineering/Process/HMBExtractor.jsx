@@ -30,6 +30,9 @@ import {
   RefreshCw,
   ListChecks,
   ShieldCheck,
+  Upload,
+  Download,
+  X,
 } from 'lucide-react';
 import { FolderIcon, FolderPlusIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
@@ -68,12 +71,6 @@ const HMB_UI_CFG = {
   showUpdateCrossCheck: false,
 };
 
-const HMB_CASE_SLOTS = [
-  'CASE A (1a)', 'CASE A (1b)', 'CASE A (2a)', 'CASE A (2b)',
-  'CASE B (1a)', 'CASE B (1b)', 'CASE B (2a)', 'CASE B (2b)',
-  'CASE C (1a)', 'CASE C (1b)', 'CASE C (2a)', 'CASE C (2b)',
-];
-
 const UI = {
   pageBg: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 62%, #eef2f7 100%)',
   shellMaxWidth: 1680,
@@ -96,79 +93,6 @@ const SMART_WORKFLOW_STEPS = [
   { key: 'template', label: 'Analyze/Load Template', icon: Sparkles },
   { key: 'cases', label: 'Import Case Files', icon: Files },
   { key: 'summary', label: 'Review Consolidation', icon: BarChart3 },
-];
-
-// Soft-coded target schema for template alignment checks.
-const HMB_EXPECTED_SCHEMA = [
-  { section: 'General', property: 'Temperature', unit: 'F' },
-  { section: 'General', property: 'Pressure', unit: 'psig' },
-  { section: 'General', property: 'Molecular Weight', unit: '<none>' },
-  { section: 'General', property: 'Mass Flow', unit: 'lb/hr' },
-  { section: 'General', property: 'Vapour Fraction', unit: '<none>' },
-  { section: 'Vapour', property: 'Mass Flow', unit: 'lb/hr' },
-  { section: 'Vapour', property: 'Std Gas Flow', unit: 'MMSCFD' },
-  { section: 'Vapour', property: 'Actual Volume Flow', unit: 'ft3/hr' },
-  { section: 'Vapour', property: 'Molecular Weight', unit: '<none>' },
-  { section: 'Vapour', property: 'Mass Density', unit: 'lb/ft3' },
-  { section: 'Vapour', property: 'Viscosity', unit: 'cP' },
-  { section: 'Vapour', property: 'Compressibility', unit: '<none>' },
-  { section: 'Vapour', property: 'Thermal Conductivity', unit: 'Btu/hr-ft-F' },
-  { section: 'Vapour', property: 'Mass Heat Capacity', unit: 'Btu/lb-F' },
-  { section: 'Vapour', property: 'Cp/Cv (Gamma)', unit: '<none>' },
-  { section: 'Light Liquid', property: 'Mass Flow', unit: 'lb/hr' },
-  { section: 'Light Liquid', property: 'Standard Ideal Liquid Volume Flow', unit: 'barrel/day' },
-  { section: 'Light Liquid', property: 'Actual Volume Flow', unit: 'ft3/hr' },
-  { section: 'Light Liquid', property: 'Actual Volume Flow', unit: 'barrel/day' },
-  { section: 'Light Liquid', property: 'Molecular Weight', unit: '<none>' },
-  { section: 'Light Liquid', property: 'Mass Density', unit: 'lb/ft3' },
-  { section: 'Light Liquid', property: 'Viscosity', unit: 'cP' },
-  { section: 'Light Liquid', property: 'Thermal Conductivity', unit: 'Btu/hr-ft-F' },
-  { section: 'Light Liquid', property: 'Mass Heat Capacity', unit: 'Btu/lb-F' },
-  { section: 'Heavy Liquid', property: 'Mass Flow', unit: 'lb/hr' },
-  { section: 'Heavy Liquid', property: 'Standard Ideal Liquid Volume Flow', unit: 'barrel/day' },
-  { section: 'Heavy Liquid', property: 'Actual Volume Flow', unit: 'ft3/hr' },
-  { section: 'Heavy Liquid', property: 'Actual Volume Flow', unit: 'barrel/day' },
-  { section: 'Heavy Liquid', property: 'Molecular Weight', unit: '<none>' },
-  { section: 'Heavy Liquid', property: 'Mass Density', unit: 'lb/ft3' },
-  { section: 'Heavy Liquid', property: 'Viscosity', unit: 'cP' },
-  { section: 'Heavy Liquid', property: 'Thermal Conductivity', unit: 'Btu/hr-ft-F' },
-  { section: 'Heavy Liquid', property: 'Mass Heat Capacity', unit: 'Btu/lb-F' },
-  { section: 'Composition', property: 'H2S', unit: 'mol frac.' },
-  { section: 'Composition', property: 'CO2', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Nitrogen', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Methane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Ethane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Propane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'i-Butane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'n-Butane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'i-Pentane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'n-Pentane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'n-Hexane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Mcyclopentan', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Benzene', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Cyclohexane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'n-Heptane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'n-Octane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'n-Nonane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'n-Decane', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Mubarraz-C7+_1*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'HAIL-C7-C10_1*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'HAIL-C11-C14_1*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'HAIL-C15-C19_1*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'HAIL-C20-C25_1*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'HAIL-C26-C29_1*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'HAIL-C30+_1*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'ARGA-Undecane+*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'ARGA-C7+*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'ARGA-C10+*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'ARGA-C12+*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'ARGA-C20+*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'ARGA-C30+*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'ARGA-C36+*', unit: 'mol frac.' },
-  { section: 'Composition', property: 'H2O', unit: 'mol frac.' },
-  { section: 'Composition', property: 'TEGlycol', unit: 'mol frac.' },
-  { section: 'Composition', property: 'MDEAmine', unit: 'mol frac.' },
-  { section: 'Composition', property: 'Total', unit: 'mol frac.' },
 ];
 
 const HMBExtractorPage = () => {
@@ -211,6 +135,7 @@ const HMBExtractorPage = () => {
   const [caseAnalysisResult, setCaseAnalysisResult] = useState(null);
   const [caseAssignments, setCaseAssignments] = useState({});
   const [casePreviewConfirmed, setCasePreviewConfirmed] = useState(false);
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const caseFileInputRef = useRef(null);
   const [projectSummary, setProjectSummary] = useState(null);
   const [canvasExportError, setCanvasExportError] = useState('');
@@ -218,6 +143,84 @@ const HMBExtractorPage = () => {
   const [comparisonData, setComparisonData] = useState(null);
   const [comparisonBusy, setComparisonBusy] = useState(false);
   const [comparisonError, setComparisonError] = useState('');
+  const [inspectedValue, setInspectedValue] = useState(null);
+  const [outputTemplate, setOutputTemplate] = useState(null);
+  const [outputTemplateFile, setOutputTemplateFile] = useState(null);
+  const [outputBusy, setOutputBusy] = useState(false);
+  const [outputError, setOutputError] = useState('');
+  const [exportScope, setExportScope] = useState('selected');
+  const activeProjectIdRef = useRef(activeProject?.project_id);
+  activeProjectIdRef.current = activeProject?.project_id;
+  const selectionRef = useRef('');
+  selectionRef.current = `${activeProject?.project_id || ''}:${selectedTemplateProfileId || ''}`;
+  const projectCaseSlots = [...new Set([
+    ...(outputTemplate?.case_slots || []),
+    ...(comparisonData?.case_names || []),
+    ...(caseAnalysisResult?.files || []).map((file) => file.case_name).filter(Boolean),
+  ])];
+
+  useEffect(() => {
+    setSelectedTemplateProfileId(null);
+    setTemplateProfiles([]);
+    setTemplateAnalysis(null);
+    setMasterTemplateFile(null);
+    setTemplateName('');
+    setTemplateNotice('');
+    setTemplateError('');
+    setCaseFiles([]);
+    setCaseImportResult(null);
+    setCaseError('');
+    setCaseNotice('');
+    setCasePreviewRecords([]);
+    setCasePreviewName('');
+    setCasePreviewOptions([]);
+    setCasePreviewFileOptions([]);
+    setProjectSummary(null);
+    setComparisonStreamId('');
+    setWorkspaceView('upload');
+  }, [activeProject?.project_id]);
+
+  useEffect(() => {
+    let current = true;
+    setOutputTemplate(null);
+    setOutputTemplateFile(null);
+    setOutputError('');
+    if (!activeProject?.project_id) return undefined;
+    apiClient.get(`/process-datasheet/datasheets/hmb-projects/${activeProject.project_id}/output-template/`)
+      .then(({ data }) => { if (current) setOutputTemplate(data.output_template); })
+      .catch(() => { if (current) setOutputError('Could not load the saved final template.'); });
+    return () => { current = false; };
+  }, [activeProject?.project_id]);
+
+  useEffect(() => {
+    setCaseAnalysisResult(null);
+    setCasePreviewConfirmed(false);
+    setReplaceExisting(false);
+    setCaseAssignments({});
+    setComparisonData(null);
+    setInspectedValue(null);
+  }, [activeProject?.project_id, selectedTemplateProfileId]);
+
+  const saveOutputTemplate = async () => {
+    if (!outputTemplateFile || !activeProject?.project_id) return;
+    if (!outputTemplateFile.name.toLowerCase().endsWith('.xlsx') || outputTemplateFile.size > 20 * 1024 * 1024) {
+      setOutputError('Select a final .xlsx template of at most 20 MB.');
+      return;
+    }
+    const projectId = activeProject.project_id;
+    setOutputBusy(true);
+    setOutputError('');
+    try {
+      const form = new FormData();
+      form.append('output_template_file', outputTemplateFile);
+      const { data } = await apiClient.post(`/process-datasheet/datasheets/hmb-projects/${projectId}/output-template/`, form);
+      if (activeProjectIdRef.current === projectId) setOutputTemplate(data.output_template);
+    } catch (error) {
+      if (activeProjectIdRef.current === projectId) setOutputError(error?.response?.data?.error || 'Final template could not be saved.');
+    } finally {
+      setOutputBusy(false);
+    }
+  };
 
   const filteredProfiles = useMemo(() => {
     const q = profileQuery.trim().toLowerCase();
@@ -418,7 +421,10 @@ const HMBExtractorPage = () => {
   }, [templateCanvasModel.layout]);
 
   const templateAlignmentAudit = useMemo(() => {
-    const normalizeSection = (v) => String(v || '').trim().toLowerCase();
+    const normalizeSection = (v) => {
+      const value = String(v || '').trim().toLowerCase().replaceAll('_', ' ');
+      return value === 'overall' ? 'general' : value;
+    };
     const normalizeProp = (v) => String(v || '').trim().toLowerCase().replace(/:+$/g, '');
     const normalizeUnit = (v) => {
       const raw = String(v || '').trim().toLowerCase();
@@ -447,7 +453,8 @@ const HMBExtractorPage = () => {
     const missing = [];
     const mismatches = [];
 
-    HMB_EXPECTED_SCHEMA.forEach((item) => {
+    const expectedSchema = outputTemplate?.schema || [];
+    expectedSchema.forEach((item) => {
       const section = normalizeSection(item.section);
       const property = normalizeProp(item.property);
       const unit = normalizeUnit(item.unit);
@@ -468,7 +475,7 @@ const HMBExtractorPage = () => {
       });
     });
 
-    const total = HMB_EXPECTED_SCHEMA.length;
+    const total = expectedSchema.length;
     const score = total > 0 ? Math.round((matched / total) * 100) : 0;
 
     return {
@@ -480,7 +487,7 @@ const HMBExtractorPage = () => {
       missing,
       mismatches,
     };
-  }, [templateCanvasModel]);
+  }, [templateCanvasModel, outputTemplate]);
 
   const workflowState = useMemo(() => {
     const hasProject = Boolean(activeProject?.project_id);
@@ -584,19 +591,23 @@ const HMBExtractorPage = () => {
   }, [activeProject, clearActiveProject, hydrated, loadingProjects, projects, setActiveProject]);
 
   const loadTemplateProfiles = useCallback(async () => {
+    const projectId = activeProject?.project_id;
     setLoadingProfiles(true);
     try {
       const params = activeProject?.project_id ? { project_id: activeProject.project_id } : undefined;
       const { data } = await apiClient.get(MASTER_TEMPLATE_CFG.listEndpoint, { params });
+      if (activeProjectIdRef.current !== projectId) return;
       const rows = Array.isArray(data?.results) ? data.results : [];
       const analysedId = templateAnalysis?.template_profile_id || templateAnalysis?.template_profile?.id || null;
       setTemplateProfiles(rows);
       setSelectedTemplateProfileId((prev) => {
         if (prev && rows.some((p) => p.id === prev)) return prev;
         if (analysedId && rows.some((p) => p.id === analysedId)) return analysedId;
+        if (data.preferred_template_profile_id && rows.some((p) => p.id === data.preferred_template_profile_id)) return data.preferred_template_profile_id;
         return rows[0]?.id || null;
       });
     } catch (err) {
+      if (activeProjectIdRef.current !== projectId) return;
       setTemplateProfiles([]);
       setSelectedTemplateProfileId(null);
       setTemplateError(err?.response?.data?.error || 'Could not load templates for this project.');
@@ -614,6 +625,7 @@ const HMBExtractorPage = () => {
   }, [loadingProfiles, templateProfiles.length]);
 
   const loadProjectSummary = useCallback(async () => {
+    const context = selectionRef.current;
     if (!activeProject?.project_id) {
       setProjectSummary(null);
       return;
@@ -623,8 +635,10 @@ const HMBExtractorPage = () => {
         ? { template_profile_id: selectedTemplateProfileId }
         : undefined;
       const { data } = await apiClient.get(MASTER_TEMPLATE_CFG.projectSummaryEndpoint(activeProject.project_id), { params });
+      if (selectionRef.current !== context) return;
       if (data?.success) setProjectSummary(data);
     } catch (_) {
+      if (selectionRef.current !== context) return;
       setProjectSummary(null);
     }
   }, [activeProject?.project_id, selectedTemplateProfileId]);
@@ -697,6 +711,7 @@ const HMBExtractorPage = () => {
 
   const loadTemplateProfileDetail = useCallback(async (profileId, opts = {}) => {
     if (!profileId) return;
+    const context = selectionRef.current;
     const { silent = false, withNotice = false } = opts;
 
     if (!silent) {
@@ -709,6 +724,7 @@ const HMBExtractorPage = () => {
 
     try {
       const { data } = await apiClient.get(MASTER_TEMPLATE_CFG.detailEndpoint(profileId));
+      if (selectionRef.current !== context) return;
       if (!data?.success) throw new Error(data?.error || 'Failed to load template profile');
       setTemplateAnalysis(data);
       setSelectedTemplateProfileId(profileId);
@@ -742,6 +758,7 @@ const HMBExtractorPage = () => {
   }, [selectedTemplateProfileId, templateAnalysis, loadTemplateProfileDetail]);
 
   const handleAnalyzeCases = async (incomingFiles = null) => {
+    const context = selectionRef.current;
     const filesToImport = Array.isArray(incomingFiles) ? incomingFiles : caseFiles;
 
     if (!activeProject?.project_id) {
@@ -775,13 +792,15 @@ const HMBExtractorPage = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 600000,
       });
+      if (selectionRef.current !== context) return;
       if (!data?.success) throw new Error(data?.error || 'File analysis failed');
       setCaseAnalysisResult(data);
       setCaseAssignments(Object.fromEntries(
-        (data.files || []).map((file) => [file.filename, file.case_name || ''])
+        (data.files || []).map((file) => [file.file_id || file.filename, file.case_name || ''])
       ));
       setCaseNotice(`Analyzed ${data.files?.length || 0} file(s). Review detected mappings, then execute the import.`);
     } catch (err) {
+      if (selectionRef.current !== context) return;
       setCaseError(err?.response?.data?.error || err.message || 'File analysis failed.');
     } finally {
       setCaseBusy(false);
@@ -805,6 +824,7 @@ const HMBExtractorPage = () => {
       const { data } = await apiClient.post(MASTER_TEMPLATE_CFG.executeCasesEndpoint, {
         preview_token: caseAnalysisResult.preview_token,
         case_assignments: caseAssignments,
+        replace_existing: replaceExisting,
       }, { timeout: 600000 });
       if (!data?.success) throw new Error(data?.error || 'Case import failed');
       setCaseImportResult(data);
@@ -1017,6 +1037,7 @@ const HMBExtractorPage = () => {
   }, [templateAnalysis, comparisonStreamId]);
 
   const loadStreamComparison = useCallback(async () => {
+    const context = selectionRef.current;
     if (!activeProject?.project_id || !selectedTemplateProfileId || !comparisonStreamId) {
       setComparisonData(null);
       return;
@@ -1028,6 +1049,7 @@ const HMBExtractorPage = () => {
         MASTER_TEMPLATE_CFG.streamComparisonEndpoint(activeProject.project_id),
         { params: { template_profile_id: selectedTemplateProfileId, stream_id: comparisonStreamId } }
       );
+      if (selectionRef.current !== context) return;
       if (!data?.success) throw new Error(data?.error || 'Failed to load stream comparison');
       setComparisonData(data);
     } catch (err) {
@@ -1043,27 +1065,36 @@ const HMBExtractorPage = () => {
   }, [loadStreamComparison, caseImportResult]);
 
   const exportStreamComparison = async () => {
-    if (!activeProject?.project_id || !selectedTemplateProfileId || !comparisonStreamId) return;
+    if (!activeProject?.project_id || !selectedTemplateProfileId || !comparisonStreamId || !outputTemplate) return;
     setComparisonBusy(true);
     setComparisonError('');
     try {
-      const response = await apiClient.get(
-        MASTER_TEMPLATE_CFG.streamExportEndpoint(activeProject.project_id),
+      const response = await apiClient.post(
+        `/process-datasheet/datasheets/hmb-projects/${activeProject.project_id}/final-export/`,
         {
-          params: { template_profile_id: selectedTemplateProfileId, stream_id: comparisonStreamId },
+          template_profile_id: selectedTemplateProfileId,
+          output_template_id: outputTemplate.id,
+          stream_ids: exportScope === 'all' ? 'all' : [comparisonStreamId],
+        },
+        {
           responseType: 'blob',
+          timeout: 120000,
         }
       );
       const url = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `HMB_Final_${comparisonStreamId}.xlsx`;
+      link.download = `HMB_Final_${exportScope === 'all' ? 'All_Streams' : comparisonStreamId}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setComparisonError(err?.response?.data?.error || err.message || 'Final Excel export failed.');
+      let message = err?.response?.data?.error || err.message || 'Final Excel export failed.';
+      if (err?.response?.data instanceof Blob) {
+        try { message = JSON.parse(await err.response.data.text()).error || message; } catch { /* Non-JSON error response. */ }
+      }
+      setComparisonError(message);
     } finally {
       setComparisonBusy(false);
     }
@@ -1377,7 +1408,7 @@ const HMBExtractorPage = () => {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.01em' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', letterSpacing: 0 }}>
                     {workspaceView === 'review' ? 'Review & Export' : 'Template Setup'}
                   </div>
                   <div style={{ marginTop: 4, fontSize: 12, color: T.muted }}>
@@ -1417,6 +1448,34 @@ const HMBExtractorPage = () => {
                   </button>
                 </div>
               </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'end', gap: 14, marginTop: 12 }}>
+                <label style={{ display: 'grid', gap: 5, fontSize: 12, flex: '1 1 240px', minWidth: 0 }}>
+                  Mapping master
+                  <select aria-label="Mapping master" value={selectedTemplateProfileId || ''} disabled={loadingProfiles || caseBusy}
+                    onChange={(event) => { setTemplateAnalysis(null); setSelectedTemplateProfileId(event.target.value || null); }}
+                    style={{ width: '100%', minWidth: 0, padding: 8, border: '1px solid #94b8b0', borderRadius: 6 }}>
+                    <option value="">Select master</option>
+                    {templateProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.template_name || profile.source_filename} · {profile.stream_count} streams{profile.project_id ? '' : ' · Personal'}</option>)}
+                  </select>
+                </label>
+                <div style={{ flex: '1 1 240px', minWidth: 0, fontSize: 12, overflowWrap: 'anywhere' }}>
+                  <div style={{ marginBottom: 5 }}>Final output template</div>
+                  <strong>{outputTemplate?.filename || 'Not configured'}</strong>
+                  {outputTemplate && <span> · {outputTemplate.case_slots?.length || 0} case slots</span>}
+                </div>
+                {workspaceView === 'template' && <>
+                  <label style={{ display: 'grid', gap: 5, fontSize: 12, minWidth: 0 }}>
+                    Final template (.xlsx)
+                    <input aria-label="Final output template file" type="file" accept=".xlsx" disabled={outputBusy}
+                      onChange={(event) => setOutputTemplateFile(event.target.files?.[0] || null)} style={{ maxWidth: '100%', width: 230 }} />
+                  </label>
+                  <button type="button" onClick={saveOutputTemplate} disabled={outputBusy || !outputTemplateFile}
+                    style={{ display: 'inline-flex', gap: 6, alignItems: 'center', padding: '8px 12px', border: '1px solid #176b5b', background: '#fff', borderRadius: 6 }}>
+                    <Upload width={15} /> {outputBusy ? 'Saving...' : 'Save Final Template'}
+                  </button>
+                </>}
+              </div>
+              {outputError && <div role="alert" style={{ marginTop: 8, color: '#991b1b', fontSize: 12 }}>{outputError}</div>}
               {selectedTemplateProfileId && (
                 <div style={{ marginTop: 8, fontSize: 12, color: '#065f46', fontWeight: 600 }}>
                   Active template: {templateProfiles.find((p) => p.id === selectedTemplateProfileId)?.template_name
@@ -1694,7 +1753,7 @@ const HMBExtractorPage = () => {
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 800, color: '#123b35' }}>Compare Cases</div>
                       <div style={{ marginTop: 3, fontSize: 11, color: '#496b66' }}>
-                        Compare one Master stream across the fixed case sequence and any additional imported cases.
+                        Project case comparison
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1719,11 +1778,16 @@ const HMBExtractorPage = () => {
                       </button>
                       <button
                         onClick={exportStreamComparison}
-                        disabled={comparisonBusy || !comparisonData?.rows?.length}
+                        disabled={comparisonBusy || !comparisonData?.rows?.length || !outputTemplate || Boolean(comparisonData?.conflicts?.length)}
                         style={{ height: 34, display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #176b5b', borderRadius: 6, padding: '0 11px', background: '#176b5b', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                       >
-                        <Files width={14} /> Export Final Excel
+                        <Download width={14} /> Export Final Excel
                       </button>
+                      <select aria-label="Export streams" value={exportScope} onChange={(event) => setExportScope(event.target.value)}
+                        style={{ height: 34, border: '1px solid #94b8b0', borderRadius: 6, maxWidth: '100%' }}>
+                        <option value="selected">Selected stream</option>
+                        <option value="all">All master streams</option>
+                      </select>
                     </div>
                   </div>
                   {comparisonData?.stream?.description && (
@@ -1735,6 +1799,17 @@ const HMBExtractorPage = () => {
 
                 {comparisonError && (
                   <div style={{ padding: '9px 12px', background: '#fff1f2', color: '#9f1239', fontSize: 11 }}>{comparisonError}</div>
+                )}
+                {inspectedValue && (
+                  <section aria-label="Source value details" style={{ padding: 12, borderBottom: '1px solid #b9d7d0', background: '#f8fafc', fontSize: 12, overflowWrap: 'anywhere' }}>
+                    <button type="button" aria-label="Close source details" title="Close source details" onClick={() => setInspectedValue(null)}
+                      style={{ float: 'right', width: 28, height: 28, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 4 }}><X width={15} /></button>
+                    <strong>{inspectedValue.caseName} · {inspectedValue.property} · {inspectedValue.unit}</strong>
+                    <div style={{ marginTop: 6 }}>Value: {inspectedValue.value === '' || inspectedValue.value == null ? 'Missing' : inspectedValue.value}</div>
+                    <div>Source: {inspectedValue.source.filename || 'Not recorded'} · {inspectedValue.source.sheet || '-'} · {inspectedValue.source.cell || '-'}</div>
+                    <div>Original: {inspectedValue.source.value ?? 'Not recorded'} {inspectedValue.source.unit || ''}</div>
+                    <div>Status: {inspectedValue.source.status || 'Missing source value'}</div>
+                  </section>
                 )}
                 {comparisonData?.conflicts?.length > 0 && (
                   <div style={{ padding: '9px 12px', background: '#fffbeb', color: '#92400e', fontSize: 11 }}>
@@ -1776,7 +1851,11 @@ const HMBExtractorPage = () => {
                             <td style={{ padding: '6px 7px', borderRight: '1px solid #d9e5e2', borderBottom: '1px solid #e5ecea', textAlign: 'center', color: '#496b66' }}>{row.unit || '-'}</td>
                             {(comparisonData.case_names || []).map((caseName) => (
                               <td key={caseName} style={{ padding: '6px 7px', borderRight: '1px solid #e5ecea', borderBottom: '1px solid #e5ecea', textAlign: 'right', color: row.values?.[caseName] === '' ? '#a8b7b3' : '#172b27', fontVariantNumeric: 'tabular-nums' }}>
-                                {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '-' : row.values[caseName]}
+                                <button type="button" title="Inspect source value" aria-label={`Inspect ${caseName} ${row.section} ${row.property} ${row.unit}`}
+                                  onClick={() => setInspectedValue({ caseName, property: row.property, unit: row.unit, value: row.values?.[caseName], source: row.sources?.[caseName] || {} })}
+                                  style={{ font: 'inherit', color: 'inherit', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'right', width: '100%' }}>
+                                  {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '-' : row.values[caseName]}
+                                </button>
                               </td>
                             ))}
                           </tr>
@@ -2029,28 +2108,28 @@ const HMBExtractorPage = () => {
                 {caseAnalysisResult?.files?.length > 0 && (
                   <div style={{ marginTop: 12, border: '1px solid #b9d7d0', borderRadius: 8, overflow: 'hidden' }}>
                     <div style={{ padding: '9px 11px', background: '#edf7f4', borderBottom: '1px solid #b9d7d0', fontSize: 12, fontWeight: 800, color: '#123b35' }}>
-                      Analysis Preview - no database changes yet
+                      Analysis Preview - case records not imported
                     </div>
                     <div style={{ padding: 10, display: 'grid', gap: 9 }}>
                       <datalist id="hmb-case-slots">
-                        {HMB_CASE_SLOTS.map((slot) => <option key={slot} value={slot} />)}
+                        {projectCaseSlots.map((slot) => <option key={slot} value={slot} />)}
                       </datalist>
                       {caseAnalysisResult.files.map((file) => (
-                        <div key={file.filename} style={{ border: `1px solid ${file.requires_mapping ? '#fbbf24' : '#bbd8d1'}`, borderRadius: 7, padding: 10, background: file.requires_mapping ? '#fffbeb' : '#f8fcfb' }}>
+                        <div key={file.file_id || file.filename} style={{ border: `1px solid ${file.requires_mapping ? '#fbbf24' : '#bbd8d1'}`, borderRadius: 7, padding: 10, background: file.requires_mapping ? '#fffbeb' : '#f8fcfb' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                             <div>
                               <div style={{ fontSize: 12, fontWeight: 800, color: '#172b27' }}>{file.filename}</div>
                               <div style={{ marginTop: 3, fontSize: 11, color: '#496b66' }}>
-                                {file.detected_format || 'Unknown format'} | {file.stream_count} streams | {file.record_count} records | {Math.round((file.confidence || 0) * 100)}% confidence
+                                {file.detected_format || 'Unknown format'} | {file.stream_count} streams | {file.record_count} values | {file.source_stored ? 'Source retained' : 'Source not retained'}
                               </div>
                             </div>
                             <label style={{ display: 'grid', gap: 3, fontSize: 10, fontWeight: 700, color: '#496b66' }}>
                               CASE SLOT
                               <input
                                 list="hmb-case-slots"
-                                value={caseAssignments[file.filename] || ''}
+                                value={caseAssignments[file.file_id || file.filename] || ''}
                                 onChange={(event) => {
-                                  setCaseAssignments((current) => ({ ...current, [file.filename]: event.target.value }));
+                                  setCaseAssignments((current) => ({ ...current, [file.file_id || file.filename]: event.target.value }));
                                   setCasePreviewConfirmed(false);
                                 }}
                                 style={{ height: 32, minWidth: 170, border: '1px solid #94b8b0', borderRadius: 6, padding: '0 8px', background: '#fff', fontSize: 12 }}
@@ -2062,6 +2141,11 @@ const HMBExtractorPage = () => {
                               Review required: {file.assignment_error || `${file.exceptions?.unresolved_mappings_count || 0} unresolved mapping(s)`}.
                             </div>
                           )}
+                          {Object.entries(file.exceptions || {}).filter(([key, count]) => key.endsWith('_count') && count > 0).map(([key, count]) => (
+                            <div key={key} style={{ marginTop: 5, color: '#92400e', fontSize: 12 }}>
+                              {key.replace(/_count$/, '').replaceAll('_', ' ')}: {count}
+                            </div>
+                          ))}
                           {file.sample_records?.length > 0 && (
                             <div style={{ marginTop: 7, fontSize: 11, color: '#475569' }}>
                               Sample: {file.sample_records.slice(0, 3).map((record) => `${record.stream_id} / ${record.property_name}: ${record.value_text}`).join(' | ')}
@@ -2069,6 +2153,15 @@ const HMBExtractorPage = () => {
                           )}
                         </div>
                       ))}
+                      {(caseAnalysisResult.failures || []).map((failure, index) => (
+                        <div role="alert" key={`${failure.filename}-${index}`} style={{ color: '#991b1b', fontSize: 12 }}>
+                          {failure.filename}: {failure.error}
+                        </div>
+                      ))}
+                      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#92400e' }}>
+                        <input type="checkbox" checked={replaceExisting} onChange={(event) => { setReplaceExisting(event.target.checked); setCasePreviewConfirmed(false); }} />
+                        Approve replacing existing cases with the same assigned names
+                      </label>
                       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '9px 10px', borderRadius: 7, background: '#f1f5f9', color: '#334155', fontSize: 12, cursor: 'pointer' }}>
                         <input
                           type="checkbox"
@@ -2081,7 +2174,7 @@ const HMBExtractorPage = () => {
                       <button
                         type="button"
                         onClick={handleExecuteCases}
-                        disabled={caseBusy || !casePreviewConfirmed || !caseAnalysisResult.preview_token}
+                        disabled={caseBusy || !casePreviewConfirmed || !caseAnalysisResult.preview_token || caseAnalysisResult.files.some((file) => file.blocking_errors > 0)}
                         style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, border: 'none', borderRadius: 6, padding: '0 13px', background: casePreviewConfirmed ? '#176b5b' : '#cbd5e1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: casePreviewConfirmed ? 'pointer' : 'not-allowed' }}
                       >
                         <Database width={15} /> {caseBusy ? 'Executing...' : 'Execute Import'}
