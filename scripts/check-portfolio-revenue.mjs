@@ -89,7 +89,7 @@ async function checkAccessibility(page, view) {
   await writeFile(path.join(artifacts, 'accessibility.json'), JSON.stringify(accessibility, null, 2));
   assert.deepEqual(result.violations.map(item => ({ id: item.id, nodes: item.nodes.length })), [], `${view} WCAG A/AA`);
 }
-async function open(data = fixture(), width = 1440, invoiceStatus = 200) {
+async function open(data = fixture(), width = 1440, invoiceStatus = 200, recordedData = null) {
   const context = await browser.newContext({ viewport: { width, height: 940 }, acceptDownloads: true });
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
@@ -103,7 +103,9 @@ async function open(data = fixture(), width = 1440, invoiceStatus = 200) {
       control.invoiceRequests.push(Object.fromEntries(url.searchParams));
       if (control.invoiceStatus !== 200) return route.fulfill({ status: control.invoiceStatus, json: { detail: 'Synthetic invoice failure' } });
       if (url.searchParams.get('business_unit') === 'Slow') await new Promise(resolve => setTimeout(resolve, 600));
-      return route.fulfill({ json: { ...recordedFixture(url.searchParams), source_snapshot_id: Number(url.searchParams.get('snapshot_id')) } });
+      const response = recordedData ? structuredClone(recordedData) : recordedFixture(url.searchParams);
+      if (recordedData?.rows) response.rows = recordedData.rows.slice(Number(url.searchParams.get('offset') || 0), Number(url.searchParams.get('offset') || 0) + Number(url.searchParams.get('limit') || 10));
+      return route.fulfill({ json: { ...response, source_snapshot_id: response.source_snapshot_id ?? Number(url.searchParams.get('snapshot_id')) } });
     }
     if (url.pathname === '/fixture/dashboard/executive/portfolio-workbook/revenue/') {
       requests.push(Object.fromEntries(url.searchParams));
@@ -132,8 +134,11 @@ async function open(data = fixture(), width = 1440, invoiceStatus = 200) {
   });
   await page.goto('http://revenue-check.test/');
   await page.getByTestId('portfolio-revenue-dashboard').waitFor();
+  if (['available', 'partial'].includes(data.status)) await page.waitForFunction(() => { const invoice = document.querySelector('[data-testid="revenue-overview-invoice"]'); return invoice && !invoice.textContent.includes('Loading recorded invoices'); });
   return { page, context, control };
 }
+const recordedPath = process.argv.find(value => value.startsWith('--recorded-dto='))?.slice('--recorded-dto='.length);
+const actualRecorded = recordedPath ? JSON.parse((await readFile(path.resolve(recordedPath), 'utf8')).replace(/^\uFEFF/, '')) : { status: 'unavailable', description: 'Operational invoice fixture not supplied for this local source preview.', rows: [], totals_by_currency: [] };
 if (process.argv.includes('--visual-only')) {
   const input = process.argv.find(value => value.startsWith('--actual-dto='))?.slice('--actual-dto='.length);
   const datasets = [{ name: 'synthetic', data: fixture() }];
@@ -141,10 +146,10 @@ if (process.argv.includes('--visual-only')) {
   const geometry = [];
   try {
     for (const dataset of datasets) for (const [width, dark] of [[1440, false], [1190, false], [390, false], [1440, true]]) {
-      const { page, context } = await open(dataset.data, width);
+      const { page, context } = await open(dataset.data, width, 200, dataset.name === 'actual' ? actualRecorded : null);
       if (dark) await page.evaluate(() => document.documentElement.classList.add('dark'));
       const labels = page.getByTestId('revenue-overview-invoice').locator('.prv-invoice-reference-stats > div > span');
-      assert.equal(await labels.evaluateAll(nodes => nodes.length === 3 && nodes.every(node => {
+      assert.equal(await labels.evaluateAll(nodes => (nodes.length === 0 || nodes.length === 3) && nodes.every(node => {
         const style = getComputedStyle(node); return style.overflow === 'hidden' && style.textOverflow === 'ellipsis';
       })), true, 'Latest invoice labels clip within their columns with ellipsis');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Overview has no horizontal page overflow');
@@ -418,7 +423,7 @@ try {
   const actualPath = process.argv.find(value => value.startsWith('--actual-dto='))?.slice('--actual-dto='.length);
   if (actualPath) {
     const actual = JSON.parse((await readFile(path.resolve(actualPath), 'utf8')).replace(/^\uFEFF/, ''));
-    const { page: live, context: liveContext } = await open(actual);
+    const { page: live, context: liveContext } = await open(actual, 1440, 200, actualRecorded);
     for (const item of actual.kpis) await assertAmount(live.getByTestId(`revenue-kpi-${item.id}`), item.value);
     assert.equal(await live.locator('.prv-kpis article').count(), 6);
     assert.equal(await live.getByTestId('revenue-watchlist').locator('tbody tr').count(), Math.min(5, actual.projects.total_rows));
@@ -437,6 +442,15 @@ try {
     await live.setViewportSize({ width: 390, height: 940 });
     assert.equal(await live.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Actual source mobile has no horizontal page overflow');
     await live.screenshot({ path: path.join(artifacts, 'revenue-actual-source-390.png'), fullPage: true });
+    if (recordedPath) {
+      await showSection(live, 'Invoice Control', 'revenue-invoicing');
+      assert.equal(await live.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Actual recorded invoices fit mobile');
+      await checkAccessibility(live, 'Actual connected invoices mobile');
+      await live.screenshot({ path: path.join(artifacts, 'invoice-control-actual-390.png'), fullPage: true });
+      await live.setViewportSize({ width: 1440, height: 940 });
+      for (const group of actualRecorded.totals_by_currency || []) if (group.invoice_amount?.value != null) await assertAmount(live.getByLabel(`${group.currency} invoice totals`, { exact: true }), group.invoice_amount.value);
+      await live.screenshot({ path: path.join(artifacts, 'invoice-control-actual-desktop.png'), fullPage: true });
+    }
     checks.push('Actual local DTO: all six API amounts, compact overview, full project count, staffing units and workbook intervention count');
     await liveContext.close();
   }
