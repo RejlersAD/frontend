@@ -607,14 +607,27 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       if (!active) return;
       const { editData, prReference } = recoveryContext.current;
       if (saved?.formData) {
+        const restoreRoute = canConfigurePurchaseOrderRoute(editData);
+        approvalSelectionEditedRef.current = restoreRoute && Boolean(saved.approvalSelectionEdited);
         setFormData(previous => {
-          if (!editData) return { ...previous, ...saved.formData };
           // Reapply only unsaved edits over the latest server record. A refresh
           // must not restore old approval evidence or overwrite newer metadata.
           const changes = Object.fromEntries(Object.entries(saved.formData).filter(([key, value]) => (
-            !['id', 'status', 'approval_log', 'approval_signature', 'approved_by_name', 'approved_by_title', 'approved_at', 'approved_date'].includes(key)
-            && JSON.stringify(value) !== JSON.stringify(saved.initialFormData?.[key])
+            !['id', 'status', 'management_approver', 'approval_log', 'approval_signature', 'approved_by_name', 'approved_by_title', 'approved_at', 'approved_date'].includes(key)
+            && (!editData || JSON.stringify(value) !== JSON.stringify(saved.initialFormData?.[key]))
           )));
+          if (restoreRoute && (!editData || saved.approvalSelectionEdited)) {
+            const pending = (Array.isArray(saved.formData.approval_log) ? saved.formData.approval_log : []).find(entry => (
+              entry.stage === 'Final Management Sign-off' && !entry.external && !entry.evidence_document_id
+              && String(entry.status || 'pending').toLowerCase() === 'pending'
+            ));
+            changes.approval_log = defaultApprovalLog().map(entry => ({
+              ...entry,
+              ...Object.fromEntries(['user_id', 'approver', 'approver_email', 'designation', 'comments']
+                .filter(key => pending?.[key] != null).map(key => [key, pending[key]])),
+            }));
+            changes.management_approver = pending?.approver || '';
+          }
           return { ...previous, ...changes };
         });
         setSelectedRequisition(saved.selectedRequisition || prReference || null);
@@ -645,6 +658,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     formData, initialFormData: initialFormData.current, selectedRequisition, projectPreset,
     prSearch, projectSearch, newProject, showNewProjectForm, pricingConfirmed, pricingEdited,
     draftId, currentSection, attachmentSlots, initialAttachmentSlots: initialAttachmentSlots.current,
+    approvalSelectionEdited: approvalSelectionEditedRef.current,
   }), [formData, selectedRequisition, projectPreset, prSearch, projectSearch, newProject,
     showNewProjectForm, pricingConfirmed, pricingEdited, draftId, currentSection, attachmentSlots]);
   const recoverySnapshotRef = useRef(null);
