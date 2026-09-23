@@ -139,7 +139,7 @@ test('stale offboarding notification rechecks the current designated actor befor
   const observed = await open(page, 'notification')
   await page.getByRole('button', { name: 'Notifications', exact: true }).click()
   await page.getByRole('button', { name: 'Approve', exact: true }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Confirm action', exact: true }).getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect(page.getByText('This exit approval is no longer available to you at the current stage.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
   expect(observed.requests.filter(row => row.method === 'POST')).toEqual([])
