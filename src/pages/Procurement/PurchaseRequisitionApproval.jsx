@@ -260,11 +260,12 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const approvalHierarchy = displayApprovalWorkflow(
     rawApprovalHierarchy,
     requisition.po_number_reference,
+    requisition.po_applicable,
   );
   const sourceApprovalHistory = recommendationSourceApprovals(requisition);
   const showingSourceHistory = approvalHierarchy.length === 0 && sourceApprovalHistory.length > 0;
   const displayedApprovalHistory = showingSourceHistory
-    ? displayApprovalWorkflow(sourceApprovalHistory, requisition.po_number_reference)
+    ? displayApprovalWorkflow(sourceApprovalHistory, requisition.po_number_reference, requisition.po_applicable)
     : approvalHierarchy;
 
   // Active stage determination

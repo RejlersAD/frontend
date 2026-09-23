@@ -7,7 +7,8 @@ import {
 } from '@heroicons/react/24/outline';
 import './RecommendationSupplierPricing.css';
 import { confirmedRecommendationVat, recommendationEnteredAmount, recommendationVat, recommendationLineDiscount } from './recommendationVat';
-import { calculateProcurementVat, PROCUREMENT_VAT_OPTIONS, procurementLineNet } from '../../utils/procurementVat';
+import { calculateProcurementVat, procurementLineNet } from '../../utils/procurementVat';
+import { selectedRecommendationVendor } from './recommendationIcv';
 
 const vendorId = (vendor) => String(vendor?.vendor_id || vendor?.id || '');
 const number = (value) => value === '' || value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
@@ -31,32 +32,21 @@ export default function RecommendationSupplierPricing({
   const [showVendorDetails, setShowVendorDetails] = useState(false);
   const searchRef = useRef(null);
   const shortlist = formData.selected_vendors || [];
-  const preferred = shortlist.find((vendor) => vendorId(vendor) === String(formData.vendor || ''));
-  const masterVendor = vendors.find((vendor) => String(vendor.id) === String(formData.vendor || ''));
-  const selectedVendor = preferred || masterVendor;
+  const selectedVendor = formData.vendor ? selectedRecommendationVendor(formData, vendors) : null;
   const recordedSupplier = !formData.vendor && String(formData.supplier_name || '').trim();
-  const selectedDetails = { ...preferred, ...masterVendor };
+  const selectedDetails = selectedVendor || {};
   const metadata = formData.price_remarks_data || {};
   const selectionType = metadata.selection_type || (shortlist.length === 1 ? 'single_source' : 'competitive_shortlist');
   const items = formData.items || [];
   const currency = formData.currency || 'AED';
   const vatConfirmed = confirmedRecommendationVat(formData.vat_basis);
-  const includesVat = formData.vat_basis === 'inclusive';
   const enteredAmount = recommendationEnteredAmount(formData);
-  const { netAmount: net, taxAmount: vat, totalAmount: gross, vatRate } = recommendationVat(formData);
+  const { totalAmount: gross } = recommendationVat(formData);
   const budget = number(formData.estimated_budget);
-  const icv = number(selectedDetails.icv_percentage);
+  const icv = number(selectedDetails.icv_percentage) ?? number(selectedDetails.icv_value);
   const icvExpired = selectedDetails.icv_expiry_date && selectedDetails.icv_expiry_date < new Date().toISOString().slice(0, 10);
   const active = selectedDetails.status === 'active' || selectedDetails.is_active === true;
   const updateField = (field, value) => setFormData((previous) => ({ ...previous, [field]: value, ...(field === 'currency' ? { _vatPricingChanged: true } : {}) }));
-  const changeVatBasis = value => setFormData(previous => {
-    const inputAmount = recommendationEnteredAmount(previous);
-    const amounts = calculateProcurementVat(inputAmount, previous.price_remarks_data?.discount_amount ?? 0, { basis: value });
-    return { ...previous, vat_basis: value, _vatPricingChanged: true, _vatEnteredAmount: inputAmount,
-      net_total_excl_vat: amounts.netAmount === null ? '' : amounts.netAmount.toFixed(2),
-      total_price: amounts.totalAmount === null ? '' : amounts.totalAmount.toFixed(2),
-    };
-  });
   const updateMetadata = (field, value) => setFormData((previous) => ({ ...previous, price_remarks_data: { ...(previous.price_remarks_data || {}), [field]: value } }));
   const openVendorSearch = () => {
     setShowVendorOptions(true);
@@ -141,34 +131,31 @@ export default function RecommendationSupplierPricing({
     </section>
 
     <section className="prf-sp-card prf-sp-commercial" aria-labelledby="prf-commercial-title">
-      <div className="prf-sp-card-heading prf-sp-commercial-heading"><h2 id="prf-commercial-title">Commercial comparison</h2><div className="prf-sp-pricing-controls"><label className="prf-sp-vat-basis">VAT treatment<select name="vat_basis" aria-label="VAT price basis" aria-invalid={Boolean(errors.vat_basis && !vatConfirmed)} value={vatConfirmed ? formData.vat_basis : 'unconfirmed'} onChange={event => changeVatBasis(event.target.value)}><option value="unconfirmed" disabled>Confirm VAT treatment</option>{PROCUREMENT_VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="prf-sp-currency">Currency<select name="currency" value={currency} onChange={(event) => updateField('currency', event.target.value)}>{['AED', 'USD', 'EUR', 'GBP', 'SAR', 'INR'].map((code) => <option key={code}>{code}</option>)}</select></label></div></div>
-      {!vatConfirmed && <p className="prf-sp-muted">VAT is not confirmed. Recorded amounts stay unchanged until you choose the VAT treatment and save.</p>}
+      <div className="prf-sp-card-heading prf-sp-commercial-heading"><h2 id="prf-commercial-title">Commercial comparison</h2><div className="prf-sp-pricing-controls"><label className="prf-sp-currency">Currency<select name="currency" value={currency} onChange={(event) => updateField('currency', event.target.value)}>{['AED', 'USD', 'EUR', 'GBP', 'SAR', 'INR'].map((code) => <option key={code}>{code}</option>)}</select></label></div></div>
       <div className="prf-sp-table-scroll">
-        <table className="prf-sp-items" data-table-typography="preserve"><colgroup><col className="prf-sp-col-number" /><col className="prf-sp-col-description" /><col className="prf-sp-col-quantity" /><col className="prf-sp-col-unit" /><col className="prf-sp-col-price" /><col className="prf-sp-col-vat" /><col className="prf-sp-col-total" /><col className="prf-sp-col-vendor" /><col className="prf-sp-col-action" /></colgroup><thead><tr><th scope="col">#</th><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Unit <span className="prf-sp-required">*</span></th><th scope="col">Unit price ({currency})</th><th scope="col">VAT</th><th scope="col">Total ({currency})</th><th scope="col">Vendor</th><th scope="col"><span className="prf-sp-sr-only">Actions</span></th></tr></thead><tbody>
-          {items.length === 0 ? <tr><td colSpan={9}><button type="button" onClick={onAddLineItem} className="prf-sp-add-first"><PlusIcon aria-hidden="true" />Add a line item with quantities and pricing</button></td></tr> : items.map((item, index) => {
+        <table className="prf-sp-items" data-table-typography="preserve"><colgroup><col className="prf-sp-col-number" /><col className="prf-sp-col-description" /><col className="prf-sp-col-quantity" /><col className="prf-sp-col-unit" /><col className="prf-sp-col-price" /><col className="prf-sp-col-total" /><col className="prf-sp-col-vendor" /><col className="prf-sp-col-action" /></colgroup><thead><tr><th scope="col">#</th><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Unit <span className="prf-sp-required">*</span></th><th scope="col">Unit price ({currency})</th><th scope="col">Total ({currency})</th><th scope="col">Vendor</th><th scope="col"><span className="prf-sp-sr-only">Actions</span></th></tr></thead><tbody>
+          {items.length === 0 ? <tr><td colSpan={8}><button type="button" onClick={onAddLineItem} className="prf-sp-add-first"><PlusIcon aria-hidden="true" />Add a line item with quantities and pricing</button></td></tr> : items.map((item, index) => {
             const lineAmount = procurementLineNet(item.quantity, item.unit_price, recommendationLineDiscount(item));
             const lineTotal = vatConfirmed && lineAmount !== null ? calculateProcurementVat(lineAmount, 0, { basis: formData.vat_basis }).totalAmount : number(item.total) ?? lineAmount;
-            return <tr key={index}><td>{index + 1}</td>
-              <td><input aria-label={`Line item ${index + 1} description`} value={item.description || ''} placeholder="Description" onChange={(event) => onUpdateLineItem(index, 'description', event.target.value)} /></td>
-              <td><input type="number" min="0" step="0.0001" aria-label={`Line item ${index + 1} quantity`} value={item.quantity ?? ''} onChange={(event) => onUpdateLineItem(index, 'quantity', event.target.value)} /></td>
-              <td><input aria-label={`Line item ${index + 1} unit`} value={item.unit || ''} placeholder="Unit" onChange={(event) => onUpdateLineItem(index, 'unit', event.target.value)} /></td>
-              <td><input type="number" min="0" step="0.01" aria-label={`Line item ${index + 1} unit price`} value={item.unit_price ?? ''} placeholder="0.00" onChange={(event) => onUpdateLineItem(index, 'unit_price', event.target.value)} /></td>
-              <td><span aria-label={`Line item ${index + 1} VAT`}>{vatRate === null ? 'Not confirmed' : `${vatRate}%`}</span></td>
-              <td className="prf-sp-line-total" title={vatConfirmed ? 'Line total with the selected VAT treatment' : 'Recorded line amount'}>{money(lineTotal)}</td>
-              <td><select aria-label={`Line item ${index + 1} vendor`} value={item.vendor_id || item.vendor || ''} onChange={(event) => onUpdateLineItem(index, 'vendor_id', event.target.value)}><option value="">{selectedVendor?.name || recordedSupplier || 'Preferred supplier'}</option>{shortlist.map((vendor) => <option key={vendorId(vendor)} value={vendorId(vendor)}>{vendor.name}</option>)}</select></td>
-              <td><button type="button" className="prf-sp-icon-button" onClick={() => onRemoveLineItem(index)} aria-label={`Remove line item ${index + 1}`}><TrashIcon /></button></td>
+            return <tr key={index}><td data-label="#">{index + 1}</td>
+              <td data-label="Description"><input aria-label={`Line item ${index + 1} description`} value={item.description || ''} placeholder="Description" onChange={(event) => onUpdateLineItem(index, 'description', event.target.value)} /></td>
+              <td data-label="Quantity"><input type="number" min="0" step="0.0001" aria-label={`Line item ${index + 1} quantity`} value={item.quantity ?? ''} onChange={(event) => onUpdateLineItem(index, 'quantity', event.target.value)} /></td>
+              <td data-label="Unit"><input aria-label={`Line item ${index + 1} unit`} value={item.unit || ''} placeholder="Unit" onChange={(event) => onUpdateLineItem(index, 'unit', event.target.value)} /></td>
+              <td data-label="Unit price"><input type="number" min="0" step="0.01" aria-label={`Line item ${index + 1} unit price`} value={item.unit_price ?? ''} placeholder="0.00" onChange={(event) => onUpdateLineItem(index, 'unit_price', event.target.value)} /></td>
+              <td data-label="Total" className="prf-sp-line-total" title="Line total">{money(lineTotal)}</td>
+              <td data-label="Supplier"><select aria-label={`Line item ${index + 1} vendor`} value={item.vendor_id || item.vendor || ''} onChange={(event) => onUpdateLineItem(index, 'vendor_id', event.target.value)}><option value="">{selectedVendor?.name || recordedSupplier || 'Preferred supplier'}</option>{shortlist.map((vendor) => <option key={vendorId(vendor)} value={vendorId(vendor)}>{vendor.name}</option>)}</select></td>
+              <td data-label="Actions"><button type="button" className="prf-sp-icon-button" onClick={() => onRemoveLineItem(index)} aria-label={`Remove line item ${index + 1}`}><TrashIcon /></button></td>
             </tr>;
           })}
         </tbody></table>
       </div>
       <FieldError value={errors.items} />
       <FieldError value={errors.total_price} />
-      <FieldError value={vatConfirmed ? null : errors.vat_basis} />
       <div className="prf-sp-commercial-bottom">
         <div className="prf-sp-negotiation"><button type="button" className="prf-sp-button prf-sp-add-line" onClick={onAddLineItem}><PlusIcon aria-hidden="true" />Add line item</button><label className="prf-sp-field">Negotiation outcome <InformationCircleIcon aria-hidden="true" /><textarea name="price_remarks" rows={1} value={formData.price_remarks || ''} onChange={(event) => updateField('price_remarks', event.target.value)} placeholder="Record negotiation outcome, agreed savings, commercial clarifications, or final terms..." /></label></div>
-        <dl className="prf-sp-totals" aria-label="Recommendation totals"><div><dt>Net excluding VAT ({currency})</dt><dd>{money(net)}</dd></div><div><dt>{vatRate === null ? 'VAT not confirmed' : vatRate === 0 ? 'No VAT' : 'VAT (5%)'}</dt><dd>{money(vat)}</dd></div><div className="prf-sp-grand-total"><dt>{vatConfirmed ? 'Total' : 'Recorded total'} ({currency})</dt><dd>{money(gross)}</dd></div></dl>
+        <dl className="prf-sp-totals" aria-label="Recommendation totals"><div className="prf-sp-grand-total"><dt>Total ({currency})</dt><dd>{money(gross)}</dd></div></dl>
       </div>
-      {items.length === 0 && <div className="prf-sp-lump-pricing"><label className="prf-sp-field">Entered price {vatConfirmed && formData.vat_basis !== 'none' ? includesVat ? 'including VAT' : 'excluding VAT' : ''} <span className="prf-sp-required">*</span><input type="number" min="0" step="0.01" aria-label="Entered price" name="entered_price" value={enteredAmount ?? ''} onChange={(event) => { const value = event.target.value; const amounts = vatConfirmed ? calculateProcurementVat(value, formData.price_remarks_data?.discount_amount ?? 0, { basis: formData.vat_basis }) : { netAmount: number(value), totalAmount: number(value) }; setFormData(previous => ({ ...previous, _vatPricingChanged: true, _vatEnteredAmount: value, net_total_excl_vat: amounts.netAmount === null ? '' : amounts.netAmount.toFixed(2), total_price: amounts.totalAmount === null ? '' : amounts.totalAmount.toFixed(2) })); }} placeholder="0.00" aria-invalid={!!errors.total_price} /></label></div>}
+      {items.length === 0 && <div className="prf-sp-lump-pricing"><label className="prf-sp-field">Entered price <span className="prf-sp-required">*</span><input type="number" min="0" step="0.01" aria-label="Entered price" name="entered_price" value={enteredAmount ?? ''} onChange={(event) => { const value = event.target.value; const amounts = vatConfirmed ? calculateProcurementVat(value, formData.price_remarks_data?.discount_amount ?? 0, { basis: formData.vat_basis }) : { netAmount: number(value), totalAmount: number(value) }; setFormData(previous => ({ ...previous, _vatPricingChanged: true, _vatEnteredAmount: value, net_total_excl_vat: amounts.netAmount === null ? '' : amounts.netAmount.toFixed(2), total_price: amounts.totalAmount === null ? '' : amounts.totalAmount.toFixed(2) })); }} placeholder="0.00" aria-invalid={!!errors.total_price} /></label></div>}
       <button type="button" className="prf-sp-link prf-sp-advanced-toggle" onClick={() => setShowAdvancedPricing(!showAdvancedPricing)} aria-expanded={showAdvancedPricing}>{showAdvancedPricing ? <ChevronDownIcon aria-hidden="true" /> : <ChevronRightIcon aria-hidden="true" />}{showAdvancedPricing ? 'Hide' : 'Show'} advanced pricing details</button>
       {showAdvancedPricing && <div className="prf-sp-advanced">
         <label className="prf-sp-field prf-sp-full-width">Pricing description<textarea name="price_description" rows={2} value={formData.price_description || ''} onChange={(event) => onPriceDescriptionChange ? onPriceDescriptionChange(event.target.value) : updateField('price_description', event.target.value)} placeholder="Description to show on the purchase recommendation" /></label><FieldError value={errors.price_description} />

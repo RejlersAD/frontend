@@ -14,7 +14,7 @@ import PurchaseOrderPdfImport from './PurchaseOrderPdfImport';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
 import { employeeDisplayName } from '../../utils/employeeDisplayName';
-import { canDecideProcurement } from '../../utils/procurementApproval';
+import { canDecideProcurement, purchaseOrderLifecycleBlockReason } from '../../utils/procurementApproval';
 import ProcurementRegister from './ProcurementRegister';
 import { pendingPurchaseOrderDocument } from './procurementRegisterModel';
 import PurchaseRecommendations from './PurchaseRecommendations';
@@ -577,6 +577,10 @@ const OrderManagement = () => {
       console.error('Invalid order data');
       return;
     }
+    if (order.can_send_to_vendor !== true) {
+      toast.error(purchaseOrderLifecycleBlockReason(order));
+      return;
+    }
 
     try {
       // Soft-coded confirmation dialog
@@ -602,7 +606,7 @@ const OrderManagement = () => {
     } catch (error) {
       console.error('Error sending order:', error);
       // Soft-coded error handling
-      toast.error(`Failed to send order: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to send order: ${error.response?.data?.detail || error.response?.data?.status || error.message}`);
     }
   };
 

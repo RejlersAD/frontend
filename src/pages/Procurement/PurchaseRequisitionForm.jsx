@@ -1,4 +1,4 @@
-import { radaiAlert } from '../../services/radaiDialog'
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
 /**
  * Purchase Requisition Form Component
  * Aligned with RAD-OM-PRC-0001 FRM -1 Rev 0 template
@@ -23,10 +23,12 @@ import RecommendationSupplierPricing from './RecommendationSupplierPricing';
 import RecordedApprovalHistory from './RecordedApprovalHistory';
 import PendingApprovalAssignments, { approvalReassignmentCommands, retainCurrentApprovalAssignments } from './PendingApprovalAssignments';
 import { prepareRecommendationPayload } from './recommendationFormPayload';
+import { selectedRecommendationVendor } from './recommendationIcv';
 import { hydrateRecommendationReferences, preserveRecordedApprovalWorkflow, recommendationLineError } from './recommendationFormState';
 import { confirmedRecommendationVat, hasCompleteRecommendationPricing, recommendationVat, recommendationLineDiscount } from './recommendationVat';
 import { calculateProcurementVat, procurementLineNet, sumProcurementMoney } from '../../utils/procurementVat';
 import './PurchaseRequisitionForm.css';
+import './RecommendationApprovalWorkflow.css';
 import useOrganizationCatalog from '../../hooks/useOrganizationCatalog';
 import { vicePresidentPositionFromWorkflow } from './recommendationApprovalPositions';
 import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
@@ -40,7 +42,6 @@ import {
   XMarkIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
-  PencilSquareIcon,
   CheckIcon,
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
@@ -127,20 +128,19 @@ const ActiveEmployeePicker = ({
   const matches = employees.filter(employee => employeeSearchText(employee).includes(search.trim().toLowerCase())).slice(0, 20);
 
   return (
-    <div>
+    <div className="prf-employee-picker">
       {!hideLabel && <label className="mb-2 block text-sm font-medium text-gray-700">
         {label} {required && <span className="text-red-500">*</span>}
       </label>}
       {selected ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
+        <div className="prf-employee-selected">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-gray-900">{employeeDisplayName(selected)}</p>
-            {selected.job_title && <p className="truncate text-xs text-gray-600">{selected.job_title}</p>}
+            <p className="prf-employee-name" title={employeeDisplayName(selected)}>{employeeDisplayName(selected)}</p>
           </div>
-          {!disabled && <button type="button" onClick={() => { onChange(''); setSearch(''); }} className="shrink-0 text-xs font-semibold text-purple-700 hover:text-red-600">Edit</button>}
+          {!disabled && <button type="button" aria-label={`Edit ${label}`} onClick={() => { onChange(''); setSearch(''); }} className="prf-employee-edit">Edit</button>}
         </div>
       ) : (
-        <div className="relative">
+        <div className="prf-employee-search relative">
           <input
             value={search}
             aria-label={label}
@@ -150,7 +150,7 @@ const ActiveEmployeePicker = ({
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
           />
           {search.trim() && !disabled && (
-            <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+            <div className="prf-employee-results absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
               {matches.length ? matches.map(employee => (
                 <button key={employee.id} type="button" onClick={() => { onChange(employee.id); setSearch(''); }} className="block w-full border-b border-gray-100 px-3 py-2 text-left hover:bg-purple-50 last:border-0">
                   <span className="block text-sm font-semibold text-gray-900">{employeeDisplayName(employee)}</span>
@@ -412,7 +412,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const userEditedRef = useRef(false);
   const linePricingEditedRef = useRef(false);
   const preserveApprovalWorkflow = preserveRecordedApprovalWorkflow(approvalRecord);
-  const editingRegisteredPr = Boolean(editData && String(approvalRecord?.status || 'draft').toLowerCase() !== 'draft');
   const setFormData = useCallback(update => {
     userEditedRef.current = true;
     setFormDataState(update);
@@ -1020,27 +1019,29 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           supplier_name: '',
           supplier_business_id: '',
           preferred_supplier_if_any: '',
+          price_remarks_data: { ...prev.price_remarks_data, icv: '' },
         } : {}),
       };
     });
   };
 
   const selectPreferredVendor = (vendorId) => {
-    const shortlistEntry = (formData.selected_vendors || []).find(
-      vendor => String(vendor.vendor_id || vendor.id) === String(vendorId)
-    );
-    const masterVendor = vendors.find(vendor => String(vendor.id) === String(vendorId));
+    const selectedVendor = vendorId ? selectedRecommendationVendor({ ...formData, vendor: vendorId }, vendors) : null;
     setFormData(prev => ({
       ...prev,
       vendor: vendorId || null,
-      supplier_name: shortlistEntry?.name || masterVendor?.name || '',
-      supplier_business_id: masterVendor?.trade_license_number || masterVendor?.tax_id || masterVendor?.vendor_code || '',
-      preferred_supplier_if_any: shortlistEntry?.name || masterVendor?.name || '',
+      supplier_name: selectedVendor?.name || selectedVendor?.vendor_name || '',
+      supplier_business_id: selectedVendor?.trade_license_number || selectedVendor?.tax_id || selectedVendor?.vendor_code || '',
+      preferred_supplier_if_any: selectedVendor?.name || selectedVendor?.vendor_name || '',
+      selected_vendors: (prev.selected_vendors || []).map(vendor => (
+        String(vendor.vendor_id || vendor.id) === String(vendorId) ? { ...vendor, ...selectedVendor } : vendor
+      )),
+      ...(String(prev.vendor || '') !== String(vendorId || '')
+        ? { price_remarks_data: { ...prev.price_remarks_data, icv: '' } } : {}),
     }));
-    const selectedVendor = shortlistEntry || masterVendor;
-    const hasIcv = selectedVendor?.icv_percentage !== null
-      && selectedVendor?.icv_percentage !== undefined
-      && selectedVendor?.icv_percentage !== '';
+    const hasIcv = [selectedVendor?.icv_percentage, selectedVendor?.icv_value].some(
+      value => value !== null && value !== undefined && String(value).trim() !== '',
+    );
     setManualIcv(hasIcv || !vendorId
       ? { vendorId: null, value: '', expiryDate: '', saving: false, error: '' }
       : { vendorId, value: '', expiryDate: selectedVendor?.icv_expiry_date || '', saving: false, error: '' });
@@ -1063,6 +1064,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       setVendors(previous => previous.map(vendor => String(vendor.id) === String(savedVendor.id) ? savedVendor : vendor));
       setFormData(previous => ({
         ...previous,
+        ...(String(previous.vendor) === String(savedVendor.id)
+          ? { price_remarks_data: { ...previous.price_remarks_data, icv: '' } } : {}),
         selected_vendors: (previous.selected_vendors || []).map(vendor => (
           String(vendor.vendor_id || vendor.id) === String(savedVendor.id)
             ? { ...vendor, icv_percentage: savedVendor.icv_percentage, icv_expiry_date: savedVendor.icv_expiry_date, is_icv_certified: true }
@@ -1370,9 +1373,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     }
     const lineError = reassignmentKeepsPricing() ? '' : recommendationLineError(prepareRecommendationPayload(formData).items);
     if (lineError) newErrors.items = lineError;
-    if (formData._vatPricingChanged && !confirmedRecommendationVat(formData.vat_basis)) {
-      newErrors.vat_basis = 'Confirm whether the entered price includes VAT, excludes VAT, or has no VAT.';
-    }
     return newErrors;
   };
 
@@ -1453,13 +1453,6 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     if (submitForApproval && !validateForm()) {
       return;
     }
-    if (!approvedPdfFile && formData._vatPricingChanged && !confirmedRecommendationVat(formData.vat_basis)) {
-      const message = 'Confirm whether the entered price includes VAT, excludes VAT, or has no VAT.';
-      setErrors(previous => ({ ...previous, vat_basis: message }));
-      setSaveError(message);
-      setActiveStep(1);
-      return;
-    }
     const lineError = reassignmentKeepsPricing() ? '' : recommendationLineError(prepareRecommendationPayload(formData).items);
     if (!approvedPdfFile && lineError) {
       setErrors(previous => ({ ...previous, items: lineError }));
@@ -1468,11 +1461,15 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       return;
     }
 
-    setSubmitLoading(true);
-    setSaveError('');
     submissionInFlightRef.current = true;
 
     try {
+      if (submitForApproval && !await radaiConfirm(
+        'Are you sure you want to send this request for approval?',
+        { confirmLabel: 'Yes', cancelLabel: 'No' },
+      )) return;
+      setSubmitLoading(true);
+      setSaveError('');
       // Signed PDFs are authoritative and use the exact same atomic pipeline
       // as the standalone Import Signed PDF action.
       if (approvedPdfFile) {
@@ -1570,7 +1567,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         ? `PR ${response.data.pr_number}`
         : 'Purchase requisition';
       toast.success(shouldSubmitForApproval
-          ? `${requisitionLabel} successfully created and submitted for approval.`
+          ? `${requisitionLabel} sent for approval.`
           : `${requisitionLabel} changes saved successfully.`);
 
       const savedWarnings = registrationWarningsFrom(response.data);
@@ -1669,11 +1666,39 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     savedWorkflow: editData?.approval_workflow_config || [],
   });
   approvalWorkflowRef.current = liveApprovalWorkflow;
+  // These markers describe route setup only. Approval decisions continue to
+  // come from the recorded workflow; selecting a person never approves a PR.
+  let awaitingSetup = false;
+  const approvalSetupStages = [
+    { key: 'procurement', number: '0', role: 'Procurement Department', pickerLabel: 'Procurement Department Approval', labelAria: 'procurement approval label', employees: projectManagers },
+    { key: 'level_one', number: '1', role: 'Level 1 approvers' },
+    ...(formData.requisition_type === 'project' ? [
+      { key: 'engineering_manager', number: '2', role: 'Manager of Engineering (MoE)', pickerLabel: 'Manager of Engineering (MoE)', labelAria: 'engineering manager approval label', employees: engineeringManagers, optional: true },
+      { key: 'manager_projects', number: '3', role: 'Manager of Projects (MoP)', pickerLabel: 'Manager of Projects (MoP)', labelAria: 'manager projects approval label', employees: managerProjects },
+    ] : []),
+    { key: 'vp_operations', number: formData.requisition_type === 'general' ? '2' : '4', role: formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery', pickerLabel: 'Vice President / Delivery Approver', labelAria: 'vp operations approval label', employees: vpOperations },
+    ...(!formData.po_applicable ? [{ key: 'general_manager', number: 'CEO', role: 'CEO', pickerLabel: 'CEO Approval', labelAria: 'general manager approval label', employees: projectManagers }] : []),
+  ].map(stage => {
+    const assigned = stage.key === 'level_one'
+      ? (selectedApprovers.level_one || []).length === levelOneApproverCount
+      : Boolean(selectedApprovers[stage.key]);
+    const configured = assigned && (stage.key !== 'vp_operations' || formData.requisition_type !== 'general' || Boolean(vicePresidentPosition));
+    const defaultAssigned = stage.key !== 'level_one' && assigned
+      && String(selectedApprovers[stage.key]) === String(approvalDefaults[stage.key]);
+    let state = 'waiting';
+    if (stage.optional && !assigned) state = 'optional';
+    else if (!loadingApprovers && !approverLoadError && !awaitingSetup) {
+      state = configured ? 'complete' : 'active';
+      if (!configured) awaitingSetup = true;
+    }
+    return { ...stage, state, defaultAssigned };
+  });
   const canSubmitForApproval = !preserveApprovalWorkflow && (!editData
     || String(approvalRecord?.status || 'draft').toLowerCase() === 'draft');
   const livePreviewRequisition = {
     ...(preserveApprovalWorkflow ? approvalRecord : {}),
     ...formData,
+    vendor_details: selectedRecommendationVendor(formData, vendors),
     tax_amount: formData._vatPricingChanged ? recommendationVat(formData).taxAmount : editData?.tax_amount,
     id: editData?.id || draftIdRef.current,
     issued_by_name: editData?.issued_by_name || sessionUserName,
@@ -1687,10 +1712,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   };
 
 
-  const stepLabels = ['Request', 'Supplier & pricing', 'Business justification', 'Documents', 'Approval & submit'];
+  const stepLabels = ['Request', 'Supplier & pricing', 'Business justification', 'Documents', 'Approval & submission'];
   const fieldSteps = {
     pr_number: 0, product_service: 0, project_department: 0, issued_date: 0,
-    total_price: 1, vat_basis: 1, selected_vendors: 1, vendor: 1, vendor_selection_reason: 1,
+    total_price: 1, selected_vendors: 1, vendor: 1, vendor_selection_reason: 1,
     single_source_justification: 1, items: 1, price_description: 2,
     description_reason: 2, purchase_recommendation: 2, po_number_reference: 2,
     management_approval: 4, management_approval_remarks: 4, management_approval_evidence: 4,
@@ -1732,10 +1757,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     }
     goToStep(Math.min(4, activeStep + 1));
   };
-  const reviewSubmission = () => { setErrors(validationErrors); goToStep(4); };
-  const displayDate = formData.issued_date ? new Date(`${formData.issued_date}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
   const requiredMessage = blockingIssues.length ? `${blockingIssues.length} error${blockingIssues.length === 1 ? '' : 's'} to correct`
-    : warningIssues.length ? `${warningIssues.length} warning${warningIssues.length === 1 ? '' : 's'} · You can submit` : 'Ready for review';
+    : warningIssues.length ? `${warningIssues.length} warning${warningIssues.length === 1 ? '' : 's'} · You can send for approval` : 'Ready to send for approval';
   return (
     <div className={`recommendation-form-workspace ${pageMode ? 'prf-page' : 'prf-modal'}`}>
       <div ref={workspaceRef} className="prf-workspace-grid" style={{ '--form-pane-width': `${formPanePercent}%` }}>
@@ -1746,45 +1769,39 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               <div><h1>{editData ? 'Edit purchase recommendation' : 'Create purchase recommendation'}</h1><p>Define the requirement, compare suppliers and route the recommendation for approval.</p></div>
               <div className="prf-header-actions">
                 <span role="status" className={`prf-save-state ${saveError ? 'prf-save-error' : ''}`}><CheckCircleIcon />{autoSaving || submitLoading ? 'Saving changes...' : saveError ? 'Changes not saved' : unsavedChanges ? (editData || lastSavedAt ? 'Unsaved changes' : 'Unsaved draft') : lastSavedAt ? (preserveApprovalWorkflow ? 'Changes saved' : 'Draft saved') : editData ? (preserveApprovalWorkflow ? 'Existing recommendation' : 'Existing draft') : 'Unsaved draft'}</span>
-                <button type="button" className="prf-button" onClick={event => handleSubmit(event, false, true)} disabled={submitLoading || autoSaving || approvalRecordEditing}><SaveIcon />{preserveApprovalWorkflow || editingRegisteredPr ? 'Save changes' : 'Save draft'}</button>
-                {canSubmitForApproval && <button type="button" className="prf-button prf-primary" onClick={reviewSubmission}>Review & submit<ArrowRightIcon /></button>}
+                <button type="button" className="prf-button prf-save-action" onClick={event => handleSubmit(event, false, true)} disabled={submitLoading || autoSaving || approvalRecordEditing}><SaveIcon />{approvedPdfFile ? 'Record signed PDF' : 'Save'}</button>
+                {canSubmitForApproval && !approvedPdfFile && <button type="button" className="prf-button prf-primary prf-send-action" onClick={event => handleSubmit(event, true)} disabled={submitLoading || autoSaving || approvalRecordEditing}>Send for Approval<ArrowRightIcon /></button>}
               </div>
             </div>
             <nav aria-label="Recommendation steps" className="prf-steps">
               {stepLabels.map((label, index) => {
                 const complete = visitedSteps.includes(index) && !issues.some(issue => issue.step === index) && activeStep !== index;
-                return <button key={label} type="button" aria-current={activeStep === index ? 'step' : undefined} onClick={() => goToStep(index)} className={`${activeStep === index ? 'is-active' : ''} ${complete ? 'is-complete' : ''}`}><span className="prf-step-circle">{complete ? <CheckIcon /> : index + 1}</span><span className="prf-step-copy"><strong>{label}</strong><small>{activeStep === index ? 'In progress' : complete ? 'Complete' : visitedSteps.includes(index) ? 'Needs attention' : 'Not started'}</small></span></button>;
+                return <button key={label} type="button" aria-current={activeStep === index ? 'step' : undefined} onClick={() => goToStep(index)} className={`${activeStep === index ? 'is-active' : ''} ${complete ? 'is-complete' : ''}`}><span className="prf-step-circle" aria-hidden="true">{complete ? <CheckIcon /> : index + 1}</span><span className="prf-step-copy"><strong>{label}</strong><span className="sr-only">, {activeStep === index ? 'In progress' : complete ? 'Complete' : visitedSteps.includes(index) ? 'Needs attention' : 'Not started'}</span></span></button>;
               })}
             </nav>
           </header>
-          <form id="pr-modal-form" className="prf-form" onSubmit={event => { event.preventDefault(); if (activeStep < 4) continueStep(); else handleSubmit(event, canSubmitForApproval); }} noValidate>
+          <form id="pr-modal-form" className="prf-form" onSubmit={event => handleSubmit(event, false, true)} noValidate>
             <div ref={formScrollRef} className="prf-form-scroll">
               {saveError && <div role="alert" className="prf-error-banner"><ExclamationCircleIcon />{saveError}</div>}
-              {activeStep > 0 && <section className="prf-card prf-request-summary" aria-label="Request summary">
-                <div className="prf-card-heading"><h2>Request summary</h2><button type="button" className="prf-button prf-small" onClick={() => goToStep(0)}><PencilSquareIcon />Edit request</button></div>
-                <dl>{[['Type', formData.requisition_type === 'general' ? 'General / Internal' : 'Project'], ['PR number', formData.pr_number || 'Draft'], ['Issued date', displayDate], ['Priority', {normal: 'Normal · 2-day review', high: 'High · 1-day review', urgent: 'Urgent · same-day review'}[formData.priority]], ['Product / service', formData.product_service || '—'], ['Project', formData.project_department || '—']].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-              </section>}
               {activeStep === 0 && <div className="prf-step-panel" aria-label="Request">{/* Section 1: Header Section */}
           <div className="prf-card prf-legacy-card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              Header Information
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-3">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Recommendation Type</label>
-                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1">
+            <div className="prf-request-heading">
+              <h2>Header Information</h2>
+                <div className="prf-type-toggle" role="group" aria-label="Recommendation type">
                   {['project', 'general'].map(type => (
                     <button
                       key={type}
                       type="button"
+                      aria-pressed={formData.requisition_type === type}
                       onClick={() => handleRequisitionTypeChange(type)}
-                      className={`rounded-md px-5 py-2 text-sm font-semibold ${formData.requisition_type === type ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-600 hover:bg-white'}`}
+                      className={formData.requisition_type === type ? 'is-selected' : ''}
                     >
                       {type === 'project' ? 'Project' : 'General / Internal'}
                     </button>
                   ))}
                 </div>
-              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   PR Number <span className="text-red-500">*</span>
@@ -1840,9 +1857,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             </div>
           </div>{/* Section 3: Project/Product Section */}
           <div className="prf-card prf-legacy-card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               Product / Service & Project Details
-            </h3>
+            </h2>
             <div className="space-y-4">
               <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1994,7 +2011,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 {errors.project_department && (
                   <p className="mt-1 text-sm text-red-600">{errors.project_department}</p>
                 )}
-                <div className="mt-3 space-y-2">
+                {(formData.project_details || []).length > 0 && <div className="mt-3 space-y-2">
                   {(formData.project_details || []).map((project, index) => (
                     <div key={`${project.project_id || project.value}-${index}`} className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 p-2">
                       {project.source === 'custom' ? (
@@ -2010,16 +2027,16 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                       </button>
                     </div>
                   ))}
-                </div>
+                </div>}
               </div>
             </div>
           </div></div>}
               {activeStep === 1 && <RecommendationSupplierPricing formData={formData} setFormData={setFormData} errors={{ ...Object.fromEntries(Object.entries(errors).filter(([field]) => validationErrors[field])), ...serverErrors }} vendors={vendors} vendorSearch={vendorSearch} onVendorSearch={searchVendors} loadingVendors={loadingVendors} vendorLoadError={vendorLoadError} onAddVendor={addVendorToShortlist} onRemoveVendor={removeVendorFromShortlist} onPreferredVendor={selectPreferredVendor} onAddLineItem={addLineItem} onUpdateLineItem={updateLineItem} onRemoveLineItem={removeLineItem} showAdvancedPricing={showAdvancedPricing} setShowAdvancedPricing={setShowAdvancedPricing} manualIcv={manualIcv} setManualIcv={setManualIcv} onSaveManualIcv={saveManualIcv} onPriceDescriptionChange={value => { priceDescriptionEditedRef.current = true; setFormData(previous => ({ ...previous, price_description: value })); }} />}
               {activeStep === 2 && <div className="prf-step-panel" aria-label="Business justification">{/* Section 4: Description Section */}
           <div className="prf-card prf-legacy-card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               Purchase Description
-            </h3>
+            </h2>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Purchase Description
@@ -2041,9 +2058,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             </div>
           </div>{/* Section 7: Purchase Recommendation Section */}
           <div className="prf-card prf-legacy-card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               Purchase Recommendation
-            </h3>
+            </h2>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Purchase Recommendation
@@ -2060,9 +2077,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             </div>
           </div>{/* Section 6: Reference Section */}
           <div className="prf-card prf-legacy-card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               Reference
-            </h3>
+            </h2>
             <div className="relative">
               <fieldset>
                 <legend className="block text-sm font-semibold text-gray-800 mb-2">PO Applicable?</legend>
@@ -2214,9 +2231,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             </div>
           )}{/* Section 8: Attachments Section */}
           <div className="prf-card prf-legacy-card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               Attachments (Multiple Files Supported)
-            </h3>
+            </h2>
             <div className="space-y-4">
               <div className="flex items-center justify-center w-full">
                 <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
@@ -2276,12 +2293,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               )}
             </div>
           </div>{savedAttachments.length > 0 && <section className="prf-card"><h2>Attached documents</h2>{savedAttachments.map((file,index) => <a className="prf-file-link" key={file.id || index} href={file.url || file.s3_url} target="_blank" rel="noreferrer"><PaperClipIcon />{file.filename || file.name || 'Document'}</a>)}</section>}</div>}
-              {activeStep === 4 && <div className="prf-step-panel" aria-label="Approval and submit">
-                <section className="prf-card prf-review-checks"><h2>{preserveApprovalWorkflow ? 'Review changes' : 'Review before submission'}</h2><p>{preserveApprovalWorkflow ? 'Save edits to this recommendation. Recorded approval evidence remains part of its history.' : blockingIssues.length ? 'Correct the errors below. Registration warnings do not prevent saving or submitting.' : warningIssues.length ? 'Review the warnings below. You can save or submit this PR with warnings.' : 'Review the document and approval route, then submit.'}</p>{issues.map(issue => <button key={issue.field} type="button" className={issue.severity === 'warning' ? 'prf-warning' : ''} onClick={() => revealIssue(issue)}><ExclamationCircleIcon /><span>{issue.severity === 'warning' && <strong>Warning: </strong>}{issue.message}</span><ArrowRightIcon /></button>)}</section>
+              {activeStep === 4 && <div className="prf-step-panel" aria-label="Approval and submission">
                 {formData.currency === 'AED' && recommendationVat(formData).netAmount > 100000 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-4">
               <div>
-                <h4 className="text-sm font-bold text-amber-900">Management approval</h4>
+                <h2 className="text-sm font-bold text-amber-900">Management approval</h2>
                 <p className="text-xs text-amber-800">PR value exceeds AED 100,000. Missing approval details are warnings and do not prevent registration.</p>
               </div>
               <div className="flex gap-6">
@@ -2303,10 +2319,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               </div>
             </div>
           )}{/* Section 9: Approval Workflow Section */}
-          <div className="prf-card prf-legacy-card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              {preserveApprovalWorkflow ? 'Recorded approval history' : 'Approval Workflow'}
-            </h3>
+          <div className={`prf-card prf-legacy-card${preserveApprovalWorkflow ? '' : ' prf-approval-workflow'}`}>
+            {preserveApprovalWorkflow ? <h2 className="text-lg font-semibold text-gray-900 mb-4">Recorded approval history</h2> : (
+              <div className="prf-workflow-heading"><h2>Approval Workflow</h2><span>Approver setup</span></div>
+            )}
             {preserveApprovalWorkflow ? <><RecordedApprovalHistory
               key={approvalRecord.id}
               requisition={{ ...approvalRecord, price_remarks_data: formData.price_remarks_data, attachments: savedAttachments }}
@@ -2321,76 +2337,69 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
                 userEditedRef.current = true;
                 setAssignmentNotice('');
                 setPendingAssignments(previous => { const next = { ...previous }; if (assignment) next[index] = assignment; else delete next[index]; return next; });
-              }} /></> : <div className="space-y-4">
+              }} /></> : <div className="prf-workflow-layout">
               {formData.requisition_type === 'general' && catalogError && <p className="text-sm text-amber-700">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry positions</button></p>}
-              <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
-                <p className="mb-3 text-xs text-amber-800">Missing approvers or business positions generate warnings. You can save or submit and update this route before any approval decision is recorded.</p>
-                <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_100px] md:items-end">
-                  <div><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Level 1 required</label><input type="number" min="1" max="20" value={levelOneApproverCount} aria-label="Level 1 required" onChange={(event) => changeLevelOneCount(event.target.value)} className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" /></div>
-                  <div className="relative"><label className="mb-1 block text-xs font-bold uppercase tracking-wide text-purple-700">Add Level 1 approver</label><input value={levelOneSearch} aria-label="Add Level 1 approver" onChange={(event) => setLevelOneSearch(event.target.value)} disabled={loadingApprovers || (selectedApprovers.level_one || []).length >= levelOneApproverCount} placeholder="Search employee by name, ID, title, or department" className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm" />{levelOneSearch.trim() && (selectedApprovers.level_one || []).length < levelOneApproverCount && <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">{projectManagers.filter(user => employeeSearchText(user).includes(levelOneSearch.trim().toLowerCase()) && !(selectedApprovers.level_one || []).some(id => String(id) === String(user.id))).slice(0, 20).map(user => <button key={user.id} type="button" onClick={() => addLevelOneApprover(user.id)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-purple-50 last:border-0"><span className="block font-semibold text-gray-900">{employeeDisplayName(user)}</span><span className="block text-xs text-gray-500">{user.job_title || user.department || user.employee_id || 'Active employee'}</span></button>)}</div>}</div>
-                  <div className={`rounded-full px-3 py-2 text-center text-xs font-bold ${(selectedApprovers.level_one || []).length === levelOneApproverCount ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{(selectedApprovers.level_one || []).length} of {levelOneApproverCount}</div>
-                </div>
+              <div className="prf-workflow-controls">
+                <div className="prf-workflow-count"><label htmlFor="prf-level-one-count">Level 1 required</label><input id="prf-level-one-count" type="number" min="1" max="20" value={levelOneApproverCount} aria-label="Level 1 required" onChange={(event) => changeLevelOneCount(event.target.value)} className="w-full" /></div>
+                <div className="prf-workflow-search"><label htmlFor="prf-level-one-search">Add Level 1 approver</label><input id="prf-level-one-search" value={levelOneSearch} aria-label="Add Level 1 approver" onChange={(event) => setLevelOneSearch(event.target.value)} disabled={loadingApprovers || (selectedApprovers.level_one || []).length >= levelOneApproverCount} placeholder="Search employee by name, ID, title, or department" className="w-full" />{levelOneSearch.trim() && (selectedApprovers.level_one || []).length < levelOneApproverCount && <div className="prf-employee-results absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">{projectManagers.filter(user => employeeSearchText(user).includes(levelOneSearch.trim().toLowerCase()) && !(selectedApprovers.level_one || []).some(id => String(id) === String(user.id))).slice(0, 20).map(user => <button key={user.id} type="button" onClick={() => addLevelOneApprover(user.id)} className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-purple-50 last:border-0"><span className="block font-semibold text-gray-900">{employeeDisplayName(user)}</span><span className="block text-xs text-gray-500">{user.job_title || user.department || user.employee_id || 'Active employee'}</span></button>)}</div>}</div>
+                <span className={`prf-workflow-counter ${(selectedApprovers.level_one || []).length === levelOneApproverCount ? 'is-success' : 'is-warning'}`} role="status">{(selectedApprovers.level_one || []).length} of {levelOneApproverCount}</span>
               </div>
-
-              <div className="overflow-x-auto rounded-xl border border-gray-300 bg-white shadow-sm">
-                <table className="min-w-[900px] w-full table-fixed border-collapse text-sm">
-                  <thead className="bg-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-white"><tr><th className="w-[150px] px-4 py-3">Level label</th><th className="w-[230px] px-4 py-3">Approval role</th><th className="px-4 py-3">Selected approver</th><th className="w-[110px] px-4 py-3 text-center">Status / Action</th></tr></thead>
-                  <tbody className="divide-y divide-gray-200">
-                    <tr className="bg-blue-50/50"><td className="p-3 align-top"><input aria-label="procurement approval label" value={stageLabels.procurement} onChange={(event) => changeStageLabel('procurement', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Procurement Department</p><p className="mt-1 text-xs text-gray-500">Level 0 · Expected</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Procurement Department Approval" value={selectedApprovers.procurement || ''} employees={projectManagers} onChange={(value) => handleApproverChange('procurement', value)} disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Default</span></td></tr>
-
-                    {(selectedApprovers.level_one || []).length ? (selectedApprovers.level_one || []).map((userId, index) => { const user = findEmployeeById(projectManagers, userId); const displayName = employeeDisplayName(user, savedApproverName(editData?.approval_workflow_config, userId)); return <tr key={userId}><td className="p-3"><input value={levelOneLabels[userId] ?? `L1-${index + 1}`} onChange={(event) => changeLevelOneLabel(userId, event.target.value)} maxLength={20} aria-label={`Approval table level for ${displayName}`} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3"><p className="font-semibold text-gray-900">Level 1 Approver {index + 1}</p><p className="mt-1 text-xs text-gray-500">All Level 1 approvers must approve</p></td><td className="p-3"><p className="font-semibold text-gray-900">{displayName}</p><p className="text-xs text-gray-500">{user?.job_title || user?.department || savedApproverById(editData?.approval_workflow_config, userId)?.job_title || 'Active employee'}</p></td><td className="p-3 text-center"><button type="button" onClick={() => removeLevelOneApprover(userId)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button></td></tr>; }) : <tr><td className="p-3 text-center font-semibold text-purple-700">L1</td><td className="p-3"><p className="font-semibold">Level 1 Approvers</p><p className="text-xs text-gray-500">Expected</p></td><td className="p-3 text-gray-500">Use the search box above to add approvers.</td><td className="p-3 text-center text-xs font-semibold text-amber-700">0 selected</td></tr>}
-
-                    {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input aria-label="engineering manager approval label" value={stageLabels.engineering_manager} onChange={(event) => changeStageLabel('engineering_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Engineering (MoE)</p><p className="mt-1 text-xs text-gray-500">Level 2 · Optional</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Engineering (MoE)" value={selectedApprovers.engineering_manager || ''} employees={engineeringManagers} onChange={(value) => handleApproverChange('engineering_manager', value)} disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">Optional</span></td></tr>}
-
-                    {formData.requisition_type === 'project' && <tr><td className="p-3 align-top"><input aria-label="manager projects approval label" value={stageLabels.manager_projects} onChange={(event) => changeStageLabel('manager_projects', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">Manager of Projects (MoP)</p><p className="mt-1 text-xs text-gray-500">Level 3 · Expected</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Manager of Projects (MoP)" value={selectedApprovers.manager_projects || ''} employees={managerProjects} onChange={(value) => handleApproverChange('manager_projects', value)} disabled={loadingApprovers} /></td><td className="p-3 text-center align-middle"><span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Expected</span></td></tr>}
-
-                    <tr><td className="p-3 align-top"><input aria-label="vp operations approval label" value={stageLabels.vp_operations} onChange={(event) => changeStageLabel('vp_operations', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">{formData.requisition_type === 'general' ? 'Vice President' : 'VP Delivery'}</p><p className="mt-1 text-xs text-gray-500">{formData.requisition_type === 'general' ? 'Level 2 · Expected' : 'Level 4 · Expected'}</p>{formData.requisition_type === 'general' && <label className="mt-2 block text-xs font-semibold text-gray-600">Designated business position<select aria-label="Business position for Vice President stage" value={vicePresidentPosition} onChange={event => { userEditedRef.current = true; setVicePresidentPosition(event.target.value); setErrors(previous => ({ ...previous, approval_workflow_config: null })); }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-xs"><option value="">Select position</option>{vicePresidentPosition && !(catalog?.organizational_roles || []).some(role => role.code === vicePresidentPosition) && <option value={vicePresidentPosition}>{vicePresidentPosition} (saved position)</option>}{(catalog?.organizational_roles || []).map(role => <option key={role.code} value={role.code}>{role.label}</option>)}</select></label>}</td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="Vice President / Delivery Approver" value={selectedApprovers.vp_operations || ''} employees={vpOperations} onChange={(value) => handleApproverChange('vp_operations', value)} disabled={loadingApprovers} />{!loadingApprovers && !selectedApprovers.vp_operations && <p className="mt-2 text-xs font-medium text-amber-700">{formData.requisition_type === 'project' ? 'No VP Delivery approver is selected.' : 'Select the authorized Vice President approver.'}</p>}</td><td className="p-3 text-center align-middle"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${formData.requisition_type === 'project' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>{formData.requisition_type === 'project' ? 'Default' : 'Expected'}</span></td></tr>
-
-                    {!formData.po_applicable && <tr className="bg-emerald-50/50"><td className="p-3 align-top"><input aria-label="general manager approval label" value={stageLabels.general_manager} onChange={(event) => changeStageLabel('general_manager', event.target.value)} maxLength={20} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-semibold text-purple-800" /></td><td className="p-3 align-top"><p className="font-semibold text-gray-900">CEO</p><p className="mt-1 text-xs text-gray-500">Level 5 · Expected when PO is not applicable</p></td><td className="p-3 align-top"><ActiveEmployeePicker hideLabel label="CEO Approval" value={selectedApprovers.general_manager || ''} employees={projectManagers} onChange={(value) => handleApproverChange('general_manager', value)} disabled={loadingApprovers} />{!loadingApprovers && !selectedApprovers.general_manager && <p className="mt-2 text-sm font-medium text-red-600">No CEO approver is selected.</p>}</td><td className="p-3 text-center align-middle"><span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Default</span></td></tr>}
-                  </tbody>
-                </table>
-              </div>
-
-              {approverLoadError && (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  <span>{approverLoadError}</span>
-                  <button
-                    type="button"
-                    onClick={fetchApprovers}
-                    className="shrink-0 font-semibold text-red-700 underline hover:text-red-900"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-
-              {!loadingApprovers && !approverLoadError && projectManagers.length > 0 && (
-                <p className="text-xs text-emerald-700">
-                  {projectManagers.length} active employees loaded. Select one or more people from the lists above.
-                </p>
-              )}
-
-              {errors.approval_workflow_config && (
-                <p className="text-sm font-medium text-red-600">{errors.approval_workflow_config}</p>
-              )}
-              {registrationWarnings.approval_workflow_config && (
-                <p className="text-sm font-medium text-amber-700">Warning: {registrationWarnings.approval_workflow_config}</p>
-              )}
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-xs text-blue-800">
-                  <strong>Sequential routing:</strong> each level becomes active only after the previous level is approved.
-                </p>
-              </div>
+              <ol className="prf-workflow-steps" aria-label="Approval workflow">
+                {approvalSetupStages.map(stage => (
+                  <li key={stage.key} data-stage={stage.key} className={`prf-workflow-step is-${stage.state}`} aria-current={stage.state === 'active' ? 'step' : undefined}>
+                    <span className="prf-workflow-step-marker" aria-hidden="true">{stage.state === 'complete' ? <CheckIcon /> : stage.number}</span>
+                    <span className="sr-only">{stage.state === 'complete' ? 'Approver selection complete' : stage.state === 'active' ? 'Next approver selection' : stage.state === 'optional' ? 'Optional step' : 'Upcoming step'}</span>
+                    <div className="prf-workflow-step-body">
+                      <div className="prf-workflow-step-heading">
+                        {stage.key === 'level_one' ? <span className="prf-workflow-stage-label">Level 1</span> : (
+                          <input aria-label={stage.labelAria} value={stageLabels[stage.key]} onChange={event => changeStageLabel(stage.key, event.target.value)} maxLength={20} className="prf-workflow-stage-label" />
+                        )}
+                        <h3>{stage.role}</h3>
+                      </div>
+                      <div className="prf-workflow-approver">
+                        {stage.key === 'level_one' ? (
+                          <div className="prf-workflow-assignees">
+                            {(selectedApprovers.level_one || []).length ? selectedApprovers.level_one.map((userId, index) => {
+                              const user = findEmployeeById(projectManagers, userId);
+                              const displayName = employeeDisplayName(user, savedApproverName(editData?.approval_workflow_config, userId));
+                              return <div key={userId} className="prf-workflow-assignee">
+                                <input value={levelOneLabels[userId] ?? `L1-${index + 1}`} onChange={event => changeLevelOneLabel(userId, event.target.value)} maxLength={20} aria-label={`Approval table level for ${displayName}`} className="prf-workflow-assignee-label" />
+                                <span className="prf-workflow-assignee-name">{displayName}</span>
+                                <button type="button" aria-label={`Remove ${displayName}`} onClick={() => removeLevelOneApprover(userId)} className="prf-workflow-remove">Remove</button>
+                              </div>;
+                            }) : <span className="prf-workflow-placeholder">Choose {levelOneApproverCount} {levelOneApproverCount === 1 ? 'approver' : 'approvers'} above</span>}
+                          </div>
+                        ) : <ActiveEmployeePicker hideLabel label={stage.pickerLabel} value={selectedApprovers[stage.key] || ''} employees={stage.employees} onChange={value => handleApproverChange(stage.key, value)} disabled={loadingApprovers} />}
+                        {stage.key === 'vp_operations' && formData.requisition_type === 'general' && (
+                          <label className="prf-workflow-position">Business position
+                            <select aria-label="Business position for Vice President stage" value={vicePresidentPosition} onChange={event => { userEditedRef.current = true; setVicePresidentPosition(event.target.value); setErrors(previous => ({ ...previous, approval_workflow_config: null })); }}>
+                              <option value="">Select position</option>
+                              {vicePresidentPosition && !(catalog?.organizational_roles || []).some(role => role.code === vicePresidentPosition) && <option value={vicePresidentPosition}>{vicePresidentPosition} (saved position)</option>}
+                              {(catalog?.organizational_roles || []).map(role => <option key={role.code} value={role.code}>{role.label}</option>)}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                      <div className="prf-workflow-step-actions">
+                        <span className="prf-workflow-step-status">{stage.state === 'active' ? 'Next' : stage.state === 'optional' ? 'Optional' : stage.defaultAssigned ? 'Default' : stage.state === 'complete' ? 'Selected' : ''}</span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              {(approverLoadError || errors.approval_workflow_config) && <div className="prf-workflow-errors" role="alert">
+                {approverLoadError && <p>{approverLoadError} <button type="button" onClick={fetchApprovers}>Retry</button></p>}
+                {errors.approval_workflow_config && <p>{errors.approval_workflow_config}</p>}
+              </div>}
             </div>}
           </div>
               </div>}
             </div>
             <footer className="prf-action-bar">
               <button type="button" className="prf-button prf-cancel" onClick={onClose}>Cancel</button>
-              <button type="button" className={`prf-required ${issues.length ? '' : 'is-ready'}`} onClick={reviewSubmission}><ExclamationCircleIcon />{requiredMessage}</button>
-              <div className="prf-bottom-actions">{activeStep > 0 && activeStep !== 1 && <button type="button" className="prf-button prf-back" onClick={() => goToStep(activeStep - 1)}><ArrowLeftIcon />Back</button>}<button type="button" className="prf-button" disabled={submitLoading || autoSaving || approvalRecordEditing} onClick={event => handleSubmit(event, false, true)}>{approvedPdfFile ? 'Record signed PDF' : preserveApprovalWorkflow || editingRegisteredPr ? 'Save changes' : 'Save draft'}</button>
-              {activeStep < 4 ? <button type="button" className="prf-button prf-primary" onClick={continueStep}>Continue to {['supplier & pricing', 'business justification', 'documents', 'approval'][activeStep]}<ArrowRightIcon /></button> : !approvedPdfFile && canSubmitForApproval && <button type="submit" className="prf-button prf-primary" disabled={submitLoading || autoSaving}>{submitLoading ? 'Submitting...' : 'Submit for approval'}<ArrowRightIcon /></button>}</div>
+              <button type="button" className={`prf-required ${issues.length ? '' : 'is-ready'}`} onClick={() => issues[0] && revealIssue(issues[0])}><ExclamationCircleIcon />{requiredMessage}</button>
+              <div className="prf-bottom-actions">{activeStep > 0 && activeStep !== 1 && <button type="button" className="prf-button prf-back" onClick={() => goToStep(activeStep - 1)}><ArrowLeftIcon />Back</button>}<button type="submit" className="prf-button prf-save-action" disabled={submitLoading || autoSaving || approvalRecordEditing}>{approvedPdfFile ? 'Record signed PDF' : 'Save'}</button>
+              {activeStep < 4 ? <button type="button" className="prf-button prf-primary" onClick={continueStep}>Continue to {['supplier & pricing', 'business justification', 'documents', 'approval'][activeStep]}<ArrowRightIcon /></button> : !approvedPdfFile && canSubmitForApproval && <button type="button" className="prf-button prf-primary prf-send-action" onClick={event => handleSubmit(event, true)} disabled={submitLoading || autoSaving || approvalRecordEditing}>{submitLoading ? 'Sending...' : 'Send for Approval'}<ArrowRightIcon /></button>}</div>
             </footer>
           </form>
         </section>

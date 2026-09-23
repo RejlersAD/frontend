@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { purchaseOrderHarness } from '../fixtures/purchase-orders.fixture'
+import { mixedSizePdf } from '../fixtures/mixed-size-pdf.fixture'
 
 test.setTimeout(60000)
 const register = page => page.getByRole('region', { name: 'Purchase order register', exact: true })
@@ -203,8 +204,8 @@ test('OrderManagement wrapper loads the new register and retains imports export 
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'More purchase order actions', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Import signed PDF', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Import Signed Purchase Order PDF', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Upload PR, PO and Vendor', exact: true })).toBeVisible()
+  await page.getByRole('dialog', { name: 'Upload PR, PO and Vendor', exact: true }).getByRole('button', { name: 'Close import dialog', exact: true }).click()
   const downloaded = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export register', exact: true }).click()
   await expect((await downloaded).suggestedFilename()).toMatch(/\.xlsx$/)
@@ -316,14 +317,14 @@ test('uploaded PDFs remain selectable and previewable when the order listing fai
     fixture.listResponses['/api/v1/procurement/po-documents/'] = [{ body: {
       count: 1, next: null, results: [{ id: 'available-document', original_filename: 'available.pdf', extracted_data: { source_po_number: 'PO-PDF-AVAILABLE' } }],
     } }]
-    fixture.documentContent['/api/v1/procurement/po-documents/available-document/content/'] = '%PDF-1.4\n% Synthetic uploaded purchase order\n%%EOF'
+    fixture.documentContent['/api/v1/procurement/po-documents/available-document/content/'] = mixedSizePdf(1)
   } })
   await expect(page.getByRole('alert').filter({ hasText: 'Purchase orders could not be loaded' })).toContainText('temporarily unavailable')
   await page.getByRole('button', { name: 'Select PO-PDF-AVAILABLE', exact: true }).click()
   const pendingDetails = page.getByRole('complementary', { name: 'Uploaded purchase order details', exact: true })
   await expect(pendingDetails).toContainText('available.pdf')
   await expect(pendingDetails.getByRole('link', { name: 'Download uploaded PO', exact: true })).toBeVisible()
-  await expect(pendingDetails.locator('iframe')).toHaveAttribute('title', 'Uploaded PO PDF: available.pdf')
+  await expect(pendingDetails.getByRole('region', { name: 'Uploaded PO PDF: available.pdf', exact: true }).getByRole('img', { name: /page 1 of 1$/ })).toBeVisible({ timeout: 30000 })
   await expect(page.getByRole('alert').filter({ hasText: 'Uploaded PDFs could not be loaded' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Try again', exact: true }).click()

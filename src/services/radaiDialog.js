@@ -2,7 +2,7 @@ import './radaiDialog.css'
 
 let queue = Promise.resolve()
 
-function openDialog(kind, message, defaultValue = '') {
+function openDialog(kind, message, defaultValue = '', options = {}) {
   const show = () => new Promise((resolve) => {
     const previousFocus = document.activeElement
     const dialog = document.createElement('dialog')
@@ -36,14 +36,14 @@ function openDialog(kind, message, defaultValue = '') {
     if (kind !== 'alert') {
       const cancel = document.createElement('button')
       cancel.type = 'button'
-      cancel.textContent = 'Cancel'
+      cancel.textContent = options.cancelLabel || 'Cancel'
       cancel.onclick = () => finish(false)
       footer.append(cancel)
     }
     const confirm = document.createElement('button')
     confirm.type = 'submit'
     confirm.className = 'radai-dialog-primary'
-    confirm.textContent = kind === 'alert' ? 'OK' : 'Confirm'
+    confirm.textContent = kind === 'alert' ? 'OK' : options.confirmLabel || 'Confirm'
     footer.append(confirm)
     dialog.querySelector('form').onsubmit = (event) => { event.preventDefault(); finish(true) }
     dialog.querySelector('.radai-dialog-close').onclick = () => finish(false)
@@ -58,6 +58,6 @@ function openDialog(kind, message, defaultValue = '') {
   return result
 }
 
-export const radaiConfirm = (message) => openDialog('confirm', message)
+export const radaiConfirm = (message, options) => openDialog('confirm', message, '', options)
 export const radaiPrompt = (message, defaultValue) => openDialog('prompt', message, defaultValue)
 export const radaiAlert = (message) => openDialog('alert', message)

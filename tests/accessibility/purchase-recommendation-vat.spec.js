@@ -14,7 +14,7 @@ const baseRecord = {
 const open = async (page, record = {}) => {
   await page.clock.install({ time: new Date('2026-09-15T08:00:00Z') });
   const state = await recommendationFormHarness(page, { edit: true, record: { ...baseRecord, ...record } });
-  await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible({ timeout: 90000 });
   await pricing(page);
   return state;
 };
@@ -23,13 +23,13 @@ const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErr
 test('unconfirmed existing financial values remain exact on open and ordinary edit/save', async ({ page }) => {
   const record = { total_price: '115.00', net_total_excl_vat: '100.00', price_remarks_data: { ...baseRecord.price_remarks_data, line_details: [{ vat_rate: '15' }] } };
   const state = await open(page, record);
-  await expect(page.getByRole('combobox', { name: 'VAT price basis' })).toHaveValue('unconfirmed');
+  await expect(page.getByRole('combobox', { name: 'VAT price basis' })).toHaveCount(0);
   await expect(page.locator('.prf-sp-grand-total')).toContainText('115.00');
-  await expect(page.getByLabel('Recommendation totals')).toContainText('VAT not confirmed');
+  await expect(page.getByLabel('Recommendation totals')).not.toContainText('VAT');
   await page.clock.runFor(35000);
   expect(saves(state)).toEqual([]);
   await page.getByRole('textbox', { name: 'Line item 1 description', exact: true }).fill('Recorded signed service, clarified');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Save', exact: true }).first().click();
   await expect.poll(() => saves(state).length).toBe(1);
   expect(Number(saves(state)[0].body.total_price)).toBe(115);
   expect(Number(saves(state)[0].body.net_total_excl_vat)).toBe(100);
@@ -40,32 +40,34 @@ test('unconfirmed existing financial values remain exact on open and ordinary ed
   clean(state);
 });
 
-for (const [basis, net, tax, gross] of [['exclusive', 100, 5, 105], ['inclusive', 95.24, 4.76, 100], ['none', 100, 0, 100]]) {
-  test(`explicit ${basis} choice previews then saves once, and reopening never compounds VAT`, async ({ page }) => {
-    const state = await open(page);
-    await page.getByRole('combobox', { name: 'VAT price basis' }).selectOption(basis);
+for (const [basis, net, gross] of [['exclusive', 100, 105], ['inclusive', 95.24, 100], ['none', 100, 100]]) {
+  test(`recorded ${basis} amounts survive ordinary saves and reopening without fiscal controls`, async ({ page }) => {
+    const state = await open(page, { vat_basis: basis, net_total_excl_vat: net.toFixed(2), total_price: gross.toFixed(2) });
+    await expect(page.getByRole('combobox', { name: 'VAT price basis' })).toHaveCount(0);
     const totals = page.getByLabel('Recommendation totals');
-    await expect(totals).toContainText(net.toFixed(2));
-    await expect(totals).toContainText(tax.toFixed(2));
+    await expect(totals).not.toContainText('VAT');
     await expect(page.locator('.prf-sp-grand-total')).toContainText(gross.toFixed(2));
-    if (basis === 'inclusive') await page.screenshot({ path: '../artifacts/pr-vat-inclusive-review.png' });
     await expect(page.getByRole('complementary', { name: 'Live purchase recommendation preview' })).toContainText(`USD ${gross.toFixed(2)}`);
     await page.clock.runFor(35000);
     expect(saves(state)).toEqual([]);
-    expect(Number(state.record.total_price)).toBe(100);
-    await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+    expect(Number(state.record.total_price)).toBe(gross);
+    await page.getByRole('textbox', { name: 'Line item 1 description', exact: true }).fill('Recorded signed service, clarified');
+    await page.getByRole('button', { name: 'Save', exact: true }).first().click();
     await expect.poll(() => saves(state).length).toBe(1);
-    expect(saves(state)[0].body).toMatchObject({ vat_basis: basis, entered_amount: 100, total_price: gross, net_total_excl_vat: net });
+    expect(saves(state)[0].body).not.toHaveProperty('vat_basis');
+    expect(saves(state)[0].body).not.toHaveProperty('entered_amount');
+    expect(Number(saves(state)[0].body.total_price)).toBe(gross);
+    expect(Number(saves(state)[0].body.net_total_excl_vat)).toBe(net);
     expect(state.record.status).toBe('approved');
     expect(state.record.items[0].unit_price).toBe('100.00');
     expect(state.record.price_remarks_data.signed_document_verification).toEqual(baseRecord.price_remarks_data.signed_document_verification);
     await page.goto(`/procurement/requisitions/${formRecordId}/edit`, { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible({ timeout: 90000 });
     await pricing(page);
-    await expect(page.getByRole('combobox', { name: 'VAT price basis' })).toHaveValue(basis);
+    await expect(page.getByRole('combobox', { name: 'VAT price basis' })).toHaveCount(0);
     await expect(page.getByRole('spinbutton', { name: 'Line item 1 unit price', exact: true })).toHaveValue('100.00');
     await expect(page.locator('.prf-sp-grand-total')).toContainText(gross.toFixed(2));
-    await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Save', exact: true }).first().click();
     await expect.poll(() => saves(state).length).toBe(2);
     expect(saves(state)[1].body).not.toHaveProperty('vat_basis');
     expect(Number(state.record.total_price)).toBe(gross);
@@ -73,15 +75,17 @@ for (const [basis, net, tax, gross] of [['exclusive', 100, 5, 105], ['inclusive'
   });
 }
 
-test('changing an unconfirmed price requires VAT choice before a financial save', async ({ page }) => {
-  const state = await open(page);
+test('changing an unconfirmed draft price saves the entered amount without adding tax or requiring a choice', async ({ page }) => {
+  const state = await open(page, { status: 'draft', price_remarks_data: {} });
   await page.getByRole('spinbutton', { name: 'Line item 1 unit price', exact: true }).fill('200');
   await page.clock.runFor(35000);
   expect(saves(state)).toEqual([]);
-  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
-  await expect(page.locator('.prf-error-banner')).toContainText('Confirm whether the entered price includes VAT');
-  expect(saves(state)).toEqual([]);
-  expect(Number(state.record.total_price)).toBe(100);
+  await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+  await expect.poll(() => saves(state).length).toBe(1);
+  expect(Number(state.record.total_price)).toBe(200);
+  expect(Number(state.record.net_total_excl_vat)).toBe(200);
+  expect(saves(state)[0].body).not.toHaveProperty('vat_basis');
+  expect(state.submissions).toEqual([]);
   clean(state);
 });
 

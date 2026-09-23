@@ -2,10 +2,39 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { activeApprovalStages, isAssignedApprover, canDecideProcurement, approvalSignatureEvidence, purchaseOrderSignatureEvidence } from '../src/utils/procurementApproval.js'
 import { normalizeApproval } from '../src/components/approvals/approvalQueue.js'
+import { displayApprovalWorkflow } from '../src/utils/employeeDisplayName.js'
 
 const assigned = { level: 0, user_id: 12, user_email: 'assigned@example.test', user_name: 'Assigned User', status: 'pending' }
 const ceo = { level: 5, user_id: 99, user_email: 'ceo@example.test', role: 'CEO', status: 'pending' }
 const signed = { ...assigned, status: 'approved', approved_by_id: 12, approved_by_email: assigned.user_email, signature_user_id: 12, signature: '/verified-signature.png' }
+
+test('linked PR previews retain a required pending CEO with an explicit no-PO route choice', () => {
+  const workflow = [signed, ceo]
+  const displayed = displayApprovalWorkflow(workflow, 'RAD-GEN-PUR-0091_2026', false)
+  assert.deepEqual(displayed.map(row => row.user_id), [assigned.user_id, ceo.user_id])
+  assert.equal(displayed[1].status, 'pending')
+  assert.deepEqual(activeApprovalStages(displayed).map(row => row.user_id), [ceo.user_id])
+  assert.equal(workflow[1], ceo)
+})
+
+test('explicit PO route choice overrides missing references and older records keep reference fallback', () => {
+  assert.deepEqual(displayApprovalWorkflow([assigned, ceo], '', true), [assigned])
+  assert.deepEqual(displayApprovalWorkflow([assigned, ceo], 'existing-po'), [assigned])
+  assert.equal(displayApprovalWorkflow([ceo], '').length, 1)
+})
+
+test('CEO approval history and original source rows remain visible after linking a PO', () => {
+  for (const status of ['approved', 'rejected']) {
+    const decided = { ...ceo, status, signature: '/recorded.png', decided_at: '2026-09-23T09:00:00Z' }
+    const displayed = displayApprovalWorkflow([decided], 'existing-po', true)
+    assert.equal(displayed.length, 1)
+    assert.equal(displayed[0].status, status)
+    assert.equal(displayed[0].signature, decided.signature)
+  }
+  const source = { ...ceo, external: true, source: 'signed_purchase_requisition_pdf', status: 'not_recorded', role: 'General Manager' }
+  assert.deepEqual(displayApprovalWorkflow([source], 'existing-po', true), [source])
+  assert.equal(displayApprovalWorkflow([source], 'existing-po')[0], source)
+})
 
 test('only the lowest pending level is active, retaining original fallback order and parallel assignments', () => {
   assert.deepEqual(activeApprovalStages([ceo, assigned, { ...assigned, user_id: 13 }]).map(row => row.user_id), [12, 13])

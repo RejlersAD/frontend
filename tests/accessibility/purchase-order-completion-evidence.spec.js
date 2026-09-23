@@ -21,7 +21,7 @@ const evidence = () => ({
 
 async function setup(page, overrides = {}) {
   return orderFormHarness(page, { path: '/procurement/orders', prepare: state => {
-    state.record = { id: orderFormId, po_number: orderFormNumber, po_date: '2026-09-15', status: 'sent',
+    state.record = { id: orderFormId, po_number: orderFormNumber, po_date: '2026-09-15', status: 'sent', can_complete: true,
       title: 'Completion evidence regression', vendor: 21, vendor_name: state.vendors[0].name,
       currency: 'AED', total_amount: '1050', net_amount: '1000', tax_amount: '50', vat_basis: 'exclusive', vat_percentage: 5,
       created_at: '2026-09-15T08:00:00Z', updated_at: '2026-09-15T08:00:00Z', items: [], attachments: [], approval_log: [], ...overrides }
