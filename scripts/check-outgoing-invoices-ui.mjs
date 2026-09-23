@@ -22,6 +22,7 @@ const visualsOnly = process.argv.includes('--visuals-only');
 const workflowsOnly = process.argv.includes('--workflows-only');
 const sourcesOnly = process.argv.includes('--sources-only');
 const drilldownOnly = process.argv.includes('--drilldown-only');
+const mutationsOnly = process.argv.includes('--mutations-only');
 const selectedViewport = Number(process.argv.find(value => value.startsWith('--viewport='))?.split('=')[1]) || null;
 const protectedFiles = ["src/components/Layout/Sidebar.jsx", "src/components/Layout/Sidebar.css", "src/components/Layout/Header.jsx", "src/components/Layout/Layout.jsx", "src/config/layout.config.js", "src/config/navigationLabels.config.js", "src/hooks/useSidebarLayout.js", "src/hooks/useSidebarDrawer.js", "src/pages/UserDetail.jsx", "src/pages/Finance/ProcurementInvoiceTracker.jsx", "src/components/Finance/InvoiceContextPanel.jsx", "src/components/Finance/IncomingInvoiceWorkspace.jsx", "src/components/Finance/IncomingInvoiceReview.jsx", "src/components/Finance/IncomingInvoiceReview.css", "src/components/Finance/incomingInvoiceRegister.js", "src/components/Finance/incomingReviewPresentation.js", "src/pages/Finance/IncomingInvoices.css", "src/pages/Finance/InvoiceManagementHub.jsx", "src/components/Finance/FinanceCommandCenter.jsx", "src/components/Finance/FinanceCommandCenter.css", "src/components/Finance/financeCommandPresentation.js", "src/components/Finance/financeCommandPdf.js", "src/components/Finance/FinanceCommandCharts.jsx", "src/components/Finance/FinanceCommandCharts.css", "src/components/Finance/financeCommandChartPresentation.js", "src/services/finance.service.js"];
 await mkdir(artifacts, { recursive: true });
@@ -37,11 +38,11 @@ async function guards() {
 await guards();
 const entry = `
 import React from 'react';import {createRoot} from 'react-dom/client';import {Provider} from 'react-redux';
-import {MemoryRouter,Route,Routes,useLocation} from 'react-router-dom';
+import {MemoryRouter,Route,Routes,useLocation,useNavigate} from 'react-router-dom';
 import Layout from './src/components/Layout/Layout.jsx';import InvoiceTracker from './src/pages/Finance/InvoiceTracker.jsx';
 const state={auth:{user:window.outgoingUser,isAuthenticated:true},theme:{mode:'light'},rbac:{currentUser:{user:window.outgoingUser,roles:window.outgoingUser.roles,modules:[]}}};
 const store={getState:()=>state,subscribe:()=>()=>{},dispatch:()=>{}};
-function Observer(){const location=useLocation();window.outgoingRoute=location.pathname+location.search;return null;}
+function Observer(){const location=useLocation();window.outgoingRoute=location.pathname+location.search;window.outgoingNavigate=useNavigate();return null;}
 createRoot(document.getElementById('root')).render(<Provider store={store}><MemoryRouter initialEntries={[window.outgoingInitialRoute]}><Observer/><Routes><Route element={<Layout/>}><Route path='/finance/outgoing-invoices' element={<InvoiceTracker/>}/><Route path='*' element={<h1>Source destination</h1>}/></Route></Routes></MemoryRouter></Provider>);
 `;
 const apiClient = `
@@ -387,17 +388,19 @@ async function mutationChecks() {
   state = await open(); ({ page, control } = state);
   await page.getByLabel('More invoice actions', { exact: true }).click(); await page.getByRole('button', { name: 'Import Excel', exact: true }).click();
   const imported = page.getByRole('dialog', { name: 'Import customer invoices', exact: true }); await imported.waitFor();
-  assert.equal(await imported.getByRole('button', { name: 'Start Import', exact: true }).isDisabled(), true);
+  await imported.getByRole('radio', { name: /Invoice register/ }).check();
+  assert.equal(await imported.getByRole('button', { name: 'Start import', exact: true }).isDisabled(), true);
   await imported.getByRole('button', { name: 'Close invoice import', exact: true }).click(); assert.equal(control.mutations.length, 0);
   await page.getByLabel('More invoice actions', { exact: true }).click(); await page.getByRole('button', { name: 'Import Excel', exact: true }).click();
+  await imported.getByRole('radio', { name: /Invoice register/ }).check();
   await imported.locator('input[type=file]').setInputFiles({ name: 'synthetic-receivables.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('Isolated fixture bytes; no actual workbook is uploaded.') });
   await imported.getByLabel('Restrict to sheets', { exact: true }).fill('Customer invoices');
   await axe(page, 'import-dialog', '[role="dialog"]');
   await imported.getByRole('button', { name: 'Close invoice import', exact: true }).focus(); await page.keyboard.press('Shift+Tab');
-  assert.equal(await focusedText(page), 'Start Import'); await page.keyboard.press('Tab');
+  assert.equal(await focusedText(page), 'Start import'); await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Close invoice import');
   control.expectedMutations.push({ method: 'POST', endpoint: '/invoice-tracker/invoices/import-excel/', data: { rows_created: 1, rows_updated: 2, rows_skipped: 0, errors: [] } });
-  await imported.getByRole('button', { name: 'Start Import', exact: true }).click(); await imported.getByText('Import complete', { exact: true }).waitFor();
+  await imported.getByRole('button', { name: 'Start import', exact: true }).click(); await imported.getByText('Import complete', { exact: true }).waitFor();
   assert.ok(control.mutations[0].body.includes('synthetic-receivables.xlsx')); assert.ok(control.mutations[0].body.includes('Customer invoices'));
   await imported.getByRole('button', { name: 'Close', exact: true }).click(); await loaded(page); await expectRows(page, 7);
   assert.equal(control.expectedMutations.length, 0); await state.close();
@@ -421,12 +424,39 @@ async function dashboardDrilldownChecks() {
   assert.doesNotMatch(await rows(page).allTextContents().then(values => values.join(' ')), /AR-SYN-203/);
   await state.close();
   record('Dashboard drilldown loads recorded Overdue invoices with future or missing due dates and excludes past-due Pending invoices');
+  const exactFixture = outgoingFixture();
+  exactFixture.rows = exactFixture.rows.slice(0, 4).map((row, index) => ({ ...row, rad_project_no: index < 2 ? 'S-1' : 'S-10', pm: 'Portfolio PM', currency: 'AED' }));
+  const exact = await open({ fixture: exactFixture, initialRoute: '/finance/outgoing-invoices?queue=all&project_exact=S-1&pm=Portfolio%20PM&currency=AED' });
+  await expectRows(exact.page, 2);
+  assert.match(await exact.page.getByTestId('outgoing-project-scope').innerText(), /S-1.*Complete invoice register/);
+  assert.equal(await exact.page.getByLabel('Project manager', { exact: true }).inputValue(), 'Portfolio PM');
+  for (const endpoint of ['/invoice-tracker/invoices/', '/invoice-tracker/invoices/collections-summary/']) {
+    const params = new URLSearchParams(exact.control.requests.find(item => item.endpoint === endpoint).query);
+    assert.equal(params.get('project_exact'), 'S-1'); assert.equal(params.get('queue'), 'all');
+  }
+  await exact.page.evaluate(() => window.outgoingNavigate('/finance/outgoing-invoices?queue=all&project_exact=S-10&pm=Portfolio%20PM&currency=AED'));
+  await exact.page.waitForFunction(() => document.querySelector('[data-testid="outgoing-project-scope"]')?.textContent.includes('S-10'));
+  await loaded(exact.page); await expectRows(exact.page, 2);
+  assert.match((await rows(exact.page).allTextContents()).join(' '), /S-10/);
+  await exact.page.getByLabel('Search outgoing invoices', { exact: true }).fill('S-10');
+  await loaded(exact.page);
+  await exact.page.evaluate(() => window.outgoingNavigate('/finance/outgoing-invoices?queue=all&project_exact=S-10&pm=Portfolio%20PM&currency=AED&unrelated=1'));
+  assert.equal(await exact.page.getByLabel('Search outgoing invoices', { exact: true }).inputValue(), 'S-10', 'Unrelated URL changes preserve local filters');
+  await exact.page.getByRole('button', { name: 'Clear project scope', exact: true }).click();
+  await loaded(exact.page);
+  assert.equal(await exact.page.getByTestId('outgoing-project-scope').count(), 0);
+  assert.equal(await exact.page.getByLabel('Search outgoing invoices', { exact: true }).inputValue(), 'S-10');
+  assert.equal(await exact.page.getByLabel('Project manager', { exact: true }).inputValue(), 'Portfolio PM');
+  assert.equal(await exact.page.evaluate(() => new URLSearchParams(window.outgoingRoute.split('?')[1]).get('project_exact')), null);
+  await exact.close();
+  record('Portfolio exact-project drilldown scopes both invoice endpoints, supports same-route navigation and preserves local filters when clearing scope');
 }
 
 try {
   browser = await launchBrowser();
-  if (!workflowsOnly && !sourcesOnly && !drilldownOnly) await visualChecks();
-  if (drilldownOnly) await dashboardDrilldownChecks();
+  if (!workflowsOnly && !sourcesOnly && !drilldownOnly && !mutationsOnly) await visualChecks();
+  if (mutationsOnly) await mutationChecks();
+  else if (drilldownOnly) await dashboardDrilldownChecks();
   else if (sourcesOnly) await sourceChecks();
   else if (!visualsOnly) { await dashboardDrilldownChecks(); await workflowChecks(); await sourceChecks(); await mutationChecks(); }
   await guards(); assert.deepEqual(runtimeErrors, [], 'No browser runtime errors'); assert.deepEqual(unexpectedRequests, [], 'Every network request is explicitly intercepted');

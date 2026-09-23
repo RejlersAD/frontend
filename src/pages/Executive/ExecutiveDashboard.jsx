@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowDownTrayIcon, ArrowPathIcon, ChevronDownIcon, EllipsisHorizontalIcon, EllipsisVerticalIcon, InformationCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
@@ -36,6 +36,7 @@ export default function ExecutiveDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
+  const refreshWorkbook = useCallback(() => setRevision(value => value + 1), []);
   const [selection, setSelection] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = TABS.some(tab => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
@@ -145,7 +146,7 @@ export default function ExecutiveDashboard() {
       revenue: financialSnapshot.revenue,
       reporting_period: financialSnapshot.reporting_period,
       source_description: financialSnapshot.source_description,
-    } : activeTab === 'portfolio' && revenueEnabled ? { schema_version: '1.0', report_type: 'executive_revenue', generated_at: report.generated_at, filters: revenueSnapshot?.filters || {}, revenue_dashboard: revenueData } : report;
+    } : activeTab === 'portfolio' && revenueEnabled ? { schema_version: '1.1', report_type: 'executive_revenue', generated_at: report.generated_at, filters: revenueSnapshot?.filters || {}, revenue_dashboard: revenueData, recorded_invoices: revenueSnapshot?.recordedInvoices || null } : report;
     const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }));
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -231,7 +232,7 @@ export default function ExecutiveDashboard() {
       {report && <div role="tabpanel" id={`executive-tabpanel-${visibleTab}`} aria-labelledby={`executive-tab-${visibleTab}`} tabIndex={0} className="cc-tabpanel">
         {isOverview && <ExecutiveReferenceOverview report={report} currency={overviewCurrency} refreshKey={revision} printing={printing} onExplain={setSelection} onNavigate={setActiveTab} onCurrencies={setOverviewCurrencies} />}
         {visibleTab === 'financial' && <FinancialPerformance report={report} currency={financialCurrency} refreshKey={revision} printing={printing} onSnapshotChange={setFinancialSnapshot} onExplain={setSelection} />}
-        {visibleTab === 'portfolio' && <ProjectPortfolio report={report} portfolio={portfolio} currency={portfolioCurrency} onExplain={setSelection} onNavigate={setActiveTab} printing={printing} onRevenueSnapshotChange={setRevenueSnapshot} revenueNavigationRequest={revenueNavigationRequest} />}
+        {visibleTab === 'portfolio' && <ProjectPortfolio report={report} portfolio={portfolio} currency={portfolioCurrency} onExplain={setSelection} onNavigate={setActiveTab} printing={printing} onRevenueSnapshotChange={setRevenueSnapshot} revenueNavigationRequest={revenueNavigationRequest} onRefreshWorkbook={refreshWorkbook} />}
         {visibleTab === 'commercial' && <CommercialPipeline report={report} commercial={commercial} currency={pipelineCurrency} onExplain={setSelection} printing={printing} />}
         {visibleTab === 'workforce' && <WorkforcePerformance workforce={workforce} onExplain={setSelection} printing={printing} />}
         {visibleTab === 'risk' && <RiskCompliance risk={risk} onExplain={setSelection} printing={printing} />}

@@ -14,12 +14,17 @@ const Select = ({ label, value, options, onChange }) => <select aria-label={labe
 Select.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string.isRequired, options: PropTypes.array.isRequired, onChange: PropTypes.func.isRequired };
 const failText = error => error?.response?.data?.detail || error?.message || 'The invoice register could not be loaded.';
 const countText = value => outgoingNumber(value)?.toLocaleString('en-GB') ?? '—';
+const URL_FILTER_KEYS = [...Object.keys(OUTGOING_FILTERS), 'project_exact'];
+const EMPTY_FILTERS = { ...OUTGOING_FILTERS, project_exact: '' };
+const readUrlFilters = params => ({ ...EMPTY_FILTERS, ...Object.fromEntries(URL_FILTER_KEYS.filter(key => params.has(key)).map(key => [key, params.get(key)])) });
+const readUrlQueue = params => ['all', 'open', 'overdue', 'due_soon', 'partial', 'paid'].includes(params.get('queue')) ? params.get('queue') : params.get('project_exact') ? 'all' : 'overdue';
+const filterUrlKey = params => JSON.stringify([...URL_FILTER_KEYS, 'queue'].map(key => [key, params.get(key) || '']));
 
 export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [filters, setFilters] = useState(() => ({ ...OUTGOING_FILTERS, ...Object.fromEntries(['currency', 'company', 'account', 'payment_status'].filter(key => searchParams.has(key)).map(key => [key, searchParams.get(key)])) }));
-  const [queue, setQueue] = useState(() => ['all', 'open', 'overdue', 'due_soon', 'partial', 'paid'].includes(searchParams.get('queue')) ? searchParams.get('queue') : 'overdue');
+  const [filters, setFilters] = useState(() => readUrlFilters(searchParams));
+  const [queue, setQueue] = useState(() => readUrlQueue(searchParams));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(7);
   const [ordering, setOrdering] = useState('due_date');
@@ -45,7 +50,23 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
   const analysisRef = useRef(null);
   const moreActionsRef = useRef(null);
   const duplicateTriggerRef = useRef(null);
+  const appliedUrlScope = useRef(filterUrlKey(searchParams));
   const requestFilters = { ...filters, queue, ordering };
+
+  useEffect(() => {
+    const nextKey = filterUrlKey(searchParams);
+    if (nextKey === appliedUrlScope.current) return;
+    appliedUrlScope.current = nextKey;
+    setFilters(readUrlFilters(searchParams)); setQueue(readUrlQueue(searchParams)); setPage(1);
+    setSelectedId(null); setPanelClosed(false); setMessage('');
+  }, [searchParams]);
+  const writeFilterUrl = (nextFilters, nextQueue) => {
+    const params = new URLSearchParams(searchParams);
+    URL_FILTER_KEYS.forEach(key => { params.delete(key); if (nextFilters[key]) params.set(key, nextFilters[key]); });
+    params.set('queue', nextQueue);
+    appliedUrlScope.current = filterUrlKey(params);
+    setSearchParams(params, { replace: true });
+  };
 
   const refresh = useCallback(() => { setRefreshKey(value => value + 1); setMessage(''); }, []);
   const reviewDuplicates = id => { duplicateTriggerRef.current = document.activeElement; setDuplicateFilter(String(id ?? '')); };
@@ -90,7 +111,8 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
   useEffect(() => { if (checkRef.current) checkRef.current.indeterminate = !allChecked && checked.length > 0; }, [checked, allChecked]);
   const change = (key, value) => { setFilters(current => ({ ...current, [key]: value })); setPage(1); setMessage(''); };
   const changeQueue = value => { setQueue(value); setPage(1); setMessage(''); };
-  const clear = () => { setFilters(OUTGOING_FILTERS); setQueue('overdue'); setPage(1); setOrdering('due_date'); setMessage(''); };
+  const clear = () => { setFilters(EMPTY_FILTERS); setQueue('overdue'); setPage(1); setOrdering('due_date'); setMessage(''); writeFilterUrl(EMPTY_FILTERS, 'overdue'); };
+  const clearProjectScope = () => { const next = { ...filters, project_exact: '' }; setFilters(next); setPage(1); writeFilterUrl(next, queue); };
   const openInvoice = invoice => navigate(`/finance/outgoing-invoices/${encodeURIComponent(invoice.id)}`);
   const selectInvoice = invoice => { setSelectedId(invoice.id); setPanelClosed(false); };
   const sort = key => { setOrdering(current => current === key ? `-${key}` : key); setPage(1); };
@@ -143,6 +165,7 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
       <button type="button" className="oc-link" onClick={clear}>Clear</button>
     </section>
     {more && <div className="oc-more-filters"><Select label="Category" value={filters.category} options={[['external', 'External (Customer)'], ['internal', 'Internal (Rejlers Group)']]} onChange={value => change('category', value)} /><input aria-label="Customer account" placeholder="Customer account" value={filters.account} onChange={event => change('account', event.target.value)} /><input aria-label="Project reference" placeholder="Project reference" value={filters.project} onChange={event => change('project', event.target.value)} /><label>Invoice date from<input type="date" aria-label="Invoice date from" value={filters.date_from} onChange={event => change('date_from', event.target.value)} /></label><label>Invoice date to<input type="date" aria-label="Invoice date to" value={filters.date_to} onChange={event => change('date_to', event.target.value)} /></label></div>}
+    {filters.project_exact && <div className="oc-message" data-testid="outgoing-project-scope">Exact project reference: <strong>{filters.project_exact}</strong> · {queue === 'all' ? 'Complete invoice register' : 'Selected collection queue'} <button type="button" className="oc-link" onClick={clearProjectScope}>Clear project scope</button></div>}
     {(message || summaryError) && <div className="oc-message" role="status">{message || `Collection totals could not be loaded. ${summaryError}`} {summaryError && <button type="button" className="oc-link" onClick={refresh}>Retry totals</button>}</div>}
     <div className={`oc-workspace ${selected ? '' : 'oc-without-review'}`}>
       <div className="oc-register-column">
@@ -162,7 +185,7 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
           </tr>; })}</tbody></table></div>
           {loading && <div className="oc-empty" role="status"><ArrowPathIcon className="oc-spin" />Loading the collection queue…</div>}
           {!loading && error && <div className="oc-empty" role="alert"><strong>Invoices could not be loaded</strong><p>{error}</p><button type="button" className="oc-button" onClick={refresh}>Try again</button></div>}
-          {!loading && !error && !rows.length && <div className="oc-empty"><strong>No invoices in this queue</strong><p>Choose another queue or clear your filters.</p><button type="button" className="oc-button" onClick={() => { setFilters(OUTGOING_FILTERS); changeQueue('open'); }}>View all open invoices</button></div>}
+          {!loading && !error && !rows.length && <div className="oc-empty"><strong>No invoices in this queue</strong><p>Choose another queue or clear your filters.</p><button type="button" className="oc-button" onClick={() => { setFilters(EMPTY_FILTERS); changeQueue('open'); writeFilterUrl(EMPTY_FILTERS, 'open'); }}>View all open invoices</button></div>}
           <footer className="oc-pagination"><span>{count ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, count)} of ${countText(count)} invoices` : 'No invoices to show'}</span><div><button type="button" aria-label="Previous invoice page" disabled={loading || page === 1} onClick={() => setPage(value => value - 1)}><ChevronLeftIcon /></button><span>Page <b>{page}</b> of {pages}</span><button type="button" aria-label="Next invoice page" disabled={loading || page >= pages} onClick={() => setPage(value => value + 1)}><ChevronRightIcon /></button></div><label>Rows per page<select aria-label="Rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[7, 15, 25, 50].map(size => <option key={size}>{size}</option>)}</select></label></footer>
         </section>
 

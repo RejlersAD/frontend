@@ -12,6 +12,7 @@ import tailwindConfig from '../tailwind.config.js';
 import { reportFixture } from './check-executive-fixtures.mjs';
 import { checkArtifacts, inlineLocalCssImports, launchBrowser } from './ui-check-support.mjs';
 import { revenueMoney, revenueNumber } from '../src/pages/Executive/portfolioRevenuePresentation.js';
+import { connectionFixture, recordedFixture } from './check-portfolio-connections-fixtures.mjs';
 
 // Synthetic browser fixture. Optional local DTO input is never copied into source control.
 const frontend = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,6 +39,7 @@ function fixture() {
     breakdowns: Object.fromEntries(['business_unit', 'client', 'project_manager'].map(key => [key, [{ label: key === 'project_manager' ? 'DM' : 'Energy', project_count: 12, actual_revenue: null, forecast_revenue: '1600.00', coverage: { actual_revenue: { status: 'partial', known_value: '1200.00', missing_count: 1 } } }]])),
     forecast: Array.from({ length: 36 }, (_, index) => ({ period: `${2025 + Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}-01`, actual_revenue: index === 20 ? '1200.00' : null, forecast_revenue: null, pm_forecast: index === 20 ? '1500.00' : null, known_values: { forecast_revenue: index === 21 ? null : String(index * 100) }, coverage: { forecast_revenue: { included_rows: 12, known_rows: 11, missing_count: 1, status: 'partial' } } })),
     projects: { rows: Array.from({ length: 12 }, (_, index) => project(index + 1)), total_rows: 12, offset: 0, limit: 200 },
+    connections: connectionFixture(Array.from({ length: 12 }, (_, index) => project(index + 1))),
     risks: { status: 'partial', missing_count: 1, total_rows: 3, rows: ['poc', 'ld', 'prolongation'].map((type, index) => ({ ...project(index + 1), type, label: type, amount: '100.00' })), totals: { poc: metric('poc', '0E-8'), ld: metric('ld', '100.00'), prolongation: metric('prolongation', '100.00') }, poc_history: [{ date: '2026-09-18', poc_risk_aed: '0E-8' }], history: [{ date: '2025-09-18', poc_risk_aed: '100.123456', ld_exposure_aed: null, prolongation_cost_aed: '0E-8' }] },
     invoicing: { status: 'partial', warnings: [{ code: 'source_header_period_conflict' }, { code: 'mixed_comparison_periods' }], totals: { invoiced_aed: metric('invoiced', null, { known_value: '400.00', status: 'partial', missing_count: 2 }), balance_aed: metric('balance', null, { known_value: '600.00', status: 'partial', missing_count: 1 }), variance_aed: metric('gap', null, { known_value: '50.00', status: 'partial', known_value_label: 'Mixed-period subtotal', basis: 'mixed_comparison_periods' }) }, rows: [{ ...project(1), invoiced_aed: '400.00', balance_aed: '600.00', variance_aed: '50.00', reporting_date: '2026-09-18', comparison_date: '2026-08-31' }], comparison_periods: [{ comparison_date: '2026-08-31', included_rows: 1, totals: { comparison_revenue_aed: metric('comparison', '100.00'), variance_aed: metric('variance', '50.00') } }, { comparison_date: '2026-07-31', included_rows: 1, totals: { comparison_revenue_aed: metric('comparison', '100.00'), variance_aed: metric('variance', '0E-8') } }] },
     pm_performance: { status: 'partial', warnings: [{ code: 'kpi_label_period_mismatch' }], rows: [{ pm: 'DM', label: 'DM', project_count: 12, actual_revenue: '1200.00', pm_forecast: '1500.00', variance: '100.00', delivered_margin_pct: '15', kpi: { name: 'Synthetic Manager', period_label: 'KPI - JUN -2026', revenue_ratio: '0E-8', invoicing_ratio: '0.5', cpi_ratio: '1', overall_ratio: '0.8' } }] },
@@ -87,15 +89,24 @@ async function checkAccessibility(page, view) {
   await writeFile(path.join(artifacts, 'accessibility.json'), JSON.stringify(accessibility, null, 2));
   assert.deepEqual(result.violations.map(item => ({ id: item.id, nodes: item.nodes.length })), [], `${view} WCAG A/AA`);
 }
-async function open(data = fixture(), width = 1440) {
+async function open(data = fixture(), width = 1440, invoiceStatus = 200, recordedData = null) {
   const context = await browser.newContext({ viewport: { width, height: 940 }, acceptDownloads: true });
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
   page.on('pageerror', error => errors.push(error.message));
+  const control = { invoiceStatus, invoiceRequests: [], reportRequests: 0 };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
-    if (url.pathname === '/fixture/dashboard/executive/') { const report = reportFixture(); report.portfolio_performance.revenue_dashboard = data; return route.fulfill({ json: report }); }
+    if (url.pathname === '/fixture/dashboard/executive/') { control.reportRequests += 1; const report = reportFixture(); report.portfolio_performance.revenue_dashboard = data; return route.fulfill({ json: report }); }
+    if (url.pathname === '/fixture/dashboard/executive/portfolio-workbook/outgoing-invoices/') {
+      control.invoiceRequests.push(Object.fromEntries(url.searchParams));
+      if (control.invoiceStatus !== 200) return route.fulfill({ status: control.invoiceStatus, json: { detail: 'Synthetic invoice failure' } });
+      if (url.searchParams.get('business_unit') === 'Slow') await new Promise(resolve => setTimeout(resolve, 600));
+      const response = recordedData ? structuredClone(recordedData) : recordedFixture(url.searchParams);
+      if (recordedData?.rows) response.rows = recordedData.rows.slice(Number(url.searchParams.get('offset') || 0), Number(url.searchParams.get('offset') || 0) + Number(url.searchParams.get('limit') || 10));
+      return route.fulfill({ json: { ...response, source_snapshot_id: response.source_snapshot_id ?? Number(url.searchParams.get('snapshot_id')) } });
+    }
     if (url.pathname === '/fixture/dashboard/executive/portfolio-workbook/revenue/') {
       requests.push(Object.fromEntries(url.searchParams));
       const bu = url.searchParams.get('business_unit');
@@ -110,8 +121,10 @@ async function open(data = fixture(), width = 1440) {
       const matching = search ? result.projects.rows.filter(row => `${row.title} ${row.project_code} ${row.client}`.toLowerCase().includes(search)) : result.projects.rows;
       if (search) result.projects.total_rows = matching.length;
       result.projects.rows = matching.slice(offset, offset + limit);
+      if (result.connections) result.connections.rows = result.connections.rows.filter(row => result.projects.rows.some(project => project.id === row.portfolio_row_id));
       Object.assign(result.projects, { offset, limit, returned_rows: result.projects.rows.length, truncated: offset + limit < result.projects.total_rows });
       if (bu) result.kpis[0] = metric(ids[0], bu === 'Slow' ? '111.11' : '987.65');
+      if (bu === 'Energy') result.source.snapshot_id = 11;
       if (filtered) result.capacity = { status: 'restricted_scope', rows: [], description: 'Global capacity is unavailable for filtered scope.' };
       if (bu === 'Empty') { result.status = 'unavailable'; result.projects.total_rows = 0; result.projects.rows = []; }
       return route.fulfill({ json: result });
@@ -121,8 +134,11 @@ async function open(data = fixture(), width = 1440) {
   });
   await page.goto('http://revenue-check.test/');
   await page.getByTestId('portfolio-revenue-dashboard').waitFor();
-  return { page, context };
+  if (['available', 'partial'].includes(data.status)) await page.waitForFunction(() => { const invoice = document.querySelector('[data-testid="revenue-overview-invoice"]'); return invoice && !invoice.textContent.includes('Loading recorded invoices'); });
+  return { page, context, control };
 }
+const recordedPath = process.argv.find(value => value.startsWith('--recorded-dto='))?.slice('--recorded-dto='.length);
+const actualRecorded = recordedPath ? JSON.parse((await readFile(path.resolve(recordedPath), 'utf8')).replace(/^\uFEFF/, '')) : { status: 'unavailable', description: 'Operational invoice fixture not supplied for this local source preview.', rows: [], totals_by_currency: [] };
 if (process.argv.includes('--visual-only')) {
   const input = process.argv.find(value => value.startsWith('--actual-dto='))?.slice('--actual-dto='.length);
   const datasets = [{ name: 'synthetic', data: fixture() }];
@@ -130,10 +146,10 @@ if (process.argv.includes('--visual-only')) {
   const geometry = [];
   try {
     for (const dataset of datasets) for (const [width, dark] of [[1440, false], [1190, false], [390, false], [1440, true]]) {
-      const { page, context } = await open(dataset.data, width);
+      const { page, context } = await open(dataset.data, width, 200, dataset.name === 'actual' ? actualRecorded : null);
       if (dark) await page.evaluate(() => document.documentElement.classList.add('dark'));
       const labels = page.getByTestId('revenue-overview-invoice').locator('.prv-invoice-reference-stats > div > span');
-      assert.equal(await labels.evaluateAll(nodes => nodes.length === 3 && nodes.every(node => {
+      assert.equal(await labels.evaluateAll(nodes => (nodes.length === 0 || nodes.length === 3) && nodes.every(node => {
         const style = getComputedStyle(node); return style.overflow === 'hidden' && style.textOverflow === 'ellipsis';
       })), true, 'Latest invoice labels clip within their columns with ellipsis');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Overview has no horizontal page overflow');
@@ -158,7 +174,7 @@ if (process.argv.includes('--visual-only')) {
   process.exit(0);
 }
 try {
-  const { page, context } = await open();
+  const { page, context, control } = await open();
   assert.equal(await page.getByRole('heading', { name: 'Project Portfolio', exact: true }).count(), 1);
   assert.equal(await page.getByRole('tabpanel', { name: 'Project portfolio', exact: true }).count(), 1);
   assert.deepEqual(await page.getByRole('tablist', { name: 'Executive dashboard sections', exact: true }).getByRole('tab').allTextContents(), ['Overview', 'Financial performance', 'Project portfolio', 'Commercial pipeline', 'Workforce', 'Risk & compliance']);
@@ -176,8 +192,14 @@ try {
   await assertAmount(page.getByTestId('revenue-kpi-total_backlog'), '7000.00');
   const overviewIds = ['revenue-overview-outlook', 'revenue-overview-attainment', 'revenue-overview-bu', 'revenue-overview-risks', 'revenue-overview-invoice'];
   for (const id of overviewIds) await page.getByTestId(id).waitFor();
-  assert.match(await page.getByTestId('revenue-overview-invoice').innerText(), /Known balance to invoice/);
-  await assertAmount(page.getByTestId('revenue-overview-invoice'), '600.00');
+  await page.getByTestId('revenue-overview-invoice').getByText('Recorded invoiced', { exact: true }).waitFor();
+  await assertAmount(page.getByTestId('revenue-overview-invoice'), '15000.00');
+  await page.getByLabel('Invoice position currency', { exact: true }).selectOption('USD');
+  await assertAmount(page.getByTestId('revenue-overview-invoice'), '200.00');
+  await page.getByLabel('Invoice position currency', { exact: true }).selectOption('AED');
+  assert.equal(control.invoiceRequests[0].snapshot_id, '10');
+  assert.match(await page.getByTestId('portfolio-project-connections-summary').innerText(), /25\s+registered projects/);
+  assert.equal(await page.getByTestId('portfolio-project-connections-summary').getByRole('link').getAttribute('href'), '/projects?view=portfolio');
   assert.equal(await page.locator('.prv-summary-table-wrap').evaluateAll(nodes => nodes.length === 2 && nodes.every(node => node.tabIndex === 0 && node.getAttribute('role') === 'region' && node.getAttribute('aria-label'))), true, 'Overview table scroll regions are keyboard accessible');
   const boxes = await Promise.all(overviewIds.map(id => page.getByTestId(id).boundingBox()));
   assert.ok(Math.abs(boxes[0].y - boxes[1].y) < 3, 'Outlook and PM attainment occupy the first overview row');
@@ -211,6 +233,8 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-testid="revenue-kpi-total_revenue_actual"] .prv-kpi-value')?.getAttribute('aria-label') === 'AED 987.65');
   assert.equal(await page.getByLabel('Revenue business unit', { exact: true }).inputValue(), 'Energy');
   assert.equal(requests.at(-1).limit, '200', 'Overview loads source rows before selecting its five-row watchlist');
+  await page.waitForFunction(() => document.querySelector('[data-testid="revenue-overview-invoice"]')?.textContent.includes('Recorded invoiced'));
+  assert.equal(control.invoiceRequests.at(-1).snapshot_id, '11', 'Connected invoices use the displayed filtered snapshot, including a newer upload');
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await page.getByLabel('Search revenue portfolio', { exact: true }).fill('Synthetic project 12');
   await page.waitForFunction(() => document.querySelector('[data-testid="revenue-watchlist"] tbody')?.textContent.includes('Synthetic project 12'));
@@ -240,11 +264,35 @@ try {
   await checkAccessibility(page, 'PM Performance');
 
   await showSection(page, 'Invoice Control', 'revenue-invoicing');
-  assert.match(await page.getByTestId('revenue-invoicing').innerText(), /Mixed-period subtotal 50.00/);
+  const recorded = page.getByTestId('portfolio-recorded-invoices');
+  await recorded.getByRole('region', { name: 'Recorded outgoing invoice register' }).waitFor();
+  assert.equal(await recorded.locator('.prc-invoice-table tbody tr').count(), 10);
+  assert.match(await recorded.innerText(), /All recorded invoice dates/);
+  assert.equal(await recorded.getByRole('link', { name: 'Open invoice', exact: true }).count(), 9, 'Conflicted duplicate invoice has no invented detail route');
+  assert.equal(await recorded.locator('.prc-invoice-table tbody tr').first().locator('td').nth(5).innerText(), '—', 'Missing row receipt remains unknown');
+  await recorded.getByText('Invoices by project reference (2)', { exact: true }).click();
+  assert.equal(await recorded.getByRole('link', { name: 'Open invoices', exact: true }).first().getAttribute('href'), '/finance/outgoing-invoices?queue=all&project_exact=S1');
+  await recorded.getByRole('button', { name: 'Next recorded invoice page' }).click();
+  await recorded.getByText('INV-11', { exact: true }).waitFor();
+  assert.equal(control.invoiceRequests.at(-1).offset, '10');
+  await assertAmount(recorded.getByLabel('AED invoice totals', { exact: true }), '15000.00');
+  await page.getByText('Workbook reconciliation', { exact: true }).click();
+  assert.match(await page.getByTestId('revenue-invoicing').innerText(), /50.00[\s\S]*Mixed-period subtotal/);
+  await assertAmount(page.locator('.prc-workbook-comparison'), '600.00');
   await page.getByText('Revenue comparisons by baseline date', { exact: true }).click();
   assert.match(await page.getByRole('region', { name: 'Invoice comparison baselines' }).innerText(), /Jul[\s\S]*2026/);
   assert.match(await page.getByRole('region', { name: 'Invoice comparison baselines' }).innerText(), /Aug[\s\S]*2026/);
   await checkAccessibility(page, 'Invoice Control');
+  await page.screenshot({ path: path.join(artifacts, 'invoice-control-connected-desktop.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Review project connections', exact: true }).click();
+  await page.getByTestId('portfolio-project-connections').waitFor();
+  await page.getByLabel('Project connection status', { exact: true }).selectOption('unresolved');
+  assert.equal(await page.getByTestId('portfolio-project-connections').locator('tbody tr').count(), 2);
+  assert.equal(await page.getByTestId('portfolio-project-connections').getByRole('link').count(), 0);
+  await page.getByLabel('Project connection status', { exact: true }).selectOption('matched');
+  assert.equal(await page.getByTestId('portfolio-project-connections').getByRole('link', { name: 'Finance', exact: true }).first().getAttribute('href'), '/finance/outgoing-invoices?queue=all&project_exact=S1');
+  assert.equal(await page.getByTestId('portfolio-project-connections').getByRole('link', { name: 'QHSE', exact: true }).count(), 0);
+  await checkAccessibility(page, 'Project connections review');
 
   await showSection(page, 'Capacity', 'revenue-capacity');
   assert.equal(await page.locator('.prv-capacity-period').first().locator('span').first().innerText(), 'Sept 2026');
@@ -283,6 +331,7 @@ try {
   const downloadPromise = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export snapshot', exact: true }).click();
   const download = await downloadPromise; const exported = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(exported.report_type, 'executive_revenue'); assert.equal(exported.filters.business_unit, 'Energy'); assert.equal(exported.revenue_dashboard.kpis[0].value, '987.65');
+  assert.equal(exported.recorded_invoices?.source.mode, 'operational');
   await page.getByLabel('Revenue business unit', { exact: true }).selectOption('Empty');
   await page.getByText('No projects match this scope', { exact: true }).waitFor();
   assert.equal(await back(page).isVisible(), true, 'Empty detail scope retains its Back button');
@@ -318,6 +367,24 @@ try {
   checks.push('Compact overview layout, six exact AED headlines, five-row watchlist, current PM attainment, source-only forecast points, retained main Executive tabs and all detail views reachable through overview links with Back navigation');
   checks.push('Zero/missing values, source warnings, mixed invoice dates, project details, risk keyboard control, pagination, scoped filters/export, empty/error/403/stale-request states and complete print');
   await context.close();
+  for (const status of [403, 409, 503]) {
+    const { page: invoicePage, context: invoiceContext, control: invoiceControl } = await open(fixture(), 390, status);
+    await showSection(invoicePage, 'Invoice Control', 'revenue-invoicing');
+    await invoicePage.getByTestId('portfolio-recorded-invoices').getByRole('alert').waitFor();
+    await assertAmount(invoicePage.getByTestId('revenue-kpi-total_revenue_actual'), '1200.00');
+    assert.equal(await invoicePage.getByTestId('portfolio-recorded-invoices').locator('.prc-currency-totals').count(), 0);
+    assert.equal(await invoicePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    if (status !== 403) {
+      invoiceControl.invoiceStatus = 200;
+      await invoicePage.getByRole('button', { name: status === 409 ? 'Refresh portfolio source' : 'Retry recorded invoices', exact: true }).click();
+      if (status === 409) await showSection(invoicePage, 'Invoice Control', 'revenue-invoicing');
+      await invoicePage.getByRole('region', { name: 'Recorded outgoing invoice register', exact: true }).waitFor();
+      if (status === 409) assert.ok(invoiceControl.reportRequests > 1, 'Snapshot conflict refreshes the main source before invoices');
+      await checkAccessibility(invoicePage, `Recorded invoices ${status} recovery on mobile`);
+      await invoicePage.screenshot({ path: path.join(artifacts, `invoice-control-${status}-mobile.png`), fullPage: true });
+    }
+    await invoiceContext.close();
+  }
 
   for (const [width, dark] of [[390, false], [1440, true]]) {
     const { page: visual, context: visualContext } = await open(fixture(), width);
@@ -356,7 +423,7 @@ try {
   const actualPath = process.argv.find(value => value.startsWith('--actual-dto='))?.slice('--actual-dto='.length);
   if (actualPath) {
     const actual = JSON.parse((await readFile(path.resolve(actualPath), 'utf8')).replace(/^\uFEFF/, ''));
-    const { page: live, context: liveContext } = await open(actual);
+    const { page: live, context: liveContext } = await open(actual, 1440, 200, actualRecorded);
     for (const item of actual.kpis) await assertAmount(live.getByTestId(`revenue-kpi-${item.id}`), item.value);
     assert.equal(await live.locator('.prv-kpis article').count(), 6);
     assert.equal(await live.getByTestId('revenue-watchlist').locator('tbody tr').count(), Math.min(5, actual.projects.total_rows));
@@ -375,6 +442,15 @@ try {
     await live.setViewportSize({ width: 390, height: 940 });
     assert.equal(await live.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Actual source mobile has no horizontal page overflow');
     await live.screenshot({ path: path.join(artifacts, 'revenue-actual-source-390.png'), fullPage: true });
+    if (recordedPath) {
+      await showSection(live, 'Invoice Control', 'revenue-invoicing');
+      assert.equal(await live.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Actual recorded invoices fit mobile');
+      await checkAccessibility(live, 'Actual connected invoices mobile');
+      await live.screenshot({ path: path.join(artifacts, 'invoice-control-actual-390.png'), fullPage: true });
+      await live.setViewportSize({ width: 1440, height: 940 });
+      for (const group of actualRecorded.totals_by_currency || []) if (group.invoice_amount?.value != null) await assertAmount(live.getByLabel(`${group.currency} invoice totals`, { exact: true }), group.invoice_amount.value);
+      await live.screenshot({ path: path.join(artifacts, 'invoice-control-actual-desktop.png'), fullPage: true });
+    }
     checks.push('Actual local DTO: all six API amounts, compact overview, full project count, staffing units and workbook intervention count');
     await liveContext.close();
   }
