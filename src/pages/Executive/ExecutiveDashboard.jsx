@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowDownTrayIcon, ArrowPathIcon, ChevronDownIcon, EllipsisHorizontalIcon, EllipsisVerticalIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, ArrowPathIcon, ChevronDownIcon, EllipsisHorizontalIcon, EllipsisVerticalIcon, InformationCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
 import { formatDate, requestError, validateExecutiveReport } from './executivePresentation';
 import { DefinitionsDialog, RouteLink } from './ExecutivePrimitives';
@@ -20,6 +20,7 @@ import './ExecutiveOverview.css';
 import './ExecutiveKpiCard.css';
 import './ExecutiveTabColors.css';
 import './ExecutiveReferenceOverview.css';
+import './ExecutiveRevenueReference.css';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -50,6 +51,8 @@ export default function ExecutiveDashboard() {
   const [overviewCurrencies, setOverviewCurrencies] = useState(['AED']);
   const [pipelineCurrencyChoice, setPipelineCurrencyChoice] = useState('AED');
   const [portfolioCurrency, setPortfolioCurrency] = useState('AED');
+  const [revenueSnapshot, setRevenueSnapshot] = useState(null);
+  const [revenueNavigationRequest, setRevenueNavigationRequest] = useState(null);
   const [printing, setPrinting] = useState(false);
   const tabList = useRef(null);
   const financialMenu = useRef(null);
@@ -57,6 +60,7 @@ export default function ExecutiveDashboard() {
   const portfolioMenu = useRef(null);
 
   useEffect(() => { if (activeTab !== 'financial') setFinancialSnapshot(null); }, [activeTab]);
+  useEffect(() => { if (activeTab !== 'portfolio') setRevenueSnapshot(null); }, [activeTab]);
 
   useEffect(() => {
     if (!['commercial', 'workforce', 'risk'].includes(activeTab)) return undefined;
@@ -99,6 +103,9 @@ export default function ExecutiveDashboard() {
   }, []);
 
   const portfolio = useMemo(() => portfolioReport(report), [report]);
+  const revenueEnabled = Boolean(portfolio.revenue_dashboard?.enabled);
+  const revenueData = revenueSnapshot?.data || portfolio.revenue_dashboard;
+  const revenueBusy = Boolean(revenueSnapshot?.loading || revenueSnapshot?.error);
   const portfolioCurrencies = [...new Set(['AED', portfolioCurrency, ...(portfolio.kpis || []).flatMap(metric => (metric.by_currency || []).map(row => row.currency)), ...(portfolio.register?.projects || []).map(row => row.currency)].filter(Boolean))].sort();
   const commercial = useMemo(() => commercialReport(report), [report]);
   const workforce = useMemo(() => workforceReport(report), [report]);
@@ -106,11 +113,11 @@ export default function ExecutiveDashboard() {
   const pipelineCurrencies = useMemo(() => commercialCurrencies(commercial), [commercial]);
   const pipelineCurrency = pipelineCurrencies.includes(pipelineCurrencyChoice) ? pipelineCurrencyChoice : pipelineCurrencies.includes('AED') ? 'AED' : pipelineCurrencies[0] || '';
   const metrics = useMemo(() => activeTab === 'financial' ? []
-    : activeTab === 'portfolio' ? [...(portfolio.kpis || []), ...(portfolio.health?.metrics || []), ...(portfolio.milestones?.metrics || [])]
+    : activeTab === 'portfolio' ? revenueEnabled ? (revenueData?.kpis || []).map(metric => ({ source: 'Uploaded portfolio workbook', ...metric })) : [...(portfolio.kpis || []), ...(portfolio.health?.metrics || []), ...(portfolio.milestones?.metrics || [])]
       : activeTab === 'commercial' ? [...(commercial.kpis || []), ...(commercial.commercial_quality?.metrics || [])]
         : activeTab === 'workforce' ? [...(workforce.kpis || []), ...(workforce.retention_mobility?.metrics || []), ...(workforce.workforce_movement?.metrics || []), ...(workforce.data_quality?.metrics || [])]
           : activeTab === 'risk' ? [...new Map([...(risk.kpis || []), ...(risk.qhse_performance?.metrics || []), ...(risk.qhse_performance?.project_metrics || []), ...(risk.audit_controls?.metrics || [])].map(metric => [metric.id, metric])).values()]
-            : [...(report?.kpis || []), ...(report?.departments || []).flatMap(section => section.metrics || [])], [report, portfolio, commercial, workforce, risk, activeTab]);
+            : [...(report?.kpis || []), ...(report?.departments || []).flatMap(section => section.metrics || [])], [report, portfolio, commercial, workforce, risk, activeTab, revenueEnabled, revenueData]);
   const department = id => report?.departments.find(section => section.id === id);
   const explainScope = type => {
     const disclosures = {
@@ -118,6 +125,7 @@ export default function ExecutiveDashboard() {
       period: { label: 'Reporting period', description: ['overview', 'financial'].includes(activeTab) ? 'Invoiced revenue and invoice-date charts use their selected calendar month or January-to-date period. Current-month invoicing stops at the source cutoff. Receipts are current recorded collections against those invoices, not historical cash flows. Workbook totals cover all source periods; receivables show current open balances. No fiscal-year or currency conversion is assumed.' : 'This is a current operational snapshot. Historical reporting periods are not connected. Each source may have a different last record update.', status: 'available' },
       comparison: { label: 'Performance comparison', description: 'Approved budget, targets and comparable historical periods are not connected. A variance is shown only when its reporting basis is verified.', status: 'unavailable' },
       portfolio: { label: 'Portfolio scope', description: 'Accessible open projects in planning, active or on-hold status. Closed and cancelled projects are excluded. Business-unit and legal-entity portfolio consolidation are not connected. Register filters apply to the returned rows; counts and health retain this overall scope. The currency selector changes monetary cards and delivery bubbles only. Project rows retain their recorded original currencies; no FX conversion is applied.', status: portfolio.status },
+      revenue: { label: 'Revenue reporting basis', description: `Amounts use the uploaded workbook’s AED conversion. Revenue reporting cutoff: ${formatDate(revenueData?.source?.reporting_date)}. ${revenueData?.scope?.label || 'Authorized portfolio scope'}. Forecast variance is current forecast less PM forecast. Monthly histories, PM scorecards and invoicing comparisons retain their own explicitly stated source periods.`, status: revenueData?.status, source: revenueData?.source?.file_name || 'Uploaded portfolio workbook' },
       risk: { label: 'Risk and assurance reporting basis', description: 'Authorised QHSE project quality counters and audit schedule records. Follow-ups are source flags, not enterprise risks. Approved residual ratings, appetite, treatment evidence, verified incidents and legal compliance obligations are not connected. Each source retains its own access and reporting coverage.', status: risk.status },
       workforce: { label: 'Workforce reporting basis', description: 'Aggregate current employees from the authorised employee master. Department headcounts are people, not FTE. Recorded joining and exit dates describe past movement; approved skills, vacancies, project capacity, billable hours and forward demand are not connected. No individual personnel or salary records are included.', status: workforce.status },
       commercial: { label: 'Commercial reporting basis', description: 'Recorded open CRM opportunities, kept in original currencies. The currency selector filters monetary outcomes, opportunities, bid targets and client concentration. Win rate, proposal target counts, decisions and CRM quality cover all authorised currencies. Probability is stored in CRM; approved forecast scenarios and revenue requirements are not connected.', status: commercial.status },
@@ -137,7 +145,7 @@ export default function ExecutiveDashboard() {
       revenue: financialSnapshot.revenue,
       reporting_period: financialSnapshot.reporting_period,
       source_description: financialSnapshot.source_description,
-    } : report;
+    } : activeTab === 'portfolio' && revenueEnabled ? { schema_version: '1.0', report_type: 'executive_revenue', generated_at: report.generated_at, filters: revenueSnapshot?.filters || {}, revenue_dashboard: revenueData } : report;
     const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }));
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -162,13 +170,31 @@ export default function ExecutiveDashboard() {
   const financialCurrencies = [...new Set([financialCurrency, ...(financialSnapshot?.receivables?.filters?.currencies || []), ...(financialSnapshot?.receivables?.workbook_summary?.currency_breakdown || []).map(row => row.currency).filter(Boolean)])].sort();
   const closeFinancialMenu = () => { if (financialMenu.current) financialMenu.current.open = false; };
   const isPortfolio = visibleTab === 'portfolio';
+  const isRevenuePortfolio = isPortfolio && revenueEnabled;
   const isCommercial = visibleTab === 'commercial';
   const isWorkforce = visibleTab === 'workforce';
   const isRisk = visibleTab === 'risk';
   const sourceLabels = { finance: 'Finance', project_control: 'Projects', hr: 'HR', sales: 'CRM', qhse: 'QHSE' };
 
-  return <div className={`executive-dashboard cc-command-center cc-radai-page ${isFinancial ? 'cc-financial-page' : isPortfolio ? 'cc-portfolio-page' : isCommercial ? 'cc-commercial-page' : isWorkforce ? 'cc-workforce-page' : isRisk ? 'cc-risk-page' : 'cc-overview-page'}`}>
-    <header className="cc-page-header">
+  const openRevenueSection = section => setRevenueNavigationRequest(current => ({ section, nonce: (current?.nonce || 0) + 1 }));
+
+  return <div className={`executive-dashboard cc-command-center cc-radai-page ${isFinancial ? 'cc-financial-page' : isPortfolio ? 'cc-portfolio-page' : isCommercial ? 'cc-commercial-page' : isWorkforce ? 'cc-workforce-page' : isRisk ? 'cc-risk-page' : 'cc-overview-page'}${isRevenuePortfolio ? ' rv-reference-page' : ''}`}>
+    {isRevenuePortfolio ? <header className="cc-page-header rv-page-header">
+      <div className="rv-header-main">
+        <div className="rv-title-block">
+          <div className="cc-breadcrumb"><button type="button" onClick={() => setActiveTab('overview')}>Executive</button> / Project portfolio</div>
+          <h1 id="portfolio-page-title">Project Portfolio</h1>
+          <p>Revenue, forecasts, delivery exposure and management actions</p>
+        </div>
+        <div className="rv-header-actions cc-screen-only">
+          <div id="executive-revenue-filters" />
+          <div className="rv-export-group"><button type="button" className="cc-button rv-export-button" onClick={printBoard} aria-label="Export revenue board" disabled={loading || revenueBusy || !['available', 'partial'].includes(revenueData?.status)}><ArrowDownTrayIcon />Export</button><details className="rv-export-menu"><summary aria-label="More revenue export options"><ChevronDownIcon /></summary><div><button type="button" onClick={event => { event.currentTarget.closest('details').open = false; exportSnapshot(); }} disabled={loading || revenueBusy || !['available', 'partial'].includes(revenueData?.status)}>Export snapshot</button></div></details></div>
+          <button type="button" className="cc-button cc-button--primary rv-review-button" onClick={() => openRevenueSection('risk')} disabled={loading || revenueBusy || !['available', 'partial'].includes(revenueData?.status)}><ExclamationTriangleIcon />Review interventions</button>
+        </div>
+      </div>
+        <div className="rv-report-status"><span role="status"><i className={loading || revenueBusy || !['available', 'partial'].includes(revenueData?.status) ? 'rv-dot-muted' : ''} />{loading || revenueSnapshot?.loading ? 'Updating revenue figures…' : revenueSnapshot?.error ? 'Revenue scope unavailable' : `Cutoff ${formatDate(revenueData?.source?.reporting_date)} · Updated ${formatDate(revenueData?.source?.imported_at, true)}`}</span><button type="button" className="cc-text-button cc-screen-only" onClick={() => setSelection({ all: true })}>Data definitions</button><button type="button" className="rv-refresh-button cc-screen-only" aria-label="Refresh revenue" title="Refresh revenue" onClick={() => setRevision(value => value + 1)} disabled={loading || revenueSnapshot?.loading}><ArrowPathIcon /></button></div>
+      <div ref={tabList} className="cc-tabs cc-screen-only" role="tablist" aria-label="Executive dashboard sections" onKeyDown={navigateTabs}>{TABS.map(tab => <button key={tab.id} id={`executive-tab-${tab.id}`} role="tab" aria-selected={activeTab === tab.id} aria-controls={`executive-tabpanel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</div>
+    </header> : <header className="cc-page-header">
       <div className="cc-title-row"><div className="cc-title-block"><div className="cc-breadcrumb"><span>Executive</span> / {TABS.find(tab => tab.id === activeTab)?.label}</div><h1>{isFinancial ? 'Financial Performance' : isPortfolio ? 'Project Portfolio' : isCommercial ? 'Commercial Pipeline' : isWorkforce ? 'Workforce' : isRisk ? 'Risk & Compliance' : 'Executive Command Center'}</h1><p>{isFinancial ? 'Invoicing, collections, receivables and Finance outlook' : isPortfolio ? 'Portfolio value, delivery confidence and executive interventions' : isCommercial ? 'Pipeline value, win confidence, client exposure and delivery demand.' : isWorkforce ? 'Capacity, utilization, critical skills and workforce risk.' : isRisk ? 'Enterprise risk, QHSE performance, obligations and assurance.' : 'Company performance, portfolio risk and decisions requiring attention.'}</p></div>
         <div className="cc-header-right"><div className="cc-toolbar cc-screen-only">
           {isOverview ? <>
@@ -197,7 +223,7 @@ export default function ExecutiveDashboard() {
         </div><div className="cc-retrieved" role="status"><i className={loading || !report || financialBusy || financialUnavailable || (isWorkforce && !['available', 'partial'].includes(workforce.status)) || (isRisk && !['available', 'partial'].includes(risk.status)) ? 'cc-dot-muted' : ''} />{loading ? 'Updating overview…' : report ? isFinancial ? financialBusy ? 'Updating invoice balances...' : `Provisional · Latest Finance record: ${financialSnapshot?.receivables?.source_updated_at ? formatDate(financialSnapshot.receivables.source_updated_at, true) : 'not recorded'}` : isPortfolio ? `Provisional · Latest project record: ${portfolio.source_updated_at ? formatDate(portfolio.source_updated_at, true) : 'not recorded'}` : isCommercial ? `Latest CRM record: ${commercial.source_updated_at ? formatDate(commercial.source_updated_at, true) : 'not recorded'}` : isWorkforce ? `Latest HR record: ${workforce.source_updated_at ? formatDate(workforce.source_updated_at, true) : 'not recorded'}` : isRisk ? `Latest QHSE record: ${risk.source_updated_at ? formatDate(risk.source_updated_at, true) : 'not recorded'}` : `Provisional \u00b7 Updated ${formatDate(report.generated_at, true)}` : 'Report not loaded'}</div></div>
       </div>
       <div ref={tabList} className="cc-tabs cc-screen-only" role="tablist" aria-label="Executive dashboard sections" onKeyDown={navigateTabs}>{TABS.map(tab => <button key={tab.id} id={`executive-tab-${tab.id}`} role="tab" aria-selected={activeTab === tab.id} aria-controls={`executive-tabpanel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</div>
-    </header>
+    </header>}
 
     <div className="cc-content" aria-busy={loading}>
       {error && <section className="cc-error" role="alert"><InformationCircleIcon /><div><h2>{error.title}</h2><p>{error.detail}</p><button className="cc-button" onClick={() => setRevision(value => value + 1)}>Try again</button><RouteLink route="/dashboard">Return to dashboard</RouteLink></div></section>}
@@ -205,15 +231,15 @@ export default function ExecutiveDashboard() {
       {report && <div role="tabpanel" id={`executive-tabpanel-${visibleTab}`} aria-labelledby={`executive-tab-${visibleTab}`} tabIndex={0} className="cc-tabpanel">
         {isOverview && <ExecutiveReferenceOverview report={report} currency={overviewCurrency} refreshKey={revision} printing={printing} onExplain={setSelection} onNavigate={setActiveTab} onCurrencies={setOverviewCurrencies} />}
         {visibleTab === 'financial' && <FinancialPerformance report={report} currency={financialCurrency} refreshKey={revision} printing={printing} onSnapshotChange={setFinancialSnapshot} onExplain={setSelection} />}
-        {visibleTab === 'portfolio' && <ProjectPortfolio report={report} portfolio={portfolio} currency={portfolioCurrency} onExplain={setSelection} onNavigate={setActiveTab} printing={printing} />}
+        {visibleTab === 'portfolio' && <ProjectPortfolio report={report} portfolio={portfolio} currency={portfolioCurrency} onExplain={setSelection} onNavigate={setActiveTab} printing={printing} onRevenueSnapshotChange={setRevenueSnapshot} revenueNavigationRequest={revenueNavigationRequest} />}
         {visibleTab === 'commercial' && <CommercialPipeline report={report} commercial={commercial} currency={pipelineCurrency} onExplain={setSelection} printing={printing} />}
         {visibleTab === 'workforce' && <WorkforcePerformance workforce={workforce} onExplain={setSelection} printing={printing} />}
         {visibleTab === 'risk' && <RiskCompliance risk={risk} onExplain={setSelection} printing={printing} />}
       </div>}
-      {report && !isFinancial && !isOverview && <details className="cc-report-notes" open={printing || undefined}><summary><InformationCircleIcon />Reporting scope & data coverage</summary><div><p>Current authorised RADAI workspace. Group consolidation is not available. Monetary values remain in their original currencies. A missing measure is shown as a dash; a reported zero remains zero.</p><ul>{report.limitations?.map((item, index) => <li key={index}>{item}</li>)}</ul><p>Source timestamps describe the latest record update, not source completeness or refresh success. Budget, revenue forecasts and historical comparisons require verified reporting sources.</p></div></details>}
+      {report && isRevenuePortfolio ? <details className="cc-report-notes" open={printing || undefined}><summary><InformationCircleIcon />Revenue reporting basis & coverage</summary><div><p>{revenueData?.scope?.label || 'Authorized workbook scope'}. Monetary values use the workbook’s AED conversion. Current revenue cutoff: {formatDate(revenueData?.source?.reporting_date)}.</p><p>Forecast variance is current forecast less PM forecast. Historical forecast, invoice and PM scorecard periods are shown separately. Missing figures remain unavailable; identified partial subtotals do not establish a complete portfolio total.</p><ul>{revenueData?.kpis?.map(metric => <li key={metric.id}>{metric.label}: {metric.description}</li>)}</ul></div></details> : report && !isFinancial && !isOverview && <details className="cc-report-notes" open={printing || undefined}><summary><InformationCircleIcon />Reporting scope & data coverage</summary><div><p>Current authorised RADAI workspace. Group consolidation is not available. Monetary values remain in their original currencies. A missing measure is shown as a dash; a reported zero remains zero.</p><ul>{report.limitations?.map((item, index) => <li key={index}>{item}</li>)}</ul><p>Source timestamps describe the latest record update, not source completeness or refresh success. Budget, revenue forecasts and historical comparisons require verified reporting sources.</p></div></details>}
     </div>
 
-    {!isOverview && <footer className="cc-data-footer">{isFinancial ? <div className="cc-source-strip"><span>Invoice register snapshot · Original currencies · Customer names from COMPANY</span></div> : <div className="cc-source-strip"><button className="cc-coverage-button" onClick={() => setSelection({ all: true })} disabled={!report}><InformationCircleIcon />Data coverage {report ? `${report.coverage?.available_departments ?? 0}/${report.coverage?.total_departments ?? 7} sources` : 'not loaded'}</button><span className="cc-source-caption">Latest record:</span>{Object.entries(sourceLabels).map(([id, label]) => <span key={id} title={department(id)?.source_timestamp_label || 'Source record timestamp unavailable'}>{label} <b>{department(id)?.source_updated_at ? formatDate(department(id).source_updated_at, true) : '—'}</b></span>)}</div>}<div className="cc-footer-actions cc-screen-only">{!isFinancial && <button className="cc-text-button" onClick={() => setSelection({ all: true })} disabled={!report}>Metric definitions</button>}<button className="cc-text-button" onClick={exportSnapshot} disabled={!report || loading || financialBusy || financialUnavailable}>Export snapshot</button></div></footer>}
+    {!isOverview && <footer className="cc-data-footer">{isRevenuePortfolio ? <div className="cc-source-strip"><span>AED reporting · {revenueData?.scope?.label || 'Authorized portfolio scope'}</span><span>{revenueData?.source?.file_name || 'Portfolio source unavailable'}</span></div> : isFinancial ? <div className="cc-source-strip"><span>Invoice register snapshot · Original currencies · Customer names from COMPANY</span></div> : <div className="cc-source-strip"><button className="cc-coverage-button" onClick={() => setSelection({ all: true })} disabled={!report}><InformationCircleIcon />Data coverage {report ? `${report.coverage?.available_departments ?? 0}/${report.coverage?.total_departments ?? 7} sources` : 'not loaded'}</button><span className="cc-source-caption">Latest record:</span>{Object.entries(sourceLabels).map(([id, label]) => <span key={id} title={department(id)?.source_timestamp_label || 'Source record timestamp unavailable'}>{label} <b>{department(id)?.source_updated_at ? formatDate(department(id).source_updated_at, true) : '—'}</b></span>)}</div>}<div className="cc-footer-actions cc-screen-only">{!isFinancial && <button className="cc-text-button" onClick={() => setSelection({ all: true })} disabled={!report}>Metric definitions</button>}<button className="cc-text-button" onClick={exportSnapshot} disabled={!report || loading || financialBusy || financialUnavailable || (isRevenuePortfolio && (revenueBusy || !['available', 'partial'].includes(revenueData?.status)))}>Export snapshot</button></div></footer>}
     <DefinitionsDialog selection={selection} onClose={() => setSelection(null)} metrics={metrics} />
   </div>;
 }

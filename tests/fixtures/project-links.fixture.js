@@ -26,6 +26,13 @@ export async function projectLinksHarness(page, options = {}) {
     },
     handleRequest: async (route, state, url) => {
       const path = url.pathname, method = route.request().method()
+      if (path === '/api/v1/dashboard/executive/portfolio-workbook/' && method === 'GET') {
+        // This fixture is a procurement reader, without portfolio upload grants.
+        await reply(route, { status: 'restricted', can_upload: false, source: null,
+          totals: {}, row_count: null, project_count: null, returned_rows: 0,
+          truncated: false, rows: [], forecast: [] })
+        return true
+      }
       if (path.endsWith('/projects/link-workspace/')) {
         const query = Object.fromEntries(url.searchParams)
         state.workspaceQueries.push(query)

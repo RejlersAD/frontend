@@ -89,9 +89,19 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   assert.equal(await page.locator('[data-testid^="portfolio-kpi-"]').count(), 5);
   assert.equal(await page.getByRole('tab', { name: 'Project portfolio', exact: true }).getAttribute('aria-selected'), 'true');
   assert.equal(await page.getByRole('combobox', { name: 'Financial reporting currency' }).count(), 0);
+  assert.equal(await page.locator('.pp-intervention-banner').count(), 0, 'Full-width intervention banner is removed');
+  const launcher = page.getByTestId('portfolio-intervention-launcher');
+  assert.equal(await launcher.innerText(), '7 interventions', 'Floating count comes from the report');
   await unknownOutcomes(page);
   for (const width of [1672, 1440, 1024, 390]) {
     await assertGeometry(page, width);
+    const floating = await launcher.boundingBox();
+    const viewport = page.viewportSize();
+    const inset = width <= 640 ? 12 : 20;
+    assert.equal(await launcher.evaluate(node => getComputedStyle(node).position), 'fixed');
+    assert.ok(Math.abs(viewport.width - floating.x - floating.width - inset) < 2, 'Interventions float against the right safe edge');
+    assert.ok(Math.abs(viewport.height - floating.y - floating.height - inset) < 2, 'Interventions float against the bottom safe edge');
+    assert.ok(floating.height >= 44 && floating.width < 300 && floating.x >= 0, 'Floating control is compact and has a usable target');
     const graphics = page.locator('.pp-kpi-graphic');
     assert.equal(await graphics.count(), 5, 'Each portfolio outcome has a mini chart');
     for (const [index, graphic] of (await graphics.all()).entries()) {
@@ -114,7 +124,6 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
       const outlook = await page.getByTestId('portfolio-delivery-outlook').boundingBox();
       const health = await page.getByTestId('portfolio-health-summary').boundingBox();
       const outcomes = await page.getByTestId('portfolio-outcomes').boundingBox();
-      const intervention = await page.locator('.pp-intervention-banner').boundingBox();
       const register = await page.getByTestId('portfolio-register').boundingBox();
       const decisions = await page.locator('.pp-interventions-panel').boundingBox();
       const trend = await page.getByTestId('portfolio-margin-schedule').boundingBox();
@@ -122,7 +131,7 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
       assert.ok(outlook.width / (outlook.width + health.width) >= .54 && outlook.width / (outlook.width + health.width) <= .60, 'Portfolio uses the reference 57/43 paired layout');
       assert.ok(Math.abs(outlook.y - health.y) < 3 && health.x >= outlook.x + outlook.width, 'Delivery outlook and health share the first content row');
       assert.ok(outcomes.width >= outlook.width + health.width, 'Five KPI cards span the full content width');
-      assert.ok(intervention.y >= outcomes.y + outcomes.height && outlook.y >= intervention.y + intervention.height, 'Intervention strip sits between full-width KPIs and charts');
+      assert.ok(outlook.y >= outcomes.y + outcomes.height && outlook.y - outcomes.y - outcomes.height < 20, 'Charts follow KPI cards without the old intervention strip');
       assert.ok(register.y >= outlook.y + outlook.height && Math.abs(register.y - decisions.y) < 3, 'Intervention register and decisions share the second row');
       assert.ok(trend.y >= register.y + register.height && Math.abs(trend.y - capacity.y) < 3, 'Historical trend and capacity share the third row');
       const cards = await page.locator('[data-testid^="portfolio-kpi-"]').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
@@ -136,7 +145,7 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
     }
   }
   await assertGeometry(page, 1672);
-  checks.push('Full-width five outcomes, intervention banner and 57/43 paired chart/register/capacity rows; 1440/1024/390 layouts preserve the sidebar');
+  checks.push('Five outcomes and 57/43 paired content rows retain their layout; compact interventions control floats bottom-right at 1672/1440/1024/390 widths');
   checks.push('All five right-aligned mini charts remain visible at every viewport: one bar chart, four line/area charts, and explicit illustrative captions for unavailable histories');
 
   if (process.argv.includes('--portfolio-visuals-only')) {
@@ -269,6 +278,13 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   await assertGeometry(page, 1672);
   await page.getByRole('button', { name: 'Review interventions', exact: true }).click();
   assert.equal(await page.getByTestId('portfolio-decisions').evaluate(node => node === document.activeElement), true);
+  const floatingBeforeScroll = await launcher.boundingBox();
+  await page.locator('.cc-command-center').evaluate(node => node.scrollTo({ top: node.scrollHeight, behavior: 'instant' }));
+  const floatingAfterScroll = await launcher.boundingBox();
+  assert.ok(Math.abs(floatingBeforeScroll.y - floatingAfterScroll.y) < 1, 'Floating control remains available while the board scrolls');
+  await launcher.focus();
+  await launcher.press('Enter');
+  assert.equal(await page.getByTestId('portfolio-decisions').evaluate(node => node === document.activeElement), true, 'Keyboard activation focuses the existing interventions section');
   assert.equal(await actionRows(page).count(), 3);
   await page.getByRole('button', { name: 'Show 7 interventions', exact: true }).click();
   assert.equal(await actionRows(page).count(), 7);
@@ -305,6 +321,7 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
   assert.equal(await page.locator('#application-sidebar').isVisible(), true);
   await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
   await page.emulateMedia({ media: 'print' });
+  assert.equal(await launcher.count(), 0, 'Floating interventions control is omitted from print');
   await capture(page, 'portfolio-board-print', true);
   await page.pdf({ path: path.join(artifacts, 'portfolio-board-report.pdf'), format: 'A4', preferCSSPageSize: true, printBackground: true });
   await page.emulateMedia({ media: 'screen' });
@@ -331,6 +348,7 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
     await unknownOutcomes(state.page);
     assert.doesNotMatch(await state.page.getByTestId('project-portfolio').innerText(), /NaN|Infinity|undefined/);
     if (fixture === 'portfolio-zero') {
+      assert.equal(await state.page.getByTestId('portfolio-intervention-launcher').innerText(), '0 interventions', 'A reported zero stays zero');
       assert.equal(await state.page.getByTestId('portfolio-kpi-active_projects').locator('.pp-outcome-value').innerText(), '0');
       assert.equal(await state.page.getByTestId('portfolio-kpi-contract_value').locator('.pp-outcome-value').innerText(), '—');
       assert.equal(await rows(state.page).count(), 0);
@@ -365,12 +383,14 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
       assert.deepEqual(await state.page.getByTestId('portfolio-concentration-AED').locator('td').allTextContents(), ['—', '—', '—'], 'Zero denominator does not become a percentage share');
     }
     if (fixture === 'portfolio-health-error') {
+      assert.equal(await state.page.getByTestId('portfolio-intervention-launcher').innerText(), 'Interventions · Unavailable');
       assert.equal(await rows(state.page).count(), 5, 'Register stays available when the exception source fails');
       assert.match(await state.page.getByTestId('portfolio-decisions').innerText(), /source unavailable/i);
       assert.match(await state.page.getByTestId('portfolio-health-summary').innerText(), /Project source unavailable/);
       assert.equal(await state.page.getByTestId('portfolio-health-bar').count(), 0);
     }
     if (fixture === 'portfolio-health-partial') {
+      assert.equal(await state.page.getByTestId('portfolio-intervention-launcher').innerText(), 'Interventions · Incomplete');
       assert.equal(await rows(state.page).count(), 5);
       assert.match(await state.page.getByTestId('portfolio-decisions').innerText(), /Exception coverage incomplete/);
       assert.match(await state.page.getByTestId('portfolio-decisions').innerText(), /do not establish the portfolio total/);
@@ -386,6 +406,9 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
       assert.match(await state.page.getByTestId('portfolio-register').innerText(), /3 of 8 projects/, 'Legacy preview explicitly discloses its partial register coverage');
     }
     if (['portfolio-restricted', 'portfolio-error', 'portfolio-unavailable'].includes(fixture)) {
+      const text = await state.page.getByTestId('portfolio-intervention-launcher').innerText();
+      assert.equal(text, fixture === 'portfolio-restricted' ? 'Interventions · Restricted' : fixture === 'portfolio-error' ? 'Interventions · Unavailable' : 'Interventions · Not reported');
+      assert.doesNotMatch(text, /0 interventions/, 'Unavailable counts never become zero');
       assert.equal(await rows(state.page).count(), 0);
       assert.equal(await actionRows(state.page).count(), 0);
       assert.equal(await state.page.getByTestId('portfolio-kpi-active_projects').locator('.pp-outcome-value').innerText(), '—');
@@ -394,6 +417,7 @@ export async function runProjectPortfolioChecks({ frontend, newPage, assertGeome
       if (fixture !== 'portfolio-unavailable') assert.match(await state.page.getByTestId('portfolio-decisions').innerText(), fixture === 'portfolio-restricted' ? /Project access required/ : /Project source unavailable/);
     }
     if (fixture === 'portfolio-truncated') {
+      assert.equal(await state.page.getByTestId('portfolio-intervention-launcher').innerText(), '87 interventions', 'Floating count uses the full reported total, not the returned preview');
       assert.match(await state.page.getByTestId('portfolio-register').innerText(), /13 of 213 projects/);
       assert.match(await state.page.getByTestId('portfolio-decisions').innerText(), /7 of 87/);
       await state.page.getByRole('button', { name: 'Export board report', exact: true }).click();

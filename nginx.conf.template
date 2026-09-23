@@ -31,6 +31,12 @@ server {
         proxy_connect_timeout 120s;
         proxy_send_timeout 120s;
         proxy_read_timeout 120s;
+
+        # Portfolio Excel uploads: allow a 25 MiB file plus multipart overhead.
+        location /api/v1/dashboard/executive/portfolio-workbook/ {
+            client_max_body_size 26m;
+            proxy_pass http://${BACKEND_HOST}:8000;
+        }
     }
 
     # Handle React Router

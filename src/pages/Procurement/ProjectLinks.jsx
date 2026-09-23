@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, FolderOpen, Link2, Loader2, Plus, RefreshCw, Search, ShoppingCart, Unlink } from 'lucide-react'
 import apiClient from '../../services/api.service'
 import PurchaseOrderForm from './PurchaseOrderForm'
+import PortfolioWorkbookImport from './PortfolioWorkbookImport'
 import './ProjectLinks.css'
 
 const PAGE_SIZE = 15
@@ -111,6 +112,7 @@ export default function ProjectLinks() {
     <header className="plw-header"><div><p className="plw-eyebrow">PROCUREMENT / 7.2</p><h1>Project Links</h1><p>Choose a project, then connect an existing purchase order or create a new one.</p></div>
       <div className="plw-header-actions"><Link className="plw-text-link" to="/procurement/projects/reconciliation/advanced">Advanced reconciliation <ExternalLink size={13} aria-hidden="true" /></Link><button type="button" className="plw-button" onClick={refresh} disabled={loading || busy}><RefreshCw size={15} aria-hidden="true" />Refresh</button></div>
     </header>
+    <PortfolioWorkbookImport />
     {loadError && <div className="plw-message plw-error" role="alert"><AlertCircle size={18} aria-hidden="true" /><span>{loadError}</span><button type="button" className="plw-button" onClick={refresh}>Retry</button></div>}
     {notice && <div className="plw-message plw-success" role="status"><CheckCircle2 size={18} aria-hidden="true" /><span>{notice}</span></div>}
     <div className="plw-columns">

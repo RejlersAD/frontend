@@ -1,0 +1,35 @@
+.prv-revenue-visual {
+  --prv-chart-ink: #4b607c;
+  --prv-chart-grid: #e5edf7;
+  min-width: 0;
+}
+.prv-revenue-visual .prv-chart-legend { gap: 7px 14px; margin: 0 0 6px; color: var(--prv-chart-ink); }
+.prv-revenue-visual .prv-chart-legend i { flex: 0 0 auto; }
+.prv-revenue-visual .prv-chart-legend .prv-series-bar { width: 9px; height: 9px; background: var(--series-color); border-radius: 1px; }
+.prv-revenue-visual .prv-chart-legend .prv-series-line { width: 15px; height: 0; border-top: 2px solid var(--series-color); border-radius: 0; background: none; }
+.prv-revenue-visual .prv-chart-legend .prv-series-line--dashed { border-top-style: dashed; }
+.prv-revenue-visual .prv-chart-grid { stroke: var(--prv-chart-grid); stroke-width: 1; }
+.prv-revenue-visual .prv-chart-tick { fill: var(--prv-chart-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
+.prv-revenue-visual .prv-chart-tick--current { fill: var(--cc-text, #183250); font-weight: 700; }
+.prv-revenue-visual .prv-chart-year { font-size: 9px; font-weight: 400; }
+.portfolio-performance .prv-chart-coverage { margin: 3px 0 0; color: var(--cc-muted, #62738a); font-size: 9px; line-height: 13px; }
+.prv-chart-partial { margin-left: 2px; color: var(--cc-muted, #62738a); font-size: 10px; font-weight: 600; }
+.prv-revenue-visual--compact .prv-chart-legend { min-height: 16px; font-size: 9px; line-height: 14px; gap: 6px 12px; }
+.cc-command-center .prv-revenue-visual--compact .prv-revenue-chart { width: 100%; height: 145px; min-height: 0; max-height: none; }
+.prv-breakdown-bars.prv-breakdown-bars--compact { gap: 4px; min-width: 0; }
+.prv-breakdown-bars--compact .prv-breakdown-row--compact { display: grid; grid-template-columns: minmax(78px, 1.1fr) minmax(50px, 1.5fr) 53px; align-items: center; gap: 10px; min-height: 20px; font-size: 10px; line-height: 16px; }
+.prv-breakdown-row--compact .prv-breakdown-label { color: var(--cc-text, #203955); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prv-breakdown-row--compact .prv-bar-track { height: 7px; background: var(--cc-track, #edf2f8); }
+.prv-breakdown-row--compact .prv-bar-track > i { background: #2878ff; }
+.prv-breakdown-row--compact .prv-bar-track > i.prv-negative { background: #c94c59; }
+.prv-breakdown-row--compact strong { color: var(--cc-text, #203955); text-align: right; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.dark .prv-revenue-visual { --prv-chart-ink: #b6c7dc; --prv-chart-grid: #304158; }
+@media (max-width: 600px) {
+  .cc-command-center .prv-revenue-visual--compact .prv-revenue-chart { height: 145px; }
+  .prv-revenue-visual--compact .prv-chart-tick { font-size: 12px; }
+  .prv-revenue-visual--compact .prv-chart-year { font-size: 10px; }
+  .prv-breakdown-bars--compact .prv-breakdown-row--compact { gap: 8px; }
+}
+@media print {
+  .prv-revenue-visual { break-inside: avoid; }
+}

@@ -14,7 +14,6 @@
 .cc-command-center.cc-portfolio-page .cc-button--primary { background:linear-gradient(#0b55ef,#003bdc); border-color:#0751f0; }
 .cc-command-center .pp-health-donut { width:100%; height:auto; min-width:100px; aspect-ratio:1; }
 .cc-portfolio-page .pp-outcome-icon svg { width:25px; height:25px; }
-.cc-portfolio-page .pp-intervention-banner > svg { width:27px; height:27px; }
 .cc-portfolio-page .pp-capacity-stats svg { width:23px; height:23px; }
 .cc-portfolio-page .pp-heading-link svg { width:13px; height:13px; }
 .portfolio-performance .pp-register-table thead th { white-space:normal; }
@@ -45,12 +44,16 @@
 .portfolio-performance .pp-outcome-basis { margin-top:3px; color:var(--cc-muted); font-size:9px; line-height:13px; }
 .pp-money-values { display:flex; flex-direction:column; gap:2px; }
 .pp-outcome > .ppr-kpi-sparkline { width:64px; flex-shrink:0; align-self:flex-end; }
-.pp-intervention-banner { display:flex; align-items:center; gap:12px; min-height:47px; padding:7px 12px; border:1px solid #ffc668; border-radius:5px; background:linear-gradient(90deg,#fff9e9,#fff9ed); font-size:11px; }
-.pp-intervention-banner > svg { width:27px; height:27px; flex-shrink:0; color:#e19400; fill:#e19400; stroke:white; }
-.pp-intervention-banner > strong { font-size:13px; line-height:18px; }
-.pp-banner-context, .pp-banner-owner { padding-left:13px; border-left:1px solid #f2ce8d; font-size:10px; }
-.pp-banner-owner b { font-weight:600; margin-right:8px; }
-.pp-intervention-banner .cc-button { margin-left:auto; min-height:29px; padding:4px 15px; font-size:10px; white-space:nowrap; }
+/* Executive pages suppress the shared footer and procurement reminder. */
+.pp-intervention-launcher { position:fixed; right:calc(20px + env(safe-area-inset-right,0px)); bottom:calc(20px + env(safe-area-inset-bottom,0px)); z-index:30; display:flex; align-items:center; gap:8px; max-width:calc(100vw - 32px); min-height:44px; padding:10px 14px; border:1px solid var(--cc-border); border-radius:24px; background:var(--cc-surface); color:var(--cc-blue); box-shadow:0 5px 20px #10254a26; font-size:12px; line-height:18px; font-weight:600; cursor:pointer; }
+.pp-intervention-launcher--attention { background:#fff7e3; border-color:#eac16b; color:#854500; }
+.pp-intervention-launcher > svg { width:19px; height:19px; flex-shrink:0; }
+.pp-intervention-launcher > svg:last-child { width:15px; height:15px; }
+.pp-intervention-launcher > span { overflow-wrap:anywhere; }
+.pp-intervention-launcher small { font-size:10px; font-weight:500; }
+.pp-intervention-launcher:hover { box-shadow:0 6px 24px #10254a40; }
+.pp-intervention-launcher:focus-visible { outline:3px solid var(--cc-blue); outline-offset:3px; }
+.cc-portfolio-page { scroll-padding-bottom:80px; }
 .pp-reference-grid { display:grid; grid-template-columns:minmax(0,1.31fr) minmax(0,1fr); gap:8px; align-items:stretch; }
 .portfolio-performance .pp-panel { min-width:0; border:1px solid var(--cc-border); border-radius:5px; background:var(--cc-surface); padding:7px 10px; box-shadow:none; }
 .pp-panel-heading { display:flex; align-items:center; gap:6px; min-height:20px; margin-bottom:4px; }
@@ -199,8 +202,8 @@
 .dark .pp-outcome-icon { background:#1c395e; color:#88baff; }
 .dark .pp-outcome--green .pp-outcome-icon { color:#65d8b0; background:#163e36; }
 .dark .pp-outcome--amber .pp-outcome-icon { color:#ffd075; background:#403823; }
-.dark .pp-intervention-banner { background:linear-gradient(90deg,#342d1e,#282b2a); border-color:#735b2b; }
-.dark .pp-banner-context, .dark .pp-banner-owner { border-color:#735b2b; }
+.dark .pp-intervention-launcher { box-shadow:0 5px 20px #0006; }
+.dark .pp-intervention-launcher--attention { background:#382e1c; border-color:#8a6b2e; color:#ffe1a3; }
 .dark .pp-health-badge--critical, .dark .portfolio-performance .pp-cell-late { background:#4c2534; color:#ffadc0; }
 .dark .pp-health-badge--high, .dark .pp-health-badge--medium, .dark .pp-health-badge--low { background:#443823; color:#ffd07a; }
 .dark .pp-health-badge--clear, .dark .portfolio-performance .pp-cell-clear { background:#163d33; color:#90e4c3; }
@@ -209,7 +212,6 @@
   .pp-outcome { gap:8px; padding:10px; }
   .pp-outcome-value { font-size:21px; }
   .pp-outcome-icon { width:34px; height:36px; }
-  .pp-banner-owner { display:none; }
   .pp-health-layout { grid-template-columns:1fr; gap:5px; }
   .pp-health-distribution { grid-template-columns:110px 1fr; max-width:350px; width:100%; margin:auto; }
   .pp-health-donut { max-width:105px; }
@@ -234,7 +236,6 @@
   .pp-health-cause-track { height:12px; }
   .pp-health-distribution { max-width:none; grid-template-columns:135px 1fr; }
   .pp-health-donut { max-width:135px; }
-  .pp-banner-context { display:none; }
   .pp-controls h2 { width:100%; }
 }
 @media (max-width:640px) {
@@ -244,9 +245,7 @@
   .pp-outcome-icon svg { width:22px; height:22px; }
   .pp-outcome-value { font-size:21px; }
   .pp-outcome:last-child { grid-column:1 / -1; }
-  .pp-intervention-banner { flex-wrap:wrap; gap:7px; padding:8px; }
-  .pp-intervention-banner > strong { font-size:12px; flex:1; }
-  .pp-intervention-banner .cc-button { margin-left:34px; }
+  .pp-intervention-launcher { right:calc(12px + env(safe-area-inset-right,0px)); bottom:calc(12px + env(safe-area-inset-bottom,0px)); font-size:11px; padding:9px 12px; }
   .pp-panel-heading { flex-wrap:wrap; gap:4px; }
   .portfolio-performance .pp-panel-heading h2 { font-size:13px; }
   .pp-heading-link { font-size:8px; }
@@ -284,7 +283,7 @@
   .executive-page-open .portfolio-performance :is(.cc-table,.pp-side-table) :is(th,td) { font-size:8px; padding:3px; white-space:normal; overflow:visible; }
   .executive-page-open .pp-truncate { display:block; overflow:visible; }
   .executive-page-open .pp-contract-cell { white-space:normal; }
-  .executive-page-open .pp-intervention-banner .cc-button, .executive-page-open .pp-header-menu { display:none; }
+  .pp-intervention-launcher, .executive-page-open .pp-header-menu { display:none; }
   .executive-page-open .pp-side-table-wrap, .executive-page-open .cc-table-wrap { overflow:visible; }
   .executive-page-open .pp-controls { display:flex; flex-wrap:wrap; }
   .executive-page-open .pp-health-details { display:block; }

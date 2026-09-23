@@ -1,0 +1,9 @@
+.plw-workbook-import { flex-shrink:0; min-width:0; }
+.plw-workbook-source { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; padding:9px 2px 0; color:var(--pl-muted); font-size:11px; }
+.plw-workbook-source p { display:flex; flex-wrap:wrap; gap:4px 14px; min-width:0; overflow-wrap:anywhere; }
+.plw-workbook-source strong { color:var(--pl-text); font-weight:600; }
+.plw-workbook-source a { color:var(--pl-blue); text-underline-offset:3px; }
+.plw-workbook-loading { flex-shrink:0; color:var(--pl-muted); font-size:12px; }
+.project-links-workspace:has(.portfolio-workbook-upload form) { height:auto; min-height:100%; }
+.project-links-workspace:has(.portfolio-workbook-upload form) .plw-columns { min-height:520px; }
+@media print { .plw-workbook-import,.plw-workbook-loading { display:none !important; } }
