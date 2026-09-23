@@ -281,7 +281,7 @@ test('editing an uploaded PR keeps the original in Document while field edits an
   await expect(original.locator('iframe')).toHaveAttribute('src', revisionBlobUrl)
   await expect(pane.locator('.rpp-document')).toHaveCount(0)
   await pane.getByRole('tab', { name: /^Validation/ }).click()
-  await expect(pane.getByRole('tabpanel', { name: /^Validation/ })).toContainText('Management Approval must be Yes')
+  await expect(pane.getByRole('tabpanel', { name: /^Validation/ })).toContainText('Management approval is not confirmed for a PR above AED 100,000.')
   await expect(pane.getByRole('tabpanel', { name: 'Document', exact: true })).toBeHidden()
   await pane.getByRole('tab', { name: /^Validation/ }).focus()
   await page.keyboard.press('ArrowLeft')
