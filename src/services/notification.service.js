@@ -13,6 +13,7 @@ const NOTIFICATION_BASE_URL = '/notifications'
 // Override at runtime via window.__NOTIFICATION_POLL_TIMEOUT_MS = 5000 if needed.
 const NOTIFICATION_POLL_TIMEOUT_MS =
   (typeof window !== 'undefined' && window.__NOTIFICATION_POLL_TIMEOUT_MS) || 10000
+const NOTIFICATION_ACTION_TIMEOUT_MS = 20000
 
 export const notificationService = {
   /**
@@ -71,7 +72,7 @@ export const notificationService = {
       const ids = Array.isArray(notificationIds) ? notificationIds : [notificationIds]
       const response = await apiClient.post(`${NOTIFICATION_BASE_URL}/mark_as_read/`, {
         notification_ids: ids
-      })
+      }, { timeout: NOTIFICATION_ACTION_TIMEOUT_MS })
       return response.data
     } catch (error) {
       console.error('[Notification Service] Error marking as read:', error)
@@ -85,7 +86,9 @@ export const notificationService = {
    */
   markAllAsRead: async () => {
     try {
-      const response = await apiClient.post(`${NOTIFICATION_BASE_URL}/mark_all_as_read/`)
+      const response = await apiClient.post(`${NOTIFICATION_BASE_URL}/mark_all_as_read/`, {}, {
+        timeout: NOTIFICATION_ACTION_TIMEOUT_MS,
+      })
       return response.data
     } catch (error) {
       console.error('[Notification Service] Error marking all as read:', error)
@@ -163,7 +166,9 @@ export const notificationService = {
    */
   deleteNotification: async (notificationId) => {
     try {
-      const response = await apiClient.delete(`${NOTIFICATION_BASE_URL}/${notificationId}/`)
+      const response = await apiClient.delete(`${NOTIFICATION_BASE_URL}/${notificationId}/`, {
+        timeout: NOTIFICATION_ACTION_TIMEOUT_MS,
+      })
       return response.data
     } catch (error) {
       console.error('[Notification Service] Error deleting notification:', error)

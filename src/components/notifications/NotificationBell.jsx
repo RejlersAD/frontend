@@ -1,5 +1,6 @@
 import { radaiPrompt, radaiConfirm } from '../../services/radaiDialog'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useSelector } from 'react-redux'
 import { BellIcon } from '@heroicons/react/24/outline'
 import { BellAlertIcon } from '@heroicons/react/24/solid'
@@ -26,6 +27,16 @@ const POLL_CONFIG = {
   heavyOpFlag:       '__RADAI_HEAVY_OP',
 }
 
+const notificationError = (error, action) => {
+  const response = error?.response || error?.originalError?.response
+  if (response?.status === 401) return 'Your session has expired. Sign in again to manage notifications.'
+  if (response?.status === 403) return `Unable to ${action}. Your account is not allowed to perform this action.`
+  if (error?.isTimeout || error?.isNetworkError || !response) {
+    return `Unable to ${action}. Check your connection, then refresh or try the action again.`
+  }
+  return `Unable to ${action}. ${typeof response.data?.detail === 'string' ? response.data.detail : 'Please try again.'}`
+}
+
 const NotificationBell = () => {
   const { isAuthenticated, user } = useSelector((state) => state.auth)
   const pushUserId = user?.user?.id ?? user?.id
@@ -33,6 +44,10 @@ const NotificationBell = () => {
   const [showDropdown, setShowDropdown] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [busyIds, setBusyIds] = useState([])
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [decisionLoadingId, setDecisionLoadingId] = useState(null)
   const [decisionMessage, setDecisionMessage] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(notificationAlertService.isSoundEnabled())
@@ -44,6 +59,82 @@ const NotificationBell = () => {
   const unreadAbortRef = useRef(null)
   const notificationListAbortRef = useRef(null)
   const lastUnreadCountRef = useRef(null)
+  const notificationsRef = useRef(notifications)
+  const openRef = useRef(showDropdown)
+  const sessionRef = useRef(0)
+  const revisionRef = useRef(0)
+  const busyRef = useRef(new Set())
+  const bulkBusyRef = useRef(false)
+  notificationsRef.current = notifications
+  openRef.current = showDropdown
+
+  const updateCount = useCallback((count) => {
+    const next = Math.max(0, Number(count) || 0)
+    lastUnreadCountRef.current = next
+    setUnreadCount(next)
+  }, [])
+
+  const fetchNotifications = useCallback(async () => {
+    if (busyRef.current.size || bulkBusyRef.current) return
+    notificationListAbortRef.current?.abort()
+    const controller = new AbortController()
+    notificationListAbortRef.current = controller
+    const session = sessionRef.current
+    const revision = revisionRef.current
+    setLoading(true)
+    try {
+      const data = await notificationService.getNotifications(
+        { ordering: '-created_at', page_size: 25 },
+        { signal: controller.signal },
+      )
+      if (controller.signal.aborted || session !== sessionRef.current || revision !== revisionRef.current) return
+      const items = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      setNotifications(items)
+      setHasMore(Boolean(data?.next) || Number(data?.count) > items.length)
+    } catch (error) {
+      if (!controller.signal.aborted && session === sessionRef.current && revision === revisionRef.current) {
+        setErrorMessage(notificationError(error, 'load notifications'))
+      }
+    } finally {
+      if (notificationListAbortRef.current === controller) {
+        notificationListAbortRef.current = null
+        setLoading(false)
+      }
+    }
+  }, [])
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (window[POLL_CONFIG.heavyOpFlag] || busyRef.current.size || bulkBusyRef.current) return
+    unreadAbortRef.current?.abort()
+    const controller = new AbortController()
+    unreadAbortRef.current = controller
+    const session = sessionRef.current
+    const revision = revisionRef.current
+    try {
+      const count = await notificationService.getUnreadCount({ signal: controller.signal })
+      if (controller.signal.aborted || session !== sessionRef.current || revision !== revisionRef.current) return
+      if (lastUnreadCountRef.current !== null && count > lastUnreadCountRef.current) {
+        notificationAlertService.play()
+        window.dispatchEvent(new CustomEvent('radai:new-notification', {
+          detail: { count: count - lastUnreadCountRef.current },
+        }))
+        if (openRef.current) void fetchNotifications()
+      }
+      updateCount(count)
+      errorCountRef.current = 0
+    } catch (error) {
+      if (controller.signal.aborted || session !== sessionRef.current) return
+      errorCountRef.current += 1
+      if (error.response?.status === 401) {
+        clearInterval(pollingIntervalRef.current)
+      } else if (errorCountRef.current === POLL_CONFIG.failureThreshold) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = setInterval(fetchUnreadCount, POLL_CONFIG.backoffMs)
+      }
+    } finally {
+      if (unreadAbortRef.current === controller) unreadAbortRef.current = null
+    }
+  }, [fetchNotifications, updateCount])
 
   useEffect(() => {
     notificationAlertService.installUnlockListeners()
@@ -58,219 +149,164 @@ const NotificationBell = () => {
     return () => { active = false }
   }, [isAuthenticated, pushUserId])
 
-  // Fetch unread count on mount and every 2 minutes (optimized from 60s) - only if authenticated
+  // Reset private inbox state when the signed-in recipient changes.
   useEffect(() => {
-    if (!isAuthenticated) {
-      console.log('[NotificationBell] ⚠️ User not authenticated, skipping fetch')
-      errorCountRef.current = 0
-      lastUnreadCountRef.current = null
-      return
+    sessionRef.current += 1
+    errorCountRef.current = 0
+    lastUnreadCountRef.current = null
+    busyRef.current.clear()
+    bulkBusyRef.current = false
+    setBusyIds([])
+    setBulkBusy(false)
+    setNotifications([])
+    setUnreadCount(0)
+    setShowDropdown(false)
+    setErrorMessage('')
+    setDecisionMessage('')
+    setDecisionLoadingId(null)
+    setHasMore(false)
+    if (isAuthenticated) {
+      void fetchUnreadCount()
+      pollingIntervalRef.current = setInterval(fetchUnreadCount, POLL_CONFIG.intervalMs)
     }
-    
-    console.log('[NotificationBell] ✅ User authenticated, starting notification polling (120s interval)')
-    fetchUnreadCount()
-    
-    // Start polling with 2-minute interval (reduced load by 50%)
-    pollingIntervalRef.current = setInterval(fetchUnreadCount, POLL_CONFIG.intervalMs)
-    
     return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
-      }
-      if (unreadAbortRef.current) {
-        unreadAbortRef.current.abort()
-      }
-      if (notificationListAbortRef.current) {
-        notificationListAbortRef.current.abort()
-      }
+      sessionRef.current += 1
+      clearInterval(pollingIntervalRef.current)
+      unreadAbortRef.current?.abort()
+      notificationListAbortRef.current?.abort()
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, pushUserId, fetchUnreadCount])
 
   // Fetch notifications when dropdown opens
   useEffect(() => {
     if (showDropdown) {
-      fetchNotifications()
+      void fetchNotifications()
     }
-  }, [showDropdown])
+  }, [showDropdown, fetchNotifications])
 
-  // Close dropdown when clicking outside
+  // Portal avoids clipping inside sticky headers. Keep keyboard focus in the drawer.
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      // Exit decisions use a modal mounted beside the dropdown in document.body.
-      if (event.target.closest?.('.radai-dialog')) return
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target) &&
-        bellRef.current &&
-        !bellRef.current.contains(event.target)
-      ) {
+    if (!showDropdown) return undefined
+    const bell = bellRef.current
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    dropdownRef.current?.focus()
+    const handleKeyDown = (event) => {
+      if (event.defaultPrevented || document.querySelector('.radai-dialog[open]')) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
         setShowDropdown(false)
+      } else if (event.key === 'Tab') {
+        const focusable = [...(dropdownRef.current?.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), [tabindex="0"]',
+        ) || [])].filter(element => element.getClientRects().length)
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (!first) {
+          event.preventDefault()
+          dropdownRef.current?.focus()
+        } else if (!dropdownRef.current?.contains(document.activeElement)) {
+          event.preventDefault()
+          ;(event.shiftKey ? last : first).focus()
+        } else if (event.shiftKey && (document.activeElement === first || document.activeElement === dropdownRef.current)) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        }
       }
     }
-
-    if (showDropdown) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
+    document.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
+      bell?.focus()
     }
   }, [showDropdown])
-
-  const fetchUnreadCount = async () => {
-    // Soft-coded: skip the poll if a heavy operation is in flight (large upload,
-    // bulk export, etc.). Prevents queueing requests behind a busy worker.
-    if (typeof window !== 'undefined' && window[POLL_CONFIG.heavyOpFlag]) {
-      console.log('[NotificationBell] ⏸️ Heavy op active, skipping unread-count poll')
-      return
-    }
-    // Cancel any still-in-flight unread-count request before starting a new
-    // one — prevents duplicate/racing requests (e.g. mount + poll overlap).
-    if (unreadAbortRef.current) {
-      unreadAbortRef.current.abort()
-    }
-    const controller = new AbortController()
-    unreadAbortRef.current = controller
-    try {
-      const count = await notificationService.getUnreadCount({ signal: controller.signal })
-      console.log('[NotificationBell] ✅ Unread count fetched:', count)
-      setUnreadCount(count)
-
-      if (lastUnreadCountRef.current !== null && count > lastUnreadCountRef.current) {
-        const newCount = count - lastUnreadCountRef.current
-        notificationAlertService.play()
-        window.dispatchEvent(new CustomEvent('radai:new-notification', { detail: { count: newCount } }))
-        if (showDropdown) fetchNotifications()
-      }
-      lastUnreadCountRef.current = count
-
-      // Reset error count on success
-      errorCountRef.current = 0
-
-    } catch (error) {
-      if (error.code === 'ERR_CANCELED') return
-      // Silent log — error.service already handles toast suppression.
-      console.warn('[NotificationBell] Poll failed (silent):', error.message)
-      
-      // Increment error counter
-      errorCountRef.current += 1
-      
-      // Handle authentication errors
-      if (error.response?.status === 401) {
-        console.error('[NotificationBell] ⚠️ User not authenticated')
-        setUnreadCount(0)
-        // Stop polling on auth error
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current)
-        }
-        return
-      }
-      
-      // Handle timeout errors with exponential backoff
-      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout') || error.isTimeout) {
-        // Back off after configured threshold of consecutive failures
-        if (errorCountRef.current >= POLL_CONFIG.failureThreshold) {
-          console.warn('[NotificationBell] 🛑 Backing off polling to', POLL_CONFIG.backoffMs, 'ms')
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current)
-          }
-          pollingIntervalRef.current = setInterval(fetchUnreadCount, POLL_CONFIG.backoffMs)
-        }
-      }
-      
-      // Keep last known count on failure (do NOT reset to 0)
-    }
-  }
-
-  const fetchNotifications = async () => {
-    if (notificationListAbortRef.current) {
-      notificationListAbortRef.current.abort()
-    }
-    const controller = new AbortController()
-    notificationListAbortRef.current = controller
-    setLoading(true)
-    try {
-      console.log('[NotificationBell] 📥 Fetching notifications...')
-      const data = await notificationService.getNotifications(
-        {
-          ordering: '-created_at',
-          page_size: 10
-        },
-        { signal: controller.signal },
-      )
-      console.log('[NotificationBell] ✅ Notifications fetched:', data)
-      setNotifications(data.results || data)
-    } catch (error) {
-      if (error.code === 'ERR_CANCELED') return
-      console.warn('[NotificationBell] Notification list fetch failed:', error.message)
-      if (error.response?.status === 401) {
-        console.error('[NotificationBell] ⚠️ User not authenticated')
-      }
-    } finally {
-      if (notificationListAbortRef.current === controller) {
-        notificationListAbortRef.current = null
-        setLoading(false)
-      }
-    }
-  }
 
   const handleBellClick = (e) => {
     e.preventDefault()
     e.stopPropagation()
-    console.log('[NotificationBell] Bell clicked, current showDropdown:', showDropdown)
-    setShowDropdown(!showDropdown)
+    setShowDropdown(current => !current)
   }
 
-  const handleMarkAsRead = async (notificationId) => {
+  const invalidatePendingReads = () => {
+    revisionRef.current += 1
+    unreadAbortRef.current?.abort()
+    notificationListAbortRef.current?.abort()
+    notificationListAbortRef.current = null
+    setLoading(false)
+  }
+
+  const restoreDrawerFocus = () => requestAnimationFrame(() => {
+    if (openRef.current && !dropdownRef.current?.contains(document.activeElement)) {
+      dropdownRef.current?.focus()
+    }
+  })
+
+  const mutateNotification = async (notificationId, operation) => {
+    const notification = notificationsRef.current.find(item => item.id === notificationId)
+    if (!notification || busyRef.current.has(notificationId) || bulkBusyRef.current) return
+    if (operation === 'read' && notification.is_read) return
+    const session = sessionRef.current
+    busyRef.current.add(notificationId)
+    setBusyIds([...busyRef.current])
+    setErrorMessage('')
+    invalidatePendingReads()
     try {
-      await notificationService.markAsRead(notificationId)
-      // Update local state
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
-      )
-      // Update unread count
-      setUnreadCount(prev => {
-        const next = Math.max(0, prev - 1)
-        lastUnreadCountRef.current = next
-        return next
-      })
-      // Refresh count from server to sync cache
-      setTimeout(() => fetchUnreadCount(), 500)
+      if (operation === 'read') await notificationService.markAsRead(notificationId)
+      else await notificationService.deleteNotification(notificationId)
+      if (session !== sessionRef.current) return
+      setNotifications(items => operation === 'read'
+        ? items.map(item => item.id === notificationId ? { ...item, is_read: true } : item)
+        : items.filter(item => item.id !== notificationId))
+      if (!notification.is_read) updateCount((lastUnreadCountRef.current || 0) - 1)
     } catch (error) {
-      console.error('Failed to mark as read:', error)
+      if (session === sessionRef.current) {
+        setErrorMessage(notificationError(error, operation === 'read' ? 'mark this notification as read' : 'delete this notification'))
+      }
+    } finally {
+      if (session === sessionRef.current) {
+        busyRef.current.delete(notificationId)
+        setBusyIds([...busyRef.current])
+        restoreDrawerFocus()
+        void fetchUnreadCount()
+      }
     }
   }
+
+  const handleMarkAsRead = (notificationId) => mutateNotification(notificationId, 'read')
+  const handleDelete = (notificationId) => mutateNotification(notificationId, 'delete')
 
   const handleMarkAllAsRead = async () => {
+    if (bulkBusyRef.current || busyRef.current.size) return
+    const session = sessionRef.current
+    bulkBusyRef.current = true
+    setBulkBusy(true)
+    setErrorMessage('')
+    invalidatePendingReads()
     try {
       await notificationService.markAllAsRead()
-      // Update local state
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
-      setUnreadCount(0)
-      lastUnreadCountRef.current = 0
-      // Refresh count from server to sync cache
-      setTimeout(() => fetchUnreadCount(), 500)
+      if (session !== sessionRef.current) return
+      setNotifications(items => items.map(item => ({ ...item, is_read: true })))
+      updateCount(0)
     } catch (error) {
-      console.error('Failed to mark all as read:', error)
+      if (session === sessionRef.current) setErrorMessage(notificationError(error, 'mark all notifications as read'))
+    } finally {
+      if (session === sessionRef.current) {
+        bulkBusyRef.current = false
+        setBulkBusy(false)
+        restoreDrawerFocus()
+        void fetchUnreadCount()
+      }
     }
   }
 
-  const handleDelete = async (notificationId) => {
-    try {
-      await notificationService.deleteNotification(notificationId)
-      // Remove from local state
-      setNotifications(prev => prev.filter(n => n.id !== notificationId))
-      // Update unread count if notification was unread
-      const notification = notifications.find(n => n.id === notificationId)
-      if (notification && !notification.is_read) {
-        setUnreadCount(prev => {
-          const next = Math.max(0, prev - 1)
-          lastUnreadCountRef.current = next
-          return next
-        })
-      }
-    } catch (error) {
-      console.error('Failed to delete notification:', error)
-    }
+  const handleRefresh = () => {
+    setErrorMessage('')
+    void fetchNotifications()
+    void fetchUnreadCount()
   }
 
   const handleToggleSound = () => {
@@ -294,6 +330,7 @@ const NotificationBell = () => {
   const handleOffboardingDecision = async (notification, decision) => {
     const offboardingId = notification.metadata?.offboarding_id
     if (!offboardingId || !canDecideOffboardingNotification(notification) || decisionLoadingId) return
+    const session = sessionRef.current
 
     let note = ''
     if (decision === 'rejected') {
@@ -307,10 +344,12 @@ const NotificationBell = () => {
       return
     }
 
+    if (session !== sessionRef.current) return
     setDecisionLoadingId(notification.id)
     setDecisionMessage('')
     try {
       const current = await notificationService.getOffboardingReview(offboardingId)
+      if (session !== sessionRef.current) return
       if (current.can_project_manager_decide !== true) {
         setNotifications(prev => prev.map(item => item.id === notification.id
           ? { ...item, metadata: { ...item.metadata, requires_action: false } } : item))
@@ -318,6 +357,8 @@ const NotificationBell = () => {
         return
       }
       const result = await notificationService.decideOffboarding(offboardingId, decision, note.trim())
+      if (session !== sessionRef.current) return
+      invalidatePendingReads()
       setNotifications(prev => prev.map(item => (
         item.metadata?.offboarding_id === offboardingId &&
         item.metadata?.action_type === 'offboarding_project_manager_decision'
@@ -331,6 +372,7 @@ const NotificationBell = () => {
       setDecisionMessage(`Exit process ${result.decision} successfully.`)
       await fetchUnreadCount()
     } catch (error) {
+      if (session !== sessionRef.current) return
       setDecisionMessage(
         error.response?.data?.detail ||
         error.response?.data?.decision ||
@@ -339,7 +381,7 @@ const NotificationBell = () => {
       setNotifications(prev => prev.map(item => item.id === notification.id
         ? { ...item, metadata: { ...item.metadata, requires_action: false } } : item))
     } finally {
-      setDecisionLoadingId(null)
+      if (session === sessionRef.current) setDecisionLoadingId(null)
     }
   }
 
@@ -351,6 +393,9 @@ const NotificationBell = () => {
         type="button"
         className="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
         aria-label="Notifications"
+        aria-expanded={showDropdown}
+        aria-haspopup="dialog"
+        aria-controls={showDropdown ? 'notification-drawer' : undefined}
         style={{ pointerEvents: 'auto' }}
       >
         {unreadCount > 0 ? (
@@ -366,7 +411,9 @@ const NotificationBell = () => {
         )}
       </button>
 
-      {showDropdown && (
+      {showDropdown && createPortal(
+        <>
+        <div className="notification-drawer-backdrop" aria-hidden="true" onClick={() => setShowDropdown(false)} />
         <NotificationDropdown
           ref={dropdownRef}
           notifications={notifications}
@@ -375,7 +422,13 @@ const NotificationBell = () => {
           onMarkAsRead={handleMarkAsRead}
           onMarkAllAsRead={handleMarkAllAsRead}
           onDelete={handleDelete}
-          onRefresh={fetchNotifications}
+          onRefresh={handleRefresh}
+          onClose={() => setShowDropdown(false)}
+          onNavigate={() => setShowDropdown(false)}
+          busyIds={busyIds}
+          bulkBusy={bulkBusy}
+          errorMessage={errorMessage}
+          hasMore={hasMore}
           onOffboardingDecision={handleOffboardingDecision}
           decisionLoadingId={decisionLoadingId}
           decisionMessage={decisionMessage}
@@ -384,6 +437,8 @@ const NotificationBell = () => {
           pushState={pushState}
           onTogglePush={handleTogglePush}
         />
+        </>,
+        document.body,
       )}
     </div>
   )

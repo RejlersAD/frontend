@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightIcon, ChartBarIcon, ChartPieIcon, CheckCircleIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, Cog6ToothIcon, ExclamationTriangleIcon, InformationCircleIcon, MagnifyingGlassIcon, UserIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { API_BASE_URL } from '../config/api.config'
+import apiClient from '../services/api.service'
 import { API_CONFIG } from '../config/enterpriseDashboard.config'
 import { getApprovalFilters, getEnabledApprovalTypes } from '../config/approvalsSystem.config'
 import { fetchCurrentUser } from '../store/slices/rbacSlice'
@@ -52,9 +52,29 @@ export default function ApprovalsCommandCenter() {
       if (UNCONNECTED_QUEUES[config.id]) return [config.id, { state: 'unconnected', rows: [] }]
       const params = new URLSearchParams({ ...getApprovalFilters(config.filterLogic, user, rbac), limit: '200', page_size: '200' })
       if (config.id === 'leave' || config.id === 'profile_document') params.set(`${config.statusField}__in`, config.pendingStatuses.join(','))
-      const response = await fetch(`${API_BASE_URL}${config.apiEndpoint}?${params}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
-      if (!response.ok) throw new Error(response.status === 403 ? 'Access unavailable' : response.status === 401 ? 'Sign in again to load this queue' : 'Unable to load queue')
-      const data = await response.json()
+      let data
+      try {
+        // Use the shared authenticated client so expired access tokens can refresh.
+        const response = await apiClient.get(config.apiEndpoint, {
+          params,
+          signal: controller.signal,
+          timeout: 20000,
+          suppressErrorToast: true,
+        })
+        data = response.data
+      } catch (error) {
+        if (error.response?.status === 403) {
+          return [config.id, {
+            state: 'restricted', rows: [],
+            reason: config.id === 'profile_document'
+              ? 'ID verification requires an assigned HR or Administration reviewer with approval access. Administrator access alone does not assign this responsibility.'
+              : 'This queue is available only to users with the required review access.',
+          }]
+        }
+        throw new Error(error.response?.status === 401
+          ? 'Sign in again to load this queue'
+          : error.isTimeout ? 'The queue request timed out. Please retry.' : 'Unable to load queue')
+      }
       const records = Array.isArray(data) ? data : data.results
       if (!Array.isArray(records) || records.some(item => !item || typeof item !== 'object' || item.id === undefined || item.id === null)) throw new Error('Queue response unavailable')
       const rows = records.map(item => normalizeApproval(item, config))
@@ -88,6 +108,7 @@ export default function ApprovalsCommandCenter() {
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
   const ready = types.filter(type => sources[type.id]?.state === 'ready')
   const failed = types.filter(type => sources[type.id]?.state === 'error')
+  const restricted = types.filter(type => sources[type.id]?.state === 'restricted')
   const incomplete = failed.length > 0 || types.some(type => sources[type.id]?.truncated)
   const myRows = rows.filter(item => item._canDecide)
   const deadlines = myRows.filter(item => item._details.dueTime !== null)
@@ -96,6 +117,7 @@ export default function ApprovalsCommandCenter() {
   const oldest = rows.reduce((max, item) => item._details.ageHours === null ? max : Math.max(max ?? 0, item._details.ageHours), null)
   const chosenQueue = !['mine', 'all'].includes(filters.tab) ? filters.tab : null
   const unconnected = UNCONNECTED_QUEUES[chosenQueue]
+  const restrictedQueue = sources[chosenQueue]?.state === 'restricted' ? sources[chosenQueue] : null
   const noData = loading || !ready.length
 
   const changeFilter = (key, value) => {
@@ -147,10 +169,12 @@ export default function ApprovalsCommandCenter() {
       <Kpi label="Approved this week" value="—" note="Approval history not connected" icon={CheckCircleIcon} tone="green" />
     </section>
     {failed.length > 0 && <div className="apc-status-message apc-status-message--error" role="alert"><ExclamationTriangleIcon aria-hidden="true" /><span>{failed.map(type => QUEUE_LABELS[type.id]).join(', ')} could not be loaded. Counts cover available queues only.</span><button className="apc-text-button" type="button" onClick={refresh}>Retry</button></div>}
+    {restricted.length > 0 && <div className="apc-status-message" role="status"><InformationCircleIcon aria-hidden="true" /><span>{restricted.map(type => QUEUE_LABELS[type.id] || type.label).join(', ')}: review access is not assigned to your account. Counts include your available queues.</span></div>}
     {types.some(type => sources[type.id]?.truncated) && <div className="apc-status-message" role="status"><InformationCircleIcon aria-hidden="true" /><span>Some queues have more requests than can be loaded at once. Search, metrics and exports cover loaded requests; * marks a full queue count.</span></div>}
     {notice && <div className="apc-status-message" role="status"><CheckCircleIcon aria-hidden="true" /><span>{notice}</span><button type="button" className="apc-icon-button" onClick={() => setNotice('')} aria-label="Dismiss export notification"><XMarkIcon aria-hidden="true" /></button></div>}
       <section className="apc-table-panel apc-panel" aria-label="Approval requests" aria-busy={loading}>
         {loading ? <EmptyState icon={ArrowPathIcon} title="Loading your approval queues" description="Retrieving requests and their current approval steps." />
+          : restrictedQueue ? <EmptyState icon={InformationCircleIcon} title="Review access not assigned" description={restrictedQueue.reason} />
           : unconnected ? <EmptyState icon={InformationCircleIcon} title="Approval queue not connected" description={unconnected.reason}><Link className="apc-button" to={unconnected.path}>{unconnected.label}<ArrowRightIcon aria-hidden="true" /></Link></EmptyState>
             : !ready.length && !failed.length ? <EmptyState icon={InformationCircleIcon} title='Approval queues are not available' description='No connected approval queues are available for this account.' /> : !filtered.length ? <EmptyState icon={failed.length ? ExclamationTriangleIcon : CheckCircleIcon} title={failed.length ? 'No requests available from the loaded queues' : rows.length ? 'No matching requests' : 'No pending requests'} description={failed.length ? 'Retry the unavailable queues to check for outstanding requests.' : rows.length ? 'Adjust your filters or select All available to see more requests.' : 'Your connected approval queues are clear.'}><button type="button" className="apc-button" onClick={failed.length ? refresh : clearFilters}>{failed.length ? 'Retry queues' : 'Reset filters'}</button></EmptyState>
               : <><div className="apc-table-scroll" tabIndex={0} role="region" aria-label="Scrollable approval requests"><table className="apc-table"><caption className="apc-sr-only">Requests available to you. Age is based on the recorded creation or submission date.</caption><thead><tr>{['Priority / age', 'Type', 'Reference & description', 'Requester', 'Amount', 'Stage', 'Due', 'Action'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{pageRows.map(item => {
@@ -184,7 +208,7 @@ function QueueCoverage({ types, sources, loading }) {
   return <div className="apc-coverage-list">{types.map(type => {
     const source = sources[type.id]
     const unconnected = UNCONNECTED_QUEUES[type.id]
-    return <div key={type.id}><strong>{QUEUE_LABELS[type.id] || type.label}</strong><span>{loading ? 'Loading…' : source?.state === 'ready' ? `${source.rows.length} loaded / ${source.count} available` : unconnected ? 'Not connected' : source?.error || 'Not available'}</span>{unconnected ? <Link to={unconnected.path}>{unconnected.label}<ArrowRightIcon aria-hidden="true" /></Link> : <small>{type.id === 'leave' ? 'Manager / HR review' : type.id === 'profile_document' ? 'Administrator verification' : 'Assigned approval stages'}</small>}</div>
+    return <div key={type.id}><strong>{QUEUE_LABELS[type.id] || type.label}</strong><span>{loading ? 'Loading…' : source?.state === 'ready' ? `${source.rows.length} loaded / ${source.count} available` : source?.state === 'restricted' ? 'Review access not assigned' : unconnected ? 'Not connected' : source?.error || 'Not available'}</span>{unconnected ? <Link to={unconnected.path}>{unconnected.label}<ArrowRightIcon aria-hidden="true" /></Link> : <small>{source?.reason || (type.id === 'leave' ? 'Manager / HR review' : type.id === 'profile_document' ? 'Assigned HR / Administration reviewers' : 'Assigned approval stages')}</small>}</div>
   })}</div>
 }
 function SettingsDialog({ children, onClose }) {
