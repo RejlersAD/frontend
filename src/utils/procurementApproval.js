@@ -1,7 +1,7 @@
 const text = value => String(value ?? '').trim()
 const email = value => text(value).toLowerCase()
 const pending = row => ['pending', 'in_review', 'under_review'].includes(text(row?.status || 'pending').toLowerCase())
-export const isSourceApproval = row => Boolean(row?.evidence_document_id) || (row?.external === true && ['signed_purchase_requisition_pdf', 'signed_purchase_order_pdf'].includes(row.source))
+export const isSourceApproval = row => Boolean(row?.evidence_document_id) || (row?.external === true && ['signed_purchase_requisition_pdf', 'signed_purchase_order_pdf', 'purchase_requisition'].includes(row.source))
 
 export const activeApprovalStages = workflow => {
   const stages = (Array.isArray(workflow) ? workflow : []).map((row, index) => ({
@@ -69,7 +69,7 @@ export const purchaseOrderSignatureEvidence = order => {
   const candidates = matchingActor.length ? matchingActor : finalCandidates
   const finalStage = candidates.find(row => order?.approval_signature && row.signature === order.approval_signature)
     || [...candidates].sort((a, b) => (Date.parse(b.approved_at || b.date) || 0) - (Date.parse(a.approved_at || a.date) || 0))[0]
-    || rows.find(row => isSourceApproval(row) && row.signature_verified === true)
+    || rows.find(row => isSourceApproval(row) && row.source !== 'purchase_requisition' && row.signature_verified === true)
   const evidence = approvalSignatureEvidence({ ...finalStage, signature: finalStage?.signature || order?.approval_signature })
   const actorConflict = internal.length > 0 && Boolean(actualId || actualEmail) && matchingActor.length === 0
   const signatureConflict = internal.length > 0 && Boolean(finalStage?.signature && order?.approval_signature) && finalStage.signature !== order.approval_signature
