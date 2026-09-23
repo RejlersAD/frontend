@@ -22,10 +22,11 @@ const lastSnapshot = state => state.requests.filter(request => request.path.ends
 const orderWrites = state => state.requests.filter(({ path, method }) => ['POST', 'PATCH'].includes(method) && /^\/api\/v1\/procurement\/orders\/(?:[^/]+\/)?$/.test(path) && !path.includes('/preview-document/') && !path.includes('/reserve-number/') && !path.includes('/create-project/'))
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
 
-async function openNew(page, prepare) {
+async function openNew(page, prepare, options = {}) {
   const state = await orderFormHarness(page, {
     prepare: fixture => { fixture.projects = projects.map(project => ({ ...project })); prepare?.(fixture) },
     handleRequest: async (route, fixture, url) => {
+      if (options.handleRequest && await options.handleRequest(route, fixture, url)) return true
       if (url.pathname.endsWith('/preview-document/') && route.request().postData()?.includes('recovered-scope.txt')) {
         fixture.recoveredAttachmentContents ||= []
         fixture.recoveredAttachmentContents.push(route.request().postData().includes('Synthetic attachment content retained across reload.'))
@@ -225,7 +226,8 @@ test('an existing PO edit recovers after refresh and keeps the original PATCH ba
       pr_reference: orderFormRecommendation.id, pr_number: orderFormRecommendation.pr_number,
       project_number: '5900985', currency: 'AED', total_amount: '100.00', net_amount: '100.00',
       tax_amount: '0.00', vat_basis: 'none', payment_terms: 'Net 30', items: [],
-      attachments: [{ filename: 'original-saved-scope.txt', s3_key: 'original-scope' }], approval_log: [],
+      attachments: [{ filename: 'original-saved-scope.txt', s3_key: 'original-scope' }],
+      approval_log: [{ stage: 'Final Management Sign-off', user_id: 11, approver: 'Jarmo Suominen', status: 'Pending' }],
     }
     fixture.orders = [fixture.record]
   } })
@@ -284,4 +286,71 @@ test('refresh while the PO number is being reserved retries once and preserves t
     expect(orderWrites(state)).toEqual([])
     clean(state)
   } finally { releaseFirst() }
+})
+
+const finalApprover = page => page.getByRole('combobox', { name: 'Final Management Sign-off approver', exact: true })
+async function alternativeApprovers(route, _fixture, url) {
+  if (url.pathname !== '/api/v1/procurement/requisitions/get_approvers/') return false
+  await route.fulfill({ json: { users: [
+    { id: 11, full_name: 'Jarmo Suominen', email: 'jarmo@example.test', job_title: 'CEO', is_active: true },
+    { id: 12, full_name: 'Authorized PO Signatory', email: 'authorized@example.test', job_title: 'CEO', is_active: true },
+  ] } })
+  return true
+}
+
+test('a new PO preserves its selected signer and an explicit cleared selection through refresh', async ({ page }) => {
+  const state = await openNew(page, undefined, { handleRequest: alternativeApprovers })
+  await finalApprover(page).selectOption('12')
+  await expect.poll(() => Number(lastSnapshot(state)?.approval_log?.[0]?.user_id)).toBe(12)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'New purchase order', exact: true })).toBeVisible({ timeout: 90000 })
+  await expect(finalApprover(page)).toHaveValue('12')
+  await finalApprover(page).selectOption('')
+  await expect.poll(() => String(lastSnapshot(state)?.approval_log?.[0]?.user_id || '')).toBe('')
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'New purchase order', exact: true })).toBeVisible({ timeout: 90000 })
+  await expect(finalApprover(page)).toHaveValue('')
+  await editor(page).getByRole('button', { name: 'Save draft', exact: true }).first().click()
+  await expect(editor(page)).toContainText('Select an active employee for: Final Management Sign-off')
+  expect(orderWrites(state)).toEqual([])
+  expect(state.acceptedWrites).toEqual([])
+  clean(state)
+})
+
+test('an editable empty existing PO route restores the chosen signer without restoring approval evidence', async ({ page }) => {
+  const state = await orderFormHarness(page, { path: '/procurement/orders', handleRequest: alternativeApprovers, prepare: fixture => {
+    fixture.record = {
+      id: orderFormId, po_number: orderFormNumber, po_date: '2026-09-15', status: 'draft',
+      title: 'Existing order requiring its own signer', vendor: 21, vendor_name: fixture.vendors[0].name,
+      pr_reference: orderFormRecommendation.id, pr_number: orderFormRecommendation.pr_number,
+      project_number: '5900985', currency: 'AED', total_amount: '100.00', net_amount: '100.00',
+      tax_amount: '0.00', vat_basis: 'none', payment_terms: 'Net 30', items: [], attachments: [], approval_log: [],
+    }
+    fixture.orders = [fixture.record]
+  } })
+  const reopen = async () => {
+    await page.getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible({ timeout: 90000 })
+  }
+  await reopen()
+  await expect(finalApprover(page)).toHaveValue('')
+  await finalApprover(page).selectOption('12')
+  await expect.poll(() => Number(lastSnapshot(state)?.approval_log?.[0]?.user_id)).toBe(12)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await reopen()
+  await expect(finalApprover(page)).toHaveValue('12')
+  await editor(page).getByRole('button', { name: 'Save changes', exact: true }).first().click()
+  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  expect(state.acceptedWrites).toHaveLength(1)
+  const body = state.acceptedWrites[0].body
+  expect(body.approval_log).toHaveLength(1)
+  expect(body.approval_log[0]).toMatchObject({ user_id: 12, approver: 'Authorized PO Signatory', status: 'Pending' })
+  for (const field of ['approval_signature', 'approved_by_name', 'approved_at', 'approved_date', 'status']) expect(body).not.toHaveProperty(field)
+  for (const entry of body.approval_log) {
+    expect(entry.signature || '').toBe('')
+    expect(entry.approved_at || '').toBe('')
+    expect(entry.approved_by_id || '').toBe('')
+  }
+  clean(state)
 })
