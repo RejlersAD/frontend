@@ -1,0 +1,68 @@
+/* A body portal keeps the notification document above sidebar stacking contexts. */
+.notification-record-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(15 23 42 / 65%);
+}
+
+.notification-record-preview {
+  display: flex;
+  flex-direction: column;
+  width: min(1240px, 100%);
+  height: calc(100dvh - 32px);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d9e1ed;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 20px 70px rgb(15 23 42 / 30%);
+}
+
+.notification-record-preview__header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #d9e1ed;
+  padding: 12px 20px;
+  background: #fff;
+}
+
+.notification-record-preview__header h2 { overflow-wrap: anywhere; }
+.notification-record-preview__content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px;
+  background: #e2e8f0;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+.notification-record-preview__footer { flex-shrink: 0; border-top: 1px solid #d9e1ed; padding: 12px 20px; background: #fff; }
+.notification-record-preview__footer:empty { display: none; }
+.notification-record-preview button:focus-visible,
+.notification-record-preview a:focus-visible,
+.notification-record-preview [tabindex="0"]:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; }
+.notification-record-preview__requisition { width: 100%; max-width: 1120px; margin: 0 auto; }
+.notification-po-preview { width: 100%; max-width: 1120px; margin: 0 auto; }
+.notification-po-preview__frame { position: relative; overflow: hidden; }
+.notification-po-preview__document { transform-origin: top left; }
+.notification-po-preview__document .po-template-pages { display: flex; flex-direction: column; gap: 16px; }
+.notification-po-preview__document .po-template-page { flex-shrink: 0; width: 560px; max-width: 560px; }
+
+@media (max-width: 640px) {
+  .notification-record-preview-backdrop { padding: 6px; }
+  .notification-record-preview { height: calc(100dvh - 12px); border-radius: 10px; }
+  .notification-record-preview__header { gap: 10px; padding: 11px 12px; }
+  .notification-record-preview__header h2 { font-size: 15px; line-height: 1.4; }
+  .notification-record-preview__content { padding: 10px; }
+  .notification-record-preview__footer { padding: 10px 12px; }
+}

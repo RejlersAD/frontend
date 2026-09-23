@@ -81,6 +81,20 @@ test('notification metadata targets the right record and cannot execute a URL', 
   assert.equal(resolveNotificationTarget({ metadata: { po_id: 24 } }).href, '/notifications?preview=po&id=24')
   assert.equal(resolveNotificationTarget({ action_url: 'javascript:alert(1)' }), null)
 })
+
+test('linked procurement notifications retain their own document preview', () => {
+  const references = { pr_id: 'recommendation-42', po_id: 'order-42' }
+  assert.equal(resolveNotificationTarget({ metadata: {
+    ...references, entity_type: 'purchase_recommendation', entity_id: references.pr_id,
+  } }).href, '/notifications?preview=pr&id=recommendation-42')
+  assert.equal(resolveNotificationTarget({ metadata: {
+    ...references, entity_type: 'purchase_order', entity_id: references.po_id,
+  } }).href, '/notifications?preview=po&id=order-42')
+  assert.equal(resolveNotificationTarget({ metadata: references }).href, '/notifications?preview=po&id=order-42')
+  assert.equal(resolveNotificationTarget({ metadata: {
+    entity_type: 'purchase_recommendation', entity_id: 'recommendation/43',
+  } }).href, '/notifications?preview=pr&id=recommendation%2F43')
+})
 test('login retains local notification route and rejects external return URLs', () => {
   assert.equal(safeLoginReturnPath('/notifications?preview=pr&id=42'), '/notifications?preview=pr&id=42')
   for (const value of ['https://other.test', '//other.test', '/\\other.test', 'javascript:alert(1)', '/login']) assert.equal(safeLoginReturnPath(value), null)

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useSelector } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -28,9 +29,10 @@ import notificationService from '../services/notification.service'
 import apiClient from '../services/api.service'
 import { formatDistanceToNow } from '../utils/dateFormatter'
 import { resolveNotificationTarget } from '../utils/notificationNavigation'
-import PurchaseOrderLivePreview from './Procurement/PurchaseOrderLivePreview'
+import NotificationPurchaseOrderPreview from '../components/notifications/NotificationPurchaseOrderPreview'
 import PurchaseRequisitionDocumentPreview from './Procurement/PurchaseRequisitionDocumentPreview'
 import { canDecideProcurement } from '../utils/procurementApproval'
+import '../components/notifications/NotificationRecordPreview.css'
 
 const FILTERS = [
   { id: 'all', label: 'All notifications' },
@@ -155,6 +157,9 @@ const NotificationPanel = () => {
   const [previewDecision, setPreviewDecision] = useState({ loading: false, mode: null, reason: '', message: '', error: '' })
   const refreshAbortRef = useRef(null)
   const hasLoadedInboxRef = useRef(false)
+  const previewDialogRef = useRef(null)
+  const previewDecisionPendingRef = useRef(false)
+  previewDecisionPendingRef.current = previewDecision.loading
 
   const previewType = searchParams.get('preview')
   const previewId = searchParams.get('id')
@@ -292,7 +297,7 @@ const NotificationPanel = () => {
         loading: false,
         mode: null,
         reason: '',
-        message: `${previewType === 'po' ? 'Purchase Order' : 'Purchase Requisition'} ${decision === 'approve' ? 'approved' : 'rejected'} successfully.`,
+        message: `${previewType === 'po' ? 'Purchase Order' : 'Purchase Recommendation'} ${decision === 'approve' ? 'approved' : 'rejected'} successfully.`,
         error: '',
       })
       window.dispatchEvent(new Event('procurement-approval-updated'))
@@ -308,16 +313,42 @@ const NotificationPanel = () => {
   }
 
   useEffect(() => {
-    if (!previewType || !previewId) return undefined
+    if (!['po', 'pr'].includes(previewType) || !previewId) return undefined
+    const dialog = previewDialogRef.current
+    if (!dialog) return undefined
+    const previousFocus = document.activeElement
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') closeRecordPreview()
+    const controls = () => [...dialog.querySelectorAll(
+      'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]',
+    )].filter(element => element.getClientRects().length)
+    const focusStart = () => (dialog.querySelector('button[aria-label="Close preview"]:not([disabled])') || controls()[0] || dialog).focus({ preventScroll: true })
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !previewDecisionPendingRef.current) {
+        event.preventDefault()
+        closeRecordPreview()
+      } else if (event.key === 'Tab') {
+        const available = controls()
+        const first = available[0], last = available.at(-1)
+        if (!first) { event.preventDefault(); dialog.focus(); return }
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+          event.preventDefault(); last.focus()
+        } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
+          event.preventDefault(); first.focus()
+        }
+      }
     }
-    window.addEventListener('keydown', handleEscape)
+    const containFocus = event => {
+      if (!dialog.contains(event.target)) focusStart()
+    }
+    focusStart()
+    window.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('focusin', containFocus)
     return () => {
       document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', handleEscape)
+      window.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('focusin', containFocus)
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true })
     }
   }, [closeRecordPreview, previewId, previewType])
 
@@ -722,28 +753,30 @@ const NotificationPanel = () => {
         </div>
       </div>
 
-      {['po', 'pr'].includes(previewType) && previewId && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-2 backdrop-blur-sm sm:p-5" role="presentation" onMouseDown={closeRecordPreview}>
+      {['po', 'pr'].includes(previewType) && previewId && createPortal(
+        <div className="notification-record-preview-backdrop" role="presentation" onMouseDown={() => { if (!previewDecision.loading) closeRecordPreview() }}>
           <section
+            ref={previewDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="notification-record-preview-title"
-            className="flex max-h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl"
+            tabIndex={-1}
+            className="notification-record-preview"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+            <header className="notification-record-preview__header">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600">Notification preview</p>
-                <h2 id="notification-record-preview-title" className="mt-1 truncate text-lg font-black text-slate-950 sm:text-xl">
+                <h2 id="notification-record-preview-title" className="mt-1 text-lg font-black text-slate-950 sm:text-xl">
                   {previewType === 'po' ? 'Purchase Order' : 'Purchase Recommendation'} · {recordPreview.data?.po_number || recordPreview.data?.pr_number || previewId}
                 </h2>
               </div>
-              <button type="button" onClick={closeRecordPreview} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Close preview">
+              <button type="button" onClick={closeRecordPreview} disabled={previewDecision.loading} className="flex-none rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40" aria-label="Close preview">
                 <XMarkIcon className="h-5 w-5" />
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-3 sm:p-5">
+            <div className="notification-record-preview__content" tabIndex={0} aria-label="Document preview pages">
               {recordPreview.loading ? (
                 <div className="flex min-h-[420px] items-center justify-center">
                   <div className="text-center">
@@ -757,7 +790,7 @@ const NotificationPanel = () => {
                   <p className="mt-3 text-sm font-bold text-rose-800">{recordPreview.error}</p>
                 </div>
               ) : recordPreview.data && previewType === 'po' ? (
-                <PurchaseOrderLivePreview
+                <NotificationPurchaseOrderPreview
                   formData={recordPreview.data}
                   vendor={{
                     name: recordPreview.data.vendor_name,
@@ -772,12 +805,12 @@ const NotificationPanel = () => {
                   ))}
                 />
               ) : recordPreview.data ? (
-                <PurchaseRequisitionDocumentPreview requisition={recordPreview.data} />
+                <div className="notification-record-preview__requisition"><PurchaseRequisitionDocumentPreview requisition={recordPreview.data} /></div>
               ) : null}
             </div>
 
             {recordPreview.data && !recordPreview.loading && !recordPreview.error && (
-              <footer className="border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+              <footer className="notification-record-preview__footer">
                 {canDecidePreview && previewDecision.mode === 'reject' && !previewDecision.message && (
                   <div className="mb-3">
                     <label htmlFor="notification-preview-rejection" className="mb-1.5 block text-xs font-semibold text-slate-700">Rejection reason</label>
@@ -830,7 +863,8 @@ const NotificationPanel = () => {
               </footer>
             )}
           </section>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
