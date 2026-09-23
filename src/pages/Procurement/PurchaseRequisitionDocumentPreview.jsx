@@ -72,6 +72,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
   const configuredWorkflow = displayApprovalWorkflow(
     rawConfiguredWorkflow,
     requisition.po_number_reference,
+    requisition.po_applicable,
   );
   const savedApprovalLabels = metadata.approval_table_labels || {};
   const persistedApprovalRows = [

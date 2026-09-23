@@ -33,14 +33,16 @@ export const isJarmoCeoStage = (stage = {}) => {
     || (Number(stage.level) === 5 && (role.includes('general manager') || role.includes('ceo')));
 };
 
-export const displayApprovalWorkflow = (workflow, poReference = '') => (
-  (Array.isArray(workflow) ? workflow : []).flatMap((entry) => {
+export const displayApprovalWorkflow = (workflow, poReference = '', poApplicable = null) => {
+  const skipCeo = poApplicable == null ? Boolean(String(poReference || '').trim()) : Boolean(poApplicable);
+  return (Array.isArray(workflow) ? workflow : []).flatMap((entry) => {
+    if (entry?.external && entry.source === 'signed_purchase_requisition_pdf') return [entry];
     if (!isJarmoCeoStage(entry)) return [entry];
-    if (String(poReference || '').trim()) return [];
+    if (skipCeo) return [];
     return [{
       ...entry,
       role: 'CEO',
       stage: String(entry.stage || '').replace(/general manager/gi, 'CEO') || 'Level 5 - CEO Approval',
     }];
-  })
-);
+  });
+};
