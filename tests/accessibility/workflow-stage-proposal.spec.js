@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { workflowProposalHarness } from '../fixtures/workflow-stage-tree.fixture.js'
-import { scheduleWorkspace } from '../fixtures/schedule-controls.js'
+import { scheduleAction, scheduleWorkspace } from '../fixtures/schedule-controls.js'
 
 test.setTimeout(60000)
 const review = page => page.getByRole('dialog', { name: 'Review proposed schedule', exact: true })
@@ -11,7 +11,7 @@ test('Build schedule requests source evidence without forcing a workflow and pre
   await page.setViewportSize({ width: 1740, height: 950 })
   const state = await workflowProposalHarness(page)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(3)
-  await scheduleWorkspace(page).getByRole('button', { name: 'Build schedule', exact: true }).click()
+  await scheduleAction(page, 'Build schedule')
   await expect(review(page)).toBeVisible()
   expect(state.writes[0].data).toEqual({ revision: 4, workflow_mode: 'source_only' })
   await expect(review(page).locator('.psq-summary')).toContainText('3 deliverables')
@@ -24,7 +24,7 @@ test('Build schedule requests source evidence without forcing a workflow and pre
   await expect(review(page)).toHaveCount(0)
   await expect(grid(page).locator('[data-row-kind="deliverable"]')).toHaveCount(3)
   await expect(grid(page).locator('[data-row-kind="task"]')).toHaveCount(15)
-  await expect(scheduleWorkspace(page).locator('.sc-footer')).toContainText('3 deliverables')
+  await expect(scheduleWorkspace(page).locator('.sc-footer > span').filter({ hasText: '15 activities' })).toHaveAttribute('title', '3 deliverables')
   await expect(scheduleWorkspace(page).locator('.sc-footer')).toContainText('15 activities')
   await expect(scheduleWorkspace(page).locator('.sc-footer')).toContainText('1 WBS groups')
   expect(state.workflowApplied).toBe(1)
@@ -32,6 +32,7 @@ test('Build schedule requests source evidence without forcing a workflow and pre
   const row = grid(page).locator('[data-row-id="source-a-COMPANY_REVIEW"]')
   await row.getByRole('button', { name: 'HVAC ADEQUEACY REPORT — Company Review', exact: true }).click()
   const drawer = page.getByRole('complementary', { name: 'Activity details', exact: true })
+  await drawer.getByRole('tab', { name: 'Resources', exact: true }).click()
   await expect(drawer.locator('dl > div').filter({ has: page.getByText('Responsible role', { exact: true }) })).toContainText('Company')
   await drawer.getByRole('button', { name: 'Edit activity', exact: true }).click()
   const editor = page.getByRole('dialog', { name: 'Edit task', exact: true })

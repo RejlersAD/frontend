@@ -130,3 +130,70 @@
   .pd-header-actions, .pd-location, .pd-tabs, .pd-project-facts .pd-agreement-action { display: none; }
   .pd-header h1 { margin-right: 0; white-space: normal; }
 }
+
+/* Schedule uses its own compact project header; other project work areas keep
+   their existing information layout and actions. */
+.pd-schedule-header { background: #f7faff; color: #132c50; }
+.pd-schedule-header .pd-heading-content { min-height: 110px; padding: 8px 20px 10px; }
+.pd-schedule-header .pd-location { min-height: 18px; gap: 9px; padding-right: 430px; color: #667890; font-size: 12px; line-height: 18px; }
+.pd-schedule-header .pd-location > button { width: 16px; flex: 0 0 16px; color: #3267b4; }
+.pd-schedule-header .pd-location nav { gap: 7px; }
+.pd-schedule-header .pd-location nav > button { color: #536d91; }
+.pd-schedule-header .pd-location [aria-current="page"] { color: #344d6b; }
+.pd-schedule-header h1 { margin: 4px 430px 2px 0; color: #061640; font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -.25px; }
+.pd-schedule-header .pd-header-actions { position: absolute; top: 16px; right: 20px; gap: 8px; margin: 0; }
+.pd-schedule-header .pd-button { min-height: 35px; height: 35px; gap: 7px; padding: 6px 10px; border-color: #d7e1ee; border-radius: 5px; color: #28435f; font-size: 12px; font-weight: 500; line-height: 21px; }
+.pd-schedule-header .pd-resolve-action { width: 140px; background: #005bff; border-color: #005bff; color: #fff; }
+.pd-schedule-header .pd-resolve-action:hover:not(:disabled) { background: #1954d4; border-color: #1954d4; }
+.pd-schedule-header .pd-save-action { width: 107px; }
+.pd-schedule-header .pd-export-action { width: 93px; }
+.pd-schedule-header .pd-icon-button { width: 46px; }
+.pd-schedule-header .pd-project-facts { display: flex; flex-wrap: nowrap; align-items: center; gap: 0; min-height: 24px; overflow-x: auto; scrollbar-width: thin; font-size: 12px; line-height: 20px; }
+.pd-schedule-header .pd-project-facts > div { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; min-height: 24px; padding: 0 12px; border-color: #dce5f0; white-space: nowrap; }
+.pd-schedule-header .pd-project-facts > div:first-child { padding-left: 0; font-weight: 600; }
+.pd-schedule-header .pd-project-facts > div:last-child { padding-right: 0; }
+.pd-schedule-header .pd-project-facts :is(.pd-status, .pd-health, .pd-baseline, .pd-report-date) { flex-direction: column; align-items: flex-start; gap: 0; padding-inline: 20px; }
+.pd-schedule-header .pd-project-facts :is(.pd-status, .pd-health, .pd-baseline, .pd-report-date) > .pd-fact-label { font-size: 11px; line-height: 14px; }
+.pd-schedule-header .pd-project-facts strong { display: inline; color: #253e5c; font-weight: 500; line-height: 20px; }
+.pd-schedule-header .pd-project-facts .pd-client { line-height: 20px; }
+.pd-schedule-header .pd-fact-label { color: #687c94; }
+.pd-schedule-header .pd-pill { gap: 4px; padding: 2px 8px; border-radius: 5px; font-size: 11px; line-height: 18px; }
+.pd-schedule-header .pd-status-active { background: #e9f1ff; color: #3765a4; }
+.pd-schedule-header .pd-health-warning, .pd-schedule-header .pd-health-danger { background: #fff2dc; color: #a5690b; }
+.pd-schedule-header .pd-baseline-unavailable { background: #fcebf0; color: #b44861; }
+.pd-schedule-header .pd-baseline-approved { background: #e8f6ef; color: #297454; }
+.pd-schedule-header .pd-data-date { background: #edf1f6; color: #60758e; }
+.pd-schedule-header .pd-data-date svg { color: inherit; }
+.pd-schedule-header .pd-tabs { height: 40px; padding: 0 20px; border-color: #dbe5f0; background: #fff; }
+.pd-schedule-header .pd-tabs ul { min-width: 990px; height: 39px; gap: 0; }
+.pd-schedule-header .pd-tabs li { flex: 1 0 auto; }
+.pd-schedule-header .pd-tabs button { width: 100%; min-height: 39px; height: 39px; gap: 9px; padding: 8px 10px; color: #112959; font-size: 12.5px; font-weight: 500; }
+.pd-schedule-header .pd-tabs button[aria-current="page"] { color: #2463eb; border-bottom-color: #2463eb; font-weight: 500; }
+@media (max-width: 1350px) {
+  .pd-schedule-header .pd-project-facts { overflow-x: auto; scrollbar-width: thin; }
+  .pd-schedule-header .pd-project-facts > div { padding-inline: 9px; }
+}
+@media (max-width: 900px) {
+  .pd-schedule-header .pd-heading-content { min-height: 0; padding: 10px 12px 12px; }
+  .pd-schedule-header .pd-location { padding-right: 0; }
+  .pd-schedule-header h1 { margin-right: 0; }
+  .pd-schedule-header .pd-header-actions { position: static; flex-wrap: nowrap; gap: 6px; margin: 0 0 10px; }
+  .pd-schedule-header .pd-resolve-action { flex: 1 1 140px; }
+  .pd-schedule-header .pd-save-action { flex: 1 1 107px; }
+  .pd-schedule-header .pd-export-action { flex: 1 1 93px; }
+  .pd-schedule-header .pd-header-actions > .pd-menu { flex: 0 0 36px; }
+  .pd-schedule-header .pd-icon-button { width: 36px; }
+  .pd-schedule-header .pd-project-facts { display: flex; gap: 0; }
+  .pd-schedule-header .pd-project-facts > div:nth-child(odd) { padding-left: 9px; border-left: 1px solid #dce5f0; }
+  .pd-schedule-header .pd-project-facts > div:first-child { padding-left: 0; border-left: 0; }
+  .pd-schedule-header .pd-tabs { padding-inline: 12px; }
+}
+@media (max-width: 560px) {
+  .pd-schedule-header .pd-location { flex-wrap: nowrap; gap: 7px; font-size: 11px; }
+  .pd-schedule-header .pd-location nav { gap: 4px; }
+  .pd-schedule-header h1 { margin-block: 4px 10px; font-size: 20px; line-height: 26px; white-space: nowrap; }
+  .pd-schedule-header .pd-header-actions { gap: 5px; }
+  .pd-schedule-header .pd-button { gap: 5px; padding-inline: 7px; font-size: 11px; }
+  .pd-schedule-header .pd-header-actions > .pd-button { width: auto; }
+  .pd-schedule-header .pd-project-facts { font-size: 11px; }
+}

@@ -13,8 +13,11 @@ export async function closeScheduleMenu(page, name) {
   }
 }
 export async function scheduleAction(page, name) {
+  await (await scheduleActionButton(page, name)).click()
+}
+export async function scheduleActionButton(page, name) {
   const menu = await scheduleMenu(page, 'Schedule actions')
-  await menu.getByRole('button', { name, exact: true }).click()
+  return menu.getByRole('button', { name, exact: true })
 }
 export async function scheduleVersion(page, value) {
   const menu = await scheduleMenu(page, 'Schedule actions')
@@ -27,9 +30,7 @@ export async function scheduleDiscipline(page, value) {
   await closeScheduleMenu(page, 'Schedule filters')
 }
 export async function scheduleCritical(page, checked) {
-  const menu = await scheduleMenu(page, 'Schedule filters')
-  await menu.getByRole('checkbox', { name: 'Critical only', exact: true }).setChecked(checked)
-  await closeScheduleMenu(page, 'Schedule filters')
+  await scheduleWorkspace(page).getByRole('checkbox', { name: 'Critical only', exact: true }).setChecked(checked)
 }
 export const scheduleArea = (page, value) => scheduleWorkspace(page).getByRole('combobox', { name: 'Schedule workspace area', exact: true }).selectOption(value)
 export const timelineScale = (page, value) => scheduleWorkspace(page).getByRole('combobox', { name: 'Timeline scale', exact: true }).selectOption(value.toLowerCase())

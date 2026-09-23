@@ -132,6 +132,7 @@ test('activity details distinguish source, rule, proposal, calculation and plann
   } })
   await scheduleWorkspace(page).getByRole('button', { name: state.records[17].simplePlan.tasks[0].title, exact: true }).click()
   const details = page.getByRole('complementary', { name: 'Activity details', exact: true })
+  await details.getByText('Field provenance', { exact: true }).click()
   for (const type of ['Source document', 'Approved rule', 'Calculated', 'Proposal', 'Planner input', 'Provenance not recorded']) await expect(details.locator('.planning-provenance-badge').filter({ hasText: type }).first()).toBeVisible()
   await expect(details).toContainText('Reviewed delivery · Version 2 · Rule stage:IFR')
   expect(state.profileReads).toEqual([])

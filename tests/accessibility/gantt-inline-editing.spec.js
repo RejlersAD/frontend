@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { primaveraScheduleHarness } from '../fixtures/primavera-schedule.fixture.js'
+import { scheduleActionButton, closeScheduleMenu } from '../fixtures/schedule-controls.js'
 
 test.setTimeout(60000)
 const workspace = page => page.getByRole('region', { name: 'Master schedule workspace', exact: true })
@@ -217,6 +218,7 @@ test('source duration, start and finish can be saved directly in Gantt and survi
   await expect(cell(page, task, 'float')).toHaveText('Not calculated')
   await workspace(page).getByRole('button', { name: task.title, exact: true }).click()
   const details = page.getByRole('complementary', { name: 'Activity details', exact: true })
+  await details.locator('summary').filter({ hasText: 'Source and calculated timing' }).click()
   await expect(details.getByRole('rowheader', { name: 'Printed source', exact: true })).toBeVisible()
   await expect(details.getByRole('rowheader', { name: 'Calculated draft', exact: true })).toHaveCount(0)
   clean(state)
@@ -247,7 +249,8 @@ test('Escape cancels without a write and a failed save retains the entered value
 test('selected canonical master allows a granular Gantt edit while the general task editor stays locked', async ({ page }) => {
   const state = await editingHarness(page, { canonical: true })
   const task = state.records[17].simplePlan.tasks[0]
-  await expect(workspace(page).getByRole('button', { name: 'Add activity', exact: true })).toBeDisabled()
+  await expect(await scheduleActionButton(page, 'Add activity')).toBeDisabled()
+  await closeScheduleMenu(page, 'Schedule actions')
   const input = await beginEdit(page, task, 'finish')
   await input.fill('2026-10-09')
   await input.press('Enter')

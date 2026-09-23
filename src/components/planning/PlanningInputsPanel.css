@@ -184,6 +184,16 @@
   .planning-design .pln-steps li:not(:last-child)::after { display: none; }
   .planning-inputs .pln-bottom-bar > div { display: none; }
 }
+.planning-inputs .pln-source-deliverables { margin: 14px 0; }
+.planning-inputs .pln-source-deliverables > summary { cursor: pointer; color: #0751ff; font-weight: 600; }
+.planning-inputs .pln-source-deliverable-groups { max-height: 420px; overflow: auto; }
+.planning-inputs .pln-source-deliverable-groups section + section { margin-top: 18px; }
+.planning-inputs .pln-source-deliverables .pln-source-filename { margin-top: 4px; font-size: 11px; overflow-wrap: anywhere; }
+.planning-inputs .pln-source-deliverables ul { list-style: none; margin: 10px 0 0; padding: 0; }
+.planning-inputs .pln-source-deliverables li { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #e3eaf5; }
+.planning-inputs .pln-source-deliverables li > svg { flex-shrink: 0; color: #0751ff; }
+.planning-inputs .pln-source-deliverables strong, .planning-inputs .pln-source-deliverables small { display: block; overflow-wrap: anywhere; }
+.planning-inputs .pln-source-deliverables small { margin-top: 4px; color: #5d78a2; font-size: 11px; }
 @media (max-width: 600px) {
   .planning-inputs .pln-metrics { grid-template-columns: 1fr; gap: 8px; padding: 12px; }
   .planning-inputs .pln-metrics > span + span { border: 0; padding: 0; }

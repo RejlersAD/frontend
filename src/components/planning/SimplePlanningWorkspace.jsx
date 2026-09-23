@@ -1,5 +1,6 @@
 /* eslint-disable react/prop-types */
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { emptyScheduleAnalysis } from '../../utils/planningAnalysisResult'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react'
 import apiClient, { apiClientLongTimeout } from '../../services/api.service'
@@ -11,6 +12,8 @@ import PlanningExtractionCoverage from './PlanningExtractionCoverage'
 import PlanningExtractionSummary from './PlanningExtractionSummary'
 import { ProvenanceBadge, factProvenance } from './PlanningFieldProvenance'
 import ScheduleNotice from './ScheduleNotice'
+import { scheduleChecks, scheduleIssueGroups } from './scheduleCheckPolicy'
+import { dateDisplayTask } from '../../utils/planningDateEvidence'
 import PlannerWorkspacePage from '../../pages/PlannerWorkspacePage'
 import './SimplePlanningWorkspace.css'
 
@@ -45,10 +48,25 @@ function ScheduleDialog({ title, children, onClose, busy = false, compact = fals
 
 function ProjectAISettings({ projectId }) {
   const [settings, setSettings] = useState(null), [key, setKey] = useState(''), [model, setModel] = useState(DEFAULT_CLAUDE_MODEL)
+  const [provider, setProvider] = useState('anthropic')
   const [enabled, setEnabled] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
+  const providerChoices = settings?.provider_choices || [{ value: 'anthropic', label: 'Anthropic (Claude)', default_model: DEFAULT_CLAUDE_MODEL, model_choices: settings?.model_choices || CLAUDE_MODEL_OPTIONS }]
+  const selectedProvider = providerChoices.find(option => option.value === provider) || providerChoices[0]
+  const modelChoices = selectedProvider.model_choices || []
+  const savedProvider = settings?.provider || 'anthropic'
+  const providerChanged = Boolean(settings) && provider !== savedProvider
+  const savedKeyForProvider = Boolean(settings?.key_configured) && !providerChanged
+  const unsaved = providerChanged || model !== settings?.model || enabled !== Boolean(settings?.enabled) || Boolean(key)
+  const keyProviderLabel = provider === 'gemini' ? 'Google Gemini' : 'Anthropic'
+  const update = setter => event => { setter(event.target.type === 'checkbox' ? event.target.checked : event.target.value); setNotice(''); setError('') }
+  const changeProvider = event => {
+    const value = event.target.value, option = providerChoices.find(choice => choice.value === value)
+    setProvider(value); setModel(value === savedProvider ? settings.model : option.default_model || option.model_choices?.[0]?.value || '')
+    setKey(''); setNotice(''); setError('')
+  }
   useEffect(() => {
     let active = true
-    apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId)).then(({ data }) => { if (active) { setSettings(data); setModel(data.model || DEFAULT_CLAUDE_MODEL); setEnabled(data.enabled) } }).catch(reason => { if (active) setError(errorText(reason)) })
+    apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId)).then(({ data }) => { if (active) { setSettings(data); setProvider(data.provider || 'anthropic'); setModel(data.model || DEFAULT_CLAUDE_MODEL); setEnabled(Boolean(data.enabled)) } }).catch(reason => { if (active) setError(errorText(reason)) })
     return () => { active = false }
   }, [projectId])
   const act = async action => {
@@ -58,19 +76,22 @@ function ProjectAISettings({ projectId }) {
         const { data } = await apiClientLongTimeout.post(PLANNING_ENDPOINTS.aiSettingsTest(projectId))
         if (data.success === false) setError(data.message || 'Connection test failed.'); else setNotice(data.message || 'Connection verified.')
       } else {
-        const { data } = action === 'remove' ? await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(projectId)) : await apiClient.post(PLANNING_ENDPOINTS.aiSettings(projectId), { enabled, model, ...(key.trim() ? { api_key: key.trim() } : {}) })
-        setSettings(data); setEnabled(data.enabled); setKey(''); setNotice(action === 'remove' ? 'Saved key removed.' : 'AI settings saved.')
+        const { data } = action === 'remove' ? await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(projectId)) : await apiClient.post(PLANNING_ENDPOINTS.aiSettings(projectId), { provider, enabled, model, ...(key.trim() ? { api_key: key.trim() } : {}) })
+        setSettings(data); setProvider(data.provider || 'anthropic'); setModel(data.model || DEFAULT_CLAUDE_MODEL); setEnabled(Boolean(data.enabled)); setKey(''); setNotice(action === 'remove' ? 'Saved key removed.' : 'AI settings saved.')
       }
     } catch (reason) { setError(errorText(reason)) }
     finally { setBusy(false) }
   }
   return <form className="ssd-settings" onSubmit={event => { event.preventDefault(); act('save') }}>
-    <p>Optional Anthropic connection for document analysis. Register extraction and manual scheduling do not require a key.</p>
+    <p>Connect an AI provider for document analysis. Register extraction and manual scheduling do not require a key.</p>
     {error && <p className="ssd-error" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
-    <label><input type="checkbox" checked={enabled} disabled={!settings || busy} onChange={event => setEnabled(event.target.checked)} /> Use AI for document analysis</label>
-    <label>Model<select value={model} disabled={!settings || busy} onChange={event => setModel(event.target.value)}>{CLAUDE_MODEL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-    <label>API key<input type="password" autoComplete="new-password" value={key} disabled={!settings || busy} onChange={event => setKey(event.target.value)} placeholder={settings?.key_configured ? 'Key saved — enter to replace' : 'Enter Anthropic API key'} /></label>
-    <div className="ssd-actions"><button type="submit" disabled={!settings || busy}>Save settings</button><button type="button" disabled={!settings?.key_configured || busy || Boolean(key)} onClick={() => act('test')}>Test connection</button>{settings?.key_configured && <button type="button" disabled={busy} onClick={() => act('remove')}>Remove key</button>}</div>
+    <label><input type="checkbox" checked={enabled} disabled={!settings || busy} onChange={update(setEnabled)} /> Use AI for document analysis</label>
+    <label>Provider<select value={provider} disabled={!settings || busy} onChange={changeProvider}>{providerChoices.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+    <label>Model<select value={model} disabled={!settings || busy} onChange={update(setModel)}>{modelChoices.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+    <label>{keyProviderLabel} API key<input type="password" autoComplete="new-password" value={key} disabled={!settings || busy} onChange={update(setKey)} required={providerChanged} placeholder={savedKeyForProvider ? 'Key saved — enter to replace' : `Enter ${keyProviderLabel} API key`} /></label>
+    {providerChanged && <p>Enter a {keyProviderLabel} API key to switch providers.{settings.key_configured && ` The saved key belongs to ${providerChoices.find(option => option.value === savedProvider)?.label || savedProvider}.`}</p>}
+    {unsaved && settings && <p>Save your changes before testing the connection.</p>}
+    <div className="ssd-actions"><button type="submit" disabled={!settings || busy || (providerChanged && !key.trim())}>Save settings</button><button type="button" disabled={!settings?.enabled || !savedKeyForProvider || busy || unsaved} onClick={() => act('test')}>Test connection</button>{settings?.key_configured && <button type="button" disabled={busy} onClick={() => act('remove')}>Remove key</button>}</div>
   </form>
 }
 
@@ -99,6 +120,7 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
   const [connectionFailed, setConnectionFailed] = useState(false)
   const [files, setFiles] = useState([]), [contract, setContract] = useState(null), [loadingContract, setLoadingContract] = useState(false)
   const [error, setError] = useState(''), [uploading, setUploading] = useState(false), [analyzing, setAnalyzing] = useState(false)
+  const [creatingProgrammatic, setCreatingProgrammatic] = useState(false)
   const [category, setCategory] = useState('sow'), [dialog, setDialog] = useState(null), [overlay, setOverlay] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0), [plan, setPlan] = useState(null), [panelBusy, setPanelBusy] = useState(false), [rebuild, setRebuild] = useState(null)
   const [advancedPlan, setAdvancedPlan] = useState(null)
@@ -210,12 +232,31 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
       }
       const { data } = await apiClientLongTimeout.post(`${endpoint}analyse/`, request)
       if (alive.current) {
-        setPlan(data); setRebuild(null); setRefreshKey(value => value + 1); setDialog(null)
-        if (replace) setNotice('Draft rebuilt from current documents. Review the updated activities before approval.')
+        const emptyAnalysis = emptyScheduleAnalysis(data)
+        setPlan(data); setRebuild(null); setRefreshKey(value => value + 1); setDialog(emptyAnalysis ? 'inputs' : null)
+        if (replace && !emptyAnalysis) setNotice('Draft rebuilt from current documents. Review the updated activities before approval.')
       }
       return data
     } catch (reason) { if (alive.current) setError(errorText(reason)); return null }
     finally { operation.current = false; if (alive.current) setAnalyzing(false) }
+  }
+  const createProgrammatic = async ({ projectId }) => {
+    if (operation.current) return null
+    operation.current = true; setCreatingProgrammatic(true); setError(''); setNotice('')
+    try {
+      const endpoint = `${PLANNING_ENDPOINTS.project(projectId)}simple-plan/`
+      const current = (await apiClient.get(endpoint)).data
+      if (selectedVersionId !== 'current' || current.viewing_history || current.legacy_read_only || current.canonical_version || ['baselined', 'submitted'].includes(current.state) || !current.permissions?.can_edit) {
+        throw new Error('Open an empty editable current draft before creating activities from requirements.')
+      }
+      if (current.tasks?.length) throw new Error('This draft already contains activities. Review the current schedule before creating another draft.')
+      const { data } = await apiClientLongTimeout.post(`${endpoint}programmatic-draft/`, { revision: current.revision, requirement_scope: 'all' })
+      if (alive.current) {
+        setPlan(data); setRebuild(null); setRefreshKey(value => value + 1); setDialog(null)
+      }
+      return data
+    } catch (reason) { if (alive.current) setError(errorText(reason)); return null }
+    finally { operation.current = false; if (alive.current) setCreatingProgrammatic(false) }
   }
   const close = () => { setDialog(null); setRebuild(null); setRefreshKey(value => value + 1) }
   const requestRebuild = () => {
@@ -223,24 +264,34 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
     setDialog('inputs')
     analyze({ projectId: project.id, confirmRebuild: true })
   }
-  const busy = uploading || analyzing || panelBusy
+  const busy = uploading || analyzing || creatingProgrammatic || panelBusy
+  const canCreateProgrammatic = plan && selectedVersionId === 'current' && !plan.tasks?.length
+    && !plan.canonical_version && !plan.viewing_history && !plan.legacy_read_only
+    && !['baselined', 'submitted'].includes(plan.state) && plan.permissions?.can_edit === true
   useEffect(() => {
+    const { blockers, warnings } = scheduleChecks(plan || {})
+    const timingGap = plan && !plan.viewing_history && !plan.legacy_read_only && selectedVersionId === 'current' && plan.state !== 'baselined'
+      && !plan.canonical_version && plan.source_preview_available && plan.tasks?.length > 0
+      && plan.tasks.every(task => { const display = dateDisplayTask(task); return !display.display_start_date && !display.display_finish_date })
     window.dispatchEvent(new CustomEvent('radai:master-schedule-state', { detail: {
       projectId: enterpriseProject.id, state: plan?.state, updatedAt: plan?.updated_at,
+      issueCount: scheduleIssueGroups(blockers).length + warnings.length + Number(Boolean(plan?.stale_inputs)) + Number(Boolean(timingGap)),
+      hasActivities: Boolean(plan?.tasks?.length),
       canSave: Boolean(project && plan?.permissions?.can_edit && !loading && !busy),
     } }))
-  }, [enterpriseProject.id, project, plan, loading, busy])
+  }, [enterpriseProject.id, project, plan, loading, busy, selectedVersionId])
   if (loading) return <div className="simple-planning-loading" role="status"><Loader2 size={18} className="animate-spin" />Loading Master Schedule…</div>
   if (connectionFailed) return <div className="ssd-error" role="alert">{error}<button type="button" onClick={() => setLoadAttempt(value => value + 1)}><RefreshCw size={15} />Retry</button></div>
   return <div className="simple-planning-workspace">
     {notice && <ScheduleNotice message={notice} onClose={dismissNotice} />}
+    {plan?.programmatic_summary && <p className="ssd-programmatic-summary" role="status">Created {plan.programmatic_summary.activity_count} draft activities from all {plan.programmatic_summary.requirement_count} requirement statements without AI, including contract clauses. Dates and durations are provisional; no dependency links were inferred.{plan.document_deliverables?.length > 0 && <> {plan.document_deliverables.length} source deliverables are available in Project inputs.</>}</p>}
     {error && !dialog && <div className="ssd-error" role="alert"><AlertTriangle size={17} />{error}<button type="button" onClick={() => { setLoadAttempt(value => value + 1); setRefreshKey(value => value + 1) }}><RefreshCw size={15} />Retry</button></div>}
     <PlanningReviewPanel key={`${project?.id || 'new'}:${refreshKey}`} projectId={project?.id || null} enterpriseProject={enterpriseProject} planningMode={project?.planning_mode || 'document'} stage="review" selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onInputs={() => setDialog('inputs')} onAnalyze={() => setDialog('inputs')} onRebuild={requestRebuild} onBack={() => setDialog('inputs')} onCompare={comparison ? () => { onRefreshComparison?.(); setDialog('compare') } : undefined} onOpenAdvanced={selected => { setAdvancedPlan(selected); setDialog('advanced') }} onContinue={() => setDialog('approval')} onLoaded={setPlan} onSavingChanged={setPanelBusy} generationRequest={generationRequest} onGenerationOpened={generationOpened} />
     {dialog && <ScheduleDialog title={{ inputs: 'Documents & project inputs', approval: 'Review & publish baseline', compare: 'Schedule comparison', advanced: 'Schedule Controls' }[dialog]} onClose={close} busy={busy}>
       {error && <div className="ssd-error" role="alert">{error}</div>}
       {dialog === 'inputs' && <>
         {rebuild && <div className="ssd-rebuild" role="alert"><strong>Rebuild this draft from current inputs?</strong><p>Rebuild using the current uploaded documents and saved project inputs. Existing workflows, assignments and progress are kept only for matching source rows in the same document version. New, changed or ambiguous rows become unassigned draft activities.</p><p>Replaced or removed work is archived with its employee history. Published baselines stay unchanged.</p><div className="ssd-actions"><button type="button" disabled={analyzing} onClick={() => setRebuild(null)}>Keep current draft</button><button type="button" disabled={analyzing} onClick={() => analyze({ projectId: rebuild.projectId, revision: rebuild.revision, replace: true })}>{analyzing ? 'Rebuilding draft…' : 'Rebuild draft from inputs'}</button></div></div>}
-        <PlanningInputsPanel simple generateSchedule={Boolean(plan?.canonical_version)} project={project} enterpriseProject={enterpriseProject} contract={contract} loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} analysisRevision={refreshKey} uploadCategory={category} onUploadCategory={setCategory} onUpload={upload} onDeleteFile={removeFile} onSaved={setProject} onAnalyze={analyze} onBack={close} onOpenIntelligencePreview={() => setOverlay('evidence')} onAiSettings={() => setOverlay('ai')} />
+        <PlanningInputsPanel simple generateSchedule={Boolean(plan?.canonical_version)} analysisResult={emptyScheduleAnalysis(plan)} programmaticSummary={plan?.programmatic_summary} documentDeliverables={plan?.document_deliverables} project={project} enterpriseProject={enterpriseProject} contract={contract} loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} creatingProgrammatic={creatingProgrammatic} analysisRevision={refreshKey} uploadCategory={category} onUploadCategory={setCategory} onUpload={upload} onDeleteFile={removeFile} onSaved={setProject} onAnalyze={analyze} onCreateProgrammatic={canCreateProgrammatic ? createProgrammatic : undefined} onBack={close} onOpenIntelligencePreview={() => setOverlay('evidence')} onAiSettings={() => setOverlay('ai')} />
       </>}
       {dialog === 'approval' && project && <PlanningReviewPanel projectId={project.id} enterpriseProject={enterpriseProject} planningMode={project.planning_mode || 'document'} stage="approval" selectedVersionId={selectedVersionId} onVersionChange={setSelectedVersionId} onBack={close} onInputs={() => setDialog('inputs')} onLoaded={setPlan} onSavingChanged={setPanelBusy} />}
       {dialog === 'compare' && (React.isValidElement(comparison) ? React.cloneElement(comparison, { onScheduleMode: close }) : comparison)}

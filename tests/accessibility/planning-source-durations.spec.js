@@ -44,6 +44,7 @@ test('missing source duration has no fabricated dates, float, bar or dependency 
   const details = page.getByRole('complementary', { name: 'Activity details', exact: true })
   await expect(details).toContainText('Not Specified')
   await expect(details).toContainText('No activity-specific planned duration in the uploaded documents.')
+  await details.getByRole('tab', { name: 'Logic', exact: true }).click()
   await expect(details).toContainText('Not calculated')
   expect(state.writes).toEqual([])
   clean(state)

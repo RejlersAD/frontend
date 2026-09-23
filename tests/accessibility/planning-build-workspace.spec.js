@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { masterScheduleHarness } from '../fixtures/master-schedule.fixture.js'
-import { scheduleAction, scheduleArea, scheduleWorkspace } from '../fixtures/schedule-controls.js'
+import { scheduleAction, scheduleArea, scheduleMenu, scheduleWorkspace } from '../fixtures/schedule-controls.js'
 
 test.setTimeout(60000)
 const generation = page => page.getByRole('dialog', { name: 'Generate project plan', exact: true })
@@ -186,12 +186,13 @@ test('explicit profile calendars never supply a working shift and preserve enter
   expect(state.writes).toEqual([]); clean(state)
 })
 
-test('an approved profile promotes generation as the primary action without automatically generating a plan', async ({ page }) => {
+test('an approved profile exposes its generation action without automatically generating a plan', async ({ page }) => {
   const state = await buildHarness(page, { prepare(current) { for (const record of Object.values(current.records)) record.simplePlan.planning_profile = { valid: true, profile_id: 8, profile_version: 2 } } })
-  await expect(scheduleWorkspace(page).getByRole('button', { name: 'Generate plan', exact: true })).toBeVisible()
-  await expect(scheduleWorkspace(page).getByRole('button', { name: 'Build schedule', exact: true })).toHaveCount(0)
+  const actions = await scheduleMenu(page, 'Schedule actions')
+  await expect(actions.getByRole('button', { name: 'Generate plan', exact: true })).toBeVisible()
+  await expect(actions.getByRole('button', { name: 'Build schedule', exact: true })).toHaveCount(0)
   expect(state.buildReads).toEqual([]); expect(state.buildWrites).toEqual([])
-  await scheduleWorkspace(page).getByRole('button', { name: 'Generate plan', exact: true }).click()
+  await actions.getByRole('button', { name: 'Generate plan', exact: true }).click()
   await expect(generation(page)).toBeVisible()
   expect(state.buildWrites).toEqual([]); clean(state)
 })
@@ -218,6 +219,7 @@ test('derived activity values retain accepted fact and approved rule references 
   } })
   await scheduleWorkspace(page).getByRole('button', { name: state.records[17].simplePlan.tasks[0].title, exact: true }).click()
   const details = page.getByRole('complementary', { name: 'Activity details', exact: true })
+  await details.getByText('Field provenance', { exact: true }).click()
   await expect(details).toContainText('Derived from accepted inputs')
   await expect(details).toContainText('Planning profile 8')
   await expect(details).toContainText('Rule stage-name')

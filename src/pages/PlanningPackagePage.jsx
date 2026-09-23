@@ -97,6 +97,13 @@ const planningProjectDraft = (enterpriseProject) => ({
   planned_end_date: enterpriseProject?.end_date || '',
 });
 
+const planningAiSettingsForm = (settings) => ({
+  enabled: Boolean(settings?.enabled),
+  provider: settings?.provider || 'anthropic',
+  model: settings?.model || settings?.provider_choices?.find(provider => provider.value === settings?.provider)?.default_model || DEFAULT_CLAUDE_MODEL,
+  apiKey: '',
+});
+
 const renderScheduleNarrative = narrative => {
   const lines = String(narrative || '').split(/\r?\n/);
   return lines.map((line, index) => {
@@ -165,7 +172,7 @@ const AddDeliverableRow = ({ onAdd }) => {
  * Level-4 activity schedule, EDDR register, manhour estimate, validation
  * report and schedule narrative — backed by apps.planning_intelligence.
  *
- * Deterministic extraction is augmented by the project's mandatory Claude
+ * Deterministic extraction is augmented by the project's mandatory AI
  * BYOK configuration. All generated outputs remain subject to planner review.
  */
 const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBackToPortfolio }) => {
@@ -254,13 +261,25 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     }
   }, [activeJob]);
 
-  // BYOK — per-project Claude/Anthropic settings (see ai-settings endpoint).
+  // BYOK — per-project AI provider settings (see ai-settings endpoint).
   const [aiSettings, setAiSettings] = useState(null);
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
-  const [aiSettingsForm, setAiSettingsForm] = useState({ enabled: false, model: DEFAULT_CLAUDE_MODEL, apiKey: '' });
+  const [aiSettingsForm, setAiSettingsForm] = useState(() => planningAiSettingsForm(null));
   const [savingAiSettings, setSavingAiSettings] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null); // { success, message }
+  const aiProviderChoices = aiSettings?.provider_choices || [{
+    value: 'anthropic', label: 'Anthropic (Claude)', default_model: DEFAULT_CLAUDE_MODEL,
+    model_choices: aiSettings?.model_choices || CLAUDE_MODEL_OPTIONS,
+  }];
+  const selectedAiProvider = aiProviderChoices.find(provider => provider.value === aiSettingsForm.provider);
+  const savedAiProvider = aiProviderChoices.find(provider => provider.value === (aiSettings?.provider || 'anthropic'));
+  const savedAiForm = planningAiSettingsForm(aiSettings);
+  const aiProviderChanged = aiSettingsForm.provider !== savedAiForm.provider;
+  const aiSettingsDirty = aiProviderChanged || aiSettingsForm.enabled !== savedAiForm.enabled
+    || aiSettingsForm.model !== savedAiForm.model || Boolean(aiSettingsForm.apiKey.trim());
+  const aiReplacementKeyRequired = aiProviderChanged && aiSettings?.key_configured && !aiSettingsForm.apiKey.trim();
+  const canTestAiConnection = Boolean(aiSettings?.enabled && aiSettings?.key_configured && !aiSettingsDirty);
 
   // ── Visualization Modal ──────────────────────────────────────────────────
   const [showVisualization, setShowVisualization] = useState(false);
@@ -395,11 +414,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     try {
       const res = await apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId));
       setAiSettings(res.data);
-      setAiSettingsForm({
-        enabled: res.data.enabled,
-        model: res.data.model || DEFAULT_CLAUDE_MODEL,
-        apiKey: '',
-      });
+      setAiSettingsForm(planningAiSettingsForm(res.data));
     } catch (err) {
       setAiSettings(null);
     }
@@ -942,22 +957,26 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   };
 
   const handleSaveAiSettings = async () => {
-    if (!selectedProjectId) return;
-    if (aiSettingsForm.apiKey && !CLAUDE_API_KEY_PATTERN.test(aiSettingsForm.apiKey.trim())) {
+    if (!selectedProjectId || savingAiSettings || testingConnection) return;
+    if (aiReplacementKeyRequired) {
+      setBanner({ type: 'error', message: 'Enter an API key for the selected provider before saving.' });
+      return;
+    }
+    if (aiSettingsForm.provider === 'anthropic' && aiSettingsForm.apiKey && !CLAUDE_API_KEY_PATTERN.test(aiSettingsForm.apiKey.trim())) {
       setBanner({ type: 'error', message: 'API key does not look like a valid Anthropic key (expected format: sk-ant-...).' });
       return;
     }
     setSavingAiSettings(true);
     setTestResult(null);
     try {
-      const payload = { enabled: aiSettingsForm.enabled, model: aiSettingsForm.model };
+      const payload = { enabled: aiSettingsForm.enabled, provider: aiSettingsForm.provider, model: aiSettingsForm.model };
       if (aiSettingsForm.apiKey.trim()) payload.api_key = aiSettingsForm.apiKey.trim();
       const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettings(selectedProjectId), payload);
       setAiSettings(res.data);
-      setAiSettingsForm(prev => ({ ...prev, apiKey: '' }));
+      setAiSettingsForm(planningAiSettingsForm(res.data));
       setBanner({ type: 'success', message: 'AI (BYOK) settings saved.' });
       setProjects(prev => prev.map(p => (p.id === selectedProjectId
-        ? { ...p, ai_enabled: res.data.enabled, ai_model: res.data.model, ai_key_configured: res.data.key_configured }
+        ? { ...p, ai_enabled: res.data.enabled, ai_provider: res.data.provider, ai_model: res.data.model, ai_key_configured: res.data.key_configured }
         : p)));
       setShowAiSettingsModal(false);
     } catch (err) {
@@ -968,13 +987,13 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   };
 
   const handleRemoveAiKey = async () => {
-    if (!selectedProjectId) return;
+    if (!selectedProjectId || savingAiSettings || testingConnection) return;
     setSavingAiSettings(true);
     setTestResult(null);
     try {
       const res = await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(selectedProjectId));
       setAiSettings(res.data);
-      setAiSettingsForm({ enabled: false, model: DEFAULT_CLAUDE_MODEL, apiKey: '' });
+      setAiSettingsForm(planningAiSettingsForm(res.data));
       setBanner({ type: 'success', message: 'AI (BYOK) key removed.' });
     } catch (err) {
       setBanner({ type: 'error', message: 'Failed to remove AI key.' });
@@ -984,7 +1003,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   };
 
   const handleTestAiConnection = async () => {
-    if (!selectedProjectId) return;
+    if (!selectedProjectId || savingAiSettings || testingConnection || !canTestAiConnection) return;
     setTestingConnection(true);
     setTestResult(null);
     try {
@@ -1155,7 +1174,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           {aiSettings && (
             <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${aiSettings.enabled && aiSettings.key_configured ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
               {aiSettings.enabled && aiSettings.key_configured
-                ? `🤖 ${CLAUDE_MODEL_OPTIONS.find(m => m.value === aiSettings.model)?.label.split(' (')[0] || 'Claude'} BYOK Active`
+                ? `🤖 ${savedAiProvider?.model_choices?.find(m => m.value === aiSettings.model)?.label.split(' (')[0] || savedAiProvider?.label || 'AI'} BYOK Active`
                 : '🧮 Deterministic mode'}
             </span>
           )}
@@ -1415,9 +1434,9 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
             <h2 id="planning-ai-settings-title" className="font-semibold text-slate-800">AI Settings (BYOK) — {selectedProject.name}</h2>
           </div>
           <p className="text-sm text-slate-600 mb-4">
-            Bring your own Anthropic API key to augment document intelligence and narrative
-            generation with Claude for this project. Your key is encrypted at rest and never
-            shown again after saving. Leave the key field blank to keep the currently stored key.
+            Bring your own API key to augment document intelligence and narrative
+            generation for this project. Your key is encrypted at rest and never
+            shown again after saving. Leave the key field blank to keep the stored key for the same provider.
           </p>
 
           <div className="space-y-4">
@@ -1426,21 +1445,37 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                 type="checkbox"
                 className="w-4 h-4 accent-violet-600"
                 checked={aiSettingsForm.enabled}
-                disabled={savingAiSettings}
-                onChange={e => setAiSettingsForm(prev => ({ ...prev, enabled: e.target.checked }))}
+                disabled={savingAiSettings || testingConnection}
+                onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, enabled: e.target.checked })); }}
               />
-              Enable Claude BYOK for this project
+              Enable AI BYOK for this project
             </label>
 
             <label className="block text-sm">
-              <span className="block text-sm font-semibold text-slate-600 mb-1">Claude Model</span>
+              <span className="block text-sm font-semibold text-slate-600 mb-1">AI provider</span>
+              <select
+                className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
+                value={aiSettingsForm.provider}
+                disabled={savingAiSettings || testingConnection}
+                onChange={e => {
+                  const provider = aiProviderChoices.find(choice => choice.value === e.target.value);
+                  setTestResult(null);
+                  setAiSettingsForm(prev => ({ ...prev, provider: provider.value, model: provider.default_model, apiKey: '' }));
+                }}
+              >
+                {aiProviderChoices.map(provider => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
+              </select>
+            </label>
+
+            <label className="block text-sm">
+              <span className="block text-sm font-semibold text-slate-600 mb-1">AI model</span>
               <select
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.model}
-                disabled={savingAiSettings}
-                onChange={e => setAiSettingsForm(prev => ({ ...prev, model: e.target.value }))}
+                disabled={savingAiSettings || testingConnection}
+                onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, model: e.target.value })); }}
               >
-                {(aiSettings?.model_choices || CLAUDE_MODEL_OPTIONS).map(m => (
+                {(selectedAiProvider?.model_choices || []).map(m => (
                   <option key={m.value} value={m.value}>{m.label}{m.recommended ? ' ★' : ''}</option>
                 ))}
               </select>
@@ -1448,19 +1483,21 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
             <label className="block text-sm">
               <span className="block text-sm font-semibold text-slate-600 mb-1">
-                Anthropic API Key {aiSettings?.key_configured && <span className="text-emerald-600 font-normal">(key configured ✓ — leave blank to keep it)</span>}
+                {selectedAiProvider?.label || 'AI'} API Key {aiSettings?.key_configured && !aiProviderChanged && <span className="text-emerald-600 font-normal">(key configured ✓ — leave blank to keep it)</span>}
               </span>
               <input
                 type="password"
-                placeholder="sk-ant-..."
+                placeholder={aiSettingsForm.provider === 'gemini' ? 'Google AI Studio API key' : 'sk-ant-...'}
                 autoComplete="off"
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.apiKey}
-                disabled={savingAiSettings}
-                onChange={e => setAiSettingsForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                disabled={savingAiSettings || testingConnection}
+                onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, apiKey: e.target.value })); }}
               />
+              {aiProviderChanged && aiSettings?.key_configured && <span className="mt-1 block text-xs text-amber-700">Enter a new API key for {selectedAiProvider?.label || 'the selected provider'}. Your saved key belongs to {savedAiProvider?.label || 'the previous provider'}.</span>}
             </label>
 
+            {aiSettingsDirty && <p className="text-xs text-slate-600">Save settings before testing the selected provider and model.</p>}
             {testResult && (
               <div className={`text-sm rounded-xl px-3 py-2 border ${testResult.success ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                 {testResult.message}
@@ -1489,7 +1526,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <button
                 type="button"
                 onClick={handleRemoveAiKey}
-                disabled={savingAiSettings || !aiSettings?.key_configured}
+                disabled={savingAiSettings || testingConnection || !aiSettings?.key_configured}
                 className="px-3.5 py-2 text-sm font-medium rounded-xl border-2 border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40 transition-colors"
               >
                 Remove Key
@@ -1497,7 +1534,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <button
                 type="button"
                 onClick={handleTestAiConnection}
-                disabled={savingAiSettings || testingConnection || !aiSettings?.key_configured}
+                disabled={savingAiSettings || testingConnection || !canTestAiConnection}
                 className="px-3.5 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
               >
                 {testingConnection ? 'Testing…' : 'Test Connection'}
@@ -1515,7 +1552,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <button
                 type="button"
                 onClick={handleSaveAiSettings}
-                disabled={savingAiSettings || testingConnection}
+                disabled={savingAiSettings || testingConnection || aiReplacementKeyRequired}
                 className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40"
               >
                 {savingAiSettings ? 'Saving…' : 'Save Settings'}
@@ -1677,7 +1714,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         <h2 ref={intelligenceHeadingRef} tabIndex={-1} className="font-semibold text-slate-800">Document Intelligence Preview</h2>
         {intelligencePreview && (
           <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${intelligencePreview.ai_augmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
-            {intelligencePreview.ai_augmented ? '✨ Enhanced by Claude' : '🧮 Deterministic analysis'}
+            {intelligencePreview.ai_augmented ? '✨ Enhanced by AI' : '🧮 Deterministic analysis'}
           </span>
         )}
         {intelligencePreview && !isEditing && (
@@ -1809,8 +1846,8 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <p className="text-sm text-slate-700">
                 Only the Scope of Work has been uploaded — no MDR / EDDR / WBS to cross-reference.
                 {data.ai_augmented
-                  ? ' Claude will decide which disciplines and HSE studies are actually in scope; review the AI Scope summary below and tick / untick disciplines as needed before generating.'
-                  : ' Enable BYOK / Claude on this project to let the AI decide which disciplines and HSE studies are actually in scope, or curate the discipline list manually below.'}
+                  ? ' AI will decide which disciplines and HSE studies are actually in scope; review the AI Scope summary below and tick / untick disciplines as needed before generating.'
+                  : ' Enable AI BYOK on this project to let the AI decide which disciplines and HSE studies are actually in scope, or curate the discipline list manually below.'}
               </p>
             </div>
           )}
@@ -2991,7 +3028,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           <h2 className="font-semibold text-slate-800">Schedule Narrative</h2>
           <span className={`ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-semibold ${aiAugmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
             {aiAugmented
-              ? <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Executive Summary refined by Claude</>
+              ? <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Executive Summary refined by AI</>
               : <><Calculator className="h-3.5 w-3.5" aria-hidden="true" /> Deterministic narrative</>}
           </span>
         </div>

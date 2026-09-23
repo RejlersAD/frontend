@@ -24,6 +24,7 @@ export const durationEvidenceLabel = (task, row) => {
   if (['source_requirement', 'requirement_needs_review'].includes(status)) return 'Source requirement · review activity timing'
   if (['retained_manual', 'planner', 'manual', 'manual_unverified'].includes(status)) return 'Planner duration · not source verified'
   if (status === 'started_unverified') return 'Started activity retained · duration not source verified'
+  if (status === 'proposed' && (task?.selection_basis === 'all_extracted_requirements' || task?.duration_policy === 'planning_assumptions')) return 'Provisional duration · project date allocation'
   if (status === 'proposed') return task?.field_provenance?.duration_days?.label === 'AI proposal' ? 'AI-proposed duration' : 'Unverified template duration'
   return 'Duration not source verified'
 }
