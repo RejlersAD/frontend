@@ -71,6 +71,14 @@ const HMB_UI_CFG = {
   showUpdateCrossCheck: false,
 };
 
+// Soft-coded default template selection strategy.
+// When no preferred/analysed profile exists, pick the profile with the most
+// mapped streams so a 0-stream sample/placeholder template is never auto-selected
+// (which previously caused imports to capture only the Vapour section).
+const TEMPLATE_DEFAULT_CFG = {
+  preferHighestStreamCount: true, // true = pick max stream_count; false = legacy rows[0] behaviour
+};
+
 const UI = {
   pageBg: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 62%, #eef2f7 100%)',
   shellMaxWidth: 1680,
@@ -604,6 +612,10 @@ const HMBExtractorPage = () => {
         if (prev && rows.some((p) => p.id === prev)) return prev;
         if (analysedId && rows.some((p) => p.id === analysedId)) return analysedId;
         if (data.preferred_template_profile_id && rows.some((p) => p.id === data.preferred_template_profile_id)) return data.preferred_template_profile_id;
+        if (TEMPLATE_DEFAULT_CFG.preferHighestStreamCount) {
+          const best = [...rows].sort((a, b) => (b.stream_count || 0) - (a.stream_count || 0))[0];
+          if (best) return best.id;
+        }
         return rows[0]?.id || null;
       });
     } catch (err) {

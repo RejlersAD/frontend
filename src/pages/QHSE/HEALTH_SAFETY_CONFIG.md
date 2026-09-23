@@ -21,7 +21,8 @@ export const HEALTH_SAFETY_FEATURES = {
   enableIncidentTracking: true,         // Incident monitoring
   enableHighRiskProjects: false,        // High-risk project highlighting
   enableProjectScheduleCheck: false,    // "Project On Schedule" in checklist
-  enableRiskAssessmentView: false       // Risk Assessment tab/view
+  enableRiskAssessmentView: false,      // Risk Assessment tab/view
+  enableManagerSafetyPerformance: false // Manager Safety Performance section (names hidden)
 };
 ```
 
@@ -40,6 +41,13 @@ export const HEALTH_SAFETY_FEATURES = {
   - The "Risk Assessment" tab is hidden from the view selector
   - The Risk Assessment view content is not rendered
 - **Location:** Used in `HealthSafety.jsx` component
+
+### 3. Removed "Manager Safety Performance" Section
+- **Feature Flag:** `enableManagerSafetyPerformance`
+- **Default:** `false` (disabled)
+- **Impact:** The "Manager Safety Performance" card (which listed project manager names such as Pankaj Kumar) no longer appears in the Performance tab; the Safety KPI Distribution chart spans the full width
+- **Location:** Used in `PerformanceView` component in `HealthSafety.jsx`
+- **Added:** 2026-09-23 (privacy — hide individual manager names)
 
 ## How to Re-enable Features
 

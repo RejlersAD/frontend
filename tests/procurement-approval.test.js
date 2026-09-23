@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { activeApprovalStages, isAssignedApprover, canDecideProcurement, approvalSignatureEvidence, purchaseOrderSignatureEvidence } from '../src/utils/procurementApproval.js'
 import { normalizeApproval } from '../src/components/approvals/approvalQueue.js'
+import { canConfigurePurchaseOrderRoute } from '../src/pages/Procurement/purchaseOrderApprovalRouting.js'
 import { displayApprovalWorkflow } from '../src/utils/employeeDisplayName.js'
 
 const assigned = { level: 0, user_id: 12, user_email: 'assigned@example.test', user_name: 'Assigned User', status: 'pending' }
@@ -34,6 +35,23 @@ test('CEO approval history and original source rows remain visible after linking
   const source = { ...ceo, external: true, source: 'signed_purchase_requisition_pdf', status: 'not_recorded', role: 'General Manager' }
   assert.deepEqual(displayApprovalWorkflow([source], 'existing-po', true), [source])
   assert.equal(displayApprovalWorkflow([source], 'existing-po')[0], source)
+})
+
+test('explicit PR PO-applicable choice governs its CEO display without reassigning VP Delivery', () => {
+  const vicePresident = { level: 4, user_name: 'Mohamad', role: 'VP Delivery', status: 'pending' }
+  const chiefExecutive = { level: 5, user_name: 'Jarmo Suominen', role: 'General Manager', status: 'pending' }
+  const workflow = [vicePresident, chiefExecutive]
+  const displayed = displayApprovalWorkflow(workflow, 'RAD-PRJ-PUR-9002_2026', false)
+  assert.equal(displayed.length, 2)
+  assert.equal(displayed[0], vicePresident)
+  assert.equal(displayed[1].user_name, 'Jarmo Suominen')
+  assert.equal(displayed[1].role, 'CEO')
+  assert.equal(chiefExecutive.role, 'General Manager')
+  assert.deepEqual(displayApprovalWorkflow(workflow, '', true), [vicePresident])
+  assert.deepEqual(displayApprovalWorkflow(workflow, 'legacy-linked-po'), [vicePresident])
+  assert.equal(displayApprovalWorkflow(workflow, '').length, 2)
+  const source = { ...chiefExecutive, external: true, source: 'signed_purchase_requisition_pdf' }
+  assert.deepEqual(displayApprovalWorkflow([source], 'linked-po', true), [source])
 })
 
 test('only the lowest pending level is active, retaining original fallback order and parallel assignments', () => {
@@ -78,6 +96,28 @@ test('verified original PDF evidence is retained and never an active workflow st
   assert.deepEqual(activeApprovalStages([{ ...source, status: 'pending' }, assigned]), [assigned])
   const poSource = { evidence_document_id: 'doc-1', signature_verified: true, status: 'Approved' }
   assert.equal(purchaseOrderSignatureEvidence({ approval_log: [poSource], approval_signature: '/original-po.pdf' }).signature, '/original-po.pdf')
+})
+
+test('converted PR history never becomes the active PO stage or its final signature', () => {
+  const source = { external: true, source: 'purchase_requisition', source_pr_id: 'pr-1', level: 5,
+    approver: 'VP Delivery', status: 'Approved', signature: '/pr-signature.png', signature_verified: true }
+  assert.deepEqual(activeApprovalStages([{ ...source, status: 'pending' }, assigned]), [assigned])
+  assert.equal(purchaseOrderSignatureEvidence({ approval_log: [source] }).verified, false)
+  assert.equal(purchaseOrderSignatureEvidence({ approval_log: [source, assigned] }).stage, assigned)
+  assert.equal(purchaseOrderSignatureEvidence({ approval_log: [source, signed] }).signature, signed.signature)
+})
+
+test('only new or empty native Draft routes are configurable without replacing saved evidence', () => {
+  assert.equal(canConfigurePurchaseOrderRoute(null), true)
+  const draft = { status: 'draft', approval_log: [], pr_reference: 'pr-1' }
+  assert.equal(canConfigurePurchaseOrderRoute(draft), true)
+  for (const evidence of [
+    { status: 'sent' }, { approval_log: [assigned] }, { approved_by: 12 },
+    { approved_by_name: 'Historical signer' }, { approved_at: '2026-09-23T08:00:00Z' },
+    { approved_date: '2026-09-23' }, { approval_signature: '/signed.png' },
+    { attachments: [{ type: 'signed_purchase_order_pdf' }] },
+    { attachments: [{ type: 'po_excel_import_source' }] },
+  ]) assert.equal(canConfigurePurchaseOrderRoute({ ...draft, ...evidence }), false)
 })
 test('PO final signature requires complete prior levels and no review conflicts', () => {
   const final = { ...signed, stage: 'Final Management Sign-off' }
