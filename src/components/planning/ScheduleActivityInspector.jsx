@@ -49,6 +49,7 @@ export default function ScheduleActivityInspector({ task, displayTask, plan, tas
   ])
   const references = [...(task.source_references || []), ...(task.source_date_references || []), ...(task.source_total_float_references || []), ...durationReferences(task, durationRow), ...provenanceReferences]
     .filter((reference, index, all) => all.findIndex(item => JSON.stringify(item) === JSON.stringify(reference)) === index)
+  const renamedRequirement = Boolean(task.activity_name_basis && task.source_title && task.source_title !== task.title)
   const wbs = (plan.wbs_nodes || []).find(node => sameId(node.id, task.wbs_node_id))
   const deliverable = (plan.deliverables || []).find(item => sameId(item.id, task.parent_deliverable_id)
     || (item.workflow_task_ids || item.task_ids || []).some(taskId => sameId(taskId, task.id)))
@@ -115,6 +116,11 @@ export default function ScheduleActivityInspector({ task, displayTask, plan, tas
           <div><dt>Owner</dt><dd>{owner}</dd></div>
           {task.due_date && task.due_date !== task.planned_finish_date && <div><dt>Employee due date</dt><dd>{date(task.due_date)}</dd></div>}
         </dl>
+        {renamedRequirement && <details className="sai-evidence"><summary>Original requirement</summary>
+          <p>The activity name is derived from this requirement. Review the original wording and source context when confirming the scope.</p>
+          <p>{task.source_title}</p>
+          <References sources={task.source_references || []} />
+        </details>}
         {warning && <section className="sai-notice" aria-label={warning.title}><AlertTriangle size={17} aria-hidden="true" /><div><strong>{warning.title}</strong><p>{warning.text}</p><button type="button" disabled={busy || (warning.logic ? logicLocked : locked)} onClick={warning.run}>{warning.action}</button></div></section>}
         {sourceDates && <section className="sai-source-note" aria-label="Source dates"><h5>Source dates</h5><p>{dateEvidenceLabel(displayTask)}</p></section>}
         <details className="sai-evidence"><summary>Duration evidence</summary><ActivityDurationEvidence task={task} row={durationRow} /></details>
