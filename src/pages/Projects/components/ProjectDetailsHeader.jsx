@@ -23,7 +23,7 @@ const AREAS = [
 const STATUS = { planning: 'Planning', active: 'In progress', on_hold: 'On hold', completed: 'Completed', cancelled: 'Cancelled' }
 
 export default function ProjectDetailsHeader({ projects, selectedProject, selectedProjectId, onSelectProject, loading, error,
-  phaseFlags, onSelectView, onNavigate, onCreate, onCreateWithAI, onEdit, onImport, onArchive, onRefresh, onExport,
+  phaseFlags, onSelectView, onNavigate, onCreate, onEdit, onImport, onArchive, onRefresh, onExport,
   performance, onOpenDialog, activeView = 'project-dashboard', scheduleMode = 'planner',
   schedulePerformance, onUpdateSchedule, commercialPerformance, onUpdateCommercial,
   milestoneControl, onAddMilestone, riskControl, onAddRiskRecord, estimateControl, onNewEstimate,
@@ -125,7 +125,6 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
           <button type="button" disabled={!model} onClick={() => run(() => onOpenDialog('data-quality'))}><ShieldCheck size={15} />Data quality</button>
           <button type="button" onClick={() => run(onImport)}><Upload size={15} />Import from QHSE</button>
           <button type="button" onClick={() => run(onCreate)}><Plus size={15} />New project</button>
-          {onCreateWithAI && <button type="button" onClick={() => run(onCreateWithAI)}><Sparkles size={15} />Create project with AI</button>}
           {extras.map(area => <button type="button" key={area.key} onClick={() => run(() => area.route ? onNavigate(area.route) : onSelectView(area.key))}>{area.label}</button>)}
           <button type="button" className="pd-danger-action" disabled={!project} onClick={() => run(onArchive)}>Delete project</button>
         </div></details>

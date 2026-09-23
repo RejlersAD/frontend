@@ -1,7 +1,6 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useId, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, FileText, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react'
-import { agreementError, agreementWorkspaceService } from '../../../services/agreementWorkspace.service'
 import './AgreementWorkspace.css'
 
 export const AGREEMENT_AREAS = [
@@ -132,46 +131,5 @@ export function AgreementSetupDialog({ open, workspace, view, onClose }) {
   return <dialog className="aw-dialog aw-setup-dialog" ref={ref} aria-labelledby={`${id}-title`} onCancel={event => { event.preventDefault(); onClose() }}>
     <header><div><h2 id={`${id}-title`}>Analyze &amp; set up project</h2><p>Choose an agreement to prepare project inputs, or review the saved analysis.</p></div><button type="button" className="aw-button aw-icon" aria-label="Close agreement setup" onClick={onClose}><X size={18} aria-hidden="true" /></button></header>
     <div className="aw-setup-body"><AgreementWorkspace workspace={workspace} view={view} embedded /></div>
-  </dialog>
-}
-
-export function AgreementCreateDialog({ initialValues = {}, onClose, onCreated }) {
-  const ref = useRef(null)
-  const controller = useRef(null)
-  const id = useId()
-  const [file, setFile] = useState(null)
-  const [values, setValues] = useState({ name: initialValues.name || '', code: initialValues.code || '', ai_api_key: '', ai_model: '' })
-  const [token, setToken] = useState(requestId)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    const dialog = ref.current, opener = document.activeElement
-    dialog.showModal()
-    return () => { controller.current?.abort(); dialog.close(); if (opener?.isConnected) opener.focus({ preventScroll: true }) }
-  }, [])
-  const updateValue = (field, value) => { setValues(current => ({ ...current, [field]: value })); setToken(requestId()) }
-  const create = async event => {
-    event.preventDefault()
-    if (!file || fileError(file) || controller.current) return
-    const request = new AbortController()
-    controller.current = request; setBusy(true); setError('')
-    try {
-      const data = await agreementWorkspaceService.create(file, values, token, request.signal)
-      if (!request.signal.aborted) await onCreated(data)
-    } catch (reason) {
-      if (!request.signal.aborted) setError(agreementError(reason))
-    } finally {
-      if (!request.signal.aborted) { controller.current = null; setBusy(false) }
-    }
-  }
-  return <dialog className="aw-dialog" ref={ref} aria-labelledby={`${id}-title`} onCancel={event => { event.preventDefault(); if (!busy) onClose() }}>
-    <header><div><h2 id={`${id}-title`}>Create project from an agreement</h2><p>Upload once to prepare all eight project work areas.</p></div><button type="button" className="aw-button aw-icon" aria-label="Close agreement setup" disabled={busy} onClick={onClose}><X size={18} aria-hidden="true" /></button></header>
-    <form onSubmit={create}><div className="aw-dialog-body">
-      {(error || fileError(file)) && <p className="aw-error" role="alert">{fileError(file) || error}</p>}
-      <AgreementFileInput file={file} onChange={value => { setFile(value); setToken(requestId()) }} disabled={busy} />
-      <div className="aw-fields"><label>Project name <span>(optional)</span><input value={values.name} maxLength={255} disabled={busy} onChange={event => updateValue('name', event.target.value)} /></label><label>Project code <span>(optional)</span><input value={values.code} maxLength={50} disabled={busy} onChange={event => updateValue('code', event.target.value)} /></label></div>
-      <details className="aw-connection"><summary>Connect Anthropic for AI suggestions (optional)</summary><p>Use a key for this project. RADAI stores it securely; existing projects use their own saved connection.</p><div className="aw-fields"><label>Anthropic API key<input type="password" autoComplete="new-password" spellCheck={false} value={values.ai_api_key} disabled={busy} onChange={event => updateValue('ai_api_key', event.target.value)} /></label><label>Anthropic model <span>(optional)</span><input autoComplete="off" spellCheck={false} value={values.ai_model} maxLength={100} disabled={busy} placeholder="Use configured project default" onChange={event => updateValue('ai_model', event.target.value)} /></label></div></details>
-      <p className="aw-note">RADAI saves a draft project and analyzes the agreement in the background. Document facts include page references; unresolved dates and other exceptions stay visible for review.</p>
-    </div><footer><button type="button" className="aw-button" disabled={busy} onClick={onClose}>Cancel</button><button type="submit" className="aw-button aw-primary" disabled={busy || !file || Boolean(fileError(file))}>{busy ? <><Loader2 size={16} className="aw-spin" aria-hidden="true" />Uploading agreement…</> : <><Sparkles size={16} aria-hidden="true" />Analyze &amp; set up project</>}</button></footer></form>
   </dialog>
 }

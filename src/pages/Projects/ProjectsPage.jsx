@@ -12,8 +12,7 @@ import ProjectControlHeader from './components/ProjectControlHeader'
 import ProjectPortfolio from './ProjectPortfolio'
 import PhaseStubCard from './components/PhaseStubCard'
 import ProjectFormModal from './components/ProjectFormModal'
-import AIProjectSetupDialog from './components/AIProjectSetupDialog'
-import { AgreementCreateDialog, AgreementSetupDialog } from './components/AgreementWorkspace'
+import { AgreementSetupDialog } from './components/AgreementWorkspace'
 import useAgreementWorkspace from '../../hooks/useAgreementWorkspace'
 import QhseImportModal from './components/QhseImportModal'
 import ProjectDetailsOverview from './ProjectDetailsOverview'
@@ -91,8 +90,6 @@ export default function ProjectsPage() {
   const [loadingFlags, setLoadingFlags] = useState(true)
   const [error, setError] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
-  const [aiSetup, setAiSetup] = useState(null)
-  const [agreementSetup, setAgreementSetup] = useState(null)
   const [agreementReviewOpen, setAgreementReviewOpen] = useState(false)
   const [formMode, setFormMode] = useState('create')
   const [editingProject, setEditingProject] = useState(null)
@@ -343,7 +340,6 @@ export default function ProjectsPage() {
         onSelectView={handleSelectView}
         onNavigate={navigate}
         onCreate={handleOpenCreate}
-        onCreateWithAI={() => setAiSetup({ initialValues: {} })}
         onAnalyzeAgreement={() => setAgreementReviewOpen(true)}
         agreementStatus={agreementStatus}
         onEdit={handleOpenEdit}
@@ -456,30 +452,7 @@ export default function ProjectsPage() {
         project={editingProject}
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmitForm}
-        onAISetup={values => { setFormOpen(false); setAiSetup({ initialValues: values }) }}
-        onAgreementSetup={values => { setFormOpen(false); setAgreementSetup(values) }}
       />
-
-      {agreementSetup && <AgreementCreateDialog initialValues={agreementSetup} onClose={() => setAgreementSetup(null)} onCreated={result => {
-        const project = result.enterprise_project
-        if (!project?.id) throw new Error('The project setup response was incomplete. Refresh the portfolio to check your saved project.')
-        setProjects(current => [...current.filter(item => String(item.id) !== String(project.id)), project])
-        setSelectedProjectId(project.id)
-        setAgreementSetup(null)
-        setToast({ type: 'success', message: `Agreement uploaded. ${project.name || 'Your project'} is being prepared.` })
-        navigate(`/projects?project=${project.id}`)
-        setRefreshVersion(value => value + 1)
-      }} />}
-
-      {aiSetup && <AIProjectSetupDialog initialValues={aiSetup.initialValues} onClose={() => setAiSetup(null)} onCreated={result => {
-        const project = result.enterprise_project
-        setProjects(current => [...current.filter(item => String(item.id) !== String(project.id)), project])
-        setSelectedProjectId(project.id)
-        setAiSetup(null)
-        setToast({ type: 'success', message: `Created ${project.name} with its draft plan, schedule and assignments.` })
-        navigate(`/projects?project=${project.id}&view=plan-baseline&scheduleMode=planner`)
-        setRefreshVersion(value => value + 1)
-      }} />}
 
       <QhseImportModal
         open={qhseImportOpen}
