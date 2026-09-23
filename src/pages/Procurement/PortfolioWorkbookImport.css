@@ -4,6 +4,8 @@
 .plw-workbook-source strong { color:var(--pl-text); font-weight:600; }
 .plw-workbook-source a { color:var(--pl-blue); text-underline-offset:3px; }
 .plw-workbook-loading { flex-shrink:0; color:var(--pl-muted); font-size:12px; }
+.plw-workbook-message { flex:1; min-width:0; }
+.plw-workbook-message p { margin-top:4px; }
 .project-links-workspace:has(.portfolio-workbook-upload form) { height:auto; min-height:100%; }
 .project-links-workspace:has(.portfolio-workbook-upload form) .plw-columns { min-height:520px; }
 @media print { .plw-workbook-import,.plw-workbook-loading { display:none !important; } }

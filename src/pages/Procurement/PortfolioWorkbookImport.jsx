@@ -9,7 +9,9 @@ async function readWorkbook(signal) {
   const { data } = await apiClient.get('/dashboard/executive/portfolio-workbook/', {
     params: { limit: 1 }, signal, suppressErrorToast: true,
   });
-  if (typeof data?.can_upload !== 'boolean') throw new Error('Workbook status is unavailable.');
+  if (data?.status === 'error' || typeof data?.can_upload !== 'boolean') {
+    throw new Error('Workbook status is unavailable.');
+  }
   return data;
 }
 
@@ -31,7 +33,7 @@ export default function PortfolioWorkbookImport() {
       if (!controller.signal.aborted) setWorkbook(data);
     }).catch(problem => {
       if (controller.signal.aborted) return;
-      if ([401, 403].includes(problem.response?.status)) setWorkbook({ can_upload: false });
+      if (problem.response?.status === 403) setWorkbook({ can_upload: false });
       else setError(true);
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -44,10 +46,13 @@ export default function PortfolioWorkbookImport() {
 
   if (loading) return <div className="plw-workbook-loading" role="status">Loading workbook upload options…</div>;
   if (error) return <section className="plw-message plw-error" aria-label="Portfolio workbook upload">
-    <span role="alert">Workbook upload options could not be loaded.</span>
+    <div className="plw-workbook-message"><h2>Portfolio workbook upload</h2><p role="alert">Workbook upload options could not be loaded. Retry to check your access.</p></div>
     <button type="button" className="plw-button" onClick={() => setRevision(value => value + 1)}>Retry workbook options</button>
   </section>;
-  if (!workbook?.can_upload) return null;
+  if (!workbook?.can_upload) return <section className="plw-message" aria-label="Portfolio workbook upload">
+    <div className="plw-workbook-message"><h2>Portfolio workbook upload</h2><p>Your account does not have portfolio upload access. A RADAI administrator can review your permissions.</p></div>
+    <button type="button" className="plw-button" onClick={() => setRevision(value => value + 1)}>Check access again</button>
+  </section>;
 
   const source = workbook.source;
   return <section className="plw-workbook-import" aria-label="Portfolio workbook management" data-testid="portfolio-workbook-import">
