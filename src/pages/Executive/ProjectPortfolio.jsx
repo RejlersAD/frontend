@@ -7,6 +7,7 @@ import { HEALTH_LABELS, PortfolioHealthBadge, PortfolioMetricValue, numberPresen
 import { PortfolioConcentration, PortfolioDeliveryCapacity, PortfolioHealthSummary, PortfolioMilestones } from './PortfolioSidePanels';
 import { PortfolioDeliveryScatter, PortfolioMarginScheduleTrend } from './PortfolioReferenceCharts';
 import PortfolioKpiGraphic from './PortfolioKpiGraphic';
+import PortfolioRevenueDashboard from './PortfolioRevenueDashboard';
 import './ProjectPortfolio.css';
 
 const EMPTY_PROJECTS = [];
@@ -50,13 +51,16 @@ function PortfolioOutcomes({ portfolio, currency, onExplain }) {
   })}</section>;
 }
 
-function PortfolioInterventionBanner({ portfolio }) {
+function PortfolioInterventionLauncher({ portfolio }) {
   const status = portfolio.actions_status || portfolio.status;
-  const known = reported(status) && numberPresent(portfolio.action_count);
+  const known = reported(status) && numberPresent(portfolio.action_count) && Number(portfolio.action_count) >= 0;
   const count = known ? Number(portfolio.action_count) : null;
-  const critical = reported(portfolio.health?.status) ? portfolio.health?.counts?.critical : null;
-  const owners = reported(status) ? [...new Set((portfolio.actions || []).map(action => action.owner).filter(Boolean))] : [];
-  return <section className="pp-intervention-banner" aria-label="Portfolio interventions requiring attention"><ExclamationTriangleIcon aria-hidden="true" /><strong>{count === null ? status === 'restricted' ? 'Portfolio interventions: access restricted' : 'Portfolio interventions: coverage incomplete' : count === 0 ? 'No recorded portfolio interventions' : `${formatNumber(count)} portfolio ${count === 1 ? 'intervention requires' : 'interventions require'} attention`}</strong><span className="pp-banner-context">{numberPresent(critical) ? `${formatNumber(critical)} critical ${Number(critical) === 1 ? 'project' : 'projects'}` : 'Health not assessed'}{portfolio.actions_truncated ? ' · returned preview limited' : ''}</span><span className="pp-banner-owner"><b>Owners</b> {owners.length ? owners.slice(0, 2).join(', ') + (owners.length > 2 ? ` +${owners.length - 2}` : '') : 'Unassigned'}</span><button className="cc-button cc-button--primary" type="button" onClick={reviewPortfolioInterventions}>Review {count > 0 ? `${formatNumber(count)} ` : ''}interventions</button></section>;
+  const coverage = status === 'restricted' ? 'Restricted' : status === 'error' ? 'Unavailable' : status === 'partial' ? 'Incomplete' : 'Not reported';
+  const label = count === null ? `Interventions · ${coverage}` : `${formatNumber(count)} ${count === 1 ? 'intervention' : 'interventions'}`;
+  const Icon = count > 0 ? ExclamationTriangleIcon : count === 0 ? CheckCircleIcon : InformationCircleIcon;
+  return <button type="button" className={`pp-intervention-launcher cc-screen-only${count > 0 ? ' pp-intervention-launcher--attention' : ''}`} data-testid="portfolio-intervention-launcher" aria-label={count === null ? `Review portfolio interventions: ${coverage.toLowerCase()}` : `Review ${formatNumber(count)} portfolio ${count === 1 ? 'intervention' : 'interventions'}`} aria-controls="pp-decisions" title={`${label}${status === 'partial' && count !== null ? ' · Partial coverage' : ''}${portfolio.actions_truncated ? ' · Returned preview limited' : ''}`} onClick={reviewPortfolioInterventions}>
+    <Icon aria-hidden="true" /><span>{label}</span>{status === 'partial' && count !== null && <small>Partial</small>}<ArrowRightIcon aria-hidden="true" />
+  </button>;
 }
 
 function PortfolioDecisions({ report, portfolio, onExplain, printing }) {
@@ -168,7 +172,8 @@ function PortfolioControls({ portfolio, onExplain, onNavigate }) {
   return <section className="pp-controls" aria-label="Portfolio controls"><h2>Portfolio controls</h2>{items.map(([id, label, value, description, known]) => <button type="button" key={id} onClick={() => onExplain({ ...definition(id, label, description), status: known ? 'available' : 'unavailable' })}>{known ? <CheckCircleIcon className="pp-control-known" /> : <InformationCircleIcon />}<span>{label} <strong>{value}</strong></span></button>)}<button type="button" className="cc-text-button" onClick={() => onNavigate('risk')}>View governance status<ArrowRightIcon /></button></section>;
 }
 
-export default function ProjectPortfolio({ report, portfolio, currency = 'AED', onExplain, onNavigate, printing = false }) {
+export default function ProjectPortfolio({ report, portfolio, currency = 'AED', onExplain, onNavigate, printing = false, onRevenueSnapshotChange, revenueNavigationRequest }) {
   const registerRef = useRef(null);
-  return <div className="portfolio-performance" data-testid="project-portfolio"><PortfolioOutcomes portfolio={portfolio} currency={currency} onExplain={onExplain} /><PortfolioInterventionBanner portfolio={portfolio} /><div className="pp-reference-grid"><DeliveryOutlook portfolio={portfolio} currency={currency} onExplain={onExplain} /><PortfolioHealthSummary portfolio={portfolio} onExplain={onExplain} printing={printing} /><PortfolioRegister portfolio={portfolio} printing={printing} registerRef={registerRef} /><div className="pp-panel pp-interventions-panel"><PortfolioDecisions report={report} portfolio={portfolio} onExplain={onExplain} printing={printing} /><PortfolioMilestones portfolio={portfolio} onExplain={onExplain} printing={printing} /></div><MarginScheduleTrend portfolio={portfolio} onExplain={onExplain} /><PortfolioDeliveryCapacity portfolio={portfolio} onExplain={onExplain} onNavigate={onNavigate} /></div><PortfolioControls portfolio={portfolio} onExplain={onExplain} onNavigate={onNavigate} /><details className="pp-additional-details" open={printing || undefined}><summary>Contract concentration and reporting basis</summary><PortfolioConcentration portfolio={portfolio} onExplain={onExplain} printing={printing} /></details><p className="pp-scope-note">All figures are provisional until portfolio reporting closes. {currency} amount cards use original currencies; no FX conversion is applied. Counts and health cover all accessible open projects.</p></div>;
+  if (portfolio.revenue_dashboard?.enabled) return <PortfolioRevenueDashboard initial={portfolio.revenue_dashboard} onExplain={onExplain} printing={printing} onSnapshotChange={onRevenueSnapshotChange} navigationRequest={revenueNavigationRequest} renderInterventions={risk => <PortfolioInterventionLauncher portfolio={risk} />} />;
+  return <div className="portfolio-performance" data-testid="project-portfolio"><PortfolioOutcomes portfolio={portfolio} currency={currency} onExplain={onExplain} />{!printing && <PortfolioInterventionLauncher portfolio={portfolio} />}<div className="pp-reference-grid"><DeliveryOutlook portfolio={portfolio} currency={currency} onExplain={onExplain} /><PortfolioHealthSummary portfolio={portfolio} onExplain={onExplain} printing={printing} /><PortfolioRegister portfolio={portfolio} printing={printing} registerRef={registerRef} /><div className="pp-panel pp-interventions-panel"><PortfolioDecisions report={report} portfolio={portfolio} onExplain={onExplain} printing={printing} /><PortfolioMilestones portfolio={portfolio} onExplain={onExplain} printing={printing} /></div><MarginScheduleTrend portfolio={portfolio} onExplain={onExplain} /><PortfolioDeliveryCapacity portfolio={portfolio} onExplain={onExplain} onNavigate={onNavigate} /></div><PortfolioControls portfolio={portfolio} onExplain={onExplain} onNavigate={onNavigate} /><details className="pp-additional-details" open={printing || undefined}><summary>Contract concentration and reporting basis</summary><PortfolioConcentration portfolio={portfolio} onExplain={onExplain} printing={printing} /></details><p className="pp-scope-note">All figures are provisional until portfolio reporting closes. {currency} amount cards use original currencies; no FX conversion is applied. Counts and health cover all accessible open projects.</p></div>;
 }
