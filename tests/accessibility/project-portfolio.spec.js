@@ -242,7 +242,10 @@ test('advanced health filters, health view, bulk selection and menu actions rema
   await expect(bodyRows(page).getByRole('checkbox', { checked: true })).toHaveCount(12)
   await region(page).getByRole('button', { name: 'Clear selection', exact: true }).click()
   const before = state.requests.filter(request => request.path === '/api/v1/projects/').length
-  await region(page).getByRole('button', { name: 'More portfolio actions', exact: true }).click()
+  const portfolioActions = region(page).getByRole('button', { name: 'More portfolio actions', exact: true })
+  // Menus close on scroll; finish moving from the table footer before opening one.
+  await portfolioActions.scrollIntoViewIfNeeded()
+  await portfolioActions.click()
   await (await popover(page, 'More portfolio actions')).getByRole('button', { name: 'Refresh projects', exact: true }).click()
   await expect.poll(() => state.requests.filter(request => request.path === '/api/v1/projects/').length).toBeGreaterThan(before)
   await expect(bodyRows(page)).toHaveCount(12)
