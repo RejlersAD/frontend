@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowDownTrayIcon,
   ArrowLeftIcon,
@@ -249,12 +249,13 @@ const InvoiceRegisterDetail = ({ direction }) => {
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [identityConflict, setIdentityConflict] = useState(false);
   const incoming = direction === 'incoming';
   const listPath = incoming ? '/finance/incoming-invoices' : '/finance/outgoing-invoices';
   const load = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setIdentityConflict(false);
     try { setInvoice(incoming ? await financeService.getInvoice(id) : await invoiceTrackerService.retrieve(id)); }
-    catch (requestError) { setError(errorText(requestError)); }
+    catch (requestError) { setError(errorText(requestError)); setIdentityConflict(!incoming && requestError?.response?.status === 409 && requestError?.response?.data?.code === 'invoice_identity_conflict'); }
     finally { setLoading(false); }
   }, [id, incoming]);
   useEffect(() => { load(); }, [load]);
@@ -281,7 +282,7 @@ const InvoiceRegisterDetail = ({ direction }) => {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1600px] p-4 lg:p-7">{loading && !invoice ? <div className="flex h-72 items-center justify-center text-sm text-slate-500"><ArrowPathIcon className="mr-2 h-5 w-5 animate-spin" /> Loading complete invoice record…</div> : error ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-700"><p className="font-bold">Invoice could not be opened</p><p className="mt-1 text-sm">{error}</p><button onClick={() => navigate(listPath)} className="mt-4 rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white">Return to register</button></div> : incoming ? <IncomingDetail invoice={invoice} /> : <OutgoingDetail invoice={invoice} onChanged={load} />}</main>
+      <main className="mx-auto max-w-[1600px] p-4 lg:p-7">{loading && !invoice ? <div className="flex h-72 items-center justify-center text-sm text-slate-500"><ArrowPathIcon className="mr-2 h-5 w-5 animate-spin" /> Loading complete invoice record…</div> : error ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-700"><p className="font-bold">Invoice could not be opened</p><p className="mt-1 text-sm">{error}</p><div className="mt-4 flex flex-wrap gap-3">{identityConflict && <Link to={`${listPath}?review_duplicates=${encodeURIComponent(id)}`} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white">Review duplicates for invoice ID {id}</Link>}<button onClick={() => navigate(listPath)} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold">Return to register</button></div></div> : incoming ? <IncomingDetail invoice={invoice} /> : <OutgoingDetail invoice={invoice} onChanged={load} />}</main>
     </div>
   );
 };

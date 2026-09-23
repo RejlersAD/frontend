@@ -14,7 +14,7 @@ const METRICS = [
 const STATUSES = [['paid', 'Paid'], ['cancelled', 'Cancelled'], ['pending', 'Pending'], ['new', 'New'], ['other', 'Other statuses']];
 const available = summary => summary?.status === 'available' && summary?.schema_version === '1.0';
 const countLabel = value => financeCount(value)?.toLocaleString('en-GB') ?? '—';
-const stateMessage = (summary, loading) => loading ? 'Loading workbook summary…' : summary?.status === 'restricted' ? 'Workbook summary access is restricted.' : 'Workbook summary is unavailable.';
+const stateMessage = (summary, loading) => loading ? 'Loading workbook summary…' : summary?.status === 'restricted' ? 'Workbook summary access is restricted.' : typeof summary?.reason === 'string' && summary.reason.trim() ? summary.reason : 'Workbook summary is unavailable.';
 
 function WorkbookSource({ summary }) {
   const source = summary.source || {};
