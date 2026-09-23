@@ -8,6 +8,9 @@ import { formatDate } from './executivePresentation';
 import { CapacityChart, RevenueBreakdownBars, RevenueForecastChart } from './PortfolioRevenueCharts';
 import { REVENUE_REPORTED, revenueDecimal, revenueIdentity, revenueMetricNote, revenueMoney, revenueMonth, revenueNumber, revenuePercent } from './portfolioRevenuePresentation';
 import PortfolioRevenueOverview, { compactRevenue } from './PortfolioRevenueOverview';
+import usePortfolioInvoices from './usePortfolioInvoices';
+import PortfolioRecordedInvoices from './PortfolioRecordedInvoices';
+import PortfolioProjectConnections, { ProjectConnectionLinks, ProjectConnectionSummary } from './PortfolioProjectConnections';
 import './PortfolioRevenueDashboard.css';
 
 const PAGE_SIZE = 10;
@@ -19,7 +22,7 @@ const HEADLINES = [
 ];
 const BREAKDOWNS = [['business_unit', 'Business unit'], ['client', 'Client'], ['project_manager', 'Project manager']];
 const BREAKDOWN_FIELDS = [['actual_revenue', 'Actual revenue'], ['forecast_revenue', 'Current forecast'], ['pm_forecast', 'PM forecast'], ['backlog', 'Backlog'], ['poc_risk', 'POC risk']];
-const VIEWS = [['overview', 'Revenue overview'], ['projects', 'Projects & Delivery'], ['pm', 'PM Performance'], ['risk', 'Risk & Claims'], ['invoice', 'Invoice Control'], ['capacity', 'Capacity']];
+const VIEWS = [['overview', 'Revenue overview'], ['projects', 'Projects & Delivery'], ['pm', 'PM Performance'], ['risk', 'Risk & Claims'], ['invoice', 'Invoice Control'], ['capacity', 'Capacity'], ['connections', 'Project connections']];
 const HEADLINE_ICONS = { total_revenue_actual: ChartBarIcon, current_forecast: ArrowTrendingUpIcon, pm_forecast: UserGroupIcon, variance: ViewfinderCircleIcon, total_backlog: RectangleStackIcon, total_poc_risk: ExclamationTriangleIcon };
 
 function Explain({ metric, onExplain, label }) {
@@ -83,13 +86,14 @@ function Progress({ poc, eddr }) {
   return <div className="prv-progress-pair">{[['POC', poc], ['EDDR', eddr]].map(([label, value]) => <div key={label}><span>{label}</span><i>{revenueNumber(value) !== null && <b style={{ width: `${Math.max(0, Math.min(100, Number(value)))}%` }} />}</i><strong>{revenuePercent(value)}</strong></div>)}</div>;
 }
 
-function ProjectRegister({ data, page, onPage, printing, onExplain }) {
+function ProjectRegister({ data, page, onPage, printing, onExplain, onReviewConnections }) {
   const source = data.projects || {};
   const rows = Array.isArray(source.rows) ? source.rows : [];
   const visible = printing ? rows : rows.slice(0, PAGE_SIZE);
   const total = Number(source.total_rows) || 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const columns = ['Project / client', 'PM / business unit', 'Contract', 'Recognized to date', 'Actual revenue', 'Current forecast', 'PM forecast', 'Variance', 'Backlog', 'POC / EDDR', 'Forecast margin', 'Forecast finish'];
+  const connections = new Map((data.connections?.rows || []).map(row => [String(row.portfolio_row_id), row]));
+  const columns = ['Project / client', 'PM / business unit', 'Contract', 'Recognized to date', 'Actual revenue', 'Current forecast', 'PM forecast', 'Variance', 'Backlog', 'POC / EDDR', 'Forecast margin', 'Forecast finish', 'Connected records'];
   const explainProject = row => onExplain?.({ id: `source-project-${row.id}`, label: row.title || revenueIdentity(row), metrics: [
     ['Revenue & delivery', `${revenueIdentity(row)}. ${row.client || 'Client not reported'}. Cumulative recognized revenue AED ${revenueMoney(row.recognized_revenue_aed)}. POC ${revenuePercent(row.poc_pct)}; EDDR ${revenuePercent(row.eddr_pct)}. Target margin ${revenuePercent(row.target_margin_pct)}; forecast margin ${revenuePercent(row.forecast_margin_pct)}. Start ${formatDate(row.start_date)}; contractual finish ${formatDate(row.contractual_finish)}; forecast finish ${formatDate(row.forecast_finish)}.`],
     ['Delay & contract exposure', `LD exposure AED ${revenueMoney(row.ld_exposure_aed)}; prolongation AED ${revenueMoney(row.prolongation_cost_aed)}. LD possible: ${row.ld_possible ?? 'Not reported'}; frequency: ${row.ld_frequency || 'Not reported'}; minimum ${revenuePercent(row.ld_min_pct)}, maximum ${revenuePercent(row.ld_max_pct)}. Delay ${revenueDecimal(row.delay_days)} days. Extension resources per day ${revenueDecimal(row.extension_resources_per_day)}; hourly cost AED ${revenueMoney(row.extension_cost_per_hour_aed)}.`],
@@ -100,7 +104,7 @@ function ProjectRegister({ data, page, onPage, printing, onExplain }) {
       <th scope="row"><button type="button" className="prv-project-link" onClick={() => explainProject(row)}>{row.title || revenueIdentity(row)}</button><small>{revenueIdentity(row)} · {row.client || 'Client not reported'}</small></th>
       <td>{row.pm || 'Unassigned'}<small>{row.business_unit || 'Not assigned'}</small></td>
       {['contract_value_aed', 'recognized_revenue_aed', 'actual_revenue', 'forecast_revenue', 'pm_forecast', 'variance', 'backlog'].map(field => <td key={field}><Money value={row[field]} signed={field === 'variance'} /></td>)}
-      <td><Progress poc={row.poc_pct} eddr={row.eddr_pct} /></td><td>{revenuePercent(row.forecast_margin_pct)}</td><td>{row.forecast_finish ? formatDate(row.forecast_finish) : '—'}</td>
+      <td><Progress poc={row.poc_pct} eddr={row.eddr_pct} /></td><td>{revenuePercent(row.forecast_margin_pct)}</td><td>{row.forecast_finish ? formatDate(row.forecast_finish) : '—'}</td><td><ProjectConnectionLinks connection={connections.get(String(row.id))} onReview={onReviewConnections} /></td>
     </tr>)}</tbody></table></div> : <EmptyState title="No projects match this scope" detail="Change the business unit, client, project manager or search filters." />}
     <div className="prv-pagination"><span>{visible.length ? `${page * PAGE_SIZE + 1}–${page * PAGE_SIZE + visible.length} of ${revenueDecimal(total)} rows` : '0 rows'}</span>{!printing && <nav aria-label="Revenue project pages"><button type="button" aria-label="Previous revenue project page" disabled={page === 0} onClick={() => onPage(page - 1)}><ChevronLeftIcon /></button><span>Page {page + 1} of {pages}</span><button type="button" aria-label="Next revenue project page" disabled={page + 1 >= pages} onClick={() => onPage(page + 1)}><ChevronRightIcon /></button></nav>}<span>Totals cover all matching rows</span></div>
     {printing && total > visible.length && <p className="prv-note">This report contains {visible.length} of {total} project rows. Portfolio totals cover the complete selected scope.</p>}
@@ -121,21 +125,21 @@ function RiskReview({ data, onExplain, printing }) {
   </Panel>;
 }
 
-function InvoiceControl({ data, onExplain, printing }) {
+function InvoiceControl({ data, onExplain, printing, recordedInvoices, onRefreshWorkbook, onReviewConnections }) {
   const [expanded, setExpanded] = useState(false);
   const source = data.invoicing || {};
   const rows = source.rows || [];
   const visible = printing || expanded ? rows : rows.slice(0, 5);
-  return <Panel title="Invoice control" subtitle="Workbook invoicing and revenue comparison" className="prv-invoice-panel" testId="revenue-invoicing">
-    <SectionMetrics onExplain={onExplain} metrics={[
-      ['invoiced_aed', 'Invoiced', source.totals?.invoiced_aed], ['balance_aed', 'Balance to invoice', source.totals?.balance_aed], ['variance_aed', 'Revenue / invoice gap', source.totals?.variance_aed],
-    ]} />
+  return <section className="prc-invoice-control" data-testid="revenue-invoicing" aria-label="Invoice control">
+    <PortfolioRecordedInvoices state={recordedInvoices} connections={data.connections} onRefreshWorkbook={onRefreshWorkbook} onReviewConnections={onReviewConnections} printing={printing} />
+    <details className="prc-workbook-comparison" open={printing || undefined}><summary>Workbook reconciliation</summary><Panel title="Workbook invoice comparison" subtitle="Uploaded source observations, inclusion rules and revenue baseline dates" className="prv-invoice-panel">
+    <div className="prv-section-metrics">{[['invoiced_aed', 'Workbook invoiced'], ['balance_aed', 'Balance to invoice'], ['variance_aed', 'Revenue / invoice comparison']].map(([id, label]) => { const metric = source.totals?.[id]; const readable = REVENUE_REPORTED.has(metric?.status); const partial = readable && metric.value == null && metric.known_value != null; return <div key={id}><span>{label}<Explain metric={{ id, label, ...metric }} onExplain={onExplain} /></span><strong><Money value={readable ? metric.value ?? metric.known_value : null} /></strong><small>{partial ? metric.known_value_label || 'Known subtotal · Complete total unavailable' : revenueMetricNote(metric)}</small>{partial && <small>{revenueMetricNote(metric)}</small>}</div>; })}</div>
     {source.description && <p className="prv-note">{source.description}</p>}
     <SourceWarnings warnings={source.warnings} />
     {source.comparison_periods?.length > 1 && <details className="prv-chart-values"><summary>Revenue comparisons by baseline date</summary><div className="prv-table-wrap" tabIndex={0} role="region" aria-label="Invoice comparison baselines"><table><caption className="cc-sr-only">Invoice comparison subtotals separated by source revenue baseline date</caption><thead><tr><th scope="col">Baseline</th><th scope="col">Rows</th><th scope="col">Comparison revenue</th><th scope="col">Gap</th></tr></thead><tbody>{source.comparison_periods.map(group => <tr key={group.comparison_date || 'unknown'}><th scope="row">{group.comparison_date ? formatDate(group.comparison_date) : 'Unknown date'}</th><td>{revenueDecimal(group.included_rows)}</td>{['comparison_revenue_aed', 'variance_aed'].map(field => <td key={field}><Money value={group.totals?.[field]?.value ?? group.totals?.[field]?.known_value} />{group.totals?.[field]?.value == null && <small>Known subtotal</small>}</td>)}</tr>)}</tbody></table></div></details>}
     {visible.length ? <div className="prv-table-wrap" tabIndex={0} role="region" aria-label="Portfolio invoice controls"><table><caption className="cc-sr-only">Invoicing controls in AED with source comparison periods</caption><thead><tr><th scope="col">Project</th><th scope="col">Invoiced</th><th scope="col">Balance</th><th scope="col">Gap</th><th scope="col">Period basis</th></tr></thead><tbody>{visible.map((row, index) => <tr key={row.id || `${row.project_code}-${row.subproject_code}-${index}`}><th scope="row">{row.title || revenueIdentity(row)}<small>{revenueIdentity(row)}</small></th><td><Money value={row.invoiced_aed} /></td><td><Money value={row.balance_aed} /></td><td><Money value={row.variance_aed} signed /></td><td>{row.reporting_date ? revenueMonth(row.reporting_date) : 'Not reported'}<small>Revenue: {row.comparison_date ? revenueMonth(row.comparison_date) : 'Not reported'}</small></td></tr>)}</tbody></table></div> : <EmptyState title="Invoice comparison is not available" detail="Only aligned source invoicing and revenue observations are presented." />}
     {rows.length > 5 && !printing && <button type="button" className="cc-text-button prv-show-all" onClick={() => setExpanded(value => !value)}>{expanded ? 'Show top 5 invoice rows' : `Show all ${rows.length} invoice rows`}</button>}
-  </Panel>;
+  </Panel></details></section>;
 }
 
 const ratioPercent = value => revenueNumber(value) === null ? '—' : revenuePercent(Number(value) * 100);
@@ -161,7 +165,7 @@ function Capacity({ data }) {
   </Panel>;
 }
 
-export default function PortfolioRevenueDashboard({ initial, onExplain, onSnapshotChange, printing = false, navigationRequest }) {
+export default function PortfolioRevenueDashboard({ initial, onExplain, onSnapshotChange, onRefreshWorkbook, printing = false, navigationRequest }) {
   const [filters, setFilters] = useState(BLANK_FILTERS);
   const [searchText, setSearchText] = useState('');
   const [page, setPage] = useState(0);
@@ -173,19 +177,19 @@ export default function PortfolioRevenueDashboard({ initial, onExplain, onSnapsh
   const navigate = next => {
     if (!VIEWS.some(([id]) => id === next)) return;
     setSection(next);
-    if (next === 'overview') setPage(0);
+    setPage(0);
     requestAnimationFrame(() => { const target = document.getElementById(next === 'risk' ? 'pp-decisions' : 'revenue-content'); target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); target?.focus({ preventScroll: true }); });
   };
   useEffect(() => {
     if (!navigationRequest?.section || !VIEWS.some(([id]) => id === navigationRequest.section)) return;
     setSection(navigationRequest.section);
-    if (navigationRequest.section === 'overview') setPage(0);
+    setPage(0);
     const frame = requestAnimationFrame(() => { const target = document.getElementById(navigationRequest.section === 'risk' ? 'pp-decisions' : 'revenue-content'); target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); target?.focus({ preventScroll: true }); });
     return () => cancelAnimationFrame(frame);
   }, [navigationRequest]);
   useEffect(() => { const timer = setTimeout(() => { setFilters(current => current.search === searchText.trim() ? current : { ...current, search: searchText.trim() }); setPage(0); }, 300); return () => clearTimeout(timer); }, [searchText]);
-  const queryLimit = section === 'overview' ? 200 : PAGE_SIZE;
-  const query = useMemo(() => ({ ...filters, limit: queryLimit, offset: page * PAGE_SIZE }), [filters, page, queryLimit]);
+  const queryLimit = ['overview', 'connections'].includes(section) ? 200 : PAGE_SIZE;
+  const query = useMemo(() => ({ ...filters, limit: queryLimit, offset: page * queryLimit }), [filters, page, queryLimit]);
   const key = JSON.stringify(query);
   const useInitial = !Object.values(filters).some(Boolean) && page === 0 && retry === 0;
   useEffect(() => {
@@ -202,7 +206,8 @@ export default function PortfolioRevenueDashboard({ initial, onExplain, onSnapsh
   const data = useInitial ? initial : remote.key === key ? remote.data : null;
   const error = !useInitial && remote.key === key ? remote.error : null;
   const loading = !data && !error;
-  useEffect(() => { onSnapshotChange?.({ data, loading, error, filters, section }); }, [data, loading, error, filters, section, onSnapshotChange]);
+  const recordedInvoices = usePortfolioInvoices(data, filters);
+  useEffect(() => { onSnapshotChange?.({ data, loading, error, filters, section, recordedInvoices: recordedInvoices.loading || recordedInvoices.error ? null : recordedInvoices.data }); }, [data, loading, error, filters, section, recordedInvoices.data, recordedInvoices.loading, recordedInvoices.error, onSnapshotChange]);
   const updateFilter = (field, value) => { setFilters(current => ({ ...current, [field]: value })); setPage(0); };
   const options = initial.filters || {};
   const managerNames = new Map((initial.pm_performance?.rows || []).map(row => [row.pm, managerName(row)]));
@@ -224,12 +229,14 @@ export default function PortfolioRevenueDashboard({ initial, onExplain, onSnapsh
     {loading ? <div className="prv-state" role="status"><ArrowPathIcon className="cc-spinning" />Updating portfolio figures…</div> : error ? <div className="prv-state" role="alert"><p>{error}</p><button type="button" className="cc-button" onClick={() => setRetry(value => value + 1)}>Retry revenue dashboard</button></div> : emptyScope ? <EmptyState title="No projects match this scope" detail="Change or clear the business unit, client, project manager or search filters." /> : !usable ? <EmptyState title={data?.status === 'restricted' ? 'Revenue access restricted' : 'Revenue dashboard unavailable'} detail={data?.description || 'Uploaded workbook figures could not be read. Refresh to try again.'} /> : <>
       {data.source?.is_stale && <p className="prv-scope-caption"><strong>Reporting date is older than the freshness window</strong></p>}
       <section className="prv-kpis" aria-label="Executive revenue outcomes">{HEADLINES.map(([id, label, tone]) => <MetricCard key={id} id={id} label={label} tone={tone} metric={data.kpis?.find(metric => metric.id === id)} onExplain={onExplain} varianceRatio={varianceRatio} />)}</section>
+      <ProjectConnectionSummary connections={data.connections} onReview={() => navigate('connections')} onProjects={() => navigate('projects')} />
       <div id="revenue-content" className="prv-view-content" role="region" tabIndex={-1} aria-label={VIEWS.find(([id]) => id === section)?.[1] || 'Project Portfolio'}>
-        {section === 'overview' && !printing && <PortfolioRevenueOverview data={data} onNavigate={navigate} onExplain={onExplain} searchText={searchText} onSearch={setSearchText} businessUnit={filters.business_unit} businessUnits={options.business_units || []} onBusinessUnit={value => updateFilter('business_unit', value)} />}
-        {(section === 'projects' || printing) && <><div className="prv-detail-search cc-screen-only"><label className="prv-overview-search"><MagnifyingGlassIcon aria-hidden="true" /><input type="search" aria-label="Search revenue portfolio" placeholder="Search project, client or code" value={searchText} onChange={event => setSearchText(event.target.value)} /></label><span>{data.scope?.label}</span></div><ProjectRegister data={data} page={page} onPage={setPage} printing={printing} onExplain={onExplain} /><div className="prv-outlook-grid"><Panel title="Monthly revenue outlook" subtitle="Actual revenue and forward forecasts · AED" className="prv-forecast-panel"><RevenueForecastChart rows={data.forecast || []} period={data.period} /></Panel><Breakdown data={data} /></div></>}
+        {section === 'overview' && !printing && <PortfolioRevenueOverview data={data} recordedInvoices={recordedInvoices} onNavigate={navigate} onExplain={onExplain} searchText={searchText} onSearch={setSearchText} businessUnit={filters.business_unit} businessUnits={options.business_units || []} onBusinessUnit={value => updateFilter('business_unit', value)} />}
+        {(section === 'projects' || printing) && <><div className="prv-detail-search cc-screen-only"><label className="prv-overview-search"><MagnifyingGlassIcon aria-hidden="true" /><input type="search" aria-label="Search revenue portfolio" placeholder="Search project, client or code" value={searchText} onChange={event => setSearchText(event.target.value)} /></label><span>{data.scope?.label}</span></div><ProjectRegister data={data} page={page} onPage={setPage} printing={printing} onExplain={onExplain} onReviewConnections={() => navigate('connections')} /><div className="prv-outlook-grid"><Panel title="Monthly revenue outlook" subtitle="Actual revenue and forward forecasts · AED" className="prv-forecast-panel"><RevenueForecastChart rows={data.forecast || []} period={data.period} /></Panel><Breakdown data={data} /></div></>}
         {(section === 'pm' || printing) && <PmPerformance data={data} />}
         {(section === 'risk' || printing) && <RiskReview data={data} onExplain={onExplain} printing={printing} />}
-        {(section === 'invoice' || printing) && <InvoiceControl data={data} onExplain={onExplain} printing={printing} />}
+        {(section === 'invoice' || printing) && <InvoiceControl data={data} onExplain={onExplain} printing={printing} recordedInvoices={recordedInvoices} onRefreshWorkbook={onRefreshWorkbook} onReviewConnections={() => navigate('connections')} />}
+        {(section === 'connections' || printing) && <PortfolioProjectConnections data={data} page={page} onPage={setPage} printing={printing} />}
         {(section === 'capacity' || printing) && <Capacity data={data} />}
       </div>
     </>}

@@ -54,6 +54,7 @@ export function filterOutgoingRows(rows, params) {
     if (value('due_to') && (!row.due_date || row.due_date > value('due_to'))) return false;
     if (value('account') && !row.account.toLowerCase().includes(value('account').toLowerCase())) return false;
     if (value('project') && ![row.rad_project_no, row.project_name, row.project_id].join(' ').toLowerCase().includes(value('project').toLowerCase())) return false;
+    if (value('project_exact') && String(row.rad_project_no || '').trim().toUpperCase() !== value('project_exact').trim().toUpperCase()) return false;
     if (value('search') && ![row.invoice_number, row.account, row.company, row.rad_project_no, row.project_name, row.project_id, row.customer_inv_reference, row.bank_reference_code, row.pm, row.finance_pm_email].join(' ').toLowerCase().includes(value('search').toLowerCase())) return false;
     if (value('date_from') && row.invoice_date < value('date_from')) return false;
     if (value('date_to') && row.invoice_date > value('date_to')) return false;
