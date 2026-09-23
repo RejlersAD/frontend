@@ -35,17 +35,20 @@ const root=createRoot(document.getElementById('root'));let generation=0;
 window.workbookCalls=[];window.workbookGets=[];window.workbookRefreshes=0;
 window.currentWorkbook={...${JSON.stringify(fixture)},can_upload:true};
 function RouteMarker(){const location=useLocation();window.reconciliationRoute=location.pathname;return null;}
-window.renderReconciliation=({canUpload=true,sourceMode=''}={})=>{
- window.currentWorkbook={...window.currentWorkbook,can_upload:canUpload};window.sourceMode=sourceMode;
+window.renderReconciliation=({canUpload=true,sourceMode='',linksFail=false}={})=>{
+ window.currentWorkbook={...window.currentWorkbook,can_upload:canUpload};window.sourceMode=sourceMode;window.linksFail=linksFail;
  window.renderGeneration=++generation;
  root.render(<MemoryRouter key={generation} initialEntries={['/procurement/projects/reconciliation']}><RouteMarker/><main data-fixture-generation={generation}><Routes><Route path='/procurement/projects/reconciliation' element={<ProjectLinks/>}/><Route path='*' element={<p>Unexpected reconciliation route</p>}/></Routes></main></MemoryRouter>);
 };window.renderReconciliation();`;
 const apiStub = `export default {get:async(url,config)=>{
+ if(url==='/procurement/projects/link-workspace/'&&window.linksFail)throw new Error('Synthetic Project Links failure');
  if(url==='/procurement/projects/link-workspace/')return {data:{projects:[{id:'scope-1',scope_id:'scope-1',project_id:'project-1',code:'TEST-1',name:'Synthetic linked project',client_name:'Synthetic client',purchase_order_count:0}],purchase_orders:{results:[],count:0,total_pages:1},permissions:{can_connect:false,can_create_po:false}}};
  if(url!=='/dashboard/executive/portfolio-workbook/')throw new Error('Unexpected fixture GET '+url);
  window.workbookGets.push({url,params:config?.params});
  if(window.pendingWorkbookRefresh){window.workbookRefreshes++;if(window.failRefresh)throw new Error('Synthetic refresh failure');window.pendingWorkbookRefresh=false;}
- if(window.sourceMode){const problem=new Error('Synthetic source failure');problem.response={status:window.sourceMode==='forbidden'?403:500,data:{detail:'Synthetic workbook source failure'}};throw problem;}
+ if(window.sourceMode==='report-error')return {data:{status:'error',can_upload:false,source:null}};
+ if(window.sourceMode==='first-upload')return {data:{status:'unavailable',can_upload:true,source:null}};
+ if(window.sourceMode){const problem=new Error('Synthetic source failure');problem.response={status:window.sourceMode==='forbidden'?403:window.sourceMode==='unauthenticated'?401:500,data:{detail:'Synthetic workbook source failure'}};throw problem;}
  return {data:structuredClone(window.currentWorkbook)};
 },post:async(url,form,config)=>{
  if(!(form instanceof FormData))throw new Error('Upload must use FormData');
@@ -115,15 +118,29 @@ try {
   assert.equal(await sourceStatus.getByRole('link', { name: 'Open project portfolio' }).getAttribute('href'), '/executive?tab=portfolio');
   await page.evaluate(() => window.renderReconciliation({ canUpload: false }));
   await management.waitFor({ state: 'detached' });
+  await page.getByText('Your account does not have portfolio upload access.', { exact: false }).waitFor();
   assert.equal(await upload.count(), 0, 'Reconciliation hides upload controls without the administrator capability');
   await page.evaluate(() => window.renderReconciliation({ sourceMode: 'forbidden' }));
-  await page.getByRole('heading', { name: 'Project Links', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Check access again' }).waitFor();
   assert.equal(await upload.count(), 0, 'Denied workbook access does not prevent using Project Links');
-  await page.evaluate(() => window.renderReconciliation({ sourceMode: 'error' }));
-  await page.getByRole('button', { name: 'Retry workbook options' }).waitFor();
-  assert.equal(await upload.count(), 0, 'A failed capability lookup cannot grant upload access');
   await page.evaluate(() => { window.sourceMode = ''; });
-  await page.getByRole('button', { name: 'Retry workbook options' }).click();
+  await page.getByRole('button', { name: 'Check access again' }).click();
+  await upload.waitFor();
+  for (const sourceMode of ['error', 'report-error', 'unauthenticated']) {
+    await page.evaluate(sourceMode => window.renderReconciliation({ sourceMode }), sourceMode);
+    await page.getByRole('button', { name: 'Retry workbook options' }).waitFor();
+    assert.equal(await upload.count(), 0, 'A failed capability lookup cannot grant upload access');
+    await page.getByRole('heading', { name: 'Portfolio workbook upload', exact: true }).waitFor();
+    await page.evaluate(() => { window.sourceMode = ''; });
+    await page.getByRole('button', { name: 'Retry workbook options' }).click();
+    await upload.waitFor();
+  }
+  await page.evaluate(() => window.renderReconciliation({ sourceMode: 'first-upload', linksFail: true }));
+  await page.getByRole('alert').filter({ hasText: 'Project links could not be loaded' }).waitFor();
+  await upload.getByRole('button', { name: 'Upload Excel workbook' }).waitFor();
+  await sourceStatus.getByText('No portfolio workbook has been imported yet.').waitFor();
+  assert.equal(await upload.getByRole('button', { name: 'Upload Excel workbook' }).isEnabled(), true, 'First workbook import is available independently of a failed Project Links request');
+  await page.evaluate(() => window.renderReconciliation());
   await upload.waitFor();
   const selectFile = async (name = 'upload.xlsx') => upload.getByLabel('Excel workbook (.xlsx)').setInputFiles({ name, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('synthetic workbook content') });
   const previewFile = async () => {
