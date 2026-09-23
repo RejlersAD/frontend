@@ -17,16 +17,6 @@ export const agreementWorkspaceService = {
     reason: selection?.reason || 'Accept document-supported inputs and build the project draft; retain proposals and unresolved exceptions for review.',
     ...(selection?.selected_fact_ids?.length ? { selected_fact_ids: selection.selected_fact_ids } : {}),
   }, options(signal))).data,
-  create: async (file, values, requestId, signal) => {
-    const body = new FormData()
-    body.append('file', file)
-    body.append('idempotency_key', requestId)
-    if (values.name?.trim()) body.append('name', values.name.trim())
-    if (values.code?.trim()) body.append('code', values.code.trim())
-    if (values.ai_api_key?.trim()) body.append('ai_api_key', values.ai_api_key.trim())
-    if (values.ai_model?.trim()) body.append('ai_model', values.ai_model.trim())
-    return (await apiClient.post('/planning-intelligence/agreement-workspaces/create/', body, options(signal))).data
-  },
 }
 
 export const agreementError = error => {

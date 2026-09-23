@@ -40,8 +40,6 @@ export default function ProjectFormModal({
   project = null,
   onClose,
   onSubmit,                 // async (payload) => savedProject
-  onAISetup,
-  onAgreementSetup,
 }) {
   const initial = useMemo(() => buildInitial(project), [project])
   const [values, setValues] = useState(initial)
@@ -138,8 +136,6 @@ export default function ProjectFormModal({
                 {serverError}
               </div>
             )}
-            {mode === 'create' && onAgreementSetup && <div className="flex items-center justify-between gap-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700"><span>Upload an agreement to populate all eight project work areas.</span><button type="button" disabled={submitting} className="shrink-0 rounded border border-blue-300 bg-white px-3 py-2 font-medium text-blue-700" onClick={() => onAgreementSetup(values)}>Set up from agreement</button></div>}
-            {mode === 'create' && onAISetup && <div className="flex items-center justify-between gap-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700"><span>Describe your goal to prepare the project, work breakdown and schedule.</span><button type="button" disabled={submitting} className="shrink-0 rounded border border-blue-300 bg-white px-3 py-2 font-medium text-blue-700" onClick={() => onAISetup(values)}>Create with AI</button></div>}
 
             {PROJECT_FORM_SECTIONS.map((section) => (
               <fieldset key={section.id} className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">

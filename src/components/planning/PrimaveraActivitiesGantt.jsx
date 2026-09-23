@@ -34,7 +34,7 @@ const durationDays = (value, unit = 'days') => {
   return formatted === '\u2014' ? formatted : `${formatted} ${suffix}`
 }
 const COLUMNS = [
-  { key: 'activity-code', label: 'Activity ID', width: 104, min: 50, max: 480 },
+  { key: 'activity-code', label: 'Activity ID', width: 160, min: 50, max: 480 },
   { key: 'activity-name', label: 'Activity Name', width: 184, min: 120, max: 1200 },
   { key: 'stage', label: 'Stage', width: 76, min: 46, max: 320 },
   { key: 'duration', label: 'Duration', width: 54, min: 42, max: 240 },

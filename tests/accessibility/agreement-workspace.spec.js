@@ -11,14 +11,18 @@ const setup = page => page.locator('header.pd-header').getByRole('button', { nam
 const panel = page => dialog(page).getByRole('region', { name: 'Agreement project setup', exact: true })
 const tabs = page => page.getByRole('navigation', { name: 'Project work areas', exact: true })
 async function openSetup(page) {
-  if (!await dialog(page).isVisible()) await setup(page).click()
+  if (!await dialog(page).isVisible()) {
+    if (!await setup(page).isVisible()) await page.locator('header.pd-header summary[aria-label="More project actions"]').click()
+    await setup(page).click()
+  }
   await expect(dialog(page)).toBeVisible()
   await expect(panel(page)).toBeVisible()
 }
 async function closeSetup(page) {
   await page.keyboard.press('Escape')
   await expect(dialog(page)).toBeHidden()
-  await expect(setup(page)).toBeFocused()
+  // The schedule action lives inside the menu that closes when it is chosen.
+  if (await setup(page).isVisible()) await expect(setup(page)).toBeFocused()
 }
 const document = { name: 'agreement.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nsynthetic agreement browser fixture') }
 const source = page => [{ file_id: 35, filename: 'agreement.pdf', page, quote: page === 4 ? 'Commencement 1 December 2025. Provisional acceptance eight months from commencement.' : 'The final FEED package is due at week 28 from effective award.', quote_verified: true }]
@@ -55,17 +59,6 @@ async function open(page, options = {}) {
     async handleRequest(context) {
       const { path, route, state: current, reply } = context
       if (await options.handleRequest?.(context)) return true
-      if (path === root + 'create/') {
-        const body = route.request().postData()
-        current.agreementWrites.push({ path, body })
-        current.records[99] = structuredClone(current.records[17])
-        Object.assign(current.records[99].project, { id: 99, name: 'Agreement created project', code: 'AG-99' })
-        Object.assign(current.records[99].planningProject, { id: 153, enterprise_project: 99 })
-        current.agreements[99] = envelope(99)
-        startJob(current, 99)
-        await reply(route, { ...current.agreements[99], enterprise_project: current.records[99].project, planning_project: current.records[99].planningProject }, 202)
-        return true
-      }
       if (path.startsWith(root)) {
         const match = path.match(/\/projects\/(\d+)\/(.*)$/)
         const id = Number(match?.[1])
@@ -280,84 +273,12 @@ test('stale acceptance displays the server conflict and refreshes the current wo
   clean(state)
 })
 
-test('new project can be created from one agreement through the existing create-project entry', async ({ page }) => {
-  const state = await open(page, { query: 'view=portfolio' })
-  await page.getByRole('button', { name: 'Create project', exact: true }).first().click()
-  await page.getByRole('button', { name: 'Set up from agreement', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Create project from an agreement', exact: true })
-  await dialog.getByLabel('Agreement document', { exact: true }).setInputFiles(document)
-  await dialog.getByLabel('Project name', { exact: false }).fill('Agreement created project')
-  await dialog.getByRole('button', { name: 'Analyze & set up project', exact: true }).click()
-  await expect(page).toHaveURL(/project=99/)
-  await openSetup(page)
-  await expect(panel(page).getByRole('progressbar')).toBeVisible()
-  expect(state.agreementWrites).toHaveLength(1)
-  expect(state.agreementWrites[0].path).toBe(root + 'create/')
-  expect(state.agreementWrites[0].body).not.toContain('ai_api_key')
-  clean(state)
-})
-
 test('upload validation explains an unsupported format without sending a request', async ({ page }) => {
   const state = await open(page)
   await panel(page).getByLabel('Agreement document', { exact: true }).setInputFiles({ ...document, name: 'unexpected.exe' })
   await expect(panel(page).getByRole('alert')).toContainText('Choose a PDF, Word document, spreadsheet, CSV or text file.')
   await expect(panel(page).getByRole('button', { name: 'Analyze & set up project', exact: true })).toBeDisabled()
   expect(state.agreementWrites).toEqual([])
-  clean(state)
-})
-
-test('new-project field errors are readable and retries reuse a key until the request inputs change', async ({ page }) => {
-  const bodies = []
-  const state = await open(page, { query: 'view=portfolio', async handleRequest({ path, route, reply }) {
-    if (path === root + 'create/') { bodies.push(route.request().postData()); await reply(route, { ai_model: ['Choose an available Anthropic model.'] }, 400); return true }
-    return false
-  } })
-  await page.getByRole('button', { name: 'Create project', exact: true }).first().click()
-  await page.getByRole('button', { name: 'Set up from agreement', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Create project from an agreement', exact: true })
-  await dialog.getByLabel('Agreement document', { exact: true }).setInputFiles({ ...document, name: 'agreement.docx' })
-  const submit = dialog.getByRole('button', { name: 'Analyze & set up project', exact: true })
-  await submit.click()
-  await expect(dialog.getByRole('alert')).toContainText('ai model: Choose an available Anthropic model.')
-  await submit.click()
-  await expect.poll(() => bodies.length).toBe(2)
-  const key = body => body.match(/name="idempotency_key"\r\n\r\n([^\r]+)/)?.[1]
-  expect(key(bodies[0])).toMatch(/^[0-9a-f-]{36}$/)
-  expect(key(bodies[1])).toBe(key(bodies[0]))
-  await dialog.getByLabel('Project name', { exact: false }).fill('Updated project name')
-  await submit.click()
-  await expect.poll(() => bodies.length).toBe(3)
-  expect(key(bodies[2])).not.toBe(key(bodies[1]))
-  await dialog.getByText('Connect Anthropic for AI suggestions (optional)', { exact: true }).click()
-  await dialog.getByLabel('Anthropic model', { exact: false }).fill('claude-project-model')
-  await submit.click()
-  await expect.poll(() => bodies.length).toBe(4)
-  expect(key(bodies[3])).not.toBe(key(bodies[2]))
-  await expect(dialog.getByLabel('Anthropic API key', { exact: true })).toHaveAttribute('type', 'password')
-  clean(state)
-})
-
-test('a duplicate project code explains the field error without exposing a machine error code', async ({ page }) => {
-  let requests = 0
-  const state = await open(page, { query: 'view=portfolio', async handleRequest({ path, route, reply }) {
-    if (path === root + 'create/') {
-      requests += 1
-      await reply(route, requests === 1 ? { code: ['A project already uses this code.'] } : { code: 'agreement_request_conflict', detail: 'Use a new request key after changing the agreement inputs.' }, requests === 1 ? 400 : 409)
-      return true
-    }
-    return false
-  } })
-  await page.getByRole('button', { name: 'Create project', exact: true }).first().click()
-  await page.getByRole('button', { name: 'Set up from agreement', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Create project from an agreement', exact: true })
-  await dialog.getByLabel('Agreement document', { exact: true }).setInputFiles(document)
-  await dialog.getByLabel('Project code', { exact: false }).fill('EXISTING-17')
-  await dialog.getByRole('button', { name: 'Analyze & set up project', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toHaveText('code: A project already uses this code.')
-  await dialog.getByLabel('Project code', { exact: false }).fill('NEW-19')
-  await dialog.getByRole('button', { name: 'Analyze & set up project', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toHaveText('Use a new request key after changing the agreement inputs.')
-  await expect(dialog.getByRole('alert')).not.toContainText('agreement_request_conflict')
   clean(state)
 })
 
