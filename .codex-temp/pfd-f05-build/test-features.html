@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Features API Test</title>
+</head>
+<body>
+    <h1>Features API Test</h1>
+    <button onclick="testFeatures()">Test Features API</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testFeatures() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                resultDiv.innerHTML = '<p>Loading...</p>';
+                
+                // Get token from localStorage
+                const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access');
+                
+                if (!token) {
+                    resultDiv.innerHTML = '<p style="color: red;">No auth token found! Please login first.</p>';
+                    return;
+                }
+                
+                const response = await fetch('http://localhost:8000/api/v1/features/', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                console.log('API Response:', data);
+                
+                // Display results
+                let html = `
+                    <h2>Response Status: ${response.status}</h2>
+                    <h3>Total Features: ${data.count}</h3>
+                    <h4>Features:</h4>
+                    <ul>
+                `;
+                
+                if (data.features) {
+                    data.features.forEach(feature => {
+                        html += `
+                            <li>
+                                <strong>${feature.name}</strong><br>
+                                Category: ${feature.category}<br>
+                                Route: ${feature.frontendRoute}<br>
+                                Description: ${feature.description}
+                                <hr>
+                            </li>
+                        `;
+                    });
+                }
+                
+                html += '</ul>';
+                
+                // Show sales features specifically
+                const salesFeatures = data.features?.filter(f => f.category === 'sales') || [];
+                html += `<h3 style="color: green;">Sales Features: ${salesFeatures.length}</h3>`;
+                salesFeatures.forEach(feature => {
+                    html += `<div><strong>${feature.name}</strong> - ${feature.frontendRoute}</div>`;
+                });
+                
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
