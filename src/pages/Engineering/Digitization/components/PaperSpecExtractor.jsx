@@ -279,6 +279,7 @@ const ASME_VALIDATION_UI = {
     no_data: 'No rating data',
   },
   loadingText: 'Validating against ASME B16.34…',
+  unavailableText: 'ASME validation unavailable',
 };
 
 // â”€â”€â”€ Soft-coded panel configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1037,11 +1038,14 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
       } catch (e) { /* ignore */ }
     }
     // Advisory ASME validation alongside the detail fetch (soft-coded toggle).
-    if (ASME_VALIDATION_UI.enabled && !asmeValidationCache[cls.id]) {
+    if (ASME_VALIDATION_UI.enabled && (!asmeValidationCache[cls.id] || asmeValidationCache[cls.id].status === 'error')) {
+      setAsmeValidationCache((m) => ({ ...m, [cls.id]: null }));
       try {
         const v = await specCustomizationAPI.getClassAsmeValidation(cls.id);
         setAsmeValidationCache((m) => ({ ...m, [cls.id]: v }));
-      } catch (e) { /* advisory — never block */ }
+      } catch (e) {
+        setAsmeValidationCache((m) => ({ ...m, [cls.id]: { status: 'error', label: ASME_VALIDATION_UI.unavailableText } }));
+      }
     }
   };
 
@@ -1131,10 +1135,10 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
     });
   }, [classes, classSearch, ratingFilter]);
 
-  // Reset to page 1 whenever the filter set changes.
+  // New jobs and filters start at the first page; fewer results clamp the page below.
   useEffect(() => {
     setClassPage(1);
-  }, [classSearch, ratingFilter, classPageSize]);
+  }, [classSearch, ratingFilter, classPageSize, job?.id]);
 
   // Client-side pagination over the filtered classes (soft-coded config).
   const pagedClasses = useMemo(() => {
@@ -1146,6 +1150,10 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
   const classPageCount = CLASS_LIST_PAGINATION_CONFIG.enabled
     ? Math.max(1, Math.ceil(filteredClasses.length / classPageSize))
     : 1;
+
+  useEffect(() => {
+    setClassPage((page) => Math.min(page, classPageCount));
+  }, [classPageCount]);
 
   // Look up the full colour band for a class's confidence score.
   const confidenceBandFor = useCallback((score) => {

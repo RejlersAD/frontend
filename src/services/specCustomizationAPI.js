@@ -252,7 +252,7 @@ const specCustomizationAPI = {
     return data;
   },
 
-  /** Advisory ASME B16.34 validation of a class's PT table (advisory; never throws). */
+  /** Read advisory ASME results; callers handle access and network failures. */
   async getClassAsmeValidation(classId) {
     const { data } = await apiClient.get(path(SPEC_API_CONFIG.classAsmeValidationPath(classId)));
     return data;
