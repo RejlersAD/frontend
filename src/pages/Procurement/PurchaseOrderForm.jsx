@@ -595,8 +595,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const workspaceRef = useRef(null);
   const [modalBounds, setModalBounds] = useState(null);
   const [approvalEmployees, setApprovalEmployees] = useState([]);
-  const [approversLoading, setApproversLoading] = useState(false);
+  const [finalApprovers, setFinalApprovers] = useState([]);
+  const [approversLoading, setApproversLoading] = useState(true);
   const [approverLoadError, setApproverLoadError] = useState('');
+  const [employeeLoadError, setEmployeeLoadError] = useState('');
   const initialFormData = useRef(formData);
   const recoveryContext = useRef({ editData, prReference });
   const submittingRef = useRef(false);
@@ -713,8 +715,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     // Master-data defaults belong to creation. Opening an existing PO must not
     // rewrite its buyer references or recorded approval evidence.
     if (!recoveryReady || editData) return;
-    if (approvalEmployees.length === 0) return;
-    const defaultCandidates = approvalEmployees.filter((employee) =>
+    if (!approvalEmployees.length && !finalApprovers.length) return;
+    const defaultCandidates = finalApprovers.filter((employee) =>
       employee.is_active !== false
       && String(employee.full_name || '').trim().toLowerCase() === PROJECT_FINAL_APPROVER.toLowerCase()
     );
@@ -741,8 +743,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         : defaultBuyerReference ? [defaultBuyerReference] : [];
       return {
         ...previous,
-        buyer_reference_pm: buyer?.full_name || previous.buyer_reference_pm,
-        buyer_reference_email: buyer?.email || previous.buyer_reference_email,
+        buyer_reference_pm: currentBuyerReferences.length ? previous.buyer_reference_pm : buyer?.full_name || previous.buyer_reference_pm,
+        buyer_reference_email: currentBuyerReferences.length ? previous.buyer_reference_email : buyer?.email || previous.buyer_reference_email,
         invoicing_emails: previous.invoicing_emails?.length ? previous.invoicing_emails : DEFAULT_INVOICE_EMAILS,
         contact_persons: {
           ...(previous.contact_persons || {}),
@@ -764,7 +766,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         } : {}),
       };
     });
-  }, [approvalEmployees, recoveryReady]);
+  }, [approvalEmployees, finalApprovers, recoveryReady, editData]);
 
   // Fetch the master data required to create a PO whenever the form is opened.
   useEffect(() => {
@@ -846,20 +848,34 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const fetchPOApprovers = async () => {
     setApproversLoading(true);
     setApproverLoadError('');
-    try {
-      const employeeResponse = await apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' } });
-      const usersFrom = (response) => {
-        const payload = response?.data?.data || response?.data || {};
-        return Array.isArray(payload.users) ? payload.users : [];
-      };
-      setApprovalEmployees(usersFrom(employeeResponse).filter(employee => employee.is_active !== false));
-    } catch (error) {
-      console.error('Error fetching PO approvers:', error);
+    setEmployeeLoadError('');
+    const usersFrom = (response) => {
+      const payload = response?.data?.data || response?.data || {};
+      if (!Array.isArray(payload.users)) throw new Error('Employee list is unavailable.');
+      return payload.users.filter(employee => employee.is_active !== false);
+    };
+    // Buyer references use the employee directory; final signatories must pass
+    // the same server eligibility check as an approval assignment.
+    const [directory, signatories] = await Promise.allSettled([
+      apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' }, suppressErrorToast: true }).then(usersFrom),
+      apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'po_final_signoff' }, suppressErrorToast: true }).then(usersFrom),
+    ]);
+    if (directory.status === 'fulfilled') {
+      setApprovalEmployees(directory.value);
+    } else {
       setApprovalEmployees([]);
-      setApproverLoadError('Active employee approvers could not be loaded. Please retry.');
-    } finally {
-      setApproversLoading(false);
+      setEmployeeLoadError('Buyer reference employees could not be loaded. Please retry.');
     }
+    if (signatories.status === 'fulfilled') {
+      setFinalApprovers(signatories.value);
+      setErrors(previous => ({ ...previous, approval_log: null }));
+    } else {
+      setFinalApprovers([]);
+      setApproverLoadError(signatories.reason?.response?.status === 403
+        ? 'You do not have access to load authorized PO signatories.'
+        : 'Authorized PO signatories could not be loaded. Please retry.');
+    }
+    setApproversLoading(false);
   };
 
   const handleProjectSelect = async (project) => {
@@ -1268,7 +1284,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const handleApprovalSelection = (index, userId) => {
     if (!approvalRouteEditable) return;
     approvalSelectionEditedRef.current = true;
-    const employee = approvalEmployees.find((candidate) => String(candidate.id) === String(userId));
+    const employee = finalApprovers.find((candidate) => String(candidate.id) === String(userId));
     const assigneeName = employee ? employeeDisplayName(employee) : '';
     setFormData((previous) => {
       const approvalLog = [...previous.approval_log];
@@ -1537,6 +1553,18 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     formData.approval_log.filter((entry) => entry.user_id).map((entry) => entry.stage)
   );
   const missingApprovalStages = requiredApprovalStages.filter((stage) => !assignedApprovalStages.has(stage));
+  const signatoryAvailabilityError = approversLoading
+    ? 'Checking authorized PO signatories...'
+    : approverLoadError || (!finalApprovers.length
+      ? 'No eligible final signatory is available. Check the CEO employee record and Purchase Order approval permission, then refresh signatories.'
+      : '');
+  const unavailableSignatory = formData.approval_log.some(entry => entry.user_id
+    && !finalApprovers.some(employee => String(employee.id) === String(entry.user_id)));
+  const approvalEligibilityError = requiredApprovalStages.length
+    ? signatoryAvailabilityError || (unavailableSignatory
+      ? 'The selected final signatory is no longer eligible. Your selection is retained; check their CEO position and Purchase Order approval permission, then refresh signatories.'
+      : missingApprovalStages.length ? `Select an authorized signatory for: ${missingApprovalStages.join(', ')}` : '')
+    : '';
 
   const getValidationErrors = (requireSummary = false) => {
     const newErrors = {};
@@ -1562,8 +1590,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       newErrors.end_date = 'End date is mandatory when Start Date is selected';
     }
     if (requireSummary && !formData.summary?.trim()) newErrors.summary = 'Summary is required before sending to vendor';
-    if (missingApprovalStages.length) {
-      newErrors.approval_log = `Select an active employee for: ${missingApprovalStages.join(', ')}`;
+    if (approvalEligibilityError) {
+      newErrors.approval_log = approvalEligibilityError;
     }
     if (editData && !requireSummary) {
       // A partial metadata correction must not require repairing unrelated
@@ -1617,8 +1645,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     }
 
     if (!validateForm(sendToVendor)) {
-      const validationMessage = missingApprovalStages.length
-        ? `Select an active employee for: ${missingApprovalStages.join(', ')}`
+      const validationMessage = approvalEligibilityError
+        ? approvalEligibilityError
         : !formData.pr_reference
         ? 'Please select an existing Purchase Requisition.'
         : !/^RAD-(GEN|PRJ)-PUR-\d{4,}_(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)?\d{4})$/.test(formData.po_number?.trim() || '')
@@ -1783,6 +1811,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   ];
 
   const validationErrors = editData ? getValidationErrors(false) : formData.pr_reference ? getValidationErrors(true) : { pr_reference: 'Select an existing purchase recommendation to continue.' };
+  if (errors.approval_log) validationErrors.approval_log = errors.approval_log;
   const validationIssues = Object.entries(validationErrors).map(([field, message]) => ({ id: field, field, message, title: message }));
   const busy = submitLoading || autoSaving;
 
@@ -2227,6 +2256,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     })}
                   </div>
                   <p className="mt-1 text-xs text-gray-500">{formData.buyer_reference_email || `Default: ${DEFAULT_BUYER_REFERENCE}. Email is fetched from RADAI.`}</p>
+                  {employeeLoadError && <p className="mt-2 text-sm text-red-600">{employeeLoadError} <button type="button" onClick={fetchPOApprovers} disabled={approversLoading} className="font-semibold underline">Retry employee list</button></p>}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -2988,8 +3018,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">Final Signatory</h3>
-                    <p className="text-sm text-gray-500">{approvalRouteEditable ? 'PO sign-off is requested separately from the purchase recommendation. Select an authorized approver.' : 'Recorded assignments and approval evidence are preserved.'}</p>
+                    <p className="text-sm text-gray-500">{approvalRouteEditable ? 'PO sign-off is requested separately from the purchase recommendation. Only eligible final signatories are listed.' : 'Recorded assignments and approval evidence are preserved.'}</p>
                   </div>
+                  {approvalRouteEditable && <button type="button" onClick={fetchPOApprovers} disabled={approversLoading} className="text-sm font-semibold text-blue-700 underline disabled:opacity-50">Refresh signatories</button>}
                 </div>
 
                 {formData.approval_log.length > 0 ? <div className="mt-6 overflow-x-auto">
@@ -3011,20 +3042,21 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                               value={entry.user_id || ''}
                               onChange={(e) => handleApprovalSelection(index, e.target.value)}
                               aria-label={`${entry.stage || entry.role || 'Recorded approval'} approver`}
-                              disabled={!approvalRouteEditable || approversLoading}
+                              aria-describedby={approvalRouteEditable ? 'po-signatory-status' : undefined}
+                              disabled={!approvalRouteEditable || approversLoading || Boolean(approverLoadError) || !finalApprovers.length}
                               style={{ minWidth: 260 }}
                               className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                             >
-                              <option value="">{approversLoading ? 'Loading active employees...' : '-- Select active employee --'}</option>
-                              {!approvalRouteEditable && entry.user_id && !approvalEmployees.some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id}>{entry.approver || entry.user_name || 'Recorded approver'}</option>}
-                              {approvalEmployees.map((employee) => (
+                              <option value="">{approversLoading ? 'Loading authorized signatories...' : '-- Select authorized signatory --'}</option>
+                              {entry.user_id && !(approvalRouteEditable ? finalApprovers : approvalEmployees).some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id} disabled={approvalRouteEditable}>{entry.approver || entry.user_name || 'Recorded approver'}{approvalRouteEditable ? ' — eligibility not confirmed' : ''}</option>}
+                              {(approvalRouteEditable ? finalApprovers : approvalEmployees).map((employee) => (
                                 <option key={employee.id} value={employee.id}>
                                   {employee.full_name || employee.username || 'Active employee'}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.email ? ` — ${employee.email}` : ''}{employee.department ? ` (${employee.department})` : ''}
                                 </option>
                               ))}
                             </select>
                             {!approvalRouteEditable && <p className="mt-1 text-xs text-gray-700">{entry.approver || entry.user_name || 'Not recorded'} · {entry.status || 'Not recorded'}</p>}
-                            <p className="mt-1 text-xs text-gray-500">{entry.designation || (entry.user_id ? employeeDesignation(approvalEmployees.find(employee => String(employee.id) === String(entry.user_id))) : '')}</p>
+                            <p className="mt-1 text-xs text-gray-500">{entry.designation || (entry.user_id ? employeeDesignation((approvalRouteEditable ? finalApprovers : approvalEmployees).find(employee => String(employee.id) === String(entry.user_id))) : '')}</p>
                           </td>
                           <td className="px-4 py-3">
                             <input
@@ -3042,13 +3074,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     </tbody>
                   </table>
                 </div> : <p className="mt-4 text-sm text-gray-500">No separate PO approval route is recorded.</p>}
-                {approvalRouteEditable && approverLoadError && (
-                  <div className="mt-4 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    <span>{approverLoadError}</span>
-                    <button type="button" onClick={fetchPOApprovers} className="font-semibold underline">Retry</button>
-                  </div>
-                )}
-                {errors.approval_log && <p className="mt-3 text-sm font-medium text-red-600">{errors.approval_log}</p>}
+                {approvalRouteEditable && <p id="po-signatory-status" role="status" className={`mt-3 text-sm ${approversLoading ? 'text-gray-500' : 'font-medium text-red-600'}`}>
+                  {signatoryAvailabilityError || errors.approval_log || (unavailableSignatory ? approvalEligibilityError : '')}
+                </p>}
+                {!approvalRouteEditable && errors.approval_log && <p className="mt-3 text-sm font-medium text-red-600">{errors.approval_log}</p>}
               </div>
             </div>
           )}
