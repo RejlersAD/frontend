@@ -4,6 +4,7 @@ import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentB
 import { nameOnly } from '../../utils/employeeDisplayName';
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 import { approvalSignatureEvidence, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
+import { purchaseOrderIntroduction } from './purchaseOrderIntroduction';
 
 const text = (value, fallback = '—') => String(value ?? '').trim() || fallback;
 const date = (value) => {
@@ -382,6 +383,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
     ...(columnDefinitions[key] || { render: (item) => text(item[key]) }),
   })).filter((column) => String(headers[column.key] || '').trim());
   const narrativePages = paginateRichHtml(formData.description);
+  const orderIntroduction = purchaseOrderIntroduction(formData, vendor?.name);
   const itemChunks = [];
   const termsChunks = [];
   const summaryChunks = chunkArray(items, 9);
@@ -412,7 +414,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
         </div>
       </Page>
 
-      {narrativePages.map((pageContent, index) => <Page key={`pod-scope-${index}`} data={formData} page={2 + index} finalApproval={finalApproval}>{index === 0 && <p className="border-b border-slate-500 pb-2 text-[11px] font-bold"><u>PURCHASE ORDER:</u> &nbsp;{text(formData.title)}</p>}{index === 0 && <p className="mt-3">We, {BRANDING_CONFIG.brand.companyFull} (Buyer), issue this purchase order to <b>{text(vendor?.name)}</b> (Seller){formData.quote_ref ? ` according to quotation/reference ${formData.quote_ref}` : ''}.</p>}{index === 0 && <SectionTitle>PO Description &amp; Scope</SectionTitle>}<div className="po-rich-narrative font-normal [&_img]:my-2 [&_img]:max-h-[440px] [&_img]:max-w-full [&_img]:object-contain [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-6 [&_table]:my-2 [&_table]:w-full [&_td]:border [&_td]:border-slate-500 [&_td]:p-1 [&_ul]:list-disc [&_ul]:pl-6" dangerouslySetInnerHTML={{ __html: pageContent }} /></Page>)}
+      {narrativePages.map((pageContent, index) => <Page key={`pod-scope-${index}`} data={formData} page={2 + index} finalApproval={finalApproval}>{index === 0 && <p className="border-b border-slate-500 pb-2 text-[11px] font-bold"><u>PURCHASE ORDER:</u> &nbsp;{text(formData.title)}</p>}{index === 0 && orderIntroduction && <p className="mt-3 whitespace-pre-wrap">{orderIntroduction}</p>}{index === 0 && <SectionTitle>PO Description &amp; Scope</SectionTitle>}<div className="po-rich-narrative font-normal [&_img]:my-2 [&_img]:max-h-[440px] [&_img]:max-w-full [&_img]:object-contain [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-6 [&_table]:my-2 [&_table]:w-full [&_td]:border [&_td]:border-slate-500 [&_td]:p-1 [&_ul]:list-disc [&_ul]:pl-6" dangerouslySetInnerHTML={{ __html: pageContent }} /></Page>)}
 
       {itemChunks.map((pageItems, pageIndex) => {
         const offset = pageIndex * 7;

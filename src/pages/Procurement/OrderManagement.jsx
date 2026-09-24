@@ -212,7 +212,8 @@ const OrderManagement = () => {
   const canExportRequisitionWord = effectiveModuleActions
     ? Boolean(effectiveModuleActions.procurement_requisitions?.includes('export'))
     : isCurrentUserAdmin;
-  const canModifyRequisition = () => {
+  const canModifyRequisition = (requisition) => {
+    if (requisition?.status === 'rejected') return requisition.can_reopen === true;
     const actions = currentUser?.module_actions || currentUser?.user?.module_actions;
     return actions
       ? Boolean(actions.procurement_requisitions?.includes('update'))
@@ -529,7 +530,7 @@ const OrderManagement = () => {
 
     setBatchActionLoading(true);
     const results = await Promise.allSettled(batchApprovableRequisitions.map(req => (
-      apiClient.post(`/procurement/requisitions/${req.id}/process_dynamic_approval/`, { signature: '' })
+      apiClient.post(`/procurement/requisitions/${req.id}/process_dynamic_approval/`, { signature: '', ...(req.updated_at ? { expected_updated_at: req.updated_at } : {}) })
     )));
     const succeededIds = [];
     results.forEach((result, index) => {

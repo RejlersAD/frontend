@@ -1,129 +1,41 @@
-# Health & Safety Configuration Guide
+# Health & Safety availability and configuration
 
-## Overview
-The Health & Safety module uses feature flags for soft-coded configuration, allowing you to enable or disable sections without modifying core logic.
+Last updated: 24 September 2026, bounded correction of audit F03.
 
-## Configuration Location
-All feature flags are defined in:
-```
-frontend/src/pages/QHSE/utils/healthSafetyMetrics.js
-```
+## Current evidence boundary
 
-## Feature Flags
+The QHSE running-project feed contains quality corrective-action and observation counts. It does not establish incidents, near misses, injuries, safety exposure, incident-free days, safety compliance or a safety score. General project KPIs and quality hours cannot supply that evidence.
 
-### Current Configuration (2026-08-19)
+`utils/healthSafetyMetrics.js` returns `null` for unsupported safety values and datasets, with `HEALTH_SAFETY_UNAVAILABLE_REASONS`. `HealthSafety.jsx` and `components/HealthSafety/SafetyComponents.jsx` display neutral **Unavailable** states. They do not plot null as zero, classify missing evidence or show a numeric safety gauge.
+
+The Overview panel retains **Recorded quality counts** under their correct labels. Each total requires a valid nonnegative integer for every loaded record; incomplete data withholds the total and shows coverage. Explicit zero is retained. Empty sources do not establish zero. This screen opts into raw quality-counter preservation in `hooks/useQHSEProjects.js`; the default behavior for other screens is unchanged. Existing backend defaults can obscure whether historical zero counts were supplied, so the UI does not certify completeness.
+
+## Feature flags
+
+Current flags in `utils/healthSafetyMetrics.js`:
 
 ```javascript
 export const HEALTH_SAFETY_FEATURES = {
-  enablePPECompliance: false,           // PPE compliance tracking
-  enableSafetyTraining: false,          // Training records management
-  enableRiskAssessment: true,           // Risk calculation (CARs + Observations)
-  enableIncidentTracking: true,         // Incident monitoring
-  enableHighRiskProjects: false,        // High-risk project highlighting
-  enableProjectScheduleCheck: false,    // "Project On Schedule" in checklist
-  enableRiskAssessmentView: false,      // Risk Assessment tab/view
-  enableManagerSafetyPerformance: false // Manager Safety Performance section (names hidden)
+  enablePPECompliance: false,
+  enableSafetyTraining: false,
+  enableRiskAssessment: false,
+  enableIncidentTracking: false,
+  enableHighRiskProjects: false,
+  enableManagerSafetyPerformance: false
 };
 ```
 
-## What Was Changed (2026-08-19)
+The existing Overview, Incidents, Risk Assessment and Performance view buttons remain. Flags do not authorize a formula or create source evidence. High-risk and manager sections remain hidden; toggling their visibility still produces an unavailable panel. Re-enabling operational measures requires authoritative sources, an established definition and corresponding verification, beyond this correction.
 
-### 1. Removed "Project On Schedule" from Overview Checklist
-- **Feature Flag:** `enableProjectScheduleCheck`
-- **Default:** `false` (disabled)
-- **Impact:** The "Project On Schedule" item no longer appears in the Safety Compliance Checklist in the Overview section
-- **Location:** Used in `generateSafetyChecklist()` function
+Earlier configuration guidance described CAR-based risk, quality-based safety compliance and flag-only restoration. Those descriptions are superseded by this availability contract; unsupported calculations have been removed. The older guide's `enableProjectScheduleCheck` and `enableRiskAssessmentView` examples are not present in the inspected current helper and must not be treated as implemented controls.
 
-### 2. Removed "Risk Assessment" Tab/View
-- **Feature Flag:** `enableRiskAssessmentView`
-- **Default:** `false` (disabled)
-- **Impact:** 
-  - The "Risk Assessment" tab is hidden from the view selector
-  - The Risk Assessment view content is not rendered
-- **Location:** Used in `HealthSafety.jsx` component
+## Change history
 
-### 3. Removed "Manager Safety Performance" Section
-- **Feature Flag:** `enableManagerSafetyPerformance`
-- **Default:** `false` (disabled)
-- **Impact:** The "Manager Safety Performance" card (which listed project manager names such as Pankaj Kumar) no longer appears in the Performance tab; the Safety KPI Distribution chart spans the full width
-- **Location:** Used in `PerformanceView` component in `HealthSafety.jsx`
-- **Added:** 2026-09-23 (privacy — hide individual manager names)
+| Date | Record |
+| --- | --- |
+| 2026-07-11 | Earlier guide recorded high-risk project highlighting disabled. |
+| 2026-08-19 | Earlier guide documented schedule-check and risk-view flags; those examples do not describe the current implementation. |
+| 2026-09-23 | Earlier guide recorded manager safety section hidden. This visibility is preserved. |
+| 2026-09-24 | F03: removed unsupported safety calculations and displays; retained separately labeled quality counts and explicit missing-data states. |
 
-## How to Re-enable Features
-
-If you need to restore these features in the future:
-
-### Re-enable "Project On Schedule" Checklist Item:
-```javascript
-enableProjectScheduleCheck: true
-```
-
-### Re-enable "Risk Assessment" Tab:
-```javascript
-enableRiskAssessmentView: true
-```
-
-## Benefits of Soft Coding
-
-✅ **No Code Changes Required:** Simply change the flag value from `false` to `true`  
-✅ **Maintainable:** Easy to understand what each flag controls  
-✅ **Documented:** Clear comments explain why features are disabled  
-✅ **Reversible:** Can easily re-enable features without restoring code  
-✅ **Safe:** Core logic remains intact, reducing risk of bugs  
-
-## Technical Implementation
-
-### Checklist Filtering (healthSafetyMetrics.js)
-```javascript
-const checklist = [
-  { name: 'Quality Plans Approved', ... },
-  { name: 'Audits Up to Date', ... },
-  { name: 'No Open Incidents', ... },
-  { name: 'KPI Above 80%', ... },
-  // Conditionally include based on flag
-  ...(HEALTH_SAFETY_FEATURES.enableProjectScheduleCheck ? [{
-    name: 'Project On Schedule',
-    check: (p) => { /* logic */ },
-    weight: 1
-  }] : [])
-];
-```
-
-### Tab Visibility (HealthSafety.jsx)
-```javascript
-const tabs = [
-  { id: 'overview', label: 'Overview', icon: BarChart3 },
-  { id: 'incidents', label: 'Incidents', icon: AlertCircle },
-  // Conditionally include Risk Assessment tab
-  ...(HEALTH_SAFETY_FEATURES.enableRiskAssessmentView ? [
-    { id: 'risk', label: 'Risk Assessment', icon: AlertTriangle }
-  ] : []),
-  { id: 'performance', label: 'Performance', icon: TrendingUp }
-];
-```
-
-### View Rendering (HealthSafety.jsx)
-```javascript
-{selectedView === 'risk' && HEALTH_SAFETY_FEATURES.enableRiskAssessmentView && (
-  <RiskAssessmentView {...props} />
-)}
-```
-
-## Related Files
-
-- **Configuration:** `frontend/src/pages/QHSE/utils/healthSafetyMetrics.js`
-- **Component:** `frontend/src/pages/QHSE/HealthSafety.jsx`
-- **This Guide:** `frontend/src/pages/QHSE/HEALTH_SAFETY_CONFIG.md`
-
-## Change History
-
-| Date | Change | Reason |
-|------|--------|--------|
-| 2026-08-19 | Added `enableProjectScheduleCheck` (false) | Remove "Project On Schedule" from checklist |
-| 2026-08-19 | Added `enableRiskAssessmentView` (false) | Hide Risk Assessment tab and view |
-| 2026-07-11 | Set `enableHighRiskProjects` to false | QHSE Expert requested removal |
-
----
-
-**Last Updated:** 2026-08-19  
-**Maintainer:** Development Team
+The adopted [metrics context](../../../../docs/METRICS.md#qhse-safety-availability-correction--24-september-2026), [correction brief](../../../../docs/features/qhse-safety-metric-availability.md) and [audit](../../../../docs/DESIGN_INTENT_AUDIT.md) record authority, verification and remaining decisions. No company safety formula was approved by this change.

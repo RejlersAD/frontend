@@ -3,6 +3,7 @@ import { ArrowLeftIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outl
 import { useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../../services/api.service';
 import PurchaseRequisitionForm from './PurchaseRequisitionForm';
+import RejectedRequisitionRevision from './RejectedRequisitionRevision';
 
 const REGISTER_PATH = '/procurement/requisitions';
 
@@ -71,6 +72,12 @@ const PurchaseRequisitionPage = () => {
       </div>
     );
   }
+
+  if (editData?.status === 'rejected') return <div className="mx-auto max-w-3xl space-y-4 p-5">
+    <button type="button" onClick={returnToRegister} className="text-sm font-semibold text-indigo-700">Back to register</button>
+    <h1 className="text-xl font-bold text-slate-900">Revise {editData.pr_number || 'purchase recommendation'}</h1>
+    <RejectedRequisitionRevision requisition={editData} onReopened={setEditData} onReloaded={setEditData} />
+  </div>;
 
   return (
     <PurchaseRequisitionForm

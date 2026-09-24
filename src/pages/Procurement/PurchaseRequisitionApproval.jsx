@@ -19,6 +19,7 @@ import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
 import { buildGeneratedRequisitionPdf } from './generatedRequisitionPdf';
 import RecommendationSourceDocument from './RecommendationSourceDocument';
+import RejectedRequisitionRevision, { RequisitionRevisionHistory } from './RejectedRequisitionRevision';
 import ApprovalRecordPdfPreview from './ApprovalRecordPdfPreview';
 import { getOriginalRecommendationDocuments } from './recommendationSourceDocuments';
 import { recommendationSourceApprovals } from './recommendationApprovalEvidence';
@@ -113,7 +114,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   const pdfFrameRef = useRef(null);
   const pdfSourceRef = useRef(null);
   const previewId = useId();
-  const hasOriginalPr = getOriginalRecommendationDocuments(requisition?.attachments).length > 0;
+  const isRevised = Boolean(requisition?.price_remarks_data?.approval_revision_history?.length);
+  const hasOriginalPr = !isRevised && getOriginalRecommendationDocuments(requisition?.attachments).length > 0;
   const hasCombinedDocuments = hasOriginalPr && Boolean(requisition?.linked_po_id);
   const previewContext = `${isOpen}:${requisition?.id}:${requisition?.linked_po_id}:${hasOriginalPr}`;
   const activePreview = previewSelection.context === previewContext ? previewSelection.tab : hasCombinedDocuments ? 'combined' : 'pr';
@@ -343,7 +345,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
     ? ['create', 'update'].every(action => (moduleActions[module] || []).includes(action))
     : isSuperAdmin;
 
-  const canActOnCurrentStage = canDecideProcurement(requisition, currentUser);
+  const canActOnCurrentStage = !submissionConflict && canDecideProcurement(requisition, currentUser);
 
   const APPROVER_CONFIG = {
     dynamic: {
@@ -485,7 +487,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
     try {
       const response = await apiClient.post(
         `/procurement/requisitions/${requisition.id}/${config.approveEndpoint}/`,
-        { signature: '' }
+        { signature: '', ...(requisition.updated_at ? { expected_updated_at: requisition.updated_at } : {}) }
       );
 
       await radaiAlert(`Requisition approved by ${config.label}!`);
@@ -494,6 +496,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
       onClose();
     } catch (error) {
       console.error('Approval error:', error);
+      if (error.response?.status === 409) {
+        setSubmissionConflict(error.response.data?.error || 'This recommendation changed.');
+        return;
+      }
       await radaiAlert(error.response?.data?.error || error.response?.data?.detail || 'Failed to approve requisition.');
     } finally {
       setLoading(false);
@@ -528,7 +534,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
     try {
       const response = await apiClient.post(
         `/procurement/requisitions/${requisition.id}/${config.rejectEndpoint}/`,
-        { reason: rejectionReason.trim() }
+        { reason: rejectionReason.trim(), ...(requisition.updated_at ? { expected_updated_at: requisition.updated_at } : {}) }
       );
 
       await radaiAlert(`Requisition rejected by ${config.label}`);
@@ -538,6 +544,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
       setShowRejectModal(false);
     } catch (error) {
       console.error('Rejection error:', error);
+      if (error.response?.status === 409) setSubmissionConflict(error.response.data?.error || 'This recommendation changed.');
       setRejectionError(error.response?.data?.error || error.response?.data?.detail || 'Failed to reject requisition.');
     } finally {
       setLoading(false);
@@ -545,6 +552,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   };
 
   const handleReferral = async () => {
+    if (loading || submissionConflict) return;
     if (referralRemarks.trim().length < 10) {
       setReferralError('Add at least 10 characters explaining the discussion required.');
       return;
@@ -554,11 +562,12 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
     try {
       const response = await apiClient.post(
         `/procurement/requisitions/${requisition.id}/refer-rejection/`,
-        { target: referralTarget, remarks: referralRemarks.trim() }
+        { target: referralTarget, remarks: referralRemarks.trim(), ...(requisition.updated_at ? { expected_updated_at: requisition.updated_at } : {}) }
       );
       await radaiAlert(`Rejected PR referred to ${referralTarget === 'moe' ? 'Manager of Engineering' : 'Manager of Projects'} for discussion.`);
       onApprovalComplete?.(response.data);
     } catch (error) {
+      if (error.response?.status === 409) setSubmissionConflict(error.response.data?.error || 'This recommendation changed.');
       setReferralError(error.response?.data?.error || error.response?.data?.remarks || 'Failed to create referral.');
     } finally {
       setLoading(false);
@@ -693,7 +702,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
       <div className={pageMode ? 'min-h-[calc(100vh-4rem)] bg-slate-50' : 'fixed inset-0 z-50 overflow-y-auto bg-slate-50'}>
         <div className="mx-auto min-h-full w-full max-w-[1680px] px-4 py-5 sm:px-6 lg:px-8">
           {submissionConflict && <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-            <p>{submissionConflict}</p><p>Reload and review the latest recommendation before sending it for approval.</p>
+            <p>{submissionConflict}</p><p>Reload and review the latest recommendation before continuing.</p>
             <button type="button" className="mt-2 font-semibold underline" onClick={reloadLatestRecord} disabled={reloadingRecord}>{reloadingRecord ? 'Reloading...' : 'Reload latest version'}</button>
           </div>}
           
@@ -752,6 +761,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
           </header>
 
           {wordError && <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{wordError}</div>}
+          {isRejected && <div className="mb-4"><RejectedRequisitionRevision requisition={requisition}
+            onReopened={() => navigate(`/procurement/requisitions/${requisition.id}/edit`)}
+            onReloaded={record => setReloadedRecord({ original: initialRequisition, record })} /></div>}
+          {isRevised && <div className="mb-4"><RequisitionRevisionHistory requisition={requisition} /></div>}
 
           {/* Modal Content Body */}
           <main>
@@ -970,7 +983,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                   </div>
                 </section>
                 
-                {(hasMissingApprovalEvidence || isEvidenceRecoveryActive || (isRejected && requisition.rejection_reason) || (isRejected && (isCurrentUserIssuer || isSuperAdmin))) && (
+                {(hasMissingApprovalEvidence || isEvidenceRecoveryActive || (isRejected && (isCurrentUserIssuer || isSuperAdmin))) && (
                 <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-label="Approval notices">
                     {hasMissingApprovalEvidence && (
                       <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs text-slate-700">
@@ -993,12 +1006,6 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                         Approval recovery is active. The current approver has been notified and can record a decision from the Approvals tab.
                       </div>
                     )}
-                  {isRejected && requisition.rejection_reason && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                      <p className="text-sm font-medium text-red-800 mb-1">Rejection Reason:</p>
-                      <p className="text-sm text-red-700">{requisition.rejection_reason}</p>
-                    </div>
-                  )}
                   {isRejected && (isCurrentUserIssuer || isSuperAdmin) && (
                     <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
                       <p className="text-sm font-semibold text-indigo-900">Discussion / Resolution Referral</p>
@@ -1014,7 +1021,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                           </select>
                           <textarea value={referralRemarks} onChange={event => { setReferralRemarks(event.target.value); setReferralError(''); }} rows={3} className="w-full rounded-lg border border-indigo-300 px-3 py-2 text-sm" placeholder="Explain the discussion or resolution required..." />
                           {referralError && <p className="text-xs text-red-600">{referralError}</p>}
-                          <button type="button" onClick={handleReferral} disabled={loading} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Send for Discussion</button>
+                          <button type="button" onClick={handleReferral} disabled={loading || Boolean(submissionConflict)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Send for Discussion</button>
                         </div>
                       )}
                     </div>
@@ -1207,7 +1214,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                 </button>
                 <button
                   onClick={handleRejectSubmit}
-                  disabled={loading || rejectionReason.trim().length < REJECTION_CONFIG.MIN_REASON_LENGTH}
+                  disabled={loading || Boolean(submissionConflict) || rejectionReason.trim().length < REJECTION_CONFIG.MIN_REASON_LENGTH}
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium disabled:opacity-50"
                 >
                   {loading ? 'Rejecting...' : 'Confirm Rejection'}

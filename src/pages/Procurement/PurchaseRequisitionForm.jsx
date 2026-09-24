@@ -28,6 +28,7 @@ import { hydrateRecommendationReferences, preserveRecordedApprovalWorkflow, reco
 import { confirmedRecommendationVat, hasCompleteRecommendationPricing, recommendationVat, recommendationLineDiscount } from './recommendationVat';
 import { calculateProcurementVat, procurementLineNet, sumProcurementMoney } from '../../utils/procurementVat';
 import './PurchaseRequisitionForm.css';
+import { RequisitionRevisionHistory } from './RejectedRequisitionRevision';
 import './RecommendationApprovalWorkflow.css';
 import useOrganizationCatalog from '../../hooks/useOrganizationCatalog';
 import { vicePresidentPositionFromWorkflow } from './recommendationApprovalPositions';
@@ -1841,6 +1842,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
           </header>
           <form id="pr-modal-form" className="prf-form" onSubmit={event => handleSubmit(event, false, true)} noValidate>
             <div ref={formScrollRef} className="prf-form-scroll">
+              <RequisitionRevisionHistory requisition={approvalRecord} />
               {saveError && <div role="alert" className="prf-error-banner"><ExclamationCircleIcon /><div>{saveError}{staleRecord && <><p>Your edits are still here. Saving and sending are paused until you reload and review the latest version.</p><button type="button" className="prf-button" onClick={reloadLatestRecord} disabled={reloadingRecord}>{reloadingRecord ? 'Reloading...' : 'Reload latest version'}</button></>}</div></div>}
               {activeStep === 0 && <div className="prf-step-panel" aria-label="Request">{/* Section 1: Header Section */}
           <div className="prf-card prf-legacy-card">
@@ -2233,7 +2235,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
 
           </div>}
               {activeStep === 3 && <div className="prf-step-panel" aria-label="Documents">{/* Signed approval PDF is intentionally first when editing. */}
-          {editData && (
+          {editData && !approvalRecord?.price_remarks_data?.approval_revision_history?.length && (
             <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-5 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>

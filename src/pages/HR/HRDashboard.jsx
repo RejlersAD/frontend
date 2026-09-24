@@ -1689,6 +1689,7 @@ export default function HRDashboard() {
           loading={loadingWorkforce || loadingLive || loadingPayroll}
           workforceError={workforceError}
           timesheetError={timesheetError}
+          lastUpdated={lastUpdated}
           onRetryWorkforce={loadWorkforce}
           onRefresh={() => {
             loadWorkforce();

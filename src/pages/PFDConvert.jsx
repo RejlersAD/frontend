@@ -1,5 +1,6 @@
-import { radaiAlert } from '../services/radaiDialog'
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSelector } from 'react-redux';
+import { artifactDownloadFilename, conversionReviewLabel, hasConversionAction, isNewUnreviewedArtifact, pfdOperationError } from '../utils/pfdArtifactState';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../services/api.service';
 import PIDEngineeringResults from '../components/PIDEngineeringResults';
@@ -8,7 +9,7 @@ import PIDDesignCheck from '../components/pid/PIDDesignCheck';
 
 /**
  * PFD Conversion Results & P&ID Generation Page
- * Shows extracted PFD data and auto-generates P&ID using AI
+ * Shows stored output identity and explicitly requested P&ID generation.
  * Uses 3-Step Engineering Workflow Display Component
  * Includes P&ID Design Check for verification
  */
@@ -16,159 +17,132 @@ const PFDConvert = () => {
   const { documentId } = useParams();
   const navigate = useNavigate();
   
+  const { user } = useSelector(state => state.auth);
   const [pfdDocument, setPfdDocument] = useState(null);
   const [pidConversion, setPidConversion] = useState(null);
+  const [conversions, setConversions] = useState([]);
+  const [historyReady, setHistoryReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [autoGenerating, setAutoGenerating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [canvasLoading, setCanvasLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [activeTab, setActiveTab] = useState('pfd');
-  const [viewMode, setViewMode] = useState('specifications'); // 'specifications', '2d-diagram', 'design-check'
+  const [viewMode, setViewMode] = useState('specifications');
+  const selectedId = useRef(null);
+  const loadSequence = useRef(0);
+  const canGenerate = user?.module_actions?.pfd_to_pid?.includes('create') === true;
+  const canRegenerate = historyReady && hasConversionAction(pidConversion, 'regenerate') &&
+    Boolean(pidConversion?.updated_at && pidConversion?.artifact?.sha256);
+  const canDownload = hasConversionAction(pidConversion, 'download') && pidConversion?.artifact?.available === true;
+
+  const selectConversion = conversion => {
+    if (selectedId.current !== conversion?.id) sessionStorage.removeItem('canvasLoadData');
+    selectedId.current = conversion?.id || null;
+    setPidConversion(conversion || null);
+  };
+
+  // Opening or refreshing a result is read-only. Initial generation is explicit
+  // and available only after a successful history read establishes absence.
+  const loadPFDDocument = async () => {
+    const sequence = ++loadSequence.current;
+    setLoading(true);
+    setHistoryReady(false);
+    setError('');
+    try {
+      const documentResponse = await apiClient.get(`/pfd/documents/${documentId}/`);
+      if (sequence !== loadSequence.current) return;
+      setPfdDocument(documentResponse.data);
+      const response = await apiClient.get(`/pfd/conversions/?pfd_document=${documentId}`);
+      if (sequence !== loadSequence.current) return;
+      const rows = Array.isArray(response.data) ? response.data : response.data?.results;
+      if (!Array.isArray(rows) || rows.some(row => !row?.id)) throw new Error('Invalid output history');
+      setConversions(rows);
+      selectConversion(rows.find(row => row.id === selectedId.current) || rows[0] || null);
+      setHistoryReady(true);
+    } catch (err) {
+      if (sequence === loadSequence.current) {
+        setError(await pfdOperationError(err, 'Output history could not be loaded. Reload outputs before generating or regenerating. Previously displayed evidence has been preserved.'));
+      }
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    loadPFDDocument();
+    sessionStorage.removeItem('canvasLoadData');
+    setGenerating(false);
+    setDownloading(false);
+    setCanvasLoading(false);
+    selectedId.current = null;
+    setPidConversion(null);
+    setPfdDocument(null);
+    setConversions([]);
+    setNotice('');
+    void loadPFDDocument();
+    return () => { loadSequence.current += 1; sessionStorage.removeItem('canvasLoadData'); };
   }, [documentId]);
 
-  useEffect(() => {
-    // Auto-generate P&ID once PFD data is loaded
-    if (pfdDocument && pfdDocument.status === 'converted' && !pidConversion && !autoGenerating) {
-      setAutoGenerating(true);
-      autoGeneratePID();
-    }
-  }, [pfdDocument]);
-
-  const loadPFDDocument = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get(`/pfd/documents/${documentId}/`);
-      setPfdDocument(response.data);
-      
-      // Check if P&ID already exists
-      if (response.data.status === 'converted') {
-        checkExistingPID();
-      }
-    } catch (err) {
-      console.error('Failed to load PFD document:', err);
-      setError('Failed to load PFD document. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  const recordNewConversion = conversion => {
+    setConversions(previous => [conversion, ...previous.filter(row => row.id !== conversion.id)]);
+    selectConversion(conversion);
+    setActiveTab('pid');
   };
 
-  const checkExistingPID = async () => {
+  const generatePID = async (intelligent = false) => {
+    if (!historyReady || conversions.length || !canGenerate || !pfdDocument?.extracted_data || generating) return;
+    const sequence = loadSequence.current;
+    setGenerating(true);
+    setError('');
+    setNotice('');
     try {
-      const response = await apiClient.get(`/pfd/conversions/?pfd_document=${documentId}`);
-      if (response.data.results && response.data.results.length > 0) {
-        setPidConversion(response.data.results[0]);
-      }
-    } catch (err) {
-      console.error('Failed to check existing P&ID:', err);
-    }
-  };
-
-  const autoGeneratePID = async () => {
-    if (!pfdDocument || !pfdDocument.extracted_data) {
-      setAutoGenerating(false);
-      return;
-    }
-
-    try {
-      setGenerating(true);
-      
-      // Generate P&ID drawing number based on PFD
-      const pfdNumber = pfdDocument.document_number || 'PFD-001';
-      const pidNumber = pfdNumber.replace('PFD', 'P&ID');
-      
-      const requestData = {
+      const drawingNumber = (pfdDocument.document_number || 'PFD-001').replace('PFD', 'P&ID');
+      const response = await apiClient.post(intelligent ? '/pfd/conversions/intelligent-generate/' : '/pfd/conversions/generate/', {
         pfd_document_id: documentId,
-        pid_drawing_number: pidNumber,
-        pid_title: pfdDocument.document_title || 'Generated P&ID',
+        pid_drawing_number: drawingNumber + (intelligent ? '-INT' : ''),
+        pid_title: (pfdDocument.document_title || 'Generated P&ID') + (intelligent ? ' (Intelligent)' : ''),
         pid_revision: pfdDocument.revision || 'A',
-      };
-
-      // Use extended timeout for P&ID generation (5 minutes for AI processing)
-      const response = await apiClient.post('/pfd/conversions/generate/', requestData, {
-        timeout: 300000 // 5 minutes for OpenAI API calls
-      });
-      
-      setPidConversion(response.data);
-      setActiveTab('pid');
-      
+      }, { timeout: intelligent ? 360000 : 300000 });
+      if (sequence !== loadSequence.current) return;
+      if (!response.data?.id) throw new Error('Generation response has no output identity');
+      recordNewConversion(response.data);
+      setNotice('Generation returned an output. Review the recorded artifact and review state below.');
     } catch (err) {
-      console.error('P&ID generation failed:', err);
-      
-      // Smart error handling based on error type
-      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        // Timeout error - check if generation actually completed
-        console.log('⏱️ Request timed out, checking if generation completed in background...');
-        
-        // Poll for completion
-        try {
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-          await checkExistingPID(); // Check if PID was generated
-          
-          if (pidConversion) {
-            console.log('✅ P&ID generation completed successfully despite timeout');
-            setActiveTab('pid');
-            return;
-          }
-        } catch (pollErr) {
-          console.error('Polling failed:', pollErr);
-        }
-        
-        setError('P&ID generation is taking longer than expected. The process may still be running in the background. Please refresh the page in a few moments.');
-      } else {
-        setError(err.response?.data?.error || err.response?.data?.detail || 'P&ID generation failed. Please try again.');
-      }
+      if (sequence !== loadSequence.current) return;
+      setError(await pfdOperationError(err, 'Generation failed or its outcome could not be confirmed. Reload outputs before retrying.'));
+      setHistoryReady(false);
     } finally {
-      setGenerating(false);
-      setAutoGenerating(false);
+      if (sequence === loadSequence.current) setGenerating(false);
     }
   };
 
   const regeneratePID = async () => {
+    if (!canRegenerate || !pidConversion?.updated_at || !pidConversion?.artifact?.sha256 || generating) return;
+    const original = pidConversion;
+    const sequence = loadSequence.current;
     setGenerating(true);
-    await autoGeneratePID();
-  };
-
-  const generateIntelligentPID = async () => {
-    if (!pfdDocument) {
-      return;
-    }
-
+    setError('');
+    setNotice('');
     try {
-      setGenerating(true);
-      
-      // Generate P&ID drawing number
-      const pfdNumber = pfdDocument.document_number || 'PFD-001';
-      const pidNumber = pfdNumber.replace('PFD', 'P&ID') + '-INT';
-      
-      const requestData = {
-        pfd_document_id: documentId,
-        pid_drawing_number: pidNumber,
-        pid_title: (pfdDocument.document_title || 'Generated P&ID') + ' (Intelligent)',
-        pid_revision: pfdDocument.revision || 'A',
-        // reference_pid_path can be provided by user or use default
-      };
-
-      // Extended timeout for intelligent generation (AI pattern learning)
-      const response = await apiClient.post('/pfd/conversions/intelligent-generate/', requestData, {
-        timeout: 360000 // 6 minutes for pattern learning + generation
-      });
-      
-      setPidConversion(response.data);
-      setActiveTab('pid');
-      
-    } catch (err) {
-      console.error('Intelligent P&ID generation failed:', err);
-      
-      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        setError('Intelligent P&ID generation is taking longer than expected. The process may still be running. Please refresh the page in a few moments.');
-      } else {
-        setError(err.response?.data?.error || err.response?.data?.detail || 'Intelligent P&ID generation failed. Please try again.');
+      const response = await apiClient.post(`/pfd/conversions/${original.id}/regenerate/`, {
+        expected_updated_at: original.updated_at,
+        expected_artifact_sha256: original.artifact.sha256,
+      }, { timeout: 300000 });
+      if (sequence !== loadSequence.current || selectedId.current !== original.id) return;
+      if (!isNewUnreviewedArtifact(original, response.data)) {
+        setHistoryReady(false);
+        setError('Regeneration did not confirm a distinct unreviewed artifact. The selected output is preserved. Reload outputs to check the result.');
+        return;
       }
+      recordNewConversion(response.data);
+      setNotice('A new unreviewed output was created. The original output and its review evidence remain available in Output version.');
+    } catch (err) {
+      if (sequence !== loadSequence.current || selectedId.current !== original.id) return;
+      setError(await pfdOperationError(err, 'Regeneration failed. The original output and its review evidence have been preserved.'));
+      setHistoryReady(false);
     } finally {
-      setGenerating(false);
+      if (sequence === loadSequence.current) setGenerating(false);
     }
   };
 
@@ -180,94 +154,56 @@ const PFDConvert = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${pidConversion.pid_drawing_number || 'PID'}_specifications.json`;
+    link.download = `${pidConversion.pid_drawing_number || 'PID'}_${pidConversion.id}_specifications.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
   const downloadPIDDrawing = async () => {
-    if (!pidConversion || !pidConversion.id) return;
-    
+    if (!canDownload || downloading) return;
+    const output = pidConversion;
+    const sequence = loadSequence.current;
+    setDownloading(true);
+    setError('');
     try {
-      const response = await apiClient.get(
-        `/pfd/conversions/${pidConversion.id}/download_drawing/`,
-        { responseType: 'blob' }
-      );
-      
+      const response = await apiClient.get(`/pfd/conversions/${output.id}/download_drawing/`, { responseType: 'blob' });
+      if (sequence !== loadSequence.current || selectedId.current !== output.id) return;
       const url = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${pidConversion.pid_drawing_number || 'PID'}_Drawing.pdf`;
+      link.download = artifactDownloadFilename(output, response.headers);
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to download P&ID drawing:', err);
-      const errorMsg = err.response?.data?.error || 'P&ID drawing not available or download failed';
-      await radaiAlert(`Download Failed: ${errorMsg}\n\nThe P&ID drawing may not have been generated yet. This feature requires DALL-E API access.`);
+      if (sequence !== loadSequence.current || selectedId.current !== output.id) return;
+      setError(await pfdOperationError(err, 'The stored drawing could not be downloaded. Download does not generate or replace an output.'));
+    } finally {
+      if (sequence === loadSequence.current) setDownloading(false);
     }
   };
 
-  const loadToCanvas = async (conversionId) => {
-    if (!conversionId) return;
-    
+  const loadToCanvas = async conversionId => {
+    if (!conversionId || canvasLoading) return;
+    const sequence = loadSequence.current;
+    setCanvasLoading(true);
+    setError('');
+    setNotice('Loading this output into the canvas...');
     try {
-      // Show loading notification
-      const loadingToast = document.createElement('div');
-      loadingToast.className = 'fixed top-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3';
-      loadingToast.innerHTML = `
-        <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <span>🎨 Converting P&ID to canvas format...</span>
-      `;
-      document.body.appendChild(loadingToast);
-      
-      // Call API to convert P&ID to canvas data
-      const response = await apiClient.get(
-        `/pfd/conversions/${conversionId}/load-to-canvas/`
-      );
-      
-      // Remove loading notification
-      document.body.removeChild(loadingToast);
-      
-      const canvasData = response.data;
-      
-      console.log('Canvas data loaded:', canvasData);
-      console.log('Equipment items:', canvasData.equipment?.length || 0);
-      console.log('Instruments:', canvasData.instrumentation?.length || 0);
-      
-      // Store canvas data in sessionStorage for the editor to pick up
-      sessionStorage.setItem('canvasLoadData', JSON.stringify(canvasData));
-      
-      // Switch to 2D diagram view mode to load the canvas
+      const response = await apiClient.get(`/pfd/conversions/${conversionId}/load-to-canvas/`);
+      if (sequence !== loadSequence.current || selectedId.current !== conversionId) return;
+      sessionStorage.setItem('canvasLoadData', JSON.stringify({ ...response.data, conversion_id: conversionId }));
       setViewMode('2d-diagram');
-      
-      // Show success notification
-      const successToast = document.createElement('div');
-      successToast.className = 'fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3';
-      successToast.innerHTML = `
-        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-        </svg>
-        <span>✅ P&ID loaded into Expert Mode canvas! ${canvasData.equipment?.length || 0} equipment, ${canvasData.instrumentation?.length || 0} instruments</span>
-      `;
-      document.body.appendChild(successToast);
-      
-      setTimeout(() => {
-        document.body.removeChild(successToast);
-      }, 5000);
-      
+      setNotice('This output was loaded into the canvas. Canvas edits do not change the stored drawing or its review.');
     } catch (err) {
-      console.error('Failed to load P&ID to canvas:', err);
-      const errorMsg = err.response?.data?.error || 'Failed to convert P&ID to canvas format';
-      const detail = err.response?.data?.detail || 'The P&ID may not be available or the conversion service may be unavailable.';
-      
-      await radaiAlert(`Canvas Load Failed: ${errorMsg}\n\n${detail}\n\nThis feature uses GPT-4 Vision to extract elements from the P&ID drawing.`);
+      if (sequence !== loadSequence.current || selectedId.current !== conversionId) return;
+      setNotice('');
+      setError(await pfdOperationError(err, 'This output could not be loaded into the canvas. The stored drawing and review are unchanged.'));
+    } finally {
+      if (sequence === loadSequence.current) setCanvasLoading(false);
     }
   };
 
-  if (loading) {
+  if (loading && !pfdDocument) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50 flex items-center justify-center">
         <div className="text-center">
@@ -363,40 +299,27 @@ const PFDConvert = () => {
           </div>
         </div>
 
-        {/* Auto-Generation Banner */}
-        {autoGenerating && (
-          <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-lg p-6 mb-6 text-white">
-            <div className="flex items-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white mr-4"></div>
-              <div>
-                <h3 className="text-lg font-semibold mb-1">🚀 Generating Professional P&ID...</h3>
-                <p className="text-purple-100">Using programmatic CAD-style generator with ISA 5.1 standards and ROBOFLOW specifications</p>
-              </div>
-            </div>
-          </div>
-        )}
+        {notice && <div role="status" className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-blue-900">{notice}</div>}
+        {generating && pidConversion && <div role="status" className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-blue-900">Creating a separate unreviewed output. The selected original is retained.</div>}
 
         {/* Error Banner */}
         {error && pfdDocument && (
-          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6">
+          <div role="alert" className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6">
             <div className="flex items-start justify-between">
               <div className="flex">
                 <svg className="h-5 w-5 text-red-400 mr-3 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
                 <div className="flex-1">
-                  <h4 className="text-red-800 font-medium">Generation Error</h4>
+                  <h4 className="text-red-800 font-medium">Output operation unavailable</h4>
                   <p className="text-red-700 text-sm mt-1">{error}</p>
                 </div>
               </div>
               <button
-                onClick={() => {
-                  setError('');
-                  loadPFDDocument(); // Refresh to check if PID was generated
-                }}
+                onClick={loadPFDDocument}
+                disabled={loading || generating || downloading || canvasLoading}
                 className="ml-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium flex-shrink-0"
-              >
-                🔄 Check Status
+              >                Reload outputs
               </button>
             </div>
           </div>
@@ -461,7 +384,7 @@ const PFDConvert = () => {
             {/* P&ID Tab */}
             {activeTab === 'pid' && (
               <div className="space-y-6">
-                {generating ? (
+                {generating && !pidConversion ? (
                   <div className="text-center py-12">
                     <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-600 mx-auto mb-4"></div>
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">Generating P&ID Specifications...</h3>
@@ -470,15 +393,39 @@ const PFDConvert = () => {
                     </p>
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto mt-6">
                       <p className="text-sm text-blue-800">
-                        <strong>⏱️ This process may take 2-5 minutes</strong> as we're making multiple AI calls to generate comprehensive P&ID specifications.
+                        <strong>⏱️ This process may take 2-5 minutes</strong> as we make multiple AI calls to generate comprehensive P&ID specifications.
                       </p>
                       <p className="text-xs text-blue-600 mt-2">
-                        If this takes longer, don't worry - the process is still running in the background. You can refresh the page in a few moments to check the results.
+                        Completion is confirmed only when an output is returned. If the request times out, reload outputs to check before retrying.
                       </p>
                     </div>
                   </div>
                 ) : pidConversion ? (
                   <>
+                    <section aria-label="Output identity and review" className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="min-w-0 flex-1">
+                          <label htmlFor="pfd-output-version" className="block text-sm font-medium text-gray-800 mb-1">Output version</label>
+                          <select id="pfd-output-version" value={pidConversion.id} disabled={generating || loading || downloading || canvasLoading}
+                            onChange={event => { selectConversion(conversions.find(row => row.id === event.target.value)); setNotice(''); setError(''); }}
+                            className="w-full min-w-0 rounded-md border border-gray-300 bg-white p-2 text-sm">
+                            {conversions.map(row => <option key={row.id} value={row.id}>{row.pid_drawing_number || 'P&ID'} - Rev {row.pid_revision || 'Unavailable'} - {row.id} - {conversionReviewLabel(row)}</option>)}
+                          </select>
+                        </div>
+                        <button type="button" onClick={loadPFDDocument} disabled={loading || generating || downloading || canvasLoading} className="px-4 py-2 rounded-md border border-gray-300 bg-white text-sm text-gray-800 disabled:opacity-50">{loading ? 'Loading outputs...' : 'Reload outputs'}</button>
+                      </div>
+                      <dl className="text-sm space-y-1 break-words">
+                        <div><dt className="inline font-medium">Output identity: </dt><dd className="inline">{pidConversion.artifact?.identity || pidConversion.id}</dd></div>
+                        <div><dt className="inline font-medium">Drawing revision: </dt><dd className="inline">{pidConversion.pid_revision || 'Unavailable'}</dd></div>
+                        <div><dt className="inline font-medium">Review state: </dt><dd className="inline">{conversionReviewLabel(pidConversion)}</dd></div>
+                        <div><dt className="inline font-medium">Artifact SHA-256: </dt><dd className="inline font-mono">{pidConversion.artifact?.sha256 || 'Unavailable'}</dd></div>
+                        {pidConversion.artifact?.source_conversion_id && <div><dt className="inline font-medium">Regenerated from: </dt><dd className="inline">{pidConversion.artifact.source_conversion_id}</dd></div>}
+                        {pidConversion.reviewed_at && <div><dt className="inline font-medium">Recorded review: </dt><dd className="inline">{pidConversion.reviewed_by_name || 'Reviewer recorded'} - {pidConversion.reviewed_at}</dd></div>}
+                      </dl>
+                      <p className="text-sm text-gray-600">Download retrieves this stored output. Regenerate creates a separate unreviewed output and retains the original evidence.</p>
+                      {!canRegenerate && <p className="text-sm text-gray-700">Regenerate is unavailable without current update permission, supported stored output, and a successfully loaded history.</p>}
+                      {!canDownload && <p className="text-sm text-gray-700">Download is unavailable without export permission and an existing artifact.</p>}
+                    </section>
                     {/* View Mode Selector - 3 Options */}
                     <div className="flex gap-3 mb-6 flex-wrap">
                       <button
@@ -524,12 +471,12 @@ const PFDConvert = () => {
 
                     {/* Conditional View Rendering */}
                     {viewMode === '2d-diagram' ? (
-                      <PID2DGenerator 
+                      <PID2DGenerator key={pidConversion.id}
                         pidData={pidConversion.pid_data || pidConversion} 
                         pfdData={pfdDocument?.extracted_data}
                       />
                     ) : viewMode === 'design-check' ? (
-                      <PIDDesignCheck 
+                      <PIDDesignCheck key={pidConversion.id}
                         pidConversion={pidConversion}
                         pfdDocument={pfdDocument}
                       />
@@ -547,6 +494,7 @@ const PFDConvert = () => {
                             <div className="flex gap-4">
                               <button
                                 onClick={regeneratePID}
+                                disabled={!canRegenerate || generating || loading || downloading || canvasLoading}
                                 className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors flex items-center"
                               >
                                 <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -556,6 +504,7 @@ const PFDConvert = () => {
                               </button>
                               <button
                                 onClick={() => loadToCanvas(pidConversion.id)}
+                                disabled={canvasLoading || generating || downloading || loading}
                                 className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 font-medium transition-colors flex items-center shadow-lg"
                               >
                                 <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -574,6 +523,7 @@ const PFDConvert = () => {
                               </button>
                               <button
                                 onClick={downloadPIDDrawing}
+                                disabled={!canDownload || downloading || generating || canvasLoading}
                                 className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors flex items-center"
                               >
                                 <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -589,6 +539,8 @@ const PFDConvert = () => {
                             onRegenerate={regeneratePID}
                             onDownload={downloadPIDSpec}
                             onDownloadDrawing={downloadPIDDrawing}
+                            canRegenerate={canRegenerate && !generating && !loading && !downloading && !canvasLoading}
+                            canDownload={canDownload && !downloading && !generating && !canvasLoading}
                           />
                         )}
                       </>
@@ -600,14 +552,15 @@ const PFDConvert = () => {
                     <svg className="h-16 w-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">No P&ID Generated Yet</h3>
-                    <p className="text-gray-600 mb-6">Generate a P&ID from the extracted PFD data using AI</p>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{historyReady ? 'No P&ID Generated Yet' : 'Output history unavailable'}</h3>
+                    <p className="text-gray-600 mb-6">{historyReady ? 'Generate an unreviewed P&ID from the extracted PFD data with create permission.' : 'Reload outputs to establish which stored versions exist before generating.'}</p>
                     
                     <div className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-2xl mx-auto">
                       {/* Standard Generation */}
                       <div className="flex-1 w-full">
                         <button
-                          onClick={autoGeneratePID}
+                          onClick={() => generatePID(false)}
+                          disabled={!historyReady || !canGenerate || generating}
                           className="w-full px-6 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 font-medium transition-all shadow-lg flex items-center justify-center"
                         >
                           <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -621,7 +574,8 @@ const PFDConvert = () => {
                       {/* Intelligent Generation */}
                       <div className="flex-1 w-full">
                         <button
-                          onClick={generateIntelligentPID}
+                          onClick={() => generatePID(true)}
+                          disabled={!historyReady || !canGenerate || generating}
                           className="w-full px-6 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg hover:from-blue-700 hover:to-cyan-700 font-medium transition-all shadow-lg flex items-center justify-center border-2 border-blue-400"
                         >
                           <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -634,7 +588,7 @@ const PFDConvert = () => {
                     </div>
                     
                     <div className="mt-6 p-4 bg-blue-50 rounded-lg max-w-2xl mx-auto text-left">
-                      <h4 className="font-semibold text-blue-900 mb-2">💡 What's the difference?</h4>
+                      <h4 className="font-semibold text-blue-900 mb-2">💡 What is the difference?</h4>
                       <ul className="text-sm text-blue-800 space-y-1">
                         <li>• <strong>Standard:</strong> Fast generation using pre-configured rules (~2 min)</li>
                         <li>• <strong>Intelligent:</strong> Learns style from your reference P&IDs (~6 min)</li>
@@ -745,7 +699,7 @@ const PFDDataView = ({ data }) => {
 };
 
 // P&ID View Component
-const PIDView = ({ data, onRegenerate, onDownload, onDownloadDrawing }) => {
+const PIDView = ({ data, onRegenerate, onDownload, onDownloadDrawing, canRegenerate, canDownload }) => {
   const confidenceColor = data.confidence_score >= 80 ? 'text-green-600' : 
                           data.confidence_score >= 60 ? 'text-yellow-600' : 'text-red-600';
   
@@ -755,9 +709,9 @@ const PIDView = ({ data, onRegenerate, onDownload, onDownloadDrawing }) => {
       <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl shadow-lg p-6 text-white">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <h3 className="text-2xl font-bold mb-2">✓ P&ID Successfully Generated!</h3>
+            <h3 className="text-2xl font-bold mb-2">Stored P&ID output</h3>
             <p className="text-green-100 mb-4">
-              AI has analyzed the PFD and generated comprehensive P&ID specifications with visual drawing
+              Generation status is separate from engineering review. The exact stored output and review evidence are identified above.
             </p>
             <div className="flex flex-wrap gap-4">
               <div className="bg-white/20 rounded-lg px-4 py-2">
@@ -777,12 +731,13 @@ const PIDView = ({ data, onRegenerate, onDownload, onDownloadDrawing }) => {
           <div className="flex flex-col gap-2">
             <button
               onClick={onDownloadDrawing}
+              disabled={!canDownload}
               className="px-4 py-2 bg-white text-green-600 rounded-lg hover:bg-green-50 font-medium transition-colors flex items-center"
             >
               <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
-              Download P&ID Drawing (PDF)
+              Download P&ID Drawing
             </button>
             <button
               onClick={onDownload}
@@ -795,6 +750,7 @@ const PIDView = ({ data, onRegenerate, onDownload, onDownloadDrawing }) => {
             </button>
             <button
               onClick={onRegenerate}
+              disabled={!canRegenerate}
               className="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 font-medium transition-colors flex items-center"
             >
               <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

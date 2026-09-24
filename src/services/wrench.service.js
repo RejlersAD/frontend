@@ -51,11 +51,12 @@ const wrenchService = {
   getSyncLog: (id) => apiService.get(`${BASE}/sync/${id}/`),
 
   /**
-   * Trigger a sync run.
-   * @param {string} direction     – 'wrench_to_radai' | 'radai_to_wrench'
-   * @param {string} entity_type  – 'project' | 'document' | 'transmittal' | 'user' | 'all'
+   * Retrieve a supported Wrench metadata page and record its outcome.
+   * Supported combinations are returned by config.sync_capabilities.
+   * No canonical import or outbound synchronization is implemented here.
+   * Inspect the returned log status and evidence even when HTTP is successful.
    */
-  triggerSync: (direction = 'wrench_to_radai', entity_type = 'all') =>
+  triggerSync: (direction = 'wrench_to_radai', entity_type = 'document') =>
     apiService.post(`${BASE}/sync/trigger/`, { direction, entity_type }),
 
   // ── Document Search ───────────────────────────────────────────────────────

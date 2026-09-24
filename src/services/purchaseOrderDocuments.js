@@ -1,4 +1,5 @@
 import apiClient from './api.service';
+import { toast } from 'react-toastify';
 import { buildProcurementPdfFilename } from '../utils/procurementPdfFilename';
 
 const mimeTypes = { pdf: 'application/pdf', word: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
@@ -12,7 +13,9 @@ async function documentResponse(response, order, format) {
   const disposition = response.headers?.['content-disposition'] || '';
   const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1]
     || (format === 'word' ? fallback.replace(/\.pdf$/i, '.docx') : fallback);
-  return { blob: new Blob([blob], { type: mimeTypes[format] }), filename };
+  const warningCount = Number(response.headers?.['x-po-attachment-warnings']);
+  const attachmentWarningCount = Number.isSafeInteger(warningCount) && warningCount > 0 ? warningCount : 0;
+  return { blob: new Blob([blob], { type: mimeTypes[format] }), filename, attachmentWarningCount };
 }
 
 export async function purchaseOrderDocumentError(error) {
@@ -70,7 +73,7 @@ export async function previewPurchaseOrderDocument(snapshot, files, orderId, for
   return documentResponse(response, snapshot, format);
 }
 
-export function downloadPurchaseOrderDocument({ blob, filename }) {
+export function downloadPurchaseOrderDocument({ blob, filename, attachmentWarningCount = 0 }) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -79,4 +82,7 @@ export function downloadPurchaseOrderDocument({ blob, filename }) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  if (attachmentWarningCount > 0) {
+    toast.warn(`This download has ${attachmentWarningCount} attachment warning${attachmentWarningCount === 1 ? '' : 's'}. Some attachment content could not be included. Check the order's attachments before sharing the document.`, { autoClose: false });
+  }
 }

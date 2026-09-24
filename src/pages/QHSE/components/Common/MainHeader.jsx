@@ -7,6 +7,7 @@ export const MainHeader = ({
   lastUpdated = null,
   dataLastChanged = null,
   isRefreshing = false,
+  showLiveStatus = true,
   showLogo = true,
   logoUrl = null,
   darkLogoUrl = null,
@@ -72,7 +73,7 @@ export const MainHeader = ({
               {subtitle}
             </p>
             
-            <div className="p-2">
+            {showLiveStatus && <div className="p-2">
               <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${
                   isRefreshing ? 'bg-blue-500' : 'bg-green-500'
@@ -82,7 +83,7 @@ export const MainHeader = ({
                   {timeAgo && ` • ${timeAgo}`}
                 </span>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
         
