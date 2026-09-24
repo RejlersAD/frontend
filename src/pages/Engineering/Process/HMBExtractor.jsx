@@ -79,6 +79,16 @@ const TEMPLATE_DEFAULT_CFG = {
   preferHighestStreamCount: true, // true = pick max stream_count; false = legacy rows[0] behaviour
 };
 
+// Soft-coded first-run guidance banner. Shown identically to every user when
+// the active project has no master template yet, so the workflow entry point
+// is unambiguous regardless of account/role.
+const FIRST_RUN_GUIDANCE_CFG = {
+  enabled: true,
+  title: 'Set up a master template to begin',
+  body: 'This project has no mapping master yet. Analyse your master HMB template once \u2014 every teammate working on this project will then share the same template, case data, and export layout.',
+  ctaLabel: 'Open Template Setup',
+};
+
 const UI = {
   pageBg: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 62%, #eef2f7 100%)',
   shellMaxWidth: 1680,
@@ -1431,6 +1441,31 @@ const HMBExtractorPage = () => {
                       : 'No template is active yet. Open manager to analyze and save a master template.'}
                   </div>
                 </div>
+                {/* Soft-coded first-run guidance: identical for every user when the project has no master template */}
+                {FIRST_RUN_GUIDANCE_CFG.enabled && !loadingProfiles && templateProfiles.length === 0 && (
+                  <div style={{
+                    width: '100%', marginTop: 10, padding: '10px 12px',
+                    border: `1px solid ${T.accentBorder}`, borderRadius: 8,
+                    background: '#f0fdfa', display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
+                  }}>
+                    <div style={{ fontSize: 12, color: '#134e4a' }}>
+                      <strong>{FIRST_RUN_GUIDANCE_CFG.title}.</strong> {FIRST_RUN_GUIDANCE_CFG.body}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setShowTemplateManager(true); }}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: T.accent, color: '#fff', border: 'none',
+                        borderRadius: 6, padding: '7px 12px', fontSize: 12,
+                        fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Sparkles width={14} /> {FIRST_RUN_GUIDANCE_CFG.ctaLabel}
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: workspaceView === 'template' ? 'flex' : 'none', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     onClick={loadTemplateProfiles}
