@@ -2420,7 +2420,12 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     </li>)}
                   </ul>}
 
-                  <div className="relative mt-3">
+                  <div
+                    className="relative mt-3"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setShowProjectChoices(false);
+                    }}
+                  >
                     <input
                       id="po-project-search"
                       role="combobox"
@@ -2439,7 +2444,6 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                           if (showProjectChoices && filteredProjects[Math.max(0, activeProjectIndex)]) handleProjectSelect(filteredProjects[Math.max(0, activeProjectIndex)]);
                         }
                       }}
-                      onBlur={() => window.setTimeout(() => setShowProjectChoices(false), 150)}
                       autoComplete="off"
                       placeholder={projectsLoading ? 'Loading existing projects…' : projectLinking ? 'Linking project to Procurement…' : 'Type a project number or name…'}
                       disabled={projectsLoading || projectLinking || projectCreating}
