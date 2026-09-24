@@ -1,8 +1,10 @@
 # Procurement and Finance release verification — 24 September 2026
 
-Release source: `development`, aligned with `main` at `d409114`. Application
-verification used `a27dfbde27768a8e6b964a4a3dc2892aba37a604`; subsequent changes
-to this report and the UI-check guide are documentation only.
+Release source: `development`, aligned with `main` at `7030064`. Initial
+application verification used `a27dfbd`. When Notification Center PR #163
+reached `main` during final verification, it was merged into the isolated
+candidate `4f1a3f3` and the combined application was rebuilt and checked again.
+Subsequent changes to this report are documentation only.
 
 ## Behavior
 
@@ -30,8 +32,17 @@ to this report and the UI-check guide are documentation only.
 | Relevant Node unit tests | 115 passed |
 | Receipt and Finance handoff browser scenarios | 39 passed |
 | PO save-session scenarios against the isolated production bundle | 7 passed |
+| Notification PO preview, account isolation and incomplete-refresh smoke checks after the latest main merge | 3 passed |
 | ESLint across 41 changed JS/JSX files | Zero errors; 10 existing PurchaseOrderForm warnings |
 | All 47 release paths compared with the verified source | Equivalent after line-ending normalization |
+
+The final combined build passed on `4f1a3f3` with 112 precache entries, and all
+seven PO save-session cases passed again against that bundle. Only Notification
+Center paths changed in the latest `main` merge; the previously checked receipt,
+Finance and PO unit-test source was unchanged. Notification source/fixture lint
+also passed without errors or warnings. Earlier build evidence is retained;
+`frontend-latest-main-build.log` and `frontend-latest-main-save-browser.log` are
+the final combined-application evidence.
 
 Browser tests use synthetic API fixtures and do not send a real PO, confirm a
 live receipt or import an actual invoice. Final checks include input retention,
