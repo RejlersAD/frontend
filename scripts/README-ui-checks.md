@@ -79,7 +79,9 @@ Ordinary native PO Save draft and Save changes keep the editor open on its
 current section. Tests that need the register or a fresh editing session must
 click Close purchase order explicitly after waiting for the successful save.
 Successful explicit vendor sending retains completion navigation; failure keeps
-the editor and input. Saving alone does not send the order or request approval.
+the editor and input. Saving alone does not send the order to the vendor or
+record an approval decision. Saving an eligible PO with a pending assigned
+approver may request approval through the existing notification workflow.
 
 Run `node --test tests/purchase-order-save-state.test.js` for acknowledgment,
 in-flight edit and attachment cases. Run `npm exec -- playwright test
