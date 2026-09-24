@@ -37,7 +37,7 @@ test('direct edit link requires explicit reopening and does not autosave rejecte
   const state = await revisionHarness(page, { initialPath: `/procurement/requisitions/${formRecordId}/edit` });
   await expect(edit(page)).toBeVisible();
   await expect(product(page)).toHaveCount(0);
-  expect(state.requests.filter(request => ['PATCH', 'POST'].includes(request.method))).toEqual([]);
+  expect(state.requests.filter(request => request.path.startsWith('/api/v1/procurement/') && ['PATCH', 'POST', 'PUT', 'DELETE'].includes(request.method))).toEqual([]);
   await edit(page).click();
   await expect(product(page)).toBeVisible();
   expect(state.reopens).toHaveLength(1);
