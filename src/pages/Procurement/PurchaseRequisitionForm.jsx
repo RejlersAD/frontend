@@ -389,7 +389,17 @@ const normalizeEmployeeName = (employee) => String(
     || '',
 ).trim().toLowerCase().replace(/\s+/g, ' ');
 
-const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, pageMode = false }) => {
+const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initialEditData = null, pageMode = false }) => {
+  const [reloadedRecord, setReloadedRecord] = useState(null);
+  const editData = reloadedRecord && reloadedRecord.original === initialEditData ? reloadedRecord.record : initialEditData;
+  const reloadContextRef = useRef(null);
+  useEffect(() => {
+    const context = {};
+    reloadContextRef.current = context;
+    setReloadedRecord(null);
+    setReloadingRecord(false);
+    return () => { reloadContextRef.current = null; };
+  }, [isOpen, initialEditData]);
   const authUser = useSelector((state) => state.auth?.user);
   const sessionUser = authUser?.user || authUser || {};
   const sessionUserName = String(
@@ -435,6 +445,11 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   const [serverWarnings, setServerWarnings] = useState(() => registrationWarningsFrom(editData));
   const [autoSaving, setAutoSaving] = useState(false);
   const draftIdRef = useRef(editData?.id || null);
+  // Keep the server timestamp verbatim: Date would discard sub-millisecond precision.
+  const expectedUpdatedAtRef = useRef(editData?.updated_at || '');
+  const staleRecordRef = useRef(false);
+  const [staleRecord, setStaleRecord] = useState(false);
+  const [reloadingRecord, setReloadingRecord] = useState(false);
   const autoSaveInFlightRef = useRef(null);
   const formDataRef = useRef(formData);
   const approvalWorkflowRef = useRef(editData?.approval_workflow_config || []);
@@ -543,6 +558,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     approvalWorkflowRef.current = editData?.approval_workflow_config || [];
     editedApproverRolesRef.current = new Set();
     draftIdRef.current = editData?.id || null;
+    expectedUpdatedAtRef.current = editData?.updated_at || '';
+    staleRecordRef.current = false;
+    setStaleRecord(false);
     autoSaveInFlightRef.current = null;
     submissionInFlightRef.current = false;
     lastAutoSaveFingerprintRef.current = JSON.stringify(initialData);
@@ -1171,7 +1189,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
   }, [formData]);
 
   const handleAutoSave = useCallback(async () => {
-    if (submissionInFlightRef.current || !userEditedRef.current || preserveApprovalWorkflow || formDataRef.current._vatPricingChanged) return null;
+    if (staleRecordRef.current || submissionInFlightRef.current || !userEditedRef.current || preserveApprovalWorkflow || formDataRef.current._vatPricingChanged) return null;
     if (autoSaveInFlightRef.current) {
       return autoSaveInFlightRef.current;
     }
@@ -1194,11 +1212,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       setAutoSaving(true);
       try {
         const targetDraftId = editData?.id || draftIdRef.current;
+        if (targetDraftId) autoSavePayload.expected_updated_at = expectedUpdatedAtRef.current;
         const response = targetDraftId
           ? await apiClient.patch(`/procurement/requisitions/${targetDraftId}/`, autoSavePayload)
           : await apiClient.post('/procurement/requisitions/', autoSavePayload);
 
         draftIdRef.current = response.data.id;
+        expectedUpdatedAtRef.current = response.data.updated_at || '';
         lastAutoSaveFingerprintRef.current = fingerprint;
         failedAutoSaveFingerprintRef.current = '';
         if (response.data.pr_number) {
@@ -1213,6 +1233,12 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         setServerWarnings(registrationWarningsFrom(response.data));
         return response.data;
       } catch (error) {
+        if (error.response?.status === 409 && error.response?.data?.code === 'stale_requisition') {
+          staleRecordRef.current = true;
+          setStaleRecord(true);
+          setSaveError(error.response.data.error);
+          throw error;
+        }
         // A rejected payload needs an edit, not another identical timed PATCH.
         // Explicit Save remains available to retry after an external correction.
         if (error.response?.status === 400) failedAutoSaveFingerprintRef.current = fingerprint;
@@ -1444,7 +1470,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
 
   const handleSubmit = async (e, submitForApproval = false, stayOnPage = false) => {
     e.preventDefault();
-    if (submissionInFlightRef.current || approvalRecordEditing) return;
+    if (staleRecordRef.current || submissionInFlightRef.current || approvalRecordEditing) return;
     if (!formData.pr_number?.trim() || prNumberStatus.available === false) {
       setErrors(prev => ({ ...prev, pr_number: prNumberStatus.available === false ? 'This PR number already exists' : 'Enter the PR number manually' }));
       setActiveStep(0);
@@ -1546,11 +1572,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       }
 
       const targetDraftId = editData?.id || draftIdRef.current;
+      if (targetDraftId) submitData.append('expected_updated_at', expectedUpdatedAtRef.current);
       let response = targetDraftId
         ? await apiClient.patch(`/procurement/requisitions/${targetDraftId}/`, submitData, config)
         : await apiClient.post('/procurement/requisitions/', submitData, config);
 
       draftIdRef.current = response.data.id;
+      expectedUpdatedAtRef.current = response.data.updated_at || '';
       lastAutoSaveFingerprintRef.current = JSON.stringify({ ...formDataRef.current, approval_workflow_config: approvalWorkflow });
       failedAutoSaveFingerprintRef.current = '';
 
@@ -1560,7 +1588,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
       if (shouldSubmitForApproval) {
         response = await apiClient.post(`/procurement/requisitions/${response.data.id}/submit/`, {
           approval_workflow_config: approvalWorkflow,
+          expected_updated_at: expectedUpdatedAtRef.current,
         });
+        expectedUpdatedAtRef.current = response.data.updated_at || '';
       }
 
       const requisitionLabel = response.data.pr_number
@@ -1591,6 +1621,13 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
         else if (onClose) onClose();
       }
     } catch (error) {
+      if (error.response?.status === 409 && error.response?.data?.code === 'stale_requisition') {
+        staleRecordRef.current = true;
+        setStaleRecord(true);
+        setSaveError(error.response.data.error);
+        formScrollRef.current?.scrollTo({ top: 0 });
+        return;
+      }
       console.error('Error submitting PR:', error);
       const apiErrors = normalizeApiErrors(error.response?.data);
       if (Object.keys(apiErrors).length) {
@@ -1609,8 +1646,30 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
     }
   };
 
+  const reloadLatestRecord = async () => {
+    if (reloadingRecord || !draftIdRef.current) return;
+    const context = reloadContextRef.current;
+    const recordId = draftIdRef.current;
+    if (!await radaiConfirm('Reloading replaces your unsaved changes with the latest saved recommendation. Copy any edits you want to keep before continuing.', { confirmLabel: 'Reload latest version', cancelLabel: 'Keep my edits' })) return;
+    if (reloadContextRef.current !== context) return;
+    setReloadingRecord(true);
+    try {
+      const { data } = await apiClient.get(`/procurement/requisitions/${recordId}/`, { params: { _fresh: Date.now() }, suppressErrorToast: true });
+      if (reloadContextRef.current !== context) return;
+      if (String(data?.id) !== String(recordId)) throw new Error('The loaded recommendation did not match.');
+      setReloadedRecord({ original: initialEditData, record: data });
+    } catch {
+      if (reloadContextRef.current === context) setSaveError('The latest recommendation could not be loaded. Your edits are still here. Try reloading again.');
+    } finally {
+      if (reloadContextRef.current === context) setReloadingRecord(false);
+    }
+  };
+
   const handleApprovalRecordSaved = updated => {
     if (String(updated?.id) !== String(draftIdRef.current)) return;
+    // The source command checks the same version before changing evidence.
+    // Its response can safely advance our token without replacing local edits.
+    expectedUpdatedAtRef.current = updated.updated_at || '';
     const retainedAssignments = retainCurrentApprovalAssignments(pendingAssignments, updated);
     if (!submissionInFlightRef.current) {
       setPendingAssignments(retainedAssignments);
@@ -1769,8 +1828,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
               <div><h1>{editData ? 'Edit purchase recommendation' : 'Create purchase recommendation'}</h1><p>Define the requirement, compare suppliers and route the recommendation for approval.</p></div>
               <div className="prf-header-actions">
                 <span role="status" className={`prf-save-state ${saveError ? 'prf-save-error' : ''}`}><CheckCircleIcon />{autoSaving || submitLoading ? 'Saving changes...' : saveError ? 'Changes not saved' : unsavedChanges ? (editData || lastSavedAt ? 'Unsaved changes' : 'Unsaved draft') : lastSavedAt ? (preserveApprovalWorkflow ? 'Changes saved' : 'Draft saved') : editData ? (preserveApprovalWorkflow ? 'Existing recommendation' : 'Existing draft') : 'Unsaved draft'}</span>
-                <button type="button" className="prf-button prf-save-action" onClick={event => handleSubmit(event, false, true)} disabled={submitLoading || autoSaving || approvalRecordEditing}><SaveIcon />{approvedPdfFile ? 'Record signed PDF' : 'Save'}</button>
-                {canSubmitForApproval && !approvedPdfFile && <button type="button" className="prf-button prf-primary prf-send-action" onClick={event => handleSubmit(event, true)} disabled={submitLoading || autoSaving || approvalRecordEditing}>Send for Approval<ArrowRightIcon /></button>}
+                <button type="button" className="prf-button prf-save-action" onClick={event => handleSubmit(event, false, true)} disabled={staleRecord || submitLoading || autoSaving || approvalRecordEditing}><SaveIcon />{approvedPdfFile ? 'Record signed PDF' : 'Save'}</button>
+                {canSubmitForApproval && !approvedPdfFile && <button type="button" className="prf-button prf-primary prf-send-action" onClick={event => handleSubmit(event, true)} disabled={staleRecord || submitLoading || autoSaving || approvalRecordEditing}>Send for Approval<ArrowRightIcon /></button>}
               </div>
             </div>
             <nav aria-label="Recommendation steps" className="prf-steps">
@@ -1782,7 +1841,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
           </header>
           <form id="pr-modal-form" className="prf-form" onSubmit={event => handleSubmit(event, false, true)} noValidate>
             <div ref={formScrollRef} className="prf-form-scroll">
-              {saveError && <div role="alert" className="prf-error-banner"><ExclamationCircleIcon />{saveError}</div>}
+              {saveError && <div role="alert" className="prf-error-banner"><ExclamationCircleIcon /><div>{saveError}{staleRecord && <><p>Your edits are still here. Saving and sending are paused until you reload and review the latest version.</p><button type="button" className="prf-button" onClick={reloadLatestRecord} disabled={reloadingRecord}>{reloadingRecord ? 'Reloading...' : 'Reload latest version'}</button></>}</div></div>}
               {activeStep === 0 && <div className="prf-step-panel" aria-label="Request">{/* Section 1: Header Section */}
           <div className="prf-card prf-legacy-card">
             <div className="prf-request-heading">
@@ -2326,13 +2385,20 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             {preserveApprovalWorkflow ? <><RecordedApprovalHistory
               key={approvalRecord.id}
               requisition={{ ...approvalRecord, price_remarks_data: formData.price_remarks_data, attachments: savedAttachments }}
-              disabled={submitLoading || autoSaving}
+              expectedUpdatedAt={expectedUpdatedAtRef.current}
+              disabled={staleRecord || submitLoading || autoSaving}
               onSaved={handleApprovalRecordSaved}
+              onStaleRecord={message => {
+                staleRecordRef.current = true;
+                setStaleRecord(true);
+                setSaveError(message || 'This purchase recommendation changed. Reload the latest version before saving.');
+                formScrollRef.current?.scrollTo({ top: 0 });
+              }}
               onEditingChange={setApprovalRecordEditing}
               hidePendingAssignments={Boolean(approvalRecord.can_reassign_approvers)}
             />{assignmentNotice && <p role="status" className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{assignmentNotice}</p>}
             <PendingApprovalAssignments requisition={approvalRecord} assignments={pendingAssignments} employees={projectManagers}
-              loading={loadingApprovers} error={approverLoadError} disabled={submitLoading || autoSaving || approvalRecordEditing}
+              loading={loadingApprovers} error={approverLoadError} disabled={staleRecord || submitLoading || autoSaving || approvalRecordEditing}
               onRetry={fetchApprovers} onChange={(index, assignment) => {
                 userEditedRef.current = true;
                 setAssignmentNotice('');
@@ -2398,8 +2464,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData = null, 
             <footer className="prf-action-bar">
               <button type="button" className="prf-button prf-cancel" onClick={onClose}>Cancel</button>
               <button type="button" className={`prf-required ${issues.length ? '' : 'is-ready'}`} onClick={() => issues[0] && revealIssue(issues[0])}><ExclamationCircleIcon />{requiredMessage}</button>
-              <div className="prf-bottom-actions">{activeStep > 0 && activeStep !== 1 && <button type="button" className="prf-button prf-back" onClick={() => goToStep(activeStep - 1)}><ArrowLeftIcon />Back</button>}<button type="submit" className="prf-button prf-save-action" disabled={submitLoading || autoSaving || approvalRecordEditing}>{approvedPdfFile ? 'Record signed PDF' : 'Save'}</button>
-              {activeStep < 4 ? <button type="button" className="prf-button prf-primary" onClick={continueStep}>Continue to {['supplier & pricing', 'business justification', 'documents', 'approval'][activeStep]}<ArrowRightIcon /></button> : !approvedPdfFile && canSubmitForApproval && <button type="button" className="prf-button prf-primary prf-send-action" onClick={event => handleSubmit(event, true)} disabled={submitLoading || autoSaving || approvalRecordEditing}>{submitLoading ? 'Sending...' : 'Send for Approval'}<ArrowRightIcon /></button>}</div>
+              <div className="prf-bottom-actions">{activeStep > 0 && activeStep !== 1 && <button type="button" className="prf-button prf-back" onClick={() => goToStep(activeStep - 1)}><ArrowLeftIcon />Back</button>}<button type="submit" className="prf-button prf-save-action" disabled={staleRecord || submitLoading || autoSaving || approvalRecordEditing}>{approvedPdfFile ? 'Record signed PDF' : 'Save'}</button>
+              {activeStep < 4 ? <button type="button" className="prf-button prf-primary" onClick={continueStep}>Continue to {['supplier & pricing', 'business justification', 'documents', 'approval'][activeStep]}<ArrowRightIcon /></button> : !approvedPdfFile && canSubmitForApproval && <button type="button" className="prf-button prf-primary prf-send-action" onClick={event => handleSubmit(event, true)} disabled={staleRecord || submitLoading || autoSaving || approvalRecordEditing}>{submitLoading ? 'Sending...' : 'Send for Approval'}<ArrowRightIcon /></button>}</div>
             </footer>
           </form>
         </section>

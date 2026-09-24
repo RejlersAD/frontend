@@ -70,7 +70,19 @@ const REJECTION_CONFIG = {
   }
 };
 
-const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete, onSourceUploaded, pageMode = false }) => {
+const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequisition, currentUser, onApprovalComplete, onSourceUploaded, pageMode = false }) => {
+  const [reloadedRecord, setReloadedRecord] = useState(null);
+  const requisition = reloadedRecord && reloadedRecord.original === initialRequisition ? reloadedRecord.record : initialRequisition;
+  const [submissionConflict, setSubmissionConflict] = useState('');
+  const [reloadingRecord, setReloadingRecord] = useState(false);
+  const reloadContextRef = useRef(null);
+  useEffect(() => {
+    reloadContextRef.current = {};
+    setReloadedRecord(null);
+    setSubmissionConflict('');
+    setReloadingRecord(false);
+    return () => { reloadContextRef.current = null; };
+  }, [isOpen, initialRequisition]);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -370,17 +382,41 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const hasAnyApprovalCapability = Object.values(APPROVER_CONFIG).some(config => config.canApprove);
 
   const handleSubmitForApproval = async () => {
-    if (!isDraft || (!isCurrentUserIssuer && !isSuperAdmin)) return;
+    if (submissionConflict || loading || !isDraft || (!isCurrentUserIssuer && !isSuperAdmin)) return;
     setLoading(true);
     try {
-      const response = await apiClient.post(`/procurement/requisitions/${requisition.id}/submit/`);
+      const response = await apiClient.post(`/procurement/requisitions/${requisition.id}/submit/`, {
+        expected_updated_at: requisition.updated_at || '',
+      });
       await radaiAlert(`PR ${response.data.pr_number || requisition.pr_number} submitted for approval. The assigned Project Manager can now approve or reject it.`);
       onApprovalComplete?.(response.data);
       onClose();
     } catch (error) {
+      if (error.response?.status === 409 && error.response?.data?.code === 'stale_requisition') {
+        setSubmissionConflict(error.response.data.error);
+        return;
+      }
       await radaiAlert(error.response?.data?.error || error.response?.data?.detail || 'Failed to submit requisition for approval.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const reloadLatestRecord = async () => {
+    if (reloadingRecord) return;
+    const context = reloadContextRef.current;
+    setReloadingRecord(true);
+    try {
+      const { data } = await apiClient.get(`/procurement/requisitions/${requisition.id}/`, { params: { _fresh: Date.now() }, suppressErrorToast: true });
+      if (reloadContextRef.current !== context) return;
+      if (String(data?.id) !== String(requisition.id)) throw new Error('The loaded recommendation did not match.');
+      setReloadedRecord({ original: initialRequisition, record: data });
+      setPdfPreviewRetryKey(value => value + 1);
+      setSubmissionConflict('');
+    } catch {
+      if (reloadContextRef.current === context) setSubmissionConflict('The latest recommendation could not be loaded. Try reloading again before submitting.');
+    } finally {
+      if (reloadContextRef.current === context) setReloadingRecord(false);
     }
   };
 
@@ -628,6 +664,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       </div>}
       <div className={pageMode ? 'min-h-[calc(100vh-4rem)] bg-slate-50' : 'fixed inset-0 z-50 overflow-y-auto bg-slate-50'}>
         <div className="mx-auto min-h-full w-full max-w-[1680px] px-4 py-5 sm:px-6 lg:px-8">
+          {submissionConflict && <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p>{submissionConflict}</p><p>Reload and review the latest recommendation before sending it for approval.</p>
+            <button type="button" className="mt-2 font-semibold underline" onClick={reloadLatestRecord} disabled={reloadingRecord}>{reloadingRecord ? 'Reloading...' : 'Reload latest version'}</button>
+          </div>}
           
           {/* Modal Header */}
           <header className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
@@ -960,7 +1000,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                           {nameOnly(currentStage.user_name) || currentStageLabel} is assigned and pending, but this requisition is still a draft. Approve and Reject become available only after submission.
                         </p>
                         {(isCurrentUserIssuer || isSuperAdmin) ? (
-                          <button type="button" onClick={handleSubmitForApproval} disabled={loading} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                          <button type="button" onClick={handleSubmitForApproval} disabled={loading || Boolean(submissionConflict)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
                             <PaperAirplaneIcon className="h-4 w-4" />
                             {loading ? 'Submitting...' : 'Submit for Approval'}
                           </button>
