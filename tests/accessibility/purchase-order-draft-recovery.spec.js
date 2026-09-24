@@ -311,7 +311,7 @@ test('a new PO preserves its selected signer and an explicit cleared selection t
   await expect(page.getByRole('heading', { name: 'New purchase order', exact: true })).toBeVisible({ timeout: 90000 })
   await expect(finalApprover(page)).toHaveValue('')
   await editor(page).getByRole('button', { name: 'Save draft', exact: true }).first().click()
-  await expect(editor(page)).toContainText('Select an active employee for: Final Management Sign-off')
+  await expect(editor(page)).toContainText('Select an authorized signatory for: Final Management Sign-off')
   expect(orderWrites(state)).toEqual([])
   expect(state.acceptedWrites).toEqual([])
   clean(state)

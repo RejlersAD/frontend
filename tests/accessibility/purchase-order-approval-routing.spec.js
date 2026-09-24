@@ -23,10 +23,11 @@ const oldDraft = (overrides = {}) => ({
   pr_number: orderFormRecommendation.pr_number, currency: 'AED', total_amount: '420000', tax_amount: '20000',
   payment_terms: 'Net 30', items: [], approval_log: [], attachments: [], ...overrides,
 })
-async function edit(page, record) {
+async function edit(page, record, prepare = () => {}) {
   const state = await orderFormHarness(page, { path: '/procurement/orders', prepare: fixture => {
     fixture.record = record
     fixture.orders = [record]
+    prepare(fixture)
   } })
   await page.getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
   await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
@@ -41,6 +42,10 @@ test('linked PR retains an independent pending final PO signer and sends no PR c
   await selectRecommendation(page)
   await expect(selector(page)).toBeEnabled()
   await expect(selector(page)).toHaveValue('11')
+  await expect(selector(page).locator('option')).toHaveCount(2)
+  await expect(selector(page)).toContainText('CEO, Rejlers Abu Dhabi / Senior VP, Middle East Region')
+  await expect(page.locator('#buyer-reference-options-1 option[value="Richa Hannah Thomas"]')).toHaveCount(1)
+  expect(state.requests.filter(request => request.path.endsWith('/get_approvers/')).map(request => request.query.role).sort()).toEqual(['any_active', 'po_final_signoff'])
   await expect(page.getByRole('region', { name: 'Current purchase order PDF preview', exact: true }).getByRole('img')).toBeVisible({ timeout: 30000 })
   await selector(page).scrollIntoViewIfNeeded()
   await expect(selector(page)).toBeInViewport()
@@ -73,7 +78,7 @@ for (const scenario of [
   test(`${scenario.name} requires an explicit employee selection before creating the PO`, async ({ page }) => {
     const state = await orderFormHarness(page, { handleRequest: async (route, fixture, url) => {
       if (url.pathname !== '/api/v1/procurement/requisitions/get_approvers/') return false
-      expect(url.searchParams.get('role')).toBe('any_active')
+      if (url.searchParams.get('role') !== 'po_final_signoff') return false
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ users: scenario.employees }) })
       return true
     } })
@@ -81,7 +86,7 @@ for (const scenario of [
     await expect(selector(page)).toBeEnabled()
     await expect(selector(page)).toHaveValue('')
     await save(page)
-    await expect(workspace(page)).toContainText('Select an active employee for: Final Management Sign-off')
+    await expect(workspace(page)).toContainText('Select an authorized signatory for: Final Management Sign-off')
     expect(savedWrites(state)).toEqual([])
     await selector(page).selectOption(scenario.selection)
     await save(page)
@@ -101,6 +106,7 @@ test('backend approver eligibility rejection preserves the selection and permits
   await expect(workspace(page)).toContainText(message)
   await expect(page).toHaveURL(/\/procurement\/orders\/new$/)
   await expect(selector(page)).toHaveValue('11')
+  await expect(workspace(page).getByText('Required fields complete', { exact: true })).toHaveCount(0)
   expect(savedWrites(state)).toEqual([])
   state.saveError = null
   await save(page)
@@ -110,12 +116,107 @@ test('backend approver eligibility rejection preserves the selection and permits
   isolate(state)
 })
 
+test('loading eligible signatories blocks assignment and retains form input', async ({ page }) => {
+  let release
+  const pending = new Promise(resolve => { release = resolve })
+  try {
+    const state = await orderFormHarness(page, { handleRequest: async (route, _fixture, url) => {
+      if (!url.pathname.endsWith('/get_approvers/') || url.searchParams.get('role') !== 'po_final_signoff') return false
+      await pending
+      await route.fulfill({ json: { users: [directoryApprover(11, 'Jarmo Suominen', 'jarmo@example.test')] } })
+      return true
+    } })
+    await selectRecommendation(page)
+    await page.locator('[name="title"]').fill('Keep this scope while signatories load')
+    await expect(selector(page)).toBeDisabled()
+    await save(page)
+    await expect(page.locator('#po-signatory-status')).toContainText('Checking authorized PO signatories')
+    expect(savedWrites(state)).toEqual([])
+    release()
+    await expect(selector(page)).toHaveValue('11')
+    await expect(selector(page)).toBeEnabled()
+    await expect(page.locator('[name="title"]')).toHaveValue('Keep this scope while signatories load')
+    await save(page)
+    await expect(page).toHaveURL(/\/procurement\/orders$/)
+    expect(savedWrites(state)).toHaveLength(1)
+    isolate(state)
+  } finally { release() }
+})
+
+for (const status of [403, 503]) {
+  test(`signatory list ${status} failure retains input and recovers on refresh`, async ({ page }) => {
+    const state = await orderFormHarness(page, { prepare: fixture => {
+      fixture.finalSignatoriesError = { detail: 'Synthetic signatory directory failure.' }
+      fixture.finalSignatoriesErrorStatus = status
+    } })
+    await selectRecommendation(page)
+    await page.locator('[name="title"]').fill('Scope retained after directory failure')
+    await expect(selector(page)).toBeDisabled()
+    await save(page)
+    await expect(page.locator('#po-signatory-status')).toContainText(status === 403
+      ? 'You do not have access to load authorized PO signatories.'
+      : 'Authorized PO signatories could not be loaded. Please retry.')
+    expect(savedWrites(state)).toEqual([])
+    await expect(page.locator('#buyer-reference-options-1 option[value="Richa Hannah Thomas"]')).toHaveCount(1)
+    state.finalSignatoriesError = null
+    await workspace(page).getByRole('button', { name: 'Refresh signatories', exact: true }).click()
+    await expect(selector(page)).toHaveValue('11')
+    await expect(selector(page)).toBeEnabled()
+    await expect(page.locator('[name="title"]')).toHaveValue('Scope retained after directory failure')
+    await save(page)
+    await expect(page).toHaveURL(/\/procurement\/orders$/)
+    expect(savedWrites(state)).toHaveLength(1)
+    isolate(state)
+  })
+}
+
+test('empty eligible list does not fall back to the active employee directory', async ({ page }) => {
+  const state = await orderFormHarness(page, { prepare: fixture => { fixture.finalSignatories = [] } })
+  await selectRecommendation(page)
+  await expect(selector(page)).toBeDisabled()
+  await expect(selector(page)).toHaveValue('')
+  await expect(selector(page).locator('option')).toHaveCount(1)
+  await expect(page.locator('#po-signatory-status')).toContainText('No eligible final signatory is available.')
+  await save(page)
+  expect(savedWrites(state)).toEqual([])
+  await expect(page.locator('#buyer-reference-options-1 option[value="Richa Hannah Thomas"]')).toHaveCount(1)
+  isolate(state)
+})
+
+test('recovered signer who loses eligibility stays visible and cannot be saved until revalidated', async ({ page }) => {
+  const state = await orderFormHarness(page)
+  await selectRecommendation(page)
+  await expect(selector(page)).toHaveValue('11')
+  await page.locator('[name="title"]').fill('Recovered signatory scope')
+  await workspace(page).getByRole('textbox', { name: 'Final Management Sign-off routing comments', exact: true }).fill('Retain this routing note')
+  await expect.poll(() => state.requests.filter(request => request.path.endsWith('/preview-document/')).at(-1)?.body?.snapshot?.approval_log?.[0]?.comments).toBe('Retain this routing note')
+  const original = state.finalSignatories
+  state.finalSignatories = [directoryApprover(12, 'Authorized PO Signatory', 'authorized@example.test')]
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(selector(page)).toBeEnabled({ timeout: 90000 })
+  await expect(selector(page)).toHaveValue('11')
+  await expect(selector(page).locator('option[value="11"]')).toBeDisabled()
+  await expect(page.locator('#po-signatory-status')).toContainText('The selected final signatory is no longer eligible.')
+  await expect(page.locator('[name="title"]')).toHaveValue('Recovered signatory scope')
+  await save(page)
+  expect(savedWrites(state)).toEqual([])
+  state.finalSignatories = original
+  await workspace(page).getByRole('button', { name: 'Refresh signatories', exact: true }).click()
+  await expect(selector(page).locator('option[value="11"]')).toBeEnabled()
+  await expect(page.locator('#po-signatory-status')).toBeEmpty()
+  await save(page)
+  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  expect(savedWrites(state)).toHaveLength(1)
+  expect(savedWrites(state)[0].body.approval_log[0]).toMatchObject({ user_id: 11, comments: 'Retain this routing note', status: 'Pending' })
+  isolate(state)
+})
+
 test('new PO cannot save without an assigned directory approver', async ({ page }) => {
   const state = await orderFormHarness(page)
   await selectRecommendation(page)
   await selector(page).selectOption('')
   await save(page)
-  await expect(workspace(page)).toContainText('Select an active employee for: Final Management Sign-off')
+  await expect(workspace(page)).toContainText('Select an authorized signatory for: Final Management Sign-off')
   expect(savedWrites(state)).toEqual([])
   await selector(page).selectOption('11')
   await save(page)
@@ -160,6 +261,21 @@ test('signed source Draft with empty routing does not gain a new pending signer'
   await expect(page).toHaveURL(/\/procurement\/orders$/)
   expect(savedWrites(state)[0].body).not.toHaveProperty('approval_log')
   expect(state.record.approval_log).toEqual([])
+  isolate(state)
+})
+
+test('metadata edits preserve a recorded signer absent from current eligible and employee lists', async ({ page }) => {
+  const history = [{ level: 0, stage: 'Final Management Sign-off', user_id: 99, approver: 'Recorded Former Signer', status: 'Pending' }]
+  const state = await edit(page, oldDraft({ approval_log: history }), fixture => { fixture.finalSignatories = [] })
+  await expect(selector(page)).toBeDisabled()
+  await expect(selector(page)).toHaveValue('99')
+  await expect(selector(page)).toContainText('Recorded Former Signer')
+  await page.locator('[name="title"]').fill('Metadata correction preserving the recorded route')
+  await save(page)
+  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  expect(savedWrites(state)).toHaveLength(1)
+  expect(savedWrites(state)[0].body).toEqual({ title: 'Metadata correction preserving the recorded route' })
+  expect(state.record.approval_log).toEqual(history)
   isolate(state)
 })
 

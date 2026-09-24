@@ -14,7 +14,7 @@ export const orderFormRecommendation = formReference({
 const employees = [
   formActor,
   { id: 9, full_name: 'Richa Hannah Thomas', first_name: 'Richa', last_name: 'Hannah Thomas', email: 'richa@example.test', job_title: 'Procurement Manager', is_active: true },
-  { id: 11, full_name: 'Jarmo Suominen', first_name: 'Jarmo', last_name: 'Suominen', email: 'jarmo@example.test', job_title: 'CEO', is_active: true },
+  { id: 11, full_name: 'Jarmo Suominen', first_name: 'Jarmo', last_name: 'Suominen', email: 'jarmo@example.test', job_title: 'CEO, Rejlers Abu Dhabi / Senior VP, Middle East Region', is_active: true },
 ]
 const reply = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 function parseBody(request) {
@@ -44,6 +44,7 @@ export async function orderFormHarness(page, options = {}) {
     uploadedDocuments: [], uploadedDocumentsError: null, uploadedContent: {}, generatedPdf: mixedSizePdf(1),
     generatedWord: 'Synthetic editable Word document', previewError: null,
     poPdfPreviews: {}, poPdfPreviewDelivered: {}, approvalEmployees: [], approvalEmployeesError: null,
+    finalSignatories: employees.filter(employee => employee.id === 11), finalSignatoriesError: null,
     poPdfImportResult: null, poPdfImportError: null,
     projects: [{ id: 17, project_number: formProject.project_number, project_name: formProject.project_name, source: 'procurement', status: 'active', client_name: 'ADNOC' }],
     vendors: formVendors.map(vendor => ({ ...vendor, email: 'supplier@example.test', contact_person: 'Synthetic Supplier Contact', phone: '+971500000000', address: 'Abu Dhabi, UAE', is_active: true })),
@@ -78,7 +79,13 @@ export async function orderFormHarness(page, options = {}) {
     if (path.startsWith('/api/v1/ai-champion/') || path.startsWith('/api/v1/rbac/ai-champion/')) return reply(route, { success: true })
     if (path === '/api/v1/rbac/users/me/') return reply(route, state.actor)
     if (path === '/api/v1/users/employees/my-signature/') return reply(route, { signature: '' })
-    if (path === '/api/v1/procurement/requisitions/get_approvers/') return reply(route, { users: employees })
+    if (path === '/api/v1/procurement/requisitions/get_approvers/') {
+      if (url.searchParams.get('role') === 'po_final_signoff') {
+        if (state.finalSignatoriesError) return reply(route, state.finalSignatoriesError, state.finalSignatoriesErrorStatus || 503)
+        return reply(route, { role: 'po_final_signoff', users: state.finalSignatories })
+      }
+      return reply(route, { role: 'any_active', users: employees })
+    }
     if (path === '/api/v1/procurement/vendors/' && method === 'GET') return reply(route, { count: state.vendors.length, next: null, results: state.vendors })
     if (['/api/v1/procurement/projects/', '/api/v1/procurement/orders/available-projects/'].includes(path) && method === 'GET') return reply(route, { count: state.projects.length, next: null, results: state.projects })
     if (['/api/v1/procurement/requisitions/', '/api/v1/procurement/orders/available-requisitions/'].includes(path) && method === 'GET') return reply(route, { count: 1, next: null, results: [state.recommendation] })
