@@ -86,6 +86,8 @@ const AR_STATUS_LABELS = {
 
 const MAIN_TAB_ROLES = 'roles';
 const MAIN_TAB_AR    = 'access-requests';
+// SOFT-CODED: Synchronise tab key (module catalogue ↔ DB sync panel)
+const MAIN_TAB_SYNC  = 'synchronise';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── Dynamic Module Catalog ───────────────────────────────────────────────
@@ -690,7 +692,7 @@ function RoleManagement() {
           <div className="ra-header-actions"><button onClick={exportReport}><HeroIcons.ArrowDownTrayIcon />Export access report</button><button onClick={() => changeMainTab(MAIN_TAB_AR)}><HeroIcons.UserGroupIcon />Review requests</button>{isSuperAdmin && mainTab === MAIN_TAB_ROLES && <button className="ra-primary" onClick={() => { setShowCreate(true); setCreateError(null); setCreateForm(EMPTY_FORM); }}><HeroIcons.PlusIcon />Create access role</button>}</div>
         </div>
         {pendingTotal > 0 && <div className="ra-notice ra-pending"><HeroIcons.ClockIcon /><span>{pendingTotal} access request{pendingTotal === 1 ? '' : 's'} awaiting review</span><button className="ra-link" onClick={() => changeMainTab(MAIN_TAB_AR)}>Review requests <HeroIcons.ArrowRightIcon /></button></div>}
-        <div className="ra-tabs" role="tablist" aria-label="Roles and access">{[[MAIN_TAB_ROLES, 'Roles'], ['organization', 'Organization structure'], [MAIN_TAB_AR, 'Access requests'], ['reviews', 'Access reviews'], ['audit', 'Audit']].map(([key, label]) => <button key={key} role="tab" aria-selected={mainTab === key} onClick={() => changeMainTab(key)}>{label}</button>)}</div>
+        <div className="ra-tabs" role="tablist" aria-label="Roles and access">{[[MAIN_TAB_ROLES, 'Roles'], ['organization', 'Organization structure'], [MAIN_TAB_AR, 'Access requests'], ['reviews', 'Access reviews'], ['audit', 'Audit'], [MAIN_TAB_SYNC, 'Synchronise']].map(([key, label]) => <button key={key} role="tab" aria-selected={mainTab === key} onClick={() => changeMainTab(key)}>{label}</button>)}</div>
       </header>
       {mainTab === 'organization' && <OrganizationStructurePanel />}
 
@@ -1140,6 +1142,7 @@ function RoleManagement() {
           TAB: Access Requests
       ══════════════════════════════════════════════════════════ */}
       {['reviews', 'audit'].includes(mainTab) && <div className="ra-panel"><RoleHistory reviewsOnly={mainTab === 'reviews'} /></div>}
+      {mainTab === MAIN_TAB_SYNC && <ModuleSyncPanel />}
       {mainTab === MAIN_TAB_AR && (
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 lg:p-6">
           <div className="mx-auto max-w-5xl">
@@ -1340,5 +1343,106 @@ function RoleManagement() {
   );
 
 }
+
+// ─── Synchronise tab: module catalogue ↔ DB sync panel (soft-coded) ─────────
+// Shows the auto-sync status and offers a manual "Sync now" action so any new
+// feature added to ALL_MODULES_CATALOGUE lands under Role & Permission.
+const SYNC_PANEL_CFG = {
+  title: 'Module catalogue synchronisation',
+  autoOnText:  'Auto-sync is ON — new catalogue modules are written to the database automatically on every backend startup.',
+  autoOffText: 'Auto-sync is OFF (RBAC_AUTO_SYNC_MODULES=0). Use Sync now to apply new catalogue modules manually.',
+  syncNowLabel: 'Sync now',
+  inSyncText: 'Catalogue and database are in sync.',
+  missingHeading: 'Catalogue modules not yet in the database',
+};
+
+const ModuleSyncPanel = () => {
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [error, setError]     = useState('');
+  const [lastResult, setLastResult] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const { data } = await rbacService.getModuleCatalogueSyncStatus();
+      setStatus(data);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || 'Could not load sync status.');
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const runSync = async () => {
+    setRunning(true); setError('');
+    try {
+      const { data } = await rbacService.runModuleCatalogueSync();
+      setLastResult(data);
+      setStatus(data);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || 'Sync failed.');
+    } finally { setRunning(false); }
+  };
+
+  return (
+    <div className="ra-panel" style={{ padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{SYNC_PANEL_CFG.title}</h3>
+        <button
+          onClick={runSync}
+          disabled={running || loading}
+          className="ra-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <HeroIcons.ArrowPathIcon style={{ width: 15 }} className={running ? 'animate-spin' : ''} />
+          {running ? 'Syncing…' : SYNC_PANEL_CFG.syncNowLabel}
+        </button>
+      </div>
+
+      {loading ? (
+        <p style={{ marginTop: 16, fontSize: 13, color: '#64748b' }}>Loading sync status…</p>
+      ) : error ? (
+        <div className="ra-notice" style={{ marginTop: 16, color: '#991b1b' }}>{error}</div>
+      ) : status && (
+        <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, color: '#334155' }}>
+            {status.auto_sync_enabled ? SYNC_PANEL_CFG.autoOnText : SYNC_PANEL_CFG.autoOffText}
+          </div>
+
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13 }}>
+            <span><strong>{status.catalogue_count}</strong> modules in catalogue</span>
+            <span><strong>{status.db_count}</strong> modules in database</span>
+            <span style={{ color: status.in_sync ? '#166534' : '#b45309', fontWeight: 700 }}>
+              {status.in_sync ? `✓ ${SYNC_PANEL_CFG.inSyncText}` : `${status.missing.length} pending`}
+            </span>
+          </div>
+
+          {!status.in_sync && (status.missing || []).length > 0 && (
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#94a3b8', margin: '4px 0 8px' }}>
+                {SYNC_PANEL_CFG.missingHeading}
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {status.missing.map((m) => (
+                  <span key={m.code} style={{ padding: '3px 10px', fontSize: 12, borderRadius: 999, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                    {m.name} <code style={{ opacity: 0.7 }}>({m.code})</code>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {lastResult && lastResult.created_count > 0 && (
+            <div style={{ fontSize: 13, color: '#166534', fontWeight: 600 }}>
+              ✓ Sync complete — {lastResult.created_count} module(s) created with their standard permissions.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default RoleManagement;
