@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
+import { downloadPurchaseRequisitionDocument, fetchPurchaseRequisitionWord, purchaseRequisitionDocumentError } from '../../services/purchaseRequisitionDocuments';
 import * as XLSX from 'xlsx';
 import PurchaseRequisitionApproval from './PurchaseRequisitionApproval';
 import PurchaseRequisitionExcelImport from './PurchaseRequisitionExcelImport';
@@ -185,6 +186,8 @@ const OrderManagement = () => {
   const [selectedRequisition, setSelectedRequisition] = useState(null);
   const [prPrintPreviewLoadingId, setPrPrintPreviewLoadingId] = useState(null);
   const prPreviewRequest = useRef(0);
+  const [prWordLoadingId, setPrWordLoadingId] = useState(null);
+  const prWordRequest = useRef(null);
   const [currentUser, setCurrentUser] = useState(null);
   // Soft-coded edit state - track which record is being edited
   const [editingOrder, setEditingOrder] = useState(null);
@@ -205,6 +208,10 @@ const OrderManagement = () => {
     const actions = currentUser?.module_actions || currentUser?.user?.module_actions;
     return Boolean(actions?.[module]?.includes(action));
   }, [currentUser, isCurrentUserAdmin]);
+  const effectiveModuleActions = currentUser?.module_actions || currentUser?.user?.module_actions;
+  const canExportRequisitionWord = effectiveModuleActions
+    ? Boolean(effectiveModuleActions.procurement_requisitions?.includes('export'))
+    : isCurrentUserAdmin;
   const canModifyRequisition = () => {
     const actions = currentUser?.module_actions || currentUser?.user?.module_actions;
     return actions
@@ -790,6 +797,27 @@ const OrderManagement = () => {
 
   useEffect(() => () => { prPreviewRequest.current += 1; }, []);
 
+  useEffect(() => {
+    setPrWordLoadingId(null);
+    return () => { prWordRequest.current?.abort(); prWordRequest.current = null; };
+  }, [location.pathname]);
+
+  const handleRequisitionWord = async (requisition) => {
+    if (!requisition?.id || prWordRequest.current || !canExportRequisitionWord) return;
+    const controller = new AbortController();
+    prWordRequest.current = controller;
+    setPrWordLoadingId(requisition.id);
+    try {
+      const document = await fetchPurchaseRequisitionWord(requisition, { signal: controller.signal });
+      if (!controller.signal.aborted) downloadPurchaseRequisitionDocument(document);
+    } catch (problem) {
+      const message = await purchaseRequisitionDocumentError(problem);
+      if (!controller.signal.aborted) toast.error(message);
+    } finally {
+      if (prWordRequest.current === controller) { prWordRequest.current = null; setPrWordLoadingId(null); }
+    }
+  };
+
   const handlePrintPreviewPR = async (requisition) => {
     if (!requisition?.id) return;
     const request = ++prPreviewRequest.current;
@@ -878,6 +906,7 @@ const OrderManagement = () => {
           onExport={exportRequisitionRowsToExcel} onOpen={id => handleOpenApproval({ id })}
           onEdit={handleEditRequisition} onDelete={handleDeleteRequisition}
           onConvert={handleConvertToPO} onPdf={handlePrintPreviewPR}
+          onWord={canExportRequisitionWord ? handleRequisitionWord : undefined} wordBusyId={prWordLoadingId}
           canLinkPurchaseOrder={moduleAction('procurement_orders', 'update')}
           canUploadPurchaseOrder={moduleAction('procurement_orders', 'create')}
           canCreate={moduleAction('procurement_requisitions', 'create')}
