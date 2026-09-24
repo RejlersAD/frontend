@@ -114,7 +114,7 @@ export const ENGINEERING_DISCIPLINES = {
         icon: DocumentMagnifyingGlassIcon,
         path: ROUTES.HMB_EXTRACTOR,
         description: 'Extract stream data from Heat & Material Balance documents',
-        moduleCode: 'process_datasheet',
+        moduleCode: 'hmb_extractor',
         badge: ''
       }
     ,      {        id: 'lineList',

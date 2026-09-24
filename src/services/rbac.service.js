@@ -325,6 +325,15 @@ class RBACService {
     return apiService.post(`${RBAC_BASE_URL}/users/bulk-assign-modules/`, data);
   }
 
+  // ── Module Catalogue Synchronisation ────────────────────────────────
+  async getModuleCatalogueSyncStatus() {
+    return apiService.get(`${RBAC_BASE_URL}/admin/module-catalogue-sync/`);
+  }
+
+  async runModuleCatalogueSync() {
+    return apiService.post(`${RBAC_BASE_URL}/admin/module-catalogue-sync/run/`);
+  }
+
   // ── Access Requests ────────────────────────────────────────────────
   async getAccessRequests(params = {}) {
     return apiService.get(`${RBAC_BASE_URL}/access-requests/`, { params });
