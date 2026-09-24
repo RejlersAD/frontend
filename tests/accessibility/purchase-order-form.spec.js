@@ -30,10 +30,6 @@ const selectPR = async (page, vatBasis = 'exclusive') => {
 }
 const gotoTab = (page, name) => tabs(page).getByRole('tab', { name, exact: true }).click()
 const clickSave = page => workspace(page).getByRole('button', { name: /^Save draft$/i }).first().click()
-const clickSend = async page => {
-  await gotoTab(page, 'Attachments')
-  await workspace(page).getByRole('button', { name: /^Send to vendor$/i }).first().click()
-}
 
 test('empty order requires an existing recommendation before changing sections or saving', async ({ page }) => {
   const state = await open(page)
@@ -105,22 +101,16 @@ test('saving creates exactly one draft and returns to the purchase order registe
   verifyIsolation(state)
 })
 
-test('send validates its summary and keeps server rejections visible without losing entered data', async ({ page }) => {
-  const state = await open(page, { prepare: fixture => { fixture.sendError = { status: ['This purchase order must be approved before issue.'] } } })
+test('new orders must be saved as drafts before approval and issue', async ({ page }) => {
+  const state = await open(page)
   await selectPR(page)
-  await workspace(page).locator('[name="summary"]').fill('')
-  await clickSend(page)
+  await gotoTab(page, 'Attachments')
+  await expect(workspace(page).getByRole('button', { name: /^Send to vendor$/i })).toBeDisabled()
+  await expect(workspace(page)).toContainText('Save this purchase order as a draft, then complete its approvals before sending it to the vendor.')
   expect(saves(state)).toEqual([])
-  await expect(workspace(page)).toContainText('Summary is required before sending to vendor')
-  await workspace(page).locator('[name="summary"]').fill('Engineering services for the approved EPC design package.')
-  await clickSend(page)
-  await expect(workspace(page)).toContainText('This purchase order must be approved before issue.')
   await expect(page).toHaveURL(/\/procurement\/orders\/new$/)
   await gotoTab(page, 'Header, Buyer & Project')
   await expect(workspace(page).locator('[name="title"]')).toHaveValue('Value Engineering Services')
-  expect(saves(state)).toHaveLength(1)
-  expect(saves(state)[0].body.status).toBe('sent')
-  expect(state.acceptedWrites).toEqual([])
   await clickSave(page)
   await expect(page).toHaveURL(/\/procurement\/orders$/)
   expect(state.acceptedWrites).toHaveLength(1)

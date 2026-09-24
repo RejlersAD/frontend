@@ -11,7 +11,7 @@ const sourceRow = row => row?.external === true && row.source === 'signed_purcha
 const errorText = value => Array.isArray(value) ? value.map(errorText).join(' ')
   : value && typeof value === 'object' ? Object.values(value).map(errorText).join(' ') : String(value || '');
 
-export default function RecordedApprovalHistory({ requisition, disabled = false, onSaved, onEditingChange, hidePendingAssignments = false }) {
+export default function RecordedApprovalHistory({ requisition, expectedUpdatedAt, disabled = false, onSaved, onStaleRecord, onEditingChange, hidePendingAssignments = false }) {
   const [editingIndex, setEditingIndex] = useState(null);
   const [reviewSnapshot, setReviewSnapshot] = useState(null);
   const [draft, setDraft] = useState({ name: '', date: '', verified: false });
@@ -34,7 +34,7 @@ export default function RecordedApprovalHistory({ requisition, disabled = false,
   }, [editingIndex, onEditingChange]);
 
   const edit = (row, index) => {
-    setReviewSnapshot({ documentSha: verification.document_sha256, row: JSON.parse(JSON.stringify(row)) });
+    setReviewSnapshot({ documentSha: verification.document_sha256, row: JSON.parse(JSON.stringify(row)), expectedUpdatedAt });
     setDraft({ name: approverName(row), date: String(row.approved_at || verification.approval_date || '').slice(0, 10), verified: approved(row) });
     setEditingIndex(index);
     setError('');
@@ -59,6 +59,7 @@ export default function RecordedApprovalHistory({ requisition, disabled = false,
         document_sha256: reviewSnapshot.documentSha,
         row_index: editingIndex,
         expected_row: reviewSnapshot.row,
+        ...(reviewSnapshot.expectedUpdatedAt !== undefined ? { expected_updated_at: reviewSnapshot.expectedUpdatedAt } : {}),
         approver_name: draft.name.trim(),
         signature_verified: confirmingSignature,
         approval_date: confirmingSignature ? draft.date : '',
@@ -67,6 +68,9 @@ export default function RecordedApprovalHistory({ requisition, disabled = false,
       setEditingIndex(null);
       setNotice(draft.verified ? 'Approval record saved.' : 'Approver name saved. Signature remains unverified.');
     } catch (saveError) {
+      if (saveError.response?.status === 409 && saveError.response?.data?.code === 'stale_requisition') {
+        onStaleRecord?.(saveError.response.data.error);
+      }
       setError(errorText(saveError.response?.data) || 'Approval record could not be saved. Please retry.');
     } finally {
       setSaving(false);
@@ -123,8 +127,10 @@ export default function RecordedApprovalHistory({ requisition, disabled = false,
 
 RecordedApprovalHistory.propTypes = {
   requisition: PropTypes.object.isRequired,
+  expectedUpdatedAt: PropTypes.string,
   disabled: PropTypes.bool,
   onSaved: PropTypes.func.isRequired,
+  onStaleRecord: PropTypes.func,
   onEditingChange: PropTypes.func.isRequired,
   hidePendingAssignments: PropTypes.bool,
 };

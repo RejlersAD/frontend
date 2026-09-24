@@ -5,6 +5,7 @@ import { mixedSizePdf } from '../fixtures/mixed-size-pdf.fixture'
 test.setTimeout(150000)
 test.use({ serviceWorkers: 'block', actionTimeout: 30000, viewport: { width: 1672, height: 941 } })
 const replacement = { id: 12, full_name: 'Nora Engineering', email: 'nora@example.test', job_title: 'Engineering Manager', is_active: true }
+const originalVersion = '2026-09-15T07:00:00.123456Z'
 const second = { id: 13, full_name: 'Omar Delivery', email: 'omar@example.test', job_title: 'VP Delivery', is_active: true }
 const rows = [
   { level: 0, role: 'Procurement Department', user_id: 9, user_name: 'Richa Hannah Thomas', status: 'approved', approved_at: '2026-09-14T08:00:00Z', signature: 'recorded-signature-PD' },
@@ -22,7 +23,7 @@ const withSnapshots = workflow => workflow.map((row, index) => {
     ? { ...current, reassignment_snapshot: snapshot(current, index) } : current
 })
 const pending = page => page.getByRole('region', { name: 'Pending approvers', exact: true })
-const save = page => page.getByRole('button', { name: 'Save changes', exact: true }).first()
+const save = page => page.getByRole('button', { name: 'Save', exact: true }).first()
 const assignments = state => state.requests.filter(request => request.method === 'PATCH' && request.path.endsWith(`/${formRecordId}/`))
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]); expect(state.submissions).toEqual([]) }
 function bodyOf(request) {
@@ -38,7 +39,8 @@ function bodyOf(request) {
 
 async function open(page, overrides = {}, prepare) {
   await page.clock.install({ time: new Date('2026-09-15T08:00:00Z') })
-  const state = await recommendationFormHarness(page, { edit: true, additionalEmployees: [replacement, second], record: {
+  const state = await recommendationFormHarness(page, { edit: true, concurrency: true, additionalEmployees: [replacement, second], record: {
+    updated_at: originalVersion,
     status: 'in_review', can_reassign_approvers: true, reassignable_approval_stage_indices: [2, 3, 4],
     approval_workflow_config: withSnapshots(structuredClone(rows)), ...overrides,
   }, prepare })
@@ -48,6 +50,7 @@ async function open(page, overrides = {}, prepare) {
     if (route.request().method() !== 'PATCH') return route.fallback()
     const body = bodyOf(route.request())
     state.requests.push({ path: `/api/v1/procurement/requisitions/${formRecordId}/`, method: 'PATCH', body })
+    if (body.expected_updated_at !== state.record.updated_at) return route.fulfill({ status: 409, json: { code: 'stale_requisition', error: 'This purchase recommendation changed. Reload the latest version.' } })
     if (state.reassignmentError) return route.fulfill({ status: 400, json: { approval_reassignments: [state.reassignmentError] } })
     const commands = body.approval_reassignments || []
     const workflow = state.record.approval_workflow_config.map((row, index) => {
@@ -60,13 +63,14 @@ async function open(page, overrides = {}, prepare) {
       return updated
     })
     state.savedReassignments.push(...commands)
-    const { approval_reassignments: omitted, ...fields } = body
+    const { approval_reassignments: omitted, expected_updated_at: version, ...fields } = body
     void omitted
-    state.record = { ...state.record, ...fields, approval_workflow_config: withSnapshots(workflow) }
+    void version
+    state.record = { ...state.record, ...fields, approval_workflow_config: withSnapshots(workflow), updated_at: `2026-09-15T08:00:00.${String(++state.saveRevision).padStart(6, '0')}Z` }
     await route.fulfill({ json: state.record })
   })
   await expect(page.getByRole('heading', { name: 'Edit purchase recommendation', exact: true })).toBeVisible()
-  await page.getByRole('navigation', { name: 'Recommendation steps' }).getByRole('button', { name: /Approval & submit/ }).click()
+  await page.getByRole('navigation', { name: 'Recommendation steps' }).getByRole('button', { name: /Approval & submission/ }).click()
   return state
 }
 
@@ -95,7 +99,7 @@ test('pending approvers are searchable and save once without rewriting completed
   await page.screenshot({ path: '../artifacts/pr-pending-approver-reassignment.png' })
   await save(page).click()
   await expect.poll(() => assignments(state).length).toBe(1)
-  expect(assignments(state)[0].body).toEqual({ approval_reassignments: [
+  expect(assignments(state)[0].body).toEqual({ expected_updated_at: originalVersion, approval_reassignments: [
     { ...snapshot(rows[2], 2), user_id: replacement.id }, { ...snapshot(rows[4], 4), user_id: second.id },
   ] })
   await expect(pending(page).getByText('Unsaved reassignment', { exact: false })).toHaveCount(0)
@@ -118,7 +122,8 @@ test('reassigning an unrecorded source row starts an internal assignment while o
   await expect(pending(page)).toContainText('It does not verify a signature on the PDF.')
   await save(page).click()
   await expect.poll(() => assignments(state).length).toBe(1)
-  expect(Object.keys(assignments(state)[0].body)).toEqual(['approval_reassignments'])
+  expect(Object.keys(assignments(state)[0].body).sort()).toEqual(['approval_reassignments', 'expected_updated_at'])
+  expect(assignments(state)[0].body.expected_updated_at).toBe(originalVersion)
   await expect(pending(page).getByText('Unsaved reassignment', { exact: false })).toHaveCount(0)
   expect(state.record.price_remarks_data).toEqual(sourceMetadata)
   expect(state.record.approval_workflow_config[3]).toMatchObject({ user_id: replacement.id, status: 'pending' })
@@ -148,7 +153,7 @@ test('an unchanged legacy line total cannot block reassignment or be rewritten b
   await select(page, rows[2].role, replacement)
   await save(page).click()
   await expect.poll(() => assignments(state).length).toBe(1)
-  expect(assignments(state)[0].body).toEqual({ approval_reassignments: [{ ...snapshot(rows[2], 2), user_id: replacement.id }] })
+  expect(assignments(state)[0].body).toEqual({ expected_updated_at: originalVersion, approval_reassignments: [{ ...snapshot(rows[2], 2), user_id: replacement.id }] })
   await expect(pending(page).getByText('Unsaved reassignment', { exact: false })).toHaveCount(0)
   expect(state.record.items).toEqual(items)
   expect(state.record.total_price).toBe('400000.00')
@@ -190,7 +195,7 @@ test('verifying source evidence clears its queued assignment and retains changes
   await expect(pending(page).getByText('Unsaved reassignment', { exact: false })).toHaveCount(1)
   await save(page).click()
   await expect.poll(() => assignments(state).length).toBe(1)
-  expect(assignments(state)[0].body).toEqual({ approval_reassignments: [{ ...snapshot(sourceRows[4], 4), user_id: second.id }] })
+  expect(assignments(state)[0].body).toEqual({ expected_updated_at: '2026-09-15T08:00:00.000001Z', approval_reassignments: [{ ...snapshot(sourceRows[4], 4), user_id: second.id }] })
   expect(state.record.approval_workflow_config[3]).toMatchObject({ user_name: 'Verified original reviewer', status: 'approved', signature_verified: true })
   expect(state.requests.filter(request => request.path.endsWith('/source-approvals/'))).toHaveLength(1)
   clean(state)

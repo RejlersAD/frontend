@@ -73,6 +73,7 @@ export async function recommendationFormHarness(page, options = {}) {
   const state = {
     record: formReference(options.record), records: [], vendors: formVendors, requests: [], unknown: [], pageErrors: [], submissions: [],
     saveError: null, submitError: null, originalContent: {}, sourceApprovalError: null, saveSourceApproval: null, approverRoles: [],
+    saveRevision: 0,
   }
   if (options.edit) state.records.push(state.record)
   options.prepare?.(state)
@@ -134,27 +135,39 @@ export async function recommendationFormHarness(page, options = {}) {
     if (path === `/api/v1/procurement/requisitions/${formRecordId}/source-approvals/` && method === 'POST') {
       if (state.sourceApprovalError === 'network') return route.abort('failed')
       if (state.sourceApprovalError) return reply(route, state.sourceApprovalError.body, state.sourceApprovalError.status || 400)
+      if (options.concurrency && body.expected_updated_at !== state.record.updated_at) {
+        return reply(route, { code: 'stale_requisition', error: 'This purchase recommendation changed since you opened it. Reload the latest version before saving or submitting.' }, 409)
+      }
       const currentRow = state.record.price_remarks_data?.signed_document_verification?.source_approval_rows?.[body.row_index]
       if (!isDeepStrictEqual(body.expected_row, currentRow)) return reply(route, { detail: 'This approval record changed. Reload it before editing.' }, 409)
       if (!state.saveSourceApproval) return reply(route, { detail: 'No isolated source-approval response configured.' }, 400)
-      const record = await state.saveSourceApproval(body, state.record)
+      const saved = await state.saveSourceApproval(body, state.record)
+      const record = options.concurrency ? { ...saved, updated_at: `2026-09-15T08:00:00.${String(++state.saveRevision).padStart(6, '0')}Z` } : saved
       state.record = record
       state.records = [record]
       return reply(route, record)
     }
     if ((path === '/api/v1/procurement/requisitions/' && method === 'POST') || (path === `/api/v1/procurement/requisitions/${formRecordId}/` && method === 'PATCH')) {
       if (state.saveError) return reply(route, state.saveError, 400)
+      if (options.concurrency && method === 'PATCH' && body.expected_updated_at !== state.record.updated_at) {
+        return reply(route, { code: 'stale_requisition', error: 'This purchase recommendation changed since you opened it. Reload the latest version before saving or submitting.' }, 409)
+      }
       // DRF's multipart nullable fields map a submitted blank value to null.
       for (const key of ['vendor', 'issued_date', 'total_price', 'net_total_excl_vat', 'estimated_budget', 'management_approval']) {
         if (body[key] === '') body[key] = null
       }
-      const record = { ...(method === 'POST' ? {} : state.record), ...body, id: formRecordId, pr_number: body.pr_number || 'RAD-PRJ-PR-9001_2026', status: method === 'POST' ? 'draft' : state.record.status, issued_by: 7, issued_by_name: 'Maya Hassan', updated_at: '2026-09-15T08:00:00Z' }
+      const record = { ...(method === 'POST' ? {} : state.record), ...body, id: formRecordId, pr_number: body.pr_number || 'RAD-PRJ-PR-9001_2026', status: method === 'POST' ? 'draft' : state.record.status, issued_by: 7, issued_by_name: 'Maya Hassan', updated_at: options.concurrency ? `2026-09-15T08:00:00.${String(++state.saveRevision).padStart(6, '0')}Z` : '2026-09-15T08:00:00Z' }
+      delete record.expected_updated_at
       state.record = record
       state.records = [record]
+      options.afterSave?.(state)
       return reply(route, record, method === 'POST' ? 201 : 200)
     }
     if (path === `/api/v1/procurement/requisitions/${formRecordId}/submit/` && method === 'POST') {
       state.submissions.push(body)
+      if (options.concurrency && body?.expected_updated_at !== state.record.updated_at) {
+        return reply(route, { code: 'stale_requisition', error: 'This purchase recommendation changed since you opened it. Reload the latest version before saving or submitting.' }, 409)
+      }
       if (state.submitError) return reply(route, state.submitError, 400)
       state.record = { ...state.record, ...body, status: 'submitted' }
       state.records = [state.record]

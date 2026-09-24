@@ -1,5 +1,6 @@
 import { procurementLineNet } from '../../utils/procurementVat.js';
 import { recommendationLineDiscount } from './recommendationVat.js';
+import { selectedRecommendationVendor } from './recommendationIcv.js';
 
 const absent = value => value === undefined || value === null || value === '';
 const finiteAmount = value => !absent(value) && Number.isFinite(Number(value)) && procurementLineNet(value, 1) !== null;
@@ -30,6 +31,7 @@ export function hydrateRecommendationReferences(record = {}) {
   const projects = Array.isArray(record.project_details) ? record.project_details : [];
   const projectText = String(record.project_department || '').trim();
   const vendors = Array.isArray(record.selected_vendors) ? record.selected_vendors : [];
+  const selectedVendor = selectedRecommendationVendor(record);
   const items = Array.isArray(record.items) && record.items.length ? record.items
     : Array.isArray(record.price_remarks_data?.price_lines) ? record.price_remarks_data.price_lines : [];
   return {
@@ -39,8 +41,11 @@ export function hydrateRecommendationReferences(record = {}) {
       type: record.requisition_type === 'general' ? 'department' : 'project',
     }],
     // A supplier name alone must not be converted into a fabricated vendor ID.
-    selected_vendors: vendors.length || !record.vendor ? vendors : [{
-      vendor_id: record.vendor, name: record.supplier_name || record.preferred_supplier_if_any || '',
+    selected_vendors: vendors.length ? vendors.map(vendor => (
+      String(vendor.vendor_id || vendor.id) === String(record.vendor)
+        ? selectedVendor || vendor : vendor
+    )) : !record.vendor ? [] : [{
+      ...selectedVendor, vendor_id: record.vendor, name: record.supplier_name || record.preferred_supplier_if_any || selectedVendor?.name || '',
     }],
     items: items.map(hydrateRecommendationItem),
   };

@@ -18,7 +18,7 @@ export function purchaseOrders() {
     { status: 'completed', title: 'Engineering workstation delivery', total_amount: '96000', confirmation_date: '2026-09-04', expected_delivery: '2026-09-10' },
     { status: 'acknowledged', title: 'Imported specialist instruments', currency: 'USD', total_amount: '22500', confirmation_date: '2026-09-05', enterprise_project: 18, enterprise_project_code: 'TEST-018', enterprise_project_name: 'Second project' },
     { status: 'draft', title: 'Unverified source record', currency: '', total_amount: null, po_date: null, created_at: null, vendor: null, vendor_name: '', expected_delivery: null, payment_terms: '' },
-    { status: 'draft', title: 'Approved pump package ready to issue', approved_at: '2026-09-06T09:00:00Z', approved_by: 8, total_amount: '150000' },
+    { status: 'draft', title: 'Approved pump package ready to issue', approved_at: '2026-09-06T09:00:00Z', approved_by: 8, total_amount: '150000', can_send_to_vendor: true },
   ]
   return values.map((value, index) => ({ ...base, id: index + 101, po_number: `PO-TEST-${String(index + 1).padStart(3, '0')}`, created_at: `2026-09-${String(14 - index).padStart(2, '0')}T08:00:00Z`, ...value }))
 }

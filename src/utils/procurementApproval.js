@@ -3,6 +3,12 @@ const email = value => text(value).toLowerCase()
 const pending = row => ['pending', 'in_review', 'under_review'].includes(text(row?.status || 'pending').toLowerCase())
 export const isSourceApproval = row => Boolean(row?.evidence_document_id) || (row?.external === true && ['signed_purchase_requisition_pdf', 'signed_purchase_order_pdf', 'purchase_requisition'].includes(row.source))
 
+export const purchaseOrderLifecycleBlockReason = order => order?.lifecycle_block_reason
+  || 'Sending or completing this purchase order requires confirmed approvals. Refresh the order to check its approval status.'
+
+export const purchaseOrderCommercialLockReason = order => order?.commercial_edit_lock_reason
+  || 'Approved commercial details are locked. Create a revised purchase order for commercial changes.'
+
 export const activeApprovalStages = workflow => {
   const stages = (Array.isArray(workflow) ? workflow : []).map((row, index) => ({
     row,

@@ -17,6 +17,7 @@ const fixturePdf = () => {
 };
 const pdfBytes = fixturePdf();
 const digest = createHash('sha256').update(pdfBytes).digest('hex');
+const originalVersion = '2026-09-15T07:00:00.123456Z';
 const sourceRows = [
   { step: 1, role: 'PM', user_name: 'Recorded Project Manager', user_id: '110', status: 'approved', approved_at: '2026-01-29T12:00:00Z', external: true, source: 'signed_purchase_requisition_pdf' },
   { step: 2, role: 'MOE', user_name: 'Recorded Engineering Manager', user_id: null, status: 'approved', approved_at: '2026-01-29T12:00:00Z', external: true, source: 'signed_purchase_requisition_pdf' },
@@ -24,6 +25,7 @@ const sourceRows = [
   { step: 4, role: 'VP', user_name: '', user_id: null, status: 'not_recorded', approved_at: null, external: true, source: 'signed_purchase_requisition_pdf' },
 ];
 const sourceRecord = () => ({
+  updated_at: originalVersion,
   status: 'draft', product_service: 'Recorded software credits', description_reason: 'Supply of software credits', price_description: 'Software credits',
   total_price: '2052.00', net_total_excl_vat: '2052.00', currency: 'USD',
   items: [{ description: 'Supply of software credits', quantity: '1', unit: 'LS', unit_price: '2052.00', total: '2052.00' }],
@@ -63,7 +65,7 @@ const assertIsolated = state => { expect(state.unknown).toEqual([]); expect(stat
 const open = async (page, prepare) => {
   await page.clock.install({ time: new Date('2026-09-15T08:00:00Z') });
   await page.context().route('**/__fixtures/inline-approval-source.pdf', route => route.fulfill({ contentType: 'application/pdf', body: pdfBytes }));
-  const state = await recommendationFormHarness(page, { edit: true, record: sourceRecord(), prepare: state => {
+  const state = await recommendationFormHarness(page, { edit: true, concurrency: true, record: sourceRecord(), prepare: state => {
     state.originalContent[contentPath] = { body: pdfBytes, headers: { 'X-Frame-Options': 'DENY' } };
     state.saveSourceApproval = savedSourceResponse;
     prepare?.(state);
@@ -81,7 +83,7 @@ test('only an incomplete source approval offers inline editing and cancel leaves
   await history(page).getByRole('button', { name: 'Edit VP approval record', exact: true }).click();
   const name = history(page).getByRole('textbox', { name: 'Approver name', exact: true });
   await name.fill('Draft reviewer name');
-  await expect(page.getByRole('button', { name: 'Save changes', exact: true }).first()).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true }).first()).toBeDisabled();
   await expect(history(page).getByRole('checkbox', { name: 'I verified this signature on the original PDF', exact: true })).not.toBeChecked();
   await expect(history(page).getByRole('link', { name: /original PDF/i })).toHaveAttribute('href', originalUrl);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
@@ -91,7 +93,7 @@ test('only an incomplete source approval offers inline editing and cancel leaves
   await page.screenshot({ path: '../artifacts/pr-approval-inline-edit-mobile.png' });
   await history(page).getByRole('button', { name: 'Cancel approval edit', exact: true }).click();
   await expect(name).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Save changes', exact: true }).first()).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true }).first()).toBeEnabled();
   await page.clock.runFor(35000);
   expect(sourceSaves(state)).toEqual([]);
   expect(ordinarySaves(state)).toEqual([]);
@@ -105,7 +107,7 @@ test('saving an approver name alone does not verify the signature or approve the
   await history(page).getByRole('textbox', { name: 'Approver name', exact: true }).fill('Source document reviewer');
   await history(page).getByRole('button', { name: 'Save approval record', exact: true }).click();
   await expect.poll(() => sourceSaves(state).length).toBe(1);
-  expect(sourceSaves(state)[0].body).toMatchObject({ document_sha256: digest, row_index: 3, approver_name: 'Source document reviewer', signature_verified: false });
+  expect(sourceSaves(state)[0].body).toMatchObject({ expected_updated_at: originalVersion, document_sha256: digest, row_index: 3, approver_name: 'Source document reviewer', signature_verified: false });
   expect(sourceSaves(state)[0].body.expected_row).toEqual(sourceRows[3]);
   expect(sourceSaves(state)[0].body).not.toHaveProperty('approval_workflow_config');
   await expect(history(page)).toContainText('Source document reviewer');
@@ -138,15 +140,18 @@ test('verified source completion refreshes history while retaining unsaved form 
   await expect(history(page)).toContainText('2026-01-29');
   await expect(page.getByRole('complementary', { name: 'Live purchase recommendation preview', exact: true }).locator('iframe')).toHaveAttribute('src', /^blob:/);
   expect(state.record.status).toBe('approved');
+  const sourceSavedVersion = state.record.updated_at;
+  expect(sourceSavedVersion).not.toBe(originalVersion);
   expect(state.record.product_service).toBe('Recorded software credits');
   expect(ordinarySaves(state)).toEqual([]);
   await step(page, 'Request');
   await expect(page.getByRole('textbox', { name: 'Product / service', exact: true })).toHaveValue('Unsaved clarified software request');
   await step(page, 'Supplier & pricing');
   await expect(page.getByRole('textbox', { name: 'Line item 1 description', exact: true })).toHaveValue('Unsaved clarified software line');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Save', exact: true }).first().click();
   await expect.poll(() => ordinarySaves(state).length).toBe(1);
   const saved = ordinarySaves(state)[0].body;
+  expect(saved.expected_updated_at).toBe(sourceSavedVersion);
   expect(saved).not.toHaveProperty('approval_workflow_config');
   expect(saved.price_remarks_data.signed_document_verification.source_approval_rows[3]).toMatchObject({ user_name: 'Verified source reviewer', status: 'approved' });
   expect(saved.price_remarks_data.signed_approval_evidence.signatures.vp).toBe(true);
@@ -167,7 +172,7 @@ test('a failed source-approval request keeps entered values and retries without 
   await expect.poll(() => sourceSaves(state).length).toBe(1);
   await expect(history(page).getByRole('alert')).toBeVisible();
   await expect(history(page).getByRole('textbox', { name: 'Approver name', exact: true })).toHaveValue('Reviewer retained after failure');
-  await expect(page.getByRole('button', { name: 'Save changes', exact: true }).first()).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true }).first()).toBeDisabled();
   expect(state.record.price_remarks_data.signed_document_verification.source_approval_rows[3]).toEqual(sourceRows[3]);
   state.sourceApprovalError = null;
   await history(page).getByRole('button', { name: 'Save approval record', exact: true }).click();
@@ -219,6 +224,7 @@ test('adding a missing name to an already verified source row preserves its exis
   await history(page).getByRole('button', { name: 'Save approval record', exact: true }).click();
   await expect.poll(() => sourceSaves(state).length).toBe(1);
   expect(sourceSaves(state)[0].body).toEqual({
+    expected_updated_at: originalVersion,
     document_sha256: digest, row_index: 3, expected_row: originalVp,
     approver_name: 'Previously verified source reviewer', signature_verified: false, approval_date: '',
   });
@@ -227,6 +233,34 @@ test('adding a missing name to an already verified source row preserves its exis
   expect(state.record.status).toBe('approved');
   expect(state.record.price_remarks_data.signed_document_verification.source_approval_rows[3]).toEqual({ ...originalVp, user_name: 'Previously verified source reviewer' });
   expect(state.record.price_remarks_data.signed_approval_evidence.signatures.vp).toBe(true);
+  expect(ordinarySaves(state)).toEqual([]);
+  assertIsolated(state);
+});
+
+test('a changed recommendation blocks source approval without blessing newer commercial fields or discarding local edits', async ({ page }) => {
+  const state = await open(page);
+  await step(page, 'Request');
+  const product = page.getByRole('textbox', { name: 'Product / service', exact: true });
+  await product.fill('My unsaved source clarification');
+  await step(page, 'Approval');
+  await history(page).getByRole('button', { name: 'Edit VP approval record', exact: true }).click();
+  const name = history(page).getByRole('textbox', { name: 'Approver name', exact: true });
+  await name.fill('My source reviewer');
+  state.record = { ...state.record, product_service: 'Another requester changed the requirement', updated_at: '2026-09-15T09:00:00.654321Z' };
+  await history(page).getByRole('button', { name: 'Save approval record', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Your edits are still here' })).toBeVisible();
+  expect(sourceSaves(state)[0].body.expected_updated_at).toBe(originalVersion);
+  await expect(name).toHaveValue('My source reviewer');
+  await expect(history(page).getByRole('button', { name: 'Save approval record', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true }).first()).toBeDisabled();
+  expect(state.record.product_service).toBe('Another requester changed the requirement');
+  expect(state.record.price_remarks_data.signed_document_verification.source_approval_rows[3]).toEqual(sourceRows[3]);
+  await history(page).getByRole('button', { name: 'Cancel approval edit', exact: true }).click();
+  await step(page, 'Request');
+  await expect(product).toHaveValue('My unsaved source clarification');
+  await page.getByRole('button', { name: 'Reload latest version', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Confirm action', exact: true }).getByRole('button', { name: 'Keep my edits', exact: true }).click();
+  await expect(product).toHaveValue('My unsaved source clarification');
   expect(ordinarySaves(state)).toEqual([]);
   assertIsolated(state);
 });

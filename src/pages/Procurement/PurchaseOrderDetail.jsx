@@ -30,7 +30,7 @@ import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
-import { canDecideProcurement, purchaseOrderSignatureEvidence } from '../../utils/procurementApproval';
+import { canDecideProcurement, purchaseOrderSignatureEvidence, purchaseOrderLifecycleBlockReason } from '../../utils/procurementApproval';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -234,8 +234,9 @@ const PurchaseOrderDetail = () => {
    * Soft-coded action handler: Send Order
    */
   const handleSendOrder = async () => {
+    if (!canUpdate || currentOrder.current?.can_send_to_vendor !== true) return;
     const confirmed = (await radaiConfirm(`Send Purchase Order ${order.po_number} to vendor?`));
-    if (!confirmed || activeOrderId.current !== id) return;
+    if (!confirmed || activeOrderId.current !== id || currentOrder.current?.can_send_to_vendor !== true) return;
 
     try {
       setActionLoading(true);
@@ -247,7 +248,7 @@ const PurchaseOrderDetail = () => {
     } catch (error) {
       if (activeOrderId.current !== id) return;
       console.error('Error sending order:', error);
-      toast.error(`Failed to send order: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to send order: ${error.response?.data?.detail || error.response?.data?.status || error.message}`);
     } finally {
       if (activeOrderId.current === id) setActionLoading(false);
     }
@@ -257,8 +258,9 @@ const PurchaseOrderDetail = () => {
    * Soft-coded action handler: Mark as Completed
    */
   const handleMarkComplete = async () => {
+    if (!canUpdate || currentOrder.current?.can_complete !== true) return;
     const confirmed = (await radaiConfirm(`Mark Purchase Order ${order.po_number} as completed?`));
-    if (!confirmed || activeOrderId.current !== id) return;
+    if (!confirmed || activeOrderId.current !== id || currentOrder.current?.can_complete !== true) return;
 
     try {
       setActionLoading(true);
@@ -270,7 +272,7 @@ const PurchaseOrderDetail = () => {
     } catch (error) {
       if (activeOrderId.current !== id) return;
       console.error('Error updating order:', error);
-      toast.error(`Failed to update order: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to update order: ${error.response?.data?.detail || error.response?.data?.status || error.message}`);
     } finally {
       if (activeOrderId.current === id) setActionLoading(false);
     }
@@ -531,7 +533,7 @@ const PurchaseOrderDetail = () => {
             <h2 className="bg-gray-900 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white">Supplier / Vendor</h2>
             <div className="min-h-[94px] px-3 py-2 text-[8.5px] leading-4">
               <p className="font-bold">{textOrDash(order.vendor_name)}</p>
-              <p><span className="font-semibold">Contact:</span> {textOrDash(order.seller_contact_person || order.seller_reference)}</p>
+              <p><span className="font-semibold">Contact:</span> {textOrDash(order.seller_contact_person)}</p>
               <p><span className="font-semibold">Email:</span> {textOrDash(order.seller_email)}</p>
               <p><span className="font-semibold">Phone:</span> {textOrDash(order.seller_phone)}</p>
               <p><span className="font-semibold">Address:</span> {textOrDash(order.seller_address)}</p>
@@ -714,7 +716,8 @@ const PurchaseOrderDetail = () => {
               {canUpdate && order.status === 'draft' && (
                 <button
                   onClick={handleSendOrder}
-                  disabled={actionLoading}
+                  disabled={actionLoading || order.can_send_to_vendor !== true}
+                  aria-describedby={order.can_send_to_vendor !== true ? 'po-lifecycle-block-reason' : undefined}
                     className="inline-flex h-9 items-center rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
                 >
                   <PaperAirplaneIcon className="h-4 w-4 mr-2" />
@@ -725,7 +728,8 @@ const PurchaseOrderDetail = () => {
               {canUpdate && (order.status === 'sent' || order.status === 'acknowledged' || order.status === 'in_progress') && (
                 <button
                   onClick={handleMarkComplete}
-                  disabled={actionLoading}
+                  disabled={actionLoading || order.can_complete !== true}
+                  aria-describedby={order.can_complete !== true ? 'po-lifecycle-block-reason' : undefined}
                     className="inline-flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50"
                 >
                   <CheckCircleIcon className="h-4 w-4 mr-2" />
@@ -745,6 +749,13 @@ const PurchaseOrderDetail = () => {
               </div>
             </div>
           </header>
+
+          {canUpdate && ((order.status === 'draft' && order.can_send_to_vendor !== true)
+            || (['sent', 'acknowledged', 'in_progress'].includes(order.status) && order.can_complete !== true)) && (
+            <p id="po-lifecycle-block-reason" role="status" className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              {purchaseOrderLifecycleBlockReason(order)}
+            </p>
+          )}
 
           {canDecideProcurement(order, accessProfile, 'po') && (
             <section className="mb-6 rounded-xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
@@ -808,7 +819,7 @@ const PurchaseOrderDetail = () => {
                   
                   <div>
                     <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project</dt>
-                    <dd className="mt-1 text-sm text-slate-900">{order.project_number || '-'}</dd>
+                    <dd className="mt-1 text-sm text-slate-900">{order.project_display || order.project_number || '-'}</dd>
                   </div>
                   
                   <div className="sm:col-span-2">
@@ -863,10 +874,10 @@ const PurchaseOrderDetail = () => {
                       <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vendor Name</dt>
                       <dd className="mt-1 text-sm font-semibold text-slate-950">{order.vendor_name || 'Not assigned'}</dd>
                     </div>
-                    {(order.seller_contact_person || order.seller_reference) && (
+                    {order.seller_contact_person && (
                       <div>
                         <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact</dt>
-                        <dd className="mt-1 text-sm text-slate-900">{order.seller_contact_person || order.seller_reference}</dd>
+                        <dd className="mt-1 text-sm text-slate-900">{order.seller_contact_person}</dd>
                       </div>
                     )}
                     {order.seller_email && (

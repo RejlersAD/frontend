@@ -33,12 +33,16 @@ export const isJarmoCeoStage = (stage = {}) => {
     || (Number(stage.level) === 5 && (role.includes('general manager') || role.includes('ceo')));
 };
 
-export const displayApprovalWorkflow = (workflow, poReference = '', poApplicable = null) => {
-  const skipCeo = poApplicable == null ? Boolean(String(poReference || '').trim()) : Boolean(poApplicable);
+export const displayApprovalWorkflow = (workflow, poReference = '', poApplicable) => {
+  // A PO association can coexist with a PR's original required CEO stage.
+  // Use the saved route choice; reference-only fallback supports older records.
+  const skipCeo = typeof poApplicable === 'boolean' ? poApplicable : Boolean(String(poReference || '').trim());
   return (Array.isArray(workflow) ? workflow : []).flatMap((entry) => {
-    if (entry?.external && entry.source === 'signed_purchase_requisition_pdf') return [entry];
+    if (entry.external || entry.evidence_document_id || entry.source === 'signed_purchase_requisition_pdf') return [entry];
     if (!isJarmoCeoStage(entry)) return [entry];
-    if (skipCeo) return [];
+    const decisionRecorded = ['approved', 'rejected', 'complete', 'completed'].includes(String(entry.status || '').trim().toLowerCase())
+      || Boolean(entry.approved_at || entry.decided_at || entry.rejected_at);
+    if (skipCeo && !decisionRecorded) return [];
     return [{
       ...entry,
       role: 'CEO',

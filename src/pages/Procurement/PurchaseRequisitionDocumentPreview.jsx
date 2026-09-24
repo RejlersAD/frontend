@@ -5,6 +5,7 @@ import { PROCUREMENT_DOCUMENT_BRANDING } from '../../config/procurementDocumentB
 import { convertToAed } from '../../config/procurement.config';
 import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
 import { recommendationVat } from './recommendationVat';
+import { recommendationIcv } from './recommendationIcv';
 import { approvalSignatureEvidence } from '../../utils/procurementApproval';
 
 const valueOrDash = (value) => (value === null || value === undefined || value === '' ? '—' : value);
@@ -49,7 +50,8 @@ const workflowRoleLabel = (stage, index) => {
 
 const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documentOnly = false }) => {
   const metadata = requisition.price_remarks_data || {};
-  const { netAmount, taxAmount, totalAmount, vatRate } = recommendationVat(requisition);
+  const { netAmount, totalAmount } = recommendationVat(requisition);
+  const recommendationTotal = totalAmount ?? netAmount;
   const negotiationRemarks = requisition.price_remarks || metadata.negotiation_remarks;
   const signedDocument = (requisition.attachments || []).find((item) => (
     item?.type === 'signed_purchase_requisition_pdf'
@@ -59,13 +61,13 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
   const priceLines = Array.isArray(requisition.items) && requisition.items.length
     ? requisition.items
     : (metadata.price_lines || []);
-  const selectedVendor = (requisition.selected_vendors || [])[0] || {};
-  const icv = metadata.icv || selectedVendor.icv_percentage || selectedVendor.icv_value;
+  const icv = recommendationIcv(requisition);
   const budget = metadata.budget_in_aed || requisition.estimated_budget;
-  const calculatedNetTotalAed = convertToAed(netAmount, requisition.currency);
-  const netTotalAed = metadata.net_total_aed !== null && metadata.net_total_aed !== undefined && metadata.net_total_aed !== ''
+  const calculatedTotalAed = convertToAed(recommendationTotal, requisition.currency);
+  const totalAed = recommendationTotal === netAmount
+    && metadata.net_total_aed !== null && metadata.net_total_aed !== undefined && metadata.net_total_aed !== ''
     ? Number(metadata.net_total_aed)
-    : calculatedNetTotalAed;
+    : calculatedTotalAed;
   const rawConfiguredWorkflow = Array.isArray(requisition.approval_workflow_config)
     ? requisition.approval_workflow_config
     : (Array.isArray(requisition.approval_hierarchy) ? requisition.approval_hierarchy : []);
@@ -161,7 +163,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
         <section className="border-b border-gray-700">
           <div className="grid grid-cols-[2fr_0.8fr_1.3fr] border-b border-gray-700 text-center font-bold">
             <div className="px-2 py-2 text-left">3. Price</div>
-            <div className="border-x border-gray-700 px-2 py-2">Price {vatRate === 5 ? requisition.vat_basis === 'inclusive' ? 'incl. VAT' : 'excl. VAT' : ''}</div>
+            <div className="border-x border-gray-700 px-2 py-2">Price</div>
             <div className="px-2 py-2">Remarks</div>
           </div>
           {priceLines.length > 0 ? priceLines.map((item, index) => (
@@ -173,28 +175,18 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
           )) : (
             <div className="grid grid-cols-[2fr_0.8fr_1.3fr]">
               <div className="px-2 py-2">{valueOrDash(requisition.price_description)}</div>
-              <div className="border-x border-gray-700 px-2 py-2 text-right">{money(requisition.vat_basis === 'inclusive' ? totalAmount : netAmount, requisition.currency)}</div>
+              <div className="border-x border-gray-700 px-2 py-2 text-right">{money(recommendationTotal, requisition.currency)}</div>
               <div className="px-2 py-2">{valueOrDash(requisition.price_remarks)}</div>
             </div>
           )}
           <div className="grid grid-cols-[2fr_0.8fr_1.3fr] border-t border-gray-700 font-bold">
-            <div className="px-2 py-2">Net Total, excl VAT</div>
-            <div className="border-x border-gray-700 px-2 py-2 text-right">{money(netAmount, requisition.currency)}</div>
+            <div className="px-2 py-2">Total</div>
+            <div className="border-x border-gray-700 px-2 py-2 text-right">{money(recommendationTotal, requisition.currency)}</div>
             <div className="px-2 py-2">
-              {Number.isFinite(netTotalAed)
-                ? `AED ${netTotalAed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              {Number.isFinite(totalAed)
+                ? `AED ${totalAed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 : '—'}
             </div>
-          </div>
-          <div className="grid grid-cols-[2fr_0.8fr_1.3fr] border-t border-gray-700">
-            <div className="px-2 py-2">{vatRate === null ? 'VAT not confirmed' : vatRate === 0 ? 'No VAT' : 'VAT (5%)'}</div>
-            <div className="border-x border-gray-700 px-2 py-2 text-right">{money(taxAmount, requisition.currency)}</div>
-            <div />
-          </div>
-          <div className="grid grid-cols-[2fr_0.8fr_1.3fr] border-t border-gray-700 font-bold">
-            <div className="px-2 py-2">{vatRate === null ? 'Recorded total' : 'Total'}</div>
-            <div className="border-x border-gray-700 px-2 py-2 text-right">{money(totalAmount, requisition.currency)}</div>
-            <div />
           </div>
           <div className="border-t border-gray-700 px-2 py-2">
             <span className="font-semibold">Negotiation Remarks:</span>{' '}
@@ -205,7 +197,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
         <div className="border-b border-gray-700 px-2 py-2"><span className="font-semibold">PO Reference:</span> {valueOrDash(requisition.po_number_reference)}</div>
 
         <section className="min-h-[150px] border-b border-gray-700 px-2 py-2">
-          <h4 className="font-bold">4. Special Notes: (If any)</h4>
+          <h4 className="font-bold">Purchase recommendation</h4>
           <p className="mt-5 whitespace-pre-wrap">{valueOrDash(requisition.purchase_recommendation || requisition.notes)}</p>
           {metadata.attachment_reference && <p className="mt-4 font-medium underline">➜ {metadata.attachment_reference}</p>}
         </section>

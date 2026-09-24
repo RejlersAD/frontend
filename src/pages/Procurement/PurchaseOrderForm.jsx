@@ -16,6 +16,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 're
 import PropTypes from 'prop-types';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
+import { createPurchaseOrderDraftRecovery, purchaseOrderRecoveryKey, currentPurchaseOrderDraftUser } from '../../services/purchaseOrderDraftRecovery';
 import PurchaseOrderPreviewPane from './PurchaseOrderPreviewPane';
 import './PurchaseOrderForm.css';
 import { Save as SaveIcon, ArrowRight, ArrowLeft, AlertCircle, X } from 'lucide-react';
@@ -24,6 +25,8 @@ import { employeeDisplayName } from '../../utils/employeeDisplayName';
 import { canConfigurePurchaseOrderRoute } from './purchaseOrderApprovalRouting';
 import { PROCUREMENT_VAT_OPTIONS, sumProcurementMoney } from '../../utils/procurementVat';
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
+import { purchaseOrderProjectSelections, withPurchaseOrderProjects, requisitionProjectNumbers, requisitionProjectReference } from './purchaseOrderProjects';
+import { purchaseOrderLifecycleBlockReason, purchaseOrderCommercialLockReason } from '../../utils/procurementApproval';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -409,6 +412,11 @@ const normalizeRequisitionItems = (requisition) => {
 };
 
 const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData = null, prReference = null, initialProject = null }) => {
+  const [draftRecovery] = useState(() => createPurchaseOrderDraftRecovery({ key: purchaseOrderRecoveryKey({
+    userId: currentPurchaseOrderDraftUser(), orderId: editData?.id,
+    requisitionId: prReference?.id, projectId: initialProject?.id,
+  }) }));
+  const [recoveryReady, setRecoveryReady] = useState(false);
   const approvalRouteEditable = canConfigurePurchaseOrderRoute(editData);
   const approvalSelectionEditedRef = useRef(false);
   const [projectPreset, setProjectPreset] = useState(!editData && initialProject?.id ? initialProject : null);
@@ -425,7 +433,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [projects, setProjects] = useState([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectLoadError, setProjectLoadError] = useState('');
-  const [projectSearch, setProjectSearch] = useState(editData?.project_number || (projectPreset ? `${projectPreset.code} — ${projectPreset.name}` : ''));
+  const [projectSearch, setProjectSearch] = useState('');
   const [showProjectChoices, setShowProjectChoices] = useState(false);
   const [activeProjectIndex, setActiveProjectIndex] = useState(-1);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
@@ -499,7 +507,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     // Project Information
     project: editData?.project || projectPreset?.procurement_project_id || '',
     enterprise_project: editData?.enterprise_project ?? projectPreset?.id ?? null,
-    project_number: editData?.project_number || projectPreset?.code || '',
+    project_number: editData?.project_number || (!editData && requisitionProjectReference(prReference)) || projectPreset?.code || '',
     project_manager: editData?.project_manager || '',
     end_client: editData?.end_client || '',
     contractor: editData?.contractor || 'Rejlers International Engineering Solutions AB',
@@ -590,10 +598,94 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [approversLoading, setApproversLoading] = useState(false);
   const [approverLoadError, setApproverLoadError] = useState('');
   const initialFormData = useRef(formData);
+  const recoveryContext = useRef({ editData, prReference });
   const submittingRef = useRef(false);
 
+  useEffect(() => {
+    let active = true;
+    draftRecovery.load().then(saved => {
+      if (!active) return;
+      const { editData, prReference } = recoveryContext.current;
+      if (saved?.formData) {
+        const restoreRoute = canConfigurePurchaseOrderRoute(editData);
+        approvalSelectionEditedRef.current = restoreRoute && Boolean(saved.approvalSelectionEdited);
+        setFormData(previous => {
+          // Reapply only unsaved edits over the latest server record. A refresh
+          // must not restore old approval evidence or overwrite newer metadata.
+          const changes = Object.fromEntries(Object.entries(saved.formData).filter(([key, value]) => (
+            !['id', 'status', 'management_approver', 'approval_log', 'approval_signature', 'approved_by_name', 'approved_by_title', 'approved_at', 'approved_date'].includes(key)
+            && (!editData || JSON.stringify(value) !== JSON.stringify(saved.initialFormData?.[key]))
+          )));
+          if (restoreRoute && (!editData || saved.approvalSelectionEdited)) {
+            const pending = (Array.isArray(saved.formData.approval_log) ? saved.formData.approval_log : []).find(entry => (
+              entry.stage === 'Final Management Sign-off' && !entry.external && !entry.evidence_document_id
+              && String(entry.status || 'pending').toLowerCase() === 'pending'
+            ));
+            changes.approval_log = defaultApprovalLog().map(entry => ({
+              ...entry,
+              ...Object.fromEntries(['user_id', 'approver', 'approver_email', 'designation', 'comments']
+                .filter(key => pending?.[key] != null).map(key => [key, pending[key]])),
+            }));
+            changes.management_approver = pending?.approver || '';
+          }
+          return { ...previous, ...changes };
+        });
+        setSelectedRequisition(saved.selectedRequisition || prReference || null);
+        setProjectPreset(saved.projectPreset || null);
+        setPrSearch(saved.prSearch || '');
+        setProjectSearch(saved.projectSearch || '');
+        setNewProject(saved.newProject || { project_number: '', project_name: '' });
+        setShowNewProjectForm(Boolean(saved.showNewProjectForm));
+        setPricingConfirmed(Boolean(saved.pricingConfirmed));
+        setPricingEdited(Boolean(saved.pricingEdited));
+        setCurrentSection(Math.max(1, Math.min(4, saved.currentSection || 1)));
+        if (!editData || JSON.stringify(saved.attachmentSlots) !== JSON.stringify(saved.initialAttachmentSlots)) {
+          setAttachmentSlots(saved.attachmentSlots || []);
+        }
+        const recoveredId = editData?.id || saved.draftId || null;
+        persistedOrderIdRef.current = recoveredId;
+        setDraftId(recoveredId);
+        if (draftRecovery.missingFiles.length) {
+          setPopupError(`Your entries were restored. Please reattach: ${draftRecovery.missingFiles.join(', ')}.`);
+        }
+      }
+      setRecoveryReady(true);
+    });
+    return () => { active = false; };
+  }, [draftRecovery]);
+
+  const recoverySnapshot = useMemo(() => ({
+    formData, initialFormData: initialFormData.current, selectedRequisition, projectPreset,
+    prSearch, projectSearch, newProject, showNewProjectForm, pricingConfirmed, pricingEdited,
+    draftId, currentSection, attachmentSlots, initialAttachmentSlots: initialAttachmentSlots.current,
+    approvalSelectionEdited: approvalSelectionEditedRef.current,
+  }), [formData, selectedRequisition, projectPreset, prSearch, projectSearch, newProject,
+    showNewProjectForm, pricingConfirmed, pricingEdited, draftId, currentSection, attachmentSlots]);
+  const recoverySnapshotRef = useRef(null);
+  if (recoveryReady) recoverySnapshotRef.current = recoverySnapshot;
+
+  useEffect(() => {
+    if (!recoveryReady) return;
+    draftRecovery.save(recoverySnapshot);
+  }, [draftRecovery, recoveryReady, recoverySnapshot]);
+
+  useEffect(() => {
+    const preserve = () => {
+      if (recoverySnapshotRef.current) draftRecovery.save(recoverySnapshotRef.current);
+    };
+    window.addEventListener('pagehide', preserve);
+    return () => { window.removeEventListener('pagehide', preserve); preserve(); };
+  }, [draftRecovery]);
+
+  const handleCancel = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    await draftRecovery.clear();
+    onClose?.();
+  };
+
   useLayoutEffect(() => {
-    if (!isOpen || pageMode) return undefined;
+    if (!recoveryReady || !isOpen || pageMode) return undefined;
     // The edit overlay belongs to the page, below the header and beside the
     // sidebar. Measure the shell instead of duplicating its navigation widths.
     const content = workspaceRef.current?.closest('main') || document.getElementById('application-content');
@@ -615,12 +707,12 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       observer.disconnect();
       window.removeEventListener('resize', updateBounds);
     };
-  }, [isOpen, pageMode]);
+  }, [isOpen, pageMode, recoveryReady]);
 
   useEffect(() => {
     // Master-data defaults belong to creation. Opening an existing PO must not
     // rewrite its buyer references or recorded approval evidence.
-    if (editData) return;
+    if (!recoveryReady || editData) return;
     if (approvalEmployees.length === 0) return;
     const defaultCandidates = approvalEmployees.filter((employee) =>
       employee.is_active !== false
@@ -672,21 +764,21 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         } : {}),
       };
     });
-  }, [approvalEmployees]);
+  }, [approvalEmployees, recoveryReady]);
 
   // Fetch the master data required to create a PO whenever the form is opened.
   useEffect(() => {
-    if (isOpen || pageMode) {
+    if (recoveryReady && (isOpen || pageMode)) {
       fetchVendors();
       fetchProjects();
       fetchPOApprovers();
       if (!editData?.pr_reference) fetchAvailableRequisitions();
     }
-  }, [isOpen, pageMode, editData]);
+  }, [isOpen, pageMode, editData, recoveryReady]);
 
   // Auto-save draft every 30 seconds
   useEffect(() => {
-    if (!editData && !pricingEdited && !pricingConfirmed) {
+    if (recoveryReady && !editData && !pricingEdited && !pricingConfirmed) {
       const autoSaveInterval = setInterval(() => {
         const canPersistDraft = Boolean(
           formData.pr_reference &&
@@ -701,7 +793,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       }, 30000);
       return () => clearInterval(autoSaveInterval);
     }
-  }, [formData, editData, draftId, pricingEdited, pricingConfirmed]);
+  }, [formData, editData, draftId, pricingEdited, pricingConfirmed, recoveryReady]);
 
   const normalizeApiArray = (data) => {
     if (Array.isArray(data)) return data;
@@ -771,7 +863,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   const handleProjectSelect = async (project) => {
-    if (!project) return;
+    if (!project || projectLinking || projectCreating) return;
     let selectedProject = project;
     if (project.source === 'core') {
       setProjectLinking(true);
@@ -804,17 +896,31 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       }
     }
 
-    setProjectSearch(`${selectedProject.project_number} — ${selectedProject.project_name}`);
+    setProjectSearch('');
+    setActiveProjectIndex(-1);
     setProjectPreset(null);
     setShowProjectChoices(false);
     setShowNewProjectForm(false);
     setProjectCreateError('');
-    setFormData((prev) => ({
-      ...prev,
-      project: selectedProject.id,
-      enterprise_project: selectedProject.enterprise_project ?? (project.source === 'core' ? project.source_project_id : null),
-      project_number: selectedProject.project_number,
-    }));
+    setFormData((prev) => {
+      const selected = purchaseOrderProjectSelections(prev, projects);
+      const newSelection = {
+        project_number: selectedProject.project_number,
+        project_name: selectedProject.project_name,
+        project_id: selectedProject.id,
+        enterprise_project: selectedProject.enterprise_project ?? (project.source === 'core' ? project.source_project_id : null),
+      };
+      const existingIndex = selected.findIndex(item => item.project_number.toLowerCase() === String(newSelection.project_number).toLowerCase());
+      if (existingIndex < 0) selected.push(newSelection);
+      else selected[existingIndex] = newSelection;
+      return withPurchaseOrderProjects(prev, selected);
+    });
+  };
+
+  const handleProjectRemove = (number) => {
+    setProjectPreset(null);
+    setFormData(previous => withPurchaseOrderProjects(previous,
+      purchaseOrderProjectSelections(previous, projects).filter(project => project.project_number !== number)));
   };
 
   const handleProjectSearch = (event) => {
@@ -822,17 +928,6 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     const value = event.target.value;
     setProjectSearch(value);
     setShowProjectChoices(true);
-    const normalizedValue = value.trim().toLowerCase();
-    const exactProject = projects.find((project) => (
-      String(project.project_number || '').toLowerCase() === normalizedValue
-      || `${project.project_number} — ${project.project_name}`.toLowerCase() === normalizedValue
-    ));
-    if (exactProject) {
-      handleProjectSelect(exactProject);
-      return;
-    }
-    setProjectPreset(null);
-    setFormData((prev) => ({ ...prev, project: '', enterprise_project: null, project_number: '' }));
   };
 
   const handleCreateProject = async () => {
@@ -972,7 +1067,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     setFormData((prev) => ({
       ...prev,
       vendor: vendorId,
-      seller_contact_person: vendor?.contact_person || prev.seller_contact_person,
+      seller_contact_person: String(prev.vendor) === String(vendorId) ? prev.seller_contact_person : '',
       seller_email: vendor?.email || prev.seller_email,
       seller_phone: vendor?.phone || prev.seller_phone,
       seller_address: vendor?.address || prev.seller_address,
@@ -986,6 +1081,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   const reservePONumber = async (requisition) => {
+    initiallyReservedPRRef.current = requisition.id;
     const requestId = ++poNumberRequestRef.current;
     setPONumberLoading(true);
     setFormData((prev) => ({ ...prev, po_number: '' }));
@@ -1011,12 +1107,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const handleRequisitionSelect = (requisition) => {
     if (!requisition) return;
     if (projectPreset) {
-      const explicitCodes = (Array.isArray(requisition.project_details) ? requisition.project_details : [])
-        .flatMap(item => [item?.project_number, item?.project_code])
-        .filter(Boolean).map(value => String(value).trim().toLowerCase());
-      const differentProject = requisition.enterprise_project
-        ? String(requisition.enterprise_project) !== String(projectPreset.id)
-        : explicitCodes.length > 0 && !explicitCodes.includes(String(projectPreset.code).trim().toLowerCase());
+      const explicitCodes = requisitionProjectNumbers(requisition).map(value => value.toLowerCase());
+      const differentProject = explicitCodes.length > 0
+        ? !explicitCodes.includes(String(projectPreset.code).trim().toLowerCase())
+        : requisition.enterprise_project && String(requisition.enterprise_project) !== String(projectPreset.id);
       if (differentProject) {
         const message = `This PR belongs to another project. Choose a PR for ${projectPreset.code}, or close this form and choose another project in Project Links.`;
         setPrSearch(selectedRequisition?.pr_number || '');
@@ -1042,10 +1136,12 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       || '';
     const title = requisition.product_service || requisition.title || '';
     const normalizedItems = normalizeRequisitionItems(requisition);
+    const projectNumbers = requisitionProjectNumbers(requisition);
     const requisitionProject = Array.isArray(requisition.project_details)
       ? requisition.project_details[0]
       : null;
-    const projectReference = requisitionProject?.project_number
+    const projectReference = projectNumbers[0]
+      || requisitionProject?.project_number
       || requisitionProject?.project_name
       || requisition.project_department
       || requisition.project
@@ -1060,9 +1156,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     setPricingConfirmed(false);
     setPricingEdited(false);
     setPrSearch(requisition.pr_number || '');
-    setProjectSearch(projectPreset ? `${projectPreset.code} — ${projectPreset.name}` : linkedProject
-      ? `${linkedProject.project_number} — ${linkedProject.project_name}`
-      : String(projectReference));
+    setProjectSearch('');
     setShowPRChoices(false);
     setCurrentSection(1);
     setFormData((prev) => ({
@@ -1083,7 +1177,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       currency: requisition.currency || prev.currency,
       project: projectPreset ? (projectPreset.procurement_project_id || '') : linkedProject?.id || '',
       enterprise_project: projectPreset?.id ?? requisition.enterprise_project ?? linkedProject?.enterprise_project ?? (linkedProject?.source === 'core' ? linkedProject.source_project_id : null),
-      project_number: projectPreset?.code || linkedProject?.project_number || projectReference || prev.project_number,
+      project_number: projectNumbers.join(', ') || projectPreset?.code || linkedProject?.project_number || projectReference || prev.project_number,
+      contact_persons: Object.fromEntries(Object.entries(prev.contact_persons || {}).filter(([key]) => key !== 'project_selections')),
+      seller_contact_person: String(prev.vendor) === String(requisition.vendor || '') ? prev.seller_contact_person : '',
       expected_delivery: requisition.required_date || prev.expected_delivery,
       items: normalizedItems,
       scope_of_services: requisition.description_reason || prev.scope_of_services,
@@ -1103,17 +1199,19 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   };
 
   useEffect(() => {
+    const requisition = selectedRequisition || prReference;
     if (
       isOpen
+      && recoveryReady
       && !editData
-      && prReference?.id
+      && !persistedOrderIdRef.current
+      && requisition?.id
       && !formData.po_number
-      && initiallyReservedPRRef.current !== prReference.id
+      && initiallyReservedPRRef.current !== requisition.id
     ) {
-      initiallyReservedPRRef.current = prReference.id;
-      reservePONumber(prReference);
+      reservePONumber(requisition);
     }
-  }, [isOpen, editData, prReference?.id]);
+  }, [isOpen, editData, prReference, selectedRequisition, formData.po_number, recoveryReady]);
 
   const handleRequisitionSearch = (event) => {
     setActivePRIndex(-1);
@@ -1451,6 +1549,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       newErrors.po_number = 'Use RAD-{GEN|PRJ}-PUR-####_YYYY or RAD-{GEN|PRJ}-PUR-####_MMMYYYY format';
     }
     if (!formData.vendor) newErrors.vendor = 'Vendor is required';
+    if (String(formData.project_number || '').length > 100) newErrors.project_number = 'The selected project numbers exceed the 100-character limit.';
     if (!formData.title?.trim()) newErrors.title = 'Title is required';
     if (!formData.total_amount || parseFloat(formData.total_amount) <= 0) {
       newErrors.total_amount = 'Valid total amount is required';
@@ -1512,6 +1611,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const handleSubmit = async (e, sendToVendor = false) => {
     e.preventDefault();
     if (submittingRef.current) return;
+    if (sendToVendor && editData?.can_send_to_vendor !== true) {
+      setPopupError(editData ? purchaseOrderLifecycleBlockReason(editData) : 'Save this purchase order as a draft, then complete its approvals before sending it to the vendor.');
+      return;
+    }
 
     if (!validateForm(sendToVendor)) {
       const validationMessage = missingApprovalStages.length
@@ -1528,6 +1631,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
             ? 'Please add at least one priced line item.'
             : !formData.payment_terms?.trim()
               ? 'Please enter the payment terms.'
+              : String(formData.project_number || '').length > 100
+                ? 'The selected project numbers exceed the 100-character limit.'
               : missingApprovalStages.length
                 ? `Please select: ${missingApprovalStages.join(', ')}.`
                 : 'Please add a short summary before sending to the vendor.';
@@ -1612,6 +1717,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       }
 
       const poLabel = response.data?.po_number || formData.po_number || 'Purchase Order';
+      await draftRecovery.clear();
       if (sendToVendor) {
         toast.success(`${poLabel} sent to vendor successfully.`);
       } else if (isExistingOrder) {
@@ -1639,6 +1745,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   // Don't render if not open - check AFTER all hooks
   if (!isOpen && !pageMode) return null;
+  if (!recoveryReady) return <div role="status" className="p-4">Restoring purchase order…</div>;
 
   const isNewOrder = !editData;
   const hasRequiredRequisition = !isNewOrder || Boolean(formData.pr_reference && selectedRequisition);
@@ -1658,9 +1765,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     ].some((value) => String(value || '').toLowerCase().includes(normalizedPRSearch));
   }).slice(0, normalizedPRSearch ? 50 : undefined);
   const normalizedProjectSearch = projectSearch.trim().toLowerCase();
+  const selectedProjects = purchaseOrderProjectSelections(formData, projects);
   const filteredProjects = projects.filter((project) => {
     if (!normalizedProjectSearch) return true;
-    if (String(project.id) === String(formData.project)) return true;
     return [project.project_number, project.project_name].some((value) => (
       String(value || '').toLowerCase().includes(normalizedProjectSearch)
     ));
@@ -1686,14 +1793,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         <section className="pof-editor" aria-label="Purchase order editor">
           <header className="pof-header">
             <nav className="pof-breadcrumb" aria-label="Breadcrumb">
-              <span>Procurement</span><span>/</span><button type="button" onClick={onClose}>Purchase Orders</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong>
+              <span>Procurement</span><span>/</span><button type="button" onClick={handleCancel}>Purchase Orders</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong>
             </nav>
             <div className="pof-title-row">
               <div>
                 <h1>{editData ? 'Edit purchase order' : 'New purchase order'}</h1>
                 <p>Confirm the supplier, scope and commercial terms for your purchase order.</p>
               </div>
-              <button type="button" className="pof-close" onClick={onClose} aria-label="Close purchase order"><X size={18} /></button>
+              <button type="button" className="pof-close" onClick={handleCancel} aria-label="Close purchase order"><X size={18} /></button>
             </div>
             <div className="pof-header-bottom">
               <span className="pof-draft-state" role="status"><DocumentTextIcon />{autoSaving ? 'Saving draft…' : formData.po_number || 'Draft · select a recommendation to start'}</span>
@@ -1724,6 +1831,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
           <form className="pof-form" noValidate onSubmit={(event) => handleSubmit(event, false)} aria-label="Purchase order form">
             {popupError && <div className="pof-error" role="alert"><AlertCircle size={17} /><span>{popupError}</span><button type="button" aria-label="Dismiss error" onClick={() => setPopupError('')}><X size={16} /></button></div>}
             <div className="pof-form-scroll" ref={formScrollRef}>
+              {editData?.commercial_edit_locked === true && <p role="status" className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{purchaseOrderCommercialLockReason(editData)}</p>}
+              {currentSection === 4 && (!editData || editData.status === 'draft') && editData?.can_send_to_vendor !== true && <p id="po-form-send-block-reason" role="status" className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{editData ? purchaseOrderLifecycleBlockReason(editData) : 'Save this purchase order as a draft, then complete its approvals before sending it to the vendor.'}</p>}
               <div id="po-section-panel" role="tabpanel" aria-labelledby={`po-tab-${currentSection}`} className="pof-section-panel">
           {/* Section 1: Header, buyer, seller and project details */}
           {currentSection === 1 && (
@@ -2258,12 +2367,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <label htmlFor="po-project-search" className="block text-sm font-medium text-gray-700">Project Name and Number</label>
-                      <p className="mt-1 text-xs text-gray-500">Search by project number or project title.</p>
+                      <p className="mt-1 text-xs text-gray-500">Search and select one or more projects.</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
                         setShowNewProjectForm((current) => !current);
+                        setShowProjectChoices(false);
+                        setNewProject(previous => ({ ...previous, project_number: projectSearch.trim() || previous.project_number }));
                         setProjectCreateError('');
                       }}
                       className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
@@ -2271,6 +2382,13 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       {showNewProjectForm ? 'Cancel New Project' : '+ Create New Project'}
                     </button>
                   </div>
+
+                  {selectedProjects.length > 0 && <ul className="pof-project-selections" aria-label="Selected projects">
+                    {selectedProjects.map(project => <li key={project.project_number}>
+                      <span title={project.project_name || project.project_number}><strong>{project.project_number}</strong>{project.project_name && <span>{project.project_name}</span>}</span>
+                      <button type="button" aria-label={`Remove project ${project.project_number}`} onClick={() => handleProjectRemove(project.project_number)}><X size={14} /></button>
+                    </li>)}
+                  </ul>}
 
                   <div className="relative mt-3">
                     <input
@@ -2288,13 +2406,13 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                           setActiveProjectIndex(index => Math.max(0, Math.min(filteredProjects.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
                         } else if (event.key === 'Enter') {
                           event.preventDefault();
-                          if (showProjectChoices && filteredProjects[activeProjectIndex]) handleProjectSelect(filteredProjects[activeProjectIndex]);
+                          if (showProjectChoices && filteredProjects[Math.max(0, activeProjectIndex)]) handleProjectSelect(filteredProjects[Math.max(0, activeProjectIndex)]);
                         }
                       }}
                       onBlur={() => window.setTimeout(() => setShowProjectChoices(false), 150)}
                       autoComplete="off"
                       placeholder={projectsLoading ? 'Loading existing projects…' : projectLinking ? 'Linking project to Procurement…' : 'Type a project number or name…'}
-                      disabled={projectsLoading || projectLinking}
+                      disabled={projectsLoading || projectLinking || projectCreating}
                       aria-autocomplete="list"
                       aria-expanded={showProjectChoices}
                       aria-controls="project-options"
@@ -2303,7 +2421,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     />
 
                     {showProjectChoices && !projectsLoading && !projectLoadError && (
-                      <div id="project-options" role="listbox" className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-xl">
+                      <div id="project-options" role="listbox" aria-label="Projects" aria-multiselectable="true" className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-xl">
                         {filteredProjects.length ? filteredProjects.map((project, index) => (
                           <button
                             key={project.id}
@@ -2311,14 +2429,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                             data-highlighted={index === activeProjectIndex}
                             type="button"
                             role="option"
-                            aria-selected={String(project.id) === String(formData.project)}
+                            aria-selected={selectedProjects.some(selected => selected.project_number.toLowerCase() === String(project.project_number).toLowerCase())}
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => handleProjectSelect(project)}
                             className="block w-full rounded-lg px-3 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
                           >
                             <span className="block text-sm font-bold text-blue-700">{project.project_number}</span>
                             <span className="mt-0.5 block text-xs text-gray-700">{project.project_name}</span>
-                            <span className="mt-1 block text-[11px] text-gray-500">{project.status_display || project.status}</span>
+                            {selectedProjects.some(selected => selected.project_number.toLowerCase() === String(project.project_number).toLowerCase()) && <span className="pof-project-selected">Selected</span>}
                           </button>
                         )) : (
                           <div className="px-3 py-5 text-center">
@@ -2396,10 +2514,11 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       name="project_number"
                       aria-label="Project Number"
                       value={formData.project_number}
-                      onChange={handleChange}
+                      readOnly
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="5900927"
+                      placeholder="Select projects above"
                     />
+                    {errors.project_number && <p className="mt-1 text-xs text-red-600">{errors.project_number}</p>}
                   </div>
                   
                   <div>
@@ -2968,7 +3087,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
               </div>
             </div>
             <footer className="pof-actionbar">
-              <button type="button" className="pof-button pof-cancel" onClick={onClose}>Cancel</button>
+              <button type="button" className="pof-button pof-cancel" onClick={handleCancel}>Cancel</button>
               <span className={`pof-validation-state ${validationIssues.length ? 'has-issues' : ''}`} role="status">
                 {validationIssues.length ? <AlertCircle /> : <CheckCircleIcon />}
                 {validationIssues.length ? `${validationIssues.length} required item${validationIssues.length === 1 ? '' : 's'} remaining` : 'Required fields complete'}
@@ -2977,7 +3096,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                 {currentSection > 1 && <button type="button" className="pof-button" onClick={() => openSection(currentSection - 1)}><ArrowLeft />Previous</button>}
                 <button type="submit" className="pof-button" disabled={busy || !hasRequiredRequisition || poNumberLoading}><SaveIcon />{submitLoading ? (uploadProgress ? `Uploading ${uploadProgress}%` : 'Saving…') : editData ? 'Save changes' : 'Save draft'}</button>
                 {currentSection < 4 ? <button type="button" className="pof-button pof-primary" disabled={!hasRequiredRequisition} onClick={() => openSection(currentSection + 1)}>Continue <ArrowRight /></button>
-                  : (!editData || editData.status === 'draft') && <button type="button" className="pof-button pof-primary" disabled={busy || !hasRequiredRequisition || poNumberLoading} onClick={(event) => handleSubmit(event, true)}>{submitLoading ? 'Sending…' : 'Send to vendor'}<ArrowRight /></button>}
+                  : (!editData || editData.status === 'draft') && <button type="button" className="pof-button pof-primary" disabled={busy || !hasRequiredRequisition || poNumberLoading || editData?.can_send_to_vendor !== true} aria-describedby={editData?.can_send_to_vendor !== true ? 'po-form-send-block-reason' : undefined} onClick={(event) => handleSubmit(event, true)}>{submitLoading ? 'Sending…' : 'Send to vendor'}<ArrowRight /></button>}
               </div>
             </footer>
           </form>
