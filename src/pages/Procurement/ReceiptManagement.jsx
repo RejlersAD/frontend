@@ -6,9 +6,11 @@ import apiClient from '../../services/api.service';
 import goodsReceiptsService from '../../services/goodsReceipts.service';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import GoodsReceiptWorkspace from '../../components/Procurement/GoodsReceiptWorkspace';
-import { loadReceiptPages } from '../../components/Procurement/goodsReceiptPresentation';
+import GoodsReceiptDeleteDialog from '../../components/Procurement/GoodsReceiptDeleteDialog';
+import { receiptConfirmationBlock, receiptDeletionBlock } from '../../components/Procurement/GoodsReceiptActions';
 import AIReceiptCreator from './AIReceiptCreator';
-import { receiptReviewAttachment } from '../../components/Procurement/goodsReceiptReviewPresentation';
+import { handoffError } from '../../components/Procurement/PurchaseOrderHandoff';
+import { receiptDisplayItems, receiptReviewAttachment, receiptReviewDate as receiptDate, receiptReviewStatus } from '../../components/Procurement/goodsReceiptReviewPresentation';
 
 class ReceiptCreatorErrorBoundary extends React.Component {
   constructor(props) {
@@ -62,24 +64,18 @@ const receiptText = (value) => (
   value === null || value === undefined || value === '' ? '—' : String(value)
 );
 
-const receiptDate = (value) => {
-  if (!value) return '—';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString('en-GB');
-};
-
 const listText = (value) => {
   if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
   return receiptText(value);
 };
 
-const inspectionResult = (value, receipt) => value === false ? 'FAIL' : value === true && receipt?.status === 'accepted' ? 'RECORDED PASS' : 'NOT VERIFIED';
+const inspectionResult = value => value === false ? 'RECORDED FAIL' : 'NOT VERIFIED';
 
-const receiptItems = receipt => Array.isArray(receipt?.items_received) ? receipt.items_received.filter(item => item && typeof item === 'object' && !Array.isArray(item)) : [];
+const receiptItems = receiptDisplayItems;
 
 const ReceiptPrintContent = ({ receipt, printDate }) => {
   const items = receiptItems(receipt);
-  const status = (receipt?.status_display || receipt?.status || '—').toUpperCase();
+  const status = receiptReviewStatus(receipt).label.toUpperCase();
 
   return (
     <div className="gr-paper bg-white text-gray-950">
@@ -93,7 +89,7 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
           </p>
         </div>
         <div className="text-right">
-          <h1 className="text-[21px] font-bold tracking-[0.12em]">GOODS RECEIPT NOTE</h1>
+          <h1 className="text-[21px] font-bold tracking-[0.12em]">{items.some(item => item.basis === 'service_value') ? 'SERVICE ACCEPTANCE' : 'GOODS RECEIPT NOTE'}</h1>
           <p className="mt-1 text-[9px] font-semibold text-gray-600">Receiving & Quality Inspection Record</p>
           <p className="mt-2 text-[11px] font-bold">{receiptText(receipt?.receipt_number)}</p>
         </div>
@@ -120,7 +116,13 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
             <td className="border border-gray-400 px-2 py-1.5 font-bold">{status}</td>
           </tr>
           <tr>
-            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Inspector</th>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Confirmation By</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.confirmation?.responsible_user_name)}</td>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Confirmed At</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptDate(receipt?.confirmation?.confirmed_at, true)}</td>
+          </tr>
+          <tr>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Technical Inspector</th>
             <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspector_name)}</td>
             <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Inspection Agency</th>
             <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_agency)}</td>
@@ -135,7 +137,7 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
       </table>
 
       <section className="gr-print-block mt-3">
-        <h2 className="bg-gray-900 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white">Items Received</h2>
+        <h2 className="bg-gray-900 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white">{items.some(item => item.basis === 'service_value') ? 'Service acceptance value' : 'Items Received'}</h2>
         <table className="w-full border-collapse text-[8px]">
           <thead>
             <tr className="bg-gray-100">
@@ -197,8 +199,8 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
 
       <section className="gr-print-block mt-7 grid grid-cols-3 gap-6 text-[8.5px]">
         <div className="border-t border-gray-600 pt-2"><p className="font-bold">Received By</p><p>{receiptText(receipt?.received_by_name)}</p><p className="mt-3">Date: {receiptDate(receipt?.receipt_date)}</p></div>
-        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Inspected By</p><p>{receiptText(receipt?.inspector_name)}</p><p>{receiptText(receipt?.inspection_agency)}</p><p className="mt-3">Signature / Date:</p></div>
-        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Approved By</p><p>Procurement / Project Representative</p><p className="mt-3">Signature / Date:</p></div>
+        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Delivery Confirmed By</p><p>{receiptText(receipt?.confirmation?.confirmed_by_name)}</p><p className="mt-3">Date: {receiptDate(receipt?.confirmation?.confirmed_at, true)}</p></div>
+        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Technical Inspector</p><p>{receiptText(receipt?.inspector_name)}</p><p>{receiptText(receipt?.inspection_agency)}</p></div>
       </section>
 
       <footer className="gr-print-footer mt-6 flex justify-between border-t border-gray-400 pt-1 text-[7px] text-gray-500">
@@ -217,11 +219,17 @@ ReceiptPrintContent.propTypes = {
 const ReceiptManagement = () => {
   const [reloadKey, setReloadKey] = useState(0);
   const [showAICreator, setShowAICreator] = useState(false);
-  const [creatorCanApprove, setCreatorCanApprove] = useState(false);
-  const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [initialOrder, setInitialOrder] = useState(null);
+  const [reconciliation, setReconciliation] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [confirmationNotes, setConfirmationNotes] = useState('');
+  const [decisionFields, setDecisionFields] = useState({});
+  const [decisionStale, setDecisionStale] = useState(false);
+  const actionBusy = useRef(false);
   const [creatorError, setCreatorError] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [deletingReceipt, setDeletingReceipt] = useState(null);
+  const [receiptMessage, setReceiptMessage] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -229,28 +237,30 @@ const ReceiptManagement = () => {
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [printDate, setPrintDate] = useState(() => new Date().toISOString());
   const detailSequence = useRef(0);
-  const orderSequence = useRef(0);
   const detailRef = useRef(null);
   const printRef = useRef(null);
   const trapDialog = event => {
     if (event.key === 'Escape') { event.preventDefault(); if (acceptingId) return; if (showPrintPreview) setShowPrintPreview(false); else setSelectedReceipt(null); }
     if (event.key !== 'Tab') return;
-    const elements = [...event.currentTarget.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],[tabindex="0"]')].filter(element => element.getClientRects().length);
+    const elements = [...event.currentTarget.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]')].filter(element => element.getClientRects().length);
     if (event.shiftKey && document.activeElement === elements[0]) { event.preventDefault(); elements.at(-1)?.focus(); }
     else if (!event.shiftKey && document.activeElement === elements.at(-1)) { event.preventDefault(); elements[0]?.focus(); }
   };
   const selectedReceiptId = selectedReceipt?.id;
+  const hasTechnicalChanges = Object.keys(decisionFields).length > 0 || Boolean(rejectReason.trim());
   useEffect(() => {
-    const modal = showPrintPreview ? printRef.current : selectedReceiptId ? detailRef.current : null;
+    const modal = deletingReceipt ? null : showPrintPreview ? printRef.current : selectedReceiptId ? detailRef.current : null;
     if (!modal) return undefined;
     const previous = document.activeElement;
     modal.querySelector('button:not(:disabled)')?.focus();
     return () => previous?.focus();
-  }, [showPrintPreview, selectedReceiptId]);
-  useEffect(() => () => { detailSequence.current += 1; orderSequence.current += 1; }, []);
-  const openReceiptDetails = async receipt => {
+  }, [showPrintPreview, selectedReceiptId, deletingReceipt]);
+  useEffect(() => () => { detailSequence.current += 1; }, []);
+  const openReceiptDetails = async (receipt, preserveInput = false) => {
     const sequence = ++detailSequence.current;
     setShowPrintPreview(false); setSelectedReceipt(receipt); setDetailLoading(true); setDetailError(''); setActionError('');
+    if (!preserveInput) { setRejectReason(''); setDecisionFields({}); setConfirmationNotes(''); }
+    setDecisionStale(false);
     try {
       const data = await goodsReceiptsService.retrieve(receipt.id);
       if (sequence !== detailSequence.current) return;
@@ -263,35 +273,54 @@ const ReceiptManagement = () => {
     const id = new URLSearchParams(window.location.search).get('receipt');
     if (id) openReceiptDetails({ id });
   }, []);
-  const recordReceipt = async capabilities => {
-    if (capabilities?.create !== true) return;
+  const recordReceipt = (capabilities, order = null, reconcile = false) => {
     setCreatorError('');
-    if (capabilities.read_purchase_orders !== true) { setCreatorError('Purchase order access is required to select an order for this receipt.'); return; }
-    const request = ++orderSequence.current;
-    setOrdersLoading(true);
-    try {
-      const all = await loadReceiptPages(async params => (await apiClient.get('/procurement/orders/', { params })).data);
-      if (request !== orderSequence.current) return;
-      setOrders(all.filter(order => ['sent', 'acknowledged'].includes(order.status)));
-      setCreatorCanApprove(capabilities.approve === true);
-      setShowAICreator(true);
-    } catch { setCreatorError('Purchase orders could not be loaded. Refresh and try recording the receipt again.'); }
-    finally { if (request === orderSequence.current) setOrdersLoading(false); }
+    if (capabilities?.create !== true && !(order && (reconcile ? order.receiving?.can_reconcile : order.receiving?.can_record))) { setCreatorError('You do not have access to record this receipt.'); return; }
+    if (!order && capabilities?.read_purchase_orders !== true) { setCreatorError('Purchase order access is required to select an order.'); return; }
+    setInitialOrder(order); setReconciliation(reconcile); setShowAICreator(true);
   };
   const handleReceiptCreated = () => { setReloadKey(value => value + 1); };
-  const acceptReceipt = async receipt => {
-    if (receipt.capabilities?.accept !== true || acceptingId || receipt.status !== 'pending') return;
+  const openDelete = receipt => { if (!actionBusy.current) setDeletingReceipt(receipt); };
+  const removedReceipt = (receipt, deleted = true) => {
+    detailSequence.current += 1;
+    setDeletingReceipt(null);
+    setSelectedReceipt(current => current?.id === receipt.id ? null : current);
+    setShowPrintPreview(false);
+    setReloadKey(value => value + 1);
+    setReceiptMessage(deleted ? `Receipt ${receipt.receipt_number || ''} deleted.` : 'Receipt no longer available. The register has been refreshed.');
+  };
+  const confirmDelivery = async receipt => {
+    if (receipt.confirmation?.can_confirm !== true || actionBusy.current || decisionStale || hasTechnicalChanges || detailLoading || detailError || receipt.status !== 'pending') return;
+    actionBusy.current = true;
     setAcceptingId(receipt.id); setActionError('');
     try {
-      const response = await apiClient.post(`/procurement/receipts/${receipt.id}/accept/`);
+      const data = await goodsReceiptsService.confirmDelivery(receipt.id, { expected_updated_at: receipt.updated_at, ...(confirmationNotes.trim() ? { notes: confirmationNotes.trim() } : {}) });
+      if (String(data?.id) !== String(receipt.id) || !data.confirmation?.confirmed_at) throw new Error('Delivery confirmation could not be verified. Refresh the receipt details.');
+      setSelectedReceipt(current => current?.id === receipt.id ? data : current);
+      setReloadKey(value => value + 1);
+      window.requestAnimationFrame(() => {
+        if (detailRef.current?.dataset.receiptId === String(receipt.id)) detailRef.current.querySelector('button[aria-label="Close"]')?.focus();
+      });
+    } catch (error) {
+      setActionError(error.response?.status === 403 ? (typeof error.response.data?.detail === 'string' ? error.response.data.detail : 'You do not have access to confirm this delivery.') : handoffError(error));
+      if (error.response?.status === 409) setDecisionStale(true);
+    } finally { actionBusy.current = false; setAcceptingId(null); }
+  };
+  const acceptReceipt = async (receipt, reject = false) => {
+    if ((reject ? receipt.capabilities?.reject !== true : receipt.capabilities?.accept !== true) || actionBusy.current || decisionStale || receipt.status !== 'pending') return;
+    if (reject && !rejectReason.trim()) { setActionError('Enter a rejection reason.'); return; }
+    actionBusy.current = true;
+    setAcceptingId(receipt.id); setActionError('');
+    try {
+      const response = await apiClient.post(`/procurement/receipts/${receipt.id}/${reject ? 'reject_delivery' : 'accept'}/`, { expected_updated_at: receipt.updated_at, ...Object.fromEntries(Object.entries(decisionFields).map(([key, value]) => [key, value === '' ? null : value === 'true'])), ...(reject ? { reason: rejectReason.trim() } : {}) });
       if (String(response.data?.id) !== String(receipt.id)) throw new Error('The receipt response could not be verified.');
       setSelectedReceipt(current => current?.id === receipt.id ? response.data : current);
       setReloadKey(value => value + 1);
       window.requestAnimationFrame(() => {
         if (detailRef.current?.dataset.receiptId === String(receipt.id)) detailRef.current.querySelector('button[aria-label="Close"]')?.focus();
       });
-    } catch (error) { setActionError(error.response?.data?.error || error.response?.data?.detail || error.message || 'The receipt could not be accepted.'); }
-    finally { setAcceptingId(null); }
+    } catch (error) { setActionError(handoffError(error)); if (error.response?.status === 409) setDecisionStale(true); }
+    finally { actionBusy.current = false; setAcceptingId(null); }
   };
   const openPrintPreview = () => { if (selectedReceipt?.capabilities?.export !== true) return; setPrintDate(new Date().toISOString()); setShowPrintPreview(true); };
   const reviewPrint = receipt => { if (receipt.capabilities?.export !== true) return; setSelectedReceipt(receipt); setDetailLoading(false); setDetailError(''); setPrintDate(new Date().toISOString()); setShowPrintPreview(true); };
@@ -302,8 +331,10 @@ const ReceiptManagement = () => {
     window.addEventListener('afterprint', restoreTitle); window.print(); window.setTimeout(restoreTitle, 60000);
   };
   return <>
-    <GoodsReceiptWorkspace onRecord={recordReceipt} onOpen={openReceiptDetails} onPrint={reviewPrint} reloadKey={reloadKey} />
-    {(ordersLoading || creatorError) && <div role={creatorError ? 'alert' : 'status'} className="fixed bottom-5 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg border border-blue-200 bg-white p-4 text-sm text-blue-900 shadow-xl">{ordersLoading ? 'Loading purchase orders…' : creatorError}{creatorError && <button type="button" aria-label="Dismiss receipt message" onClick={() => setCreatorError('')} className="ml-3 font-semibold">Close</button>}</div>}
+    <div aria-hidden={Boolean(selectedReceipt || deletingReceipt)} inert={selectedReceipt || deletingReceipt ? '' : undefined}><GoodsReceiptWorkspace onRecord={recordReceipt} onOpen={openReceiptDetails} onDelete={openDelete} onPrint={reviewPrint} reloadKey={reloadKey} /></div>
+    {receiptMessage && <div role="status" className="fixed bottom-5 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg border border-blue-200 bg-white p-4 text-sm text-blue-900 shadow-xl">{receiptMessage}<button type="button" aria-label="Dismiss receipt update" onClick={() => setReceiptMessage('')} className="ml-3 font-semibold">Close</button></div>}
+    {deletingReceipt && <GoodsReceiptDeleteDialog receipt={deletingReceipt} onClose={() => setDeletingReceipt(null)} onDeleted={removedReceipt} onUnavailable={receipt => removedReceipt(receipt, false)} />}
+    {creatorError && <div role="alert" className="fixed bottom-5 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg border border-blue-200 bg-white p-4 text-sm text-blue-900 shadow-xl">{creatorError}{creatorError && <button type="button" aria-label="Dismiss receipt message" onClick={() => setCreatorError('')} className="ml-3 font-semibold">Close</button>}</div>}
       {selectedReceipt && createPortal(
         <>
           <style>{`
@@ -341,7 +372,7 @@ const ReceiptManagement = () => {
         </>,
         document.body
       )}
-      {selectedReceipt && !showPrintPreview && (
+      {selectedReceipt && !showPrintPreview && !deletingReceipt && (
         <div ref={detailRef} data-receipt-id={selectedReceipt.id} onKeyDown={trapDialog} className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="receipt-detail-title">
           <div className="flex min-h-screen items-center justify-center p-4">
             <button
@@ -350,10 +381,10 @@ const ReceiptManagement = () => {
               className="fixed inset-0 bg-gray-900/60"
               disabled={!!acceptingId} onClick={() => { if (!acceptingId) { setShowPrintPreview(false); setSelectedReceipt(null); } }}
             />
-            <div className="relative w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
               <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 text-white">
                 <div>
-                  <h2 id="receipt-detail-title" className="text-xl font-semibold">Goods Receipt Details</h2>
+                  <h2 id="receipt-detail-title" className="text-xl font-semibold">{receiptItems(selectedReceipt).some(item => item.basis === 'service_value') ? 'Service Acceptance Details' : 'Goods Receipt Details'}</h2>
                   <p className="mt-1 text-sm text-indigo-100">
                     {selectedReceipt.receipt_number || `GR-${selectedReceipt.id}`}
                   </p>
@@ -369,17 +400,19 @@ const ReceiptManagement = () => {
                   <p className="mt-3 text-sm text-gray-500">Loading receipt details...</p>
                 </div>
               ) : detailError ? <div role="alert" className="p-8 text-red-700"><p>{detailError}</p><button type="button" onClick={() => openReceiptDetails(selectedReceipt)} className="mt-3 rounded border px-3 py-2">Retry receipt details</button></div> : (
-                <div role="region" aria-label="Receipt details and evidence" tabIndex={0} className="max-h-[65vh] overflow-y-auto p-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
+                <div role="region" aria-label="Receipt details and evidence" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto p-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {[
                       ['PO Number', selectedReceipt.po_number],
-                      ['Receipt Date', selectedReceipt.receipt_date ? new Date(selectedReceipt.receipt_date).toLocaleDateString() : null],
+                      ['Receipt Date', receiptDate(selectedReceipt.receipt_date)],
                       ['Received By', selectedReceipt.received_by_name],
                       ['Delivery Note', selectedReceipt.delivery_note_number],
-                      ['Inspector', selectedReceipt.inspector_name],
+                      ['Delivery Confirmation By', selectedReceipt.confirmation?.responsible_user_name],
+                      ...(selectedReceipt.confirmation?.confirmed_at ? [['Confirmed By', selectedReceipt.confirmation.confirmed_by_name], ['Confirmed At', receiptDate(selectedReceipt.confirmation.confirmed_at, true)]] : []),
+                      ['Technical Inspector', selectedReceipt.inspector_name],
                       ['Inspection Agency', selectedReceipt.inspection_agency],
                       ['Inspection Report', selectedReceipt.inspection_report_number],
-                      ['Status', selectedReceipt.status_display || selectedReceipt.status],
+                      ['Status', receiptReviewStatus(selectedReceipt).label],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                         <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
@@ -387,6 +420,18 @@ const ReceiptManagement = () => {
                       </div>
                     ))}
                   </div>
+
+                {selectedReceipt.status === 'pending' && <section className="mt-6 w-full rounded-lg border border-blue-200 bg-blue-50 p-4" aria-label="Delivery confirmation">
+                  <h3 className="text-sm font-semibold text-gray-900">Delivery confirmation</h3>
+                  <p className="mt-1 text-sm text-gray-700">{selectedReceipt.confirmation?.responsible_user_name ? `${selectedReceipt.confirmation.responsible_user_name} recorded this receipt and is responsible for confirming delivery.` : 'The person who recorded this receipt is responsible for confirming delivery.'}</p>
+                  {selectedReceipt.confirmation?.can_confirm === true ? <>
+                    <label className="mt-3 block text-sm">Confirmation notes (optional)<textarea maxLength={4000} rows={2} value={confirmationNotes} onChange={event => setConfirmationNotes(event.target.value)} disabled={!!acceptingId} className="mt-1 w-full rounded border border-gray-300 p-2" /></label>
+                    <p className="mt-2 text-xs text-gray-600">Confirms the recorded quantities or service value and locks this receipt. Technical checks remain unverified unless separately evidenced.</p>
+                    {hasTechnicalChanges && <p className="mt-2 text-sm text-amber-900">Technical review entries are unsaved. Complete that review or <button type="button" disabled={!!acceptingId} onClick={() => { setDecisionFields({}); setRejectReason(''); }} className="underline">clear technical review entries</button> before confirming delivery.</p>}
+
+                  </> : <p className="mt-2 text-sm text-amber-900">{selectedReceipt.confirmation?.blocked_reason || 'Delivery confirmation availability could not be verified. Refresh the receipt details.'}</p>}
+                  {selectedReceipt.purchase_order && <a href={`/procurement/orders/${encodeURIComponent(selectedReceipt.purchase_order)}`} className="mt-3 inline-block text-sm text-blue-700 underline">Open purchase order{selectedReceipt.po_number ? ` ${selectedReceipt.po_number}` : ''}</a>}
+                </section>}
 
                   <div className="mt-6">
                     <h3 className="text-sm font-semibold text-gray-900">Quality inspection</h3>
@@ -397,7 +442,7 @@ const ReceiptManagement = () => {
                         ['Visual', selectedReceipt.visual_inspection_passed],
                         ['Material', selectedReceipt.material_verification_passed],
                       ].map(([label, passed]) => (
-                        <div key={label} className={`rounded-lg border p-3 text-center ${passed === false ? 'border-red-200 bg-red-50 text-red-800' : selectedReceipt.status === 'accepted' ? 'border-green-200 bg-green-50 text-green-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+                        <div key={label} className={`rounded-lg border p-3 text-center ${passed === false ? 'border-red-200 bg-red-50 text-red-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
                           <p className="text-xs font-medium">{label}</p>
                           <p className="mt-1 font-semibold">{inspectionResult(passed, selectedReceipt)}</p>
                         </div>
@@ -407,13 +452,13 @@ const ReceiptManagement = () => {
 
                   <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="rounded-lg border border-gray-200 p-4">
-                      <h3 className="text-sm font-semibold text-gray-900">Items received</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">{receiptItems(selectedReceipt).some(item => item.basis === 'service_value') ? 'Service acceptance value' : 'Items received'}</h3>
                       {receiptItems(selectedReceipt).length > 0 ? (
                         <div className="mt-3 space-y-2">
                           {receiptItems(selectedReceipt).map((item, index) => (
                             <div key={index} className="rounded bg-gray-50 p-3 text-sm text-gray-700">
                               <p className="font-medium text-gray-900">{receiptText(item.item || item.description || `Item ${index + 1}`)}</p>
-                              <p className="mt-1">Ordered: {receiptText(item.ordered_qty)} · Received: {receiptText(item.received_qty ?? item.quantity)} · Accepted: {receiptText(item.accepted_qty)}</p>
+                              <p className="mt-1">Ordered: {receiptText(item.ordered_qty)} · Received: {receiptText(item.received_qty ?? item.quantity)} · Accepted: {receiptText(item.accepted_qty)} {receiptText(item.uom)}</p>
                             </div>
                           ))}
                         </div>
@@ -428,6 +473,11 @@ const ReceiptManagement = () => {
                         {selectedReceipt.ndt_results && <div><dt className="font-medium text-gray-700">NDT results</dt><dd className="text-gray-600">{receiptText(selectedReceipt.ndt_results)}</dd></div>}
                       </dl>
                     </div>
+                  </div>
+
+                  <div className="mt-6 space-y-3">
+                {selectedReceipt.status === 'pending' && (selectedReceipt.capabilities?.accept === true || selectedReceipt.capabilities?.reject === true) && <div className="grid w-full gap-3 sm:grid-cols-2"><h3 className="text-sm font-semibold sm:col-span-2">Technical inspection review</h3>{[['quality_check_passed', 'Overall quality'], ['dimensional_check_passed', 'Dimensional check'], ['visual_inspection_passed', 'Visual inspection'], ['material_verification_passed', 'Material verification']].map(([key, label]) => <label key={key} className="text-sm">{label}<select value={decisionFields[key] ?? (selectedReceipt[key] === true ? 'true' : selectedReceipt[key] === false ? 'false' : '')} onChange={event => setDecisionFields(current => ({ ...current, [key]: event.target.value }))} disabled={!!acceptingId} className="mt-1 w-full rounded border p-2"><option value="">Not assessed</option><option value="true">Passed</option><option value="false">Failed</option></select></label>)}</div>}
+                {selectedReceipt.status === 'pending' && selectedReceipt.capabilities?.reject === true && <div className="w-full"><label className="block text-sm">Rejection reason<textarea value={rejectReason} onChange={event => setRejectReason(event.target.value)} disabled={!!acceptingId} className="mt-1 w-full rounded border border-gray-300 p-2" /></label><button type="button" disabled={!!acceptingId || decisionStale || !rejectReason.trim() || detailLoading || !!detailError} onClick={() => acceptReceipt(selectedReceipt, true)} className="mt-2 rounded border border-red-300 px-3 py-2 text-red-700">Reject receipt</button></div>}
                   </div>
 
                   <section className="mt-6 rounded-lg border border-gray-200 p-4" aria-label="Receipt attachments">
@@ -445,16 +495,22 @@ const ReceiptManagement = () => {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
                 {actionError && <p role="alert" className="w-full text-sm text-red-700">{actionError}</p>}
-                {selectedReceipt.capabilities?.accept && <p className="w-full text-xs text-gray-600">Accepting this receipt also completes its purchase order.</p>}
+                {decisionStale && <button type="button" disabled={!!acceptingId} onClick={() => openReceiptDetails(selectedReceipt, true)} className="rounded border px-3 py-2">Refresh receipt details</button>}
+                {!detailLoading && !detailError && <>
+                  <button type="button" onClick={() => confirmDelivery(selectedReceipt)} disabled={!!acceptingId || decisionStale || hasTechnicalChanges || !!receiptConfirmationBlock(selectedReceipt)} aria-describedby={receiptConfirmationBlock(selectedReceipt) ? 'receipt-confirm-block' : undefined} className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">{acceptingId ? 'Confirming...' : 'Confirm delivery'}</button>
+                  <button type="button" onClick={() => openDelete(selectedReceipt)} disabled={!!acceptingId || decisionStale || !!receiptDeletionBlock(selectedReceipt)} aria-describedby={receiptDeletionBlock(selectedReceipt) ? 'receipt-delete-block' : undefined} className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">Delete receipt</button>
+                  {receiptConfirmationBlock(selectedReceipt) && <p id="receipt-confirm-block" className="w-full text-sm text-amber-900">{receiptConfirmationBlock(selectedReceipt)}</p>}
+                  {receiptDeletionBlock(selectedReceipt) && <p id="receipt-delete-block" className="w-full text-sm text-amber-900">{receiptDeletionBlock(selectedReceipt)}</p>}
+                </>}
                 <button type="button" onClick={openPrintPreview} disabled={!!acceptingId || detailLoading || !!detailError || selectedReceipt.capabilities?.export !== true} className="inline-flex items-center rounded-md border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
                   <PrinterIcon className="mr-2 h-4 w-4" />
                   Print Preview
                 </button>
                 {selectedReceipt.status === 'pending' && selectedReceipt.capabilities?.accept === true && !detailError && !detailLoading && (
-                  <button type="button" onClick={() => acceptReceipt(selectedReceipt)} disabled={acceptingId === selectedReceipt.id} className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
-                    {acceptingId === selectedReceipt.id ? 'Accepting...' : 'Accept & complete PO'}
+                  <button type="button" onClick={() => acceptReceipt(selectedReceipt)} disabled={acceptingId === selectedReceipt.id || decisionStale} className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                    {acceptingId === selectedReceipt.id ? 'Accepting...' : 'Accept receipt'}
                   </button>
                 )}
                 <button type="button" disabled={!!acceptingId} onClick={() => { if (!acceptingId) { setShowPrintPreview(false); setSelectedReceipt(null); } }} className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Close</button>
@@ -488,7 +544,7 @@ const ReceiptManagement = () => {
 
 
     <ReceiptCreatorErrorBoundary isOpen={showAICreator} onClose={() => setShowAICreator(false)}>
-      <AIReceiptCreator isOpen={showAICreator} onClose={() => setShowAICreator(false)} onReceiptCreated={handleReceiptCreated} orders={orders} canApprove={creatorCanApprove} />
+      <AIReceiptCreator isOpen={showAICreator} onClose={() => setShowAICreator(false)} onReceiptCreated={handleReceiptCreated} initialOrder={initialOrder} reconciliation={reconciliation} />
     </ReceiptCreatorErrorBoundary>
   </>;
 };

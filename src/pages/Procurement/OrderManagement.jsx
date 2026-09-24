@@ -871,7 +871,7 @@ const OrderManagement = () => {
   if (activeTab === 'purchaseOrders' && showPOForm && editingOrder) {
     return <PurchaseOrderForm key={editingOrder.id} isOpen pageMode editData={editingOrder}
       onClose={() => { setShowPOForm(false); setEditingOrder(null); }}
-      onSuccess={() => { setShowPOForm(false); setEditingOrder(null); refreshAfterMutation(); }} />;
+      onSuccess={(updatedOrder, { close = false } = {}) => { if (close) { setShowPOForm(false); setEditingOrder(null); } else setEditingOrder(updatedOrder); refreshAfterMutation(); }} />;
   }
 
   if (activeTab === 'purchaseOrders' && showPOPdfImport && poPreviewDocumentId && poDocumentEditMode) {

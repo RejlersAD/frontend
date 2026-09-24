@@ -72,3 +72,19 @@ Historical redesign guards are opt-in with `--snapshot-guards`. `--baseline`, `-
 `check-table-typography-ui.mjs` is a local visual comparison, not a portable functional suite. It requires the immutable pre-change `artifacts/table-typography/source-before/src` copy and `source-before-sha256.json` manifest (`RelativePath` and SHA-256 `Hash` entries). It never regenerates that snapshot. `--before` renders the saved source; `--after` renders current source with read-only fixtures. Use `--routes=goods,approvals,enquiries,workhub,finance,incoming,outgoing,executive,reusable` to limit work, `--tabs=overview,financial,portfolio,commercial,workforce,risk` for Executive tabs, and optional `--widths=1440,390`. Saved cases are retained during bounded reruns. `node scripts/check-table-typography-ui.mjs --report --assert` checks the combined typography, padding, card, overflow, accessibility, print and source reports without launching a browser; row-height differences remain explicit in `comparison.json`. The reusable fixture also verifies Tailwind action weights, direct primary cells and white headings on dark fills.
 
 Fixtures contain synthetic users, `.test` email addresses, placeholder identifiers and fabricated records explicitly used for testing. The existing `*-live.mjs`, `check-shell-photo-sync.mjs` and several older audit scripts have separate local account/backend requirements; do not include every `check-*.mjs` indiscriminately in a unit-test glob.
+
+### Purchase order save sessions
+
+Ordinary native PO Save draft and Save changes keep the editor open on its
+current section. Tests that need the register or a fresh editing session must
+click Close purchase order explicitly after waiting for the successful save.
+Successful explicit vendor sending retains completion navigation; failure keeps
+the editor and input. Saving alone does not send the order or request approval.
+
+Run `node --test tests/purchase-order-save-state.test.js` for acknowledgment,
+in-flight edit and attachment cases. Run `npm exec -- playwright test
+tests/accessibility/purchase-order-save-stay.spec.js --config=playwright.config.js
+--workers=1` for full-application save/refresh/close/send journeys using synthetic
+API fixtures. Use the existing introduction, narrative, draft-recovery and
+canonical-export specs when those areas are affected. These checks do not send
+a real PO, certify backend migrations or establish cross-session concurrency.

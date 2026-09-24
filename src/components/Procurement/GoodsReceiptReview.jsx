@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { ArchiveBoxIcon, ArrowPathIcon, ArrowRightIcon, ArrowTopRightOnSquareIcon, ClipboardDocumentCheckIcon, ClockIcon, DocumentTextIcon, ExclamationTriangleIcon, InformationCircleIcon, PaperClipIcon, PrinterIcon, ShieldCheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import GoodsReceiptActions from './GoodsReceiptActions';
 import { RECEIPT_QUANTITY_FIELDS, receiptReviewAttachment, receiptReviewChecklist, receiptReviewDate, receiptReviewDeclarations, receiptReviewQuantities, receiptReviewQuantity, receiptReviewStatus, receiptReviewText, receiptReviewTimeline } from './goodsReceiptReviewPresentation';
 import './GoodsReceiptReview.css';
 
@@ -11,7 +12,7 @@ Field.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string 
 const Heading = ({ children, icon: Icon }) => <div className="goods-receipt-review-section-heading"><h3>{children}</h3><Icon aria-hidden="true" /></div>;
 Heading.propTypes = { children: PropTypes.node.isRequired, icon: PropTypes.elementType.isRequired };
 
-export default function GoodsReceiptReview({ receipt, onClose, onOpen, onPrint, onChanged, capabilities, asOfDate }) {
+export default function GoodsReceiptReview({ receipt, onClose, onOpen, onDelete, onPrint, onChanged, capabilities, asOfDate }) {
   const [request, setRequest] = useState({ source: null, state: 'idle', data: null, error: '' });
   const [retry, setRetry] = useState(0);
   const [unitSelection, setUnitSelection] = useState({ source: null, id: '' });
@@ -52,12 +53,15 @@ export default function GoodsReceiptReview({ receipt, onClose, onOpen, onPrint, 
       <div className="goods-receipt-review-body" role="region" aria-label="Receipt review details" tabIndex={0} aria-busy={current.state === 'loading'}>
         {current.state === 'loading' ? <div className="goods-receipt-review-state" role="status"><ArrowPathIcon className="goods-receipt-review-spinner" aria-hidden="true" /><p>Loading receipt details…</p></div> : current.state === 'error' ? <div className="goods-receipt-review-state" role="alert"><ExclamationTriangleIcon aria-hidden="true" /><h3>Receipt could not be loaded</h3><p>{current.error}</p><button type="button" className="goods-receipt-review-button" onClick={() => setRetry(value => value + 1)}>Retry receipt details</button></div> : ready && <>
           <section className="goods-receipt-review-section goods-receipt-review-summary"><dl>
-            <Field label="Purchase order" value={data.po_number} />
+            {data.purchase_order ? <div className="goods-receipt-review-field"><dt>Purchase order</dt><dd><a href={`/procurement/orders/${encodeURIComponent(data.purchase_order)}`}>{data.po_number || 'Open purchase order'}</a></dd></div> : <Field label="Purchase order" value={data.po_number} />}
             <Field label="Project" value={[context.project_number, context.project_name].map(receiptReviewText).filter(Boolean).join(' · ')} />
             <Field label="Receipt date" value={receiptReviewDate(data.receipt_date)} /><Field label="Received by" value={data.received_by_name} />
-            <Field label="Inspector" value={data.inspector_name} /><Field label="Inspection agency" value={data.inspection_agency} />
+            <Field label="Delivery confirmation by" value={data.confirmation?.responsible_user_name} />
+            {data.confirmation?.confirmed_at && <><Field label="Confirmed by" value={data.confirmation.confirmed_by_name} /><Field label="Confirmed at" value={receiptReviewDate(data.confirmation.confirmed_at, true)} /></>}
+            <Field label="Technical inspector" value={data.inspector_name} /><Field label="Inspection agency" value={data.inspection_agency} />
           </dl></section>
-          <section className="goods-receipt-review-section"><Heading icon={ArchiveBoxIcon}>Quantity reconciliation</Heading>
+          <section className="goods-receipt-review-section"><Heading icon={ClipboardDocumentCheckIcon}>Receipt actions</Heading><GoodsReceiptActions receipt={data} onOpen={open} onDelete={onDelete} /></section>
+          <section className="goods-receipt-review-section"><Heading icon={ArchiveBoxIcon}>{quantities.rows.some(row => row.basis === 'service_value') ? 'Service acceptance value' : 'Quantity reconciliation'}</Heading>
             {quantities.groups.length > 1 && <label className="goods-receipt-review-unit">Recorded unit<select aria-label="Quantity unit" value={selectedGroup?.id || ''} onChange={event => setUnitSelection({ source: receipt, id: event.target.value })}>{quantities.groups.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}</select></label>}
             <div className="goods-receipt-review-quantities" data-testid="receipt-quantity-tiles">{RECEIPT_QUANTITY_FIELDS.map(([id, label]) => <div key={id} data-quantity={id}><span>{label}</span><strong>{receiptReviewQuantity(selectedGroup?.values[id])}</strong><small>{selectedGroup?.unit || 'Unit not recorded'}</small></div>)}</div>
             <p className="goods-receipt-review-note">{quantities.rows.length ? 'Recorded receipt lines, grouped by unit. Incomplete quantities stay unreported.' : 'No item quantities are recorded.'}</p>
@@ -82,4 +86,4 @@ export default function GoodsReceiptReview({ receipt, onClose, onOpen, onPrint, 
     </>}
   </aside>;
 }
-GoodsReceiptReview.propTypes = { receipt: PropTypes.object, onClose: PropTypes.func.isRequired, onOpen: PropTypes.func.isRequired, onPrint: PropTypes.func, onChanged: PropTypes.func, capabilities: PropTypes.object, asOfDate: PropTypes.string };
+GoodsReceiptReview.propTypes = { receipt: PropTypes.object, onClose: PropTypes.func.isRequired, onOpen: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, onPrint: PropTypes.func, onChanged: PropTypes.func, capabilities: PropTypes.object, asOfDate: PropTypes.string };

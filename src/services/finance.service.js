@@ -10,6 +10,9 @@ const API_BASE = '/finance';
 const invoicePreviewRequests = new Map();
 
 const financeService = {
+  async getAwaitingPurchaseOrders(params = {}) { return (await apiClient.get(`${API_BASE}/invoices/awaiting-purchase-orders/`, { params })).data; },
+  async getPurchaseOrderOptions(params = {}) { return (await apiClient.get(`${API_BASE}/invoices/purchase-order-options/`, { params })).data; },
+  async allocatePurchaseOrder(id, payload) { return (await apiClient.post(`${API_BASE}/invoices/${encodeURIComponent(id)}/allocate-purchase-order/`, payload)).data; },
   /**
    * Upload a new invoice
    */

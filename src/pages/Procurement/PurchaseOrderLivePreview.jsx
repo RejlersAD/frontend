@@ -39,13 +39,6 @@ const sanitizeRichHtml = (value) => {
       const unsafeUrl = ['src', 'href'].includes(name) && /^\s*javascript:/i.test(attribute.value);
       if (name.startsWith('on') || unsafeUrl) node.removeAttribute(attribute.name);
     });
-    if (node.tagName.toLowerCase() === 'font') {
-      node.removeAttribute('face');
-      node.removeAttribute('size');
-    }
-    node.style.removeProperty('font-family');
-    node.style.removeProperty('font-size');
-    node.style.removeProperty('line-height');
   });
   return documentValue.body.innerHTML;
 };
@@ -103,9 +96,10 @@ const richBlockSize = (node) => {
 
 const hasRenderableRichContent = (html) => {
   const contentDocument = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  contentDocument.querySelectorAll('svg, [data-po-page-break="true"]').forEach(node => node.remove());
   return Boolean(
-    contentDocument.body.textContent.trim()
-    || contentDocument.body.querySelector('img, table, hr, svg, video, iframe, [data-po-manual-page-start]')
+    contentDocument.body.textContent.replace(/[\s\u200B-\u200D\uFEFF]/g, '')
+    || contentDocument.body.querySelector('img, td, th, hr, [data-po-manual-page-start]')
   );
 };
 
@@ -236,6 +230,7 @@ const paginateRichHtml = (value) => {
   const sanitized = sanitizeRichHtml(value);
   if (!sanitized) return [];
   if (typeof window === 'undefined') return chunkText(sanitized, 2400);
+  if (!hasRenderableRichContent(sanitized)) return [];
 
   const parsed = new DOMParser().parseFromString(sanitized, 'text/html');
   const blocks = [...parsed.body.childNodes]
@@ -382,8 +377,9 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
     key,
     ...(columnDefinitions[key] || { render: (item) => text(item[key]) }),
   })).filter((column) => String(headers[column.key] || '').trim());
-  const narrativePages = paginateRichHtml(formData.description);
   const orderIntroduction = purchaseOrderIntroduction(formData, vendor?.name);
+  const narrativePages = paginateRichHtml(formData.description);
+  if (!narrativePages.length && orderIntroduction) narrativePages.push('');
   const itemChunks = [];
   const termsChunks = [];
   const summaryChunks = chunkArray(items, 9);
@@ -414,7 +410,7 @@ const PurchaseOrderLivePreview = ({ formData, vendor, files = [], documentOnly =
         </div>
       </Page>
 
-      {narrativePages.map((pageContent, index) => <Page key={`pod-scope-${index}`} data={formData} page={2 + index} finalApproval={finalApproval}>{index === 0 && <p className="border-b border-slate-500 pb-2 text-[11px] font-bold"><u>PURCHASE ORDER:</u> &nbsp;{text(formData.title)}</p>}{index === 0 && orderIntroduction && <p className="mt-3 whitespace-pre-wrap">{orderIntroduction}</p>}{index === 0 && <SectionTitle>PO Description &amp; Scope</SectionTitle>}<div className="po-rich-narrative font-normal [&_img]:my-2 [&_img]:max-h-[440px] [&_img]:max-w-full [&_img]:object-contain [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-6 [&_table]:my-2 [&_table]:w-full [&_td]:border [&_td]:border-slate-500 [&_td]:p-1 [&_ul]:list-disc [&_ul]:pl-6" dangerouslySetInnerHTML={{ __html: pageContent }} /></Page>)}
+      {narrativePages.map((pageContent, index) => <Page key={`pod-scope-${index}`} data={formData} page={2 + index} finalApproval={finalApproval}>{index === 0 && <p className="border-b border-slate-500 pb-2 text-[11px] font-bold"><u>PURCHASE ORDER:</u> &nbsp;{text(formData.title)}</p>}{index === 0 && orderIntroduction && <p className="mt-3 whitespace-pre-wrap">{orderIntroduction}</p>}{index === 0 && formData.contact_persons?.show_scope_heading !== false && <SectionTitle>PO Description &amp; Scope</SectionTitle>}<div style={{ fontSize: '12pt', lineHeight: 1.3 }} className="po-rich-narrative font-normal [&_img]:my-2 [&_img]:max-h-[440px] [&_img]:max-w-full [&_img]:object-contain [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-6 [&_table]:my-2 [&_table]:w-full [&_td]:border [&_td]:border-slate-500 [&_td]:p-1 [&_ul]:list-disc [&_ul]:pl-6" dangerouslySetInnerHTML={{ __html: pageContent }} /></Page>)}
 
       {itemChunks.map((pageItems, pageIndex) => {
         const offset = pageIndex * 7;

@@ -6,6 +6,8 @@ import {
   ExclamationTriangleIcon, InformationCircleIcon, LinkIcon, PaperClipIcon, XMarkIcon,
 } from '@heroicons/react/24/outline';
 import financeService from '../../services/finance.service';
+import InvoicePurchaseOrderMatch from './InvoicePurchaseOrderMatch';
+import ConfirmedPurchaseOrderLinks from './ConfirmedPurchaseOrderLinks';
 import {
   incomingActivity, incomingAllocationEvaluated, incomingCanResolveMatch, incomingDate,
   incomingMatching, incomingMoney, incomingNumber, incomingOutstanding, incomingStatusLabel, incomingStatusTone,
@@ -49,6 +51,7 @@ MatchingEvidence.propTypes = { allocations: PropTypes.array.isRequired };
 export default function IncomingInvoiceReview({ invoice, onClose, onRefresh }) {
   const [request, setRequest] = useState({ source: null, status: 'idle', data: null, error: '' });
   const [retry, setRetry] = useState(0);
+  const [matchingId, setMatchingId] = useState(null);
 
   useEffect(() => {
     if (!invoice?.id) return undefined;
@@ -100,6 +103,8 @@ export default function IncomingInvoiceReview({ invoice, onClose, onRefresh }) {
                       <div><strong>{row.label}</strong><span title={row.detail}>{row.detail}</span></div><span className="incoming-review-match-status">{row.status}</span></li>;
                   })}</ul>
                   {matching.allocations.length > 0 && <MatchingEvidence allocations={matching.allocations} />}
+                  {data.capabilities?.can_allocate_purchase_order === true && <button type="button" className="incoming-review-button" onClick={() => setMatchingId(current => current === data.id ? null : data.id)}>{matchingId === data.id ? 'Cancel PO matching' : 'Match purchase order'}</button>}
+                  {matchingId === data.id && <InvoicePurchaseOrderMatch key={data.id} invoice={data} onSaved={() => { setMatchingId(null); refresh(); }} />}
                 </section>
                 <section className="incoming-review-section"><div className="incoming-review-section-heading"><h3>Financial summary</h3><Pill value={data.payment_status} /></div>
                   <dl><Field label="Net amount">{incomingMoney(data.amount, data.currency)}</Field><Field label="Tax / VAT">{incomingMoney(data.tax_amount, data.currency)}</Field>
@@ -116,7 +121,7 @@ export default function IncomingInvoiceReview({ invoice, onClose, onRefresh }) {
                 </section>
                 <section className="incoming-review-section"><div className="incoming-review-section-heading"><h3>Coding &amp; attachments</h3><PaperClipIcon aria-hidden="true" /></div>
                   <dl className="incoming-review-coding-grid"><Field label="Invoice category">{data.invoice_type_display || incomingStatusLabel(data.invoice_type)}</Field>
-                    <Field label="PO reference" note="Reference captured from the invoice; confirmed allocations appear in matching evidence.">{data.po_reference_text || 'Not recorded'}</Field>
+                    <Field label="PO reference"><ConfirmedPurchaseOrderLinks invoice={data} fallback="Not recorded" /></Field>
                     <Field label="Currency">{data.currency?.trim() || 'Not recorded'}</Field>
                     <Field label="Cost centre" note="Cost centre coding is not recorded on this invoice.">Not recorded</Field></dl>
                   <div className="incoming-review-attachment" data-testid="incoming-review-source-file"><DocumentTextIcon aria-hidden="true" /><div>

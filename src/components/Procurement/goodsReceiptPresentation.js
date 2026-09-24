@@ -1,6 +1,6 @@
-export const RECEIPT_QUEUES = [['all', 'All receipts'], ['pending', 'Awaiting inspection'], ['exceptions', 'Exceptions'], ['accepted', 'Accepted'], ['rejected', 'Rejected'], ['ndt_pending', 'NDT pending']];
+export const RECEIPT_QUEUES = [['all', 'All receipts'], ['pending', 'Awaiting confirmation'], ['exceptions', 'Exceptions'], ['accepted', 'Accepted'], ['rejected', 'Rejected'], ['ndt_pending', 'NDT pending']];
 export const RECEIPT_FILTERS = { search: '', status: '', quality_check: '', vendor: '', project: '', received_from: '', received_to: '', inspector: '' };
-export const RECEIPT_STATUS = { pending: 'Awaiting inspection', accepted: 'Accepted', rejected: 'Rejected', partial: 'Partially accepted' };
+export const RECEIPT_STATUS = { pending: 'Awaiting confirmation', accepted: 'Accepted', rejected: 'Rejected', partial: 'Partially accepted' };
 export const receiptNumber = value => (typeof value === 'number' || typeof value === 'string') && String(value).trim() !== '' && /^[-+]?\d*(?:\.\d+)?$/.test(String(value).trim()) && Number.isFinite(Number(value)) ? Number(value) : null;
 export const receiptDate = (value, time = false) => {
   if (!value) return '—';
@@ -9,10 +9,12 @@ export const receiptDate = (value, time = false) => {
 };
 export const receiptTone = status => ({ accepted: 'green', rejected: 'red', partial: 'amber', pending: 'blue', passed: 'green', failed: 'red', missing: 'amber', recorded: 'green', complete: 'green', unassessed: 'muted' })[status] || 'muted';
 export function receiptInspection(receipt) {
-  if (receipt.status === 'rejected' || ['quality_check_passed', 'visual_inspection_passed', 'dimensional_check_passed', 'material_verification_passed'].some(key => receipt[key] === false)) return { label: 'Failed', tone: 'red' };
-  if (receipt.status === 'pending') return { label: 'Pending', tone: 'muted' };
+  if (['quality_check_passed', 'visual_inspection_passed', 'dimensional_check_passed', 'material_verification_passed'].some(key => receipt[key] === false)) return { label: 'Failed', tone: 'red' };
+  if (receipt.confirmation?.confirmed_at) return { label: 'Not assessed', tone: 'muted' };
+  if (receipt.status === 'rejected') return { label: 'Failed', tone: 'red' };
+  if (receipt.status === 'pending') return { label: 'Not assessed', tone: 'muted' };
   if (receipt.status === 'partial') return { label: 'Partial', tone: 'amber' };
-  if (receipt.status === 'accepted' && receipt.quality_check_passed === true) return { label: 'Recorded pass', tone: 'green' };
+  if (receipt.status === 'accepted' && receipt.quality_check_passed === true && !receipt.confirmation?.confirmed_at) return { label: 'Recorded pass', tone: 'green' };
   return { label: 'Not recorded', tone: 'muted' };
 }
 export function receiptAge(receipt, asOfDate) {
@@ -33,7 +35,7 @@ export function receiptDocuments(receipt) {
 }
 const csvCell = value => { const raw = String(value ?? ''); const safe = /^[\s]*[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw; return `"${safe.replaceAll('"', '""')}"`; };
 export function receiptsCsv(rows) {
-  const data = [['GR number', 'PO number', 'Supplier', 'Project', 'Received date', 'Delivery note', 'Received by', 'Inspector', 'Item lines', 'Receipt status', 'Inspection', 'Certificates'], ...rows.map(row => [row.receipt_number, row.po_number, row.vendor_name, row.project_number, row.receipt_date, row.delivery_note_number, row.received_by_name, row.inspector_name, Array.isArray(row.items_received) ? row.items_received.length : '', RECEIPT_STATUS[row.status] || row.status, receiptInspection(row).label, receiptDocuments(row).label])];
+  const data = [['GR number', 'PO number', 'Supplier', 'Project', 'Received date', 'Delivery note', 'Received by', 'Delivery confirmation by', 'Confirmed by', 'Confirmed at', 'Technical inspector', 'Item lines', 'Receipt status', 'Technical checks', 'Certificates'], ...rows.map(row => [row.receipt_number, row.po_number, row.vendor_name, row.project_number, row.receipt_date, row.delivery_note_number, row.received_by_name, row.confirmation?.responsible_user_name, row.confirmation?.confirmed_by_name, row.confirmation?.confirmed_at, row.inspector_name, Array.isArray(row.items_received) ? row.items_received.length : '', receiptReviewStatus(row).label, receiptInspection(row).label, receiptDocuments(row).label])];
   return '\uFEFF' + data.map(row => row.map(csvCell).join(',')).join('\r\n');
 }
 export async function loadReceiptPages(list, filters = {}) {
@@ -49,3 +51,4 @@ export async function loadReceiptPages(list, filters = {}) {
   }
   throw new Error('The register exceeded the supported size.');
 }
+import { receiptReviewStatus } from './goodsReceiptReviewPresentation.js';
