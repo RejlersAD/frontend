@@ -67,6 +67,8 @@ export const SPEC_API_CONFIG = {
   jobWorkbookDeleteRowPath: (id) => `/paper-spec/jobs/${id}/workbook/delete-row/`,
   jobWorkbookBulkDeletePath: (id) => `/paper-spec/jobs/${id}/workbook/bulk-delete/`,
   classDetailPath:  (id) => `/paper-spec/classes/${id}/`,
+  // ASME B16.34 advisory validation of a class's PT table (valve_standards DB).
+  classAsmeValidationPath: (id) => `/paper-spec/classes/${id}/asme-validation/`,
   configPath:       '/config/',
 
   // Field name expected by the backend `upload_paper_spec` view
@@ -247,6 +249,12 @@ const specCustomizationAPI = {
 
   async getClass(classId) {
     const { data } = await apiClient.get(path(SPEC_API_CONFIG.classDetailPath(classId)));
+    return data;
+  },
+
+  /** Advisory ASME B16.34 validation of a class's PT table (advisory; never throws). */
+  async getClassAsmeValidation(classId) {
+    const { data } = await apiClient.get(path(SPEC_API_CONFIG.classAsmeValidationPath(classId)));
     return data;
   },
 

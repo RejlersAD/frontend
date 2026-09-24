@@ -83,6 +83,17 @@ const CANVAS_CONFIG = {
     title: 'Some components have no matching CAT sheet',
     helpText: 'These components remain in the Piping Class data and only affect the CAT catalog view - they are not written to any CAT sheet because the standard template has no dedicated category for them.',
   },
+  // ─── Column visibility toggle ─────────────────────────────────────────
+  // SPEC/CAT sheets ship 25+ columns (many blank passthroughs). Users may
+  // hide columns they are not reviewing; hidden state is remembered per
+  // sheet for the session. All knobs here.
+  columnVisibility: {
+    enabled: true,
+    label: 'Columns',
+    hiddenCountSuffix: 'hidden',
+    showAllLabel: 'Show all',
+    hideAllLabel: 'Hide all',
+  },
   // G��G�� Row operations G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
   rowOperations: {
     enableEdit: true,
@@ -230,6 +241,11 @@ const WorkbookCanvas = ({ job }) => {
   const [loadError,   setLoadError]   = useState('');
   const [activeSheet, setActiveSheet] = useState(null);
   const [search,      setSearch]      = useState('');
+
+  // ─── Column visibility (soft-coded CANVAS_CONFIG.columnVisibility) ─────
+  // hiddenColumns: { [sheetName]: Set<headerName> } — remembered per sheet.
+  const [hiddenColumns, setHiddenColumns] = useState({});
+  const [colMenuOpen,   setColMenuOpen]   = useState(false);
 
   // edits[`${sheet}::${row_key}::${col}`] = { value, status: 'editing'|'saving'|'saved'|'error', error? }
   const [edits, setEdits] = useState({});
@@ -616,6 +632,33 @@ const WorkbookCanvas = ({ job }) => {
     if (!data || !activeSheet) return null;
     return data.sheets.find((s) => s.name === activeSheet) || null;
   }, [data, activeSheet]);
+
+  // Headers after applying the column-visibility toggle for this sheet.
+  const visibleHeaders = useMemo(() => {
+    const headers = activeSheetData?.headers || [];
+    if (!CANVAS_CONFIG.columnVisibility.enabled) return headers;
+    const hidden = hiddenColumns[activeSheet];
+    if (!hidden || hidden.size === 0) return headers;
+    return headers.filter((h) => !hidden.has(h));
+  }, [activeSheetData, hiddenColumns, activeSheet]);
+
+  const toggleColumnHidden = useCallback((header) => {
+    setHiddenColumns((prev) => {
+      const next = { ...prev };
+      const setForSheet = new Set(next[activeSheet] || []);
+      if (setForSheet.has(header)) setForSheet.delete(header);
+      else setForSheet.add(header);
+      next[activeSheet] = setForSheet;
+      return next;
+    });
+  }, [activeSheet]);
+
+  const setAllColumnsHidden = useCallback((hide) => {
+    setHiddenColumns((prev) => ({
+      ...prev,
+      [activeSheet]: hide ? new Set(activeSheetData?.headers || []) : new Set(),
+    }));
+  }, [activeSheet, activeSheetData]);
 
   const filteredRows = useMemo(() => {
     if (!activeSheetData) return [];
@@ -1612,6 +1655,58 @@ const WorkbookCanvas = ({ job }) => {
                   />
                 </div>
               )}
+              {/* Column visibility toggle (soft-coded) */}
+              {CANVAS_CONFIG.columnVisibility.enabled && activeSheetData && (
+                <div className={`relative ${CANVAS_CONFIG.userExperience.showGridSearch ? '' : 'ml-auto'}`}>
+                  <button
+                    onClick={() => setColMenuOpen((o) => !o)}
+                    className="px-2.5 py-1.5 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1"
+                  >
+                    <QueueListIcon className="w-4 h-4" />
+                    {CANVAS_CONFIG.columnVisibility.label}
+                    {(hiddenColumns[activeSheet]?.size || 0) > 0 && (
+                      <span className="px-1 py-0.5 text-[10px] font-bold bg-pink-100 text-pink-700 rounded-full">
+                        {hiddenColumns[activeSheet].size} {CANVAS_CONFIG.columnVisibility.hiddenCountSuffix}
+                      </span>
+                    )}
+                  </button>
+                  {colMenuOpen && (
+                    <div className="absolute right-0 mt-1 w-64 max-h-72 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg z-40 p-2">
+                      <div className="flex items-center justify-between gap-2 px-1 pb-1.5 border-b border-slate-100 dark:border-slate-700 mb-1">
+                        <button
+                          onClick={() => setAllColumnsHidden(false)}
+                          className="text-[11px] font-semibold text-blue-600 hover:underline"
+                        >
+                          {CANVAS_CONFIG.columnVisibility.showAllLabel}
+                        </button>
+                        <button
+                          onClick={() => setAllColumnsHidden(true)}
+                          className="text-[11px] font-semibold text-slate-500 hover:underline"
+                        >
+                          {CANVAS_CONFIG.columnVisibility.hideAllLabel}
+                        </button>
+                      </div>
+                      {(activeSheetData.headers || []).map((h) => {
+                        const isHidden = hiddenColumns[activeSheet]?.has(h);
+                        return (
+                          <label
+                            key={h}
+                            className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!isHidden}
+                              onChange={() => toggleColumnHidden(h)}
+                              className="w-3.5 h-3.5 accent-pink-600"
+                            />
+                            <span className="text-xs text-slate-700 dark:text-slate-200 truncate" title={h}>{h}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {loading ? (
@@ -1628,7 +1723,7 @@ const WorkbookCanvas = ({ job }) => {
                   className="min-w-full text-xs border-collapse"
                   style={{
                     minWidth: CANVAS_CONFIG.rowHeaderMinWidthPx
-                      + (activeSheetData.headers.length * CANVAS_CONFIG.cellMinWidthPx)
+                      + (visibleHeaders.length * CANVAS_CONFIG.cellMinWidthPx)
                       + (CANVAS_CONFIG.rowOperations.showActionsColumn ? CANVAS_CONFIG.rowOperations.actionsColumnWidth : 0)
                       + (CANVAS_CONFIG.rowOperations.enableBulkSelect && editModeEnabled ? BULK_SELECT_COLUMN_WIDTH : 0)
                       + (CANVAS_CONFIG.rowOperations.enableDelete ? DELETE_COLUMN_WIDTH : 0),
@@ -1678,7 +1773,7 @@ const WorkbookCanvas = ({ job }) => {
                       >
                         Source
                       </th>
-                      {activeSheetData.headers.map((h) => (
+                      {visibleHeaders.map((h) => (
                         <th
                           key={h}
                           className="text-left font-semibold border-b border-slate-200 dark:border-slate-700 px-2 whitespace-nowrap"
@@ -1777,7 +1872,7 @@ const WorkbookCanvas = ({ job }) => {
                             </td>
                           );
                         })()}
-                        {activeSheetData.headers.map((col) => {
+                        {visibleHeaders.map((col) => {
                           const k = editKey(activeSheet, row.row_key, col);
                           const local = edits[k];
                           const raw   = row.cells?.[col];
@@ -2105,6 +2200,15 @@ const WorkbookCanvas = ({ job }) => {
                   className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-cyan-300"
                 />
                 <div className="text-[10px] text-slate-500 dark:text-slate-400">Enter to preview | Shift+Enter for a new line</div>
+                {/* Soft-coded grammar hints (mirrors backend supported_patterns) */}
+                {Array.isArray(CANVAS_CONFIG.chatbot.patternHints) && (
+                  <div className="rounded-md bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 px-2 py-1.5 space-y-0.5">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Supported instructions</p>
+                    {CANVAS_CONFIG.chatbot.patternHints.map((hint) => (
+                      <p key={hint} className="text-[10px] text-slate-500 dark:text-slate-400 font-mono leading-snug">{hint}</p>
+                    ))}
+                  </div>
+                )}
 
                 <button
                   onClick={() => applyChatInstruction('preview')}
