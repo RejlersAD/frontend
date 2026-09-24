@@ -27,6 +27,7 @@ import { PROCUREMENT_VAT_OPTIONS, sumProcurementMoney } from '../../utils/procur
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 import { purchaseOrderProjectSelections, withPurchaseOrderProjects, requisitionProjectNumbers, requisitionProjectReference } from './purchaseOrderProjects';
 import { purchaseOrderLifecycleBlockReason, purchaseOrderCommercialLockReason } from '../../utils/procurementApproval';
+import { defaultPurchaseOrderIntroduction, ORDER_INTRODUCTION_MAX_LENGTH } from './purchaseOrderIntroduction';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -2690,6 +2691,36 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                 <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
               </div>
               <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div>
+                  <label htmlFor="po-order-introduction" className="block text-sm font-medium text-gray-700">Buyer / Seller introduction</label>
+                  <textarea
+                    id="po-order-introduction"
+                    name="order_introduction"
+                    rows={3}
+                    maxLength={ORDER_INTRODUCTION_MAX_LENGTH}
+                    disabled={editData?.commercial_edit_locked === true}
+                    value={typeof formData.contact_persons?.order_introduction === 'string'
+                      ? formData.contact_persons.order_introduction
+                      : defaultPurchaseOrderIntroduction(selectedVendor?.name || editData?.vendor_name)}
+                    onChange={(event) => {
+                      const introduction = event.target.value;
+                      setFormData(previous => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), order_introduction: introduction } }));
+                    }}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-blue-700 underline disabled:text-gray-400"
+                      disabled={editData?.commercial_edit_locked === true || !Object.hasOwn(formData.contact_persons || {}, 'order_introduction')}
+                      onClick={() => setFormData(previous => {
+                        const contacts = { ...(previous.contact_persons || {}) };
+                        delete contacts.order_introduction;
+                        return { ...previous, contact_persons: contacts };
+                      })}
+                    >Use standard introduction</button>
+                  </div>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">PO Narrative</label>
                   <RichTextEditor value={formData.description} onChange={(description) => setFormData((previous) => ({ ...previous, description, scope_of_services: '' }))} />

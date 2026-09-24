@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Alert, AlertTitle } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../services/api.service';
 import wrenchService from '../services/wrench.service';
@@ -195,6 +196,10 @@ const DataMiningPlatform = () => {
   // Execution
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState(null);
+  const [executionStatus, setExecutionStatus] = useState('idle');
+  const [operationFeedback, setOperationFeedback] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+  const selectedProjectId = useRef(null);
   
   // UI state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -206,6 +211,13 @@ const DataMiningPlatform = () => {
     loadProjects();
     loadWrenchProjects();
   }, []);
+
+  useEffect(() => {
+    selectedProjectId.current = selectedProject?.id;
+    setExecutionStatus('idle');
+    setOperationFeedback(null);
+    setSuccess('');
+  }, [selectedProject?.id]);
   
   // Auto-dismiss notifications
   useEffect(() => {
@@ -398,26 +410,110 @@ const DataMiningPlatform = () => {
     setPipelineSteps(reorderedSteps);
   };
   
+  const operationFailure = async (err, phase) => {
+    let payload = err.response?.data;
+    if (payload instanceof Blob) {
+      try {
+        payload = JSON.parse(await payload.text());
+      } catch {
+        payload = null;
+      }
+    }
+    const denied = err.response?.status === 403;
+    const unavailableExtraction = payload?.code === 'extraction_unavailable';
+    const unavailableExport = phase === 'download' || payload?.code?.startsWith('artifact_')
+      || payload?.code === 'export_unavailable';
+    const message = [payload?.error, payload?.detail, payload?.message].find(value => typeof value === 'string');
+    return {
+      title: denied ? 'Access denied' : unavailableExtraction ? 'Extraction unavailable'
+        : unavailableExport ? 'Export unavailable' : 'Pipeline failed',
+      severity: denied || (!unavailableExtraction && !unavailableExport) ? 'error' : 'warning',
+      message: message || (denied ? 'You do not have permission for this action.'
+        : phase === 'download' ? 'The stored file could not be downloaded. Try again when it is available.'
+          : 'The pipeline could not complete. Please try again when the service is available.'),
+    };
+  };
+
   const executePipeline = async () => {
-    if (!selectedProject) return;
-    
+    if (!selectedProject || executing) return;
+    const projectId = selectedProject.id;
+
     try {
       setExecuting(true);
+      setExecutionStatus('running');
+      setOperationFeedback(null);
       setError('');
-      
-      // First, extract data from documents
-      await apiClient.post(`/data-mining/projects/${selectedProject.id}/extract_data/`);
-      
-      // Then execute pipeline
-      const response = await apiClient.post(`/data-mining/projects/${selectedProject.id}/execute_pipeline/`);
-      setExecutionResult(response.data);
-      setSuccess('Pipeline executed successfully!');
+      setSuccess('');
+
+      // Prepared sources can use the existing saved pipeline without requesting
+      // unsupported extraction. The server rechecks source readiness and grants.
+      const sources = selectedProject.documents || [];
+      const prepared = sources.length > 0 && sources.every(document =>
+        document.extraction_status === 'completed' && document.extracted_data);
+      if (!prepared) {
+        await apiClient.post(`/data-mining/projects/${projectId}/extract_data/`, {}, { suppressErrorToast: true });
+      }
+      if (selectedProjectId.current !== projectId) return;
+
+      const response = await apiClient.post(`/data-mining/projects/${projectId}/execute_pipeline/`, {}, { suppressErrorToast: true });
+      if (selectedProjectId.current !== projectId) return;
+      const result = response.data;
+      if (result?.status !== 'completed' || result?.artifact_available !== true
+        || typeof result.master_file !== 'string' || !result.master_file) {
+        setExecutionStatus('failed');
+        setOperationFeedback({
+          title: 'Export unavailable', severity: 'warning',
+          message: 'The server did not confirm a stored export. No download is available for this attempt.',
+        });
+        return;
+      }
+      setExecutionResult({ ...result, projectId });
+      setExecutionStatus('succeeded');
+      setSuccess('Saved pipeline executed successfully. Export is available.');
       setActiveTab('execute');
     } catch (err) {
-      console.error('Pipeline execution failed:', err);
-      setError(err.response?.data?.error || 'Pipeline execution failed');
+      const feedback = await operationFailure(err, 'execute');
+      if (selectedProjectId.current !== projectId) return;
+      setExecutionStatus('failed');
+      setOperationFeedback(feedback);
     } finally {
       setExecuting(false);
+    }
+  };
+
+  const downloadMasterFile = async () => {
+    if (downloading || executionStatus !== 'succeeded' || !executionResult?.artifact_available) return;
+    const projectId = executionResult.projectId;
+    try {
+      setDownloading(true);
+      setOperationFeedback(null);
+      // Never navigate to an unverified storage pointer. Authorization is checked
+      // again by the guarded endpoint when the file is requested.
+      const response = await apiClient.get(`/data-mining/projects/${projectId}/download_master/`, {
+        responseType: 'blob', suppressErrorToast: true,
+        params: { expected_master_file: executionResult.master_file },
+      });
+      if (selectedProjectId.current !== projectId) return;
+      if (!(response.data instanceof Blob) || !response.data.size
+        || !response.headers['content-disposition']?.toLowerCase().startsWith('attachment;')) {
+        throw new Error('No downloadable artifact returned');
+      }
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = executionResult.filename || executionResult.master_file.split('/').pop();
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      const feedback = await operationFailure(err, 'download');
+      if (selectedProjectId.current !== projectId) return;
+      setExecutionStatus('failed');
+      setSuccess('');
+      setOperationFeedback(feedback);
+    } finally {
+      setDownloading(false);
     }
   };
   
@@ -555,6 +651,13 @@ const DataMiningPlatform = () => {
           <div className="max-w-6xl mx-auto">
           
           {/* Notifications */}
+          {operationFeedback && (
+            <Alert severity={operationFeedback.severity} className="mb-6">
+              <AlertTitle>{operationFeedback.title}</AlertTitle>
+              {operationFeedback.message}
+              <p>Your selected project, documents and pipeline configuration are retained.</p>
+            </Alert>
+          )}
           {(error || success) && (
             <div className={`mb-6 animate-slide-down ${error ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-300'} rounded-2xl p-4 border-2`}>
               <div className="flex items-center justify-between">
@@ -908,11 +1011,21 @@ const DataMiningPlatform = () => {
               </div>
             )}
             
-            {activeTab === 'execute' && executionResult && (
+            {activeTab === 'execute' && executionStatus !== 'succeeded' && (
+              <div>
+                <Alert severity="info" className="mb-6">
+                  No verified export is available for this attempt. Your sources and pipeline configuration are retained.
+                </Alert>
+                <button onClick={() => setActiveTab('pipeline')} className="px-4 py-2 rounded-xl border border-blue-300 text-blue-700">
+                  Back to pipeline
+                </button>
+              </div>
+            )}
+            {activeTab === 'execute' && executionStatus === 'succeeded' && executionResult && (
               <div>
                 <div className="mb-8">
                   <h2 className="text-3xl font-bold text-gray-900 mb-2">Execution Results</h2>
-                  <p className="text-gray-600">Your data transformation pipeline completed successfully</p>
+                  <p className="text-gray-600">Your saved data transformation pipeline completed successfully</p>
                 </div>
                 
                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-3xl p-8 mb-8 border-2 border-green-200">
@@ -999,13 +1112,14 @@ const DataMiningPlatform = () => {
                 
                 <div className="flex gap-4">
                   <button
-                    onClick={() => window.open(executionResult.master_file, '_blank')}
+                    onClick={downloadMasterFile}
+                    disabled={downloading}
                     className="flex-1 px-8 py-5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-2xl font-bold text-lg shadow-lg shadow-blue-500/50 hover:shadow-blue-500/70 transition-all duration-300 transform hover:scale-105 flex items-center justify-center group"
                   >
                     <svg className="w-6 h-6 mr-3 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Download Master File
+                    {downloading ? 'Downloading...' : 'Download Master File'}
                   </button>
                   <button
                     onClick={() => {

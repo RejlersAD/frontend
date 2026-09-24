@@ -36,7 +36,8 @@ export default function RecommendationPreviewPane({ requisition, issues = [], on
   const [expanded, setExpanded] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
-  const hasOriginal = getOriginalRecommendationDocuments(requisition.attachments).length > 0;
+  const hasOriginal = !requisition.price_remarks_data?.approval_revision_history?.length
+    && getOriginalRecommendationDocuments(requisition.attachments).length > 0;
   const scale = fitWidth ? clamp(availableWidth / PAPER_WIDTH, 0.25, 1.5) : zoom;
   const errorCount = issues.filter(issue => issue.severity !== 'warning').length;
   const warningCount = issues.length - errorCount;

@@ -93,6 +93,16 @@ test('pending registration routes can be repaired until approval evidence is rec
   }
 });
 
+test('a reopened imported draft keeps provenance without locking its new approval round', () => {
+  const record = { id: 'revision', status: 'draft', price_remarks_data: {
+    import_source: 'signed_pr_pdf', approval_revision_history: [{ round: 1, rejection_reason: 'Correct the request' }],
+  }, approval_workflow_config: [{ status: 'pending', user_id: 12 }] };
+  assert.equal(preserveRecordedApprovalWorkflow(record), false);
+  assert.equal(preserveRecordedApprovalWorkflow({ ...record, status: 'approved' }), true);
+  assert.equal(preserveRecordedApprovalWorkflow({ ...record, approval_workflow_config: [{ status: 'approved', signature: 'new round evidence' }] }), true);
+  assert.equal(preserveRecordedApprovalWorkflow({ ...record, price_remarks_data: { import_source: 'signed_pr_pdf' } }), true);
+});
+
 
 test('recorded line discounts survive validation and malformed discounts need correction', () => {
   for (const key of ['discount', 'line_discount', 'discount_amount']) {

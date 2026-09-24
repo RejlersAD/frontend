@@ -163,7 +163,10 @@ const NotificationPanel = () => {
 
   const previewType = searchParams.get('preview')
   const previewId = searchParams.get('id')
+  const previewContextRef = useRef('')
+  previewContextRef.current = `${previewType}:${previewId}:${notificationUserId}`
   const canDecidePreview = canDecideProcurement(recordPreview.data, user, previewType)
+  const previewNeedsReload = previewType === 'pr' && (previewDecision.stale || (recordPreview.data && !recordPreview.data.updated_at))
 
   const fetchNotifications = useCallback(async ({ quiet = false } = {}) => {
     if (refreshAbortRef.current) refreshAbortRef.current.abort()
@@ -263,8 +266,23 @@ const NotificationPanel = () => {
     setSearchParams(nextParams, { replace: true })
   }, [searchParams, setSearchParams])
 
+  const reloadRecordPreview = async () => {
+    if (previewDecision.loading || previewDecision.reloading || previewType !== 'pr') return
+    const context = previewContextRef.current
+    setPreviewDecision(current => ({ ...current, reloading: true, error: '' }))
+    try {
+      const { data } = await apiClient.get(`/procurement/requisitions/${previewId}/`, { params: { _fresh: Date.now() }, suppressErrorToast: true })
+      if (previewContextRef.current !== context) return
+      if (String(data?.id) !== String(previewId) || !data.updated_at) throw new Error('The current recommendation version could not be confirmed. Please retry.')
+      setRecordPreview({ loading: false, data, error: '' })
+      setPreviewDecision(current => ({ ...current, stale: false, reloading: false, error: '', message: '' }))
+    } catch (error) {
+      if (previewContextRef.current === context) setPreviewDecision(current => ({ ...current, reloading: false, stale: true, error: error.response?.data?.detail || error.message || 'The latest recommendation could not be loaded.' }))
+    }
+  }
+
   const handlePreviewDecision = async (decision) => {
-    if (!canDecidePreview || previewDecision.loading || !recordPreview.data || !['approve', 'reject'].includes(decision)) return
+    if (!canDecidePreview || previewDecision.loading || previewDecision.reloading || previewNeedsReload || !recordPreview.data || !['approve', 'reject'].includes(decision)) return
 
     const reason = previewDecision.reason.trim()
     if (decision === 'reject' && reason.length < 10) {
@@ -285,8 +303,8 @@ const NotificationPanel = () => {
             reason,
           }
         : decision === 'approve'
-          ? { signature: '' }
-          : { reason }
+          ? { signature: '', expected_updated_at: recordPreview.data.updated_at }
+          : { reason, expected_updated_at: recordPreview.data.updated_at }
 
       const response = await apiClient.post(endpoint, payload)
       const updatedRecord = response.data?.purchase_order || response.data?.requisition || response.data
@@ -306,6 +324,7 @@ const NotificationPanel = () => {
       setPreviewDecision((current) => ({
         ...current,
         loading: false,
+        stale: previewType === 'pr' && requestError.response?.status === 409,
         error: requestError.response?.data?.detail || requestError.response?.data?.error || `Unable to ${decision} this request.`,
         message: '',
       }))
@@ -829,10 +848,11 @@ const NotificationPanel = () => {
                 )}
 
                 {previewDecision.error && (
-                  <div className="mb-3 flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                  <div role="alert" className="mb-3 flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
                     <ExclamationTriangleIcon className="h-4 w-4 flex-none" />{previewDecision.error}
                   </div>
                 )}
+                {previewNeedsReload && <div className="mb-3 text-sm text-amber-900"><p>Reload and review the latest recommendation before recording a decision. Your rejection reason is retained.</p><button type="button" onClick={reloadRecordPreview} disabled={previewDecision.reloading} className="mt-2 font-semibold underline">{previewDecision.reloading ? 'Reloading...' : 'Reload latest version'}</button></div>}
                 {previewDecision.message && (
                   <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
                     <CheckCircleIcon className="h-4 w-4 flex-none" />{previewDecision.message}
@@ -847,14 +867,14 @@ const NotificationPanel = () => {
                     <button
                       type="button"
                       onClick={() => previewDecision.mode === 'reject' ? handlePreviewDecision('reject') : setPreviewDecision((current) => ({ ...current, mode: 'reject', message: '', error: '' }))}
-                      disabled={previewDecision.loading}
+                      disabled={previewDecision.loading || previewDecision.reloading || previewNeedsReload}
                       className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-300 bg-white px-4 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-40"
                     >
                       <XCircleIcon className="h-4 w-4" />
                       {previewDecision.loading && previewDecision.mode === 'reject' ? 'Rejecting...' : previewDecision.mode === 'reject' ? 'Confirm rejection' : 'Reject'}
                     </button>
                     {previewDecision.mode !== 'reject' && (
-                      <button type="button" onClick={() => handlePreviewDecision('approve')} disabled={previewDecision.loading} className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-600 px-4 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40">
+                      <button type="button" onClick={() => handlePreviewDecision('approve')} disabled={previewDecision.loading || previewDecision.reloading || previewNeedsReload} className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-600 px-4 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40">
                         <CheckCircleIcon className="h-4 w-4" />{previewDecision.loading ? 'Approving...' : 'Approve'}
                       </button>
                     )}

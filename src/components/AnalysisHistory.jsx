@@ -17,6 +17,7 @@ import { useSelector } from 'react-redux';
 import axios from 'axios';
 import { STORAGE_KEYS } from '../config/app.config';
 import { API_BASE_URL } from '../config/api.config';
+import { artifactDownloadFilename, conversionReviewLabel, pfdOperationError } from '../utils/pfdArtifactState';
 
 /**
  * Generic Analysis History Component
@@ -179,13 +180,15 @@ const AnalysisHistory = ({
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', filename);
+      const conversion = type === 'pfd' ? analyses.find(item => item.id === id) : null;
+      link.setAttribute('download', type === 'pfd' ? artifactDownloadFilename({ ...conversion, id, pid_drawing_number: conversion?.document_number }, response.headers) : filename);
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error downloading report:', err);
-      await radaiAlert('Failed to download report');
+      await radaiAlert(type === 'pfd' ? await pfdOperationError(err, 'The stored output could not be downloaded. Download does not regenerate or replace an output.') : 'Failed to download report');
     }
   };
 
@@ -377,6 +380,7 @@ const AnalysisHistory = ({
                                 <div className="font-medium text-sm truncate">
                                   {analysis.drawing_number || analysis.document_number}
                                 </div>
+                                  {type === 'pfd' && <div className="text-xs text-gray-600 break-all">Output {analysis.id} - Rev {analysis.pid_revision || 'Unavailable'} - {conversionReviewLabel(analysis)}</div>}
                                 <div className="text-xs text-gray-500">
                                   {type === 'pid' 
                                     ? `${analysis.total_issues} issues`
@@ -510,6 +514,7 @@ const AnalysisHistory = ({
                                   <div className="text-sm font-medium text-gray-900">
                                     {analysis.drawing_number || analysis.document_number}
                                   </div>
+                                  {type === 'pfd' && <div className="text-xs text-gray-600 break-all">Output {analysis.id} - Rev {analysis.pid_revision || 'Unavailable'} - {conversionReviewLabel(analysis)}</div>}
                                   <div className="text-xs text-gray-500">
                                     {analysis.drawing_title || analysis.document_title}
                                   </div>

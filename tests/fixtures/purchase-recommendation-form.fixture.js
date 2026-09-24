@@ -70,6 +70,7 @@ function parseBody(request) {
 }
 
 export async function recommendationFormHarness(page, options = {}) {
+  const actor = options.actor || formActor;
   const state = {
     record: formReference(options.record), records: [], vendors: formVendors, requests: [], unknown: [], pageErrors: [], submissions: [],
     saveError: null, submitError: null, originalContent: {}, sourceApprovalError: null, saveSourceApproval: null, approverRoles: [],
@@ -86,7 +87,7 @@ export async function recommendationFormHarness(page, options = {}) {
     localStorage.setItem('radai_user_data', JSON.stringify(user))
     localStorage.setItem('radai.sidebar.collapsed', 'false')
     localStorage.setItem('radai_theme', 'light')
-  }, formActor)
+  }, actor)
   page.on('pageerror', error => state.pageErrors.push(error.message))
   // PDF export clones the page and reloads background images. Serve the exact
   // repository image directly so Vite image latency cannot consume the workflow
@@ -108,8 +109,8 @@ export async function recommendationFormHarness(page, options = {}) {
     if (path === '/api/v1/users/employees/my-profile-photo/') return route.fulfill({ status: 204, body: '' })
     if (path.endsWith('/pending-for-me/')) return reply(route, { count: 0, results: [] })
     if (path.startsWith('/api/v1/ai-champion/') || path.startsWith('/api/v1/rbac/ai-champion/')) return reply(route, { success: true })
-    if (path === '/api/v1/rbac/users/me/') return reply(route, formActor)
-    if (path === '/api/v1/users/employees/my-signature/') return reply(route, { signature: '' })
+    if (path === '/api/v1/rbac/users/me/') return reply(route, actor)
+    if (path === '/api/v1/users/employees/my-signature/') return reply(route, { signature: options.signature || '' })
     if (path === '/api/v1/procurement/orders/') return reply(route, { count: 0, next: null, results: [] })
     if (['/api/v1/procurement/vendors/', '/api/v1/procurement/projects/'].includes(path)) return reply(route, { count: 0, next: null, results: [] })
     if (path === '/api/v1/rbac/users/organization-catalog/') {
@@ -176,6 +177,6 @@ export async function recommendationFormHarness(page, options = {}) {
     state.unknown.push({ path, method })
     return reply(route, { detail: 'Unexpected isolated form test request.' }, 400)
   })
-  await page.goto(options.edit ? `/procurement/requisitions/${formRecordId}/edit` : '/procurement/requisitions/new', { waitUntil: 'domcontentloaded' })
+  await page.goto(options.initialPath || (options.edit ? `/procurement/requisitions/${formRecordId}/edit` : '/procurement/requisitions/new'), { waitUntil: 'domcontentloaded' })
   return state
 }
