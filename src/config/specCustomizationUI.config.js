@@ -83,6 +83,14 @@ export const SPEC_CUSTOMIZATION_UI = {
       { value: 'both', label: 'Both workbooks' },
     ],
     instructionPlaceholder: 'Describe a correction, or specify a column, value, and matching rows.',
+    // Soft-coded grammar hint shown under the composer (mirrors the backend
+    // WORKBOOK_CHATBOT_CONFIG.supported_patterns — keep wording in sync).
+    patternHints: [
+      'set <column> to <value> where <column> contains <text>',
+      'set <column> to <value> for all rows',
+      'set <column> to <value> for class <CODE> in sheet <name>',
+      'set <column> to <value> in sheet <name>',
+    ],
   },
   palette: {
     structure: REJLERS_COLORS.primary.base,

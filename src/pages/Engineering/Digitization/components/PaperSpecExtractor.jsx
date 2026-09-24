@@ -196,6 +196,13 @@ const DETAIL_CONFIG = {
       visible: (c) => (c.pt_rating_table || []).length > 0,
     },
     {
+      key: 'asme',
+      title: 'ASME Validation',
+      icon: ShieldCheckIcon,
+      accent: 'from-cyan-500 to-blue-600',
+      visible: () => ASME_VALIDATION_UI.enabled,
+    },
+    {
       key: 'components',
       title: 'Components',
       icon: TableCellsIcon,
@@ -210,21 +217,68 @@ const DETAIL_CONFIG = {
       visible: (c) => Boolean(c.raw_notes),
     },
   ],
-  // Soft-coded component-table column definitions.
+  // Soft-coded component-table column definitions. Headers mirror the source
+  // PDF columns (REV NO / PART NAME / SIZE / W.T. / DESCRIPTION / NOTES) so
+  // reviewers can compare the extraction 1:1 against the paper spec.
   componentColumns: [
     { key: 'component_type',     header: 'Type',     align: 'left',  render: (c) => (
         <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded border ${componentTone(c.component_type)}`}>
           {c.component_type || 'â€”'}
         </span>
       ) },
-    { key: 'sub_type',           header: 'Sub-type',  align: 'left' },
-    { key: 'size_from',          header: 'From',      align: 'center' },
-    { key: 'size_to',            header: 'To',        align: 'center' },
-    { key: 'schedule_or_rating', header: 'Sched / Rating', align: 'left' },
-    { key: 'material_standard',  header: 'Material',  align: 'left' },
-    { key: 'end_connection',     header: 'Ends',      align: 'left' },
+    { key: 'sub_type',           header: 'Part Name / Sub-type', align: 'left' },
+    { key: 'revision_number',    header: 'Rev No',    align: 'center' },
+    { key: 'size_from',          header: 'Size From', align: 'center' },
+    { key: 'size_to',            header: 'Size To',   align: 'center' },
+    { key: 'schedule_or_rating', header: 'W.T. / Sched / Rating', align: 'left' },
+    { key: 'material_standard',  header: 'Material Standard',     align: 'left' },
+    { key: 'end_connection',     header: 'End Conn.', align: 'left' },
     { key: 'description',        header: 'Description', align: 'left' },
+    { key: 'notes',              header: 'Notes',     align: 'left' },
   ],
+};
+
+// ─── Soft-coded class-list pagination ────────────────────────────────────
+// Large specs (ADNOC LNG: 196 classes) rendered all at once thrash the DOM.
+// Classes are paged client-side; filtering/search resets to page 1.
+const CLASS_LIST_PAGINATION_CONFIG = {
+  enabled: true,
+  pageSize: 20,                 // classes per page
+  pageSizeOptions: [10, 20, 50, 100],
+  labels: {
+    previous: 'Previous',
+    next: 'Next',
+    pagePrefix: 'Page',
+  },
+};
+
+// ─── Soft-coded ASME validation UI (Phase D) ─────────────────────────────
+// Advisory cross-check of the extracted PT table against the valve_standards
+// ASME B16.34 reference database. Status → badge tone + label overrides.
+const ASME_VALIDATION_UI = {
+  enabled: true,
+  statusTones: {
+    pass:    { badge: 'bg-emerald-50 text-emerald-700 border-emerald-300', icon: 'pass' },
+    fail:    { badge: 'bg-rose-50 text-rose-700 border-rose-300',          icon: 'fail' },
+    skipped: { badge: 'bg-slate-50 text-slate-600 border-slate-300',       icon: 'skipped' },
+    error:   { badge: 'bg-amber-50 text-amber-700 border-amber-300',       icon: 'error' },
+  },
+  badgePrefix: 'ASME',
+  tableHeaders: {
+    temperature: 'Temp (°C)',
+    spec:        'Spec (bar-g)',
+    allowed:     'ASME allowed (bar-g)',
+    delta:       'Margin (bar)',
+    method:      'Method',
+    result:      'Result',
+  },
+  methodLabels: {
+    exact: 'Table value',
+    interpolated: 'Interpolated',
+    nearest_extrapolated: 'Nearest (out of range)',
+    no_data: 'No rating data',
+  },
+  loadingText: 'Validating against ASME B16.34…',
 };
 
 // â”€â”€â”€ Soft-coded panel configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -699,10 +753,13 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
   const [classes, setClasses]               = useState([]);
   const [expandedClassId, setExpandedClassId] = useState(null);
   const [classDetailCache, setClassDetailCache] = useState({});
+  const [asmeValidationCache, setAsmeValidationCache] = useState({});
   const [config, setConfig]                 = useState(null);
   const [isDragging, setIsDragging]         = useState(false);
   const [classSearch, setClassSearch]       = useState('');
   const [ratingFilter, setRatingFilter]     = useState(null);
+  const [classPage, setClassPage]           = useState(1);
+  const [classPageSize, setClassPageSize]   = useState(CLASS_LIST_PAGINATION_CONFIG.pageSize);
   // Top-level view tab inside the results section.
   // 'classes'  â†’ original piping-class cards
   // 'canvas'   â†’ editable SPEC/CAT workbook canvas (cross-check + edit)
@@ -967,6 +1024,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
     setClasses([]);
     setExpandedClassId(null);
     setClassDetailCache({});
+    setAsmeValidationCache({});
   };
 
   const handleExpandClass = async (cls) => {
@@ -977,6 +1035,13 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
         const detail = await specCustomizationAPI.getClass(cls.id);
         setClassDetailCache((m) => ({ ...m, [cls.id]: detail }));
       } catch (e) { /* ignore */ }
+    }
+    // Advisory ASME validation alongside the detail fetch (soft-coded toggle).
+    if (ASME_VALIDATION_UI.enabled && !asmeValidationCache[cls.id]) {
+      try {
+        const v = await specCustomizationAPI.getClassAsmeValidation(cls.id);
+        setAsmeValidationCache((m) => ({ ...m, [cls.id]: v }));
+      } catch (e) { /* advisory — never block */ }
     }
   };
 
@@ -1065,6 +1130,22 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
       return blob.includes(q);
     });
   }, [classes, classSearch, ratingFilter]);
+
+  // Reset to page 1 whenever the filter set changes.
+  useEffect(() => {
+    setClassPage(1);
+  }, [classSearch, ratingFilter, classPageSize]);
+
+  // Client-side pagination over the filtered classes (soft-coded config).
+  const pagedClasses = useMemo(() => {
+    if (!CLASS_LIST_PAGINATION_CONFIG.enabled) return filteredClasses;
+    const start = (classPage - 1) * classPageSize;
+    return filteredClasses.slice(start, start + classPageSize);
+  }, [filteredClasses, classPage, classPageSize]);
+
+  const classPageCount = CLASS_LIST_PAGINATION_CONFIG.enabled
+    ? Math.max(1, Math.ceil(filteredClasses.length / classPageSize))
+    : 1;
 
   // Look up the full colour band for a class's confidence score.
   const confidenceBandFor = useCallback((score) => {
@@ -1706,7 +1787,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredClasses.map((cls) => {
+                {pagedClasses.map((cls) => {
                   const expanded = expandedClassId === cls.id;
                   const detail = classDetailCache[cls.id];
                   const band   = confidenceBandFor(cls.confidence_score);
@@ -1778,6 +1859,20 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                                   p.{cls.source_pages[0]}â€“{cls.source_pages[1]}
                                 </span>
                               )}
+                              {/* ASME validation badge (advisory, soft-coded) */}
+                              {ASME_VALIDATION_UI.enabled && asmeValidationCache[cls.id] && (() => {
+                                const v = asmeValidationCache[cls.id];
+                                const tone = ASME_VALIDATION_UI.statusTones[v.status] || ASME_VALIDATION_UI.statusTones.skipped;
+                                return (
+                                  <span
+                                    className={`px-1.5 py-0.5 text-[10px] font-bold border rounded inline-flex items-center gap-1 ${tone.badge}`}
+                                    title={v.label}
+                                  >
+                                    <ShieldCheckIcon className="w-3 h-3" />
+                                    {ASME_VALIDATION_UI.badgePrefix} {v.status === 'pass' ? '✓' : v.status === 'fail' ? '✗' : '—'}
+                                  </span>
+                                );
+                              })()}
                               <span className={`px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded ${band.bg} ${band.text}`}>
                                 {band.label}
                               </span>
@@ -1814,13 +1909,52 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                               Loading detailâ€¦
                             </div>
                           ) : (
-                            <ClassDetailPanel cls={detail} />
+                            <ClassDetailPanel cls={detail} asme={asmeValidationCache[cls.id]} />
                           )}
                         </div>
                       )}
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* ─── 5. Class-list pagination controls (soft-coded) ─── */}
+            {CLASS_LIST_PAGINATION_CONFIG.enabled && filteredClasses.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 bg-white dark:bg-slate-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setClassPage((p) => Math.max(1, p - 1))}
+                    disabled={classPage <= 1}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {CLASS_LIST_PAGINATION_CONFIG.labels.previous}
+                  </button>
+                  <button
+                    onClick={() => setClassPage((p) => Math.min(classPageCount, p + 1))}
+                    disabled={classPage >= classPageCount}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {CLASS_LIST_PAGINATION_CONFIG.labels.next}
+                  </button>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {CLASS_LIST_PAGINATION_CONFIG.labels.pagePrefix}{' '}
+                    <strong className="text-slate-700 dark:text-slate-200">{classPage}</strong>
+                    {' '}/ {classPageCount}
+                  </span>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  Per page
+                  <select
+                    value={classPageSize}
+                    onChange={(e) => setClassPageSize(Number(e.target.value))}
+                    className="px-1.5 py-1 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    {CLASS_LIST_PAGINATION_CONFIG.pageSizeOptions.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
             )}
             </>
@@ -1850,7 +1984,7 @@ const SectionHeader = ({ icon: Icon, title, accent, count }) => (
   </div>
 );
 
-const ClassDetailPanel = ({ cls }) => {
+const ClassDetailPanel = ({ cls, asme }) => {
   if (!cls) return null;
   const sections = DETAIL_CONFIG.sections.filter((s) => s.visible(cls));
 
@@ -1897,6 +2031,69 @@ const ClassDetailPanel = ({ cls }) => {
               ))}
             </tbody>
           </table>
+        </div>
+      );
+    }
+    if (key === 'asme') {
+      const H = ASME_VALIDATION_UI.tableHeaders;
+      if (!asme) {
+        return (
+          <div className="flex items-center gap-2 text-xs text-slate-500 italic">
+            <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
+            {ASME_VALIDATION_UI.loadingText}
+          </div>
+        );
+      }
+      const tone = ASME_VALIDATION_UI.statusTones[asme.status] || ASME_VALIDATION_UI.statusTones.skipped;
+      return (
+        <div className="space-y-2">
+          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold ${tone.badge}`}>
+            <ShieldCheckIcon className="w-4 h-4" />
+            {asme.label}
+            {asme.points_checked > 0 && (
+              <span className="font-normal opacity-80">
+                · {asme.points_checked - asme.points_failed}/{asme.points_checked} points within rating
+              </span>
+            )}
+          </div>
+          {(asme.material_group || asme.matched_spec) && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {asme.standard} · Material group {asme.material_group}
+              {asme.matched_spec && ` (matched ${asme.matched_spec}${asme.matched_grade ? ' ' + asme.matched_grade : ''}${asme.product_form ? ', ' + asme.product_form : ''})`}
+              {asme.pressure_class && ` · Class ${asme.pressure_class}`}
+            </p>
+          )}
+          {(asme.points || []).length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+              <table className="text-xs w-full">
+                <thead>
+                  <tr className="bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-slate-700 dark:to-slate-700">
+                    {[H.temperature, H.spec, H.allowed, H.delta, H.method, H.result].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left font-bold text-cyan-800 dark:text-cyan-200 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {asme.points.map((p, i) => (
+                    <tr key={i} className={`${p.ok === false ? 'bg-rose-50/60 dark:bg-rose-900/20' : 'odd:bg-white even:bg-slate-50/40 dark:odd:bg-slate-800 dark:even:bg-slate-900/30'}`}>
+                      <td className="px-3 py-1.5 font-mono tabular-nums">{p.temperature_c}</td>
+                      <td className="px-3 py-1.5 font-mono tabular-nums">{p.spec_bar_g}</td>
+                      <td className="px-3 py-1.5 font-mono tabular-nums">{p.allowed_bar_g ?? '—'}</td>
+                      <td className={`px-3 py-1.5 font-mono tabular-nums ${p.delta_bar_g < 0 ? 'text-rose-600 font-bold' : 'text-emerald-700'}`}>
+                        {p.delta_bar_g ?? '—'}
+                      </td>
+                      <td className="px-3 py-1.5 text-slate-600 dark:text-slate-300">{ASME_VALIDATION_UI.methodLabels[p.method] || p.method}</td>
+                      <td className="px-3 py-1.5">
+                        {p.ok === true && <span className="px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded">PASS</span>}
+                        {p.ok === false && <span className="px-1.5 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-700 rounded">FAIL</span>}
+                        {p.ok === null && <span className="px-1.5 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-500 rounded">N/A</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       );
     }
@@ -1955,6 +2152,7 @@ const ClassDetailPanel = ({ cls }) => {
   const counts = {
     services:   (cls.service_list   || []).length,
     pt:         (cls.pt_rating_table|| []).length,
+    asme:       asme?.points?.length,
     components: (cls.components     || []).length,
     notes:      undefined,
   };
