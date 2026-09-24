@@ -14,6 +14,7 @@ import React, { useEffect, useState, useRef, useId } from 'react';
 import PropTypes from 'prop-types';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../services/api.service';
+import { downloadPurchaseRequisitionDocument, fetchPurchaseRequisitionWord, purchaseRequisitionDocumentError } from '../../services/purchaseRequisitionDocuments';
 import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
 import { buildGeneratedRequisitionPdf } from './generatedRequisitionPdf';
@@ -100,6 +101,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
   const [pdfPreviewError, setPdfPreviewError] = useState('');
   const [pdfPreviewRetryKey, setPdfPreviewRetryKey] = useState(0);
+  const [wordPending, setWordPending] = useState(false);
+  const [wordError, setWordError] = useState('');
+  const wordRequest = useRef(null);
   const [previewSelection, setPreviewSelection] = useState({ context: '', tab: 'pr' });
   const [linkedPoPreviewUrl, setLinkedPoPreviewUrl] = useState('');
   const [linkedPoPreviewFilename, setLinkedPoPreviewFilename] = useState('');
@@ -116,6 +120,12 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   const setActivePreview = tab => setPreviewSelection({ context: previewContext, tab });
   const linkedPoSources = useUploadedPurchaseOrderSources(requisition?.linked_po_id, isOpen && activePreview === 'po');
   const useOriginalLinkedPo = linkedPoSources.loading || Boolean(linkedPoSources.error) || linkedPoSources.documents.length > 0;
+
+  useEffect(() => {
+    setWordPending(false);
+    setWordError('');
+    return () => { wordRequest.current?.abort(); wordRequest.current = null; };
+  }, [isOpen, requisition?.id, requisition?.updated_at]);
 
   useEffect(() => {
     if (!isOpen) setPreviewSelection({ context: '', tab: 'pr' });
@@ -328,6 +338,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
     (role) => role?.code === 'super_admin' || role?.name === 'Super Administrator'
   );
   const moduleActions = currentUser?.module_actions ?? currentUserData?.module_actions;
+  const canExportWord = moduleActions ? Boolean(moduleActions.procurement_requisitions?.includes('export')) : isSuperAdmin;
   const canUploadSource = module => moduleActions
     ? ['create', 'update'].every(action => (moduleActions[module] || []).includes(action))
     : isSuperAdmin;
@@ -614,6 +625,23 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
     link.remove();
   };
 
+  const downloadWord = async () => {
+    if (!canExportWord || wordRequest.current) return;
+    const controller = new AbortController();
+    wordRequest.current = controller;
+    setWordPending(true);
+    setWordError('');
+    try {
+      const document = await fetchPurchaseRequisitionWord(requisition, { signal: controller.signal });
+      if (!controller.signal.aborted) downloadPurchaseRequisitionDocument(document);
+    } catch (problem) {
+      const message = await purchaseRequisitionDocumentError(problem);
+      if (!controller.signal.aborted) setWordError(message);
+    } finally {
+      if (wordRequest.current === controller) { wordRequest.current = null; setWordPending(false); }
+    }
+  };
+
   const printPdf = () => {
     if (showingLinkedPo && activePdfUrl) {
       window.open(activePdfUrl, '_blank', 'noopener,noreferrer');
@@ -703,6 +731,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                 </div>
               </section>
               <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label="Purchase Recommendation actions">
+                {canExportWord && <button type="button" onClick={downloadWord} disabled={wordPending} aria-busy={wordPending} title="Download saved Purchase Requisition data as Word (.docx). Original signed documents remain separate." className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
+                  <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />{wordPending ? 'Preparing Word...' : 'Download Word'}
+                </button>}
                 {!showingOriginal && <>
                 <button type="button" onClick={printPdf} disabled={!activePdfUrl} aria-label={`Print ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} preview`} title={`Print ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} preview`} className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
                   <PrinterIcon className="h-4 w-4" />
@@ -719,6 +750,8 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
               </div>
             </div>
           </header>
+
+          {wordError && <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{wordError}</div>}
 
           {/* Modal Content Body */}
           <main>
