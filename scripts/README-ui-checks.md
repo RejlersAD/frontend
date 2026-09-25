@@ -73,6 +73,20 @@ Historical redesign guards are opt-in with `--snapshot-guards`. `--baseline`, `-
 
 Fixtures contain synthetic users, `.test` email addresses, placeholder identifiers and fabricated records explicitly used for testing. The existing `*-live.mjs`, `check-shell-photo-sync.mjs` and several older audit scripts have separate local account/backend requirements; do not include every `check-*.mjs` indiscriminately in a unit-test glob.
 
+### System Health notification history
+
+Run `node scripts/check-notification-history.mjs` with Node 20 and installed
+Chrome. The check renders the actual System Health page and analytics service
+with synthetic, read-only API responses. It covers tab loading, safe event
+details, search/filters/pagination, time range and refresh, failure/retry,
+denied access, stale responses, account changes, keyboard focus and responsive
+light/dark layouts. All external browser requests are blocked and API writes
+fail. Status checks verify independent delivery/read values, unknown values,
+read-state refresh in the table and details, and the removal of the Event column.
+Reports and screenshots are written to the workspace
+`.codex-temp/notification-history-status-20260925` directory. Run
+`node scripts/check-admin-console.mjs` for the other System Health tabs.
+
 ### Purchase order save sessions
 
 Ordinary native PO Save draft and Save changes keep the editor open on its
