@@ -6,6 +6,13 @@ controls, search, and a notification details panel. Sidebar, Header, Layout,
 global styles and routing are unchanged. Desktop panels keep pagination and
 detail actions visible; narrow screens retain scrollable details and inbox.
 
+Typography follows the established roles in `src/index.css`: the shared font
+stack and size/line-height/weight tokens, including page/section/card headings,
+14px body and controls, 13px compact list titles, 12px captions and 11px status
+badges at the default root size. Summary cards reuse `.metric-value` and
+`.metric-label`. Narrow layouts keep these sizes and adjust wrapping instead of
+shrinking text. The stylesheet adds no global typography overrides.
+
 ## Data and actions
 
 - Counters come from the current recipient's loaded inbox. Urgent
