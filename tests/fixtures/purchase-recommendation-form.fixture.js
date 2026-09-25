@@ -73,7 +73,7 @@ export async function recommendationFormHarness(page, options = {}) {
   const actor = options.actor || formActor;
   const state = {
     record: formReference(options.record), records: [], vendors: formVendors, requests: [], unknown: [], pageErrors: [], submissions: [],
-    saveError: null, submitError: null, originalContent: {}, sourceApprovalError: null, saveSourceApproval: null, approverRoles: [],
+    saveError: null, submitError: null, originalContent: {}, sourceApprovalError: null, saveSourceApproval: null, sourceReviewError: null, saveSourceReview: null, approverRoles: [],
     saveRevision: 0,
   }
   if (options.edit) state.records.push(state.record)
@@ -133,6 +133,20 @@ export async function recommendationFormHarness(page, options = {}) {
     if (path === '/api/v1/procurement/requisitions/check-pr-number/') return reply(route, { available: true, exists: false, message: 'PR number is available' })
     if (path === '/api/v1/procurement/requisitions/' && method === 'GET') return reply(route, { count: state.records.length, next: null, results: state.records })
     if (path === `/api/v1/procurement/requisitions/${formRecordId}/` && method === 'GET') return reply(route, state.record)
+    if (path === `/api/v1/procurement/requisitions/${formRecordId}/source-review/` && method === 'POST') {
+      if (state.sourceReviewError === 'network') return route.abort('failed')
+      if (state.sourceReviewError) return reply(route, state.sourceReviewError.body, state.sourceReviewError.status || 400)
+      if (options.concurrency && body.expected_updated_at !== state.record.updated_at) {
+        return reply(route, { code: 'stale_requisition', error: 'This purchase recommendation changed since you opened it. Reload the latest version before saving or submitting.' }, 409)
+      }
+      const snapshot = state.record.source_approval_review || { approval_labels: {}, additional_approver: null }
+      if (!isDeepStrictEqual(body.expected_source_approval_review, snapshot)) return reply(route, { detail: 'The source review changed. Reload it before editing.' }, 409)
+      if (!state.saveSourceReview) return reply(route, { detail: 'No isolated source-review response configured.' }, 400)
+      const saved = await state.saveSourceReview(body, state.record)
+      state.record = options.concurrency ? { ...saved, updated_at: `2026-09-15T08:00:00.${String(++state.saveRevision).padStart(6, '0')}Z` } : saved
+      state.records = [state.record]
+      return reply(route, state.record)
+    }
     if (path === `/api/v1/procurement/requisitions/${formRecordId}/source-approvals/` && method === 'POST') {
       if (state.sourceApprovalError === 'network') return route.abort('failed')
       if (state.sourceApprovalError) return reply(route, state.sourceApprovalError.body, state.sourceApprovalError.status || 400)
@@ -141,6 +155,7 @@ export async function recommendationFormHarness(page, options = {}) {
       }
       const currentRow = state.record.price_remarks_data?.signed_document_verification?.source_approval_rows?.[body.row_index]
       if (!isDeepStrictEqual(body.expected_row, currentRow)) return reply(route, { detail: 'This approval record changed. Reload it before editing.' }, 409)
+      if (!body.special_note?.trim()) return reply(route, { special_note: 'Add a special note explaining this correction.' }, 400)
       if (!state.saveSourceApproval) return reply(route, { detail: 'No isolated source-approval response configured.' }, 400)
       const saved = await state.saveSourceApproval(body, state.record)
       const record = options.concurrency ? { ...saved, updated_at: `2026-09-15T08:00:00.${String(++state.saveRevision).padStart(6, '0')}Z` } : saved

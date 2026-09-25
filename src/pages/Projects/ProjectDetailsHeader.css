@@ -135,7 +135,7 @@
    their existing information layout and actions. */
 .pd-schedule-header { background: #f7faff; color: #132c50; }
 .pd-schedule-header .pd-heading-content { min-height: 110px; padding: 8px 20px 10px; }
-.pd-schedule-header .pd-location { min-height: 18px; gap: 9px; padding-right: 430px; color: #667890; font-size: 12px; line-height: 18px; }
+.pd-schedule-header .pd-location { min-height: 18px; gap: 9px; padding-right: 430px; color: #526487; font-size: 12px; line-height: 18px; }
 .pd-schedule-header .pd-location > button { width: 16px; flex: 0 0 16px; color: #3267b4; }
 .pd-schedule-header .pd-location nav { gap: 7px; }
 .pd-schedule-header .pd-location nav > button { color: #536d91; }
@@ -148,7 +148,12 @@
 .pd-schedule-header .pd-save-action { width: 107px; }
 .pd-schedule-header .pd-export-action { width: 93px; }
 .pd-schedule-header .pd-icon-button { width: 46px; }
+.pd-schedule-header .pd-schedule-facts-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
+.pd-schedule-header .pd-schedule-facts-row > .pd-project-facts { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.pd-schedule-header .pd-schedule-controls-host { flex: 0 0 auto; min-width: 0; max-width: 100%; border-left: 1px solid #dce5f0; padding-left: 12px; }
+.pd-schedule-header .pd-schedule-controls-host:empty { display: none; }
 .pd-schedule-header .pd-project-facts { display: flex; flex-wrap: nowrap; align-items: center; gap: 0; min-height: 24px; overflow-x: auto; scrollbar-width: thin; font-size: 12px; line-height: 20px; }
+.pd-schedule-header .pd-project-facts:focus-visible { outline: 2px solid #2463eb; outline-offset: 2px; }
 .pd-schedule-header .pd-project-facts > div { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; min-height: 24px; padding: 0 12px; border-color: #dce5f0; white-space: nowrap; }
 .pd-schedule-header .pd-project-facts > div:first-child { padding-left: 0; font-weight: 600; }
 .pd-schedule-header .pd-project-facts > div:last-child { padding-right: 0; }
@@ -156,13 +161,13 @@
 .pd-schedule-header .pd-project-facts :is(.pd-status, .pd-health, .pd-baseline, .pd-report-date) > .pd-fact-label { font-size: 11px; line-height: 14px; }
 .pd-schedule-header .pd-project-facts strong { display: inline; color: #253e5c; font-weight: 500; line-height: 20px; }
 .pd-schedule-header .pd-project-facts .pd-client { line-height: 20px; }
-.pd-schedule-header .pd-fact-label { color: #687c94; }
+.pd-schedule-header .pd-fact-label { color: #526487; }
 .pd-schedule-header .pd-pill { gap: 4px; padding: 2px 8px; border-radius: 5px; font-size: 11px; line-height: 18px; }
 .pd-schedule-header .pd-status-active { background: #e9f1ff; color: #3765a4; }
-.pd-schedule-header .pd-health-warning, .pd-schedule-header .pd-health-danger { background: #fff2dc; color: #a5690b; }
+.pd-schedule-header .pd-health-warning, .pd-schedule-header .pd-health-danger { background: #fff2dc; color: #865300; }
 .pd-schedule-header .pd-baseline-unavailable { background: #fcebf0; color: #b44861; }
 .pd-schedule-header .pd-baseline-approved { background: #e8f6ef; color: #297454; }
-.pd-schedule-header .pd-data-date { background: #edf1f6; color: #60758e; }
+.pd-schedule-header .pd-data-date { background: #edf1f6; color: #4f637d; }
 .pd-schedule-header .pd-data-date svg { color: inherit; }
 .pd-schedule-header .pd-tabs { height: 40px; padding: 0 20px; border-color: #dbe5f0; background: #fff; }
 .pd-schedule-header .pd-tabs ul { min-width: 990px; height: 39px; gap: 0; }
@@ -184,6 +189,7 @@
   .pd-schedule-header .pd-header-actions > .pd-menu { flex: 0 0 36px; }
   .pd-schedule-header .pd-icon-button { width: 36px; }
   .pd-schedule-header .pd-project-facts { display: flex; gap: 0; }
+  .pd-schedule-header .pd-schedule-controls-host { border-left: 0; padding-left: 0; }
   .pd-schedule-header .pd-project-facts > div:nth-child(odd) { padding-left: 9px; border-left: 1px solid #dce5f0; }
   .pd-schedule-header .pd-project-facts > div:first-child { padding-left: 0; border-left: 0; }
   .pd-schedule-header .pd-tabs { padding-inline: 12px; }

@@ -118,7 +118,7 @@ export function workBreakdownRecord(record) {
 export async function planningInputsHarness(page, options = {}) {
   return scheduleHarness(page, {
     query: options.query || 'project=17&view=plan-baseline&scheduleMode=planner&shell=true',
-    harnessPath: '/tests/fixtures/retained-planning-harness.jsx',
+    harnessPath: options.harnessPath || '/tests/fixtures/retained-planning-harness.jsx',
     prepare(state) {
       state.writes = []
       state.pageErrors = []

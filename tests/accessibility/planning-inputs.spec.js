@@ -278,7 +278,7 @@ test('Run Document Intelligence saves the latest phase and dates before starting
   ])
   expect(state.analysisProjects[0]).toMatchObject({ phase, effective_date: '2026-03-02', planned_end_date: '2026-09-18', scope_summary: 'Revised FEED scope used by document intelligence.' })
   await expect.poll(() => state.jobReads).toBeGreaterThan(0)
-  await expect(page.getByText('Document intelligence completed.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Document analysis finished. Coverage was not fully recorded; review the extracted findings.', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Document Intelligence Preview', exact: true })).toBeVisible()
   await expect(input(page, 'Scope summary')).toBeHidden()
   await expect(page.getByRole('heading', { name: 'Build Workable Project Plan', exact: true })).toHaveCount(0)

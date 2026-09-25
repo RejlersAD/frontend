@@ -104,7 +104,7 @@ test('signed PDF import retains source price unless the reviewer explicitly conf
   await expect(dialog.getByLabel('Reviewed recommendation totals')).toContainText('95.24');
   await expect(dialog.getByLabel('Reviewed recommendation totals')).toContainText('4.76');
   expect(state.saveRequests).toEqual([]);
-  await dialog.getByRole('button', { name: 'Create reviewed PR', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Upload PR', exact: true }).click();
   await expect.poll(() => state.saveRequests.length).toBe(1);
   expect(JSON.parse(state.saveRequests[0].manual_overrides)).toMatchObject({ vat_basis: 'inclusive', entered_amount: '100.00', net_total: '100.00' });
   expect(state.saveRequests[0].file.filename).toBe(syntheticApprovedPdf.name);

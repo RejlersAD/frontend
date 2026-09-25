@@ -11,7 +11,7 @@ const VENDOR_FIELDS = [
   ['seller_address', 'Vendor address', 'textarea'],
 ];
 
-export default function ProcurementImportVendorReview({ fields = {}, onChange, disabled = false }) {
+export default function ProcurementImportVendorReview({ fields = {}, onChange, disabled = false, compact = false }) {
   const inputId = useId();
   const listId = `${inputId}-vendors`;
   const statusId = `${inputId}-status`;
@@ -75,17 +75,17 @@ export default function ProcurementImportVendorReview({ fields = {}, onChange, d
     }
   };
 
-  return <section aria-label="Vendor details" className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+  return <section aria-label="Vendor details" className={compact ? 'procurement-import-review__vendor' : 'space-y-3 rounded-xl border border-gray-200 bg-white p-4'}>
     <div>
       <h3 className="text-sm font-semibold text-gray-800">Vendor details</h3>
-      <p className="mt-1 text-xs text-gray-600">Existing vendors are reused. Contact details are used when registering a new vendor.</p>
+      {!compact && <p className="mt-1 text-xs text-gray-600">Existing vendors are reused. Contact details are used when registering a new vendor.</p>}
     </div>
-    <div className="grid gap-3 sm:grid-cols-2">
-      <div className="relative min-w-0 sm:col-span-2" onBlur={event => {
+    <div className={compact ? 'procurement-import-review__vendor-grid' : 'grid gap-3 sm:grid-cols-2'}>
+      <div className={compact ? 'procurement-import-review__vendor-search' : 'relative min-w-0 sm:col-span-2'} onBlur={event => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}>
-        <label htmlFor={inputId} className="text-xs font-semibold text-gray-700">PO Supplier name</label>
-        <input id={inputId} type="text" role="combobox" aria-autocomplete="list" aria-expanded={expanded}
+        <label htmlFor={inputId} className="text-xs font-semibold text-gray-700">{compact ? <>Supplier name<span className="procurement-import-review__required"> *</span></> : 'PO Supplier name'}</label>
+        <input id={inputId} aria-label="PO Supplier name" aria-required={compact || undefined} type="text" role="combobox" aria-autocomplete="list" aria-expanded={expanded}
           aria-controls={expanded ? listId : undefined} aria-activedescendant={expanded && options[activeIndex] ? `${listId}-${activeIndex}` : undefined}
           aria-describedby={open && !disabled ? statusId : undefined} autoComplete="off" value={name} disabled={disabled}
           placeholder="Search existing vendors or enter a supplier name" onFocus={() => setOpen(true)} onClick={() => setOpen(true)} onKeyDown={keyDown}
@@ -111,11 +111,11 @@ export default function ProcurementImportVendorReview({ fields = {}, onChange, d
         </div>
         {fields.vendor_id && <p className="mt-1 text-xs text-gray-600">Existing vendor selected.</p>}
       </div>
-      {VENDOR_FIELDS.map(([key, label, type]) => <label key={key} className={`text-xs font-semibold text-gray-700 ${type === 'textarea' ? 'sm:col-span-2' : ''}`}>
-        {label}
+      {VENDOR_FIELDS.map(([key, label, type]) => <label key={key} className={compact ? `procurement-import-review__po-field ${type === 'textarea' ? 'procurement-import-review__vendor-address' : ''}` : `text-xs font-semibold text-gray-700 ${type === 'textarea' ? 'sm:col-span-2' : ''}`}>
+        <span>{compact ? ({ vendor_license_no: 'Trade license', seller_contact_person: 'Contact person' })[key] || label : label}</span>
         {type === 'textarea'
-          ? <textarea value={fields[key] ?? ''} rows={3} disabled={disabled} onChange={event => onChange({ [key]: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal disabled:bg-gray-100" />
-          : <input type={type} value={fields[key] ?? ''} disabled={disabled} onChange={event => onChange({ [key]: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal disabled:bg-gray-100" />}
+          ? <textarea aria-label={label} value={fields[key] ?? ''} rows={compact ? 1 : 3} disabled={disabled} onChange={event => onChange({ [key]: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal disabled:bg-gray-100" />
+          : <input aria-label={label} type={type} value={fields[key] ?? ''} disabled={disabled} onChange={event => onChange({ [key]: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal disabled:bg-gray-100" />}
       </label>)}
     </div>
   </section>;
@@ -125,4 +125,5 @@ ProcurementImportVendorReview.propTypes = {
   fields: PropTypes.object,
   onChange: PropTypes.func.isRequired,
   disabled: PropTypes.bool,
+  compact: PropTypes.bool,
 };

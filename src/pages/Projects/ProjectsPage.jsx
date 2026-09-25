@@ -1,5 +1,5 @@
 import { radaiConfirm } from '../../services/radaiDialog'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PlusIcon, SparklesIcon } from '@heroicons/react/24/outline'
 
 import {
@@ -94,6 +94,8 @@ export default function ProjectsPage() {
   const [formMode, setFormMode] = useState('create')
   const [editingProject, setEditingProject] = useState(null)
   const [toast, setToast] = useState(null)
+  const [deletingProject, setDeletingProject] = useState(false)
+  const deleteInFlight = useRef(false)
   const [qhseImportOpen, setQhseImportOpen] = useState(false)
   const [refreshVersion, setRefreshVersion] = useState(0)
   const [lastRefreshed, setLastRefreshed] = useState(null)
@@ -107,7 +109,13 @@ export default function ProjectsPage() {
   const [compareEstimateId, setCompareEstimateId] = useState(null)
   const [scheduleBaselineId, setScheduleBaselineId] = useState('')
   const [scheduleVersionId, setScheduleVersionId] = useState('')
-  const scheduleMode = 'planner'
+  const [scheduleId, setScheduleId] = useState('')
+  const [planningProjectId, setPlanningProjectId] = useState('')
+  const [scheduleGenerationId, setScheduleGenerationId] = useState('')
+  const [scheduleAnalysisRunId, setScheduleAnalysisRunId] = useState('')
+  const [scheduleControlsHost, setScheduleControlsHost] = useState(null)
+  const scheduleMode = searchParams.get('scheduleMode') === 'documents' ? 'documents' : 'planner'
+  const scheduleTab = searchParams.get('scheduleTab') || (searchParams.get('scheduleMode') === 'management' ? 'performance' : 'activities')
   const commercialMode = searchParams.get('commercialMode') === 'controls' ? 'controls' : 'management'
 
   const reloadProjects = useCallback(async ({ selectId } = {}) => {
@@ -211,16 +219,25 @@ export default function ProjectsPage() {
     }
   }
   const handleDelete = async () => {
-    if (!selectedProject) return
-    if (!(await radaiConfirm(PROJECT_COPY.deleteConfirm(selectedProject.name)))) return
+    if (!selectedProject || deleteInFlight.current) return
+    const target = selectedProject
+    if (!target.updated_at) { setToast({ type: 'error', message: 'Refresh the project before deleting it.' }); return }
+    deleteInFlight.current = true
     try {
-      await PC.deleteProject(selectedProject.id)
-      setToast({ type: 'success', message: `Archived “${selectedProject.name}”.` })
-      await reloadProjects({ selectId: null })
+      if (!(await radaiConfirm(PROJECT_COPY.deleteConfirm(target.name), { confirmLabel: 'Delete permanently' }))) return
+      setDeletingProject(true)
+      const result = await PC.deleteProject(target.id, target.updated_at)
+      setProjects(current => current.filter(project => String(project.id) !== String(target.id)))
+      setSelectedProjectId(null)
+      setSearchParams({}, { replace: true })
+      setOverviewDialog(null); setDocumentDialog(null); setEstimateDialog(null)
+      setMilestoneDialog(null); setRiskDialog(null); setAgreementReviewOpen(false)
+      setToast({ type: result?.cleanup_pending ? 'warning' : 'success', message: result?.cleanup_pending
+        ? 'Project removed. Some uploaded files are awaiting deletion.' : `Permanently deleted “${target.name}”.` })
     } catch (e) {
       const detail = e?.response?.data?.detail || e?.response?.data?.error
-      setToast({ type: 'error', message: typeof detail === 'string' ? detail : 'Unable to archive this project. Please try again.' })
-    }
+      setToast({ type: 'error', message: typeof detail === 'string' ? detail : 'Unable to permanently delete this project. Please try again.' })
+    } finally { deleteInFlight.current = false; setDeletingProject(false) }
   }
 
   const selectedProject = useMemo(
@@ -237,7 +254,9 @@ export default function ProjectsPage() {
             : agreementWorkspace.data?.workspace && agreementWorkspace.data.workspace.status !== 'accepted' ? 'Draft ready to review' : ''
   const performance = useProjectPerformance(selectedProject, refreshVersion)
   const schedulePerformance = useSchedulePerformance(selectedProject, performance, refreshVersion, {
-    enabled: view === 'plan-baseline' || view === 'milestones' || view === 'risk', baselineId: scheduleBaselineId, versionId: scheduleVersionId,
+    enabled: view === 'plan-baseline' || view === 'milestones' || view === 'risk', baselineId: scheduleBaselineId, versionId: scheduleVersionId, scheduleId, planningProjectId,
+    generationId: view === 'plan-baseline' ? scheduleGenerationId : null,
+    analysisRunId: view === 'plan-baseline' ? scheduleAnalysisRunId : null,
   })
   const commercialPerformance = useCommercialPerformance(selectedProject, performance, refreshVersion, {
     enabled: view === 'commercial-dashboard',
@@ -247,7 +266,7 @@ export default function ProjectsPage() {
   const estimateControl = useEstimateControl(selectedProject, refreshVersion, { enabled: view === 'estimates', estimateId, compareId: compareEstimateId })
   const documentControl = useDocumentControl(selectedProject, refreshVersion, { enabled: view === 'documents', documentId })
   useEffect(() => { setMilestoneDialog(null); setRiskDialog(null); setEstimateDialog(null); setEstimateId(null); setCompareEstimateId(null); setDocumentDialog(null); setDocumentId(null) }, [selectedProjectId])
-  useEffect(() => { setScheduleBaselineId(''); setScheduleVersionId('') }, [selectedProjectId])
+  useEffect(() => { setScheduleBaselineId(''); setScheduleVersionId(''); setScheduleId(''); setPlanningProjectId(''); setScheduleGenerationId(''); setScheduleAnalysisRunId('') }, [selectedProjectId])
   useEffect(() => { setAgreementReviewOpen(false) }, [selectedProjectId])
   useEffect(() => {
     if (selectedProject && !performance.loading && performance.model) setLastRefreshed(new Date().toISOString())
@@ -281,14 +300,30 @@ export default function ProjectsPage() {
     setSearchParams(nextParams, { replace: true })
   }, [searchParams, setSearchParams, view])
 
-  const handleScheduleMode = nextMode => {
+  const handleScheduleMode = (nextMode, nextTab) => {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.set('view', 'plan-baseline')
-    if (nextMode === 'planner') nextParams.set('scheduleMode', 'planner')
+    if (nextMode === 'documents') nextParams.set('scheduleMode', 'documents')
     else nextParams.delete('scheduleMode')
+    if (nextMode === 'management') nextParams.set('scheduleTab', 'performance')
+    else if (nextTab) nextParams.set('scheduleTab', nextTab)
     setSearchParams(nextParams, { replace: true })
-    if (nextMode !== 'planner') schedulePerformance.reload()
   }
+
+  const handleScheduleTab = nextTab => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('scheduleMode')
+    if (nextTab === 'activities') nextParams.delete('scheduleTab')
+    else nextParams.set('scheduleTab', nextTab)
+    setSearchParams(nextParams, { replace: true })
+  }
+  const handleScheduleSelection = useCallback(selection => {
+    setPlanningProjectId(selection.planningProjectId)
+    setScheduleId(selection.scheduleId)
+    setScheduleVersionId(selection.versionId)
+    setScheduleGenerationId(selection.generationId || '')
+    setScheduleAnalysisRunId(selection.analysisRunId || '')
+  }, [])
 
   const handleCommercialMode = nextMode => {
     const nextParams = new URLSearchParams(searchParams)
@@ -337,6 +372,7 @@ export default function ProjectsPage() {
         phaseFlags={phaseFlags}
         activeView={view}
         scheduleMode={scheduleMode}
+        onScheduleControlsMount={setScheduleControlsHost}
         onSelectView={handleSelectView}
         onNavigate={navigate}
         onCreate={handleOpenCreate}
@@ -344,7 +380,8 @@ export default function ProjectsPage() {
         agreementStatus={agreementStatus}
         onEdit={handleOpenEdit}
         onImport={() => setQhseImportOpen(true)}
-        onArchive={handleDelete}
+        onDelete={handleDelete}
+        deletingProject={deletingProject}
         onRefresh={async () => {
           await reloadProjects({ selectId: selectedProjectId })
           setToast({ type: 'success', message: 'Project data refreshed.' })
@@ -399,7 +436,7 @@ export default function ProjectsPage() {
           <PhaseStubCard mode={activeMode} />
         ) : (
           <ActiveTab
-            key={['milestones', 'risk', 'estimates', 'documents', 'epc-lifecycle'].includes(view) ? selectedProject.id : undefined}
+            key={['plan-baseline', 'milestones', 'risk', 'estimates', 'documents', 'epc-lifecycle'].includes(view) ? selectedProject.id : undefined}
             project={selectedProject}
             projects={projects}
             phaseFlags={phaseFlags}
@@ -416,6 +453,10 @@ export default function ProjectsPage() {
             onOpenDialog={setOverviewDialog}
             schedulePerformance={schedulePerformance}
             scheduleMode={scheduleMode}
+            scheduleControlsHost={scheduleControlsHost}
+            scheduleTab={scheduleTab}
+            onScheduleTab={handleScheduleTab}
+            onScheduleSelection={handleScheduleSelection}
             onScheduleMode={handleScheduleMode}
             onSelectBaseline={setScheduleBaselineId}
             onSelectVersion={setScheduleVersionId}

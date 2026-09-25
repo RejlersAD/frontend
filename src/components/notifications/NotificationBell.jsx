@@ -45,6 +45,7 @@ const NotificationBell = () => {
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(false)
+  const [loadErrorMessage, setLoadErrorMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [busyIds, setBusyIds] = useState([])
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -91,9 +92,12 @@ const NotificationBell = () => {
       const items = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
       setNotifications(items)
       setHasMore(Boolean(data?.next) || Number(data?.count) > items.length)
+      // A recovered list request must not leave its old connection warning visible.
+      // Keep action failures separate: loading the list does not retry a failed write.
+      setLoadErrorMessage('')
     } catch (error) {
       if (!controller.signal.aborted && session === sessionRef.current && revision === revisionRef.current) {
-        setErrorMessage(notificationError(error, 'load notifications'))
+        setLoadErrorMessage(notificationError(error, 'load notifications'))
       }
     } finally {
       if (notificationListAbortRef.current === controller) {
@@ -161,6 +165,7 @@ const NotificationBell = () => {
     setNotifications([])
     setUnreadCount(0)
     setShowDropdown(false)
+    setLoadErrorMessage('')
     setErrorMessage('')
     setDecisionMessage('')
     setDecisionLoadingId(null)
@@ -304,7 +309,7 @@ const NotificationBell = () => {
   }
 
   const handleRefresh = () => {
-    setErrorMessage('')
+    setLoadErrorMessage('')
     void fetchNotifications()
     void fetchUnreadCount()
   }
@@ -427,7 +432,7 @@ const NotificationBell = () => {
           onNavigate={() => setShowDropdown(false)}
           busyIds={busyIds}
           bulkBusy={bulkBusy}
-          errorMessage={errorMessage}
+          errorMessage={errorMessage || loadErrorMessage}
           hasMore={hasMore}
           onOffboardingDecision={handleOffboardingDecision}
           decisionLoadingId={decisionLoadingId}

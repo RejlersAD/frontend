@@ -1,12 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { masterScheduleHarness, registerNames } from '../fixtures/master-schedule.fixture.js'
+import { scheduleAction } from '../fixtures/schedule-controls.js'
 
 test.setTimeout(60000)
 
 test('manual activities save phase, deliverable, typed dependencies and constraints, then reload for editing', async ({ page }) => {
-  const state = await masterScheduleHarness(page, { manual: true })
+  const state = await masterScheduleHarness(page, { manual: true, harnessPath: '/tests/fixtures/simple-planning-harness.jsx' })
   const workspace = page.getByRole('region', { name: 'Master schedule workspace', exact: true })
-  await workspace.getByRole('button', { name: 'Add activity', exact: true }).click()
+  await scheduleAction(page, 'Add activity')
   const editor = page.getByRole('dialog', { name: 'Add task', exact: true })
   await editor.getByLabel('Task / deliverable', { exact: true }).fill('Validate commissioned package')
   await editor.getByLabel('WBS phase', { exact: true }).fill('Commissioning')

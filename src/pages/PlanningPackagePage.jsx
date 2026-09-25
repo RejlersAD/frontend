@@ -14,6 +14,7 @@ import PlannerWorkspacePage from './PlannerWorkspacePage';
 import PlanningInputsPanel from '../components/planning/PlanningInputsPanel';
 import { calculatePlanningDuration as calculateDateRangeDuration } from '../utils/planningProjectDates';
 import { editablePlanningPreview, mergePlanningPreview, planningPreviewError, planningPreviewKey } from '../utils/planningPreview';
+import { aiAnalysisOutcome, planningAnalysisOutcome } from '../utils/planningAnalysisOutcome';
 import { AlertTriangle, Calculator, Check, CheckCircle2, FileText, Lock, RefreshCw, Sparkles } from 'lucide-react';
 import {
   PLANNING_ENDPOINTS,
@@ -104,6 +105,15 @@ const planningAiSettingsForm = (settings) => ({
   apiKey: '',
 });
 
+const aiSettingsErrorMessage = (error, fallback) => {
+  const data = error?.response?.data;
+  for (const field of ['message', 'error', 'detail', 'api_key', 'provider', 'model', 'enabled']) {
+    const value = Array.isArray(data?.[field]) ? data[field][0] : data?.[field];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return fallback;
+};
+
 const renderScheduleNarrative = narrative => {
   const lines = String(narrative || '').split(/\r?\n/);
   return lines.map((line, index) => {
@@ -175,7 +185,7 @@ const AddDeliverableRow = ({ onAdd }) => {
  * Deterministic extraction is augmented by the project's mandatory AI
  * BYOK configuration. All generated outputs remain subject to planner review.
  */
-const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBackToPortfolio }) => {
+const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enterpriseProject = null, onBackToPortfolio, onOpenPlanner, onAnalysisStateChange, generationRequest = 0, scheduleWorkspaceRequest = 0, documentReviewRequest = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -211,13 +221,25 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   const [previewSaveError, setPreviewSaveError] = useState('');
   const [previewReviewState, setPreviewReviewState] = useState({ conflicts: 0, unavailable: true });
   const [reviewRequest, setReviewRequest] = useState(0);
+  const [reviewAnalysisRunId, setReviewAnalysisRunId] = useState(null);
+  const reviewAnalysisRunRef = useRef(null);
   const loadedPreviewRef = useRef(null);
   const previewSaveInFlight = useRef(false);
   const activePreviewProjectRef = useRef(selectedProjectId);
   activePreviewProjectRef.current = selectedProjectId;
   const intelligenceHeadingRef = useRef(null);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisStarting, setAnalysisStarting] = useState(false);
+  const analysisRequestRef = useRef(0);
+  const consumedAnalysisJobs = useRef(new Set());
   const [analysisRevision, setAnalysisRevision] = useState(0);
+  const [pendingAnalysisWorkspace, setPendingAnalysisWorkspace] = useState(null);
+  const analysisHandlersRef = useRef(null);
+  const packageRequestRef = useRef(0);
+  const packageInFlight = useRef(false);
+  const packageApplyBlocked = useRef(false);
+  const appliedPackageJobs = useRef(new Set());
+  const packageSelections = useRef(new Map());
+  const [packageError, setPackageError] = useState(null);
   const [inputsReady, setInputsReady] = useState(false);
   // Which discipline card ("Process", "Piping", ...) is expanded to show its
   // full deliverable checklist — accordion-style, one at a time.
@@ -228,10 +250,20 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   const [lastClickedIndex, setLastClickedIndex] = useState({});
 
   const [generation, setGeneration] = useState(null);
-  const [, setGenerating] = useState(false);
+  const [loadingGeneration, setLoadingGeneration] = useState(false);
+  const [generationLoadError, setGenerationLoadError] = useState('');
+  const [generationSelectionId, setGenerationSelectionId] = useState(null);
+  const generationLoadRequest = useRef(0);
+  const handledDocumentReview = useRef(null);
+  const [generating, setGenerating] = useState(false);
   const [showGenerationWizard, setShowGenerationWizard] = useState(false);
+  const handledGenerationRequest = useRef(0);
+  const handledWorkspaceRequest = useRef(0);
   const [showPlannerWorkspace, setShowPlannerWorkspace] = useState(false);
   const [workspaceInitialTab, setWorkspaceInitialTab] = useState('activities');
+  const [workspaceGenerationId, setWorkspaceGenerationId] = useState(null);
+  const [workspaceAnalysisRunId, setWorkspaceAnalysisRunId] = useState(null);
+  const [localDocumentReviewRequest, setLocalDocumentReviewRequest] = useState(null);
   const [downloadingPresentation, setDownloadingPresentation] = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
   const [exportedFormat, setExportedFormat] = useState(null);
@@ -250,19 +282,50 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [banner, setBanner] = useState(null); // { type: 'error'|'success', message }
-  const { activeJob, runJob: runPlanningJob } = usePlanningJob();
+  const { activeJob, monitoringError, checkingStatus, retryMonitoring, runJob: runPlanningJob, clearJob: clearPlanningJob } = usePlanningJob({ projectId: selectedProjectId, recoverActiveAnalysis: documentWorkflow });
+  const activeJobMessage = activeJob?.message?.replace(
+    /^(?:Anthropic|Google Gemini|AI provider) is reviewing document chunk /,
+    'RADAI is reviewing document chunk ',
+  );
+  const analysisMonitoringError = monitoringError && (!monitoringError.job?.job_type || monitoringError.job.job_type === 'analyze')
+    && (monitoringError.job?.project == null || String(monitoringError.job.project) === String(selectedProjectId));
+  const unknownSavedJob = analysisMonitoringError && monitoringError.job?.project == null;
+  const analyzing = analysisStarting || (activeJob?.job_type === 'analyze' && String(activeJob.project) === String(selectedProjectId)
+    && ['queued', 'running'].includes(activeJob.status)) || Boolean(analysisMonitoringError && !monitoringError.jobUnavailable);
+  const packageMonitoringError = monitoringError?.job?.job_type === 'generate' && String(monitoringError.job.project) === String(selectedProjectId) ? monitoringError : null;
+  const packageBusy = generating || (activeJob?.job_type === 'generate' && String(activeJob.project) === String(selectedProjectId)
+    && ['queued', 'running'].includes(activeJob.status) && !packageMonitoringError?.jobUnavailable);
 
   useEffect(() => {
-    if (activeJob && (activeJob.status === 'queued' || activeJob.status === 'running')) {
+    onAnalysisStateChange?.({ projectId: selectedProjectId, pending: analyzing,
+      savedRunId: intelligencePreview?.document_intelligence_run_id,
+      packageVersionId: generation?.generation_mode === 'planning_package'
+        && String(generation.intelligence_run_id) === String(intelligencePreview?.document_intelligence_run_id) ? generation.schedule_version_id : null,
+      message: analysisMonitoringError ? 'Current analysis status is unavailable. Return to Document Intelligence to check its status.'
+        : activeJob?.job_type === 'analyze' ? activeJobMessage : 'Document Intelligence is starting.' });
+  }, [onAnalysisStateChange, selectedProjectId, analyzing, analysisMonitoringError, activeJob?.job_type, activeJobMessage, intelligencePreview?.document_intelligence_run_id, generation]);
+
+  useEffect(() => {
+    if (!scheduleWorkspaceRequest || handledWorkspaceRequest.current === scheduleWorkspaceRequest || !intelligencePreview?.document_intelligence_run_id) return;
+    handledWorkspaceRequest.current = scheduleWorkspaceRequest;
+    analysisHandlersRef.current?.requestPackage(intelligencePreview.document_intelligence_run_id);
+  }, [scheduleWorkspaceRequest, intelligencePreview?.document_intelligence_run_id]);
+
+  useEffect(() => {
+    if (!analysisMonitoringError && activeJob && String(activeJob.project) === String(selectedProjectId) && (activeJob.status === 'queued' || activeJob.status === 'running')) {
       setBanner({
         type: 'info',
-        message: `${activeJob.message || 'Planning job in progress'} (${activeJob.progress || 0}%)`,
+        message: `${activeJobMessage || 'Planning job in progress'} (${activeJob.progress || 0}%)`,
       });
     }
-  }, [activeJob]);
+  }, [activeJob, activeJobMessage, analysisMonitoringError, selectedProjectId]);
 
   // BYOK — per-project AI provider settings (see ai-settings endpoint).
   const [aiSettings, setAiSettings] = useState(null);
+  const [loadingAiSettings, setLoadingAiSettings] = useState(false);
+  const [aiSettingsLoadError, setAiSettingsLoadError] = useState('');
+  const [aiSettingsProjectId, setAiSettingsProjectId] = useState(null);
+  const aiSettingsLoadRequest = useRef(0);
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
   const [aiSettingsForm, setAiSettingsForm] = useState(() => planningAiSettingsForm(null));
   const [savingAiSettings, setSavingAiSettings] = useState(false);
@@ -279,14 +342,15 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   const aiSettingsDirty = aiProviderChanged || aiSettingsForm.enabled !== savedAiForm.enabled
     || aiSettingsForm.model !== savedAiForm.model || Boolean(aiSettingsForm.apiKey.trim());
   const aiReplacementKeyRequired = aiProviderChanged && aiSettings?.key_configured && !aiSettingsForm.apiKey.trim();
-  const canTestAiConnection = Boolean(aiSettings?.enabled && aiSettings?.key_configured && !aiSettingsDirty);
+  const aiSettingsUnavailable = loadingAiSettings || Boolean(aiSettingsLoadError) || aiSettingsProjectId !== selectedProjectId;
+  const canTestAiConnection = Boolean(!aiSettingsUnavailable && aiSettings?.enabled && aiSettings?.key_configured && !aiSettingsDirty);
 
   // ── Visualization Modal ──────────────────────────────────────────────────
   const [showVisualization, setShowVisualization] = useState(false);
   const aiSettingsDialogRef = useModalAccessibility(
     showAiSettingsModal,
     () => setShowAiSettingsModal(false),
-    savingAiSettings,
+    savingAiSettings || testingConnection,
   );
   const visualizationDialogRef = useModalAccessibility(
     showVisualization,
@@ -299,10 +363,26 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
   const currentPreview = editingSection === 'intelligence' ? draftIntelligence : intelligencePreview;
   const canConfirmPreview = Boolean(currentPreview?.document_intelligence_run_id) && inputsReady
-    && !intelligenceOutdated && !previewReviewState.unavailable && !previewReviewState.conflicts;
+    && !intelligenceOutdated && !previewReviewState.unavailable && !previewReviewState.conflicts
+    && (!reviewAnalysisRunId || String(previewReviewState.runId) === String(currentPreview.document_intelligence_run_id));
   const previewConfirmed = Boolean(previewConfirmation?.is_current) && canConfirmPreview
     && planningPreviewKey(currentPreview) === planningPreviewKey(previewConfirmation.preview);
+  const unsavedPreviewEdits = Boolean(intelligencePreview && loadedPreviewRef.current
+    && planningPreviewKey(intelligencePreview) !== planningPreviewKey(loadedPreviewRef.current));
+  packageApplyBlocked.current = Boolean(editingSection || savingEdit || unsavedPreviewEdits || workBreakdownDirty
+    || workBreakdownSaving || savingPreview || showAiSettingsModal || savingAiSettings || testingConnection);
   const manualPlanning = selectedProject?.planning_mode === 'manual';
+  useEffect(() => {
+    if (!generationRequest || handledGenerationRequest.current === generationRequest || loadingProjects || loadingContract || !selectedProject) return;
+    handledGenerationRequest.current = generationRequest;
+    if (unsavedPreviewEdits || editingSection) {
+      setCurrentStep('intelligence');
+      setBanner({ type: 'info', message: 'Save or discard your preview edits before opening the generation wizard.' });
+      return;
+    }
+    setCurrentStep('schedule');
+    if (intelligencePreview?.document_intelligence_run_id) setShowGenerationWizard(true);
+  }, [generationRequest, loadingProjects, loadingContract, selectedProject, intelligencePreview?.document_intelligence_run_id, unsavedPreviewEdits, editingSection]);
   const planningSchedule = workBreakdownSchedule?.schedule_version_id ? workBreakdownSchedule : enterpriseContract?.latest_schedule_version ? {
     schedule_id: enterpriseContract.latest_schedule_version.schedule_id,
     schedule_version_id: enterpriseContract.latest_schedule_version.id,
@@ -312,6 +392,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   }, []);
   const openWorkBreakdown = () => setCurrentStep(manualPlanning ? inputsReady ? 'wbs' : 'upload' : previewConfirmed ? 'wbs' : 'intelligence');
   const acceptLoadedIntelligence = useCallback((data, confirmation) => {
+    if (reviewAnalysisRunRef.current && String(data?.document_intelligence_run_id) !== String(reviewAnalysisRunRef.current)) return;
     const prior = loadedPreviewRef.current;
     loadedPreviewRef.current = data;
     setPreviewConfirmation(confirmation);
@@ -324,7 +405,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
   const confirmPreview = async () => {
     if (previewSaveInFlight.current || !canConfirmPreview) return;
-    if (previewConfirmed) { setCurrentStep('wbs'); return; }
+    if (previewConfirmed) { setCurrentStep(documentWorkflow ? 'schedule' : 'wbs'); return; }
     const projectId = selectedProjectId;
     previewSaveInFlight.current = true;
     setSavingPreview(true);
@@ -342,7 +423,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
       setDraftIntelligence(null);
       setAnalysisRevision(value => value + 1);
       setBanner({ type: 'success', message: 'Document Intelligence preview confirmed and saved.' });
-      setCurrentStep('wbs');
+      setCurrentStep(documentWorkflow ? 'schedule' : 'wbs');
     } catch (error) {
       if (activePreviewProjectRef.current === projectId) {
         setPreviewSaveError(planningPreviewError(error));
@@ -392,31 +473,52 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     }
   }, []);
 
-  const loadLatestGeneration = useCallback(async (projectId) => {
+  const loadLatestGeneration = useCallback(async (projectId, requestedGenerationId = null) => {
     if (!projectId) return;
+    const request = ++generationLoadRequest.current;
+    const current = () => request === generationLoadRequest.current && String(activePreviewProjectRef.current) === String(projectId);
+    setLoadingGeneration(true); setGenerationLoadError(''); setGeneration(null); setGenerationSelectionId(requestedGenerationId);
     try {
-      const res = await apiClient.get(PLANNING_ENDPOINTS.generations, { params: { project: projectId } });
-      const list = res.data?.results ?? res.data ?? [];
-      if (list.length) {
-        const detail = await apiClient.get(PLANNING_ENDPOINTS.generation(list[0].id));
-        setGeneration(detail.data);
-      } else {
-        setGeneration(null);
+      let generationId = requestedGenerationId;
+      if (!generationId) {
+        const res = await apiClient.get(PLANNING_ENDPOINTS.generations, { params: { project: projectId } });
+        if (!current()) return false;
+        const list = res.data?.results ?? res.data ?? [];
+        generationId = list[0]?.id;
       }
+      if (generationId) {
+        const detail = await apiClient.get(PLANNING_ENDPOINTS.generation(generationId));
+        if (!current()) return false;
+        if (String(detail.data?.id) !== String(generationId) || String(detail.data?.project?.id ?? detail.data?.project) !== String(projectId)) throw new Error('The saved generation does not belong to this planning project.');
+        setGeneration(detail.data);
+      }
+      return true;
     } catch (err) {
-      // non-fatal — user simply hasn't generated a schedule yet
-      setGeneration(null);
-    }
+      if (current()) setGenerationLoadError(err.response?.data?.detail || err.message || 'Unable to load the saved generation.');
+      return false;
+    } finally { if (current()) setLoadingGeneration(false); }
   }, []);
 
   const loadAiSettings = useCallback(async (projectId) => {
     if (!projectId) return;
+    const requestId = ++aiSettingsLoadRequest.current;
+    const isCurrent = () => requestId === aiSettingsLoadRequest.current && activePreviewProjectRef.current === projectId;
+    setLoadingAiSettings(true);
+    setAiSettingsLoadError('');
+    setAiSettingsProjectId(null);
+    setAiSettings(null);
+    setAiSettingsForm(planningAiSettingsForm(null));
+    setTestResult(null);
     try {
       const res = await apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId));
+      if (!isCurrent()) return;
       setAiSettings(res.data);
       setAiSettingsForm(planningAiSettingsForm(res.data));
+      setAiSettingsProjectId(projectId);
     } catch (err) {
-      setAiSettings(null);
+      if (isCurrent()) setAiSettingsLoadError(aiSettingsErrorMessage(err, 'AI settings could not be loaded. Retry before editing your configuration.'));
+    } finally {
+      if (isCurrent()) setLoadingAiSettings(false);
     }
   }, []);
 
@@ -463,6 +565,8 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
   useEffect(() => {
     if (selectedProjectId) {
+      setAnalysisStarting(false);
+      setBanner(null);
       setWorkBreakdownSchedule(null);
       loadFiles(selectedProjectId);
       loadLatestGeneration(selectedProjectId);
@@ -471,13 +575,109 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
       setIntelligencePreview(null);
       setPreviewConfirmation(null);
       setReviewRequest(0);
+      setReviewAnalysisRunId(null);
+      reviewAnalysisRunRef.current = null;
       loadedPreviewRef.current = null;
       setPreviewSaveError('');
       setEditingSection(null);
+      setSavingEdit(false);
+      setWorkspaceGenerationId(null);
+      setWorkspaceAnalysisRunId(null);
       setDraftIntelligence(null);
       setTestResult(null);
     }
   }, [embedded, selectedProjectId, loadFiles, loadLatestGeneration, loadAiSettings, loadEnterpriseContract]);
+
+  useEffect(() => () => { generationLoadRequest.current += 1; }, [selectedProjectId]);
+
+  useEffect(() => {
+    const request = documentReviewRequest || localDocumentReviewRequest || location.state?.documentReview;
+    if (!request || handledDocumentReview.current === request || !selectedProject || loadingProjects || loadingContract) return;
+    if (!['intelligence', 'schedule', 'wbs'].includes(request.step)) return;
+    if (savingEdit || workBreakdownSaving || savingPreview) return;
+    handledDocumentReview.current = request;
+    const requestedProject = projects.find(item => String(item.id) === String(request.planningProjectId));
+    if (!requestedProject) { setBanner({ type: 'error', message: 'The requested generation workspace is not available in this project.' }); return; }
+    const reviewProjectId = selectedProjectId;
+    const reviewRevision = analysisRequestRef.current;
+    const reviewCurrent = () => handledDocumentReview.current === request
+      && activePreviewProjectRef.current === reviewProjectId && analysisRequestRef.current === reviewRevision;
+    const openReview = async () => {
+      if ((editingSection || workBreakdownDirty) && !(await radaiConfirm('Discard unsaved planning edits and open this saved generation?'))) return;
+      if (!reviewCurrent()) return;
+      if (String(requestedProject.id) !== String(selectedProjectId)) {
+        handledDocumentReview.current = null;
+        setSelectedProjectId(requestedProject.id);
+        return;
+      }
+      reviewAnalysisRunRef.current = request.analysisRunId || null;
+      setReviewAnalysisRunId(request.analysisRunId || null);
+      setEditingSection(null); setShowPlannerWorkspace(false); setShowGenerationWizard(false); setCurrentStep(request.step);
+      if (request.generationId) await loadLatestGeneration(selectedProjectId, request.generationId);
+      if (request.analysisRunId) {
+        try {
+          const run = await planningIntelligenceService.getIntelligenceRun(request.analysisRunId);
+          if (!reviewCurrent()) return;
+          if (String(run?.id) !== String(request.analysisRunId) || String(run.project?.id ?? run.project) !== String(selectedProjectId)) throw new Error('The document analysis does not belong to this project.');
+          if (!run.intelligence) throw new Error('The document analysis is unavailable. Retry loading its source findings.');
+          acceptLoadedIntelligence(run.intelligence, run.preview_confirmation || null);
+          setBanner({ ...planningAnalysisOutcome(run.intelligence), analysisResult: true });
+          if (request.analysisAction === 'settings') { setTestResult(null); setShowAiSettingsModal(true); }
+          if (request.analysisAction === 'retry') analysisHandlersRef.current?.analyze({ projectId: selectedProjectId,
+            resumeRunId: run.intelligence.ai_processing_coverage?.resume_available ? run.id : undefined });
+        } catch (error) {
+          if (reviewCurrent()) setBanner({ type: 'error', message: error.response?.data?.error || error.message || 'Unable to load this document analysis.' });
+        }
+      }
+    };
+    openReview();
+  }, [documentReviewRequest, localDocumentReviewRequest, location.state, selectedProject, selectedProjectId, projects, loadingProjects, loadingContract, savingEdit, workBreakdownSaving, savingPreview, editingSection, workBreakdownDirty, loadLatestGeneration, acceptLoadedIntelligence]);
+
+  useEffect(() => () => { analysisRequestRef.current += 1; }, [selectedProjectId]);
+  useEffect(() => {
+    packageRequestRef.current += 1;
+    packageInFlight.current = false;
+    setGenerating(false); setPackageError(null); setPendingAnalysisWorkspace(null);
+    return () => { packageRequestRef.current += 1; };
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (analysisMonitoringError) {
+      setBanner({ type: 'error', monitoring: true, message: monitoringError.jobUnavailable
+        ? 'This saved job is unavailable or you no longer have access. Its local progress link was cleared.'
+        : unknownSavedJob
+          ? 'Connection to the saved job was interrupted. The server may still be processing. Check saved job status to reconnect.'
+          : 'Connection to the analysis job was interrupted. The server may still be processing. Check analysis status to reconnect.' });
+      return;
+    }
+    if (!activeJob) setBanner(previous => previous?.monitoring ? null : previous);
+    if (!selectedProjectId || activeJob?.job_type !== 'analyze' || String(activeJob.project) !== String(selectedProjectId)) return;
+    if (activeJob.status === 'queued' || activeJob.status === 'running') {
+      return;
+    }
+    if (!['succeeded', 'failed', 'cancelled'].includes(activeJob.status)) return;
+    const jobKey = `${selectedProjectId}:${activeJob.id}`;
+    if (consumedAnalysisJobs.current.has(jobKey)) return;
+    consumedAnalysisJobs.current.add(jobKey);
+    if (activeJob.status === 'succeeded' && activeJob.result_data?.intelligence) {
+      if (documentWorkflow) {
+        reviewAnalysisRunRef.current = activeJob.result_data.intelligence.document_intelligence_run_id || null;
+        setReviewAnalysisRunId(reviewAnalysisRunRef.current);
+      }
+      loadedPreviewRef.current = activeJob.result_data.intelligence;
+      setIntelligencePreview(activeJob.result_data.intelligence);
+      setAnalysisRevision(value => value + 1);
+      setPreviewConfirmation(null);
+      setCurrentStep('intelligence');
+      setBanner({ ...planningAnalysisOutcome(activeJob.result_data.intelligence), analysisResult: true });
+      if (documentWorkflow && activeJob.result_data.intelligence.document_intelligence_run_id) {
+        setPendingAnalysisWorkspace({ projectId: selectedProjectId, analysisRunId: activeJob.result_data.intelligence.document_intelligence_run_id });
+      }
+    } else {
+      setBanner({ type: 'error', message: activeJob.error_message || activeJob.message || 'Document analysis did not return saved findings. Please retry.' });
+    }
+    clearPlanningJob();
+  }, [activeJob, analysisMonitoringError, clearPlanningJob, monitoringError, selectedProjectId, unknownSavedJob, documentWorkflow]);
 
   useEffect(() => {
     if (embedded && currentStep === 'intelligence' && !showPlannerWorkspace) {
@@ -535,16 +735,49 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     setViewMode('workspace');
   };
 
-  const openPlannerWorkspace = (projectId = selectedProjectId) => {
+  const openPlannerWorkspace = useCallback((projectId = selectedProjectId, selection = {}) => {
     if (!projectId) return;
+    if (!selection.versionId && !selection.generationId && !selection.analysisRunId && generation?.generation_mode === 'planning_package' && generation.schedule_version_id) selection = { ...selection, scheduleId: generation.schedule_id, versionId: generation.schedule_version_id };
+    if (!selection.versionId && !selection.generationId && !selection.analysisRunId && generationSelectionId && generation) selection = { ...selection, generationId: generation.id };
+    if (onOpenPlanner) {
+      setShowGenerationWizard(false);
+      onOpenPlanner({ ...selection, planningProjectId: projectId });
+      return;
+    }
     if (embedded) {
       setSelectedProjectId(projectId);
+      setWorkspaceGenerationId(selection.generationId || null);
+      setWorkspaceAnalysisRunId(selection.analysisRunId || null);
+      if (selection.versionId) setWorkBreakdownSchedule({ schedule_id: selection.scheduleId, schedule_version_id: selection.versionId });
       setWorkspaceInitialTab('activities');
       setShowPlannerWorkspace(true);
       return;
     }
-    navigate(`/planning-workspace/${projectId}`);
-  };
+    const query = selection.analysisRunId ? `?analysisRunId=${encodeURIComponent(selection.analysisRunId)}` : selection.generationId ? `?generationId=${encodeURIComponent(selection.generationId)}` : '';
+    navigate(`/planning-workspace/${projectId}${query}`);
+  }, [embedded, generation, generationSelectionId, navigate, onOpenPlanner, selectedProjectId]);
+
+  useEffect(() => {
+    if (!pendingAnalysisWorkspace) return;
+    if (String(pendingAnalysisWorkspace.projectId) !== String(selectedProjectId)) { setPendingAnalysisWorkspace(null); return; }
+    if (analyzing || generating || showAiSettingsModal || savingAiSettings || testingConnection || editingSection || unsavedPreviewEdits || workBreakdownDirty || workBreakdownSaving || savingPreview || savingEdit) return;
+    setPendingAnalysisWorkspace(null);
+    if (pendingAnalysisWorkspace.completedPackageJob) analysisHandlersRef.current?.restorePackage(pendingAnalysisWorkspace.completedPackageJob, pendingAnalysisWorkspace.analysisRunId);
+    else if (pendingAnalysisWorkspace.selection) openPlannerWorkspace(selectedProjectId, pendingAnalysisWorkspace.selection);
+    else analysisHandlersRef.current?.openPackage(pendingAnalysisWorkspace.analysisRunId);
+  }, [pendingAnalysisWorkspace, selectedProjectId, analyzing, generating, showAiSettingsModal, savingAiSettings, testingConnection, editingSection, unsavedPreviewEdits, workBreakdownDirty, workBreakdownSaving, savingPreview, savingEdit, openPlannerWorkspace]);
+
+  useEffect(() => {
+    const options = activeJob?.request_data?.generation_options || {};
+    const result = activeJob?.result_data || {};
+    if (!documentWorkflow || packageInFlight.current || activeJob?.job_type !== 'generate'
+      || String(activeJob.project) !== String(selectedProjectId)
+      || (options.mode !== 'planning_package' && result.generation_mode !== 'planning_package')
+      || !['succeeded', 'failed', 'cancelled'].includes(activeJob.status)
+      || appliedPackageJobs.current.has(`${selectedProjectId}:${activeJob.id}`)) return;
+    appliedPackageJobs.current.add(`${selectedProjectId}:${activeJob.id}`);
+    setPendingAnalysisWorkspace({ projectId: selectedProjectId, analysisRunId: options.intelligence_run_id || result.intelligence_run_id, completedPackageJob: activeJob });
+  }, [activeJob, documentWorkflow, selectedProjectId, generating]);
 
   const handleDeleteProject = async (project) => {
     if (!(await radaiConfirm(`Delete planning project "${project.name}"? It will be removed from the dashboard immediately.`))) {
@@ -559,7 +792,8 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
       }
       setBanner({ type: 'success', message: `Planning project "${project.name}" deleted.` });
     } catch (err) {
-      setBanner({ type: 'error', message: 'Failed to delete planning project.' });
+      const detail = err?.response?.data?.detail || err?.response?.data?.error;
+      setBanner({ type: 'error', message: typeof detail === 'string' ? detail : 'Failed to delete planning project.' });
     }
   };
 
@@ -634,26 +868,33 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
   const handleAnalyze = async (options = {}) => {
     const projectId = options.projectId || selectedProjectId;
-    if (!projectId || analyzing) return null;
-    setAnalyzing(true);
+    if (!projectId || analyzing || packageBusy) return null;
+    const requestId = ++analysisRequestRef.current;
+    const isCurrent = () => requestId === analysisRequestRef.current && activePreviewProjectRef.current === projectId;
+    setAnalysisStarting(true);
     setBanner(null);
     try {
-      const job = await runPlanningJob(() => planningIntelligenceService.startAnalysis(projectId));
-      if (!job) return null;
-      setIntelligencePreview(job.result_data?.intelligence || null);
-      setAnalysisRevision(value => value + 1);
-      setPreviewConfirmation(null);
-      setCurrentStep('intelligence');
-      setBanner({ type: 'success', message: 'Document intelligence completed.' });
+      const job = await runPlanningJob(async () => {
+        if (options.resumeRunId) {
+          try {
+            return await planningIntelligenceService.startResumeAnalysis(options.resumeRunId);
+          } catch (err) {
+            if (err.response?.status !== 409 || err.response?.data?.code !== 'intelligence_resume_sources_changed' || !isCurrent()) throw err;
+          }
+        }
+        return planningIntelligenceService.startAnalysis(projectId);
+      });
+      if (!job || !isCurrent()) return null;
       return job;
     } catch (err) {
+      if (!isCurrent()) return null;
       setBanner({
         type: 'error',
         message: err.response?.data?.error || err.job?.error_message || err.message || 'Document intelligence requires at least one parsed file.',
       });
       return null;
     } finally {
-      setAnalyzing(false);
+      if (isCurrent()) setAnalysisStarting(false);
     }
   };
 
@@ -676,8 +917,99 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     } : undefined;
   };
 
+  const applyPlanningPackage = async (job, runId, requestId, { open = false } = {}) => {
+    const projectId = selectedProjectId;
+    const current = () => requestId === packageRequestRef.current && activePreviewProjectRef.current === projectId;
+    if (!current()) return null;
+    appliedPackageJobs.current.add(`${projectId}:${job.id}`);
+    if (job.status !== 'succeeded') throw new Error(job.error_message || job.message || 'The planning package could not be generated.');
+    const result = job.result_data || {};
+    if (String(job.project?.id ?? job.project) !== String(projectId) || result.generation_mode !== 'planning_package'
+      || String(result.intelligence_run_id) !== String(runId) || !result.schedule_id || !result.schedule_version_id || !result.generation_id) {
+      throw new Error('The generated planning package could not be verified for this analysis. Review its status before retrying.');
+    }
+    const [generated, version, schedules] = await Promise.all([
+      planningIntelligenceService.getGeneration(result.generation_id),
+      planningIntelligenceService.getScheduleVersion(result.schedule_version_id),
+      planningIntelligenceService.listSchedules(projectId),
+    ]);
+    if (!current()) return null;
+    const schedule = schedules.find(row => String(row.id) === String(result.schedule_id) && String(row.project?.id ?? row.project) === String(projectId));
+    if (!schedule || String(version?.id) !== String(result.schedule_version_id) || String(version.schedule?.id ?? version.schedule) !== String(schedule.id)
+      || String(version.source_generation?.id ?? version.source_generation) !== String(generated?.id)
+      || String(generated?.schedule_version_id) !== String(result.schedule_version_id) || String(generated?.schedule_id) !== String(result.schedule_id)
+      || String(generated?.id) !== String(result.generation_id) || String(generated.project?.id ?? generated.project) !== String(projectId)
+      || String(generated.intelligence_run_id ?? generated.intelligence?.schedule_engine?.source_analysis_run_id ?? generated.intelligence?.schedule_engine?.intelligence_run_id) !== String(runId)) {
+      throw new Error('The generated version does not match this project and analysis. The current workspace has been preserved.');
+    }
+    if (packageApplyBlocked.current) {
+      setPendingAnalysisWorkspace({ projectId, analysisRunId: runId, completedPackageJob: job });
+      return null;
+    }
+    generationLoadRequest.current += 1;
+    setLoadingGeneration(false); setGenerationLoadError('');
+    setGeneration(generated); setGenerationSelectionId(generated.id);
+    const selection = { scheduleId: schedule.id, versionId: version.id };
+    packageSelections.current.set(`${projectId}:${runId}`, selection);
+    setPackageError(null);
+    setCurrentStep('schedule');
+    setBanner({ type: 'success', message: `Planning package v${generated.version} is ready as an editable draft. Review workflow assumptions and scheduling checks before approval.` });
+    if (open) setPendingAnalysisWorkspace({ projectId, analysisRunId: runId, selection });
+    return { generation: generated, job };
+  };
+
+  const generatePlanningPackage = async (runId, generationOptions = {}, { open = false } = {}) => {
+    const projectId = selectedProjectId;
+    if (!projectId || !runId || packageInFlight.current || packageBusy || analyzing || unsavedPreviewEdits || editingSection) return null;
+    const requestId = ++packageRequestRef.current;
+    const current = () => requestId === packageRequestRef.current && activePreviewProjectRef.current === projectId;
+    packageInFlight.current = true;
+    setGenerating(true); setPackageError(null); setBanner(null);
+    let keepMonitoring = false;
+    try {
+      const job = await runPlanningJob(() => planningIntelligenceService.startGeneration(projectId, {
+        generation_options: { ...generationOptions, mode: 'planning_package', intelligence_run_id: runId },
+      }));
+      if (!job || !current()) return null;
+      return await applyPlanningPackage(job, runId, requestId, { open });
+    } catch (error) {
+      keepMonitoring = Boolean(error.job && ['queued', 'running'].includes(error.job.status) && ![403, 404].includes(error.response?.status));
+      if (current()) {
+        setPackageError({ runId, message: error.response?.data?.error || error.response?.data?.detail || error.job?.error_message || error.message || 'Planning package generation failed. Your saved analysis is retained.' });
+        setCurrentStep('intelligence');
+      }
+      if (!open && current()) throw error;
+      return null;
+    } finally {
+      if (current()) { packageInFlight.current = false; setGenerating(false); if (!keepMonitoring) clearPlanningJob(); }
+    }
+  };
+
+  const restorePlanningPackage = async (job, runId) => {
+    const projectId = selectedProjectId, requestId = ++packageRequestRef.current;
+    packageInFlight.current = true; setGenerating(true);
+    try { await applyPlanningPackage(job, runId, requestId, { open: true }); }
+    catch (error) {
+      if (requestId === packageRequestRef.current && activePreviewProjectRef.current === projectId) setPackageError({ runId, message: error.message });
+    } finally {
+      if (requestId === packageRequestRef.current && activePreviewProjectRef.current === projectId) {
+        packageInFlight.current = false; setGenerating(false); clearPlanningJob();
+      }
+    }
+  };
+
+  const requestPlanningWorkspace = runId => {
+    if (!runId || packageBusy || analyzing) return;
+    const matchingGeneration = generation?.generation_mode === 'planning_package'
+      && String(generation.intelligence_run_id) === String(runId) && generation.schedule_version_id;
+    const selection = !intelligenceOutdated && (packageSelections.current.get(`${selectedProjectId}:${runId}`)
+      || (matchingGeneration ? { scheduleId: generation.schedule_id, versionId: generation.schedule_version_id } : null));
+    setPendingAnalysisWorkspace({ projectId: selectedProjectId, analysisRunId: runId, ...(selection ? { selection } : {}) });
+  };
+
   const handleGenerate = async (generationOptions = {}) => {
     if (!selectedProjectId) return;
+    if (documentWorkflow) return generatePlanningPackage(intelligencePreview?.document_intelligence_run_id, generationOptions);
     setGenerating(true);
     setBanner(null);
     try {
@@ -732,22 +1064,28 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
   const handleSaveIntelligenceEdit = () => {
     setIntelligencePreview(draftIntelligence);
-    setBanner({ type: 'info', message: embedded ? 'Preview edits applied. Confirm and save below to continue to Work breakdown.' : 'Document Intelligence edits applied for the next schedule generation.' });
+    setBanner({ type: 'info', message: embedded ? `Preview edits applied. Confirm and save below to continue to ${documentWorkflow ? 'Schedule Generator' : 'Work breakdown'}.` : 'Document Intelligence edits applied for the next schedule generation.' });
     cancelEdit();
   };
 
   const handleSaveGenerationEdit = async (field, value) => {
-    if (!generation) return;
+    if (!generation || savingEdit) return;
+    const projectId = selectedProjectId, request = ++generationLoadRequest.current;
+    const current = () => generationLoadRequest.current === request && String(activePreviewProjectRef.current) === String(projectId);
     setSavingEdit(true);
     try {
       const res = await apiClient.patch(PLANNING_ENDPOINTS.editGeneration(generation.id), { [field]: value });
+      if (!current()) return;
+      if (!res.data?.id || String(res.data?.project?.id ?? res.data?.project) !== String(projectId)) throw new Error('The saved revision could not be verified for this planning project.');
       setGeneration(res.data);
-      setBanner({ type: 'success', message: 'Changes saved.' });
+      setGenerationSelectionId(res.data.id);
+      const needsReview = res.data.intelligence?.schedule_engine?.policy === 'document_driven' && !res.data.schedule_version_id;
+      setBanner({ type: needsReview ? 'info' : 'success', message: needsReview ? `Changes saved as generation v${res.data.version}. Review source evidence and missing scheduling inputs before calculation.` : `Changes saved as generation v${res.data.version}.` });
       cancelEdit();
     } catch (err) {
-      setBanner({ type: 'error', message: err.response?.data?.error || 'Failed to save changes.' });
+      if (current()) setBanner({ type: 'error', message: err.response?.data?.error || err.message || 'Failed to save changes.' });
     } finally {
-      setSavingEdit(false);
+      if (current()) setSavingEdit(false);
     }
   };
 
@@ -844,12 +1182,12 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         deliverable: null,
         start_date: '',
         finish_date: '',
-        is_critical: false,
+        is_critical: generation?.intelligence?.schedule_engine?.policy === 'document_driven' ? null : false,
         is_milestone: false,
         predecessors: [],
         responsible_role: '',
-        total_float_days: 0,
-        original_duration_days: 1,
+        total_float_days: generation?.intelligence?.schedule_engine?.policy === 'document_driven' ? null : 0,
+        original_duration_days: generation?.intelligence?.schedule_engine?.policy === 'document_driven' ? null : 1,
       };
       return [...prev, newActivity];
     });
@@ -956,14 +1294,37 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     }
   };
 
+  const testSavedAiConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettingsTest(selectedProjectId));
+      const success = res.data?.success === true;
+      setTestResult({ success, message: success
+        ? 'Settings saved. Connection established. AI is ready for analysis.'
+        : res.data?.message || 'Settings are saved, but the connection test failed. Check the key and test again.' });
+    } catch (err) {
+      setTestResult({ success: false, message: aiSettingsErrorMessage(err,
+        'Settings are saved, but the connection test failed. Check the key and test again.') });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+  analysisHandlersRef.current = { analyze: handleAnalyze, requestPackage: requestPlanningWorkspace, openPackage: runId => generatePlanningPackage(runId, {}, { open: true }), restorePackage: restorePlanningPackage };
+
+  const handleRetryAnalysis = () => handleAnalyze({
+    resumeRunId: intelligencePreview?.ai_processing_coverage?.resume_available || intelligencePreview?.extraction_summary?.resume_available
+      ? intelligencePreview?.document_intelligence_run_id : undefined,
+  });
+
   const handleSaveAiSettings = async () => {
-    if (!selectedProjectId || savingAiSettings || testingConnection) return;
+    if (!selectedProjectId || savingAiSettings || testingConnection || aiSettingsUnavailable) return;
     if (aiReplacementKeyRequired) {
-      setBanner({ type: 'error', message: 'Enter an API key for the selected provider before saving.' });
+      setTestResult({ success: false, message: 'Enter an API key for the selected provider before saving.' });
       return;
     }
     if (aiSettingsForm.provider === 'anthropic' && aiSettingsForm.apiKey && !CLAUDE_API_KEY_PATTERN.test(aiSettingsForm.apiKey.trim())) {
-      setBanner({ type: 'error', message: 'API key does not look like a valid Anthropic key (expected format: sk-ant-...).' });
+      setTestResult({ success: false, message: 'API key does not look like a valid Anthropic key (expected format: sk-ant-...).' });
       return;
     }
     setSavingAiSettings(true);
@@ -974,29 +1335,35 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
       const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettings(selectedProjectId), payload);
       setAiSettings(res.data);
       setAiSettingsForm(planningAiSettingsForm(res.data));
-      setBanner({ type: 'success', message: 'AI (BYOK) settings saved.' });
       setProjects(prev => prev.map(p => (p.id === selectedProjectId
         ? { ...p, ai_enabled: res.data.enabled, ai_provider: res.data.provider, ai_model: res.data.model, ai_key_configured: res.data.key_configured }
         : p)));
-      setShowAiSettingsModal(false);
+      if (res.data.enabled && res.data.key_configured) {
+        setSavingAiSettings(false);
+        await testSavedAiConnection();
+      } else {
+        setTestResult({ success: false, type: 'info', message: res.data.enabled
+          ? 'Settings saved. Configure an API key and test the connection before analysis.'
+          : 'Settings saved. AI is disabled for this project.' });
+      }
     } catch (err) {
-      setBanner({ type: 'error', message: err.response?.data?.error || 'Failed to save AI settings.' });
+      setTestResult({ success: false, message: aiSettingsErrorMessage(err, 'Failed to save AI settings. Your changes are still here; please retry.') });
     } finally {
       setSavingAiSettings(false);
     }
   };
 
   const handleRemoveAiKey = async () => {
-    if (!selectedProjectId || savingAiSettings || testingConnection) return;
+    if (!selectedProjectId || savingAiSettings || testingConnection || aiSettingsUnavailable) return;
     setSavingAiSettings(true);
     setTestResult(null);
     try {
       const res = await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(selectedProjectId));
       setAiSettings(res.data);
       setAiSettingsForm(planningAiSettingsForm(res.data));
-      setBanner({ type: 'success', message: 'AI (BYOK) key removed.' });
+      setTestResult({ success: false, type: 'info', message: 'API key removed. Configure and test a key to use AI analysis.' });
     } catch (err) {
-      setBanner({ type: 'error', message: 'Failed to remove AI key.' });
+      setTestResult({ success: false, message: aiSettingsErrorMessage(err, 'Failed to remove AI key.') });
     } finally {
       setSavingAiSettings(false);
     }
@@ -1004,35 +1371,60 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
   const handleTestAiConnection = async () => {
     if (!selectedProjectId || savingAiSettings || testingConnection || !canTestAiConnection) return;
-    setTestingConnection(true);
-    setTestResult(null);
-    try {
-      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettingsTest(selectedProjectId));
-      setTestResult(res.data);
-    } catch (err) {
-      setTestResult(err.response?.data || { success: false, message: 'Connection test failed.' });
-    } finally {
-      setTestingConnection(false);
-    }
+    await testSavedAiConnection();
   };
 
   // ── Render helpers ───────────────────────────────────────────────────────
   const renderBanner = () => {
     if (!banner) return null;
-    const styles = banner.type === 'error'
+    const previousResult = analyzing && banner.analysisResult;
+    const type = previousResult ? 'info' : banner.type;
+    const styles = type === 'error'
       ? 'bg-rose-50 text-rose-700 border-rose-200'
-      : banner.type === 'info'
+      : type === 'warning'
+        ? 'bg-amber-50 text-amber-900 border-amber-200'
+      : type === 'info'
         ? 'bg-sky-50 text-sky-700 border-sky-200'
         : 'bg-emerald-50 text-emerald-700 border-emerald-200';
     return (
-      <div role={banner.type === 'error' ? 'alert' : 'status'} aria-live={banner.type === 'error' ? 'assertive' : 'polite'} className={`mb-4 rounded-lg border px-4 py-3 text-sm ${styles}`}>
-        <div className="flex items-center justify-between gap-3"><span>{banner.message}</span>
-        <button type="button" aria-label="Dismiss notification" onClick={() => setBanner(null)} className="ml-4 opacity-60 hover:opacity-100">✕</button>
+      <div role={type === 'error' ? 'alert' : 'status'} aria-live={type === 'error' ? 'assertive' : 'polite'} className={`mb-4 rounded-lg border px-4 py-3 text-sm ${styles}`}>
+        <div className="flex items-center justify-between gap-3"><span>{previousResult ? 'A new analysis is being monitored. The previous saved result and its coverage remain below until the new findings are saved.' : banner.message}</span>
+        {(!analysisMonitoringError || monitoringError.jobUnavailable) && <button type="button" aria-label="Dismiss notification" onClick={() => setBanner(null)} className="ml-4 opacity-60 hover:opacity-100">✕</button>}
         </div>
-        {banner.type === 'info' && activeJob && <div className="mt-2 h-2 overflow-hidden rounded-full bg-sky-100" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={activeJob.progress || 0}><div className="h-full rounded-full bg-sky-600 transition-all duration-500" style={{ width: `${activeJob.progress || 0}%` }} /></div>}
+        {analysisMonitoringError && !monitoringError.jobUnavailable && <button type="button" className="pln-button mt-2" disabled={checkingStatus} onClick={retryMonitoring}>{checkingStatus ? 'Checking status…' : unknownSavedJob ? 'Check saved job status' : 'Check analysis status'}</button>}
+        {type === 'info' && activeJob && <div className="mt-2 h-2 overflow-hidden rounded-full bg-sky-100" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={activeJob.progress || 0}><div className="h-full rounded-full bg-sky-600 transition-all duration-500" style={{ width: `${activeJob.progress || 0}%` }} /></div>}
       </div>
     );
   };
+
+  const renderPreviousAnalysisNotice = () => analyzing && intelligencePreview ? (
+    <p role="status" className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+      {analysisMonitoringError ? `${unknownSavedJob ? 'Saved job' : 'Analysis'} status is unavailable. The findings below are from the previous saved analysis.` : 'A new analysis is running. The findings below are from the previous saved analysis.'}
+      {documentWorkflow && !analysisMonitoringError && ' The Schedule Planner will open when the current analysis finishes and saves its findings.'}
+    </p>
+  ) : null;
+
+  const renderPendingPlannerNotice = () => pendingAnalysisWorkspace && !analyzing && String(pendingAnalysisWorkspace.projectId) === String(selectedProjectId)
+    && (showAiSettingsModal || editingSection || unsavedPreviewEdits || workBreakdownDirty || savingPreview || savingEdit || savingAiSettings || testingConnection) ? (
+    <p role="status" className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+      {showAiSettingsModal ? 'Analysis findings are saved. Close AI Settings to open the Schedule Planner.'
+        : editingSection ? 'Analysis findings are saved. Save or cancel your current edits to open the Schedule Planner.'
+          : unsavedPreviewEdits ? 'Save or discard your preview edits before building the planning package from this analysis.'
+          : workBreakdownDirty ? 'Analysis findings are saved. Save or discard work breakdown changes to open the Schedule Planner.'
+            : 'Analysis findings are saved. Finishing the current save before opening the Schedule Planner.'}
+      {unsavedPreviewEdits && !editingSection && <button type="button" className="pln-button ml-3" disabled={savingPreview} onClick={() => setIntelligencePreview(loadedPreviewRef.current)}>Discard preview edits</button>}
+    </p>
+  ) : null;
+
+  const renderPlanningPackageState = () => packageMonitoringError ? (
+    <div role="alert" className="pln-error">{packageMonitoringError.jobUnavailable ? 'This planning job is unavailable or access has changed. Your saved analysis remains available.' : 'Connection to planning package generation was interrupted. The server may still be building the draft.'}
+      {!packageMonitoringError.jobUnavailable && <button type="button" className="pln-button" disabled={checkingStatus} onClick={retryMonitoring}>{checkingStatus ? 'Checking status…' : 'Check planning status'}</button>}
+    </div>
+  ) : packageError ? (
+    <div role="alert" className="pln-error"><p>{packageError.message}</p><p>Your saved analysis is retained; no existing schedule has been replaced.</p>
+      <button type="button" className="pln-button" disabled={packageBusy || analyzing || Boolean(editingSection)} onClick={() => requestPlanningWorkspace(packageError.runId)}>Retry planning package</button>
+    </div>
+  ) : packageBusy ? <p role="status" className="pln-note">Building the planning package from saved analysis. Activities, WBS and logic will open in the editable planner when the draft is saved.</p> : null;
 
   const renderProjectPicker = () => {
     if (embedded) {
@@ -1417,7 +1809,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
-        onClick={() => { if (!savingAiSettings) setShowAiSettingsModal(false); }}
+        onClick={() => { if (!savingAiSettings && !testingConnection) setShowAiSettingsModal(false); }}
       >
         <div
           ref={aiSettingsDialogRef}
@@ -1425,9 +1817,9 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           role="dialog"
           aria-modal="true"
           aria-labelledby="planning-ai-settings-title"
-          className="bg-white rounded-2xl shadow-xl border border-slate-200/80 w-full max-w-lg p-5 sm:p-6"
+          className="bg-white rounded-2xl shadow-xl border border-slate-200/80 w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6"
           onClick={e => e.stopPropagation()}
-          aria-busy={savingAiSettings}
+          aria-busy={loadingAiSettings || savingAiSettings || testingConnection}
         >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xl">🤖</span>
@@ -1438,6 +1830,10 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
             generation for this project. Your key is encrypted at rest and never
             shown again after saving. Leave the key field blank to keep the stored key for the same provider.
           </p>
+          <p className="text-sm text-slate-600 mb-4">Save Settings saves your configuration and tests the connection. This dialog stays open to show whether AI is ready for analysis.</p>
+
+          {aiSettingsUnavailable && !aiSettingsLoadError && <p role="status" className="mb-4 text-sm text-slate-600">Loading AI settings…</p>}
+          {aiSettingsLoadError && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"><p role="alert">{aiSettingsLoadError}</p><button type="button" className="pln-button mt-2" onClick={() => loadAiSettings(selectedProjectId)} disabled={loadingAiSettings}>Retry loading AI settings</button></div>}
 
           <div className="space-y-4">
             <label className="flex items-center gap-2.5 text-sm font-medium text-slate-700">
@@ -1445,7 +1841,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                 type="checkbox"
                 className="w-4 h-4 accent-violet-600"
                 checked={aiSettingsForm.enabled}
-                disabled={savingAiSettings || testingConnection}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
                 onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, enabled: e.target.checked })); }}
               />
               Enable AI BYOK for this project
@@ -1456,7 +1852,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <select
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.provider}
-                disabled={savingAiSettings || testingConnection}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
                 onChange={e => {
                   const provider = aiProviderChoices.find(choice => choice.value === e.target.value);
                   setTestResult(null);
@@ -1472,7 +1868,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <select
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.model}
-                disabled={savingAiSettings || testingConnection}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
                 onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, model: e.target.value })); }}
               >
                 {(selectedAiProvider?.model_choices || []).map(m => (
@@ -1491,30 +1887,35 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                 autoComplete="off"
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.apiKey}
-                disabled={savingAiSettings || testingConnection}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
                 onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, apiKey: e.target.value })); }}
               />
               {aiProviderChanged && aiSettings?.key_configured && <span className="mt-1 block text-xs text-amber-700">Enter a new API key for {selectedAiProvider?.label || 'the selected provider'}. Your saved key belongs to {savedAiProvider?.label || 'the previous provider'}.</span>}
             </label>
 
-            {aiSettingsDirty && <p className="text-xs text-slate-600">Save settings before testing the selected provider and model.</p>}
+            {aiSettingsDirty && <p className="text-xs text-slate-600">Save settings to test the selected provider, model and key. Unsaved changes have not been tested.</p>}
             {testResult && (
-              <div className={`text-sm rounded-xl px-3 py-2 border ${testResult.success ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+              <div role={testResult.success || testResult.type === 'info' ? 'status' : 'alert'} className={`text-sm rounded-xl px-3 py-2 border ${testResult.success ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : testResult.type === 'info' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                 {testResult.message}
               </div>
             )}
+            {testResult?.success && ['failed', 'partial'].includes(aiAnalysisOutcome(intelligencePreview?.ai_processing_coverage).status) && <div className="mt-3 text-sm text-slate-700">
+              <p>The connection test passed. The previous document analysis is still incomplete; retry it with these saved settings.</p>
+              <button type="button" className="pln-button mt-2" disabled={analyzing || savingAiSettings || testingConnection || aiSettingsDirty} onClick={() => { setShowAiSettingsModal(false); handleRetryAnalysis(); }}>Retry document analysis</button>
+            </div>}
+            {pendingAnalysisWorkspace && !analyzing && <p role="status" className="mt-3 text-sm text-sky-700">Analysis findings are saved. Close AI Settings to open the Schedule Planner.</p>}
           </div>
 
-          {savingAiSettings && (
+          {(savingAiSettings || testingConnection) && (
             <div className="mt-5" role="status" aria-live="polite">
               <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-violet-700">
-                <span>Saving AI settings…</span>
+                <span>{testingConnection ? 'Testing AI connection…' : 'Saving AI settings…'}</span>
                 <span>Please wait</span>
               </div>
               <div
                 className="h-2 w-full overflow-hidden rounded-full bg-violet-100"
                 role="progressbar"
-                aria-label="Saving AI settings"
+                aria-label={testingConnection ? 'Testing AI connection' : 'Saving AI settings'}
               >
                 <div className="h-full w-full animate-pulse rounded-full bg-gradient-to-r from-violet-500 via-indigo-500 to-violet-500" />
               </div>
@@ -1526,7 +1927,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <button
                 type="button"
                 onClick={handleRemoveAiKey}
-                disabled={savingAiSettings || testingConnection || !aiSettings?.key_configured}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection || !aiSettings?.key_configured}
                 className="px-3.5 py-2 text-sm font-medium rounded-xl border-2 border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40 transition-colors"
               >
                 Remove Key
@@ -1544,7 +1945,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <button
                 type="button"
                 onClick={() => setShowAiSettingsModal(false)}
-                disabled={savingAiSettings}
+                disabled={savingAiSettings || testingConnection}
                 className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
               >
                 Close
@@ -1552,10 +1953,10 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
               <button
                 type="button"
                 onClick={handleSaveAiSettings}
-                disabled={savingAiSettings || testingConnection || aiReplacementKeyRequired}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection || aiReplacementKeyRequired}
                 className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40"
               >
-                {savingAiSettings ? 'Saving…' : 'Save Settings'}
+                {testingConnection ? 'Testing…' : savingAiSettings ? 'Saving…' : 'Save Settings'}
               </button>
             </div>
           </div>
@@ -1702,6 +2103,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   const renderIntelligenceStep = () => {
     const isEditing = editingSection === 'intelligence';
     const data = isEditing ? draftIntelligence : intelligencePreview;
+    const aiOutcome = aiAnalysisOutcome(intelligencePreview?.ai_processing_coverage);
     const registerBased = data?.deliverable_source === 'register';
     const disciplineMeta = (code) => {
       const meta = PLANNING_DISCIPLINE_META[code] || { ...DEFAULT_DISCIPLINE_META, label: code.replaceAll('_', ' ') };
@@ -1714,7 +2116,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         <h2 ref={intelligenceHeadingRef} tabIndex={-1} className="font-semibold text-slate-800">Document Intelligence Preview</h2>
         {intelligencePreview && (
           <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${intelligencePreview.ai_augmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
-            {intelligencePreview.ai_augmented ? '✨ Enhanced by AI' : '🧮 Deterministic analysis'}
+            {analyzing ? `Previous saved analysis · ${aiOutcome.status === 'failed' ? 'AI failed' : aiOutcome.status === 'partial' ? 'AI incomplete' : 'findings retained'}` : aiOutcome.status === 'failed' ? 'AI analysis failed · source extraction retained' : aiOutcome.status === 'partial' ? 'AI analysis incomplete' : intelligencePreview.ai_augmented ? '✨ Enhanced by AI' : '🧮 Deterministic analysis'}
           </span>
         )}
         {intelligencePreview && !isEditing && (
@@ -1728,7 +2130,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
             >
               📊 Visualize
             </button>
-            <button disabled={savingPreview} onClick={() => startEdit('intelligence')}
+            <button disabled={savingPreview || packageBusy} onClick={() => startEdit('intelligence')}
               className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors inline-flex items-center gap-1.5">
               ✏️ Edit
             </button>
@@ -1742,7 +2144,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         )}
         {embedded && intelligencePreview && <button type="button" className="pln-button" disabled={savingPreview} onClick={() => setReviewRequest(value => value + 1)}>{previewReviewState.conflicts ? 'Review clarification' : 'Review source findings'}</button>}
       </div>
-      {intelligencePreview && <PlanningExtractionCoverage coverage={intelligencePreview.processing_coverage} aiCoverage={intelligencePreview.ai_processing_coverage} />}
+      {intelligencePreview && <PlanningExtractionCoverage coverage={intelligencePreview.processing_coverage} aiCoverage={intelligencePreview.ai_processing_coverage} previousResult={analyzing} onAiSettings={() => { setShowAiSettingsModal(true); setTestResult(null); }} onRetryAnalysis={handleRetryAnalysis} busy={analyzing || savingPreview || isEditing} />}
       {previewSaveError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{previewSaveError}</p>}
       {embedded && previewReviewState.conflicts > 0 && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Resolve the source clarification before confirming this preview.</p>}
       {embedded && intelligenceOutdated && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">Project inputs or source documents have changed. Return to Scope &amp; inputs and run Document Intelligence to refresh this preview.</p>}
@@ -1755,7 +2157,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         </div>
       )}
       {data && (
-        <fieldset disabled={savingPreview} className="min-w-0 space-y-5 border-0 p-0">
+        <fieldset disabled={savingPreview || packageBusy} className="min-w-0 space-y-5 border-0 p-0">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             <div className="rounded-xl p-4 bg-gradient-to-br from-sky-50 to-white border border-sky-100">
               <div className="text-sky-600 text-sm font-semibold uppercase tracking-wide">Detected Project Name</div>
@@ -1806,6 +2208,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                   <span className="ml-auto text-sm font-mono text-slate-400">Run #{data.document_intelligence_run_id}</span>
                 )}
               </div>
+              <p className="mt-2 text-sm text-slate-600">Facts can include requirements and project details. The fact count is not an activity or deliverable count.</p>
               {(data.open_conflicts || []).length > 0 && (
                 <div className="mt-3 space-y-1.5">
                   {(data.open_conflicts || []).map(conflict => (
@@ -1824,17 +2227,22 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
             onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)}
           />}
 
-          {data.ai_review && (
+          {(data.ai_review?.review_summary || data.ai_review?.additional_notes) && (
             <div className="rounded-xl p-4 bg-gradient-to-br from-violet-50 via-indigo-50 to-white border border-violet-100">
               <div className="flex items-center gap-2 text-violet-700 text-sm font-semibold uppercase tracking-wide mb-1.5">
                 <span>✨</span> RADAI Review
               </div>
-              {data.ai_review.review_summary && (
-                <p className="text-sm text-slate-700 mb-2">{data.ai_review.review_summary}</p>
-              )}
-              {data.ai_review.additional_notes && (
-                <p className="text-sm text-slate-500 italic">{data.ai_review.additional_notes}</p>
-              )}
+              <p className="text-sm text-slate-700">{Number.isInteger(data.ai_processing_coverage?.chunks_processed) && Number.isInteger(data.ai_processing_coverage?.chunks_total)
+                ? `${data.ai_processing_coverage.chunks_processed} of ${data.ai_processing_coverage.chunks_total} AI sections processed. ` : ''}
+                {Number.isInteger(data.evidence_summary?.fact_count) ? `${data.evidence_summary.fact_count.toLocaleString()} source facts retained. ` : ''}
+                {Number.isInteger(data.evidence_summary?.conflict_count) ? `${data.evidence_summary.conflict_count} open conflicts. ` : ''}
+                Review the saved findings and planning assumptions.</p>
+              <details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-violet-800">Read analysis notes</summary>
+                <div className="mt-2 max-h-64 overflow-y-auto whitespace-pre-line text-sm text-slate-700" tabIndex={0} role="region" aria-label="Saved analysis notes">
+                  {data.ai_review.review_summary && <p>{data.ai_review.review_summary}</p>}
+                  {data.ai_review.additional_notes && <p className="mt-2">{data.ai_review.additional_notes}</p>}
+                </div>
+              </details>
             </div>
           )}
 
@@ -1844,10 +2252,9 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                 <span>⚡</span> SOW-only mode
               </div>
               <p className="text-sm text-slate-700">
-                Only the Scope of Work has been uploaded — no MDR / EDDR / WBS to cross-reference.
-                {data.ai_augmented
-                  ? ' AI will decide which disciplines and HSE studies are actually in scope; review the AI Scope summary below and tick / untick disciplines as needed before generating.'
-                  : ' Enable AI BYOK on this project to let the AI decide which disciplines and HSE studies are actually in scope, or curate the discipline list manually below.'}
+                {registerBased ? 'A deliverable register was extracted from the Scope of Work. Review its source rows and any extraction gaps.' : 'Only the Scope of Work has been uploaded. Review its explicit requirements and deliverable references before planning.'}
+                {' Disciplines and deliverables must come from the document or reviewed planning inputs.'}
+                {['failed', 'partial'].includes(aiOutcome.status) ? ` ${aiOutcome.recoveryMessage}` : data.ai_augmented ? ' Review AI-proposed scope against the source before confirming it.' : ' Configure project AI settings if AI-assisted source analysis is needed.'}
               </p>
             </div>
           )}
@@ -2686,10 +3093,16 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   };
 
   const renderScheduleStep = () => {
-    if (!generation) return renderEmptyGenerationNotice('schedule');
+    if (!generation) return documentWorkflow ? <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <h2 className="text-lg font-semibold text-slate-900">Schedule Generator</h2>
+      <p className="my-3 text-sm text-slate-600">Build an editable planning package from the saved analysis. Review its workflow assumptions, WBS and logic before approval.</p>
+      <button type="button" className="pln-button pln-primary" disabled={!intelligencePreview?.document_intelligence_run_id || analyzing || packageBusy || savingPreview || Boolean(editingSection) || unsavedPreviewEdits || intelligenceOutdated} onClick={() => setShowGenerationWizard(true)}>Open Generation Wizard</button>
+      {unsavedPreviewEdits && <p className="text-sm text-amber-800">Save or discard your preview edits before opening the generation wizard.</p>}
+    </section> : renderEmptyGenerationNotice('schedule');
     const isEditing = editingSection === 'schedule';
     const rows = isEditing ? draftActivities : generation.activities;
-    const criticalCount = generation.activities.filter(a => a.is_critical).length;
+    const hasCalculatedCriticality = generation.activities.some(a => typeof a.is_critical === 'boolean' && a.total_float_days != null);
+    const criticalCount = hasCalculatedCriticality ? generation.activities.filter(a => a.is_critical).length : null;
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -2698,14 +3111,16 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
             <h2 className="font-semibold text-slate-800">Activities <span className="text-slate-400 font-normal">(v{generation.version} · {generation.activities.length} total)</span></h2>
           </div>
           <div className="flex items-center gap-2">
+            {!isEditing && <button type="button" className="pln-button" onClick={() => generation.schedule_version_id ? openPlannerWorkspace(selectedProjectId, { scheduleId: generation.schedule_id, versionId: generation.schedule_version_id }) : openPlannerWorkspace(selectedProjectId, { generationId: generation.id })}>Open draft workspace</button>}
             {!isEditing && (
-              <button onClick={() => setShowGenerationWizard(true)}
+              <button disabled={packageBusy || analyzing || !intelligencePreview?.document_intelligence_run_id || Boolean(editingSection) || unsavedPreviewEdits} onClick={() => setShowGenerationWizard(true)}
                 className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">
                 ✦ New generation
               </button>
             )}
-            <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 text-sm font-semibold">🔴 {criticalCount} on critical path</span>
+            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-semibold">{criticalCount === null ? 'Critical path: Not calculated' : `${criticalCount} on critical path`}</span>
             <button
+              disabled={!hasCalculatedCriticality}
               onClick={() => {
                 setVisualizationSection('schedule');
                 setVisualizationTab('timeline');
@@ -2723,7 +3138,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
             )}
             {isEditing && (
               <>
-                <button onClick={cancelEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Cancel</button>
+                <button onClick={cancelEdit} disabled={savingEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Cancel</button>
                 <button onClick={() => handleSaveGenerationEdit('activities', draftActivities)} disabled={savingEdit}
                   className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors disabled:opacity-40">
                   {savingEdit ? 'Saving…' : 'Save Changes'}
@@ -2753,7 +3168,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                   <td className="py-1.5 px-2.5 font-mono text-violet-600">{a.id}</td>
                   <td className="py-1.5 px-2.5 text-slate-700">
                     {isEditing ? (
-                      <input type="text" value={a.name}
+                      <input type="text" aria-label={`Activity ${a.id} name`} value={a.name} disabled={savingEdit}
                         onChange={e => updateDraftActivity(a.id, 'name', e.target.value)}
                         className="w-full border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-violet-400" />
                     ) : (<>{a.name}{a.is_milestone ? ' 🔷' : ''}</>)}
@@ -2761,30 +3176,30 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
                   <td className="py-1.5 px-2.5 capitalize text-slate-500">{a.discipline}</td>
                   <td className="py-1.5 px-2.5">
                     {isEditing ? (
-                      <input type="number" min="0" value={a.original_duration_days}
-                        onChange={e => updateDraftActivity(a.id, 'original_duration_days', Number(e.target.value))}
+                      <input type="number" aria-label={`Activity ${a.id} duration`} min="0" value={a.original_duration_days ?? ''} disabled={savingEdit}
+                        onChange={e => updateDraftActivity(a.id, 'original_duration_days', e.target.value === '' ? null : Number(e.target.value))}
                         className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-violet-400" />
-                    ) : `${a.original_duration_days}d`}
+                    ) : a.original_duration_days == null ? 'Not Specified' : `${a.original_duration_days}d`}
                   </td>
                   <td className="py-1.5 px-2.5">
                     {isEditing ? (
-                      <input type="date" value={a.start_date || ''}
+                      <input type="date" aria-label={`Activity ${a.id} start`} value={a.start_date || ''} disabled={savingEdit}
                         onChange={e => updateDraftActivity(a.id, 'start_date', e.target.value)}
                         className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-violet-400" />
-                    ) : a.start_date}
+                    ) : a.start_date || 'Not Specified'}
                   </td>
                   <td className="py-1.5 px-2.5">
                     {isEditing ? (
-                      <input type="date" value={a.finish_date || ''}
+                      <input type="date" aria-label={`Activity ${a.id} finish`} value={a.finish_date || ''} disabled={savingEdit}
                         onChange={e => updateDraftActivity(a.id, 'finish_date', e.target.value)}
                         className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-violet-400" />
-                    ) : a.finish_date}
+                    ) : a.finish_date || 'Not Specified'}
                   </td>
-                  <td className="py-1.5 px-2.5">{a.total_float_days}d</td>
-                  <td className="py-1.5 px-2.5">{a.is_critical && <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 text-xs font-semibold">CRITICAL</span>}</td>
+                  <td className="py-1.5 px-2.5">{a.total_float_days == null ? 'Not calculated' : `${a.total_float_days}d`}</td>
+                  <td className="py-1.5 px-2.5">{a.is_critical == null || a.total_float_days == null ? 'Not calculated' : a.is_critical ? 'CRITICAL' : 'No'}</td>
                   {isEditing && (
                     <td className="py-1.5 px-2.5 text-right whitespace-nowrap">
-                      <button onClick={() => deleteDraftActivity(a.id)} title="Delete activity"
+                      <button onClick={() => deleteDraftActivity(a.id)} title="Delete activity" disabled={savingEdit}
                         className="px-1.5 py-1 text-slate-400 hover:text-rose-600 transition-colors">🗑️</button>
                     </td>
                   )}
@@ -2794,7 +3209,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           </table>
         </div>
         {isEditing && (
-          <button onClick={addDraftActivity}
+          <button onClick={addDraftActivity} disabled={savingEdit}
             className="mt-3 px-3 py-1.5 text-sm font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors inline-flex items-center gap-1.5">
             ➕ Add Activity
           </button>
@@ -4060,10 +4475,14 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
   };
 
   const renderStepContent = () => {
+    if (['wbs', 'schedule', 'eddr', 'manhours', 'validation', 'narrative', 'presentation', 'export'].includes(currentStep) && (!embedded || documentWorkflow) && !manualPlanning) {
+      if (loadingGeneration) return <p role="status">Loading saved generation…</p>;
+      if (generationLoadError) return <section role="alert"><p>{generationLoadError}</p><button type="button" className="pln-button" onClick={() => loadLatestGeneration(selectedProjectId, generationSelectionId)}>Retry saved generation</button></section>;
+    }
     switch (currentStep) {
       case 'upload': return renderUploadStep();
       case 'intelligence': return renderIntelligenceStep();
-      case 'wbs': return embedded ? manualPlanning || previewConfirmed ? <WorkBreakdownPanel
+      case 'wbs': return embedded && (manualPlanning || !documentWorkflow) ? manualPlanning || previewConfirmed ? <WorkBreakdownPanel
         key={manualPlanning ? `manual:${selectedProjectId}` : `${intelligencePreview.document_intelligence_run_id}:${previewConfirmation.confirmed_at}`}
         projectId={selectedProjectId} intelligenceRunId={intelligencePreview?.document_intelligence_run_id}
         planningMode={manualPlanning ? 'manual' : 'document'}
@@ -4071,7 +4490,11 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         onDirtyChanged={setWorkBreakdownDirty} onSavingChanged={setWorkBreakdownSaving}
         onLoaded={acceptWorkBreakdown}
         onBack={() => setCurrentStep('upload')}
-        onContinue={result => { setWorkBreakdownSchedule(result); setWorkspaceInitialTab('activities'); setCurrentStep('schedule'); setShowPlannerWorkspace(true); }}
+        onContinue={result => {
+          setWorkBreakdownSchedule(result); setWorkspaceInitialTab('activities'); setCurrentStep('schedule');
+          if (onOpenPlanner) onOpenPlanner({ planningProjectId: selectedProjectId, scheduleId: result.schedule_id, versionId: result.schedule_version_id });
+          else setShowPlannerWorkspace(true);
+        }}
       /> : <p>Confirm and save the Document Intelligence Preview before building the work breakdown.</p> : renderWbsStep();
       case 'schedule': return renderScheduleStep();
       case 'eddr': return renderEddrStep();
@@ -4105,7 +4528,12 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     const goToStage = async index => {
       if (workBreakdownDirty && index !== 1 && !(await radaiConfirm('Leave Work breakdown and discard unsaved task changes?'))) return;
       if (index === 1) openWorkBreakdown();
-      else if (manualPlanning && index >= 2) { setWorkspaceInitialTab(index === 3 ? 'assurance' : index === 4 ? 'governance' : 'activities'); setCurrentStep(stages[index].steps[0]); setShowPlannerWorkspace(true); }
+      else if (manualPlanning && index >= 2) {
+        const initialTab = index === 3 ? 'assurance' : index === 4 ? 'governance' : 'activities';
+        setWorkspaceInitialTab(initialTab); setCurrentStep(stages[index].steps[0]);
+        if (onOpenPlanner) onOpenPlanner({ planningProjectId: selectedProjectId, scheduleId: planningSchedule?.schedule_id, versionId: planningSchedule?.schedule_version_id, initialTab });
+        else setShowPlannerWorkspace(true);
+      }
       else setCurrentStep(stages[index].steps[0]);
     };
     const backToPortfolio = () => onBackToPortfolio ? onBackToPortfolio() : navigate(`/projects?project=${enterpriseProject?.id || ''}`);
@@ -4117,16 +4545,21 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
     };
     return <div className="planning-design" aria-label="Project planning">
       {renderBanner()}
+      {renderPreviousAnalysisNotice()}
+      {renderPendingPlannerNotice()}
+      {renderPlanningPackageState()}
       {renderAiSettingsModal()}
       <GenerationWizard open={showGenerationWizard} project={selectedProject} files={files}
+        generationMode={documentWorkflow ? 'planning_package' : 'document'}
         intelligence={intelligencePreview || generation?.intelligence} intelligenceOverrides={buildIntelligenceOverrides()}
         onClose={() => setShowGenerationWizard(false)} onGenerate={handleGenerate}
         onReviewEvidence={() => { setShowGenerationWizard(false); setShowPlannerWorkspace(false); setCurrentStep('intelligence'); }}
-        onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)} />
+        onOpenPlanner={selection => openPlannerWorkspace(selectedProjectId, selection)} />
       {showPlannerWorkspace && selectedProjectId && <PlannerWorkspacePage embedded planningProjectId={selectedProjectId}
-        initialScheduleId={planningSchedule?.schedule_id} initialVersionId={planningSchedule?.schedule_version_id} initialTab={workspaceInitialTab}
-        onBack={() => { setShowPlannerWorkspace(false); if (planningSchedule) setCurrentStep('wbs'); }} onOpenGenerationWizard={() => { setShowPlannerWorkspace(false); setShowGenerationWizard(true); }} />}
-      <nav aria-label="Planning stages" hidden={showPlannerWorkspace}><ol className="pln-steps">{stages.map((stage, index) => {
+        initialScheduleId={planningSchedule?.schedule_id} initialVersionId={planningSchedule?.schedule_version_id} initialGenerationId={workspaceGenerationId} initialAnalysisRunId={workspaceAnalysisRunId} initialTab={workspaceInitialTab}
+        onOpenDocumentStep={request => setLocalDocumentReviewRequest({ ...request, requestId: Date.now() })}
+        onBack={() => { setShowPlannerWorkspace(false); if (planningSchedule) setCurrentStep('wbs'); }} onOpenGenerationWizard={() => { setShowPlannerWorkspace(false); if (documentWorkflow && !intelligencePreview?.document_intelligence_run_id) setCurrentStep('intelligence'); else setShowGenerationWizard(true); }} />}
+      <nav aria-label="Planning stages" hidden={showPlannerWorkspace || documentWorkflow}><ol className="pln-steps">{stages.map((stage, index) => {
         const active = index === selectedStage;
         const available = !analyzing && !savingPreview && !workBreakdownSaving && (index === 0 || (Boolean(selectedProjectId) && (manualPlanning ? index === 1 ? inputsReady : !loadingContract && Boolean(planningSchedule) : Boolean(generation) || (index === 1 && Boolean(intelligencePreview)))));
         const complete = index === 0 && (manualPlanning ? inputsReady : previewConfirmed) && selectedStage > 0;
@@ -4137,8 +4570,21 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
       })}</ol></nav>
       {loadingProjects ? <div className="pln-workspace-tools" role="status"><RefreshCw size={17} className="animate-spin" />Loading project planning…</div> : <>
         {contractError && <div className="pln-error" role="alert">{contractError.title}. <button type="button" className="pln-button" onClick={() => loadEnterpriseContract(selectedProjectId)}>Retry connection</button></div>}
-        <PlanningInputsPanel project={selectedProject} enterpriseProject={enterpriseProject} contract={enterpriseContract}
-          loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} analysisRevision={analysisRevision}
+        <div className={documentWorkflow ? 'pln-document-workflow' : undefined}>
+        {documentWorkflow && !showPlannerWorkspace && <nav className="pln-document-steps" aria-label="Document Intelligence workflow">
+          {PLANNING_WORKFLOW_STEPS.map((step, index) => {
+            const locked = !selectedProjectId || analyzing || packageBusy || savingPreview || savingEdit || workBreakdownSaving || (step.requiresGeneration && step.id !== 'schedule' && !generation && !(step.id === 'wbs' && manualPlanning && inputsReady));
+            return <button type="button" key={step.id} disabled={locked} aria-current={currentStep === step.id ? 'step' : undefined}
+              title={locked && step.requiresGeneration && !generation ? 'Generate a draft to view this output.' : undefined}
+              onClick={async () => { if (workBreakdownDirty && step.id !== 'wbs' && !(await radaiConfirm('Leave Work breakdown and discard unsaved task changes?'))) return; setCurrentStep(step.id); }}>
+              <span className="pln-document-step-icon" aria-hidden="true">{step.icon}</span>
+              <span><strong>{index + 1}. {step.label}</strong><small>{step.description}</small></span>
+            </button>;
+          })}
+        </nav>}
+        <div className="pln-document-content">
+        <PlanningInputsPanel project={selectedProject} enterpriseProject={enterpriseProject} contract={enterpriseContract} idPrefix={documentWorkflow ? 'document-planning' : 'planning'}
+          loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} busy={packageBusy} analysisRevision={analysisRevision} analysisRunId={reviewAnalysisRunId}
           uploadCategory={uploadCategory} onUploadCategory={setUploadCategory} onUpload={handleUpload} onDeleteFile={handleDeleteFile}
           onAnalyze={handleAnalyze} onSaved={savedProject} onBack={backToPortfolio}
           onOpenWorkBreakdown={() => setCurrentStep('wbs')}
@@ -4150,11 +4596,14 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           onAiSettings={() => { setShowAiSettingsModal(true); setTestResult(null); }} hidden={showPlannerWorkspace || currentStep !== 'upload'}
           onRevealInputs={() => { setShowPlannerWorkspace(false); setCurrentStep('upload'); }} />
         {!showPlannerWorkspace && currentStep !== 'upload' && <div className="pln-advanced-panel">
-          <nav className="pln-task-tabs" aria-label="Planning tasks" hidden={currentStep === 'wbs'}>{(stages[selectedStage]?.steps || []).map(id => <button type="button" key={id} aria-pressed={currentStep === id} onClick={() => setCurrentStep(id)}>{PLANNING_WORKFLOW_STEPS.find(step => step.id === id)?.label}</button>)}</nav>
+          <nav className="pln-task-tabs" aria-label="Planning tasks" hidden={documentWorkflow || currentStep === 'wbs'}>{(stages[selectedStage]?.steps || []).map(id => <button type="button" key={id} aria-pressed={currentStep === id} onClick={() => setCurrentStep(id)}>{PLANNING_WORKFLOW_STEPS.find(step => step.id === id)?.label}</button>)}</nav>
           {renderStepContent()}
-          <div className="pln-workspace-tools" hidden={currentStep === 'wbs'}><button type="button" className="pln-button" onClick={() => setCurrentStep('upload')}>Back to scope &amp; inputs</button><span>{enterpriseProject?.code} · {enterpriseProject?.name}</span><button type="button" className="pln-button pln-primary" disabled={currentStep === 'intelligence' && (!canConfirmPreview || savingPreview)} onClick={currentStep === 'intelligence' ? confirmPreview : () => openPlannerWorkspace(selectedProjectId)}>{currentStep === 'intelligence' ? savingPreview ? 'Saving confirmation…' : previewConfirmed ? 'Continue to Work breakdown' : 'Confirm & save → Work breakdown' : 'Open schedule workspace'}</button></div>
+          <div className="pln-workspace-tools" hidden={!documentWorkflow && currentStep === 'wbs'}><button type="button" className="pln-button" onClick={() => setCurrentStep('upload')}>Back to scope &amp; inputs</button><span>{currentStep === 'intelligence' && previewConfirmed ? 'Preview confirmed and saved.' : `${enterpriseProject?.code} · ${enterpriseProject?.name}`}</span>
+            {currentStep === 'intelligence' && intelligencePreview?.document_intelligence_run_id && <><button type="button" className="pln-button" disabled={analyzing || packageBusy || savingPreview || savingEdit || Boolean(editingSection) || intelligenceOutdated} onClick={() => requestPlanningWorkspace(intelligencePreview.document_intelligence_run_id)}>Open schedule workspace</button><button type="button" className="pln-button" disabled={analyzing || packageBusy || savingPreview || savingEdit || Boolean(editingSection)} onClick={() => openPlannerWorkspace(selectedProjectId, { analysisRunId: intelligencePreview.document_intelligence_run_id })}>Review extracted source</button></>}
+            <button type="button" className="pln-button pln-primary" disabled={currentStep === 'intelligence' && (!canConfirmPreview || savingPreview)} onClick={currentStep === 'intelligence' ? confirmPreview : () => openPlannerWorkspace(selectedProjectId)}>{currentStep === 'intelligence' ? savingPreview ? 'Saving confirmation…' : documentWorkflow ? previewConfirmed ? 'Continue to Schedule Generator' : 'Confirm & save preview' : previewConfirmed ? 'Continue to Work breakdown' : 'Confirm & save → Work breakdown' : 'Open schedule workspace'}</button></div>
         </div>}
         {selectedProject && !showPlannerWorkspace && currentStep !== 'wbs' && <details className="pln-workspace-details"><summary>Planning tools &amp; workspace details</summary><div className="pln-workspace-tools">{!manualPlanning && <button type="button" className="pln-button" onClick={() => setCurrentStep('intelligence')}>Document Intelligence Preview</button>}<span>{manualPlanning ? 'Manage the project calendar, tasks and schedule.' : 'Review the schedule basis, discipline inputs and generation plan.'}</span></div>{renderProjectPicker()}</details>}
+        </div></div>
       </>}
       {renderVisualizationModal()}
     </div>;
@@ -4207,6 +4656,8 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
         </header>}
 
         {renderBanner()}
+        {renderPreviousAnalysisNotice()}
+        {renderPendingPlannerNotice()}
         {renderAiSettingsModal()}
         <GenerationWizard
           open={showGenerationWizard}
@@ -4217,7 +4668,7 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
           onClose={() => setShowGenerationWizard(false)}
           onGenerate={handleGenerate}
           onReviewEvidence={() => { setShowGenerationWizard(false); setShowPlannerWorkspace(false); setCurrentStep('intelligence'); }}
-        onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)}
+        onOpenPlanner={selection => openPlannerWorkspace(selectedProjectId, selection)}
         />
 
         {loadingProjects ? (
@@ -4265,7 +4716,13 @@ const PlanningPackagePage = ({ embedded = false, enterpriseProject = null, onBac
 
 PlanningPackagePage.propTypes = {
   embedded: PropTypes.bool,
+  documentWorkflow: PropTypes.bool,
   onBackToPortfolio: PropTypes.func,
+  onOpenPlanner: PropTypes.func,
+  onAnalysisStateChange: PropTypes.func,
+  generationRequest: PropTypes.number,
+  scheduleWorkspaceRequest: PropTypes.number,
+  documentReviewRequest: PropTypes.shape({ step: PropTypes.string, generationId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), analysisRunId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), analysisAction: PropTypes.oneOf(['settings', 'retry']), planningProjectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), requestId: PropTypes.number }),
   enterpriseProject: PropTypes.shape({
     id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     name: PropTypes.string,

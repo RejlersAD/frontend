@@ -73,7 +73,10 @@ test('partial uploaded approval history shows verified names and unverified VP w
 test('ordinary draft without source evidence keeps its unconfigured workflow message', async ({ page }) => {
   const state = await openRecord(page)
   await expect(history(page)).toContainText('Approval workflow has not been configured.')
-  await expect(history(page).getByRole('listitem')).toHaveCount(0)
+  await expect(history(page).getByRole('listitem')).toHaveCount(1)
+  await expect(history(page)).toContainText('Richa Hannah Thomas')
+  await expect(history(page)).toContainText('Level 0')
+  await expect(history(page)).toContainText('Not recorded')
   await expect(history(page)).not.toContainText('Approvals recorded on uploaded PR')
   await expect(history(page)).not.toContainText('Signature verification incomplete')
   await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
@@ -88,7 +91,7 @@ test('configured workflow takes precedence over display-only uploaded approval h
     price_remarks_data: sourceMetadata,
     attachments: [{ type: 'signed_purchase_requisition_pdf', filename: 'Synthetic-approval-history.pdf' }],
   })
-  await expect(history(page).getByRole('listitem')).toHaveCount(1)
+  await expect(history(page).getByRole('listitem')).toHaveCount(2)
   await expect(history(page)).toContainText('Current Workflow Approver')
   await expect(history(page)).not.toContainText('Dana Farah')
   await expect(history(page)).not.toContainText('Approvals recorded on uploaded PR')

@@ -22,7 +22,9 @@ import RecommendationSourceDocument from './RecommendationSourceDocument';
 import RejectedRequisitionRevision, { RequisitionRevisionHistory } from './RejectedRequisitionRevision';
 import ApprovalRecordPdfPreview from './ApprovalRecordPdfPreview';
 import { getOriginalRecommendationDocuments } from './recommendationSourceDocuments';
-import { recommendationSourceApprovals } from './recommendationApprovalEvidence';
+import { approvalLevelLabel, recommendationDisplayApprovals, recommendationSourceApprovals } from './recommendationApprovalEvidence';
+import { recommendationProjectNumbers } from './recommendationProjectNumbers';
+import RecordedApprovalHistory from './RecordedApprovalHistory';
 import { recommendationVat } from './recommendationVat';
 import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
@@ -76,12 +78,16 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   const [reloadedRecord, setReloadedRecord] = useState(null);
   const requisition = reloadedRecord && reloadedRecord.original === initialRequisition ? reloadedRecord.record : initialRequisition;
   const [submissionConflict, setSubmissionConflict] = useState('');
+  const [showSourceApprovers, setShowSourceApprovers] = useState(false);
+  const [editingSourceApproval, setEditingSourceApproval] = useState(false);
   const [reloadingRecord, setReloadingRecord] = useState(false);
   const reloadContextRef = useRef(null);
   useEffect(() => {
     reloadContextRef.current = {};
     setReloadedRecord(null);
     setSubmissionConflict('');
+    setShowSourceApprovers(false);
+    setEditingSourceApproval(false);
     setReloadingRecord(false);
     return () => { reloadContextRef.current = null; };
   }, [isOpen, initialRequisition]);
@@ -251,6 +257,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   const normalizeApprovalStatus = (rawStatus) => {
     const normalized = (rawStatus || '').toString().trim().toLowerCase();
     if (['approved', 'complete', 'completed'].includes(normalized)) return 'approved';
+    if (normalized === 'verified') return 'verified';
     if (['not_approved', 'rejected', 'declined'].includes(normalized)) return 'not_approved';
     if (['not_recorded', 'not recorded', 'unknown'].includes(normalized)) return 'not_recorded';
     return 'pending';
@@ -270,6 +277,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   const approvalStatusLabel = (stageOrStatus) => {
     const normalized = approvalDisplayStatus(stageOrStatus);
     if (normalized === 'approved') return 'Approved';
+    if (normalized === 'verified') return 'Signature verified';
     if (normalized === 'not_approved') return 'Rejected';
     if (normalized === 'not_recorded') return 'Not recorded';
     return 'Pending';
@@ -288,9 +296,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   );
   const sourceApprovalHistory = recommendationSourceApprovals(requisition);
   const showingSourceHistory = approvalHierarchy.length === 0 && sourceApprovalHistory.length > 0;
-  const displayedApprovalHistory = showingSourceHistory
+  const displayedApprovalHistory = recommendationDisplayApprovals(requisition, showingSourceHistory
     ? displayApprovalWorkflow(sourceApprovalHistory, requisition.po_number_reference, requisition.po_applicable)
-    : approvalHierarchy;
+    : approvalHierarchy);
+  const projectNumbers = recommendationProjectNumbers(requisition);
 
   // Active stage determination
   const pendingStages = approvalHierarchy.filter((entry) => {
@@ -345,7 +354,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
     ? ['create', 'update'].every(action => (moduleActions[module] || []).includes(action))
     : isSuperAdmin;
 
-  const canActOnCurrentStage = !submissionConflict && canDecideProcurement(requisition, currentUser);
+  const canEditSourceApprovers = (isCurrentUserIssuer || isSuperAdmin)
+    && (!moduleActions || Boolean(moduleActions.procurement_requisitions?.includes('update')));
+  const canActOnCurrentStage = !submissionConflict && !editingSourceApproval && canDecideProcurement(requisition, currentUser);
 
   const APPROVER_CONFIG = {
     dynamic: {
@@ -395,7 +406,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   const hasAnyApprovalCapability = Object.values(APPROVER_CONFIG).some(config => config.canApprove);
 
   const handleSubmitForApproval = async () => {
-    if (submissionConflict || loading || !isDraft || (!isCurrentUserIssuer && !isSuperAdmin)) return;
+    if (submissionConflict || loading || editingSourceApproval || !isDraft || (!isCurrentUserIssuer && !isSuperAdmin)) return;
     setLoading(true);
     try {
       const response = await apiClient.post(`/procurement/requisitions/${requisition.id}/submit/`, {
@@ -424,6 +435,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
       if (reloadContextRef.current !== context) return;
       if (String(data?.id) !== String(requisition.id)) throw new Error('The loaded recommendation did not match.');
       setReloadedRecord({ original: initialRequisition, record: data });
+      setShowSourceApprovers(false);
       setPdfPreviewRetryKey(value => value + 1);
       setSubmissionConflict('');
     } catch {
@@ -434,7 +446,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   };
 
   const handleResendMissingApprovals = async () => {
-    if (!isConverted) return;
+    if (!isConverted || editingSourceApproval || loading || submissionConflict) return;
     const confirmed = (await radaiConfirm(
       'Resend the missing approval requests? Approvers will be notified and must record their own decisions.'
     ));
@@ -552,7 +564,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
   };
 
   const handleReferral = async () => {
-    if (loading || submissionConflict) return;
+    if (loading || submissionConflict || editingSourceApproval) return;
     if (referralRemarks.trim().length < 10) {
       setReferralError('Add at least 10 characters explaining the discussion required.');
       return;
@@ -678,7 +690,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
 
   const getStatusColor = (stageOrStatus) => {
     const normalized = approvalDisplayStatus(stageOrStatus);
-    if (normalized === 'approved') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+    if (normalized === 'approved' || normalized === 'verified') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
     if (normalized === 'not_approved') return 'bg-red-100 text-red-800 border-red-300';
     if (normalized === 'not_recorded') return 'bg-slate-100 text-slate-700 border-slate-300';
     return 'bg-amber-100 text-amber-800 border-amber-300';
@@ -722,22 +734,26 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                 </div>
               </div>
               <section className="min-w-0 flex-1 xl:mx-6" aria-label="Approval history">
+                {!approvalHierarchy.length && !sourceApprovalHistory.length && <p className="mb-1 text-xs text-slate-600">Approval workflow has not been configured.</p>}
                 {showingSourceHistory && <p className="mb-1 text-xs text-slate-600">Approvals recorded on uploaded PR{!requisition.price_remarks_data?.signed_document_verification?.signed_off && ' · Signature verification incomplete'}</p>}
-                <div className="flex min-w-0 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50" role="list" aria-label="Approval workflow progress">
+                <div className="flex min-w-0 flex-wrap rounded-lg border border-slate-200 bg-slate-50" role="list" aria-label="Approval workflow progress">
                   {displayedApprovalHistory.length > 0 ? displayedApprovalHistory.map((stage, index) => {
                     const stageStatus = approvalDisplayStatus(stage);
                     const evidence = approvalSignatureEvidence(stage);
                     const stageTimestamp = stage.approved_at || stage.rejected_at || stage.evidence_requested_at;
                     return (
-                      <div key={`${stage.role || stage.stage}-${index}`} className="flex min-w-[170px] flex-1 items-center gap-2.5 border-r border-slate-200 px-3 py-2 last:border-r-0" role="listitem" title={[stage.role || stage.stage, stage.user_name, approvalStatusLabel(stage), stageTimestamp && formatTimestamp(stageTimestamp)].filter(Boolean).join(' · ')}>
+                      <div key={`${stage.role || stage.stage}-${index}`} className="flex min-w-0 basis-[170px] flex-grow items-center gap-2.5 border-b border-r border-slate-200 px-3 py-2" role="listitem" title={[stage.role || stage.stage, stage.user_name, approvalLevelLabel(stage), approvalStatusLabel(stage), stageTimestamp && formatTimestamp(stageTimestamp)].filter(Boolean).join(' · ')}>
                           <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border ${getStatusColor(stage)}`}>
-                            {stageStatus === 'approved' ? <CheckCircleIcon className="h-4 w-4" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+                            {stageStatus === 'approved' || stageStatus === 'verified' ? <CheckCircleIcon className="h-4 w-4" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
                           </span>
-                          <div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-800">{stage.role || stage.stage || `Stage ${index + 1}`}</p><p className="truncate text-sm text-slate-700">{nameOnly(stage.user_name) || 'Name not recorded'}</p>{evidence.mismatch && <p className="mt-0.5 text-xs font-semibold text-amber-800">Signature needs review{evidence.recordedName ? `. Recorded signer: ${nameOnly(evidence.recordedName)}` : ''}</p>}<p className="mt-0.5 truncate text-xs text-slate-500">{approvalStatusLabel(stage)}{stageTimestamp ? ` · ${formatTimestamp(stageTimestamp)}` : stageStatus === 'approved' ? ' · Date not recorded' : showingSourceHistory && stageStatus === 'not_recorded' ? ' · Signature not verified' : ''}</p></div>
+                          <div className="min-w-0"><p className="break-words text-xs font-semibold text-slate-800">{stage.role || stage.stage || `Stage ${index + 1}`}{approvalLevelLabel(stage) && <span className="block text-indigo-700">{approvalLevelLabel(stage)}</span>}</p><p className="break-words text-sm text-slate-700">{nameOnly(stage.user_name) || 'Name not recorded'}</p>{evidence.mismatch && <p className="mt-0.5 text-xs font-semibold text-amber-800">Signature needs review{evidence.recordedName ? `. Recorded signer: ${nameOnly(evidence.recordedName)}` : ''}</p>}<p className="mt-0.5 break-words text-xs text-slate-500">{approvalStatusLabel(stage)}{stageTimestamp ? ` · ${formatTimestamp(stageTimestamp)}` : stageStatus === 'approved' ? ' · Date not recorded' : showingSourceHistory && !stage.default_level_zero && !stage.source_review_annotation && stageStatus === 'not_recorded' ? ' · Signature not verified' : ''}</p>{stage.special_note && <p title={stage.special_note} className="mt-1 line-clamp-2 break-words text-xs text-slate-600">Special note: {stage.special_note}</p>}</div>
                       </div>
                     );
                   }) : <p className="px-3 py-2 text-xs text-slate-500">{hasOriginalPr ? 'Uploaded approval evidence needs verification.' : 'Approval workflow has not been configured.'}</p>}
                 </div>
+                {requisition.price_remarks_data?.signed_document_verification?.document_sha256 && <button type="button"
+                  onClick={() => setShowSourceApprovers(value => !value)} disabled={editingSourceApproval}
+                  aria-expanded={showSourceApprovers} className="mt-2 text-xs font-semibold text-indigo-700 underline disabled:opacity-50">Review source approvers</button>}
               </section>
               <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label="Purchase Recommendation actions">
                 {canExportWord && <button type="button" onClick={downloadWord} disabled={wordPending} aria-busy={wordPending} title="Download saved Purchase Requisition data as Word (.docx). Original signed documents remain separate." className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
@@ -760,6 +776,14 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
             </div>
           </header>
 
+          {showSourceApprovers && <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="Source approver review">
+            <h2 className="mb-3 text-base font-semibold text-slate-900">Recorded approval history</h2>
+            <RecordedApprovalHistory requisition={requisition} expectedUpdatedAt={requisition.updated_at}
+              canEdit={canEditSourceApprovers} disabled={loading || Boolean(submissionConflict)}
+              onSaved={record => { setReloadedRecord({ original: initialRequisition, record }); setPdfPreviewRetryKey(value => value + 1); }}
+              onStaleRecord={setSubmissionConflict} onEditingChange={setEditingSourceApproval} />
+          </section>}
+
           {wordError && <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{wordError}</div>}
           {isRejected && <div className="mb-4"><RejectedRequisitionRevision requisition={requisition}
             onReopened={() => navigate(`/procurement/requisitions/${requisition.id}/edit`)}
@@ -779,6 +803,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Issued Date</dt><dd className="mt-1 text-sm text-slate-900">{formatDate(requisition.issued_date)}</dd></div>
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Issued By</dt><dd className="mt-1 text-sm text-slate-900">{requisition.issued_by_name || '—'}</dd></div>
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project / Department</dt><dd className="mt-1 text-sm text-slate-900">{requisition.project_department || requisition.enterprise_project_name || '—'}</dd></div>
+                    <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project numbers</dt><dd className="mt-1 break-words text-sm text-slate-900">{projectNumbers.join(', ') || '—'}</dd></div>
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Type</dt><dd className="mt-1 text-sm text-slate-900">{requisition.requisition_type_display || requisition.requisition_type || '—'}</dd></div>
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priority</dt><dd className="mt-1 text-sm text-slate-900">{requisition.priority_display || requisition.priority || '—'}</dd></div>
                     <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Product / Service</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{requisition.product_service || requisition.description_reason || '—'}</dd></div>
@@ -1021,7 +1046,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                           </select>
                           <textarea value={referralRemarks} onChange={event => { setReferralRemarks(event.target.value); setReferralError(''); }} rows={3} className="w-full rounded-lg border border-indigo-300 px-3 py-2 text-sm" placeholder="Explain the discussion or resolution required..." />
                           {referralError && <p className="text-xs text-red-600">{referralError}</p>}
-                          <button type="button" onClick={handleReferral} disabled={loading || Boolean(submissionConflict)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Send for Discussion</button>
+                          <button type="button" onClick={handleReferral} disabled={loading || editingSourceApproval || Boolean(submissionConflict)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Send for Discussion</button>
                         </div>
                       )}
                     </div>
@@ -1040,7 +1065,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                           {nameOnly(currentStage.user_name) || currentStageLabel} is assigned and pending, but this requisition is still a draft. Approve and Reject become available only after submission.
                         </p>
                         {(isCurrentUserIssuer || isSuperAdmin) ? (
-                          <button type="button" onClick={handleSubmitForApproval} disabled={loading || Boolean(submissionConflict)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                          <button type="button" onClick={handleSubmitForApproval} disabled={loading || editingSourceApproval || Boolean(submissionConflict)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
                             <PaperAirplaneIcon className="h-4 w-4" />
                             {loading ? 'Submitting...' : 'Submit for Approval'}
                           </button>
