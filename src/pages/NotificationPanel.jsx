@@ -34,6 +34,7 @@ import {
 import notificationService from '../services/notification.service'
 import apiClient from '../services/api.service'
 import { resolveNotificationTarget } from '../utils/notificationNavigation'
+import { loadNotificationInbox } from '../utils/notificationInbox'
 import { notificationCategory, notificationPriority, isApprovalNotification, isUrgentNotification, notificationSourceKey, notificationDateGroup, notificationTimeLabel } from '../utils/notificationCenter'
 import NotificationPurchaseOrderPreview from '../components/notifications/NotificationPurchaseOrderPreview'
 import PurchaseRequisitionDocumentPreview from './Procurement/PurchaseRequisitionDocumentPreview'
@@ -65,10 +66,6 @@ const requestErrorMessage = (error) => {
   }
   return error?.response?.data?.detail || 'Notifications could not be refreshed. The existing inbox remains available.'
 }
-
-const incompleteInboxError = () => Object.assign(new Error('Incomplete notification snapshot'), {
-  notificationMessage: 'The complete notification inbox could not be loaded. Please retry.',
-})
 
 const PRIORITY_STYLES = {
   CRITICAL: {
@@ -194,10 +191,10 @@ const NotificationPanel = () => {
     if (!quiet) setLoading(true)
     try {
       const [listResult, statsResult] = await Promise.allSettled([
-        notificationService.getNotifications(
-          { ordering: '-created_at', page_size: 100 },
+        loadNotificationInbox(page => notificationService.getNotifications(
+          { ordering: '-created_at', page_size: 100, ...(page > 1 ? { page } : {}) },
           { signal: controller.signal },
-        ),
+        ), { signal: controller.signal }),
         notificationService.getStats({ signal: controller.signal }),
       ])
 
@@ -211,30 +208,7 @@ const NotificationPanel = () => {
         return
       }
 
-      const listData = listResult.value
-      if (!Array.isArray(listData) && !Array.isArray(listData?.results)) throw incompleteInboxError()
-      if (listData?.count !== undefined && (!Number.isInteger(listData.count) || listData.count < 0)) throw incompleteInboxError()
-      const expectedCount = listData?.count
-      let nextNotifications = Array.isArray(listData?.results)
-        ? listData.results
-        : Array.isArray(listData) ? listData : []
-      let nextPage = listData?.next
-      const maximumPages = Number.isInteger(listData?.count) ? Math.max(1, listData.count) : 1000
-      const visitedPages = new Set([1])
-      while (nextPage) {
-        const page = Number(new URL(nextPage, window.location.origin).searchParams.get('page'))
-        if (!Number.isInteger(page) || page !== visitedPages.size + 1 || visitedPages.has(page) || visitedPages.size >= maximumPages) throw incompleteInboxError()
-        visitedPages.add(page)
-        const data = await notificationService.getNotifications({ ordering: '-created_at', page_size: 100, page }, { signal: controller.signal })
-        if (controller.signal.aborted || inboxContextRef.current !== context) return
-        if (data?.count !== undefined && expectedCount !== undefined && data.count !== expectedCount) throw incompleteInboxError()
-        if (!Array.isArray(data?.results) || !data.results.length || !data.results.some(item => !nextNotifications.some(current => current.id === item.id))) throw incompleteInboxError()
-        nextNotifications = nextNotifications.concat(data.results)
-        nextPage = data?.next
-      }
-      nextNotifications = [...new Map(nextNotifications.map(item => [item.id, item])).values()]
-      if (expectedCount !== undefined && nextNotifications.length !== expectedCount) throw incompleteInboxError()
-      setNotifications(nextNotifications)
+      setNotifications(listResult.value)
       setLoadedInboxContext(context)
       hasLoadedInboxRef.current = true
       setError('')
