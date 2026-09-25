@@ -150,6 +150,15 @@ export async function planningInputsHarness(page, options = {}) {
       page.on('pageerror', error => state.pageErrors.push(error.message))
     },
     async handleRequest(context) {
+      // Exercise compact polling while reusing the scenario's job transitions.
+      if (/\/jobs\/\d+\/progress\/$/.test(context.path)) {
+        const originalReply = context.reply
+        context = { ...context, path: context.path.replace(/progress\/$/, ''), reply: (route, body, status) => {
+          if (!body?.id || !body?.job_type) return originalReply(route, body, status)
+          const { result_data, progress_log, request_data, ...compact } = body
+          return originalReply(route, { ...compact, api_contract_version: 5, result_refs: { intelligence_run_id: result_data?.intelligence?.document_intelligence_run_id || null } }, status)
+        } }
+      }
       const { route, url, path, state, reply } = context
       if (await options.handleRequest?.(context)) return true
       if (!path.includes('/planning-intelligence/')) return false
@@ -162,6 +171,13 @@ export async function planningInputsHarness(page, options = {}) {
         || state.records[url.searchParams.get('enterprise_project')]
         || context.record
       const send = async (body, status = 200) => { await reply(route, body, status); return true }
+      if (path.endsWith('/jobs/active/')) return send(Object.values(state.jobs).find(job => String(job.project) === planningId && job.job_type === 'analyze' && ['queued', 'running'].includes(job.status)) || null)
+      if (path.endsWith('/intelligence-runs/latest/')) {
+        const run = record.runs.find(row => row.status === 'succeeded')
+        return send(run ? { id: run.id, project: run.project, status: run.status } : null)
+      }
+      const runDetail = path.match(/\/intelligence-runs\/(\d+)\/$/)
+      if (runDetail && method === 'GET') return send(Object.values(state.records).flatMap(row => row.runs).find(run => String(run.id) === runDetail[1]) || { detail: 'Analysis not found.' })
       if (path.endsWith('/planning-intelligence/projects/')) {
         if (method === 'GET') return send(pageOf(state.missingPlanning.has(record.project.id) ? [] : [record.planningProject]))
         if (method === 'POST') {

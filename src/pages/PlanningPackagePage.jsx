@@ -185,7 +185,7 @@ const AddDeliverableRow = ({ onAdd }) => {
  * Deterministic extraction is augmented by the project's mandatory AI
  * BYOK configuration. All generated outputs remain subject to planner review.
  */
-const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enterpriseProject = null, onBackToPortfolio, onOpenPlanner, onAnalysisStateChange, generationRequest = 0, scheduleWorkspaceRequest = 0, documentReviewRequest = null }) => {
+const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enterpriseProject = null, recoveredJob = null, onBackToPortfolio, onOpenPlanner, onAnalysisStateChange, generationRequest = 0, scheduleWorkspaceRequest = 0, documentReviewRequest = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -282,7 +282,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [banner, setBanner] = useState(null); // { type: 'error'|'success', message }
-  const { activeJob, monitoringError, checkingStatus, retryMonitoring, runJob: runPlanningJob, clearJob: clearPlanningJob } = usePlanningJob({ projectId: selectedProjectId, recoverActiveAnalysis: documentWorkflow });
+  const { activeJob, monitoringError, checkingStatus, retryMonitoring, runJob: runPlanningJob, clearJob: clearPlanningJob } = usePlanningJob({ projectId: selectedProjectId, recoverActiveAnalysis: documentWorkflow, initialJob: recoveredJob });
   const activeJobMessage = activeJob?.message?.replace(
     /^(?:Anthropic|Google Gemini|AI provider) is reviewing document chunk /,
     'RADAI is reviewing document chunk ',
@@ -445,7 +445,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
       const list = res.data?.results ?? res.data ?? [];
       setProjects(list);
       setSelectedProjectId(prev => (
-        list.some(item => item.id === prev) ? prev : (list[0]?.id || null)
+        list.some(item => item.id === prev) ? prev : (list.find(item => String(item.id) === String(recoveredJob?.project?.id ?? recoveredJob?.project))?.id || list[0]?.id || null)
       ));
       if (embedded) setViewMode('workspace');
     } catch (err) {
@@ -453,7 +453,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
     } finally {
       setLoadingProjects(false);
     }
-  }, [embedded, enterpriseProject?.id]);
+  }, [embedded, enterpriseProject?.id, recoveredJob]);
 
   const loadFiles = useCallback(async (projectId) => {
     if (!projectId) return;
@@ -4717,6 +4717,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
 PlanningPackagePage.propTypes = {
   embedded: PropTypes.bool,
   documentWorkflow: PropTypes.bool,
+  recoveredJob: PropTypes.object,
   onBackToPortfolio: PropTypes.func,
   onOpenPlanner: PropTypes.func,
   onAnalysisStateChange: PropTypes.func,

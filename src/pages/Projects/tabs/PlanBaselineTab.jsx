@@ -1,11 +1,12 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useId, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeftRight, ArrowRight, BarChart3, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Info, Link2, ListFilter, Lock, ShieldCheck, Target, Timer, TrendingUp, X,
 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import PlanningPackagePage from '../../PlanningPackagePage'
+import PlanningBackgroundMonitor from '../../../components/planning/PlanningBackgroundMonitor'
 import PlannerWorkspacePage from '../../PlannerWorkspacePage'
 import { resolvePlanningSchedule } from '../../../services/planningScheduleSelection'
 import { radaiConfirm } from '../../../services/radaiDialog'
@@ -100,6 +101,10 @@ function Timeline({ rows, start, end, onOpen }) {
 }
 
 export default function PlanBaselineTab(props) {
+  return <PlanBaselineContent key={props.project.id} {...props} />
+}
+
+function PlanBaselineContent(props) {
   const mode = props.scheduleMode === 'documents' ? 'documents' : 'planner'
   const [visited, setVisited] = useState(() => new Set([mode]))
   const [handoff, setHandoff] = useState(null)
@@ -108,6 +113,9 @@ export default function PlanBaselineTab(props) {
   const [documentReviewRequest, setDocumentReviewRequest] = useState(null)
   const [plannerDirty, setPlannerDirty] = useState(false)
   const [analysisState, setAnalysisState] = useState(null)
+  const [backgroundJob, setBackgroundJob] = useState(null)
+  const acceptBackgroundJob = useCallback(job => setBackgroundJob(job), [])
+  const documentsMounted = mode === 'documents' || visited.has('documents') || Boolean(backgroundJob)
   useEffect(() => { setHandoff(null); setDocumentReviewRequest(null); setGenerationRequest(0); setScheduleWorkspaceRequest(0); setPlannerDirty(false); setAnalysisState(null) }, [props.project.id])
   useEffect(() => { setVisited(previous => previous.has(mode) ? previous : new Set([...previous, mode])) }, [mode])
   const openPlanner = async selection => {
@@ -134,8 +142,8 @@ export default function PlanBaselineTab(props) {
       {[['documents', 'Document Intelligence'], ['planner', 'Master Schedule']].map(([value, label]) =>
         <button type="button" key={value} aria-pressed={mode === value} onClick={() => selectMode(value)}>{label}</button>)}
     </nav>
-    {/* One document monitor must also recover active analysis on direct Master entry. */}
-    <div hidden={mode !== 'documents'}><PlanningPackagePage key={props.project.id} embedded documentWorkflow enterpriseProject={props.project} generationRequest={generationRequest} scheduleWorkspaceRequest={scheduleWorkspaceRequest} documentReviewRequest={documentReviewRequest} onOpenPlanner={openPlanner} onAnalysisStateChange={setAnalysisState} onBackToPortfolio={() => props.onSelectView?.('project-dashboard')} /></div>
+    {!documentsMounted && <PlanningBackgroundMonitor enterpriseProjectId={props.project.id} onState={setAnalysisState} onReady={acceptBackgroundJob} />}
+    {documentsMounted && <div hidden={mode !== 'documents'}><PlanningPackagePage key={props.project.id} embedded documentWorkflow enterpriseProject={props.project} recoveredJob={backgroundJob} generationRequest={generationRequest} scheduleWorkspaceRequest={scheduleWorkspaceRequest} documentReviewRequest={documentReviewRequest} onOpenPlanner={openPlanner} onAnalysisStateChange={setAnalysisState} onBackToPortfolio={() => props.onSelectView?.('project-dashboard')} /></div>}
     {(visited.has('planner') || mode === 'planner') && <div hidden={mode !== 'planner'}><UnifiedScheduleWorkspace key={props.project.id} {...props} handoff={handoff} analysisState={analysisState} onDirtyChange={setPlannerDirty} onOpenDocuments={openDocuments} onOpenGeneration={openGeneration} onOpenDocumentStep={openDocumentStep} /></div>}
   </div>
 }

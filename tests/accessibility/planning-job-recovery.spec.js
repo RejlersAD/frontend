@@ -14,6 +14,39 @@ const focus = page => page.evaluate(() => window.dispatchEvent(new Event('focus'
 const calls = (page, method) => page.evaluate(name => window.jobRecovery.calls.filter(call => call.method === name), method)
 const expectNoStarts = async page => expect(await calls(page, 'start')).toHaveLength(0)
 
+test('compact progress polls fetch full result exactly once at completion', async ({ page }) => {
+  await mount(page, { compact: true, list: [{ value: [job(91, { api_contract_version: 5 })] }],
+    progress: [{ value: job(91, { api_contract_version: 5 }) }, { value: job(91, { status: 'succeeded', api_contract_version: 5 }) }],
+    get: [{ value: job(91, { status: 'succeeded', result_data: { intelligence_run_id: 44 } }) }],
+  })
+  await expect(page.locator('output')).toHaveText('91: succeeded')
+  expect(await calls(page, 'progress')).toHaveLength(2)
+  expect(await calls(page, 'get')).toHaveLength(1)
+  expect(await page.evaluate(() => window.jobRecovery.activeJob.result_data.intelligence_run_id)).toBe(44)
+  await expectNoStarts(page)
+})
+
+test('completion waits for result recovery and never publishes a compact terminal payload', async ({ page }) => {
+  await mount(page, { compact: true, saved: 91,
+    progress: [{ value: job(91, { status: 'succeeded', api_contract_version: 5 }) }, { value: job(91, { status: 'succeeded', api_contract_version: 5 }) }],
+    get: [{ error: { status: 503 } }, { value: job(91, { status: 'succeeded', result_data: { intelligence_run_id: 44 } }) }],
+  })
+  await expect.poll(() => page.evaluate(() => window.jobRecovery.monitoringError?.message)).toBe('Status unavailable')
+  await expect(page.locator('output')).toHaveText('No job')
+  await page.evaluate(() => window.jobRecovery.retry())
+  await expect(page.locator('output')).toHaveText('91: succeeded')
+  expect(await calls(page, 'get')).toHaveLength(2)
+  await expectNoStarts(page)
+})
+
+test('a transferred completed job resumes without a duplicate detail request', async ({ page }) => {
+  await mount(page, { compact: true, initialJob: job(92, { status: 'succeeded', result_data: { intelligence_run_id: 45 } }) })
+  await expect(page.locator('output')).toHaveText('92: succeeded')
+  expect(await calls(page, 'progress')).toHaveLength(0)
+  expect(await calls(page, 'get')).toHaveLength(0)
+  expect(await calls(page, 'list')).toHaveLength(0)
+})
+
 test('opt-out schedule hooks never discover jobs on entry or focus', async ({ page }) => {
   await mount(page, { enabled: false, list: [{ value: [job(76)] }] })
   await focus(page)

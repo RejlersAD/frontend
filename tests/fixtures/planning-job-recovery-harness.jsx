@@ -7,7 +7,7 @@ import service from '../../src/services/planningIntelligence.service'
 const setup = window.jobRecoverySetup || {}
 const calls = []
 const pending = new Map()
-const queues = { list: [...(setup.list || [])], get: [...(setup.get || [])], start: [...(setup.start || [])] }
+const queues = { list: [...(setup.list || [])], get: [...(setup.get || [])], progress: [...(setup.progress || [])], start: [...(setup.start || [])] }
 const execute = async (method, args) => {
   calls.push({ method, args })
   let response = queues[method]?.shift()
@@ -17,7 +17,8 @@ const execute = async (method, args) => {
   if (method === 'list') return []
   return { id: args[0], project: 32, job_type: 'analyze', status: 'running' }
 }
-service.listJobs = (...args) => execute('list', args)
+service.getActiveJob = async (...args) => (await execute('list', args))?.filter(item => String(item.project) === String(args[0]) && item.job_type === 'analyze' && ['queued', 'running'].includes(item.status)).sort((a, b) => b.id - a.id)[0] || null
+service.getJobProgress = (...args) => execute(setup.compact ? 'progress' : 'get', args)
 service.getJob = (...args) => execute('get', args)
 service.cancelJob = (...args) => execute('cancel', args)
 
@@ -26,6 +27,7 @@ function Harness() {
   const jobState = usePlanningJob({
     projectId, pollInterval: 100, storageKey: 'planning-job-recovery-test',
     recoverActiveAnalysis: setup.enabled !== false,
+    initialJob: setup.initialJob || null,
   })
   useEffect(() => {
     window.jobRecovery = {

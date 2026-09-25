@@ -4,7 +4,7 @@ import planningIntelligenceService from '../services/planningIntelligence.servic
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
-export default function usePlanningJob({ pollInterval = 1500, storageKey = 'radai-planning-active-job', projectId, recoverActiveAnalysis = false } = {}) {
+export default function usePlanningJob({ pollInterval = 1500, storageKey = 'radai-planning-active-job', projectId, recoverActiveAnalysis = false, initialJob = null } = {}) {
   const [activeJob, setActiveJob] = useState(null)
   const [monitoringError, setMonitoringError] = useState(null)
   const [checkingStatus, setCheckingStatus] = useState(false)
@@ -15,7 +15,7 @@ export default function usePlanningJob({ pollInterval = 1500, storageKey = 'rada
   const recoveryRequest = useRef(null)
   const clearedJobIds = useRef(new Set())
   const matchesProject = useCallback(job => projectId === undefined
-    || (projectId != null && String(job?.project) === String(projectId)), [projectId])
+    || (projectId != null && String(job?.project?.id ?? job?.project) === String(projectId)), [projectId])
 
   const remember = useCallback(job => {
     activeJobRef.current = job
@@ -51,15 +51,30 @@ export default function usePlanningJob({ pollInterval = 1500, storageKey = 'rada
         await wait(pollInterval)
         if (token !== runToken.current) return null
         try {
-          job = await planningIntelligenceService.getJob(job.id)
+          job = await planningIntelligenceService.getJobProgress(job.id)
         } catch (error) {
           if (token !== runToken.current) return null
           recordMonitoringError(error, job, token)
           throw error
         }
         if (token !== runToken.current || !matchesProject(job)) return null
-        remember(job)
+        if (!TERMINAL_STATUSES.has(job.status)) remember(job)
       }
+      // Compact terminal status is not a completion payload. Publish completion
+      // only after the exact job detail has been loaded and its scope verified.
+      if (job.api_contract_version >= 5 && !Object.hasOwn(job, 'result_data')) {
+        try {
+          const detail = await planningIntelligenceService.getJob(job.id)
+          if (token !== runToken.current || !matchesProject(detail)) return null
+          if (String(detail.id) !== String(job.id) || !TERMINAL_STATUSES.has(detail.status)) throw new Error('The completed job result could not be verified. Retry checking its status.')
+          job = detail
+        } catch (error) {
+          recordMonitoringError(error, job, token)
+          throw error
+        }
+      }
+      if (token !== runToken.current) return null
+      if (!TERMINAL_STATUSES.has(job.status) || Object.hasOwn(job, 'result_data') || !(job.api_contract_version >= 5)) remember(job)
       if (throwOnFailure && job.status !== 'succeeded') {
         const error = new Error(job.error_message || job.message || 'Planning job did not complete.')
         error.job = job
@@ -81,13 +96,13 @@ export default function usePlanningJob({ pollInterval = 1500, storageKey = 'rada
     const request = {}
     recoveryRequest.current = request
     try {
-      const jobs = await planningIntelligenceService.listJobs(projectId, { suppressErrorToast: true })
+      const candidate = await planningIntelligenceService.getActiveJob(projectId)
       if (token !== runToken.current
         || monitoringBusy.current || activeJobRef.current) return
-      const job = Array.isArray(jobs) && jobs.find(candidate => candidate?.id
+      const job = candidate?.id
         && matchesProject(candidate) && candidate.job_type === 'analyze'
         && !clearedJobIds.current.has(String(candidate.id))
-        && ['queued', 'running'].includes(candidate.status))
+        && ['queued', 'running'].includes(candidate.status) ? candidate : null
       if (!job) return
       monitoringErrorRef.current = null
       setMonitoringError(null)
@@ -114,9 +129,11 @@ export default function usePlanningJob({ pollInterval = 1500, storageKey = 'rada
     if (projectId !== null) {
       try { jobId = localStorage.getItem(storageKey) } catch { /* ignore */ }
     }
-    if (jobId) {
+    if (initialJob && matchesProject(initialJob)) {
+      void monitorJob(initialJob, token, { throwOnFailure: false }).catch(error => recordMonitoringError(error, initialJob, token))
+    } else if (jobId) {
       monitoringBusy.current = true
-      planningIntelligenceService.getJob(jobId)
+      planningIntelligenceService.getJobProgress(jobId)
         .then(job => {
           if (token !== runToken.current) return null
           if (!matchesProject(job)) {
@@ -140,7 +157,7 @@ export default function usePlanningJob({ pollInterval = 1500, storageKey = 'rada
       void recoverServerJob()
     }
     return () => { runToken.current += 1 }
-  }, [matchesProject, monitorJob, projectId, recordMonitoringError, recoverServerJob, storageKey])
+  }, [initialJob, matchesProject, monitorJob, projectId, recordMonitoringError, recoverServerJob, storageKey])
 
   useEffect(() => {
     if (!recoverActiveAnalysis) return undefined
@@ -188,7 +205,7 @@ export default function usePlanningJob({ pollInterval = 1500, storageKey = 'rada
     monitoringBusy.current = true
     setCheckingStatus(true)
     try {
-      const job = await planningIntelligenceService.getJob(jobId)
+      const job = await planningIntelligenceService.getJobProgress(jobId)
       if (token !== runToken.current) return null
       monitoringErrorRef.current = null
       setMonitoringError(null)

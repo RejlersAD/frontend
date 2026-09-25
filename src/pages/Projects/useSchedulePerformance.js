@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import apiClient from '../../services/api.service'
+import { planningGet } from '../../services/planningReads'
 import { PLANNING_ENDPOINTS as endpoints } from '../../config/planningIntelligence.config'
 import { resolvePlanningSchedule } from '../../services/planningScheduleSelection'
 
@@ -297,7 +297,7 @@ export default function useSchedulePerformance(project, projectPerformance, revi
           ['controls', 'Schedule progress', endpoints.scheduleControls(data.version.id)],
           ['governance', 'Schedule exceptions', endpoints.scheduleGovernance(data.version.id)],
         ]
-        const results = await Promise.allSettled(requests.map(([field, , endpoint]) => apiClient.get(endpoint, {
+        const results = await Promise.allSettled(requests.map(([field, , endpoint]) => planningGet(endpoint, {
           signal, suppressErrorToast: true,
           ...(field === 'controls' && data.schedule.data_date ? { params: { data_date: data.schedule.data_date } } : {}),
         })))

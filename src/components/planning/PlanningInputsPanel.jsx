@@ -71,14 +71,12 @@ async function allRecords(endpoint, params, signal) {
 }
 
 async function latestCompletedRun(projectId, signal) {
-  // Runs are returned newest first. Avoid loading older, fully compiled previews
-  // once the completed analysis used by this panel has been found.
-  for (let page = 1; page <= 1000; page += 1) {
-    const response = await apiClient.get(PLANNING_ENDPOINTS.intelligenceRuns, { params: { project: projectId, page }, signal })
-    const run = (response.data?.results ?? response.data ?? []).find(item => item.status === 'succeeded')
-    if (run || !response.data?.next) return run || null
-  }
-  throw new Error('The latest completed input analysis could not be loaded.')
+  const { data: latest } = await apiClient.get(PLANNING_ENDPOINTS.latestIntelligenceRun, { params: { project: projectId }, signal })
+  if (!latest) return null
+  if (!latest.id || String(latest.project?.id ?? latest.project) !== String(projectId) || latest.status !== 'succeeded') throw new Error('The latest completed input analysis could not be verified for this project.')
+  const { data: run } = await apiClient.get(PLANNING_ENDPOINTS.intelligenceRun(latest.id), { signal })
+  if (String(run?.id) !== String(latest.id) || String(run.project?.id ?? run.project) !== String(projectId) || run.status !== 'succeeded') throw new Error('The selected document analysis is unavailable for this project.')
+  return run
 }
 
 function InputReviewDialog({ titleId, facts, conflicts, busy, loading, error, notice, stale, previewAvailable, onPreview, onReview, onResolve, onClose, onRetry }) {

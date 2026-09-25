@@ -1,4 +1,4 @@
-import apiClient from './api.service'
+import { planningGet } from './planningReads'
 import { PLANNING_ENDPOINTS as endpoints } from '../config/planningIntelligence.config'
 
 const sameId = (left, right) => String(left?.id ?? left) === String(right?.id ?? right)
@@ -22,7 +22,7 @@ function selectionId(value, label, optional = true) {
 export async function listPlanningRows(endpoint, params, { signal } = {}) {
   const rows = []
   for (let page = 1; page <= 100; page += 1) {
-    const response = await apiClient.get(endpoint, { params: { ...params, page }, signal, suppressErrorToast: true })
+    const response = await planningGet(endpoint, { params: { ...params, page }, signal, suppressErrorToast: true })
     const batch = Array.isArray(response.data) ? response.data : response.data?.results
     if (!Array.isArray(batch)) throw new Error('The planning register returned an invalid response. Retry to refresh it.')
     rows.push(...batch)
@@ -64,13 +64,13 @@ export async function resolvePlanningSchedule(enterpriseProjectId, requested = {
 
   let selectedVersionId = versionId
   if (!selectedVersionId) {
-    const { data: master } = await apiClient.get(`${endpoints.project(linkedProject.id)}simple-plan/`, { signal, suppressErrorToast: true })
+    const { data: master } = await planningGet(`${endpoints.project(linkedProject.id)}simple-plan/`, { signal, suppressErrorToast: true })
     if (!master || !sameId(master.project_id, linkedProject.id)) throw invalidSelection('The current schedule selection could not be verified for this project.')
     selectedVersionId = selectionId(master.master_version_id, 'current master schedule version')
   }
   let selectedVersion = null
   if (selectedVersionId) {
-    const { data: candidate } = await apiClient.get(endpoints.scheduleVersion(selectedVersionId), { signal, suppressErrorToast: true })
+    const { data: candidate } = await planningGet(endpoints.scheduleVersion(selectedVersionId), { signal, suppressErrorToast: true })
     const candidateSchedule = schedules.find(row => sameId(row.id, candidate?.schedule))
     if (!candidate || !sameId(candidate.id, selectedVersionId) || !candidateSchedule || candidate.is_deleted === true) {
       throw invalidSelection('The selected version does not belong to an available project schedule.')
