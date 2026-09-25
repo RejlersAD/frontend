@@ -7,7 +7,7 @@ test.setTimeout(150000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
 
 const modal = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor' })
-const field = (page, label) => modal(page).getByLabel(new RegExp(`^${label}`))
+const field = (page, label) => modal(page).getByLabel(label, { exact: true })
 const labelFor = (page, label) => field(page, label).locator('..')
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
 
@@ -64,7 +64,7 @@ async function preview(page, overrides) {
 }
 
 async function save(page, state) {
-  await modal(page).getByRole('button', { name: 'Create reviewed PR', exact: true }).click()
+  await modal(page).getByRole('button', { name: 'Upload PR', exact: true }).click()
   await expect(modal(page)).toContainText('created from the reviewed PDF')
   expect(state.saveRequests).toHaveLength(1)
   expect(state.saveRequests[0].create_new).toBe('true')
@@ -74,7 +74,7 @@ async function save(page, state) {
   return JSON.parse(state.saveRequests[0].manual_overrides)
 }
 
-test('shows business values and genuine conflicts without extraction details or optional-field warnings', async ({ page }) => {
+test('shows business values, source approval rows and genuine conflicts without optional-field warnings', async ({ page }) => {
   const state = await preview(page)
   await expect(field(page, 'Entered price')).toHaveValue('225608.00')
   await expect(field(page, 'Currency')).toHaveValue('USD')
@@ -95,14 +95,23 @@ test('shows business values and genuine conflicts without extraction details or 
     await expect(field(page, label)).not.toHaveClass(/bg-(?:amber|red)-/)
     await expect(labelFor(page, label)).not.toContainText(/Enter |Conflicting values/)
   }
-  await expect(modal(page).getByRole('heading', { name: 'Price breakdown', exact: true })).toBeVisible()
+  await expect(modal(page).getByRole('heading', { name: 'Description and price breakdown', exact: true })).toBeVisible()
   await expect(modal(page).getByRole('textbox', { name: 'Price line 1 description', exact: true })).toHaveValue('Telecom integration consultancy')
   await expect(modal(page).getByRole('spinbutton', { name: 'Price line 1 amount', exact: true })).toHaveValue('225608.00')
   await expect(modal(page).getByRole('textbox', { name: 'Price line 1 remarks', exact: true })).toHaveValue('Sales Budget USD 225,608.00')
   await expect(field(page, 'Project Manager')).toHaveValue('Maya Hassan')
   await expect(field(page, 'PR Approval date')).toBeVisible()
-  await expect(modal(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(4)
-  await expect(modal(page)).not.toContainText('Source row requires signature review')
+  await expect(modal(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(2)
+  await expect(field(page, 'VP Operations')).toHaveValue('Samir Ali')
+  for (const label of ['Manager of Engineering', 'Manager of Projects']) {
+    await expect(field(page, label)).toHaveJSProperty('readOnly', true)
+    await expect(field(page, label).locator('..')).toContainText('Not on document')
+  }
+  await expect(modal(page)).toContainText('Source row requires signature review')
+  for (const label of ['Project Manager', 'VP Operations']) await field(page, label).locator('..').getByRole('checkbox').check()
+  await field(page, 'PR Approval date').fill('2026-01-20')
+  const approvalProgress = modal(page).getByRole('list', { name: 'Document review progress' }).getByRole('listitem').filter({ hasText: 'Approval & signatures' })
+  await expect(approvalProgress).toContainText('Approval & signatures: complete')
   expect(state.saveRequests).toEqual([])
   await field(page, 'Entered price').scrollIntoViewIfNeeded()
   await modal(page).screenshot({ path: '../artifacts/purchase-recommendation-extraction-quality.png' })

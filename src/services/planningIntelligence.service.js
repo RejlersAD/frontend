@@ -1,21 +1,62 @@
 import apiClient, { apiClientLongTimeout } from './api.service'
 import { PLANNING_ENDPOINTS } from '../config/planningIntelligence.config'
+import { listPlanningRows, resolvePlanningSchedule } from './planningScheduleSelection'
+import { planningGet } from './planningReads'
 
 const unwrapList = (response) => response.data?.results ?? response.data ?? []
-const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
-const awaitJob = async (initialJob, timeoutMs = 15 * 60 * 1000) => {
+const pollingAborted = () => Object.assign(new Error('Stopped waiting for the background job. The job can still be resumed.'), { name: 'AbortError', code: 'ERR_CANCELED' })
+const checkPollingSignal = signal => { if (signal?.aborted) throw pollingAborted() }
+const wait = (milliseconds, signal) => new Promise((resolve, reject) => {
+  if (signal?.aborted) { reject(pollingAborted()); return }
+  const finish = () => { signal?.removeEventListener('abort', abort); resolve() }
+  const timer = setTimeout(finish, milliseconds)
+  const abort = () => {
+    clearTimeout(timer)
+    signal.removeEventListener('abort', abort)
+    reject(pollingAborted())
+  }
+  signal?.addEventListener('abort', abort, { once: true })
+})
+const validateJob = (job, expectedId) => {
+  if (!job || typeof job !== 'object' || Array.isArray(job) || !job.id || typeof job.status !== 'string'
+    || (expectedId != null && String(job.id) !== String(expectedId))) {
+    throw new Error('The background job returned an invalid status response. Retry checking the saved job.')
+  }
+  return job
+}
+const awaitJob = async (initialJob, timeoutMs = 15 * 60 * 1000, { signal, onJob, suppressErrorToast = false } = {}) => {
   let job = initialJob
   const started = Date.now()
-  while (!['succeeded', 'failed', 'cancelled'].includes(job.status)) {
-    if (Date.now() - started > timeoutMs) throw new Error(`Background job ${job.id} is still running. Its progress is saved and can be resumed.`)
-    await wait(1500)
-    job = (await apiClient.get(PLANNING_ENDPOINTS.job(job.id))).data
+  try {
+    checkPollingSignal(signal)
+    validateJob(job)
+    onJob?.(job)
+    checkPollingSignal(signal)
+    while (!['succeeded', 'failed', 'cancelled'].includes(job.status)) {
+      if (Date.now() - started > timeoutMs) throw Object.assign(new Error(`Background job ${job.id} is still running. Its progress is saved and can be resumed.`), { code: 'PLANNING_JOB_TIMEOUT' })
+      await wait(1500, signal)
+      checkPollingSignal(signal)
+      const response = await planningGet(PLANNING_ENDPOINTS.jobProgress(job.id), { signal, suppressErrorToast })
+      checkPollingSignal(signal)
+      job = validateJob(response.data, job.id)
+      if (!['succeeded', 'failed', 'cancelled'].includes(job.status)) onJob?.(job)
+      checkPollingSignal(signal)
+    }
+    if (job.api_contract_version >= 5 && !Object.hasOwn(job, 'result_data')) {
+      job = validateJob((await planningGet(PLANNING_ENDPOINTS.job(job.id), { signal, suppressErrorToast })).data, job.id)
+      checkPollingSignal(signal)
+      onJob?.(job)
+    }
+    if (job.status !== 'succeeded') throw new Error(job.error_message || job.message || `Background job ${job.id} ${job.status === 'cancelled' ? 'was cancelled' : 'failed'}.`)
+    return job
+  } catch (error) {
+    error.job = job
+    throw error
   }
-  if (job.status !== 'succeeded') throw new Error(job.error_message || job.message || `Background job ${job.id} failed.`)
-  return job
 }
 
 export const planningIntelligenceService = {
+  resolvePlanningSchedule,
   listProjects: async () => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.projects)),
   getProject: async (projectId) => (await apiClient.get(PLANNING_ENDPOINTS.project(projectId))).data,
   getSourceSchedulePreview: async (projectId, params = {}, signal) => (await apiClient.get(`${PLANNING_ENDPOINTS.project(projectId)}simple-plan/source-preview/`, { params, signal, suppressErrorToast: true })).data,
@@ -80,10 +121,26 @@ export const planningIntelligenceService = {
   getGeneration: async (generationId) => (await apiClient.get(PLANNING_ENDPOINTS.generation(generationId))).data,
   startAnalysis: async (projectId) => (await apiClient.post(PLANNING_ENDPOINTS.analyze(projectId))).data,
   startGeneration: async (projectId, payload = {}) => (await apiClient.post(PLANNING_ENDPOINTS.generate(projectId), payload)).data,
-  previewGeneration: async (projectId, payload = {}) => {
-    const job = (await apiClient.post(PLANNING_ENDPOINTS.generationPreview(projectId), payload)).data
-    const completed = await awaitJob(job)
-    return completed.result_data?.preview
+  previewGeneration: async (projectId, payload = {}, { signal, onJob, jobId } = {}) => {
+    let job = jobId == null ? null : { id: jobId }
+    try {
+      checkPollingSignal(signal)
+      const config = { signal, suppressErrorToast: true }
+      const response = jobId == null
+        ? await apiClient.post(PLANNING_ENDPOINTS.generationPreview(projectId), payload, config)
+        : await apiClient.get(PLANNING_ENDPOINTS.job(jobId), config)
+      job = validateJob(response.data, jobId)
+      const completed = await awaitJob(job, undefined, { signal, onJob, suppressErrorToast: true })
+      job = completed
+      const preview = completed.result_data?.preview
+      if (!preview || typeof preview !== 'object' || Array.isArray(preview)) {
+        throw Object.assign(new Error('The background job completed without a generation preview. Review the job result before starting another preview.'), { code: 'PLANNING_PREVIEW_MISSING' })
+      }
+      return preview
+    } catch (error) {
+      if (!error.job && job) error.job = job
+      throw error
+    }
   },
   listWorkflowTemplates: async projectId => unwrapList(await apiClient.get(
     PLANNING_ENDPOINTS.workflowTemplates, { params: { project: projectId } },
@@ -106,9 +163,12 @@ export const planningIntelligenceService = {
   decideScheduleDefaultProposal: async (id, decision, comment = '') => (
     await apiClient.post(PLANNING_ENDPOINTS.scheduleDefaultProposalDecision(id), { decision, comment })
   ).data,
-  getJob: async (jobId, signal) => (await apiClient.get(PLANNING_ENDPOINTS.job(jobId), { signal, suppressErrorToast: true })).data,
-  listJobs: async projectId => unwrapList(await apiClient.get(
-    PLANNING_ENDPOINTS.jobs, { params: projectId ? { project: projectId } : {} },
+  getJob: async (jobId, signal) => (await planningGet(PLANNING_ENDPOINTS.job(jobId), { signal, suppressErrorToast: true })).data,
+  getJobProgress: async (jobId, signal) => (await planningGet(PLANNING_ENDPOINTS.jobProgress(jobId), { signal, suppressErrorToast: true })).data,
+  getActiveJob: async (projectId, jobType = 'analyze', signal) => (await planningGet(PLANNING_ENDPOINTS.activeJob, { params: { project: projectId, job_type: jobType }, signal, suppressErrorToast: true })).data,
+  getLatestIntelligenceRun: async (projectId, signal) => (await planningGet(PLANNING_ENDPOINTS.latestIntelligenceRun, { params: { project: projectId }, signal, suppressErrorToast: true })).data,
+  listJobs: async (projectId, { signal, suppressErrorToast = false } = {}) => unwrapList(await apiClient.get(
+    PLANNING_ENDPOINTS.jobs, { params: projectId ? { project: projectId } : {}, signal, suppressErrorToast },
   )),
   cancelJob: async (jobId) => (await apiClient.post(PLANNING_ENDPOINTS.cancelJob(jobId))).data,
   listAuditEvents: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.auditEvents, { params: { project: projectId } })),
@@ -143,11 +203,11 @@ export const planningIntelligenceService = {
   ).data,
   materializeGeneration: async (generationId) => (await apiClient.post(PLANNING_ENDPOINTS.materializeGeneration(generationId))).data,
   listCalendars: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.calendars, { params: { project: projectId } })),
-  listSchedules: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.schedules, { params: { project: projectId } })),
+  listSchedules: (projectId, options = {}) => listPlanningRows(PLANNING_ENDPOINTS.schedules, { project: projectId }, options),
   getSchedule: async (scheduleId) => (await apiClient.get(PLANNING_ENDPOINTS.schedule(scheduleId))).data,
-  listScheduleVersions: async (scheduleId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.scheduleVersions, { params: { schedule: scheduleId } })),
-  getScheduleVersion: async (versionId) => (await apiClient.get(PLANNING_ENDPOINTS.scheduleVersion(versionId))).data,
-  getScheduleWorkspace: async (versionId) => (await apiClient.get(PLANNING_ENDPOINTS.scheduleWorkspace(versionId))).data,
+  listScheduleVersions: (scheduleId, options = {}) => listPlanningRows(PLANNING_ENDPOINTS.scheduleVersions, { schedule: scheduleId }, options),
+  getScheduleVersion: async (versionId) => (await planningGet(PLANNING_ENDPOINTS.scheduleVersion(versionId), { suppressErrorToast: true })).data,
+  getScheduleWorkspace: async (versionId) => (await planningGet(PLANNING_ENDPOINTS.scheduleWorkspace(versionId), { suppressErrorToast: true })).data,
   bulkUpdateActivities: async (versionId, expectedUpdatedAt, activities) => (
     await apiClient.patch(PLANNING_ENDPOINTS.bulkScheduleActivities(versionId), {
       expected_updated_at: expectedUpdatedAt,
@@ -176,7 +236,8 @@ export const planningIntelligenceService = {
     await apiClient.post(PLANNING_ENDPOINTS.baselineScheduleVersion(versionId), { name })
   ).data,
   getScheduleControls: async (versionId, dataDate) => (
-    await apiClient.get(PLANNING_ENDPOINTS.scheduleControls(versionId), {
+    await planningGet(PLANNING_ENDPOINTS.scheduleControls(versionId), {
+      suppressErrorToast: true,
       params: dataDate ? { data_date: dataDate } : {},
     })
   ).data,
@@ -214,7 +275,7 @@ export const planningIntelligenceService = {
     await apiClient.post(PLANNING_ENDPOINTS.rejectDailyFieldUpdate(id), { comment })
   ).data,
   deleteDailyFieldUpdate: async id => apiClient.delete(PLANNING_ENDPOINTS.dailyFieldUpdate(id)),
-  getScheduleGovernance: async (versionId) => (await apiClient.get(PLANNING_ENDPOINTS.scheduleGovernance(versionId))).data,
+  getScheduleGovernance: async (versionId) => (await planningGet(PLANNING_ENDPOINTS.scheduleGovernance(versionId), { suppressErrorToast: true })).data,
   createGovernanceItem: async (versionId, payload) => (
     await apiClient.post(PLANNING_ENDPOINTS.governanceItems(versionId), payload)
   ).data,
@@ -356,6 +417,8 @@ export const planningIntelligenceService = {
   listDocumentProfiles: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.documentProfiles, { params: { project: projectId } })),
   listIntelligenceRuns: async (projectId) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.intelligenceRuns, { params: { project: projectId } })),
   getIntelligenceRun: async (runId) => (await apiClient.get(PLANNING_ENDPOINTS.intelligenceRun(runId))).data,
+  getAnalysisWorkspace: async runId => (await apiClient.get(`${PLANNING_ENDPOINTS.intelligenceRun(runId)}schedule-workspace/`, { suppressErrorToast: true })).data,
+  startResumeAnalysis: async runId => (await apiClient.post(`${PLANNING_ENDPOINTS.intelligenceRun(runId)}resume/`, {}, { suppressErrorToast: true })).data,
   resumeIntelligenceRun: async runId => awaitJob((await apiClient.post(`${PLANNING_ENDPOINTS.intelligenceRun(runId)}resume/`, {}, { suppressErrorToast: true })).data),
   confirmIntelligencePreview: async (runId, preview) => (await apiClient.post(PLANNING_ENDPOINTS.confirmIntelligencePreview(runId), { preview })).data,
   listIntelligenceFacts: async (runId, params = {}) => unwrapList(await apiClient.get(PLANNING_ENDPOINTS.intelligenceFacts, { params: { run: runId, ...params } })),

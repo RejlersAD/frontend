@@ -23,6 +23,7 @@ import RecommendationSupplierPricing from './RecommendationSupplierPricing';
 import RecordedApprovalHistory from './RecordedApprovalHistory';
 import PendingApprovalAssignments, { approvalReassignmentCommands, retainCurrentApprovalAssignments } from './PendingApprovalAssignments';
 import { prepareRecommendationPayload } from './recommendationFormPayload';
+import { normalizeProjectNumbers, recommendationProjectNumbers, reconcileRecommendationProjectDetails } from './recommendationProjectNumbers';
 import { selectedRecommendationVendor } from './recommendationIcv';
 import { hydrateRecommendationReferences, preserveRecordedApprovalWorkflow, recommendationLineError } from './recommendationFormState';
 import { confirmedRecommendationVat, hasCompleteRecommendationPricing, recommendationVat, recommendationLineDiscount } from './recommendationVat';
@@ -32,6 +33,7 @@ import { RequisitionRevisionHistory } from './RejectedRequisitionRevision';
 import './RecommendationApprovalWorkflow.css';
 import useOrganizationCatalog from '../../hooks/useOrganizationCatalog';
 import { vicePresidentPositionFromWorkflow } from './recommendationApprovalPositions';
+import { resolveLevelZeroApprover } from './recommendationApprovalDefaults';
 import { AED_EXCHANGE_RATES, convertToAed } from '../../config/procurement.config';
 import { employeeDisplayName, nameOnly } from '../../utils/employeeDisplayName';
 import {
@@ -201,6 +203,7 @@ const buildInitialFormData = (editData) => {
   supplier_business_id: editData?.supplier_business_id || '',
   product_service: editData?.product_service || '',
   project_department: editData?.project_department || '',
+  project: references.project,
   description_reason: editData?.description_reason || '',
   preferred_supplier_if_any: editData?.preferred_supplier_if_any || '',
   price_description: editData?.price_description || editData?.description_reason || '',
@@ -380,7 +383,6 @@ const buildApprovalWorkflow = ({
   return workflow;
 };
 
-const DEFAULT_LEVEL_ZERO_PROCUREMENT_NAME = 'richa hannah thomas';
 const DEFAULT_LEVEL_FOUR_VP_EMAIL = 'moghawanmeh@rejlers.ae';
 const DEFAULT_LEVEL_FIVE_GENERAL_MANAGER_NAME = 'jarmo suominen';
 
@@ -665,11 +667,10 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
     setLoadingApprovers(true);
     setApproverLoadError('');
     try {
-      const [employeeResponse, vpResponse, procurementResponse] = await Promise.all([
+      const [employeeResponse, vpResponse] = await Promise.all([
         apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' } }),
         ...(!preserveApprovalWorkflow ? [
           apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'vp_operations' } }),
-          apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'procurement_head' } }),
         ] : []),
       ]);
 
@@ -681,15 +682,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
       const activeEmployees = usersFrom(employeeResponse);
       const vpCandidates = usersFrom(vpResponse);
       const matchedVpCandidates = vpCandidates.filter(user => user.job_title_match);
-      const procurementCandidates = usersFrom(procurementResponse);
-      const richaProcurementManager = activeEmployees.find(user => (
-        normalizeEmployeeName(user) === DEFAULT_LEVEL_ZERO_PROCUREMENT_NAME
-      ));
-      // Level 0 belongs to Procurement. Never substitute the current admin if
-      // the configured Procurement approver cannot be resolved; leaving it
-      // empty exposes the configuration problem instead of assigning the PR
-      // creator to the wrong approval stage.
-      const procurementDefault = richaProcurementManager || procurementCandidates[0] || null;
+      // A named default must resolve to that active employee. Another
+      // procurement candidate is not a substitute for Richa's identity.
+      const procurementDefault = resolveLevelZeroApprover(activeEmployees);
       // The approved Level 4 default is a named employee. Resolve by the
       // employee's stable email first because the source record spells the
       // first name "Mohamad" while it is sometimes entered as "Mohamed".
@@ -870,6 +865,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
       return {
         ...prev,
         project_details: projectDetails,
+        project: recommendationProjectNumbers({ project_details: projectDetails }).join(', '),
         project_department: projectDetails.map(item => item.value || item.label).join('; '),
       };
     });
@@ -898,28 +894,35 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
   };
 
   const createProjectDepartment = () => {
-    const projectNumber = newProjectReference.number.trim();
+    const projectNumbers = recommendationProjectNumbers({ project_numbers: newProjectReference.number });
     const projectName = newProjectReference.name.trim();
-    if (!projectNumber || !projectName) {
+    if (!projectNumbers.length || !projectName) {
       setProjectCreatorError('Enter both the project / department number and name.');
       return;
     }
-    const duplicate = (formData.project_details || []).some(project => (
-      String(project.project_number || '').trim().toLowerCase() === projectNumber.toLowerCase()
-      || String(project.value || '').trim().toLowerCase() === `${projectName} (${projectNumber})`.toLowerCase()
-    ));
-    if (duplicate) {
-      setProjectCreatorError('This project / department number is already selected.');
+    const existingNumbers = new Set(recommendationProjectNumbers({ project_details: formData.project_details }).map(number => number.toLowerCase()));
+    const newNumbers = projectNumbers.filter(number => !existingNumbers.has(number.toLowerCase()));
+    if (!newNumbers.length) {
+      setProjectCreatorError('These project / department numbers are already selected.');
       return;
     }
-    toggleProject({
-      project_number: projectNumber,
-      project_name: projectName,
-      value: `${projectName} (${projectNumber})`,
-      label: `${projectNumber} - ${projectName}`,
-      type: formData.requisition_type === 'general' ? 'department' : 'project',
-      source: 'custom',
+    setFormData(previous => {
+      const projectDetails = [...(previous.project_details || []), ...newNumbers.map(projectNumber => ({
+        project_number: projectNumber,
+        project_name: projectName,
+        value: `${projectName} (${projectNumber})`,
+        label: `${projectNumber} - ${projectName}`,
+        type: previous.requisition_type === 'general' ? 'department' : 'project',
+        source: 'custom',
+      }))];
+      return {
+        ...previous,
+        project_details: projectDetails,
+        project: recommendationProjectNumbers({ project_details: projectDetails }).join(', '),
+        project_department: projectDetails.map(project => project.value || project.label).filter(Boolean).join('; '),
+      };
     });
+    setErrors(previous => ({ ...previous, project_department: null }));
     setProjectSearch('');
     setNewProjectReference({ number: '', name: '' });
     setProjectCreatorError('');
@@ -932,7 +935,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
       const projectDetails = (previous.project_details || []).map((project, projectIndex) => {
         if (projectIndex !== index) return project;
         const updated = { ...project, [field]: value, source: 'custom' };
-        const projectNumber = String(updated.project_number || '').trim();
+        const projectNumber = normalizeProjectNumbers(updated.project_number);
         const projectName = String(updated.project_name || '').trim();
         return {
           ...updated,
@@ -943,6 +946,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
       return {
         ...previous,
         project_details: projectDetails,
+        project: recommendationProjectNumbers({ project_details: projectDetails }).join(', '),
         project_department: projectDetails.map(project => project.value || project.label).filter(Boolean).join('; '),
       };
     });
@@ -957,6 +961,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
       return {
         ...previous,
         project_details: projectDetails,
+        project: recommendationProjectNumbers({ project_details: projectDetails }).join(', '),
         project_department: projectDetails.map(project => project.value || project.label).filter(Boolean).join('; '),
       };
     });
@@ -972,6 +977,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
         ...previous,
         requisition_type: type,
         project_details: projectDetails,
+        project: recommendationProjectNumbers({ project_details: projectDetails }).join(', '),
         project_department: projectDetails.map(project => project.value || project.label).filter(Boolean).join('; '),
       };
     });
@@ -990,6 +996,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
       return {
         ...prev,
         project_details: projectDetails,
+        project: recommendationProjectNumbers({ project_details: projectDetails }).join(', '),
         project_department: projectDetails.map(item => item.value || item.label).join('; '),
       };
     });
@@ -1393,6 +1400,9 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
 
   const getValidationErrors = () => {
     const newErrors = {};
+    if (normalizeProjectNumbers(formData.project).length > 200) {
+      newErrors.project = 'Project numbers must total no more than 200 characters.';
+    }
     if (!formData.pr_number?.trim()) {
       newErrors.pr_number = 'Enter the PR number manually';
     } else if (prNumberStatus.available === false) {
@@ -1774,7 +1784,7 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
 
   const stepLabels = ['Request', 'Supplier & pricing', 'Business justification', 'Documents', 'Approval & submission'];
   const fieldSteps = {
-    pr_number: 0, product_service: 0, project_department: 0, issued_date: 0,
+    pr_number: 0, product_service: 0, project_department: 0, project: 0, issued_date: 0,
     total_price: 1, selected_vendors: 1, vendor: 1, vendor_selection_reason: 1,
     single_source_justification: 1, items: 1, price_description: 2,
     description_reason: 2, purchase_recommendation: 2, po_number_reference: 2,
@@ -1975,6 +1985,23 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
                 )}
               </div>
 
+              <div>
+                <label htmlFor="prf-project-numbers" className="block text-sm font-medium text-gray-700 mb-2">Project Number</label>
+                <input id="prf-project-numbers" name="project" value={formData.project} onChange={handleChange}
+                  onBlur={() => setFormData(previous => {
+                    const project = normalizeProjectNumbers(previous.project);
+                    const projectDetails = reconcileRecommendationProjectDetails(project, previous.project_details);
+                    return { ...previous, project, project_details: projectDetails,
+                      project_department: projectDetails.map(detail => detail.value || detail.label).filter(Boolean).join('; ') };
+                  })}
+                  placeholder="e.g. 5900927, 5900928"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 ${errors.project || serverErrors.project || validationErrors.project ? 'border-red-500' : 'border-gray-300'}`}
+                  aria-invalid={Boolean(errors.project || serverErrors.project || validationErrors.project)}
+                  aria-describedby="prf-project-numbers-hint" />
+                <p id="prf-project-numbers-hint" className="mt-1 text-xs text-gray-500">Separate multiple numbers with commas.</p>
+                {(errors.project || serverErrors.project || validationErrors.project) && <p className="mt-1 text-sm text-red-600">{errors.project || serverErrors.project || validationErrors.project}</p>}
+              </div>
+
               <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Project / Department
@@ -2056,7 +2083,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <label className="text-xs font-semibold text-slate-700">Project / Department Number <span className="text-red-500">*</span>
-                        <input value={newProjectReference.number} onChange={(event) => { setNewProjectReference(previous => ({ ...previous, number: event.target.value })); setProjectCreatorError(''); }} maxLength={100} placeholder="e.g. 5900927 or DEPT-HSE" className="mt-1 w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200" autoFocus />
+                        <input value={newProjectReference.number} onChange={(event) => { setNewProjectReference(previous => ({ ...previous, number: event.target.value })); setProjectCreatorError(''); }} placeholder="e.g. 5900927, 5900928" className="mt-1 w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200" autoFocus />
+                        <span className="mt-1 block font-normal text-slate-500">Separate multiple numbers with commas.</span>
                       </label>
                       <label className="text-xs font-semibold text-slate-700">Project / Department Name <span className="text-red-500">*</span>
                         <input value={newProjectReference.name} onChange={(event) => { setNewProjectReference(previous => ({ ...previous, name: event.target.value })); setProjectCreatorError(''); }} maxLength={300} placeholder="e.g. Value Engineering Package 1" className="mt-1 w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200" onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createProjectDepartment(); } }} />
@@ -2425,6 +2453,8 @@ const PurchaseRequisitionForm = ({ isOpen, onClose, onSuccess, editData: initial
                         <h3>{stage.role}</h3>
                       </div>
                       <div className="prf-workflow-approver">
+                        {stage.key === 'procurement' && !selectedApprovers.procurement && !approvalDefaults.procurement
+                          && !loadingApprovers && !approverLoadError && <p className="prf-workflow-placeholder">Default: Richa Hannah Thomas (unavailable)</p>}
                         {stage.key === 'level_one' ? (
                           <div className="prf-workflow-assignees">
                             {(selectedApprovers.level_one || []).length ? selectedApprovers.level_one.map((userId, index) => {

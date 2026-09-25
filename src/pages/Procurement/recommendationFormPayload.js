@@ -1,5 +1,6 @@
 import { PROCUREMENT_VAT_RATE } from '../../utils/procurementVat.js';
 import { confirmedRecommendationVat, recommendationEnteredAmount, recommendationVat } from './recommendationVat.js';
+import { normalizeProjectNumbers, reconcileRecommendationProjectDetails } from './recommendationProjectNumbers.js';
 
 const LINE_DETAIL_FIELDS = ['vat_rate', 'vendor_id', 'budget'];
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -37,6 +38,12 @@ const isBlankLine = (item, details = {}) => {
 export function prepareRecommendationPayload(formData, approvalWorkflow) {
   const metadata = { ...(formData.price_remarks_data || {}) };
   const payload = { ...formData, price_remarks_data: metadata };
+  // project_numbers is a read-only projection; native saves use project CSV.
+  delete payload.project_numbers;
+  if (has(formData, 'project')) {
+    payload.project = normalizeProjectNumbers(formData.project);
+    payload.project_details = reconcileRecommendationProjectDetails(payload.project, formData.project_details);
+  }
   const recalculateVat = confirmedRecommendationVat(formData.vat_basis) && formData._vatPricingChanged !== false;
   delete payload._vatPricingChanged;
   delete payload._vatEnteredAmount;

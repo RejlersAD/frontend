@@ -11,7 +11,8 @@ export default function PlanningBulkEvidenceReview({ summary, review, operation,
   if (!summary) return null
   const { job, running, starting, error, pollError, start, checkProgress } = operation
   const result = job?.result_data || {}
-  const progressCounts = result.progress_context?.counts || result.progress_context || {}
+  const context = job?.progress_context || result.progress_context || {}
+  const progressCounts = context.counts || context
   const counts = running || ['failed', 'cancelled'].includes(job?.status)
     ? { ...result.counts, ...progressCounts } : { ...progressCounts, ...result.counts }
   const finished = ['succeeded', 'failed', 'cancelled'].includes(job?.status)

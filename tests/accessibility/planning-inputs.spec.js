@@ -278,7 +278,7 @@ test('Run Document Intelligence saves the latest phase and dates before starting
   ])
   expect(state.analysisProjects[0]).toMatchObject({ phase, effective_date: '2026-03-02', planned_end_date: '2026-09-18', scope_summary: 'Revised FEED scope used by document intelligence.' })
   await expect.poll(() => state.jobReads).toBeGreaterThan(0)
-  await expect(page.getByText('Document intelligence completed.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Document analysis finished. Coverage was not fully recorded; review the extracted findings.', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Document Intelligence Preview', exact: true })).toBeVisible()
   await expect(input(page, 'Scope summary')).toBeHidden()
   await expect(page.getByRole('heading', { name: 'Build Workable Project Plan', exact: true })).toHaveCount(0)
@@ -466,6 +466,7 @@ test('the complete Document Intelligence Preview opens from review without confi
   for (const heading of ['Source Evidence', 'Disciplines', 'HSE Studies']) {
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
   }
+  await page.locator('summary').filter({ hasText: 'Read analysis notes' }).click()
   await expect(page.getByText('Review process and piping deliverables before planning the tie-in sequence.', { exact: true })).toBeVisible()
   await expect(page.getByText('12 months', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /Visualize/ })).toBeEnabled()

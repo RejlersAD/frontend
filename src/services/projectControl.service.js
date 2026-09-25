@@ -17,7 +17,9 @@ export const listProjects     = (params)    => unwrap(apiClient.get(EP.projects,
 export const getProject       = (id)        => unwrap(apiClient.get(`${EP.projects}${id}/`))
 export const createProject    = (payload)   => unwrap(apiClient.post(EP.projects, payload))
 export const updateProject    = (id, body)  => unwrap(apiClient.patch(`${EP.projects}${id}/`, body))
-export const deleteProject    = (id)        => unwrap(apiClient.delete(`${EP.projects}${id}/`))
+export const deleteProject    = (id, expectedUpdatedAt) => unwrap(apiClient.delete(`${EP.projects}${id}/`, {
+  data: { permanent: true, expected_updated_at: expectedUpdatedAt }, suppressErrorToast: true,
+}))
 export const getProjectStats  = ()          => unwrap(apiClient.get(EP.projectStats))
 export const listProjectTasks = (projectId, params = {}) =>
   unwrap(apiClient.get(EP.projectTasks, { params: { project_id: projectId, ...params } }))

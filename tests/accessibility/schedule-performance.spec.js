@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { readFile } from 'node:fs/promises'
-import { scheduleHarness } from '../fixtures/schedule-performance.fixture'
+import { scheduleHarness as baseScheduleHarness } from '../fixtures/schedule-performance.fixture'
+import { expectRetainedScheduleVersion, selectRetainedScheduleVersion } from '../fixtures/retained-schedule-controls.js'
 
 test.setTimeout(60000)
 
@@ -9,12 +10,22 @@ const region = (page, name) => page.getByRole('region', { name, exact: true })
 const indicators = page => region(page, 'Schedule indicators')
 const lookahead = page => region(page, 'Six-week look-ahead')
 const workAreas = page => page.getByRole('navigation', { name: 'Project work areas' })
+const plannerAreas = page => page.getByRole('navigation', { name: 'Planning workspace areas', exact: true })
+
+const scheduleHarness = (page, options = {}) => baseScheduleHarness(page, {
+  ...options,
+  query: options.query || 'project=17&view=plan-baseline&scheduleMode=management&shell=true',
+})
+
+async function refreshProject(page) {
+  await page.locator('summary[aria-label="More project actions"]').click()
+  await page.getByRole('button', { name: 'Refresh project', exact: true }).click()
+}
 
 async function loaded(page) {
-  await expect(page.getByRole('heading', { name: 'Schedule Performance', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Performance', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(plannerAreas(page).getByRole('button', { name: 'Performance', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(indicators(page)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Schedule settings', exact: true })).toBeEnabled()
 }
 
 async function selectMatching(select, pattern) {
@@ -46,7 +57,7 @@ test('desktop Schedule shows six recorded indicators, baseline provenance, and m
   }
   await expect(indicators(page)).toContainText('42%')
   await expect(page.getByRole('combobox', { name: 'Baseline', exact: true })).toHaveValue('502')
-  await expect(page.getByRole('combobox', { name: 'Compare', exact: true })).toHaveValue('91')
+  await expectRetainedScheduleVersion(page, '91')
   for (const title of ['Baseline vs actual', 'Schedule exceptions', 'Six-week look-ahead', 'Milestone outlook', 'Critical and late activities', 'Recovery impact', 'Schedule data quality']) {
     await expect(region(page, title)).toBeVisible()
   }
@@ -66,8 +77,8 @@ test('baseline, comparison version, date window, and chart/table controls reflec
   await page.getByRole('combobox', { name: 'Baseline', exact: true }).selectOption('501')
   await expect(page.getByRole('combobox', { name: 'Baseline', exact: true })).toHaveValue('501')
   await expect(page.getByText(/Rev 0.*original baseline/).first()).toBeAttached()
-  await page.getByRole('combobox', { name: 'Compare', exact: true }).selectOption('90')
-  await expect(page.getByRole('combobox', { name: 'Compare', exact: true })).toHaveValue('90')
+  await selectRetainedScheduleVersion(page, '90')
+  await expectRetainedScheduleVersion(page, '90')
   await expect.poll(() => state.requests.some(request => request.path.endsWith('/schedule-versions/90/controls/'))).toBe(true)
   const timeRange = page.getByRole('combobox', { name: 'Time range', exact: true })
   await selectMatching(timeRange, /Last 3 months/i)
@@ -167,37 +178,35 @@ test('Refresh and project selection reload the schedule source and preserve the 
   state.records[17].controls.progress_pct = '47.00'
   state.records[17].controls.snapshots.at(-1).progress_pct = '47.00'
   state.records[17].project.client_name = 'Updated Refining Client'
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await refreshProject(page)
   await expect(indicators(page)).toContainText('47%')
-  await expect(page.getByText('Client: Updated Refining Client', { exact: true })).toBeVisible()
+  await expect(page.getByText('Updated Refining Client', { exact: true })).toBeVisible()
   await expect.poll(() => state.requests.slice(before).some(request => request.path.endsWith('/schedule-versions/91/controls/'))).toBe(true)
+  await page.locator('summary[aria-label="More project actions"]').click()
   const selector = page.getByRole('combobox', { name: 'Active Project', exact: true })
   await selector.fill('5900738')
   await selector.press('Enter')
   await expect(page).toHaveURL(/project=18/)
   await expect(page).toHaveURL(/view=plan-baseline/)
   await expect(indicators(page)).toContainText('28%')
-  await expect(page.getByRole('combobox', { name: 'Compare', exact: true })).toHaveValue('1091')
+  await expectRetainedScheduleVersion(page, '1091')
   await expect.poll(() => state.requests.some(request => request.path.endsWith('/schedule-versions/1091/controls/'))).toBe(true)
   expect(state.unknown).toEqual([])
 })
 
-test('Performance and Planning preserve the linked-planning workflow and update action', async ({ page }) => {
-  await scheduleHarness(page, { prepare: state => { state.noLinked = true } })
-  await loaded(page)
-  await page.getByRole('button', { name: 'Planning', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Planning', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('heading', { name: 'Project Planning', exact: true })).toBeVisible()
+test('a missing linked schedule opens explicit Document Intelligence setup without manufacturing a performance source', async ({ page }) => {
+  const state = await scheduleHarness(page, { prepare: current => { current.noLinked = true } })
+  await expect(page.getByText('Set up project inputs to create a schedule workspace.', { exact: true })).toBeVisible()
+  await expect(indicators(page)).toHaveCount(0)
+  await page.getByRole('button', { name: 'Open Document Intelligence', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Scope summary', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Performance', exact: true }).click()
-  await expect(indicators(page)).toBeVisible()
-  await page.getByRole('button', { name: 'Update schedule', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Planning', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('textbox', { name: 'Scope summary', exact: true })).toBeVisible()
+  await page.getByRole('navigation', { name: 'Schedule workspace', exact: true }).getByRole('button', { name: 'Master Schedule', exact: true }).click()
+  await expect(page.getByText('Set up project inputs to create a schedule workspace.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Schedule version', exact: true })).toHaveCount(0)
   await workAreas(page).getByRole('button', { name: 'Overview', exact: true }).click()
   await expect(page).not.toHaveURL(/view=plan-baseline/)
-  await expect(page.getByRole('heading', { name: 'Project Performance', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: state.records[17].project.name, exact: true })).toBeVisible()
+  expect(state.requests.filter(request => request.method !== 'GET')).toEqual([])
 })
 
 test('no approved baseline and failed controls remain distinct from recorded zero progress', async ({ page }) => {
@@ -207,7 +216,7 @@ test('no approved baseline and failed controls remain distinct from recorded zer
   await expect(indicators(page)).toContainText('42%')
   await expect(region(page, 'Baseline vs actual')).toContainText(/baseline/i)
   state.failures.add('/controls/')
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await refreshProject(page)
   await expect(page.getByRole('alert')).toContainText(/Schedule progress|could not be loaded|unavailable/i)
   await expect(indicators(page)).not.toContainText('42%')
   await expect(indicators(page)).toContainText(/Not available|Unavailable/)
@@ -215,7 +224,7 @@ test('no approved baseline and failed controls remain distinct from recorded zer
   state.records[17].controls.progress_pct = '0.00'
   state.records[17].controls.snapshots = []
   state.records[17].controls.activities.forEach(activity => { activity.physical_progress_pct = '0.00'; activity.actual_finish = null })
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await refreshProject(page)
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(indicators(page)).toContainText('0%')
 })
@@ -321,7 +330,7 @@ test('missing or invalid engineering ownership suppresses stale aggregate number
   observed.forEach(row => expect(row).toEqual({ actual: null, planned: null, variance: null, spi: null, forecast: null, points: [], count: 6, ready: false }))
   state.records[17].controls.control_scope.ready = false
   state.records[17].controls.control_scope.blockers = ['Map engineering activities before reporting progress.']
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await refreshProject(page)
   await expect(cardsByLabel(page, 'Actual progress')).toContainText('Unavailable')
   await expect(page.getByText(/Controlled engineering scope is unavailable/).first()).toBeVisible()
 })

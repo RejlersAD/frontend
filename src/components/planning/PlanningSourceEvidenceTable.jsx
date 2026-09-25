@@ -29,7 +29,7 @@ function SourceReferences({ sources }) {
 }
 SourceReferences.propTypes = { sources: PropTypes.array.isRequired }
 
-export default function PlanningSourceEvidenceTable({ tasks = [], review, sourceDocuments = [] }) {
+export default function PlanningSourceEvidenceTable({ tasks = [], review, sourceDocuments = [], emptyMessage = 'No document source references. Activities may be created directly from project scope.' }) {
   const instanceId = useId()
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
@@ -83,7 +83,7 @@ export default function PlanningSourceEvidenceTable({ tasks = [], review, source
       <div className="pse-search"><Search size={14} aria-hidden="true" /><label className="pse-sr-only" htmlFor={`${instanceId}-search`}>Search source evidence</label><input id={`${instanceId}-search`} type="search" value={query} placeholder="Search deliverable or source" onChange={event => { setQuery(event.target.value); setPage(0) }} />{query && <button type="button" aria-label="Clear source evidence search" onClick={() => { setQuery(''); setPage(0) }}><X size={13} aria-hidden="true" /></button>}</div>
     </header>
     <div className="pse-table-scroll" tabIndex={0} role="region" aria-label="Source evidence rows">
-      <table className="pse-table" data-table-typography="preserve" aria-label="Activity source evidence">
+      <table className="pse-table" data-table-typography="preserve" data-empty={rows.length === 0} aria-label="Activity source evidence">
         <thead><tr><th scope="col">Deliverable</th><th scope="col">Source reference</th><th scope="col">Duration evidence</th></tr></thead>
         <tbody>{visible.map((row, index) => {
           const open = expanded.has(row.key)
@@ -98,11 +98,11 @@ export default function PlanningSourceEvidenceTable({ tasks = [], review, source
             </tr>
             {open && <tr className="pse-detail-row"><td colSpan={3}><div id={detailsId} className="pse-details" role="region" aria-label={`Evidence for ${row.title}`}><h5>{row.title}</h5><div className="pse-details-grid"><section aria-label="Deliverable source references"><h6>Source references</h6><SourceReferences sources={row.sources} /></section><section aria-label="Full duration evidence"><h6>Duration evidence</h6><ActivityDurationEvidence task={row.task} row={row.durationRow} /></section></div></div></td></tr>}
           </Fragment>
-        })}{!visible.length && <tr><td colSpan={3} className="pse-empty">{rows.length ? 'No evidence matches your search.' : 'No document source references. Activities may be created directly from project scope.'}</td></tr>}</tbody>
+        })}{!visible.length && <tr><td colSpan={3} className="pse-empty">{rows.length ? 'No evidence matches your search.' : emptyMessage}</td></tr>}</tbody>
       </table>
     </div>
     <footer className="pse-footer"><span aria-live="polite">{filtered.length ? `${first + 1}-${Math.min(first + pageSize, filtered.length)} of ${filtered.length.toLocaleString()}` : '0 activities'}{search && rows.length !== filtered.length ? ` (${rows.length.toLocaleString()} total)` : ''}</span><label htmlFor={`${instanceId}-page-size`}>Rows per page<select id={`${instanceId}-page-size`} aria-label="Evidence rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(0) }}>{[10, 25, 50].map(size => <option key={size} value={size}>{size}</option>)}</select></label><nav aria-label="Source evidence pagination"><button type="button" aria-label="Previous evidence page" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={15} aria-hidden="true" /></button><span>Page {currentPage + 1} of {pageCount}</span><button type="button" aria-label="Next evidence page" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)}><ChevronRight size={15} aria-hidden="true" /></button></nav></footer>
   </section>
 }
 
-PlanningSourceEvidenceTable.propTypes = { tasks: PropTypes.array, review: PropTypes.object, sourceDocuments: PropTypes.array }
+PlanningSourceEvidenceTable.propTypes = { tasks: PropTypes.array, review: PropTypes.object, sourceDocuments: PropTypes.array, emptyMessage: PropTypes.string }

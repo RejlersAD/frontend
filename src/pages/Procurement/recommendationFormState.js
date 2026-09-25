@@ -1,6 +1,7 @@
 import { procurementLineNet } from '../../utils/procurementVat.js';
 import { recommendationLineDiscount } from './recommendationVat.js';
 import { selectedRecommendationVendor } from './recommendationIcv.js';
+import { recommendationProjectNumbers, reconcileRecommendationProjectDetails } from './recommendationProjectNumbers.js';
 
 const absent = value => value === undefined || value === null || value === '';
 const finiteAmount = value => !absent(value) && Number.isFinite(Number(value)) && procurementLineNet(value, 1) !== null;
@@ -34,12 +35,15 @@ export function hydrateRecommendationReferences(record = {}) {
   const selectedVendor = selectedRecommendationVendor(record);
   const items = Array.isArray(record.items) && record.items.length ? record.items
     : Array.isArray(record.price_remarks_data?.price_lines) ? record.price_remarks_data.price_lines : [];
+  const projectNumbers = recommendationProjectNumbers(record);
+  const projectDetails = projects.length || !projectText ? projects : [{
+    value: projectText, label: projectText, source: 'recorded',
+    type: record.requisition_type === 'general' ? 'department' : 'project',
+  }];
   return {
+    project: projectNumbers.join(', '),
     // A recorded text reference is not a match to an enterprise project ID.
-    project_details: projects.length || !projectText ? projects : [{
-      value: projectText, label: projectText, source: 'recorded',
-      type: record.requisition_type === 'general' ? 'department' : 'project',
-    }],
+    project_details: reconcileRecommendationProjectDetails(projectNumbers, projectDetails),
     // A supplier name alone must not be converted into a fabricated vendor ID.
     selected_vendors: vendors.length ? vendors.map(vendor => (
       String(vendor.vendor_id || vendor.id) === String(record.vendor)

@@ -32,6 +32,7 @@
 .planning-source-evidence .pse-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .planning-source-evidence .pse-table-scroll { position: relative; min-width: 0; max-height: 400px; overflow: auto; scrollbar-width: thin; scrollbar-color: #b8ccea transparent; }
 .planning-source-evidence .pse-table { width: 100%; min-width: 580px; border-collapse: collapse; table-layout: fixed; text-align: left; font-family: inherit; font-size: 12px; }
+.planning-source-evidence .pse-table[data-empty="true"] { min-width: 0; }
 .planning-source-evidence .pse-table th { position: sticky; top: 0; z-index: 1; padding: 6px 10px; border-block: 1px solid var(--pse-border); background: var(--pse-soft); color: var(--pse-muted); font-size: 11px; font-weight: 500; line-height: 16px; }
 .planning-source-evidence .pse-table th:first-child { width: 43%; }
 .planning-source-evidence .pse-table th:nth-child(2) { width: 37%; }

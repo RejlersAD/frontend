@@ -1,12 +1,15 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useId, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeftRight, ArrowRight, BarChart3, CalendarDays, CheckCircle2,
   ClipboardList, Clock3, Info, Link2, ListFilter, Lock, ShieldCheck, Target, Timer, TrendingUp, X,
 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import PlanningPackagePage from '../../PlanningPackagePage'
-import SimplePlanningWorkspace from '../../../components/planning/SimplePlanningWorkspace'
+import PlanningBackgroundMonitor from '../../../components/planning/PlanningBackgroundMonitor'
+import PlannerWorkspacePage from '../../PlannerWorkspacePage'
+import { resolvePlanningSchedule } from '../../../services/planningScheduleSelection'
+import { radaiConfirm } from '../../../services/radaiDialog'
 
 const DAY = 86400000
 const numeric = value => value !== null && value !== undefined && Number.isFinite(Number(value))
@@ -98,10 +101,98 @@ function Timeline({ rows, start, end, onOpen }) {
 }
 
 export default function PlanBaselineTab(props) {
-  return <SimplePlanningWorkspace key={props.project.id} enterpriseProject={props.project} onRefreshComparison={props.schedulePerformance?.reload} comparison={<SchedulePerformancePanel {...props} scheduleMode="management" />} />
+  return <PlanBaselineContent key={props.project.id} {...props} />
 }
 
-export function SchedulePerformancePanel({ project, schedulePerformance, scheduleMode = 'management', onScheduleMode, onSelectBaseline, onSelectVersion, onSelectView }) {
+function PlanBaselineContent(props) {
+  const mode = props.scheduleMode === 'documents' ? 'documents' : 'planner'
+  const [visited, setVisited] = useState(() => new Set([mode]))
+  const [handoff, setHandoff] = useState(null)
+  const [generationRequest, setGenerationRequest] = useState(0)
+  const [scheduleWorkspaceRequest, setScheduleWorkspaceRequest] = useState(0)
+  const [documentReviewRequest, setDocumentReviewRequest] = useState(null)
+  const [plannerDirty, setPlannerDirty] = useState(false)
+  const [analysisState, setAnalysisState] = useState(null)
+  const [backgroundJob, setBackgroundJob] = useState(null)
+  const acceptBackgroundJob = useCallback(job => setBackgroundJob(job), [])
+  const documentsMounted = mode === 'documents' || visited.has('documents') || Boolean(backgroundJob)
+  useEffect(() => { setHandoff(null); setDocumentReviewRequest(null); setGenerationRequest(0); setScheduleWorkspaceRequest(0); setPlannerDirty(false); setAnalysisState(null) }, [props.project.id])
+  useEffect(() => { setVisited(previous => previous.has(mode) ? previous : new Set([...previous, mode])) }, [mode])
+  const openPlanner = async selection => {
+    if (plannerDirty && !(await radaiConfirm('Discard unsaved activity changes and open this schedule?'))) return
+    setPlannerDirty(false)
+    if (selection?.generationId || selection?.analysisRunId) props.onScheduleSelection?.({ planningProjectId: selection.planningProjectId, generationId: selection.generationId, analysisRunId: selection.analysisRunId, scheduleId: null, versionId: null })
+    setHandoff({ ...selection, request: Date.now() })
+    props.onScheduleMode('planner', selection?.initialTab || 'activities')
+  }
+  const openDocuments = () => props.onScheduleMode('documents')
+  const openGeneration = () => { setGenerationRequest(value => value + 1); openDocuments() }
+  const openDocumentStep = request => { setDocumentReviewRequest({ ...request, requestId: Date.now() }); openDocuments() }
+  const selectMode = value => {
+    const selectedVersionId = props.schedulePerformance?.model?.version?.id || handoff?.versionId
+    if (value === 'planner' && mode === 'documents' && !plannerDirty && analysisState?.savedRunId
+      && (!analysisState.packageVersionId || String(analysisState.packageVersionId) !== String(selectedVersionId))) {
+      setScheduleWorkspaceRequest(request => request + 1)
+      return
+    }
+    props.onScheduleMode(value)
+  }
+  return <div className="planning-design">
+    <nav className="pln-task-tabs" aria-label="Schedule workspace">
+      {[['documents', 'Document Intelligence'], ['planner', 'Master Schedule']].map(([value, label]) =>
+        <button type="button" key={value} aria-pressed={mode === value} onClick={() => selectMode(value)}>{label}</button>)}
+    </nav>
+    {!documentsMounted && <PlanningBackgroundMonitor enterpriseProjectId={props.project.id} onState={setAnalysisState} onReady={acceptBackgroundJob} />}
+    {documentsMounted && <div hidden={mode !== 'documents'}><PlanningPackagePage key={props.project.id} embedded documentWorkflow enterpriseProject={props.project} recoveredJob={backgroundJob} generationRequest={generationRequest} scheduleWorkspaceRequest={scheduleWorkspaceRequest} documentReviewRequest={documentReviewRequest} onOpenPlanner={openPlanner} onAnalysisStateChange={setAnalysisState} onBackToPortfolio={() => props.onSelectView?.('project-dashboard')} /></div>}
+    {(visited.has('planner') || mode === 'planner') && <div hidden={mode !== 'planner'}><UnifiedScheduleWorkspace key={props.project.id} {...props} handoff={handoff} analysisState={analysisState} onDirtyChange={setPlannerDirty} onOpenDocuments={openDocuments} onOpenGeneration={openGeneration} onOpenDocumentStep={openDocumentStep} /></div>}
+  </div>
+}
+
+function UnifiedScheduleWorkspace({ project, handoff, analysisState, scheduleTab, scheduleMode, onScheduleTab, onScheduleSelection, onOpenDocuments, onOpenGeneration, onOpenDocumentStep, onDirtyChange, ...props }) {
+  const [attempt, setAttempt] = useState(0)
+  const [selection, setSelection] = useState({ loading: true })
+  // This read resolves selection only. Activities always come from the retained
+  // relational workspace, never from the separate simple-plan task draft.
+  useEffect(() => {
+    let current = true
+    const controller = new AbortController()
+    setSelection({ loading: true })
+    resolvePlanningSchedule(project.id, handoff || {}, { signal: controller.signal })
+      .then(data => { if (current) setSelection({ ...data, loading: false }) })
+      .catch(error => {
+        if (!current) return
+        const denied = [401, 403].includes(error?.response?.status)
+        setSelection({ loading: false, error: denied ? 'This account cannot access the schedule workspace.' : error.message || 'The schedule workspace could not be loaded.' })
+      })
+    return () => { current = false; controller.abort() }
+  }, [project.id, handoff, attempt])
+  if (selection.loading) return <div className="pln-section" role="status">Loading Master Schedule…</div>
+  if (selection.error) return <div className="pln-section" role="alert"><p>{selection.error}</p><button type="button" className="pln-button" onClick={() => setAttempt(value => value + 1)}>Retry schedule workspace</button></div>
+  if (!selection.linkedProject) return <div className="pln-section"><h2>Master Schedule</h2><p>Set up project inputs to create a schedule workspace.</p><button type="button" className="pln-button pln-primary" onClick={onOpenDocuments}>Open Document Intelligence</button><button type="button" className="pln-button" onClick={() => setAttempt(value => value + 1)}>Refresh schedules</button></div>
+  return <PlannerWorkspacePage key={selection.linkedProject.id} embedded planningProjectId={selection.linkedProject.id}
+    compactHeader headerContainer={scheduleMode === 'documents' ? null : props.scheduleControlsHost} workspaceActive={scheduleMode !== 'documents'}
+    initialScheduleId={selection.schedule?.id} initialVersionId={selection.version?.id}
+    initialGenerationId={handoff?.generationId}
+    initialAnalysisRunId={handoff?.analysisRunId}
+    analysisState={String(analysisState?.projectId) === String(selection.linkedProject.id) ? analysisState : null}
+    initialTab={scheduleTab || (scheduleMode === 'management' ? 'performance' : 'activities')}
+    onTabChange={onScheduleTab} onBack={onOpenDocuments} onOpenGenerationWizard={onOpenGeneration}
+    onOpenDocumentStep={onOpenDocumentStep}
+    onDirtyChange={onDirtyChange}
+    onSelectionChange={value => onScheduleSelection?.({ ...value, planningProjectId: selection.linkedProject.id })}
+    onWorkspaceChanged={props.schedulePerformance?.reload}
+    performancePanel={({ scheduleId, versionId, onOpenActivities }) => {
+      const performance = props.schedulePerformance
+      const matches = String(performance?.model?.linkedProject?.id) === String(selection.linkedProject.id)
+        && String(performance?.model?.schedule?.id) === String(scheduleId)
+        && String(performance?.model?.version?.id) === String(versionId)
+      if (!matches && !performance?.loading && performance?.issues?.length) return <div role="alert" className="sp-empty"><p>Performance for this schedule version could not be loaded.</p><button type="button" className="pp-button" onClick={performance.reload}>Retry schedule data</button></div>
+      if (!matches) return <div className="sp-empty" role="status">Loading performance for the selected schedule version…</div>
+      return <SchedulePerformancePanel {...props} project={project} integrated onOpenPlanner={onOpenActivities} scheduleMode="management" />
+    }} />
+}
+
+export function SchedulePerformancePanel({ project, schedulePerformance, scheduleMode = 'management', onScheduleMode, onSelectBaseline, onSelectVersion, onSelectView, integrated = false, onOpenPlanner }) {
   const [chartMode, setChartMode] = useState('chart')
   const [timeRange, setTimeRange] = useState('full')
   const [showFilters, setShowFilters] = useState(false)
@@ -113,7 +204,7 @@ export function SchedulePerformancePanel({ project, schedulePerformance, schedul
   const [dialog, setDialog] = useState(null)
   useEffect(() => { setDialog(null); setSearch(''); setStatus('all'); setDiscipline('all'); setOwner('all'); setCriticalOnly(false) }, [project.id])
   const { model, loading, issues = [], reload } = schedulePerformance
-  const openPlanner = () => { setDialog(null); onScheduleMode('planner') }
+  const openPlanner = () => { setDialog(null); if (onOpenPlanner) onOpenPlanner(); else onScheduleMode('planner') }
   const action = row => row.view === 'quality' ? setDialog({ type: 'quality' }) : row.activityId ? setDialog({ type: 'activity', row: model.activities?.find(item => String(item.id) === String(row.activityId)) }) : openPlanner()
   const activities = model?.activities || []
   const disciplines = [...new Set(activities.map(row => row.discipline).filter(Boolean))].sort()
@@ -146,8 +237,8 @@ export function SchedulePerformancePanel({ project, schedulePerformance, schedul
     { label: 'Forecast finish', value: model.forecastFinish ? dateLabel(model.forecastFinish) : 'Pending update', detail: model.forecastFinish ? model.detailedEngineering ? 'Engineering forecast' : 'Reported forecast' : 'Forecast not published', tone: model.forecastFinish ? 'blue' : 'danger', icon: CalendarDays },
   ] : []
   return <div className={`sp-workspace${scheduleMode === 'planner' ? ' sp-planning' : ''}`}>
-    <div className="sp-toolbar"><div className="sp-mode-switch" role="group" aria-label="Schedule workspace mode">{[['management', 'Performance'], ['planner', 'Planning']].map(([mode, label]) => <button type="button" key={mode} aria-pressed={scheduleMode === mode} onClick={() => onScheduleMode(mode)}>{label}</button>)}</div>
-      {scheduleMode === 'management' && <><label className="sp-toolbar-field">Baseline<select value={model?.baseline?.id || ''} disabled={loading || !model?.baselines?.length} onChange={event => onSelectBaseline(event.target.value)}>{!model?.baselines?.length && <option value="">No approved baseline</option>}{model?.baselines?.map(item => <option key={item.id} value={item.id}>{item.label || item.name || `Baseline ${item.id}`}</option>)}</select></label><span className="sp-lock" title={model?.baselineApproved ? 'Approved baseline — read only' : 'No approved baseline'}><Lock size={15} aria-label={model?.baselineApproved ? 'Approved baseline — read only' : 'Baseline not approved'} /></span><label className="sp-toolbar-field">Compare<select value={model?.version?.id || ''} disabled={loading || !model?.versions?.length} onChange={event => onSelectVersion(event.target.value)}>{!model?.versions?.length && <option value="">No schedule version</option>}{model?.versions?.map(item => <option key={item.id} value={item.id}>{item.label || item.name || `Version ${item.version_number}`}</option>)}</select></label><label className="sp-toolbar-field">Time range<select value={timeRange} onChange={event => setTimeRange(event.target.value)}><option value="full">Full project</option><option value="recent">Last 3 months</option><option value="next">Next 6 weeks</option></select></label><button type="button" className="pp-button" aria-expanded={showFilters} aria-controls="schedule-activity-filters" onClick={() => setShowFilters(value => !value)}><ListFilter size={15} />Filters</button><span className="sp-toolbar-date"><CalendarDays size={15} aria-hidden="true" />Data date: {dateLabel(model?.dataDate)}</span></>}
+    <div className="sp-toolbar">{!integrated && <div className="sp-mode-switch" role="group" aria-label="Schedule workspace mode">{[['management', 'Performance'], ['planner', 'Planning']].map(([mode, label]) => <button type="button" key={mode} aria-pressed={scheduleMode === mode} onClick={() => onScheduleMode(mode)}>{label}</button>)}</div>}
+      {scheduleMode === 'management' && <><label className="sp-toolbar-field">Baseline<select value={model?.baseline?.id || ''} disabled={loading || !model?.baselines?.length} onChange={event => onSelectBaseline(event.target.value)}>{!model?.baselines?.length && <option value="">No approved baseline</option>}{model?.baselines?.map(item => <option key={item.id} value={item.id}>{item.label || item.name || `Baseline ${item.id}`}</option>)}</select></label><span className="sp-lock" title={model?.baselineApproved ? 'Approved baseline — read only' : 'No approved baseline'}><Lock size={15} aria-label={model?.baselineApproved ? 'Approved baseline — read only' : 'Baseline not approved'} /></span>{!integrated && <label className="sp-toolbar-field">Compare<select value={model?.version?.id || ''} disabled={loading || !model?.versions?.length} onChange={event => onSelectVersion(event.target.value)}>{!model?.versions?.length && <option value="">No schedule version</option>}{model?.versions?.map(item => <option key={item.id} value={item.id}>{item.label || item.name || `Version ${item.version_number}`}</option>)}</select></label>}<label className="sp-toolbar-field">Time range<select value={timeRange} onChange={event => setTimeRange(event.target.value)}><option value="full">Full project</option><option value="recent">Last 3 months</option><option value="next">Next 6 weeks</option></select></label><button type="button" className="pp-button" aria-expanded={showFilters} aria-controls="schedule-activity-filters" onClick={() => setShowFilters(value => !value)}><ListFilter size={15} />Filters</button><span className="sp-toolbar-date"><CalendarDays size={15} aria-hidden="true" />Data date: {dateLabel(model?.dataDate)}</span></>}
     </div>
     {scheduleMode === 'planner' ? <div className="sp-planner-container"><PlanningPackagePage key={project.id} embedded enterpriseProject={project} onBackToPortfolio={() => onSelectView?.('project-dashboard')} /></div> : <>
       {showFilters && <div id="schedule-activity-filters" className="sp-filters"><label>Search activities<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Activity ID, name, discipline or owner" /></label><label>Status<select value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option><option value="late">Late</option><option value="blocked">Blocked</option><option value="not-started">Not started</option><option value="complete">Complete</option></select></label><button type="button" className="pp-button" onClick={clearFilters}>Clear filters</button><span>Activity filters apply to the lists below. Progress totals remain {model?.detailedEngineering ? 'within controlled engineering scope' : 'project-wide'}.</span></div>}

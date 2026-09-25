@@ -1,0 +1,328 @@
+.procurement-import-review {
+  --import-blue: #0059ff;
+  --import-ink: #092478;
+  --import-border: #dce8f8;
+  position: fixed;
+  z-index: 70;
+  box-sizing: border-box;
+  color: var(--import-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-table-size, .8125rem);
+  line-height: 1.4;
+}
+
+.procurement-import-review__overlay { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 0; }
+.procurement-import-review__modal-shield { position: fixed; inset: 0; touch-action: none; }
+.procurement-import-review__backdrop { position: absolute; inset: 0; background: #172b4d40; }
+.procurement-import-review__dialog {
+  position: relative;
+  display: flex;
+  container: procurement-upload / inline-size;
+  max-width: 100%;
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  overflow: visible;
+  background: #fff;
+  border: 1px solid var(--import-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px #172b4d33;
+  outline: none;
+}
+.procurement-import-review__surface { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border-radius: inherit; }
+.procurement-import-review__resize {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.procurement-import-review__resize--left { left: -13px; }
+.procurement-import-review__resize--right { right: -13px; }
+.procurement-import-review__resize::after {
+  content: '';
+  position: absolute;
+  top: calc(50% - 22px);
+  left: 3px;
+  width: 4px;
+  height: 44px;
+  border: 1px solid #7aa7f8;
+  border-radius: 4px;
+  background: #dceaff;
+}
+.procurement-import-review__resize:hover::after,
+.procurement-import-review__resize:focus-visible::after { background: var(--import-blue); }
+.procurement-import-review__resize:focus-visible { outline: 2px solid var(--import-blue); outline-offset: -2px; }
+.procurement-import-review.is-resizing { cursor: ew-resize; user-select: none; }
+.procurement-import-review.is-resizing .procurement-import-review__dialog { pointer-events: none; }
+.procurement-import-review.is-resizing .procurement-import-review__resize { pointer-events: auto; }
+.procurement-import-review__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 60px;
+  padding: 6px 18px;
+  background: var(--import-blue);
+  color: #fff;
+}
+.procurement-import-review__header h2 {
+  margin: 0;
+  color: inherit;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.procurement-import-review__header p { margin: 0; color: #fff; font-size: var(--text-table-size); }
+.procurement-import-review__header button { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border-radius: 4px; }
+.procurement-import-review__header button:hover { background: #ffffff24; }
+.procurement-import-review :is(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--import-blue); outline-offset: 2px; }
+.procurement-import-review__header button:focus-visible { outline-color: white; }
+.procurement-import-review button:disabled { cursor: not-allowed; opacity: .5; }
+.procurement-import-review__progress {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 28px;
+  min-height: 44px;
+  padding: 6px 24px;
+  border-bottom: 1px solid var(--import-border);
+  background: linear-gradient(#fff, #f9fbff);
+  font-size: var(--text-caption-size);
+}
+.procurement-import-review__progress ol { display: flex; flex: 1; align-items: center; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.procurement-import-review__progress li { display: flex; flex: 1; align-items: center; gap: 10px; white-space: nowrap; }
+.procurement-import-review__progress li::after { content: ''; min-width: 20px; height: 1px; flex: 1; margin-left: 4px; background: #a7b6d1; }
+.procurement-import-review__progress li:last-child::after { display: none; }
+.procurement-import-review__progress li.is-complete { color: var(--import-blue); }
+.procurement-import-review__progress li.is-complete::after { background: var(--import-blue); }
+.procurement-import-review__progress li > svg { width: 20px; height: 20px; flex: none; fill: var(--import-blue); color: white; }
+.procurement-import-review__step-circle { width: 18px; height: 18px; flex: none; border: 1px solid #627caf; border-radius: 50%; }
+.procurement-import-review__review-status { display: flex; align-items: center; gap: 10px; padding-left: 24px; }
+.procurement-import-review__review-status > svg { width: 20px; height: 20px; }
+.procurement-import-review__review-status small { display: block; color: #5872a3; font-size: .6875rem; }
+.procurement-import-review__body { display: flex; flex: 1; min-height: 0; background: #fcfdff; scroll-padding-block: 12px; }
+.procurement-import-review__body.has-source:not(.has-result) { display: grid; grid-template-columns: minmax(0, 44%) minmax(0, 56%); }
+.procurement-import-review__source { position: relative; min-width: 0; min-height: 0; padding: 8px 14px 10px; border-right: 3px double #c5dcff; background: #f7f9fc; }
+.procurement-import-review__source::after { content: '⠿'; position: absolute; z-index: 2; right: -8px; top: 48%; color: var(--import-blue); background: #fff; line-height: 26px; pointer-events: none; }
+.procurement-import-review__form { flex: 1; min-width: 0; min-height: 0; padding: 8px 18px 12px; overscroll-behavior: contain; scroll-padding-block: 12px; scrollbar-width: thin; scrollbar-color: #c3d0e2 #f8fbff; }
+.procurement-import-review__form > * + * { margin-top: 8px; }
+.procurement-import-review__form-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -8px -18px 8px; padding: 8px 18px 6px; border-bottom: 1px solid var(--import-border); background: #f4f9ff; }
+.procurement-import-review__form-heading h3 { margin: 0; color: #061778; font-size: var(--text-section-title-size); line-height: 1.35; font-weight: 650; }
+.procurement-import-review__form-heading p { margin: 0; }
+.procurement-import-review__required { color: #d51222; }
+.procurement-import-review__required-count { flex: none; font-size: var(--text-caption-size); }
+.procurement-import-review__required-count b { color: #d51222; }
+.procurement-import-review__heading-actions { display: grid; gap: 3px; justify-items: end; }
+.procurement-import-review__change-source { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--import-blue); font-size: var(--text-caption-size); }
+.procurement-import-review__change-source svg { width: 14px; height: 14px; }
+.procurement-import-review__uploads { display: grid; gap: 12px; margin: 16px 0; }
+.procurement-import-review__uploads[hidden] { display: none; }
+.procurement-import-review__uploads.has-both { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.procurement-import-review__uploads > div { border-color: #a9caff; border-radius: 8px; background: #f2f7ff; }
+.procurement-import-review__uploads button { color: var(--import-blue); border-color: #b5ccef; }
+.procurement-import-review__sections { display: grid; gap: 8px; min-width: 0; }
+.procurement-import-review__identity-status { padding: 5px 10px; border: 1px solid var(--import-border); border-radius: 5px; background: #f5f9ff; color: #28477f; font-size: var(--text-caption-size); }
+.procurement-import-review__identity-status summary { cursor: pointer; }
+.procurement-import-review__identity-status summary:focus-visible { outline: 2px solid var(--import-blue); outline-offset: 2px; }
+.procurement-import-review__identity-status[open] > div { padding: 5px 0; }
+.procurement-import-review__identity-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 0 12px; }
+.procurement-import-review__columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.procurement-import-review__section { min-width: 0; overflow: hidden; border: 1px solid var(--import-border); border-radius: 8px; background: white; }
+.procurement-import-review__section > h4 { margin: 0; padding: 6px 16px; color: #091678; background: #eaf3ff; font-size: var(--text-body-size); font-weight: 700; line-height: 1.4; }
+.procurement-import-review__section-body { display: grid; gap: 5px; padding: 7px 12px; }
+.procurement-import-review__field { display: grid; grid-template-columns: minmax(106px, 32%) minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; color: var(--import-ink); font-weight: 400; }
+.procurement-import-review__field > span:first-child { padding-top: 6px; }
+.procurement-import-review__control { min-width: 0; }
+.procurement-import-review .procurement-import-review__form :where(input:not([type='checkbox']):not([type='file']), select, textarea) { width: 100%; min-width: 0; min-height: 32px; margin-top: 0; padding: 5px 10px; border: 1px solid #bdcce2; border-radius: 4px; background: white; color: var(--import-ink); font: inherit; font-weight: 400; box-shadow: 0 1px 2px #13346408; }
+.procurement-import-review__form textarea { display: block; height: 32px; resize: vertical; }
+.procurement-import-review__form input::placeholder { color: #546fa0; opacity: 1; }
+.procurement-import-review__form :is(input, textarea)[readonly] { background: #f4f7fc; }
+.procurement-import-review__extraction-prompt { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 20px; border: 1px solid var(--import-border); border-radius: 8px; background: #f4f9ff; }
+.procurement-import-review__extraction-prompt > svg { width: 30px; height: 30px; flex: none; color: var(--import-blue); }
+.procurement-import-review__extraction-prompt > div { flex: 1 1 240px; }
+.procurement-import-review__extraction-prompt h3 { margin: 0 0 4px; font-size: var(--text-body-size); font-weight: 600; }
+.procurement-import-review__extraction-prompt p { margin: 0; color: #3d5689; }
+.procurement-import-review__extraction-prompt button { min-height: 36px; padding: 7px 12px; border-radius: 5px; color: white; background: var(--import-blue); font-weight: 600; }
+.procurement-import-review__form input[type='checkbox'] { width: 17px; height: 17px; flex: none; border: 1px solid #728bb3; accent-color: var(--import-blue); }
+.procurement-import-review__form [aria-invalid='true'] { border-color: #cc4850 !important; background: #fff8f8 !important; }
+.procurement-import-review__field-error { display: block; margin-top: 3px; color: #ae2331; font-size: var(--text-caption-size); font-weight: 400; }
+.procurement-import-review__info { display: flex; align-items: flex-start; gap: 10px; margin: 2px 0 0; padding: 7px 9px; border: 1px solid #c4dbff; border-radius: 4px; background: #edf5ff; color: #0049d6; font-size: var(--text-caption-size); }
+.procurement-import-review__info > svg { width: 18px; height: 18px; flex: none; }
+.procurement-import-review__totals { display: grid; gap: 5px; margin: 3px 0 0; padding: 8px; background: #f3f8ff; border-radius: 4px; }
+.procurement-import-review__totals > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
+.procurement-import-review__totals dd { font-weight: 600; }
+.procurement-import-review__table-scroll { overflow-x: auto; border: 1px solid var(--import-border); border-radius: 5px; }
+.procurement-import-review__price-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--text-caption-size); }
+.procurement-import-review__price-table th { height: 30px; padding: 4px 8px; text-align: left; background: #f4f9ff; font-weight: 600; }
+.procurement-import-review__price-table th:first-child { width: 32px; text-align: center; }
+.procurement-import-review__price-table th:nth-child(2) { width: 39%; }
+.procurement-import-review__price-table th:nth-child(3) { width: 25%; }
+.procurement-import-review__price-table th:last-child { width: 87px; }
+.procurement-import-review__price-table.is-captured th:last-child { width: auto; }
+.procurement-import-review__price-table td { padding: 3px; border-top: 1px solid var(--import-border); border-right: 1px solid var(--import-border); }
+.procurement-import-review__price-table td:first-child { text-align: center; }
+.procurement-import-review__price-table td:last-child { border-right: 0; }
+.procurement-import-review__price-table button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 26px; color: var(--import-blue); white-space: nowrap; }
+.procurement-import-review__price-table td button { width: 100%; color: #546c99; }
+.procurement-import-review__price-table button svg { width: 18px; height: 18px; flex: none; }
+.procurement-import-review__form .procurement-import-review__price-table input { padding: 4px 6px; font-size: var(--text-caption-size); }
+.procurement-import-review__line-amount { display: flex; gap: 3px; }
+.procurement-import-review__section[aria-labelledby='import-pr-breakdown'] .procurement-import-review__field { grid-template-columns: minmax(106px, 16%) minmax(0, 1fr); }
+.procurement-import-review__form .procurement-import-review__line-amount select { width: 65px; flex: none; padding: 3px; font-size: var(--text-caption-size); }
+.procurement-import-review__form .procurement-import-review__line-amount .procurement-import-review__captured-currency { width: 60px; flex: none; }
+.procurement-import-review__empty { margin: 2px 0; color: #54678a; }
+.procurement-import-review__signer, .procurement-import-review__signer-headings { display: grid; grid-template-columns: minmax(120px, 25%) 58px minmax(0, 1fr) 88px; align-items: center; gap: 9px; }
+.procurement-import-review__signer-headings { color: #435c84; font-size: var(--text-caption-size); font-weight: 600; }
+.procurement-import-review__form .procurement-import-review__signer input:not([type='checkbox']) { min-height: 28px; padding-block: 3px; }
+.procurement-import-review__form .procurement-import-review__approval-level { padding-inline: 5px; text-align: center; }
+.procurement-import-review__additional-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.procurement-import-review__additional-actions > button { color: var(--import-blue); font-size: var(--text-caption-size); text-decoration: underline; }
+.procurement-import-review__verify, .procurement-import-review__verified { display: flex; align-items: center; gap: 8px; font-size: var(--text-caption-size); }
+.procurement-import-review__verified { color: #14734a; }
+.procurement-import-review__verified svg { width: 17px; height: 17px; }
+.procurement-import-review__source-role { display: block; color: #54678a; font-size: var(--text-caption-size); font-weight: 400; }
+.procurement-import-review__signature-status { color: #54678a; font-size: var(--text-caption-size); }
+.procurement-import-review__captured-level { color: #54678a; text-align: center; font-size: var(--text-caption-size); }
+.procurement-import-review__signer-note { grid-column: 2 / -1; display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: start; gap: 8px; font-size: var(--text-caption-size); }
+.procurement-import-review__signer-note textarea { min-height: 32px; resize: vertical; }
+.procurement-import-review__source-approval-note { margin: 0; color: #435c84; font-size: var(--text-caption-size); overflow-wrap: anywhere; }
+.procurement-import-review__signer > :is(.procurement-import-review__source-approval-note, .procurement-import-review__field-error) { grid-column: 3 / -1; }
+.procurement-import-review__approval-date { grid-template-columns: minmax(140px, 28%) minmax(0, 230px); gap: 12px; }
+.procurement-import-review__po { display: grid; min-width: 0; gap: 9px; }
+.procurement-import-review__po-title { margin: 4px 0 0; color: var(--import-ink); font-size: var(--text-section-title-size); font-weight: 650; }
+.procurement-import-review__po-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.procurement-import-review__po .procurement-import-review__section { border-color: #bfd9ff; }
+.procurement-import-review__po .procurement-import-review__section > h4,
+.procurement-import-review__vendor > div:first-child { margin: 0; padding: 7px 14px; background: #e8f2ff; color: #004ccc; }
+.procurement-import-review__po-card-body { display: grid; gap: 8px; padding: 8px 12px 10px; }
+.procurement-import-review__po-field { display: grid; grid-template-columns: minmax(88px, 24%) minmax(0, 1fr); align-items: start; gap: 9px; min-width: 0; color: var(--import-ink); font-size: var(--text-caption-size); font-weight: 400; }
+.procurement-import-review__po-field > span:first-child { padding-top: 7px; }
+.procurement-import-review__po-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; }
+.procurement-import-review__po-pairs .procurement-import-review__po-field { display: flex; flex-direction: column; gap: 4px; }
+.procurement-import-review__po-pairs .procurement-import-review__po-field > span:first-child { padding-top: 0; }
+.procurement-import-review__po-pairs .procurement-import-review__control { width: 100%; }
+.procurement-import-review__po-link { display: grid; gap: 8px; }
+.procurement-import-review__po-link .procurement-import-review__po-field { grid-template-columns: minmax(130px, 38%) minmax(0, 1fr); }
+.procurement-import-review__vendor { min-width: 0; border: 1px solid #bfd9ff; border-radius: 8px; background: white; }
+.procurement-import-review__vendor > div:first-child { border-radius: 7px 7px 0 0; }
+.procurement-import-review__vendor h3 { margin: 0; color: inherit; font-size: var(--text-body-size); line-height: 1.4; font-weight: 700; }
+.procurement-import-review__vendor-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 8px 28px; padding: 8px 12px 10px; }
+.procurement-import-review__vendor-search { position: relative; display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: start; gap: 0 9px; min-width: 0; }
+.procurement-import-review__vendor-search > label { padding-top: 7px; color: var(--import-ink); font-weight: 400; }
+.procurement-import-review__vendor-search > [role='listbox'] { top: 32px; left: 109px; right: 0; width: auto; }
+.procurement-import-review__vendor-search > :is([role='status'], p) { grid-column: 2; }
+.procurement-import-review__vendor-search > [aria-hidden='true'] { display: none; }
+.procurement-import-review__vendor-grid .procurement-import-review__po-field { grid-template-columns: 100px minmax(0, 1fr); }
+.procurement-import-review__vendor-address { grid-column: 1 / -1; }
+.procurement-import-review__po-approval { margin: 0; padding: 0; overflow: visible; }
+.procurement-import-review__po-approval > h4 { border-radius: 7px 7px 0 0; }
+.procurement-import-review__po-approval .procurement-import-review__info { margin: 0; padding: 5px 9px; }
+.procurement-import-review__po-evidence-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 8px 28px; align-items: start; }
+.procurement-import-review__po-evidence-grid > .procurement-import-review__po-field { grid-template-columns: 132px minmax(0, 1fr); }
+.procurement-import-review__po-evidence-grid > .procurement-import-review__verify { min-height: 32px; }
+.procurement-import-review__po-approver > div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 0 9px; }
+.procurement-import-review__po-approver label { padding-top: 7px; color: var(--import-ink); font-weight: 400; }
+.procurement-import-review__po-approver [role='listbox'] { top: 32px; left: 141px; right: 0; width: auto; }
+.procurement-import-review__po-approver :is([role='status'], p) { grid-column: 2; }
+.procurement-import-review__form .procurement-import-review__po-approver input { height: 32px; }
+.procurement-import-review__required-count.is-complete { display: flex; align-items: center; gap: 6px; color: #087a4d; }
+.procurement-import-review__required-count.is-complete svg { width: 20px; height: 20px; fill: #00875b; color: #fff; }
+.procurement-import-review--po { --import-blue: #005edb; --import-ink: #17305e; }
+.procurement-import-review--po .procurement-import-review__header { min-height: 64px; padding-inline: 30px; }
+.procurement-import-review--po .procurement-import-review__header h2 { font-size: var(--text-page-title-size, 1.5rem); font-weight: 650; }
+.procurement-import-review--po .procurement-import-review__header p { font-size: var(--text-body-size); }
+.procurement-import-review--po .procurement-import-review__body.has-source:not(.has-result) { grid-template-columns: minmax(0, 45.5%) minmax(0, 54.5%); }
+.procurement-import-review--po .procurement-import-review__source { padding: 0 8px 8px 20px; background: #fff; }
+.procurement-import-review--po .procurement-import-review__form { padding: 0 20px 8px 10px; }
+.procurement-import-review--po .procurement-import-review__form-heading { margin: 0 0 6px; padding: 6px 12px; border: 1px solid #bfd9ff; border-radius: 8px; background: white; }
+.procurement-import-review--po .procurement-import-review__form-heading h3 { color: #093578; }
+.procurement-import-review--po .procurement-import-review__progress { gap: 18px; }
+.procurement-import-review--po .procurement-import-review__progress li { flex: 0 1 auto; }
+.procurement-import-review--po .procurement-import-review__progress li:last-child { flex: 1; }
+.procurement-import-review--po .procurement-import-review__progress li::after { display: block; min-width: 30px; }
+.procurement-import-review--po .procurement-import-review__step-circle { display: grid; width: 23px; height: 23px; place-items: center; }
+.procurement-import-review--po .procurement-import-review__footer { min-height: 56px; padding: 8px 20px; }
+.procurement-import-review--po .procurement-source-heading h3 { font-size: var(--text-section-title-size); line-height: 1.35; }
+.procurement-import-review--po .procurement-source-heading p { font-size: var(--text-body-size); line-height: 1.4; }
+.procurement-import-review__footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; min-height: 62px; padding: 10px 18px; border-top: 1px solid var(--import-border); background: #fcfdff; }
+.procurement-import-review__footer button { min-height: 38px; height: auto; border: 1px solid #bdcce2; border-radius: 7px; padding: 8px 16px; background: white; color: var(--import-ink); font-size: var(--text-caption-size); font-weight: 600; }
+.procurement-import-review__footer button.bg-indigo-600 { border-color: var(--import-blue); background: var(--import-blue); color: white; }
+.procurement-import-review__footer button.procurement-import-review__submit { min-width: 142px; border-color: #007b65; background: #00836c; color: white; }
+.procurement-import-review__footer button.procurement-import-review__submit:hover:not(:disabled) { background: #007f68; }
+.procurement-import-review__footer-secondary { display: flex; align-items: center; gap: 8px; }
+.procurement-import-review__footer-source { display: inline-flex; align-items: center; gap: 6px; }
+.procurement-import-review__footer-source svg { width: 16px; height: 16px; }
+
+@container procurement-upload (min-width: 1251px) {
+  .procurement-import-review__po-card-body,
+  .procurement-import-review__po-link { gap: 4px; }
+  .procurement-import-review__vendor-grid { row-gap: 4px; }
+  .procurement-import-review__po-evidence-grid { row-gap: 4px; }
+  .procurement-import-review__po .procurement-import-review__section > h4,
+  .procurement-import-review__vendor > div:first-child { padding-block: 6px; }
+}
+
+@container procurement-upload (max-width: 1250px) {
+  .procurement-import-review__body.has-source:not(.has-result) { grid-template-columns: minmax(0, 40%) minmax(0, 60%); }
+  .procurement-import-review__form { padding-inline: 12px; }
+  .procurement-import-review__form-heading { margin-inline: -12px; padding-inline: 12px; }
+  .procurement-import-review__columns { grid-template-columns: minmax(0, 1fr); }
+  .procurement-import-review__po-columns { grid-template-columns: minmax(0, 1fr); }
+  .procurement-import-review__vendor-grid { grid-template-columns: minmax(0, 1fr); }
+  .procurement-import-review__po-evidence-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .procurement-import-review__po-evidence-grid > .procurement-import-review__verify { padding-left: 141px; }
+  .procurement-import-review__identity-fields { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .procurement-import-review__section-body { gap: 7px; }
+}
+@container procurement-upload (max-width: 760px) {
+  .procurement-import-review__header { padding: 10px 12px; }
+  .procurement-import-review__header h2 { font-size: var(--text-section-title-size); }
+  .procurement-import-review__progress { padding: 10px 12px; }
+  .procurement-import-review__progress ol { gap: 8px; align-items: flex-start; }
+  .procurement-import-review__progress li { align-items: flex-start; gap: 5px; white-space: normal; }
+  .procurement-import-review__progress li::after, .procurement-import-review__review-status { display: none; }
+  .procurement-import-review__body, .procurement-import-review__body.has-source:not(.has-result) { display: block; overflow-y: auto; }
+  .procurement-import-review__source { height: 480px; padding: 10px; border-right: 0; border-bottom: 1px solid var(--import-border); }
+  .procurement-import-review__source::after { display: none; }
+  .procurement-import-review__form { overflow: visible; padding: 10px; }
+  .procurement-import-review__form-heading { flex-wrap: wrap; margin: -10px -10px 8px; padding: 10px; gap: 4px; }
+  .procurement-import-review__uploads.has-both { grid-template-columns: minmax(0, 1fr); }
+  .procurement-import-review__field { grid-template-columns: minmax(94px, 32%) minmax(0, 1fr); gap: 8px; }
+  .procurement-import-review__section-body { padding: 8px; }
+  .procurement-import-review__price-table { min-width: 620px; }
+  .procurement-import-review__signer, .procurement-import-review__signer-headings { grid-template-columns: minmax(94px, 32%) 52px minmax(0, 1fr); gap: 6px; }
+  .procurement-import-review__signer-headings > span:last-child { display: none; }
+  .procurement-import-review__signer-note { grid-column: 1 / -1; grid-template-columns: minmax(94px, 32%) minmax(0, 1fr); }
+  .procurement-import-review__signer > :is(.procurement-import-review__verify, .procurement-import-review__verified, .procurement-import-review__signature-status, .procurement-import-review__additional-actions) { grid-column: 3; }
+  .procurement-import-review__approval-date { grid-template-columns: 120px minmax(0, 1fr); gap: 6px; }
+  .procurement-import-review__footer { padding: 8px 10px; gap: 6px; }
+  .procurement-import-review__footer button { padding: 8px 10px; }
+  .procurement-import-review__footer button.procurement-import-review__submit { min-width: 90px; }
+  .procurement-import-review__footer-source span { display: none; }
+  .procurement-import-review__footer-secondary { gap: 6px; }
+  .procurement-import-review--po .procurement-import-review__header { padding-inline: 12px; }
+  .procurement-import-review--po .procurement-import-review__header h2 { font-size: var(--text-section-title-size); }
+  .procurement-import-review--po .procurement-import-review__body.has-source:not(.has-result) { display: block; }
+  .procurement-import-review--po .procurement-import-review__source { padding: 10px; }
+  .procurement-import-review--po .procurement-import-review__form { padding: 10px; }
+  .procurement-import-review--po .procurement-import-review__progress li { flex: 1; }
+  .procurement-import-review--po .procurement-import-review__progress li::after { display: none; }
+  .procurement-import-review__po-pairs { gap: 10px; }
+  .procurement-import-review__po-link .procurement-import-review__po-field { display: flex; flex-direction: column; gap: 4px; }
+  .procurement-import-review__po-card-body, .procurement-import-review__vendor-grid { padding-inline: 8px; }
+  .procurement-import-review__po-evidence-grid > .procurement-import-review__po-field,
+  .procurement-import-review__po-approver > div { grid-template-columns: 100px minmax(0, 1fr); }
+  .procurement-import-review__po-approver [role='listbox'] { left: 109px; }
+  .procurement-import-review__po-evidence-grid > .procurement-import-review__verify { padding-left: 109px; }
+}
+@container procurement-upload (max-width: 380px) {
+  .procurement-import-review__footer { flex-wrap: wrap; }
+  .procurement-import-review__footer > div:last-child { margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .procurement-import-review * { scroll-behavior: auto; }
+}

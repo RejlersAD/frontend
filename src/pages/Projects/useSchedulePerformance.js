@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import apiClient from '../../services/api.service'
+import { planningGet } from '../../services/planningReads'
 import { PLANNING_ENDPOINTS as endpoints } from '../../config/planningIntelligence.config'
+import { resolvePlanningSchedule } from '../../services/planningScheduleSelection'
 
 const DAY = 86400000
-const rowsOf = value => Array.isArray(value) ? value : Array.isArray(value?.results) ? value.results : []
 const number = value => (typeof value === 'number' || typeof value === 'string') && String(value).trim() && Number.isFinite(Number(value)) ? Number(value) : null
 const percent = value => { const result = number(value); return result !== null && result >= 0 && result <= 100 ? result : null }
 const date = value => {
@@ -20,18 +20,9 @@ const closed = item => ['closed', 'implemented', 'rejected'].includes(item.statu
 const userName = user => typeof user === 'string' ? user : user?.name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email || null
 const emptyData = () => ({ projects: null, schedules: null, versions: null, linkedProject: null, schedule: null, version: null, workspace: null, controls: null, governance: null })
 
-async function listAll(endpoint, params, signal) {
-  const rows = []
-  for (let page = 1; page <= 100; page += 1) {
-    const response = await apiClient.get(endpoint, { params: { ...params, page }, signal })
-    rows.push(...rowsOf(response.data))
-    if (!response.data?.next) return rows
-  }
-  throw new Error('This schedule register exceeds the supported page limit.')
-}
-
 const messageFor = (label, error) => {
   if ([401, 403].includes(error?.response?.status)) return `${label} is unavailable for this account.`
+  if (error?.code === 'planning_selection_invalid') return error.message
   return `${label} could not be loaded. Retry to refresh this information.`
 }
 
@@ -278,15 +269,17 @@ export function buildScheduleModel(project, performance, data, issues = [], opti
 }
 
 export default function useSchedulePerformance(project, projectPerformance, revision = 0, options = {}) {
-  const { enabled = true, baselineId = null, versionId = null } = options
+  const { enabled = true, baselineId = null, planningProjectId = null, scheduleId = null, versionId = null, generationId = null, analysisRunId = null } = options
   const [reloadToken, setReloadToken] = useState(0)
   const [state, setState] = useState({ key: null, loading: false, issues: [], data: emptyData(), loadedAt: null })
   const projectId = project?.id ?? null
   const updatedAt = project?.updated_at ?? null
-  const key = `${projectId || ''}:${versionId || ''}`
+  const key = `${projectId || ''}:${planningProjectId || ''}:${scheduleId || ''}:${versionId || ''}:${generationId || ''}:${analysisRunId || ''}`
   const reload = useCallback(() => setReloadToken(value => value + 1), [])
   useEffect(() => {
-    if (!enabled || !projectId) return undefined
+    // A document draft has no selected relational version. Do not silently
+    // substitute an older canonical schedule in its header or export action.
+    if (!enabled || !projectId || generationId || analysisRunId) return undefined
     let current = true
     const controller = new AbortController()
     const signal = controller.signal
@@ -294,26 +287,19 @@ export default function useSchedulePerformance(project, projectPerformance, revi
     const load = async () => {
       const data = emptyData()
       const issues = []
-      let stage = 'Planning workspaces'
+      const stage = 'Project schedule selection'
       try {
-        data.projects = await listAll(endpoints.projects, { enterprise_project: projectId }, signal)
-        data.linkedProject = data.projects.filter(row => String(row.enterprise_project) === String(projectId)).sort(byNewest)[0] || null
-        if (!data.linkedProject) return
-        stage = 'Project schedules'
-        data.schedules = await listAll(endpoints.schedules, { project: data.linkedProject.id }, signal)
-        data.schedule = [...data.schedules].sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || byNewest(a, b))[0] || null
-        if (!data.schedule) return
-        stage = 'Schedule versions'
-        data.versions = (await listAll(endpoints.scheduleVersions, { schedule: data.schedule.id }, signal)).sort((a, b) => Number(b.version) - Number(a.version))
-        data.version = data.versions.find(row => String(row.id) === String(versionId)) || data.versions.find(row => row.status !== 'superseded') || data.versions[0] || null
+        Object.assign(data, await resolvePlanningSchedule(projectId, { planningProjectId, scheduleId, versionId }, { signal }))
+        if (!current) return
         if (!data.version) return
         const requests = [
           ['workspace', 'Schedule workspace', endpoints.scheduleWorkspace(data.version.id)],
           ['controls', 'Schedule progress', endpoints.scheduleControls(data.version.id)],
           ['governance', 'Schedule exceptions', endpoints.scheduleGovernance(data.version.id)],
         ]
-        const results = await Promise.allSettled(requests.map(([field, , endpoint]) => apiClient.get(endpoint, {
-          signal, ...(field === 'controls' && data.schedule.data_date ? { params: { data_date: data.schedule.data_date } } : {}),
+        const results = await Promise.allSettled(requests.map(([field, , endpoint]) => planningGet(endpoint, {
+          signal, suppressErrorToast: true,
+          ...(field === 'controls' && data.schedule.data_date ? { params: { data_date: data.schedule.data_date } } : {}),
         })))
         results.forEach((result, index) => {
           const [field, label] = requests[index]
@@ -321,16 +307,16 @@ export default function useSchedulePerformance(project, projectPerformance, revi
           else issues.push(messageFor(label, result.reason))
         })
       } catch (error) {
-        issues.push(messageFor(stage, error))
+        if (!signal.aborted) issues.push(messageFor(stage, error))
       } finally {
         if (current) setState({ key, loading: false, data, issues, loadedAt: new Date().toISOString() })
       }
     }
     load()
     return () => { current = false; controller.abort() }
-  }, [enabled, projectId, updatedAt, revision, reloadToken, versionId, key])
+  }, [enabled, projectId, updatedAt, revision, reloadToken, planningProjectId, scheduleId, versionId, generationId, analysisRunId, key])
   const matches = state.key === key
   const performanceModel = projectPerformance?.model || projectPerformance
-  const model = useMemo(() => buildScheduleModel(project, performanceModel, matches ? state.data : emptyData(), matches ? state.issues : [], { baselineId }), [project, performanceModel, matches, state.data, state.issues, baselineId])
-  return { loading: Boolean(enabled && projectId && (!matches || state.loading)), issues: matches ? state.issues : [], model, reload, loadedAt: matches ? state.loadedAt : null, rawData: matches ? state.data : null, projectId }
+  const model = useMemo(() => ({ ...buildScheduleModel(project, performanceModel, matches ? state.data : emptyData(), matches ? state.issues : [], { baselineId }), generationId, analysisRunId }), [project, performanceModel, matches, state.data, state.issues, baselineId, generationId, analysisRunId])
+  return { loading: Boolean(enabled && projectId && !generationId && !analysisRunId && (!matches || state.loading)), issues: matches ? state.issues : [], model, reload, loadedAt: matches ? state.loadedAt : null, rawData: matches ? state.data : null, projectId }
 }
