@@ -466,6 +466,7 @@ test('the complete Document Intelligence Preview opens from review without confi
   for (const heading of ['Source Evidence', 'Disciplines', 'HSE Studies']) {
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
   }
+  await page.locator('summary').filter({ hasText: 'Read analysis notes' }).click()
   await expect(page.getByText('Review process and piping deliverables before planning the tie-in sequence.', { exact: true })).toBeVisible()
   await expect(page.getByText('12 months', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /Visualize/ })).toBeEnabled()
