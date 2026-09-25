@@ -26,6 +26,11 @@ detail actions visible; narrow screens retain scrollable details and inbox.
   generic destination page do not establish a relationship.
 - PO/PR previews retain existing domain authorization and freshness checks.
   This change adds no backend contract, schema or approval authority.
+- The bell drawer clears an earlier list-load error when a current-session
+  request succeeds, including on reopening or automatic refresh. Action errors
+  remain separate: a successful list request does not retry a failed read/delete
+  operation. Explicit refresh clears list errors; retrying an action or changing
+  account clears its action error.
 
 ## Verification
 
@@ -39,12 +44,12 @@ node node_modules/vite/bin/vite.js --config tests/vite.notification-center.confi
 # Terminal 2: current release checks
 $env:PW_BASE_URL = 'http://127.0.0.1:5218'
 node node_modules/@playwright/test/cli.js test tests/accessibility/notification-center.spec.js tests/accessibility/notification-drawer.spec.js tests/accessibility/notification-preview.spec.js --config=playwright.config.js --workers=1
-node node_modules/eslint/bin/eslint.js src/pages/NotificationPanel.jsx src/utils/notificationCenter.js src/utils/notificationInbox.js tests/notification-inbox.test.js tests/accessibility/notification-center.spec.js tests/fixtures/notification-center.jsx tests/vite.notification-center.config.js
+node node_modules/eslint/bin/eslint.js src/pages/NotificationPanel.jsx src/components/notifications/NotificationBell.jsx src/utils/notificationCenter.js src/utils/notificationInbox.js tests/notification-inbox.test.js tests/accessibility/notification-center.spec.js tests/accessibility/notification-drawer.spec.js tests/fixtures/notification-center.jsx tests/vite.notification-center.config.js
 node --test tests/notification-inbox.test.js
 npm.cmd run build
 ```
 
-The browser suites cover 39 scenarios across inbox actions, filters, pagination, partial
+The browser suites cover 42 scenarios across inbox actions, filters, pagination, partial
 refresh recovery, account isolation, keyboard/focus behavior, responsive layout,
 the existing notification drawer and PO/PR previews. The visual check includes
 the actual application shell at desktop and mobile sizes, with the protected
@@ -54,3 +59,8 @@ The 25 September loader correction removes the immutable-count assumption
 introduced with the redesign. Unit and browser regressions cover stale counts,
 deliveries/deletions between pages, bounded refresh, malformed replies, failed
 requests and cancellation. It does not change the API or notification records.
+
+The bell recovery regressions cover network failure followed by successful
+reopening with records or an empty inbox, and a successful list refresh after a
+failed read action. The recovered load warning disappears; the failed action
+remains visible and can be retried without changing records on failure.
