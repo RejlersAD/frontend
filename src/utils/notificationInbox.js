@@ -37,7 +37,7 @@ export const loadNotificationInbox = async (fetchPage, { signal } = {}) => {
     let page = 1
     let firstCount
     let changed = false
-    while (true) {
+    while (page <= MAX_PAGES) {
       checkAborted(signal)
       const response = await fetchPage(page)
       checkAborted(signal)
