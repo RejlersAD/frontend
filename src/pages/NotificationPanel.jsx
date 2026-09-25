@@ -567,7 +567,7 @@ const NotificationPanel = () => {
             { id: 'approvals', label: 'Approvals', accessible: 'Approval notifications', value: approvalCount, icon: UsersIcon, tone: 'amber' },
           ].map(metric => <button type="button" key={metric.id} aria-label={`${metric.accessible}: ${countsReady ? metric.value : 'unavailable'}`} aria-pressed={filter === metric.id} title={metric.id === 'urgent' ? 'High, urgent and critical priority notifications' : undefined} onClick={() => setFilter(metric.id)} className={`notification-center__metric notification-center__metric--${metric.tone}${filter === metric.id ? ' is-selected' : ''}`}>
             <span className="notification-center__metric-icon"><metric.icon aria-hidden="true" /></span>
-            <span><span className="notification-center__metric-label">{metric.label}</span><strong>{countsReady ? metric.value : '—'}</strong></span>
+            <span><span className="notification-center__metric-label metric-label">{metric.label}</span><strong className="metric-value">{countsReady ? metric.value : '—'}</strong></span>
           </button>)}
         </div>
         {filtersOpen && <div id="notification-center-filters" className="notification-center__expanded-filters">
