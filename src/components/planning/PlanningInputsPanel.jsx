@@ -81,7 +81,7 @@ async function latestCompletedRun(projectId, signal) {
   throw new Error('The latest completed input analysis could not be loaded.')
 }
 
-function InputReviewDialog({ titleId, facts, conflicts, busy, error, notice, stale, previewAvailable, onPreview, onReview, onResolve, onClose }) {
+function InputReviewDialog({ titleId, facts, conflicts, busy, loading, error, notice, stale, previewAvailable, onPreview, onReview, onResolve, onClose, onRetry }) {
   const ref = useRef(null)
   useEffect(() => {
     const dialog = ref.current, opener = document.activeElement
@@ -89,15 +89,17 @@ function InputReviewDialog({ titleId, facts, conflicts, busy, error, notice, sta
     return () => { dialog.close(); if (opener?.isConnected) opener.focus({ preventScroll: true }) }
   }, [])
   return <dialog ref={ref} className="planning-input-dialog" aria-labelledby={titleId} onCancel={event => { if (busy) event.preventDefault(); else onClose() }}>
-    <header><div><h2 id={titleId}>Review &amp; confirm inputs</h2><p>Review the source evidence before confirming each finding.</p></div><button type="button" className="pln-icon-button" aria-label="Close input review" disabled={busy} onClick={onClose}><X size={20} /></button></header>
-    <div className="pln-dialog-body">
-      {error && <p className="pln-error" role="alert">{error}</p>}
-      {!error && notice && <p role="status">{notice}</p>}
+    <header><div><h2 id={titleId}>Review &amp; confirm inputs</h2><p>Each Confirm or Reject decision is saved immediately.</p></div><button type="button" className="pln-icon-button" aria-label="Close input review" disabled={busy} onClick={onClose}><X size={20} /></button></header>
+    <div className="pln-dialog-body" aria-busy={busy || loading}>
+      {error && <div><p className="pln-error" role="alert">{error}</p><button type="button" className="pln-button" disabled={busy || loading} onClick={onRetry}>Retry input review</button></div>}
+      {notice && <p role="status">{notice}</p>}
+      {busy && <p role="status"><Loader2 size={16} className="animate-spin" />Saving review…</p>}
+      {loading && <p role="status"><Loader2 size={16} className="animate-spin" />{facts.length ? 'Refreshing saved findings… You can close this window.' : 'Loading extracted inputs…'}</p>}
       {stale && <p className="pln-error">Source documents have changed. Close this review and analyze the documents again before continuing.</p>}
-      {conflicts.length > 0 && <section className="pln-clarification"><h3><AlertTriangle size={19} />Clarifications required</h3>{conflicts.map(conflict => <div className="pln-conflict" key={conflict.id}><p>{conflict.description}</p>{(conflict.facts || facts.filter(fact => conflict.fact_ids?.includes(fact.id))).map(fact => <div className="pln-conflict-value" key={fact.id}><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small></div><button type="button" className="pln-button" disabled={busy} onClick={() => onResolve(conflict.id, fact.id)}>Use this value</button></div>)}</div>)}</section>}
-      <ul className="pln-review-list">{facts.map(fact => <li key={fact.id}><FileText size={19} aria-hidden="true" /><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small>{fact.source_excerpt && <blockquote>{fact.source_excerpt}</blockquote>}<span className={`pln-status ${fact.status === 'confirmed' ? 'is-done' : ''}`}>{fact.status.replaceAll('_', ' ')}</span></div><div className="pln-review-actions"><button type="button" className="pln-button" disabled={busy || fact.status === 'confirmed' || fact.status === 'conflicted' || fact.status === 'superseded'} onClick={() => onReview(fact.id, 'confirmed')}><Check size={14} />Confirm</button><button type="button" className="pln-text-button" disabled={busy || fact.status === 'rejected' || fact.status === 'conflicted' || fact.status === 'superseded'} onClick={() => onReview(fact.id, 'rejected')}>Reject</button></div></li>)}</ul>
-      {!facts.length && <p className="pln-empty">No extracted inputs yet. Analyze the reference documents to begin.</p>}
-    </div><footer><button type="button" className="pln-button" disabled={busy} onClick={onClose}>Close</button><button type="button" className="pln-button" disabled={busy || !previewAvailable} onClick={onPreview}><FileText size={16} />Document Intelligence Preview</button></footer>
+      {conflicts.length > 0 && <section className="pln-clarification"><h3><AlertTriangle size={19} />Clarifications required</h3>{conflicts.map(conflict => <div className="pln-conflict" key={conflict.id}><p>{conflict.description}</p>{(conflict.facts || facts.filter(fact => conflict.fact_ids?.includes(fact.id))).map(fact => <div className="pln-conflict-value" key={fact.id}><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small></div><button type="button" className="pln-button" disabled={busy || loading || Boolean(error) || stale} onClick={() => onResolve(conflict.id, fact.id)}>Use this value</button></div>)}</div>)}</section>}
+      <ul className="pln-review-list">{facts.map(fact => <li key={fact.id}><FileText size={19} aria-hidden="true" /><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small>{fact.source_excerpt && <blockquote>{fact.source_excerpt}</blockquote>}<span className={`pln-status ${fact.status === 'confirmed' ? 'is-done' : ''}`}>{fact.status.replaceAll('_', ' ')}</span></div><div className="pln-review-actions"><button type="button" className="pln-button" disabled={busy || loading || Boolean(error) || stale || fact.status === 'confirmed' || fact.status === 'conflicted' || fact.status === 'superseded'} onClick={() => onReview(fact.id, 'confirmed')}><Check size={14} />Confirm</button><button type="button" className="pln-text-button" disabled={busy || loading || Boolean(error) || stale || fact.status === 'rejected' || fact.status === 'conflicted' || fact.status === 'superseded'} onClick={() => onReview(fact.id, 'rejected')}>Reject</button></div></li>)}</ul>
+      {!loading && !error && !facts.length && <p className="pln-empty">No extracted inputs were found in this analysis.</p>}
+    </div><footer><button type="button" className="pln-button" disabled={busy} onClick={onClose}>Close</button><button type="button" className="pln-button" disabled={busy || loading || Boolean(error) || !previewAvailable} onClick={onPreview}><FileText size={16} />Document Intelligence Preview</button></footer>
   </dialog>
 }
 
@@ -122,6 +124,12 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
   const inputRef = useRef(null), endDateRef = useRef(null), requestSequence = useRef(0), saveInFlight = useRef(false)
   const uploadDraftRef = useRef(null)
   const reviewController = useRef(null)
+  const reviewMutation = useRef(null)
+  const reviewContext = `${project?.id ?? ''}:${analysisRunId ?? 'latest'}`
+  const reviewContextRef = useRef(reviewContext)
+  reviewContextRef.current = reviewContext
+  const reviewRunRef = useRef(review.run?.id)
+  reviewRunRef.current = review.run?.id
   const baselineLocked = Boolean(contract?.baseline_locked)
   const manual = draft.planning_mode === 'manual'
   const duration = calculatePlanningDuration(draft.effective_date, draft.planned_end_date)
@@ -147,7 +155,9 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     reviewController.current = controller
     const sequence = ++requestSequence.current
     if (!project?.id) { setReview({ run: null, facts: [], conflicts: [] }); setReviewLoading(false); setReviewError(''); return }
-    setReviewLoading(true); setReviewError(''); setReview({ run: null, facts: [], conflicts: [] })
+    const context = `${project.id}:${analysisRunId ?? 'latest'}`
+    setReviewLoading(true); setReviewError('')
+    setReview(previous => previous.context === context ? previous : { context, run: null, facts: [], conflicts: [] })
     try {
       const run = analysisRunId
         ? (await apiClient.get(PLANNING_ENDPOINTS.intelligenceRun(analysisRunId), { signal: controller.signal })).data
@@ -156,19 +166,23 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
       if (analysisRunId && (String(run?.id) !== String(analysisRunId) || String(run.project?.id ?? run.project) !== String(project.id) || run.status !== 'succeeded')) throw new Error('The selected document analysis is unavailable for this project.')
       // Parsing and analysis are different states. A completed run already proves
       // these files were analyzed, even while its large findings list is loading.
-      setReview({ run, facts: [], conflicts: [] })
+      setReview(previous => previous.context === context && previous.run?.id === run?.id
+        ? { ...previous, run } : { context, run, facts: [], conflicts: [] })
       const [facts, conflicts] = run ? await Promise.all([
         allRecords(PLANNING_ENDPOINTS.intelligenceFacts, { run: run.id }, controller.signal),
         allRecords(PLANNING_ENDPOINTS.intelligenceConflicts, { run: run.id, status: 'open' }, controller.signal),
       ]) : [[], []]
       if (sequence === requestSequence.current) {
-        setReview({ run, facts, conflicts: conflicts.filter(item => item.status === 'open') })
+        setReview({ context, run, facts, conflicts: conflicts.filter(item => item.status === 'open') })
         onIntelligenceLoaded?.(run?.intelligence || null, run?.preview_confirmation || null)
       }
     } catch (error) {
       if (sequence === requestSequence.current && !controller.signal.aborted) setReviewError(errorText(error, 'Input review could not be loaded. Please retry.'))
     } finally { if (sequence === requestSequence.current) setReviewLoading(false) }
   }, [project?.id, onIntelligenceLoaded, analysisRunId])
+  useEffect(() => () => { reviewMutation.current = null }, [])
+  useEffect(() => { setReviewNotice('') }, [review.run?.id])
+  useEffect(() => { reviewMutation.current = null; setReviewBusy(false); setReviewNotice(''); setReviewOpen(false) }, [reviewContext])
   useEffect(() => { loadReview(); return () => { requestSequence.current += 1; reviewController.current?.abort() } }, [loadReview, analysisRevision])
   useEffect(() => { if (reviewRequest) setReviewOpen(true) }, [reviewRequest])
 
@@ -250,10 +264,25 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     } finally { setPreparingUpload(false); saveInFlight.current = false }
   }
   const reviewAction = async operation => {
+    if (reviewMutation.current || reviewLoading) return
+    const mutation = { context: reviewContext, runId: review.run?.id }
+    reviewMutation.current = mutation
     setReviewBusy(true); setReviewError(''); setReviewNotice('')
-    try { await operation(); setReviewNotice('Review saved.'); await loadReview() }
-    catch (error) { setReviewError(errorText(error, 'The review could not be saved. Please retry.')) }
-    finally { setReviewBusy(false) }
+    try {
+      const saved = await operation()
+      if (reviewContextRef.current !== mutation.context || reviewMutation.current !== mutation || reviewRunRef.current !== mutation.runId) return
+      if (saved?.fact_type && String(saved.run) === String(mutation.runId)) {
+        setReview(previous => ({ ...previous, facts: previous.facts.map(fact => fact.id === saved.id ? saved : fact) }))
+      }
+      setReviewNotice('Review saved. You can close this window.')
+      // The write is complete. Reloading a large findings list must not lock
+      // Close or erase the evidence that was just saved.
+      void loadReview()
+    } catch (error) {
+      if (reviewContextRef.current === mutation.context && reviewMutation.current === mutation && reviewRunRef.current === mutation.runId) setReviewError(errorText(error, 'The review could not be saved. Please retry.'))
+    } finally {
+      if (reviewMutation.current === mutation) { reviewMutation.current = null; setReviewBusy(false) }
+    }
   }
   const requirements = review.facts.filter(fact => ['requirement', 'deliverable', 'hse_study', 'milestone'].includes(fact.fact_type) && !['rejected', 'superseded'].includes(fact.status))
   const needsReview = review.facts.some(fact => ['detected', 'conflicted'].includes(fact.status)) || review.conflicts.length > 0
@@ -314,6 +343,6 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     </aside></div>
     {simple && generateSchedule && <p className="pln-note">Build a new draft from the schedule’s source inputs. Review the preview before applying; existing schedule versions are retained.</p>}
     {simple ? <footer className="pln-bottom-bar"><button type="button" className="pln-button" disabled={editingDisabled || uploading} onClick={onBack}><ArrowLeft size={17} />Back to schedule</button><div className="pln-stage-actions"><button type="submit" form={inputIds.form} className="pln-button" disabled={editingDisabled || uploading}>Save inputs</button><button type="submit" form={inputIds.form} name="planning-action" value="analyze" className="pln-button pln-primary" disabled={editingDisabled || uploading || documentsProcessing || Boolean(project && (loadingContract || !contract))}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{generateSchedule ? analyzing ? 'Opening plan generation…' : 'Generate new schedule draft' : analyzing ? 'Analyzing…' : files.length ? 'Analyze & update schedule' : 'Open schedule'}</button></div></footer> : <footer className="pln-bottom-bar"><button type="button" className="pln-button" onClick={onBack}><ArrowLeft size={17} />Back to portfolio</button><div><span>Scope &amp; inputs</span><small>{analyzing ? 'Document Intelligence is running…' : saving ? 'Saving draft…' : manual ? 'Define scope → Add tasks → Build schedule' : 'Register project → Upload documents → Analyze'}</small></div><div className="pln-stage-actions">{manual ? <button type="submit" form={inputIds.form} name="planning-action" value="manual-continue" className="pln-button pln-primary" disabled={editingDisabled || uploading || Boolean(project && (loadingContract || !contract))}>{saving ? <Loader2 size={17} className="animate-spin" /> : null}Save &amp; continue to Work breakdown<ArrowRight size={17} /></button> : <><button type="submit" form={inputIds.form} name="planning-action" value="analyze" className="pln-button pln-primary" disabled={!project || loadingContract || !contract || editingDisabled || uploading || documentsProcessing || !files.some(file => file.parse_status === 'done')}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{analyzing ? 'Running Document Intelligence…' : 'Run Document Intelligence'}</button><button type="button" className="pln-button" disabled={!review.run?.intelligence || unknown || editingDisabled || uploading} onClick={onOpenIntelligencePreview}>Next: Document Intelligence Preview<ArrowRight size={17} /></button></>}</div></footer>}
-    {reviewOpen && createPortal(<InputReviewDialog titleId={inputIds.reviewTitle} facts={review.facts} conflicts={review.conflicts} busy={reviewBusy} error={reviewError} notice={reviewNotice} stale={stale} previewAvailable={Boolean(review.run?.intelligence)} onPreview={() => { setReviewOpen(false); onOpenIntelligencePreview() }} onClose={() => setReviewOpen(false)} onReview={(id, status) => reviewAction(() => planningService.reviewIntelligenceFact(id, status))} onResolve={(id, factId) => reviewAction(() => planningService.resolveIntelligenceConflict(id, { action: 'select_fact', selected_fact_id: factId }))} />, document.body)}
+    {reviewOpen && createPortal(<InputReviewDialog titleId={inputIds.reviewTitle} facts={review.facts} conflicts={review.conflicts} busy={reviewBusy} loading={reviewLoading} error={reviewError} notice={reviewNotice} stale={stale} previewAvailable={Boolean(review.run?.intelligence)} onRetry={loadReview} onPreview={() => { setReviewOpen(false); onOpenIntelligencePreview() }} onClose={() => setReviewOpen(false)} onReview={(id, status) => reviewAction(() => planningService.reviewIntelligenceFact(id, status))} onResolve={(id, factId) => reviewAction(() => planningService.resolveIntelligenceConflict(id, { action: 'select_fact', selected_fact_id: factId }))} />, document.body)}
   </div>
 }
