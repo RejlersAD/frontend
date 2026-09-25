@@ -17,13 +17,22 @@ export function receiptReviewDate(value, time = false) {
   return date.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', ...(time && !onlyDate ? { hour: '2-digit', minute: '2-digit' } : {}) });
 }
 export function receiptReviewStatus(receipt) {
-  const states = { pending: ['Pending inspection', 'pending'], accepted: ['Accepted', 'accepted'], rejected: ['Rejected', 'rejected'], partial: ['Partially accepted', 'partial'] };
+  if (receipt?.status === 'accepted' && receipt?.confirmation?.confirmed_at) return { label: 'Delivery confirmed', tone: 'accepted' };
+  if (receipt?.status === 'partial' && receipt?.confirmation?.confirmed_at) return { label: 'Delivery partly confirmed', tone: 'partial' };
+  const states = { pending: ['Awaiting confirmation', 'pending'], accepted: ['Accepted', 'accepted'], rejected: ['Rejected', 'rejected'], partial: ['Partially accepted', 'partial'] };
   const entry = Object.prototype.hasOwnProperty.call(states, receipt?.status) ? states[receipt.status] : null;
   return entry ? { label: entry[0], tone: entry[1] } : { label: receiptReviewText(receipt?.status_display) || 'Status not recorded', tone: 'unknown' };
 }
 export const RECEIPT_QUANTITY_FIELDS = [['ordered_qty', 'Ordered'], ['received_qty', 'Received'], ['accepted_qty', 'Accepted'], ['rejected_qty', 'Rejected']];
-export function receiptReviewQuantities(receipt) {
+export function receiptDisplayItems(receipt) {
   const rows = Array.isArray(receipt?.items_received) ? receipt.items_received.filter(row => row && typeof row === 'object' && !Array.isArray(row)) : [];
+  return rows.map(row => ({ ...row,
+    ...(row.basis === 'service_value' ? { ordered_qty: row.ordered_amount, received_qty: row.received_amount, accepted_qty: row.accepted_amount, rejected_qty: row.rejected_amount } : {}),
+    ...(!['accepted', 'partial'].includes(receipt.status) ? { accepted_qty: null } : {}),
+  }));
+}
+export function receiptReviewQuantities(receipt) {
+  const rows = receiptDisplayItems(receipt);
   const groups = new Map();
   for (const row of rows) {
     const unit = receiptReviewText(row.uom)?.toUpperCase() || null;
@@ -77,6 +86,7 @@ export function receiptReviewTimeline(receipt) {
   return [
     { id: 'received', label: 'Receipt date', date: receipt?.receipt_date, time: false },
     { id: 'created', label: 'Record created', date: receipt?.created_at, time: true },
+    { id: 'confirmed', label: 'Delivery confirmed', date: receipt?.confirmation?.confirmed_at, time: true },
     { id: 'updated', label: 'Last updated', date: receipt?.updated_at, time: true },
   ].filter(row => receiptReviewDate(row.date, row.time) !== 'Not recorded');
 }

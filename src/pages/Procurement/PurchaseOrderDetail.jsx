@@ -375,10 +375,10 @@ const PurchaseOrderDetail = () => {
     );
   }
 
-  if (canUpdate && showEditForm && order.status !== 'completed') {
+  if (canUpdate && showEditForm) {
     return <PurchaseOrderForm isOpen pageMode editData={order}
       onClose={() => setShowEditForm(false)}
-      onSuccess={updatedOrder => { setOrder(updatedOrder); setShowEditForm(false); }} />;
+      onSuccess={(updatedOrder, { close = false } = {}) => { setOrder(updatedOrder); if (close) setShowEditForm(false); }} />;
   }
 
   const currency = order.currency || 'USD';

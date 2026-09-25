@@ -1,4 +1,4 @@
-import { radaiPrompt } from '../../services/radaiDialog'
+import PurchaseOrderNarrativeEditor from './PurchaseOrderNarrativeEditor';
 /**
  * Purchase Order Form Component
  * Aligned with RAD-PRJ-PUR-0014 Template (7-page format)
@@ -27,7 +27,8 @@ import { PROCUREMENT_VAT_OPTIONS, sumProcurementMoney } from '../../utils/procur
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 import { purchaseOrderProjectSelections, withPurchaseOrderProjects, requisitionProjectNumbers, requisitionProjectReference } from './purchaseOrderProjects';
 import { purchaseOrderLifecycleBlockReason, purchaseOrderCommercialLockReason } from '../../utils/procurementApproval';
-import { defaultPurchaseOrderIntroduction, ORDER_INTRODUCTION_MAX_LENGTH } from './purchaseOrderIntroduction';
+import { defaultPurchaseOrderIntroduction, purchaseOrderIntroductionVisible, ORDER_INTRODUCTION_MAX_LENGTH } from './purchaseOrderIntroduction';
+import { mergeSavedPurchaseOrder, mergeSavedPurchaseOrderAttachments, purchaseOrderAttachmentKey, purchaseOrderAttachmentSlots, purchaseOrderSavedValues } from './purchaseOrderSaveState';
 import {
   DocumentTextIcon,
   PaperClipIcon,
@@ -73,203 +74,6 @@ const DEFAULT_ITEMS_TABLE_HEADERS = {
   unit_price: 'Unit Price',
   discount: 'Discount',
   total_price: 'Total Price',
-};
-
-const RichTextEditor = ({ value, onChange }) => {
-  const editorRef = useRef(null);
-  const savedRangeRef = useRef(null);
-  const [ribbonTab, setRibbonTab] = useState('home');
-  const [showTableDialog, setShowTableDialog] = useState(false);
-  const [tableRows, setTableRows] = useState(3);
-  const [tableColumns, setTableColumns] = useState(3);
-  const [tableHeaderRow, setTableHeaderRow] = useState(true);
-  const [selectedFont, setSelectedFont] = useState('Arial');
-  const [selectedSize, setSelectedSize] = useState(10.5);
-  const fontSizes = { 1: 7.5, 2: 9.75, 3: 12, 4: 13.5, 5: 18, 6: 24, 7: 36 };
-
-  useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== (value || '')) {
-      editorRef.current.innerHTML = value || '';
-    }
-  }, [value]);
-
-  const rememberSelection = () => {
-    const selection = window.getSelection();
-    if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode)) {
-      savedRangeRef.current = selection.getRangeAt(0).cloneRange();
-      const node = selection.focusNode?.nodeType === Node.ELEMENT_NODE ? selection.focusNode : selection.focusNode?.parentElement;
-      if (node) {
-        const style = window.getComputedStyle(node);
-        setSelectedFont(style.fontFamily.split(',')[0].replaceAll(/["']/g, '').trim());
-        setSelectedSize(Math.round(Number.parseFloat(style.fontSize) * 0.75 * 100) / 100);
-      }
-    }
-  };
-
-  const restoreSelection = () => {
-    if (!savedRangeRef.current) return;
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(savedRangeRef.current);
-  };
-
-  const runCommand = (command, commandValue = null) => {
-    editorRef.current?.focus({ preventScroll: true });
-    restoreSelection();
-    document.execCommand(command, false, commandValue);
-    rememberSelection();
-    onChange(editorRef.current?.innerHTML || '');
-  };
-
-  const selectedBlocks = () => {
-    const editor = editorRef.current;
-    const range = savedRangeRef.current;
-    if (!editor || !range) return [];
-    const candidates = [...editor.querySelectorAll('p, div, h1, h2, h3, h4, blockquote, li')]
-      .filter((node) => {
-        try { return range.intersectsNode(node); } catch { return false; }
-      });
-    return candidates.filter((node) => !candidates.some((other) => other !== node && node.contains(other)));
-  };
-
-  const changeIndent = (direction) => {
-    editorRef.current?.focus({ preventScroll: true });
-    restoreSelection();
-    let blocks = selectedBlocks();
-    if (!blocks.length) {
-      document.execCommand('formatBlock', false, 'p');
-      rememberSelection();
-      blocks = selectedBlocks();
-    }
-    blocks.forEach((block) => {
-      const currentIndent = Number.parseFloat(block.style.marginLeft || '0') || 0;
-      block.style.marginLeft = `${Math.max(0, currentIndent + (direction * 24))}px`;
-    });
-    rememberSelection();
-    onChange(editorRef.current?.innerHTML || '');
-  };
-
-  const ribbonButton = (label, command, commandValue = null, extraClass = '') => (
-    <button
-      type="button"
-      title={label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => runCommand(command, commandValue)}
-      className={`min-w-8 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-100 active:bg-blue-200 ${extraClass}`}
-    >
-      {label}
-    </button>
-  );
-
-  const actionButton = (label, action, extraClass = '') => (
-    <button
-      type="button"
-      title={label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={action}
-      className={`min-w-8 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-100 active:bg-blue-200 ${extraClass}`}
-    >
-      {label}
-    </button>
-  );
-
-  const addImage = (event) => {
-    const imageFile = event.target.files?.[0];
-    if (!imageFile) return;
-    const reader = new FileReader();
-    reader.onload = () => runCommand('insertImage', reader.result);
-    reader.readAsDataURL(imageFile);
-    event.target.value = '';
-  };
-
-  const insertLink = async () => {
-    const url = (await radaiPrompt('Enter the link URL'));
-    if (url) runCommand('createLink', url);
-  };
-
-  const insertCustomTable = () => {
-    const rows = Math.min(30, Math.max(1, Number(tableRows) || 1));
-    const columns = Math.min(12, Math.max(1, Number(tableColumns) || 1));
-    const cells = (rowIndex) => Array.from({ length: columns }, (_, columnIndex) => {
-      const isHeader = tableHeaderRow && rowIndex === 0;
-      const tag = isHeader ? 'th' : 'td';
-      const label = isHeader ? `Heading ${columnIndex + 1}` : 'Cell';
-      const style = isHeader ? 'background:#f1f5f9;font-weight:700;' : '';
-      return `<${tag} style="border:1px solid #64748b;padding:6px;${style}">${label}</${tag}>`;
-    }).join('');
-    const body = Array.from({ length: rows }, (_, rowIndex) => `<tr>${cells(rowIndex)}</tr>`).join('');
-    runCommand('insertHTML', `<table style="border-collapse:collapse;width:100%"><tbody>${body}</tbody></table><p><br></p>`);
-    setShowTableDialog(false);
-  };
-
-  return (
-    <div className="relative mt-1 overflow-visible rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-[#2b579a] focus-within:ring-1 focus-within:ring-[#2b579a]">
-      <div className="sticky top-0 z-20 rounded-t-lg shadow-md">
-      <div className="rounded-t-lg bg-[#2b579a] px-3 pt-2 text-white">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold">PO Narrative Editor</span>
-          <span className="text-[10px] text-blue-100">Microsoft-style formatting</span>
-        </div>
-        <div className="mt-2 flex gap-1">
-          {['home', 'insert'].map((tab) => <button key={tab} type="button" onClick={() => setRibbonTab(tab)} className={`rounded-t px-4 py-1.5 text-xs font-semibold capitalize ${ribbonTab === tab ? 'bg-white text-[#2b579a]' : 'text-white hover:bg-white/10'}`}>{tab}</button>)}
-        </div>
-      </div>
-
-      <div className="min-h-[76px] border-b border-slate-300 bg-[#f5f6f8] px-2 py-2">
-        {ribbonTab === 'home' ? <div className="flex flex-wrap items-stretch gap-2">
-          <div className="flex items-center gap-0.5 border-r border-slate-300 pr-2">
-            {ribbonButton('↶', 'undo')}{ribbonButton('↷', 'redo')}{ribbonButton('Clear', 'removeFormat')}
-          </div>
-          <div className="flex flex-col justify-between border-r border-slate-300 pr-2">
-            <div className="flex gap-1">
-              <select aria-label="Font family" value={selectedFont} onChange={(event) => runCommand('fontName', event.target.value)} className="h-7 w-36 rounded border-slate-300 bg-white px-2 py-0 text-xs">{!['Arial', 'Calibri', 'Georgia', 'Times New Roman', 'Verdana'].includes(selectedFont) && <option>{selectedFont}</option>}<option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option></select>
-              <select aria-label="Font size" value={Object.keys(fontSizes).find(key => fontSizes[key] === selectedSize) || 'current'} onChange={(event) => runCommand('fontSize', event.target.value)} className="h-7 w-16 rounded border-slate-300 bg-white px-1 py-0 text-xs">{!Object.values(fontSizes).includes(selectedSize) && <option value="current" disabled>{selectedSize}</option>}{Object.entries(fontSizes).map(([value, size]) => <option key={value} value={value}>{size}</option>)}</select>
-            </div>
-            <div className="flex items-center gap-0.5">
-              {ribbonButton('B', 'bold', null, 'font-black')}{ribbonButton('I', 'italic', null, 'italic')}{ribbonButton('U', 'underline', null, 'underline')}{ribbonButton('x₂', 'subscript')}{ribbonButton('x²', 'superscript')}
-              <label title="Font colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">A<input type="color" aria-label="Font colour" onChange={(event) => runCommand('foreColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
-              <label title="Highlight colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">Highlight<input type="color" aria-label="Highlight colour" defaultValue="#fff2cc" onChange={(event) => runCommand('hiliteColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
-            </div>
-          </div>
-          <div className="flex flex-col justify-between border-r border-slate-300 pr-2">
-            <div className="flex gap-0.5">{ribbonButton('• List', 'insertUnorderedList')}{ribbonButton('1. List', 'insertOrderedList')}{actionButton('←', () => changeIndent(-1))}{actionButton('→', () => changeIndent(1))}</div>
-            <div className="flex gap-0.5">{actionButton('Left', () => runCommand('justifyLeft'))}{actionButton('Centre', () => runCommand('justifyCenter'))}{actionButton('Right', () => runCommand('justifyRight'))}{actionButton('Justify', () => runCommand('justifyFull'))}</div>
-          </div>
-          <div className="flex items-center gap-1">
-            <select aria-label="Text style" defaultValue="p" onChange={(event) => runCommand('formatBlock', event.target.value)} className="h-8 rounded border-slate-300 bg-white px-2 py-0 text-xs"><option value="p">Normal</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="blockquote">Quote</option></select>
-          </div>
-        </div> : <div className="flex flex-wrap items-stretch gap-2">
-          <div className="flex items-center gap-1 border-r border-slate-300 pr-3">
-            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setShowTableDialog(true)} className="rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">▦ Table</button>
-            <label className="cursor-pointer rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">▧ Picture<input type="file" accept="image/*" onChange={addImage} className="hidden" /></label>
-            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={insertLink} className="rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">🔗 Link</button>
-          </div>
-          <div className="flex items-center gap-1">{ribbonButton('Horizontal line', 'insertHorizontalRule')}{ribbonButton('Page Break', 'insertHTML', '<div data-po-page-break="true" contenteditable="false" style="page-break-after:always;border-top:2px dashed #94a3b8;margin:16px 0;padding-top:4px;color:#64748b;font-size:11px">Page Break</div><p><br></p>')}</div>
-        </div>}
-      </div>
-      </div>
-
-      {showTableDialog && <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/30 p-4" role="dialog" aria-modal="true" aria-label="Insert table">
-        <div className="w-full max-w-sm rounded-lg border border-slate-300 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-            <div><h4 className="text-sm font-semibold text-slate-900">Insert Table</h4><p className="text-xs text-slate-500">Choose the table dimensions.</p></div>
-            <button type="button" onClick={() => setShowTableDialog(false)} className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100" aria-label="Close table dialog">×</button>
-          </div>
-          <div className="space-y-4 p-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-xs font-semibold text-slate-700">Rows</label><input type="number" min="1" max="30" aria-label="Table rows" value={tableRows} onChange={(event) => setTableRows(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–30 rows</p></div>
-              <div><label className="block text-xs font-semibold text-slate-700">Columns</label><input type="number" min="1" max="12" aria-label="Table columns" value={tableColumns} onChange={(event) => setTableColumns(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–12 columns</p></div>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={tableHeaderRow} onChange={(event) => setTableHeaderRow(event.target.checked)} className="rounded border-slate-300 text-[#2b579a] focus:ring-[#2b579a]" />Use first row as a header</label>
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-600">Preview: <b>{Math.min(30, Math.max(1, Number(tableRows) || 1))} × {Math.min(12, Math.max(1, Number(tableColumns) || 1))}</b> table</div>
-          </div>
-          <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3"><button type="button" onClick={() => setShowTableDialog(false)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={insertCustomTable} className="rounded-md bg-[#2b579a] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#244b87]">Insert Table</button></div>
-        </div>
-      </div>}
-
-      <div ref={editorRef} contentEditable data-table-typography="preserve" role="textbox" aria-label="PO Narrative" aria-multiline="true" suppressContentEditableWarning onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={(event) => { rememberSelection(); onChange(event.currentTarget.innerHTML); }} className="po-narrative-document min-h-80 rounded-b-lg bg-white px-8 py-6 outline-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)]" data-placeholder="Enter the complete PO narrative..." />
-    </div>
-  );
 };
 
 const employeeDesignation = (employee) => {
@@ -364,7 +168,7 @@ const buildPurchaseOrderPayload = (formData, status) => Object.fromEntries(
     !READ_ONLY_PO_FIELDS.has(key)
     && value !== null
     && value !== undefined
-    && value !== ''
+    && (value !== '' || key === 'description' || key === 'scope_of_services')
   ))
 );
 
@@ -412,12 +216,16 @@ const normalizeRequisitionItems = (requisition) => {
   });
 };
 
-const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData = null, prReference = null, initialProject = null }) => {
+const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData: suppliedEditData = null, prReference = null, initialProject = null }) => {
+  const [savedOrder, setSavedOrder] = useState(null);
+  const editData = savedOrder || suppliedEditData;
   const [draftRecovery] = useState(() => createPurchaseOrderDraftRecovery({ key: purchaseOrderRecoveryKey({
     userId: currentPurchaseOrderDraftUser(), orderId: editData?.id,
     requisitionId: prReference?.id, projectId: initialProject?.id,
   }) }));
   const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoveryAttempt, setRecoveryAttempt] = useState(0);
   const approvalRouteEditable = canConfigurePurchaseOrderRoute(editData);
   const approvalSelectionEditedRef = useRef(false);
   const [projectPreset, setProjectPreset] = useState(!editData && initialProject?.id ? initialProject : null);
@@ -556,6 +364,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       buyer_references: [],
       delivery_date_type: 'delivery',
       attachment_details: [],
+      ...(!editData ? { show_order_introduction: false } : {}),
     },
     
     // Additional
@@ -576,14 +385,12 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     summary: editData?.summary || editData?.contact_persons?.purchase_summary || '',
     status: editData?.status || 'draft',
   });
+  const [initialIntroductionVisible, setInitialIntroductionVisible] = useState(() => purchaseOrderIntroductionVisible(editData || formData));
+  const showOrderIntroduction = typeof formData.contact_persons?.show_order_introduction === 'boolean'
+    ? formData.contact_persons.show_order_introduction
+    : initialIntroductionVisible;
   
-  const [attachmentSlots, setAttachmentSlots] = useState((editData?.attachments || []).map((attachment, index) => ({
-    title: attachment.title || attachment.filename || `Item ${index + 1}`,
-    description: attachment.description || '',
-    file: null,
-    existingAttachment: attachment,
-    existingAttachmentIndex: index,
-  })));
+  const [attachmentSlots, setAttachmentSlots] = useState(() => purchaseOrderAttachmentSlots(editData?.attachments));
   const previewFiles = useMemo(() => attachmentSlots.filter(slot => slot.file || slot.existingAttachment), [attachmentSlots]);
   const files = attachmentSlots.map((slot) => slot.file).filter(Boolean);
   const initialAttachmentSlots = useRef(attachmentSlots);
@@ -601,23 +408,36 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [approverLoadError, setApproverLoadError] = useState('');
   const [employeeLoadError, setEmployeeLoadError] = useState('');
   const initialFormData = useRef(formData);
+  const latestFormData = useRef(formData);
+  latestFormData.current = formData;
   const recoveryContext = useRef({ editData, prReference });
   const submittingRef = useRef(false);
 
   useEffect(() => {
     let active = true;
-    draftRecovery.load().then(saved => {
+    setRecoveryError('');
+    draftRecovery.load().then(async saved => {
       if (!active) return;
-      const { editData, prReference } = recoveryContext.current;
+      const { editData: originalOrder, prReference } = recoveryContext.current;
+      let editData = originalOrder;
+      if (!editData && saved?.draftId) {
+        const response = await apiClient.get(`/procurement/orders/${saved.draftId}/`, { suppressErrorToast: true });
+        if (!active) return;
+        editData = response.data;
+        setSavedOrder(editData);
+      }
       if (saved?.formData) {
+        setInitialIntroductionVisible(purchaseOrderIntroductionVisible(editData || saved.formData));
         const restoreRoute = canConfigurePurchaseOrderRoute(editData);
         approvalSelectionEditedRef.current = restoreRoute && Boolean(saved.approvalSelectionEdited);
+        const baseline = editData ? purchaseOrderSavedValues({ ...initialFormData.current, ...saved.initialFormData }, editData) : initialFormData.current;
+        initialFormData.current = baseline;
         setFormData(previous => {
           // Reapply only unsaved edits over the latest server record. A refresh
           // must not restore old approval evidence or overwrite newer metadata.
           const changes = Object.fromEntries(Object.entries(saved.formData).filter(([key, value]) => (
             !['id', 'status', 'management_approver', 'approval_log', 'approval_signature', 'approved_by_name', 'approved_by_title', 'approved_at', 'approved_date'].includes(key)
-            && (!editData || JSON.stringify(value) !== JSON.stringify(saved.initialFormData?.[key]))
+            && (!editData || !saved.initialFormData || JSON.stringify(value) !== JSON.stringify(saved.initialFormData[key]))
           )));
           if (restoreRoute && (!editData || saved.approvalSelectionEdited)) {
             const pending = (Array.isArray(saved.formData.approval_log) ? saved.formData.approval_log : []).find(entry => (
@@ -631,7 +451,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
             }));
             changes.management_approver = pending?.approver || '';
           }
-          return { ...previous, ...changes };
+          return { ...previous, ...baseline, ...changes };
         });
         setSelectedRequisition(saved.selectedRequisition || prReference || null);
         setProjectPreset(saved.projectPreset || null);
@@ -644,7 +464,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         setCurrentSection(Math.max(1, Math.min(4, saved.currentSection || 1)));
         if (!editData || JSON.stringify(saved.attachmentSlots) !== JSON.stringify(saved.initialAttachmentSlots)) {
           setAttachmentSlots(saved.attachmentSlots || []);
+        } else {
+          setAttachmentSlots(purchaseOrderAttachmentSlots(editData.attachments));
         }
+        initialAttachmentSlots.current = purchaseOrderAttachmentSlots(editData?.attachments);
         const recoveredId = editData?.id || saved.draftId || null;
         persistedOrderIdRef.current = recoveredId;
         setDraftId(recoveredId);
@@ -653,9 +476,11 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         }
       }
       setRecoveryReady(true);
+    }).catch(() => {
+      if (active) setRecoveryError('The saved purchase order could not be loaded. Your draft is retained.');
     });
     return () => { active = false; };
-  }, [draftRecovery]);
+  }, [draftRecovery, recoveryAttempt]);
 
   const recoverySnapshot = useMemo(() => ({
     formData, initialFormData: initialFormData.current, selectedRequisition, projectPreset,
@@ -681,7 +506,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   }, [draftRecovery]);
 
   const handleCancel = async () => {
-    if (submittingRef.current) return;
+    if (submittingRef.current || autoSaveRequestRef.current) return;
     submittingRef.current = true;
     await draftRecovery.clear();
     onClose?.();
@@ -777,11 +602,12 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       fetchPOApprovers();
       if (!editData?.pr_reference) fetchAvailableRequisitions();
     }
-  }, [isOpen, pageMode, editData, recoveryReady]);
+  }, [isOpen, pageMode, editData?.pr_reference, recoveryReady]);
 
   // Auto-save draft every 30 seconds
   useEffect(() => {
-    if (recoveryReady && !editData && !pricingEdited && !pricingConfirmed) {
+    if (recoveryReady && !suppliedEditData && (!editData || editData.status === 'draft')
+      && editData?.commercial_edit_locked !== true && !pricingEdited && !pricingConfirmed) {
       const autoSaveInterval = setInterval(() => {
         const canPersistDraft = Boolean(
           formData.pr_reference &&
@@ -796,7 +622,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       }, 30000);
       return () => clearInterval(autoSaveInterval);
     }
-  }, [formData, editData, draftId, pricingEdited, pricingConfirmed, recoveryReady]);
+  }, [formData, editData, suppliedEditData, draftId, pricingEdited, pricingConfirmed, recoveryReady]);
 
   const normalizeApiArray = (data) => {
     if (Array.isArray(data)) return data;
@@ -1057,7 +883,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     // Do not race the user's first explicit Create request with a background
     // POST. Auto-save starts after the PO has a server-side draft ID.
     if (!persistedOrderId || pricingEdited || pricingConfirmed) return;
-    if (autoSaveRequestRef.current) return;
+    if (autoSaveRequestRef.current || submittingRef.current) return;
     autoSaveRequestRef.current = true;
     setAutoSaving(true);
     try {
@@ -1067,7 +893,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       ['vat_basis', 'net_amount', 'tax_amount', 'total_amount', 'vat_percentage', 'discount_amount', 'currency', 'items'].forEach(field => delete payload[field]);
       // Background metadata updates must not overwrite a pending or completed decision.
       ['approval_log', 'management_approver', 'approved_by_name', 'approved_by_title', 'approved_date', 'approved_at', 'approval_signature'].forEach(field => delete payload[field]);
-      await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, payload);
+      const response = await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, payload);
+      const persisted = Object.fromEntries(Object.keys(payload).filter(key => Object.hasOwn(formData, key)).map(key => [
+        key, Object.hasOwn(response.data, key) ? response.data[key] : payload[key],
+      ]));
+      initialFormData.current = { ...initialFormData.current, ...persisted };
+      setFormData(current => mergeSavedPurchaseOrder(current, formData, { ...formData, ...persisted }));
+      setSavedOrder(response.data);
+      onSuccess?.(response.data, { close: false });
     } catch (error) {
       console.error('Auto-save failed:', error);
     } finally {
@@ -1639,7 +1472,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   const handleSubmit = async (e, sendToVendor = false) => {
     e.preventDefault();
-    if (submittingRef.current) return;
+    if (submittingRef.current || autoSaveRequestRef.current) return;
     if (sendToVendor && editData?.can_send_to_vendor !== true) {
       setPopupError(editData ? purchaseOrderLifecycleBlockReason(editData) : 'Save this purchase order as a draft, then complete its approvals before sending it to the vendor.');
       return;
@@ -1681,7 +1514,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         attachments: attachmentSlots
           .filter((slot) => slot.existingAttachment && !slot.file)
           .map((slot) => {
-            const initial = initialAttachmentSlots.current.find(item => item.existingAttachment === slot.existingAttachment);
+            const initial = initialAttachmentSlots.current.find(item => purchaseOrderAttachmentKey(item.existingAttachment) === purchaseOrderAttachmentKey(slot.existingAttachment));
             return initial && slot.title === initial.title && slot.description === initial.description
               ? slot.existingAttachment
               : { ...slot.existingAttachment, title: slot.title.trim(), description: slot.description.trim() };
@@ -1701,7 +1534,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
           && JSON.stringify(value) !== JSON.stringify(initialFormData.current[key])
         )),
       ) : buildPurchaseOrderPayload(preparedFormData, 'draft');
-      if (pricingConfirmed) {
+      if (pricingConfirmed && (!editData || pricingEdited)) {
         Object.assign(payload, {
           vat_basis: formData.vat_basis, net_amount: pricing.netAmount,
           tax_amount: pricing.taxAmount, total_amount: pricing.totalAmount, vat_percentage: pricing.vatRate,
@@ -1745,9 +1578,27 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         setDraftId(response.data.id);
       }
 
-      const poLabel = response.data?.po_number || formData.po_number || 'Purchase Order';
-      await draftRecovery.clear();
+      const saved = response.data;
+      persistedOrderIdRef.current = saved.id;
+      setDraftId(saved.id);
+      const baseline = purchaseOrderSavedValues(preparedFormData, saved);
+      initialFormData.current = baseline;
+      initialAttachmentSlots.current = purchaseOrderAttachmentSlots(saved.attachments);
+      setFormData(current => mergeSavedPurchaseOrder(current, formData, baseline));
+      setAttachmentSlots(current => mergeSavedPurchaseOrderAttachments(current, attachmentSlots, saved.attachments || []));
+      const pricingFields = ['items', 'price_amount', 'vat_basis', 'currency', 'discount_amount'];
+      if (pricingFields.every(field => JSON.stringify(latestFormData.current[field]) === JSON.stringify(formData[field]))) {
+        setPricingEdited(false);
+      }
+      if (JSON.stringify(latestFormData.current.approval_log) === JSON.stringify(formData.approval_log)) {
+        approvalSelectionEditedRef.current = false;
+      }
+      setSavedOrder(saved);
+      setErrors({});
+      setPopupError('');
+      const poLabel = saved.po_number || formData.po_number || 'Purchase Order';
       if (sendToVendor) {
+        await draftRecovery.clear();
         toast.success(`${poLabel} sent to vendor successfully.`);
       } else if (isExistingOrder) {
         toast.success(`${poLabel} saved successfully.`);
@@ -1755,8 +1606,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         toast.success(`${poLabel} draft created successfully.`);
       }
       
-      if (onSuccess) onSuccess(response.data);
-      else if (onClose) onClose();
+      if (onSuccess) onSuccess(saved, { close: sendToVendor });
+      else if (sendToVendor) onClose?.();
     } catch (error) {
       console.error('Error submitting PO:', error);
       const fieldErrors = normalizeApiErrors(error.response?.data);
@@ -1774,6 +1625,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   // Don't render if not open - check AFTER all hooks
   if (!isOpen && !pageMode) return null;
+  if (recoveryError) return <div role="alert" className="p-4"><p>{recoveryError}</p><button type="button" className="pof-button" onClick={() => setRecoveryAttempt(value => value + 1)}>Try again</button><button type="button" className="pof-button" onClick={handleCancel}>Close purchase order</button></div>;
   if (!recoveryReady) return <div role="status" className="p-4">Restoring purchase order…</div>;
 
   const isNewOrder = !editData;
@@ -1823,14 +1675,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         <section className="pof-editor" aria-label="Purchase order editor">
           <header className="pof-header">
             <nav className="pof-breadcrumb" aria-label="Breadcrumb">
-              <span>Procurement</span><span>/</span><button type="button" onClick={handleCancel}>Purchase Orders</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong>
+              <span>Procurement</span><span>/</span><button type="button" onClick={handleCancel} disabled={busy}>Purchase Orders</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong>
             </nav>
             <div className="pof-title-row">
               <div>
                 <h1>{editData ? 'Edit purchase order' : 'New purchase order'}</h1>
                 <p>Confirm the supplier, scope and commercial terms for your purchase order.</p>
               </div>
-              <button type="button" className="pof-close" onClick={handleCancel} aria-label="Close purchase order"><X size={18} /></button>
+              <button type="button" className="pof-close" onClick={handleCancel} disabled={busy} aria-label="Close purchase order"><X size={18} /></button>
             </div>
             <div className="pof-header-bottom">
               <span className="pof-draft-state" role="status"><DocumentTextIcon />{autoSaving ? 'Saving draft…' : formData.po_number || 'Draft · select a recommendation to start'}</span>
@@ -2687,12 +2539,41 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
           {/* Section 2: PO Description and Scope */}
           {currentSection === 2 && (
             <div className="space-y-4">
-              <div>
-                <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
+                <h3 className="text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={formData.contact_persons?.show_scope_heading !== false}
+                    disabled={editData?.commercial_edit_locked === true}
+                    onChange={(event) => {
+                      const showScopeHeading = event.target.checked;
+                      setFormData(previous => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), show_scope_heading: showScopeHeading } }));
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                  />
+                  Show heading
+                </label>
               </div>
               <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div>
-                  <label htmlFor="po-order-introduction" className="block text-sm font-medium text-gray-700">Buyer / Seller introduction</label>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label htmlFor="po-order-introduction" className="block text-sm font-medium text-gray-700">Buyer / Seller introduction</label>
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={showOrderIntroduction}
+                        disabled={editData?.commercial_edit_locked === true}
+                        onChange={(event) => {
+                          const showIntroduction = event.target.checked;
+                          setFormData(previous => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), show_order_introduction: showIntroduction } }));
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      Show introduction
+                    </label>
+                  </div>
+                  {showOrderIntroduction && <>
                   <textarea
                     id="po-order-introduction"
                     name="order_introduction"
@@ -2720,10 +2601,11 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       })}
                     >Use standard introduction</button>
                   </div>
+                  </>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">PO Narrative</label>
-                  <RichTextEditor value={formData.description} onChange={(description) => setFormData((previous) => ({ ...previous, description, scope_of_services: '' }))} />
+                  <PurchaseOrderNarrativeEditor disabled={editData?.commercial_edit_locked === true} value={formData.description} onChange={(description) => setFormData((previous) => ({ ...previous, description, scope_of_services: '' }))} />
                 </div>
               </div>
             </div>
@@ -3151,7 +3033,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
               </div>
             </div>
             <footer className="pof-actionbar">
-              <button type="button" className="pof-button pof-cancel" onClick={handleCancel}>Cancel</button>
+              <button type="button" className="pof-button pof-cancel" onClick={handleCancel} disabled={busy}>Cancel</button>
               <span className={`pof-validation-state ${validationIssues.length ? 'has-issues' : ''}`} role="status">
                 {validationIssues.length ? <AlertCircle /> : <CheckCircleIcon />}
                 {validationIssues.length ? `${validationIssues.length} required item${validationIssues.length === 1 ? '' : 's'} remaining` : 'Required fields complete'}

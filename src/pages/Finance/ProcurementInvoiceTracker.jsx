@@ -17,6 +17,7 @@ import {
 import { toast } from 'react-toastify';
 import financeService from '../../services/finance.service';
 import IncomingInvoiceWorkspace from '../../components/Finance/IncomingInvoiceWorkspace';
+import { PurchaseOrderSelector } from '../../components/Procurement/PurchaseOrderHandoff';
 import './ProcurementInvoiceImport.css';
 
 const CURRENCIES = ['AED', 'USD', 'EUR', 'GBP', 'SAR', 'QAR', 'OMR', 'KWD', 'BHD'];
@@ -111,7 +112,9 @@ const newLine = (number, currency) => ({
   ocr_confidence: '',
 });
 
-const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
+const InvoiceImportModal = ({ open, onClose, onRecorded, initialOrder = null }) => {
+  const [selectedPo, setSelectedPo] = useState(initialOrder);
+  const busyRef = useRef(false);
   const dialog = useRef(null);
   const opener = useRef(null);
   const fileInput = useRef(null);
@@ -137,6 +140,7 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
   useEffect(() => {
     const element = dialog.current;
     if (open) {
+      setSelectedPo(initialOrder);
       opener.current = document.activeElement;
       element?.showModal();
     }
@@ -150,7 +154,7 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
         });
       }
     };
-  }, [open, reset]);
+  }, [open, reset, initialOrder]);
 
   useEffect(() => {
     if (!open) return;
@@ -196,11 +200,12 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
       const data = await financeService.previewProcurementInvoice(file);
       const extracted = data.extracted || {};
       setPreview(data);
+      setSelectedPo(initialOrder);
       setForm({
         ...extracted,
-        vendor_id: '',
+        vendor_id: initialOrder?.vendor_id || '',
         received_date: new Date().toISOString().slice(0, 10),
-        confirmed_po_id: '',
+        confirmed_po_id: initialOrder?.id || '',
         confirm_po_match: false,
         line_items: extracted.line_items?.length ? extracted.line_items : [],
         ocr_confidence: data.ocr_confidence,
@@ -229,18 +234,17 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
       .map((line, lineIndex) => ({ ...line, line_number: lineIndex + 1 })),
   }));
 
-  const selectedPo = preview?.purchase_order_options?.find((po) => po.id === form?.confirmed_po_id);
   const selectedVendor = preview?.vendor_options?.find((vendor) => vendor.id === form?.vendor_id);
 
   const saveReviewed = async () => {
-    if (busy) return;
+    if (busyRef.current) return;
     if (!form.invoice_number || !form.vendor_id || !form.vendor_name || !form.invoice_date || !form.total_amount || !form.currency) {
       return setError('Complete all required invoice and company-vendor fields before saving.');
     }
     if (form.confirmed_po_id && !form.confirm_po_match) {
       return setError('Confirm the PO match checkbox or clear the selected PO.');
     }
-    setBusy(true);
+    busyRef.current = true; setBusy(true);
     setError('');
     try {
       const response = await financeService.importReviewedProcurementInvoice(
@@ -259,7 +263,7 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
     } catch (requestError) {
       setError(messageFromError(requestError));
     } finally {
-      setBusy(false);
+      busyRef.current = false; setBusy(false);
     }
   };
 
@@ -402,17 +406,11 @@ const InvoiceImportModal = ({ open, onClose, onRecorded }) => {
                     <LinkIcon className="h-5 w-5 text-indigo-600" />
                   </div>
                   <Field label="Captured PO reference"><input className={inputClass} value={form.po_reference_text || ''} onChange={(e) => update('po_reference_text', e.target.value)} /></Field>
-                  <Field label="Select PO (optional)">
-                    <select className={inputClass} value={form.confirmed_po_id || ''} onChange={(e) => update('confirmed_po_id', e.target.value)}>
-                      <option value="">— Save without a PO match —</option>
-                      {(preview.purchase_order_options || []).map((po) => <option key={po.id} value={po.id}>{po.po_number} · {po.vendor_name} · {money(po.total_amount, po.currency)}</option>)}
-                    </select>
-                    {preview.purchase_order_suggestions?.length > 0 && <p className="mt-1 text-[11px] text-indigo-600">Top suggestion: {preview.purchase_order_suggestions[0].po_number} ({preview.purchase_order_suggestions[0].confidence}%)</p>}
-                  </Field>
+                  <PurchaseOrderSelector fetchPage={financeService.getPurchaseOrderOptions} value={form.confirmed_po_id || ''} initialOrder={initialOrder} disabled={busy} label="Select PO (optional)" onChange={po => { setSelectedPo(po); update('confirmed_po_id', po?.id || ''); }} />
                   {selectedPo && (
                     <label className="flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
                       <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-indigo-300 text-indigo-600" checked={Boolean(form.confirm_po_match)} onChange={(e) => update('confirm_po_match', e.target.checked)} />
-                      <span><strong>I confirm this PO match.</strong><br /><span className="text-xs">{selectedPo.po_number} belongs to {selectedPo.vendor_name}. Vendor, currency, value tolerance, and receipt checks run when saved.</span></span>
+                      <span><strong>I confirm this PO match.</strong><br /><span className="text-xs">{selectedPo.po_number} belongs to {selectedPo.vendor_name}. </span></span>
                     </label>
                   )}
                 </section>
@@ -525,6 +523,7 @@ InvoiceImportModal.propTypes = {
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   onRecorded: PropTypes.func,
+  initialOrder: PropTypes.object,
 };
 InvoiceDetailModal.propTypes = {
   invoice: PropTypes.shape({ id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired }).isRequired,
@@ -533,10 +532,11 @@ InvoiceDetailModal.propTypes = {
 
 const ProcurementInvoiceTracker = () => {
   const [importOpen, setImportOpen] = useState(false);
+  const [importOrder, setImportOrder] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   return <>
-    <IncomingInvoiceWorkspace onImport={() => setImportOpen(true)} reloadKey={reloadKey} />
-    <InvoiceImportModal open={importOpen} onClose={() => setImportOpen(false)} onRecorded={() => setReloadKey(value => value + 1)} />
+    <IncomingInvoiceWorkspace onImport={order => { setImportOrder(order || null); setImportOpen(true); }} reloadKey={reloadKey} />
+    <InvoiceImportModal initialOrder={importOrder} open={importOpen} onClose={() => setImportOpen(false)} onRecorded={() => setReloadKey(value => value + 1)} />
   </>;
 };
 

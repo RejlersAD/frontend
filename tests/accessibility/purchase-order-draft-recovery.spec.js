@@ -21,6 +21,11 @@ const selectionList = page => page.getByRole('list', { name: 'Selected projects'
 const lastSnapshot = state => state.requests.filter(request => request.path.endsWith('/preview-document/') && request.body?.format === 'pdf').at(-1)?.body.snapshot
 const orderWrites = state => state.requests.filter(({ path, method }) => ['POST', 'PATCH'].includes(method) && /^\/api\/v1\/procurement\/orders\/(?:[^/]+\/)?$/.test(path) && !path.includes('/preview-document/') && !path.includes('/reserve-number/') && !path.includes('/create-project/'))
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
+const expectSavedEditor = async (page, state) => {
+  await expect.poll(() => state.acceptedWrites.length).toBe(1)
+  await expect(editor(page).getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
+  await expect(editor(page).getByRole('button', { name: 'Save changes', exact: true }).first()).toBeEnabled()
+}
 
 async function openNew(page, prepare, options = {}) {
   const state = await orderFormHarness(page, {
@@ -143,14 +148,17 @@ test('explicit Cancel discards the local PO and reopening starts a clean form', 
   clean(state)
 })
 
-test('successful Save draft persists once and clears the recovery copy for the next new order', async ({ page }) => {
+test('successful Save draft keeps editing open and explicit close clears recovery for the next new order', async ({ page }) => {
   const state = await openNew(page)
   await title(page).fill('Successfully saved recovered order')
   await addProject(page, '5901055')
   await editor(page).getByRole('button', { name: 'Save draft', exact: true }).first().click()
-  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  await expectSavedEditor(page, state)
+  await expect(page).toHaveURL(/\/procurement\/orders\/new$/)
   expect(state.acceptedWrites).toHaveLength(1)
   expect(state.record).toMatchObject({ title: 'Successfully saved recovered order', status: 'draft', project_number: '5900985, 5901055' })
+  await editor(page).getByRole('button', { name: 'Close purchase order', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
   await expectFreshNewForm(page)
   expect(orderWrites(state)).toHaveLength(1)
   clean(state)
@@ -247,7 +255,7 @@ test('an existing PO edit recovers after refresh and keeps the original PATCH ba
   await expect(editor(page)).toContainText('original-saved-scope.txt')
   await expect(editor(page)).toContainText('new-server-attachment.txt')
   await editor(page).getByRole('button', { name: 'Save changes', exact: true }).first().click()
-  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  await expectSavedEditor(page, state)
   expect(state.acceptedWrites).toHaveLength(1)
   expect(state.acceptedWrites[0]).toMatchObject({ method: 'PATCH', body: { title: 'Recovered edit to existing order' } })
   expect(Object.keys(state.acceptedWrites[0].body)).toEqual(['title'])
@@ -341,7 +349,7 @@ test('an editable empty existing PO route restores the chosen signer without res
   await reopen()
   await expect(finalApprover(page)).toHaveValue('12')
   await editor(page).getByRole('button', { name: 'Save changes', exact: true }).first().click()
-  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  await expectSavedEditor(page, state)
   expect(state.acceptedWrites).toHaveLength(1)
   const body = state.acceptedWrites[0].body
   expect(body.approval_log).toHaveLength(1)

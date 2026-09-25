@@ -30,6 +30,12 @@ const selectPR = async (page, vatBasis = 'exclusive') => {
 }
 const gotoTab = (page, name) => tabs(page).getByRole('tab', { name, exact: true }).click()
 const clickSave = page => workspace(page).getByRole('button', { name: /^Save draft$/i }).first().click()
+const expectSavedEditor = async (page, state) => {
+  await expect.poll(() => state.acceptedWrites.length).toBe(1)
+  await expect(workspace(page).getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
+  await expect(workspace(page).getByRole('button', { name: 'Save changes', exact: true }).first()).toBeEnabled()
+  await expect(page).toHaveURL(/\/procurement\/orders\/new$/)
+}
 
 test('empty order requires an existing recommendation before changing sections or saving', async ({ page }) => {
   const state = await open(page)
@@ -84,12 +90,11 @@ test('selecting a recommendation prefills the order and spreadsheet edits update
   verifyIsolation(state)
 })
 
-test('saving creates exactly one draft and returns to the purchase order register', async ({ page }) => {
+test('saving creates exactly one draft and keeps the saved order open for editing', async ({ page }) => {
   const state = await open(page)
   await selectPR(page)
   await clickSave(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
-  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  await expectSavedEditor(page, state)
   expect(saves(state)).toHaveLength(1)
   expect(state.acceptedWrites).toHaveLength(1)
   expect(state.record).toMatchObject({ status: 'draft', po_number: orderFormNumber, pr_reference: orderFormRecommendation.id, title: 'Value Engineering Services', currency: 'AED' })
@@ -112,7 +117,7 @@ test('new orders must be saved as drafts before approval and issue', async ({ pa
   await gotoTab(page, 'Header, Buyer & Project')
   await expect(workspace(page).locator('[name="title"]')).toHaveValue('Value Engineering Services')
   await clickSave(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(state.acceptedWrites).toHaveLength(1)
   expect(state.record.status).toBe('draft')
   verifyIsolation(state)
@@ -125,7 +130,7 @@ test('attachment save includes file metadata and one order creation request', as
   await page.locator('#po-attachment-multiple').setInputFiles({ name: 'scope-reference.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic order scope reference. Browser fixture only.') })
   await expect(workspace(page)).toContainText('scope-reference.txt')
   await clickSave(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(saves(state)).toHaveLength(1)
   expect(state.record.attachments_files).toEqual({ filename: 'scope-reference.txt' })
   expect(state.record.contact_persons.attachment_details).toHaveLength(1)
@@ -222,6 +227,8 @@ test('editing an order stays inside the application content when the sidebar col
   const state = await open(page)
   await selectPR(page)
   await clickSave(page)
+  await expectSavedEditor(page, state)
+  await workspace(page).getByRole('button', { name: 'Close purchase order', exact: true }).click()
   await expect(page).toHaveURL(/\/procurement\/orders$/)
   await page.getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
     await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
@@ -300,7 +307,7 @@ test('VAT treatment needs confirmation and distinguishes inclusive, exclusive an
   await expect(workspace(page).locator('[name="total_amount"]')).toHaveValue('105')
   expect(saves(state)).toEqual([])
   await clickSave(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(state.acceptedWrites).toHaveLength(1)
   expect(state.acceptedWrites[0].body).toMatchObject({ vat_basis: 'exclusive', entered_amount: 100, net_amount: 100, tax_amount: 5, total_amount: 105 })
   verifyIsolation(state)
