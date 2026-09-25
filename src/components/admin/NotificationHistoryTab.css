@@ -1,0 +1,39 @@
+.ac-notification-history { display: grid; gap: 16px; }
+.ac-notification-history .ac-panel-heading { margin-bottom: 0; }
+.ac-notification-history h2 { display: flex; align-items: center; gap: 8px; }
+.ac-notification-filters { display: grid; grid-template-columns: minmax(240px, 2fr) repeat(2, minmax(130px, 1fr)) auto; gap: 12px; align-items: end; }
+.ac-notification-filters label { display: grid; gap: 6px; min-width: 0; font-size: 12px; font-weight: 600; }
+.ac-notification-filters select { width: 100%; }
+.ac-notification-search > div { display: flex; align-items: center; gap: 8px; }
+.ac-notification-search input { width: 100%; }
+.ac-notification-search svg { flex-shrink: 0; }
+.admin-console .ac-notification-clear { min-height: 40px; }
+.ac-notification-history .ac-table-scroll { border: 1px solid var(--ac-border); border-radius: 6px; }
+.ac-notification-history table { min-width: 1160px; }
+.ac-notification-history td { max-width: 260px; overflow-wrap: anywhere; border-color: var(--ac-border); }
+.ac-notification-history td strong { display: block; font-weight: 500; color: var(--ac-ink); }
+.ac-notification-history td small { display: block; color: var(--ac-muted); font-size: 12px; }
+.ac-notification-time { min-width: 165px; }
+.ac-notification-outcome { display: inline-block; border-radius: 4px; padding: 3px 7px; background: var(--ac-subtle); color: var(--ac-body); font-size: 12px; font-weight: 600; }
+.ac-notification-outcome.sent, .ac-notification-outcome.read { color: var(--ac-blue); }
+.ac-notification-outcome.failed { background: var(--ac-danger-bg); color: var(--ac-danger); }
+.ac-notification-outcome.skipped { background: var(--ac-warning-bg); color: var(--ac-warning); }
+.ac-notification-empty { display: grid; justify-items: center; gap: 12px; padding: 36px 16px; text-align: center; color: var(--ac-muted); }
+.ac-notification-loading { color: var(--ac-muted); font-size: 13px; }
+.ac-notification-error { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--ac-border); border-radius: 6px; color: var(--ac-danger); background: var(--ac-danger-bg); }
+.ac-notification-error svg { flex-shrink: 0; }
+.ac-notification-error p { flex: 1; }
+.ac-notification-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; font-size: 12px; }
+.ac-notification-pagination > p { margin-right: auto; }
+.ac-notification-pagination label, .ac-notification-pagination > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.admin-console .ac-notification-pagination select { font-size: 12px; height: 36px; }
+.admin-console .ac-notification-dialog { border: 1px solid var(--ac-border); border-radius: 8px; background: var(--ac-surface); color: var(--ac-body); width: min(560px, calc(100vw - 32px)); max-height: 85dvh; overflow: auto; padding: 20px; }
+.ac-notification-dialog::backdrop { background: rgb(15 23 42 / 40%); }
+.ac-notification-dialog dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px 16px; margin-top: 20px; font-size: 13px; }
+.ac-notification-dialog dt { font-weight: 600; color: var(--ac-muted); }
+.ac-notification-dialog dd { margin: 0; overflow-wrap: anywhere; color: var(--ac-ink); }
+.admin-console .ac-notification-history :is(button,input,select,[tabindex]):focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.admin-console .ac-notification-history button:disabled { cursor: not-allowed; }
+.dark .admin-console .ac-notification-history button:hover { background: var(--ac-subtle); }
+@media (max-width: 900px) { .ac-notification-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }.ac-notification-search { grid-column: 1 / -1; }.admin-console .ac-notification-clear { grid-column: 1 / -1; justify-self: start; } }
+@media (max-width: 520px) { .ac-notification-search svg { display: none; }.ac-notification-pagination { gap: 12px; }.ac-notification-pagination > p,.ac-notification-pagination > div { width: 100%; }.ac-notification-error { flex-wrap: wrap; }.ac-notification-dialog dl { grid-template-columns: 96px minmax(0, 1fr); gap: 12px; } }
