@@ -60,6 +60,7 @@ async function prepare(page, options = {}) {
     if (state.hold?.key === key) await state.hold.promise
     if (state.failures[key]) {
       const failure = state.failures[key]
+      if (failure.abort) return route.abort(failure.abort)
       return route.fulfill({ status: failure.status || 403, contentType: 'application/json', body: JSON.stringify({ detail: failure.message }) })
     }
     let response
@@ -115,6 +116,60 @@ async function reopen(page) {
   await bell(page).click()
   await expect(drawer(page)).toBeVisible()
 }
+
+test('reopening after a network failure clears the stale loading error when notifications load', async ({ page }) => {
+  const key = 'GET /api/v1/notifications/'
+  const state = await prepare(page, { failures: { [key]: { abort: 'failed' } } })
+  await page.goto('/tests/fixtures/notification-drawer.html')
+  await bell(page).click()
+  await expect(drawer(page).getByRole('alert')).toContainText('Unable to load notifications. Check your connection')
+  await expect(drawer(page).getByRole('heading', { name: titles.leave, exact: true })).toHaveCount(0)
+  delete state.failures[key]
+  await reopen(page)
+  await expect(drawer(page).getByRole('heading', { name: titles.leave, exact: true })).toBeVisible()
+  await expect(drawer(page).getByRole('alert')).toHaveCount(0)
+  await expect(bell(page)).toHaveText('3')
+  expect(state.requests.filter(request => request.method !== 'GET')).toEqual([])
+  expect(state.errors).toEqual([])
+})
+
+test('reopening after a network failure shows a recovered empty inbox without the stale error', async ({ page }) => {
+  const key = 'GET /api/v1/notifications/'
+  const state = await prepare(page, { notifications: [], failures: { [key]: { abort: 'failed' } } })
+  await page.goto('/tests/fixtures/notification-drawer.html')
+  await bell(page).click()
+  await expect(drawer(page).getByRole('alert')).toContainText('Unable to load notifications. Check your connection')
+  await expect(drawer(page).getByRole('heading', { name: 'Notifications unavailable', exact: true })).toBeVisible()
+  delete state.failures[key]
+  await reopen(page)
+  await expect(drawer(page).getByRole('heading', { name: 'No notifications yet', exact: true })).toBeVisible()
+  await expect(drawer(page).getByRole('alert')).toHaveCount(0)
+  await expect(bell(page)).toHaveText('')
+  expect(state.requests.filter(request => request.method !== 'GET')).toEqual([])
+  expect(state.errors).toEqual([])
+})
+
+test('a successful list refresh preserves a failed action until that action succeeds', async ({ page }) => {
+  const key = 'POST /api/v1/notifications/mark_as_read/'
+  const state = await prepare(page, { failures: { [key]: { status: 403 } } })
+  await page.goto('/tests/fixtures/notification-drawer.html')
+  await open(page)
+  await rowAction(page, titles.leave, 'Mark as read')
+  await expect(drawer(page).getByRole('alert')).toContainText('Unable to mark this notification as read. Your account is not allowed')
+  state.notifications.find(notification => notification.id === 104).title = 'System update received after the failed action'
+  await drawer(page).getByRole('button', { name: 'Refresh notifications', exact: true }).click()
+  await expect(drawer(page).getByRole('heading', { name: 'System update received after the failed action', exact: true })).toBeVisible()
+  await expect(drawer(page).getByRole('alert')).toContainText('Unable to mark this notification as read. Your account is not allowed')
+  await expect(bell(page)).toHaveText('3')
+  expect(state.notifications.find(notification => notification.id === 101).is_read).toBe(false)
+  delete state.failures[key]
+  await rowAction(page, titles.leave, 'Mark as read')
+  await expect(drawer(page).getByRole('alert')).toHaveCount(0)
+  await expect(bell(page)).toHaveText('2')
+  expect(state.notifications.find(notification => notification.id === 101).is_read).toBe(true)
+  expect(state.requests.filter(request => request.method !== 'GET').map(request => request.path)).toEqual(['/api/v1/notifications/mark_as_read/', '/api/v1/notifications/mark_as_read/'])
+  expect(state.errors).toEqual([])
+})
 
 test('read one and read all persist on the server after close/reopen and reload', async ({ page }) => {
   const state = await prepare(page)
