@@ -2,6 +2,7 @@ import { useId } from "react";
 import PropTypes from "prop-types";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import useModalAccessibility from "../../hooks/useModalAccessibility";
+import SalesEmailCustomerMatch from "./SalesEmailCustomerMatch";
 
 const fieldClass = "mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100";
 const scopeTypes = ["conceptual", "pre_feed", "feed", "basic_engineering", "detailed_engineering", "epcm", "epc", "pmc", "owner_engineer", "feasibility", "other"];
@@ -9,7 +10,7 @@ const currencies = ["AED", "USD", "EUR", "GBP", "SAR", "QAR"];
 
 export default function SalesEmailOpportunityForm({
   subject, information, bodyPreview, clients, clientChoice, onClientChange,
-  matchedClientId, newClientName, onSubmit, onClose, submitting, error,
+  newClientName, onSubmit, onClose, submitting, error,
   fieldErrors, loadingClients, clientError, onRetryClients, showLocation,
   onReloadEmail, reloadingEmail, reviewPanel, requireSourceReload,
 }) {
@@ -48,10 +49,11 @@ export default function SalesEmailOpportunityForm({
             <select {...fieldProps("client")} name="client_choice" required value={clientChoice} onChange={(event) => onClientChange(event.target.value)} disabled={loadingClients || Boolean(clientError)} className={fieldClass}>
               <option value="">{loadingClients ? "Loading clients…" : "Select client"}</option>
               {newClientName && <option value="__new__">Add new client: {newClientName}</option>}
-              {clients.map((client) => <option key={client.id} value={client.id}>{client.id === matchedClientId ? "Matched: " : ""}{client.company_name}</option>)}
+              {clients.map((client) => <option key={client.id} value={client.id}>{client.company_name}</option>)}
             </select>
             {clientChoice === "__new__" && newClientName && <span className="mt-2 block text-xs font-normal leading-5 text-slate-600">{newClientName} will be added as a client when you create the opportunity.</span>}
             {fieldError("client")}
+            <SalesEmailCustomerMatch information={information} clients={clients} clientChoice={clientChoice} onUseClient={onClientChange} disabled={submitting || loadingClients || Boolean(clientError) || reloadingEmail || requireSourceReload} />
           </div>
           {loadingClients && <p role="status" className="text-sm text-slate-600 sm:col-span-2">Loading client options…</p>}
           {clientError && <div className="space-y-2 sm:col-span-2"><p role="alert" className="text-sm text-rose-800">{clientError}</p>{onRetryClients && <button type="button" onClick={onRetryClients} className="sales-email-button">Retry clients</button>}</div>}
@@ -69,7 +71,7 @@ export default function SalesEmailOpportunityForm({
           <div className="min-w-0 text-sm font-semibold text-slate-700 sm:col-span-2"><label htmlFor={`${formId}-description`}>Scope summary</label><textarea {...fieldProps("description")} name="description" rows="4" defaultValue={extracted.scope_summary || bodyPreview || ""} className={fieldClass} />{fieldError("description")}</div>
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4 sm:col-span-2">
             <button type="button" onClick={onClose} className="sales-email-button">Cancel</button>
-            <button type="submit" disabled={loadingClients || reloadingEmail || requireSourceReload || Boolean(clientError) || !clientChoice} className="rounded-md bg-[#c83d25] px-4 py-2 text-sm font-semibold text-white hover:bg-[#ac321e] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Creating…" : "Create opportunity"}</button>
+            <button type="submit" disabled={loadingClients || reloadingEmail || requireSourceReload || Boolean(clientError) || (!clients.some((client) => client.id === clientChoice) && !(clientChoice === "__new__" && newClientName))} className="rounded-md bg-[#c83d25] px-4 py-2 text-sm font-semibold text-white hover:bg-[#ac321e] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Creating…" : "Create opportunity"}</button>
           </div>
         </fieldset>
       </form>
@@ -84,7 +86,6 @@ SalesEmailOpportunityForm.propTypes = {
   clients: PropTypes.array.isRequired,
   clientChoice: PropTypes.string.isRequired,
   onClientChange: PropTypes.func.isRequired,
-  matchedClientId: PropTypes.string,
   newClientName: PropTypes.string,
   onSubmit: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
@@ -101,7 +102,7 @@ SalesEmailOpportunityForm.propTypes = {
   requireSourceReload: PropTypes.bool,
 };
 SalesEmailOpportunityForm.defaultProps = {
-  subject: "", information: null, bodyPreview: "", matchedClientId: "", newClientName: "",
+  subject: "", information: null, bodyPreview: "", newClientName: "",
   submitting: false, error: "", fieldErrors: {}, loadingClients: false,
   clientError: "", onRetryClients: null, showLocation: false,
   onReloadEmail: null, reloadingEmail: false, reviewPanel: null,
