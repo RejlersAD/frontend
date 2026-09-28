@@ -681,7 +681,7 @@ test('explicit delete sends the exact version and refreshes register and receivi
   await page.screenshot({ path: testInfo.outputPath('receipt-delete-mobile.png'), fullPage: true });
   await deletion.getByRole('button', { name: 'Delete receipt', exact: true }).click();
   await expect(deletion).toHaveCount(0);
-  await expect(page.getByRole('status')).toContainText('Receipt SYN-GR-001 deleted.');
+  await expect(page.getByRole('status').filter({ hasText: 'Receipt SYN-GR-001 deleted.' })).toBeVisible();
   await expect(register).toContainText('No receipts match this queue');
   expect(state.posts).toHaveLength(1);
   expect(state.posts[0].data).toEqual({ expected_updated_at: token });
@@ -732,7 +732,7 @@ test('already removed receipt offers register refresh without claiming deletion 
   await expect(deletion.getByRole('alert')).toContainText('no longer available');
   await expect(deletion.getByRole('button', { name: 'Delete receipt', exact: true })).toBeDisabled();
   await deletion.getByRole('button', { name: 'Refresh register' }).click();
-  await expect(page.getByRole('status')).toContainText('Receipt no longer available');
+  await expect(page.getByRole('status').filter({ hasText: 'Receipt no longer available' })).toBeVisible();
   await expect(page.getByText('Receipt SYN-GR-001 deleted.')).toHaveCount(0);
   expect(state.posts).toHaveLength(1);
 });

@@ -3,6 +3,7 @@ const query = filters => new URLSearchParams(Object.entries(filters || {}).filte
 const goodsReceiptsService = {
   async availableOrders(filters = {}) { return (await apiClient.get(`/procurement/receipts/available-orders/?${query(filters)}`)).data; },
   async receivingSummary(id) { return (await apiClient.get(`/procurement/orders/${encodeURIComponent(id)}/receiving-summary/`)).data; },
+  async saveReceivingBasis(id, payload) { return (await apiClient.post(`/procurement/orders/${encodeURIComponent(id)}/receiving-basis/`, payload)).data; },
   async create(payload, reconcile = false) { return (await apiClient.post(`/procurement/receipts/${reconcile ? 'reconcile/' : ''}`, payload)).data; },
   async list(filters = {}) { return (await apiClient.get(`/procurement/receipts/?${query(filters)}`)).data; },
   async summary(filters = {}) { return (await apiClient.get(`/procurement/receipts/inspection-summary/?${query(filters)}`)).data; },

@@ -9,6 +9,7 @@ import { buildReceivingLines, localReceiptDate, receivingLinePreview, receiptOpe
 import { receiptReviewDate } from '../../components/Procurement/goodsReceiptReviewPresentation';
 import { receiptEntrySummary } from './receiptEntryPresentation';
 import ReceiptDeliveryInformation from './ReceiptDeliveryInformation';
+import ReceiptReceivingBasisEditor from './ReceiptReceivingBasisEditor';
 import './AIReceiptCreator.css';
 
 const availableOrders = params => goodsReceiptsService.availableOrders({ ...params, queue: 'awaiting' });
@@ -22,12 +23,14 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
   const reviewRef = useRef(null);
   const busyRef = useRef(false);
   const operation = useRef(null);
+  const basisOperation = useRef(null);
   const [order, setOrder] = useState(initialOrder);
   const [summary, setSummary] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [basisSaving, setBasisSaving] = useState(false);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -82,17 +85,17 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
 
   useEffect(() => {
     if (!isOpen) return;
-    setOrder(initialOrder); setSummary(null); setForm(emptyForm()); setDrafts({}); setStatusChoice(''); setError(''); setStale(false); setReviewed(false); operation.current = null;
+    setOrder(initialOrder); setSummary(null); setForm(emptyForm()); setDrafts({}); setStatusChoice(''); setError(''); setStale(false); setReviewed(false); operation.current = null; basisOperation.current = null;
   }, [isOpen, initialOrder]);
   useEffect(() => {
     if (!isOpen || !order?.id) return undefined;
     let active = true;
-    setLoading(true); setSummary(null);
+    setLoading(true);
     goodsReceiptsService.receivingSummary(order.id).then(data => {
       if (!active) return;
       if (!Array.isArray(data?.lines) || !data.po_updated_at) throw new Error('Receipt balances are unavailable.');
       setSummary(data); setStale(false);
-    }).catch(requestError => { if (active) setError(handoffError(requestError)); }).finally(() => { if (active) setLoading(false); });
+    }).catch(requestError => { if (active) { setError(handoffError(requestError)); setStale(true); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [isOpen, order?.id, retry]);
 
@@ -116,6 +119,22 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
   }, [isOpen, close]);
 
   const change = (name, value) => { setForm(current => ({ ...current, [name]: value })); setReviewed(false); };
+  const saveBasis = async basis => {
+    if (busyRef.current || loading || stale || !order?.id || !summary?.po_updated_at || summary.can_review_basis !== true || summary.needs_basis_review !== true) return;
+    const payload = { ...basis, expected_updated_at: summary.po_updated_at };
+    basisOperation.current = receiptOperation(basisOperation.current, { purchase_order: order.id, ...payload });
+    busyRef.current = true; setBusy(true); setBasisSaving(true); setError('');
+    let acknowledged = false;
+    try {
+      const saved = await goodsReceiptsService.saveReceivingBasis(order.id, { ...payload, operation_key: basisOperation.current.key });
+      acknowledged = true;
+      if (saved?.basis_source !== 'reviewed_receiving' || saved.basis !== basis.basis || !saved.po_updated_at || !Array.isArray(saved.lines) || saved.lines.length !== basis.lines.length || saved.lines.some(line => !line.line_id || !line.uom || !line.ordered)) throw new Error('The receiving basis response could not be verified. Refresh receipt balances.');
+      const refreshed = await goodsReceiptsService.receivingSummary(order.id);
+      if (refreshed?.basis_source !== 'reviewed_receiving' || refreshed.basis !== basis.basis || !refreshed.po_updated_at || !Array.isArray(refreshed.lines) || !refreshed.lines.length) throw new Error('Saved receiving balances could not be verified. Refresh receipt balances.');
+      setSummary(refreshed); setDrafts({}); setStatusChoice(''); setReviewed(false); setStale(false);
+    } catch (requestError) { setError(handoffError(requestError)); if (acknowledged || requestError?.response?.status === 409) setStale(true); }
+    finally { busyRef.current = false; setBusy(false); setBasisSaving(false); }
+  };
   const submit = async event => {
     event.preventDefault();
     if (busyRef.current || loading || stale) return;
@@ -195,11 +214,11 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
           <div className="receipt-entry__info"><InformationCircleIcon /><span>{loading ? 'Loading receipt balances…' : stale ? 'Refresh balances before recording' : order ? 'Purchase order linked' : 'Select a purchase order to begin'}</span><i aria-hidden="true" /> <span>Required fields are marked <b>*</b></span></div>
           {error && <div role="alert" className="receipt-entry__error">{error}</div>}
           {order && (stale || (!summary && !loading)) && <button type="button" className="receipt-entry__button receipt-entry__refresh" disabled={busy} onClick={() => { setError(''); setReviewed(false); setRetry(value => value + 1); }}>Refresh receipt balances</button>}
-          {summary && !allowed && <p role="status" className="receipt-entry__error">{summary.blocked_reason || 'This purchase order is not available for receipt.'}</p>}
+          {summary && !allowed && !(summary.needs_basis_review && summary.can_review_basis) && <p role="status" className="receipt-entry__error">{summary.blocked_reason || 'This purchase order is not available for receipt.'}</p>}
           <fieldset disabled={busy} className="receipt-entry__grid">
             <section className="receipt-entry__panel receipt-entry__order" aria-labelledby="receipt-order-title">
               <h2 id="receipt-order-title">Purchase order</h2>
-              {initialOrder || reconciliation ? <div className="receipt-entry__selected-order"><strong>{order?.po_number || 'Select a purchase order'}</strong></div> : <PurchaseOrderSelector label="Purchase Order" fetchPage={availableOrders} value={order?.id} onChange={selected => { setOrder(selected); setDrafts({}); setStatusChoice(''); setSummary(null); setError(''); setStale(false); setReviewed(false); }} disabled={busy} />}
+              {initialOrder || reconciliation ? <div className="receipt-entry__selected-order"><strong>{order?.po_number || 'Select a purchase order'}</strong></div> : <PurchaseOrderSelector label="Purchase Order" fetchPage={availableOrders} value={order?.id} onChange={selected => { setOrder(selected); setDrafts({}); setStatusChoice(''); setSummary(null); setError(''); setStale(false); setReviewed(false); basisOperation.current = null; }} disabled={busy} />}
               {order && <>
                 {status && <span className="receipt-entry__badge receipt-entry__order-status">{status}</span>}
                 <details className="receipt-entry__order-details" open={(bounds?.width ?? window.innerWidth) > 720}><summary>Purchase order details</summary><dl className="receipt-entry__facts">
@@ -221,7 +240,7 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
               <ReceiptDeliveryInformation form={form} basis={summary?.basis} actor={actor} deliveryStatus={deliveryStatus} onChange={change} onStatusChange={chooseDeliveryStatus} disabled={busy || !canCopy} />
               <section ref={itemsRef} tabIndex={-1} className="receipt-entry__panel receipt-entry__items" aria-labelledby="receipt-items-title">
                 <div className="receipt-entry__panel-heading"><h2 id="receipt-items-title">{service ? `Service value (${currency})` : 'Items received'}</h2><button type="button" className="receipt-entry__button" disabled={busy || !canCopy} onClick={copyRemaining}><DocumentDuplicateIcon />{service ? 'Copy remaining value' : 'Copy remaining quantities'}</button></div>
-                {loading ? <p role="status" className="receipt-entry__empty">Loading receipt balances…</p> : !order ? <p className="receipt-entry__empty">Select a purchase order to view its items.</p> : summary?.lines.length ? <div className="receipt-entry__table-scroll"><table>
+                {summary?.needs_basis_review && summary?.can_review_basis ? <ReceiptReceivingBasisEditor key={order.id} currency={currency} disabled={busy || loading || stale} saving={basisSaving} onSave={saveBasis} /> : loading ? <p role="status" className="receipt-entry__empty">Loading receipt balances…</p> : !order ? <p className="receipt-entry__empty">Select a purchase order to view its items.</p> : summary?.lines.length ? <div className="receipt-entry__table-scroll"><table>
                   <caption className="sr-only">{service ? 'Service value lines' : 'Purchase order lines'}</caption>
                   <thead><tr>{['Description', 'Ordered', 'Previously Received', service ? 'Received Value' : 'Received Quantity', 'Balance Remaining', 'Line Status'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
                   <tbody>{summary.lines.map(line => {
@@ -262,7 +281,7 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
             </section>
           </fieldset>
         </div>
-        <footer className="receipt-entry__footer"><button type="button" disabled={busy} onClick={close} className="receipt-entry__button">Cancel</button><span className={`receipt-entry__footer-status ${ready ? 'is-ready' : ''}`}>{ready ? <CheckCircleIcon /> : <InformationCircleIcon />}{ready ? 'All required information complete' : stale ? 'Refresh receipt balances' : 'Complete the required information'}</span><button type="submit" disabled={busy || loading || stale || !allowed || !summary?.lines.length || (reconciliation && !reviewed)} className="receipt-entry__button receipt-entry__submit"><CheckIcon />{busy ? 'Recording…' : reconciliation ? 'Record reconciliation' : 'Record receipt'}</button></footer>
+        <footer className="receipt-entry__footer"><button type="button" disabled={busy} onClick={close} className="receipt-entry__button">Cancel</button><span className={`receipt-entry__footer-status ${ready ? 'is-ready' : ''}`}>{ready ? <CheckCircleIcon /> : <InformationCircleIcon />}{ready ? 'All required information complete' : stale ? 'Refresh receipt balances' : 'Complete the required information'}</span><button type="submit" disabled={busy || loading || stale || !allowed || !summary?.lines.length || (reconciliation && !reviewed)} className="receipt-entry__button receipt-entry__submit"><CheckIcon />{basisSaving ? 'Saving basis…' : busy ? 'Recording…' : reconciliation ? 'Record reconciliation' : 'Record receipt'}</button></footer>
       </form>
     </div></>, document.body)}</>;
 }

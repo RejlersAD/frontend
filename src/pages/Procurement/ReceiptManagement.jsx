@@ -288,7 +288,7 @@ const ReceiptManagement = () => {
   }, []);
   const recordReceipt = (capabilities, order = null, reconcile = false) => {
     setCreatorError('');
-    if (capabilities?.create !== true && !(order && (reconcile ? order.receiving?.can_reconcile : order.receiving?.can_record))) { setCreatorError('You do not have access to record this receipt.'); return; }
+    if (capabilities?.create !== true && !(order && ((reconcile ? order.receiving?.can_reconcile : order.receiving?.can_record) || order.receiving?.can_review_basis === true))) { setCreatorError('You do not have access to record this receipt.'); return; }
     if (!order && capabilities?.read_purchase_orders !== true) { setCreatorError('Purchase order access is required to select an order.'); return; }
     setInitialOrder(order); setReconciliation(reconcile); setShowAICreator(true);
   };

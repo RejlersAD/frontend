@@ -307,7 +307,7 @@ test('a denied register refresh removes stale rows and retries without enabling 
   expect(state.writes).toEqual([]);
 });
 
-test('record receipt retains the five-field creation workflow without unsupported draft or upload actions', async ({ page }) => {
+test('record receipt opens the delivery form without unsupported draft or upload actions', async ({ page }) => {
   const state = await setup(page);
   await expect(row(page, '001')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toHaveCount(0);
@@ -318,8 +318,10 @@ test('record receipt retains the five-field creation workflow without unsupporte
   await expect(dialog.getByRole('combobox', { name: 'Purchase Order', exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Record receipt', exact: true })).toBeDisabled();
   await dialog.getByRole('combobox', { name: 'Purchase Order', exact: true }).selectOption('po-1');
-  await expect(dialog.getByLabel('Delivery Note / Reference', { exact: true })).toBeVisible();
-  await expect(dialog.getByLabel(/^Receipt Date/)).toBeVisible();
+  await expect(dialog.getByLabel('Delivery Note No.', { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel(/^Delivery Date/)).toBeVisible();
+  await expect(dialog.getByLabel(/^Delivery Location/)).toBeVisible();
+  await expect(dialog.getByLabel(/^Condition/)).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: 'Remarks', exact: true })).toBeVisible();
   await expect(dialog.getByRole('spinbutton', { name: 'Received quantity for Synthetic valve 001', exact: true })).toBeVisible();
   expect(state.writes).toEqual([]);

@@ -63,7 +63,8 @@ async function addProject(page, code) {
 async function expectFreshNewForm(page) {
   await page.goto('/procurement/orders/new', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'New purchase order', exact: true })).toBeVisible({ timeout: 90000 })
-  await expect(title(page)).toHaveCount(0)
+  await expect(title(page)).toHaveValue('')
+  await expect(editor(page).getByRole('button', { name: 'Save draft', exact: true }).first()).toBeDisabled()
   await expect(editor(page)).toContainText('Select an existing PR to continue')
   await expect(page.locator('#po-pr-search')).toHaveValue('')
   await expect(projectOutput(page)).toHaveValue('')

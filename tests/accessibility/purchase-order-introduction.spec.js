@@ -194,18 +194,37 @@ test('save errors preserve the custom introduction for correction and retry', as
   clean(state)
 })
 
-test('approved commercial locks also protect custom introduction, reset and scope heading', async ({ page }) => {
+test('approved commercial locks preserve introduction metadata and expose only saved commercial context and PDF', async ({ page }) => {
   const custom = 'Approved Buyer / Seller wording'
-  const state = await openEditor(page, { status: 'approved', commercial_edit_locked: true, contact_persons: { ...contacts, order_introduction: custom } })
-  await expect(introduction(page)).toHaveValue(custom)
-  await expect(introduction(page)).toBeDisabled()
-  await expect(page.getByRole('checkbox', { name: 'Show heading', exact: true })).toBeDisabled()
-  await expect(page.getByRole('checkbox', { name: 'Show introduction', exact: true })).toBeDisabled()
-  await expect(page.getByRole('textbox', { name: 'PO Narrative', exact: true })).toHaveAttribute('contenteditable', 'false')
-  await expect(page.getByRole('button', { name: 'Clear text', exact: true })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Bold', exact: true })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Use standard introduction', exact: true })).toBeDisabled()
-  expect(lastPdf(state).contact_persons.order_introduction).toBe(custom)
+  const savedContacts = { ...contacts, order_introduction: custom }
+  const state = await openEditor(page, { status: 'approved', commercial_edit_locked: true, scope_of_services: '<p>Approved engineering scope</p>', contact_persons: savedContacts })
+  const savedOrder = structuredClone(state.record)
+  await expect(page.getByRole('form', { name: 'Edit PO number', exact: true })).toBeVisible()
+  for (const [label, value] of [['Title / Description', savedOrder.title], ['Scope of services', 'Approved engineering scope'], ['Currency', 'AED'], ['Total Amount', '1050'], ['Net Amount', '1000'], ['Tax Amount', '50']]) {
+    const field = page.getByRole('textbox', { name: label, exact: true })
+    await expect(field).toHaveValue(value)
+    await expect(field).toHaveAttribute('readonly', '')
+  }
+  await expect(introduction(page)).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'Show heading', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'Show introduction', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'PO Narrative', exact: true })).toHaveCount(0)
+  for (const name of ['Clear text', 'Bold', 'Use standard introduction']) {
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
+  }
+  await expect(preview(page).getByRole('status')).toHaveText('Saved purchase order')
+  const pending = page.waitForEvent('download')
+  await preview(page).getByRole('button', { name: 'Download PDF', exact: true }).click()
+  const download = await pending
+  expect(download.suggestedFilename()).toBe('Generated-PO.pdf')
+  expect(await readFile(await download.path())).toEqual(state.generatedPdf)
+  const savedPdfRequests = state.requests.filter(request => request.path === `/api/v1/procurement/orders/${orderFormId}/export-pdf/`)
+  expect(savedPdfRequests.length).toBeGreaterThan(0)
+  expect(savedPdfRequests.every(request => request.method === 'GET')).toBe(true)
+  expect(state.requests.filter(request => request.path.endsWith('/preview-document/'))).toEqual([])
+  expect(state.requests.filter(request => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) && request.path.startsWith('/api/v1/procurement/orders/'))).toEqual([])
+  expect(state.record).toEqual(savedOrder)
+  expect(state.record.contact_persons).toEqual(savedContacts)
   expect(state.acceptedWrites).toEqual([])
   clean(state)
 })

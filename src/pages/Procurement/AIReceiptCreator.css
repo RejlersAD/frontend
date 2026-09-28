@@ -127,6 +127,14 @@
 .receipt-entry__badge--neutral { background: #edf1f6; color: #57657b; }
 .receipt-entry__badge--invalid { background: #fff0ed; color: #a52d25; }
 .receipt-entry__empty { padding: 25px 8px; text-align: center; color: #596e89; background: #f7faff; border: 1px dashed #c4d6ed; border-radius: 4px; }
+.receipt-basis { padding: 10px; border: 1px solid #d7e3f1; border-radius: 4px; background: #f7faff; }
+.receipt-basis__heading, .receipt-basis__actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.receipt-entry .receipt-basis h3 { margin: 0; }
+.receipt-basis__heading .receipt-delivery__segments { width: 200px; margin: 0; }
+.receipt-basis__line { display: grid; grid-template-columns: minmax(0, 2fr) minmax(65px, .7fr) minmax(100px, 1fr) auto; gap: 8px; align-items: end; margin-top: 10px; }
+.receipt-basis__actions { justify-content: flex-end; margin-top: 10px; }
+.receipt-basis__actions .receipt-entry__button { min-height: 29px; }
+@container receipt-entry (max-width: 720px) { .receipt-basis__line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .receipt-basis__line > label:first-child { grid-column: 1 / -1; } }
 .receipt-entry__notes { flex: 1; }
 .receipt-entry__reconciliation { margin-top: 10px; border-top: 1px solid #d8e4f2; padding-top: 10px; }
 .receipt-entry label.receipt-entry__checkbox { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; }
