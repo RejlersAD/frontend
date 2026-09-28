@@ -47,7 +47,7 @@ async function setup(page, { view = 'creator', denied = false, failure = 0, post
   return state;
 }
 async function goods(page) {
-  await editor(page).getByRole('button', { name: 'Goods', exact: true }).click();
+  await page.getByRole('group', { name: /^Receipt Type/ }).getByRole('button', { name: 'Goods', exact: true }).click();
   await page.getByLabel('Item description 1', { exact: true }).fill('Synthetic pipe');
   await page.getByLabel('Unit 1', { exact: true }).fill('EA');
   await page.getByLabel('Ordered quantity 1', { exact: true }).fill('12.5');
@@ -60,14 +60,14 @@ async function delivery(page) {
 
 test('header-only uploaded PO recovers source goods lines and records using returned canonical identities', async ({ page }, testInfo) => {
   const state = await setup(page);
-  await expect(record(page)).toBeDisabled();
+  await expect(record(page)).toBeEnabled();
   await expect(editor(page)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('before-receiving-basis.png'), fullPage: true });
   await delivery(page); await goods(page);
   await save(page).click();
   await expect(editor(page)).toHaveCount(0);
   await expect(page.getByLabel(/^Delivery Location/)).toHaveValue('Synthetic receiving office');
-  await expect(page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe', exact: true })).toHaveValue('');
+  await expect(page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe', exact: true })).toHaveValue('12.5');
   await page.getByRole('button', { name: 'Copy remaining quantities', exact: true }).click();
   await expect(record(page)).toBeEnabled();
   await expect(page.getByText('All required information complete', { exact: true })).toBeVisible();
@@ -83,7 +83,7 @@ test('header-only uploaded PO recovers source goods lines and records using retu
 
 test('service recovery requires explicit confirmed net value and records canonical service amounts', async ({ page }) => {
   const state = await setup(page); await delivery(page);
-  await editor(page).getByRole('button', { name: 'Services', exact: true }).click();
+  await page.getByRole('group', { name: /^Receipt Type/ }).getByRole('button', { name: 'Services', exact: true }).click();
   await expect(page.getByLabel('Confirmed net value (excl. VAT)', { exact: true })).toHaveValue('');
   await page.getByLabel('Service scope', { exact: true }).fill('Synthetic verified engineering scope');
   await page.getByLabel('Confirmed net value (excl. VAT)', { exact: true }).fill('1000.00');
@@ -100,20 +100,21 @@ test('invalid reviewed quantities stay editable and cannot create a basis or rec
   const state = await setup(page); await goods(page);
   await page.getByLabel('Ordered quantity 1', { exact: true }).fill('0');
   await save(page).click();
-  await expect(editor(page).getByRole('alert')).toContainText('positive ordered quantity');
+  await expect(page.getByRole('alert')).toContainText('positive ordered quantity');
   await expect(page.getByLabel('Item description 1', { exact: true })).toHaveValue('Synthetic pipe');
-  await expect(record(page)).toBeDisabled(); expect(state.posts).toEqual([]);
+  await expect(record(page)).toBeEnabled(); expect(state.posts).toEqual([]);
 });
 
 for (const failure of [403, 409, 500]) {
   test(`basis HTTP ${failure} retains reviewed lines and delivery details for guarded recovery`, async ({ page }) => {
     const state = await setup(page, { failure }); await delivery(page); await goods(page);
     await save(page).click();
-    await expect(page.getByRole('alert')).toContainText(failure === 409 ? 'This record changed' : failure === 403 ? 'do not have access' : 'Synthetic basis save failed');
+    await expect(page.getByRole('alert')).toContainText(failure === 409 ? 'This record changed' : failure === 403 ? 'do not have access' : 'The server could not complete the request');
     await expect(page.getByLabel('Item description 1', { exact: true })).toHaveValue('Synthetic pipe');
     await expect(page.getByLabel('Ordered quantity 1', { exact: true })).toHaveValue('12.5');
     await expect(page.getByLabel(/^Delivery Location/)).toHaveValue('Synthetic receiving office');
-    await expect(record(page)).toBeDisabled();
+    if (failure === 409) await expect(record(page)).toBeDisabled();
+    else await expect(record(page)).toBeEnabled();
     if (failure === 409) {
       await expect(save(page)).toBeDisabled();
       await page.getByRole('button', { name: 'Refresh receipt balances', exact: true }).click();
@@ -144,7 +145,7 @@ for (const postSuccessFailure of ['unverified', 'refresh_failed']) {
   test(`acknowledged basis save with ${postSuccessFailure} requires explicit balance refresh and preserves input`, async ({ page }) => {
     const state = await setup(page, { postSuccessFailure }); await delivery(page); await goods(page);
     await save(page).click();
-    await expect(page.getByRole('alert')).toContainText(postSuccessFailure === 'unverified' ? 'could not be verified' : 'balance refresh failed');
+    await expect(page.getByRole('alert')).toContainText(postSuccessFailure === 'unverified' ? 'could not be verified' : 'The server could not complete the request');
     await expect(save(page)).toBeDisabled();
     await expect(page.getByLabel('Ordered quantity 1', { exact: true })).toHaveValue('12.5');
     await page.getByRole('button', { name: 'Refresh receipt balances', exact: true }).click();

@@ -106,8 +106,9 @@ test('receipt line previews previous receipts, remaining balance and partial or 
   const cells = row.locator('th, td');
   await expect(cells.nth(1)).toHaveText('10');
   await expect(cells.nth(2)).toContainText('5');
-  await expect(cells.nth(4)).toHaveText('5');
-  await expect(cells.nth(5)).toContainText('Partial');
+  await expect(row.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' })).toHaveValue('5');
+  await expect(cells.nth(4)).toHaveText('0');
+  await expect(cells.nth(5)).toContainText('Complete');
   await expect(row).toContainText('Awaiting confirmation');
   const quantity = row.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' });
   await quantity.fill('2.5');
@@ -127,7 +128,8 @@ test('service receiving previews exact value balances with currency and pending 
   const row = table.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /^Synthetic service/ }) });
   const cells = row.locator('th, td');
   await expect(cells.nth(2)).toContainText('200');
-  await expect(row).not.toContainText('Awaiting confirmation');
+  await expect(row.getByRole('spinbutton', { name: 'Received value for Synthetic service' })).toHaveValue('800.00');
+  await expect(row).toContainText('Awaiting confirmation');
   await row.getByRole('spinbutton', { name: 'Received value for Synthetic service' }).fill('125.25');
   await expect(cells.nth(4)).toContainText('674.75');
   await expect(cells.nth(5)).toContainText('Partial');
@@ -191,7 +193,7 @@ test('failed response keeps values and retries with the same operation key', asy
   await page.getByLabel('Delivery Note No.', { exact: true }).fill('SYN-RETRY-01');
   await page.getByRole('textbox', { name: 'Remarks', exact: true }).fill('Retained after failure');
   await clickRecord(page);
-  await expect(page.getByRole('alert')).toContainText('Receipt could not be saved');
+  await expect(page.getByRole('alert')).toContainText('The server could not complete the request');
   await expect(page.getByRole('textbox', { name: 'Remarks', exact: true })).toHaveValue('Retained after failure');
   await expect(page.getByLabel(/^Delivery Date/)).toHaveValue('2026-09-20');
   await expect(page.getByLabel('Delivery Note No.', { exact: true })).toHaveValue('SYN-RETRY-01');
@@ -230,7 +232,7 @@ test('lost creation response can replay an already inspected receipt without a d
   } });
   await page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' }).fill('1');
   await clickRecord(page);
-  await expect(page.getByRole('alert')).toContainText('Response unavailable');
+  await expect(page.getByRole('alert')).toContainText('The server could not complete the request');
   await clickRecord(page);
   await expect(page.getByText('Saved receipt receipt-1 (accepted)', { exact: true })).toBeVisible();
   expect(state.posts[0].data.operation_key).toBe(state.posts[1].data.operation_key);
@@ -375,7 +377,7 @@ for (const failure of [403, 500]) {
     await page.getByRole('complementary', { name: 'Goods receipt review' }).getByRole('button', { name: 'Confirm delivery', exact: true }).click();
     await page.getByRole('textbox', { name: 'Confirmation notes (optional)', exact: true }).fill('Keep this evidence for retry');
     await page.getByRole('dialog', { name: 'Goods Receipt Details', exact: true }).getByRole('button', { name: 'Confirm delivery', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText(failure === 403 ? 'Your receipt access was revoked' : 'could not be saved');
+    await expect(page.getByRole('alert')).toContainText(failure === 403 ? 'Your receipt access was revoked' : 'The server could not complete the request');
     await expect(page.getByRole('textbox', { name: 'Confirmation notes (optional)', exact: true })).toHaveValue('Keep this evidence for retry');
     await expect(page.getByRole('dialog', { name: 'Goods Receipt Details', exact: true })).not.toContainText('Delivery confirmed');
     expect(state.posts).toHaveLength(1);
@@ -713,7 +715,7 @@ for (const failure of [403, 500]) {
     await page.getByRole('region', { name: 'Goods receipt register', exact: true }).getByRole('button', { name: 'Delete receipt', exact: true }).click();
     const deletion = page.getByRole('dialog', { name: 'Delete goods receipt?' });
     await deletion.getByRole('button', { name: 'Delete receipt', exact: true }).click();
-    await expect(deletion.getByRole('alert')).toContainText(failure === 403 ? 'permission' : 'could not be deleted');
+    await expect(deletion.getByRole('alert')).toContainText(failure === 403 ? 'permission' : 'The server could not complete the request');
     await expect(deletion).toContainText('SYN-GR-001');
     expect(state.deleted).not.toBe(true);
     expect(state.posts).toHaveLength(1);

@@ -1,10 +1,11 @@
 import apiClient from './api.service';
 const query = filters => new URLSearchParams(Object.entries(filters || {}).filter(([, value]) => value !== '' && value !== null && value !== undefined)).toString();
+const inlineError = { suppressErrorToast: true };
 const goodsReceiptsService = {
-  async availableOrders(filters = {}) { return (await apiClient.get(`/procurement/receipts/available-orders/?${query(filters)}`)).data; },
-  async receivingSummary(id) { return (await apiClient.get(`/procurement/orders/${encodeURIComponent(id)}/receiving-summary/`)).data; },
-  async saveReceivingBasis(id, payload) { return (await apiClient.post(`/procurement/orders/${encodeURIComponent(id)}/receiving-basis/`, payload)).data; },
-  async create(payload, reconcile = false) { return (await apiClient.post(`/procurement/receipts/${reconcile ? 'reconcile/' : ''}`, payload)).data; },
+  async availableOrders(filters = {}) { return (await apiClient.get(`/procurement/receipts/available-orders/?${query(filters)}`, inlineError)).data; },
+  async receivingSummary(id) { return (await apiClient.get(`/procurement/orders/${encodeURIComponent(id)}/receiving-summary/`, inlineError)).data; },
+  async saveReceivingBasis(id, payload) { return (await apiClient.post(`/procurement/orders/${encodeURIComponent(id)}/receiving-basis/`, payload, inlineError)).data; },
+  async create(payload, reconcile = false) { return (await apiClient.post(`/procurement/receipts/${reconcile ? 'reconcile/' : ''}`, payload, inlineError)).data; },
   async list(filters = {}) { return (await apiClient.get(`/procurement/receipts/?${query(filters)}`)).data; },
   async summary(filters = {}) { return (await apiClient.get(`/procurement/receipts/inspection-summary/?${query(filters)}`)).data; },
   async retrieve(id) { return (await apiClient.get(`/procurement/receipts/${encodeURIComponent(id)}/`)).data; },
