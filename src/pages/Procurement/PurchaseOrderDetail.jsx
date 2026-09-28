@@ -24,6 +24,7 @@ import {
 import apiClient from '../../services/api.service';
 import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import { getStatusConfig } from '../../config/procurement.config';
+import { purchaseOrderPhaseStatus } from './purchaseOrderPhase';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import PurchaseOrderNumberEditor from './PurchaseOrderNumberEditor';
@@ -245,35 +246,11 @@ const PurchaseOrderDetail = () => {
       if (activeOrderId.current !== id) return;
       if (String(response.data?.id) !== String(id)) throw new Error('The saved purchase order could not be confirmed. Reload the record.');
       setOrder(response.data);
-      toast.success('Purchase Order sent successfully.');
+      toast.success('Purchase order issued.');
     } catch (error) {
       if (activeOrderId.current !== id) return;
       console.error('Error sending order:', error);
       toast.error(`Failed to send order: ${error.response?.data?.detail || error.response?.data?.status || error.message}`);
-    } finally {
-      if (activeOrderId.current === id) setActionLoading(false);
-    }
-  };
-
-  /**
-   * Soft-coded action handler: Mark as Completed
-   */
-  const handleMarkComplete = async () => {
-    if (!canUpdate || currentOrder.current?.can_complete !== true) return;
-    const confirmed = (await radaiConfirm(`Mark Purchase Order ${order.po_number} as completed?`));
-    if (!confirmed || activeOrderId.current !== id || currentOrder.current?.can_complete !== true) return;
-
-    try {
-      setActionLoading(true);
-      const response = await apiClient.patch(`/procurement/orders/${id}/`, { status: 'completed' });
-      if (activeOrderId.current !== id) return;
-      if (String(response.data?.id) !== String(id)) throw new Error('The saved purchase order could not be confirmed. Reload the record.');
-      setOrder(response.data);
-      toast.success('Purchase Order marked as completed.');
-    } catch (error) {
-      if (activeOrderId.current !== id) return;
-      console.error('Error updating order:', error);
-      toast.error(`Failed to update order: ${error.response?.data?.detail || error.response?.data?.status || error.message}`);
     } finally {
       if (activeOrderId.current === id) setActionLoading(false);
     }
@@ -309,7 +286,8 @@ const PurchaseOrderDetail = () => {
    * Soft-coded status badge renderer
    */
   const getStatusBadge = (status) => {
-    const config = getStatusConfig('purchaseOrder', status);
+    const phaseStatus = purchaseOrderPhaseStatus(status);
+    const config = getStatusConfig('purchaseOrder', phaseStatus);
     const colorClasses = {
       green: 'bg-green-100 text-green-800 border-green-300',
       red: 'bg-red-100 text-red-800 border-red-300',
@@ -320,7 +298,7 @@ const PurchaseOrderDetail = () => {
     
     return (
       <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${colorClasses[config.color]}`}>
-        {config.label}
+        {phaseStatus === 'sent' ? 'Issued' : config.label}
       </span>
     );
   };
@@ -512,7 +490,7 @@ const PurchaseOrderDetail = () => {
             </tr>
             <tr>
               <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left font-semibold">Status</th>
-              <td className="border border-gray-400 px-2 py-1.5 uppercase">{textOrDash(order.status_display || order.status)}</td>
+              <td className="border border-gray-400 px-2 py-1.5 uppercase">{purchaseOrderPhaseStatus(order.status) === 'sent' ? 'Issued' : textOrDash(order.status_display || order.status)}</td>
               <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left font-semibold">Required Delivery</th>
               <td className="border border-gray-400 px-2 py-1.5">{formatDate(order.expected_delivery)}</td>
             </tr>
@@ -727,18 +705,6 @@ const PurchaseOrderDetail = () => {
                 </button>
               )}
               
-              {canUpdate && (order.status === 'sent' || order.status === 'acknowledged' || order.status === 'in_progress') && (
-                <button
-                  onClick={handleMarkComplete}
-                  disabled={actionLoading || order.can_complete !== true}
-                  aria-describedby={order.can_complete !== true ? 'po-lifecycle-block-reason' : undefined}
-                    className="inline-flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50"
-                >
-                  <CheckCircleIcon className="h-4 w-4 mr-2" />
-                  {actionLoading ? 'Updating...' : 'Mark Complete'}
-                </button>
-              )}
-              
               {canUpdate && (
                 <button
                   onClick={() => setShowEditForm(true)}
@@ -752,8 +718,7 @@ const PurchaseOrderDetail = () => {
             </div>
           </header>
 
-          {canUpdate && ((order.status === 'draft' && order.can_send_to_vendor !== true)
-            || (['sent', 'acknowledged', 'in_progress'].includes(order.status) && order.can_complete !== true)) && (
+          {canUpdate && order.status === 'draft' && order.can_send_to_vendor !== true && (
             <p id="po-lifecycle-block-reason" role="status" className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               {purchaseOrderLifecycleBlockReason(order)}
             </p>

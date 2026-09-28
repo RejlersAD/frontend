@@ -1,0 +1,43 @@
+.purchase-order-form-workspace.pof-reference .pof-ref-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 10px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-wide { grid-column: 1 / -1; }
+.purchase-order-form-workspace.pof-reference .pof-ref-field { display: grid; grid-template-columns: minmax(78px, 24%) minmax(0, 1fr); align-items: center; gap: 6px; margin: 0; min-width: 0; }
+.purchase-order-form-workspace.pof-reference .pof-ref-identity { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr); gap: 10px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-identity .pof-ref-field { grid-template-columns: 68px minmax(0, 1fr); gap: 4px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-identity .pof-ref-field:first-child { grid-template-columns: 53px minmax(0, 1fr); }
+.purchase-order-form-workspace.pof-reference .pof-ref-identity .pof-ref-field > span:first-child { white-space: nowrap; }
+.purchase-order-form-workspace.pof-reference .pof-ref-project-numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-project-numbers .pof-ref-field { grid-template-columns: 100px minmax(0, 1fr); }
+.purchase-order-form-workspace.pof-reference .pof-ref-projects > label.pof-ref-wide { grid-template-columns: minmax(174px, 20%) minmax(0, 1fr); }
+.purchase-order-form-workspace.pof-reference .pof-ref-money { grid-template-columns: minmax(102px, 52%) minmax(0, 1fr); }
+.purchase-order-form-workspace.pof-reference .pof-ref-field > span:first-child { color: #304d73; font-size: 11px; font-weight: 500; line-height: 16px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-field b { color: #d52b45; }
+.purchase-order-form-workspace.pof-reference .pof-ref-field :is(input, textarea) { width: 100%; min-width: 0; min-height: 24px; margin: 0; padding: 2px 6px; border: 1px solid #ccdaed; border-radius: 4px; background: #fff; color: #234164; font-family: inherit; font-size: 12px; font-weight: 400; line-height: 18px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-field :is(input, textarea)::placeholder { color: #60738b; font-family: inherit; font-size: 12px; font-weight: 400; line-height: 18px; opacity: 1; }
+.purchase-order-form-workspace.pof-reference .pof-ref-field input[aria-label="PO number"] { border-color: #94baff; background: #fbfdff; }
+.purchase-order-form-workspace.pof-reference .pof-ref-field input[aria-invalid="true"] { border-color: #d52b45; }
+.purchase-order-form-workspace.pof-reference .pof-ref-value { position: relative; min-width: 0; }
+.purchase-order-form-workspace.pof-reference .pof-ref-value:has(svg) input { padding-right: 23px; background: #f5f8fc; }
+.purchase-order-form-workspace.pof-reference .pof-ref-value svg { position: absolute; right: 7px; top: 6px; width: 12px; height: 12px; color: #7388a3; pointer-events: none; }
+.purchase-order-form-workspace.pof-reference .pof-ref-vendor { margin-top: 4px; padding: 6px 8px; border: 1px solid #e0e9f4; border-radius: 4px; background: #f8fbff; }
+.purchase-order-form-workspace.pof-reference .pof-ref-vendor summary { cursor: pointer; font-size: 11px; font-weight: 600; line-height: 16px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-vendor summary span { margin-left: 12px; color: #536982; font-size: 10px; font-weight: 400; line-height: 14px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-vendor dl { display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 5px; padding-top: 8px; font-size: 11px; line-height: 16px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-vendor dd { margin: 0; overflow-wrap: anywhere; }
+.purchase-order-form-workspace.pof-reference .pof-ref-helper { color: #536982; font-size: 10px; font-weight: 400; line-height: 14px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-badge { display: inline-flex; padding: 3px 7px; border: 1px solid #dce6f0; border-radius: 4px; font-size: 10px; font-weight: 600; line-height: 14px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-table-wrap { max-width: 100%; overflow-x: auto; }
+.purchase-order-form-workspace.pof-reference .pof-ref-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 18px; }
+.purchase-order-form-workspace.pof-reference .pof-ref-table-wrap :is(th,td) { padding: 7px 8px; border-bottom: 1px solid #e0e9f4; text-align: left; }
+.purchase-order-form-workspace.pof-reference .pof-ref-table-wrap th { font-size: 11px; font-weight: 500; line-height: 16px; color: #526b8b; }
+.purchase-order-form-workspace.pof-reference .pof-error { font-size: 11px; font-weight: 500; line-height: 16px; }
+@media (max-width: 1450px) and (min-width: 1100px) {
+  .purchase-order-form-workspace.pof-reference .pof-ref-field { grid-template-columns: minmax(62px, 37%) minmax(0, 1fr); gap: 5px; }
+  .purchase-order-form-workspace.pof-reference .pof-ref-fields { gap: 7px 9px; }
+}
+@media (max-width: 600px) {
+  .purchase-order-form-workspace.pof-reference .pof-ref-fields { grid-template-columns: minmax(0, 1fr); }
+  .purchase-order-form-workspace.pof-reference .pof-ref-field { grid-template-columns: 110px minmax(0, 1fr); }
+  .purchase-order-form-workspace.pof-reference :is(.pof-ref-identity, .pof-ref-project-numbers) { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .purchase-order-form-workspace.pof-reference .pof-ref-identity .pof-ref-field, .purchase-order-form-workspace.pof-reference .pof-ref-projects > label.pof-ref-wide { grid-template-columns: 110px minmax(0, 1fr); }
+  .purchase-order-form-workspace.pof-reference .pof-ref-identity .pof-ref-field:first-child { grid-template-columns: 110px minmax(0, 1fr); }
+}

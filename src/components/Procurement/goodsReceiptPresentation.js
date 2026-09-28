@@ -1,6 +1,13 @@
 export const RECEIPT_QUEUES = [['all', 'All receipts'], ['pending', 'Awaiting confirmation'], ['exceptions', 'Exceptions'], ['accepted', 'Accepted'], ['rejected', 'Rejected'], ['ndt_pending', 'NDT pending']];
 export const RECEIPT_FILTERS = { search: '', status: '', quality_check: '', vendor: '', project: '', received_from: '', received_to: '', inspector: '' };
 export const RECEIPT_STATUS = { pending: 'Awaiting confirmation', accepted: 'Accepted', rejected: 'Rejected', partial: 'Partially accepted' };
+export function receiptFilterMonth(filters) {
+  const match = /^(\d{4})-(\d{2})-01$/.exec(filters.received_from || '');
+  if (!match || Number(match[2]) < 1 || Number(match[2]) > 12) return '';
+  const lastDay = new Date(Number(match[1]), Number(match[2]), 0).getDate();
+  const month = `${match[1]}-${match[2]}`;
+  return filters.received_to === `${month}-${lastDay}` ? month : '';
+}
 export const receiptNumber = value => (typeof value === 'number' || typeof value === 'string') && String(value).trim() !== '' && /^[-+]?\d*(?:\.\d+)?$/.test(String(value).trim()) && Number.isFinite(Number(value)) ? Number(value) : null;
 export const receiptDate = (value, time = false) => {
   if (!value) return '—';
@@ -34,6 +41,26 @@ export function receiptDocuments(receipt) {
   return { label: required !== null && received !== null ? `${received} of ${required}` : evidence.status === 'not_required' ? 'Not required' : 'Not assessed', tone: receiptTone(evidence.status), note: evidence.definition || 'Recorded certificate declarations compared with purchase order requirements.' };
 }
 const csvCell = value => { const raw = String(value ?? ''); const safe = /^[\s]*[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw; return `"${safe.replaceAll('"', '""')}"`; };
+export function receiptRecentActivity(rows, limit = 3) {
+  const actions = { confirm_delivery: ['Delivery confirmed', 'green'], accept: ['Receipt accepted', 'green'], reject_delivery: ['Receipt rejected', 'red'] };
+  const events = [];
+  for (const receipt of rows) {
+    const seen = new Set();
+    const add = (action, at, label, tone) => {
+      if (typeof at !== 'string' || !at.includes('T') || !Number.isFinite(Date.parse(at))) return;
+      const key = `${action}:${Date.parse(at)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      events.push({ id: `${receipt.id}:${key}`, receipt, at, label: `${label} · ${receipt.receipt_number || 'Receipt'}`, tone });
+    };
+    for (const event of Array.isArray(receipt.workflow_history) ? receipt.workflow_history : []) {
+      if (event && Object.hasOwn(actions, event.action)) add(event.action, event.at, ...actions[event.action]);
+    }
+    add('confirm_delivery', receipt.confirmation?.confirmed_at, ...actions.confirm_delivery);
+    add('created', receipt.created_at, 'Receipt recorded', 'blue');
+  }
+  return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, limit);
+}
 export function receiptsCsv(rows) {
   const data = [['GR number', 'PO number', 'Supplier', 'Project', 'Received date', 'Delivery note', 'Received by', 'Delivery confirmation by', 'Confirmed by', 'Confirmed at', 'Technical inspector', 'Item lines', 'Receipt status', 'Technical checks', 'Certificates'], ...rows.map(row => [row.receipt_number, row.po_number, row.vendor_name, row.project_number, row.receipt_date, row.delivery_note_number, row.received_by_name, row.confirmation?.responsible_user_name, row.confirmation?.confirmed_by_name, row.confirmation?.confirmed_at, row.inspector_name, Array.isArray(row.items_received) ? row.items_received.length : '', receiptReviewStatus(row).label, receiptInspection(row).label, receiptDocuments(row).label])];
   return '\uFEFF' + data.map(row => row.map(csvCell).join(',')).join('\r\n');

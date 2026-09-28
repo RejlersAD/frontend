@@ -31,7 +31,7 @@ async function openEditor(page, overrides = {}) {
   await page.getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
   await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
-  await page.getByRole('tab', { name: 'PO Description & Scope', exact: true }).click()
+  await page.getByRole('tab', { name: 'Scope & pricing', exact: true }).click()
   await expect(pane(page).getByRole('button', { name: 'Download PDF', exact: true })).toBeEnabled({ timeout: 30000 })
   return state
 }
@@ -125,7 +125,7 @@ test('saved detail PDF downloads reuse its canonical preview and Word exports th
 test('preview attachment order preserves untouched metadata and reflects removals and unsaved labels', async ({ page }) => {
   const state = await openEditor(page, { attachments: [{ filename: 'first.pdf', s3_key: 'first' }, { filename: 'second.pdf', s3_key: 'second' }] })
   expect(lastPdf(state).body.attachment_metadata).toEqual([{ existing_attachment_index: 0 }, { existing_attachment_index: 1 }])
-  await page.getByRole('tab', { name: 'Attachments', exact: true }).click()
+  await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   await page.getByRole('button', { name: 'Remove', exact: true }).first().click()
   await page.getByRole('textbox', { name: 'Attachment 1 title', exact: true }).fill(' Retained revised title ')
   await page.locator('#po-attachment-multiple').setInputFiles({ name: 'new-source.pdf', mimeType: 'application/pdf', buffer: Buffer.from(mixedSizePdf(1)) })
@@ -139,7 +139,7 @@ test('preview attachment order preserves untouched metadata and reflects removal
 
 test('saving a reviewed purchase summary preserves contact metadata and restores the same text when reopened', async ({ page }) => {
   const state = await openEditor(page, { contact_persons: { purchase_summary: 'Saved supplier summary', technical: [{ name: 'Technical contact retained' }] } })
-  await page.getByRole('tab', { name: 'Header, Buyer & Project', exact: true }).click()
+  await page.getByRole('tab', { name: 'Order & parties', exact: true }).click()
   await expect(page.locator('[name="summary"]')).toHaveValue('Saved supplier summary')
   await page.locator('[name="summary"]').fill('Reviewed vendor purchase summary')
   await expect.poll(() => lastPdf(state)?.body.snapshot.summary).toBe('Reviewed vendor purchase summary')

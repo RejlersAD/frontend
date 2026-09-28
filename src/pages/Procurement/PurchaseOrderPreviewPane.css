@@ -1,3 +1,4 @@
+/* PO editor only: the shared PDF viewer and application shell keep their styles. */
 .pop-preview {
   display: flex;
   flex-direction: column;
@@ -9,76 +10,70 @@
   background: #eaf0f6;
   color: #0b2547;
   font-family: var(--font-sans, "Segoe UI", sans-serif);
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
 }
 
 .pop-preview *, .pop-preview *::before, .pop-preview *::after { box-sizing: border-box; }
-.pop-preview button { font: inherit; cursor: pointer; }
+.pop-preview button { font-family: inherit; font-size: 12px; font-weight: 600; line-height: 18px; cursor: pointer; }
 .pop-preview button:disabled { opacity: .5; cursor: default; }
-.pop-preview button:focus-visible, .pop-preview [tabindex]:focus-visible { outline: 2px solid #075bff; outline-offset: 2px; }
-.pop-preview button > svg { width: 15px; height: 15px; flex-shrink: 0; }
-.pop-heading { flex-shrink: 0; padding-bottom: 7px; }
-.pop-title-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; }
-.pop-title-row h2 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; letter-spacing: -.2px; }
-.pop-current { display: inline-flex; align-items: center; gap: 5px; color: #247a60; font-size: 10px; font-weight: 600; white-space: nowrap; }
-.pop-current > span { width: 8px; height: 8px; border: 2px solid #29986f; border-radius: 50%; background: #bde8d5; }
-.pop-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; min-height: 30px; }
-.pop-page-number { color: #526b8b; font-size: 10px; white-space: nowrap; margin-right: auto; }
-.pop-zoom-controls { display: inline-flex; align-items: center; height: 29px; border: 1px solid #cbd7e7; border-radius: 4px; background: #f8fbfe; overflow: hidden; }
-.pop-zoom-controls > button { display: flex; align-items: center; justify-content: center; width: 27px; height: 27px; padding: 4px; color: #3b577b; background: transparent; border: 0; }
-.pop-zoom-controls output { min-width: 39px; height: 27px; padding: 6px 5px; border-right: 1px solid #cbd7e7; border-left: 1px solid #cbd7e7; color: #294b7c; text-align: center; font-size: 10px; font-weight: 600; }
-.pop-tool { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 29px; padding: 5px 8px; border: 1px solid #cbd7e7; border-radius: 4px; background: #f8fbfe; color: #264970; font-size: 10px !important; font-weight: 600 !important; white-space: nowrap; }
-.pop-tool:hover, .pop-zoom-controls > button:hover { background: #fff; border-color: #92b4e6; }
-.pop-icon-tool { width: 29px; padding: 5px; }
-.pop-tabs { display: flex; align-items: stretch; flex-shrink: 0; gap: 3px; min-height: 33px; }
-.pop-tabs > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 13px; border: 0; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; background: transparent; color: #526b8b; font-weight: 500; }
-.pop-tabs > button[aria-selected="true"] { border-bottom-color: #075bff; background: #f8fbff; color: #075bff; font-weight: 650; }
-.pop-issue-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 1px 4px; border-radius: 8px; background: #d53049; color: #fff; font-size: 9px; line-height: 14px; }
-.pop-document-viewport { flex: 1; min-height: 160px; padding: 12px 14px; overflow: auto; overscroll-behavior: contain; border: 1px solid #bac8d7; background: #c5d0dc; scrollbar-color: #94a8bd #cfdae4; scrollbar-width: thin; }
-.pop-document-viewport[hidden], .pop-validation[hidden], .pop-uploaded[hidden] { display: none; }
-.pop-uploaded { position: relative; flex: 1; min-height: 160px; overflow: hidden; border: 1px solid #bac8d7; }
-.pop-original-preview { padding: 0; }
-.pop-original-preview .pop-uploaded { border: 0; }
-.pop-original-preview .pop-tabs { padding: 4px 8px 0; }
-.pop-original-expand { position: absolute; z-index: 2; top: 8px; right: 84px; width: 32px; height: 32px; padding: 6px; background: #fff; }
-.pop-original-preview .upo-select { max-width: calc(100% - 116px); }
-.pop-paper-frame { position: relative; margin: 0 auto; }
-.pop-document { position: relative; width: 560px; transform-origin: top left; }
-.pop-document .po-template-pages { display: flex; flex-direction: column; gap: 18px; }
-.pop-document .po-template-page { width: 560px; max-width: 560px; min-height: 792px; flex-shrink: 0; aspect-ratio: auto; box-shadow: 0 1px 5px #50698135; }
-.pop-document .po-template-page .whitespace-pre-line, .pop-document .po-template-page .whitespace-pre-wrap { overflow-wrap: anywhere; }
-.pop-validation { flex: 1; min-height: 160px; overflow: auto; padding: 17px; border: 1px solid #d2deec; border-radius: 0 4px 4px; background: #fff; }
-.pop-validation h3 { margin: 0 0 5px; font-size: 15px; font-weight: 650; }
-.pop-validation > p { margin: 0 0 16px; color: #617797; }
-.pop-validation ul { list-style: none; margin: 0; padding: 0; }
-.pop-validation li + li { margin-top: 8px; }
-.pop-validation li > button { display: flex; align-items: flex-start; gap: 9px; width: 100%; padding: 11px; border: 1px solid #f3cbd3; border-radius: 4px; background: #fff9fa; color: #932a3c; text-align: left; }
-.pop-validation li > button:hover { background: #fff0f3; border-color: #e19aa9; }
-.pop-validation li > button > span { flex: 1; }
-.pop-validation li > button > svg { color: #cf304d; }
-.pop-validation-ready { display: flex; align-items: center; gap: 8px; padding: 13px; border: 1px solid #a9ddcb; border-radius: 4px; background: #ecfaf4; color: #087853; }
-.pop-validation-ready > svg { width: 22px; height: 22px; }
-.pop-validation-bar { display: flex; flex-shrink: 0; align-items: center; gap: 7px; min-height: 32px; margin-top: 7px; padding: 5px 7px; border: 1px solid #f397a7; border-radius: 3px; background: #fff3f5; color: #bd1738; font-size: 10px; font-weight: 600; }
-.pop-validation-bar > svg { width: 18px; height: 18px; flex-shrink: 0; }
-.pop-validation-bar > span { flex: 1; }
-.pop-validation-bar > button { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border: 0; background: transparent; color: #075bff; font-size: 10px; white-space: nowrap; }
-.pop-validation-bar > button > svg { width: 13px; height: 13px; }
-.pop-validation-bar.is-ready { border-color: #a9ddcb; background: #ecfaf4; color: #087853; }
-.pop-error { flex-shrink: 0; margin-bottom: 8px; padding: 9px 11px; border: 1px solid #f397a7; border-radius: 4px; background: #fff3f5; color: #a61f37; }
-.pop-preview:fullscreen { width: 100vw; height: 100vh; padding: 16px 24px; border: 0; }
-.pop-preview:fullscreen .pop-toolbar { justify-content: flex-end; }
-.pop-preview:fullscreen .pop-page-number { margin-right: 12px; }
-.pop-preview.pop-export-host { position: fixed; top: 0; left: -10000px; z-index: -1; display: block; width: 560px; height: auto; min-height: 0; padding: 0; border: 0; background: #fff; }
-.pop-export-host .pop-document { transform: none !important; }
-.pop-export-host .po-template-page { box-shadow: none; }
+.pop-preview :is(button, a, select, [tabindex]):focus-visible { outline: 2px solid #075bff; outline-offset: 2px; }
+.pop-preview button > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.pop-preview .pop-heading { flex-shrink: 0; padding-bottom: 4px; }
+.pop-preview .pop-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pop-preview .pop-title-row h2 { margin: 0; font-size: 16px; line-height: 22px; font-weight: 700; letter-spacing: 0; }
+.pop-preview .pop-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 2px; min-height: 28px; }
+.pop-preview .pop-tool { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 28px; padding: 4px 8px; border: 1px solid #cbd7e7; border-radius: 4px; background: #fff; color: #075bff; white-space: nowrap; }
+.pop-preview .pop-tool:hover { background: #f3f7ff; border-color: #92b4e6; }
+.pop-preview .pop-icon-tool { width: 28px; padding: 4px; }
+.pop-preview .pop-tabs { display: flex; align-items: stretch; flex-shrink: 0; gap: 3px; min-height: 34px; }
+.pop-preview .pop-tabs > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; background: transparent; color: #526b8b; font-size: 12px; font-weight: 500; line-height: 16px; }
+.pop-preview .pop-tabs > button[aria-selected="true"] { border-bottom-color: #075bff; background: #f8fbff; color: #075bff; }
+.pop-preview .pop-issue-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 1px 4px; border-radius: 8px; background: #bd1738; color: #fff; font-size: 10px; font-weight: 600; line-height: 14px; }
+.pop-preview .pop-validation[hidden], .pop-preview .pop-uploaded[hidden] { display: none; }
+.pop-preview .pop-uploaded { position: relative; flex: 1; min-height: 160px; overflow: hidden; border: 1px solid #bac8d7; background: #f4f7fb; }
+.pop-preview .pop-document-actions { display: flex; align-items: center; gap: 6px; }
+
+/* Presentation overrides stop at the viewer controls; PDF pages retain source artwork. */
+.pop-preview [aria-label="PDF controls"] { min-height: 40px; gap: 6px; padding: 6px 8px; border-bottom-color: #cbd7e7; background: #f8fafc; }
+.pop-preview [aria-label="PDF controls"] > div { gap: 5px; }
+.pop-preview [aria-label="PDF controls"] button { min-height: 28px; padding: 4px 7px; border-color: #cbd7e7; border-radius: 4px; background: #fff; color: #294565; }
+.pop-preview [aria-label="PDF controls"] button:hover { background: #f3f7ff; }
+.pop-preview [aria-label="PDF controls"] .pop-tool { color: #075bff; }
+.pop-preview [aria-label="PDF pages"] { padding-right: 3px; padding-left: 0; color: #294565; font-size: 12px; font-weight: 400; line-height: 18px; }
+.pop-preview .upo-preview { font-size: 12px; font-weight: 400; line-height: 18px; }
+.pop-preview .upo-toolbar { min-height: 40px; padding: 6px 8px; }
+.pop-preview .upo-select { flex-basis: 100%; max-width: 100%; }
+.pop-preview .upo-select select { height: 28px; padding: 4px 6px; font: inherit; }
+.pop-preview .upo-actions { gap: 5px; }
+.pop-preview .upo-actions a { width: 28px; height: 28px; padding: 5px; box-shadow: none; }
+.pop-preview .upo-actions svg { width: 16px; height: 16px; }
+.pop-preview .upo-state { min-height: 160px; padding: 16px; font-size: 10px; font-weight: 400; line-height: 14px; }
+.pop-preview .upo-state[role="alert"], .pop-preview .pop-error { font-size: 11px; font-weight: 500; line-height: 16px; }
+
+.pop-preview .pop-validation { flex: 1; min-height: 160px; overflow: auto; padding: 16px; border: 1px solid #d2deec; border-radius: 0 4px 4px; background: #fff; }
+.pop-preview .pop-validation h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; line-height: 20px; }
+.pop-preview .pop-validation ul { list-style: none; margin: 0; padding: 0; }
+.pop-preview .pop-validation li + li { margin-top: 8px; }
+.pop-preview .pop-validation li > button { display: flex; align-items: flex-start; gap: 9px; width: 100%; padding: 10px; border: 1px solid #f3cbd3; border-radius: 4px; background: #fff9fa; color: #932a3c; text-align: left; font-size: 11px; font-weight: 500; line-height: 16px; }
+.pop-preview .pop-validation li > button:hover { background: #fff0f3; border-color: #e19aa9; }
+.pop-preview .pop-validation li > button > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pop-preview .pop-validation li > button > svg { color: #bd1738; }
+.pop-preview .pop-validation-ready { display: flex; align-items: center; gap: 8px; padding: 12px; border: 1px solid #a9ddcb; border-radius: 4px; background: #ecfaf4; color: #087853; font-size: 11px; font-weight: 500; line-height: 16px; }
+.pop-preview .pop-validation-ready > svg { width: 20px; height: 20px; flex-shrink: 0; }
+.pop-preview .pop-validation-bar { display: flex; flex-shrink: 0; align-items: center; gap: 7px; min-height: 34px; margin-top: 7px; padding: 5px 8px; border: 1px solid #f397a7; border-radius: 3px; background: #fff3f5; color: #a61f37; font-size: 11px; font-weight: 500; line-height: 16px; }
+.pop-preview .pop-validation-bar > svg { width: 18px; height: 18px; flex-shrink: 0; }
+.pop-preview .pop-validation-bar > span { flex: 1; min-width: 0; }
+.pop-preview .pop-validation-bar > button { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border: 0; background: transparent; color: #075bff; white-space: nowrap; }
+.pop-preview .pop-validation-bar > button > svg { width: 14px; height: 14px; }
+.pop-preview .pop-validation-bar.is-ready { border-color: #a9ddcb; background: #ecfaf4; color: #087853; }
+.pop-preview .pop-error { flex-shrink: 0; margin-bottom: 8px; padding: 9px 11px; border: 1px solid #f397a7; border-radius: 4px; background: #fff3f5; color: #a61f37; }
+.pop-preview:fullscreen { width: 100vw; height: 100dvh; padding: 16px 24px; border: 0; }
 
 @media (max-width: 1250px) {
   .pop-preview { padding: 10px; }
-  .pop-original-preview { padding: 0; }
-  .pop-title-row h2 { font-size: 14px; }
-  .pop-toolbar { gap: 5px; }
-  .pop-tool { padding-right: 6px; padding-left: 6px; }
+  .pop-preview .pop-tabs > button { padding-right: 9px; padding-left: 9px; }
 }
 
 @media (max-width: 1000px) {
@@ -87,10 +82,10 @@
 }
 
 @media (max-width: 480px) {
-  .pop-preview { min-height: 400px; }
-  .pop-toolbar { justify-content: flex-start; }
-  .pop-page-number { margin-right: 4px; }
-  .pop-original-expand { right: 100px; width: 40px; height: 40px; }
-  .pop-original-preview .upo-select { max-width: calc(100% - 140px); }
+  .pop-preview { min-height: 400px; padding: 10px 8px; }
+  .pop-preview .pop-tabs { gap: 0; }
+  .pop-preview .pop-tabs > button { padding-right: 8px; padding-left: 8px; }
+  .pop-preview [aria-label="PDF controls"] { padding: 6px; }
+  .pop-preview .pop-validation-bar { flex-wrap: wrap; }
+  .pop-preview .pop-validation-bar > button { margin-left: auto; }
 }
-.pop-original-preview:fullscreen { padding: 0; }

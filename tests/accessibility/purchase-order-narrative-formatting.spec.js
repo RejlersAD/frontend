@@ -14,7 +14,7 @@ const html = `<h3>Commercial conditions</h3><p id="format-target">Current narrat
 async function editOrder(page) {
   await page.getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
   await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
-  await page.getByRole('tab', { name: 'PO Description & Scope', exact: true }).click()
+  await page.getByRole('tab', { name: 'Scope & pricing', exact: true }).click()
 }
 
 async function openEditor(page, overrides = {}) {
@@ -186,7 +186,7 @@ test('recovered new-order draft autosave persists explicit narrative clearing to
   expect(state.acceptedWrites[1]).toMatchObject({ method: 'PATCH', body: { description: '', scope_of_services: '' } })
   expect(state.record.description).toBe('')
   expect(state.record.scope_of_services).toBe('')
-  await page.getByRole('tab', { name: 'Header, Buyer & Project', exact: true }).click()
+  await page.getByRole('tab', { name: 'Order & parties', exact: true }).click()
   await page.getByRole('combobox', { name: 'Price basis', exact: true }).selectOption('none')
   await page.getByRole('button', { name: 'Save changes', exact: true }).first().click()
   await expect(page.getByRole('button', { name: 'Save changes', exact: true }).first()).toBeEnabled()

@@ -564,18 +564,6 @@ const OrderManagement = () => {
     }
   };
 
-  const handleAcknowledgeOrder = async (order) => {
-    if (!order?.id || order.status !== 'sent') return;
-    if (!await radaiConfirm(`Confirm the supplier accepted Purchase Order ${order.po_number}. Mark this order acknowledged?`)) return;
-    try {
-      await apiClient.post(`/procurement/orders/${order.id}/acknowledge/`, {});
-      toast.success('Supplier acknowledgement status recorded.');
-      await fetchOrders();
-    } catch (problem) {
-      toast.error(problem.response?.data?.detail || problem.response?.data?.error || 'The acknowledgement could not be recorded.');
-    }
-  };
-
   /**
    * Soft-coded handler: Send Purchase Order to Vendor
    * Updates PO status from draft to sent via API
@@ -607,7 +595,7 @@ const OrderManagement = () => {
       );
 
       // Soft-coded success notification
-      toast.success(`Purchase Order ${order.po_number || order.id} sent successfully.`);
+      toast.success('Purchase order issued.');
       
       // Refresh orders to get latest data
       await fetchOrders();
@@ -893,7 +881,7 @@ const OrderManagement = () => {
           canCreate={moduleAction('procurement_orders', 'create')}
           canEdit={moduleAction('procurement_orders', 'update')}
           canDelete={moduleAction('procurement_orders', 'delete')}
-          onAcknowledge={handleAcknowledgeOrder} pdfBusy={orderPdfBusy}
+          pdfBusy={orderPdfBusy}
         /> : <PurchaseRecommendations
           requisitions={requisitions} loading={loading} error={error} currentUserId={currentUserId}
           orderCount={purchaseOrderCount} onRefresh={fetchRequisitions}

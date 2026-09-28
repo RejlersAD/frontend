@@ -55,7 +55,7 @@ test('linked PR retains an independent pending final PO signer and sends no PR c
   await expect(page.getByRole('region', { name: 'Current purchase order PDF preview', exact: true }).getByRole('img')).toBeVisible({ timeout: 30000 })
   await selector(page).scrollIntoViewIfNeeded()
   await expect(selector(page)).toBeInViewport()
-  await expect(page.getByRole('tab', { name: 'Header, Buyer & Project', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: 'Order & parties', exact: true })).toHaveAttribute('aria-selected', 'true')
   await page.screenshot({ path: artifact('po-independent-final-signatory.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await selector(page).scrollIntoViewIfNeeded()
