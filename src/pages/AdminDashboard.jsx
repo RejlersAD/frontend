@@ -19,6 +19,7 @@ const SERVICES = [
   { name: 'Authentication', key: 'authentication', icon: Users, group: 'Platform', color: 'blue', description: 'Authentication request outcomes' },
   { name: 'Server disk', key: 'disk', icon: HardDrive, group: 'Data', color: 'blue', description: 'Application server filesystem' },
 ];
+<<<<<<< Updated upstream
 const TABS = ['Overview', 'Incidents', 'Services', 'Dependencies', 'Capacity', 'Maintenance', 'Audit', 'Notification Logs History'];
 const list = value => Array.isArray(value) ? value : value?.results || [];
 const display = (value, suffix = '') => value == null ? '—' : `${value}${suffix}`;
@@ -43,6 +44,200 @@ function History({ history, hours, now }) {
     const samples = list(history).filter(row => { const date = new Date(row.check_time).getTime(); return date >= start && date < start + width; });
     const status = samples.reduce((worst, row) => ranks[row.overall_status] > ranks[worst] ? row.overall_status : worst, 'unknown');
     return { start, status };
+=======
+
+// Soft-coded thresholds for live system health indicators
+const HEALTH_THRESHOLDS = {
+  cpu: { warning: 70, critical: 90 },
+  memory_mb: { warning: 1024, critical: 2048 },
+  response_time_ms: { warning: 200, critical: 500 },
+  error_rate_pct: { warning: 1, critical: 5 },
+  storage_pct: { warning: 75, critical: 90 },
+  health_score: { warning: 80, critical: 60 }
+};
+
+// Soft-coded recommendation rules engine — generates AI insights from real metrics
+const RECOMMENDATION_RULES = [
+  {
+    id: 'response_time',
+    evaluate: (d, m) => {
+      const rt = d?.avg_response_time_ms ?? 0;
+      if (rt >= HEALTH_THRESHOLDS.response_time_ms.critical) {
+        return { level: 'red', title: 'API Latency: Critical', detail: `Average response time is ${rt.toFixed(0)}ms — investigate slow endpoints and DB queries.` };
+      }
+      if (rt >= HEALTH_THRESHOLDS.response_time_ms.warning) {
+        return { level: 'yellow', title: 'API Latency: Elevated', detail: `Response time at ${rt.toFixed(0)}ms is above target. Review caching and N+1 queries.` };
+      }
+      return { level: 'green', title: 'API Performance: Optimal', detail: `Average response time ${rt.toFixed(0)}ms — within target SLA.` };
+    }
+  },
+  {
+    id: 'error_rate',
+    evaluate: (d) => {
+      const er = 100 - (d?.success_rate_percentage ?? 100);
+      if (er >= HEALTH_THRESHOLDS.error_rate_pct.critical) {
+        return { level: 'red', title: 'Error Rate: Critical', detail: `${er.toFixed(2)}% of requests are failing — immediate investigation required.` };
+      }
+      if (er >= HEALTH_THRESHOLDS.error_rate_pct.warning) {
+        return { level: 'yellow', title: 'Error Rate: Elevated', detail: `${er.toFixed(2)}% failure rate detected — check error logs.` };
+      }
+      return null;
+    }
+  },
+  {
+    id: 'storage',
+    evaluate: (d) => {
+      const used = d?.storage_used_gb;
+      const total = d?.storage_total_gb;
+      if (!used || !total) return null;
+      const pct = (used / total) * 100;
+      if (pct >= HEALTH_THRESHOLDS.storage_pct.critical) {
+        return { level: 'red', title: 'Storage: Critical', detail: `Storage at ${pct.toFixed(1)}% — capacity expansion required.` };
+      }
+      if (pct >= HEALTH_THRESHOLDS.storage_pct.warning) {
+        return { level: 'yellow', title: 'Storage: Monitor', detail: `Storage at ${pct.toFixed(1)}% — plan capacity expansion.` };
+      }
+      return { level: 'green', title: 'Storage: Healthy', detail: `${pct.toFixed(1)}% utilized of ${total} GB.` };
+    }
+  },
+  {
+    id: 'security',
+    evaluate: (d) => {
+      const crit = d?.critical_alerts_count ?? 0;
+      const total = d?.active_alerts_count ?? 0;
+      if (crit > 0) {
+        return { level: 'red', title: 'Security: Critical Alerts', detail: `${crit} critical alert(s) need immediate attention.` };
+      }
+      if (total > 5) {
+        return { level: 'yellow', title: 'Security: Multiple Alerts', detail: `${total} active alerts — review security tab.` };
+      }
+      return { level: 'green', title: 'Security: Stable', detail: `No critical alerts detected.` };
+    }
+  },
+  {
+    id: 'engagement',
+    evaluate: (d) => {
+      const growth = d?.user_growth_percentage ?? 0;
+      if (growth > 10) {
+        return { level: 'blue', title: 'User Growth: Strong', detail: `+${growth.toFixed(1)}% growth — consider scaling resources proactively.` };
+      }
+      if (growth > 0) {
+        return { level: 'blue', title: 'User Growth: Positive', detail: `+${growth.toFixed(1)}% growth this period.` };
+      }
+      if (growth < 0) {
+        return { level: 'yellow', title: 'User Growth: Declining', detail: `${growth.toFixed(1)}% — investigate retention.` };
+      }
+      return null;
+    }
+  },
+  {
+    id: 'cpu',
+    evaluate: (d, m) => {
+      const cpu = m?.cpu_usage_percentage;
+      if (cpu == null) return null;
+      if (cpu >= HEALTH_THRESHOLDS.cpu.critical) {
+        return { level: 'red', title: 'CPU: Critical', detail: `CPU usage at ${cpu.toFixed(1)}% — scale workers immediately.` };
+      }
+      if (cpu >= HEALTH_THRESHOLDS.cpu.warning) {
+        return { level: 'yellow', title: 'CPU: High', detail: `CPU at ${cpu.toFixed(1)}% — monitor for sustained load.` };
+      }
+      return null;
+    }
+  }
+];
+
+// Soft-coded refresh interval options
+const REFRESH_INTERVAL_OPTIONS = [
+  { value: 5000, label: '5s refresh' },
+  { value: 10000, label: '10s refresh' },
+  { value: 30000, label: '30s refresh' },
+  { value: 60000, label: '1m refresh' },
+  { value: 300000, label: '5m refresh' }
+];
+
+// Map indicator level to Tailwind classes
+const LEVEL_DOT_CLASS = {
+  green: 'bg-green-500',
+  yellow: 'bg-yellow-500',
+  red: 'bg-red-500',
+  blue: 'bg-blue-500'
+};
+
+// Format relative time (live "x seconds ago")
+const formatRelativeTime = (date) => {
+  if (!date) return '—';
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+};
+
+// Soft-coded tab configuration
+const DASHBOARD_TABS = [
+  { id: 'overview', label: 'Overview', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
+  { id: 'ml-detection', label: '🤖 ML Detection', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', badge: true },
+  { id: 'activity', label: 'Real-time Activity', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+  { id: 'security', label: 'Security', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
+  { id: 'predictions', label: 'AI Insights', icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z' },
+  { id: 'users', label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
+  { id: 'analytics', label: 'Analytics', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+  { id: 'health', label: 'System Health', icon: 'M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z' },
+  { id: 'audit', label: 'Audit Logs', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' }
+];
+
+// Soft-coded list of tab IDs to hide from the dashboard navigation.
+// The underlying tab content / route remains intact (core logic unchanged) —
+// only the nav entry is suppressed. Add an ID here to hide a tab; remove
+// to restore it. The dedicated `/admin/users` route remains accessible.
+const HIDDEN_DASHBOARD_TAB_IDS = new Set(['users']);
+const VISIBLE_DASHBOARD_TABS = DASHBOARD_TABS.filter(
+  (tab) => !HIDDEN_DASHBOARD_TAB_IDS.has(tab.id)
+);
+
+/**
+ * Super Admin Dashboard - AI-Powered Analytics
+ * Advanced admin features with machine learning insights
+ */
+const AdminDashboard = () => {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { currentUser, stats, loading } = useSelector((state) => state.rbac);
+  const { user: authUser } = useSelector((state) => state.auth);
+  const [activeTab, setActiveTab] = useState('overview');
+  
+  // AI Analytics State
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [securityAlerts, setSecurityAlerts] = useState([]);
+  const [predictions, setPredictions] = useState([]);
+  const [realtimeActivity, setRealtimeActivity] = useState([]);
+  const [latestMetrics, setLatestMetrics] = useState(null);
+  const [metricsHistory, setMetricsHistory] = useState([]);
+  const [featureUsage, setFeatureUsage] = useState([]);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [nextRefreshAt, setNextRefreshAt] = useState(null);
+  const [, setTick] = useState(0); // forces re-render for live timers
+  const [refreshInterval, setRefreshInterval] = useState(300000); // 5 min default (was 30s — user can still lower it via the UI selector below)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+
+  // Real-time ML Detection Hook
+  const { 
+    isConnected: mlConnected,
+    alerts: mlAlerts,
+    metrics: mlMetrics
+  } = useRealTimeDetection({
+    autoConnect: true,
+    onAlert: (alert) => {
+      // Show toast notification for new alerts
+      if (alert.severity === 'critical') {
+        console.log('🚨 Critical ML Alert:', alert);
+      }
+    }
+>>>>>>> Stashed changes
   });
   return <section className="ac-panel ac-history"><h2>System status <span>(last {hours === '24' ? '24 hours' : hours === '168' ? '7 days' : '30 days'})</span></h2><div className="ac-history-body"><div className="ac-history-chart"><div className="ac-history-bars" aria-label="Recorded system health history">{bars.map(bar => <span key={bar.start} className={bar.status} title={`${new Date(bar.start).toLocaleString()}: ${bar.status === 'unknown' ? 'No recorded check' : label(bar.status)}`} />)}</div><div className="ac-history-axis">{[0, 9, 18, 27, 35].map(i => <span key={i}>{Number(hours) > 24 ? new Date(bars[i].start).toLocaleDateString([], { month: 'short', day: 'numeric' }) : time(bars[i].start)}</span>)}</div></div><div className="ac-legend">{['healthy', 'degraded', 'critical', 'unknown'].map(status => <span key={status}><i className={status} />{status === 'unknown' ? 'No data' : label(status)}</span>)}</div></div></section>;
 }

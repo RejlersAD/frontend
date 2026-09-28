@@ -525,7 +525,7 @@ export const SALES_CONFIG = {
   // Data Refresh Configuration
   refresh: {
     auto: true,
-    interval: 30000, // 30 seconds
+    interval: 300000, // 5 minutes (was 30s)
     showIndicator: true
   },
 

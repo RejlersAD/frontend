@@ -52,8 +52,9 @@ const FILTERS = [
  *   provider        — BYOK provider id (openai|claude) or null
  *   apiKey          — BYOK api key or null
  *   onLineListChange — called after activate / delete inside the popover
+ *   projectId        — active project's UUID, scopes the history popover to it
  */
-export default function CrossCheckPanel({ tags, activeLineList, provider, apiKey, onLineListChange, onResultChange }) {
+export default function CrossCheckPanel({ tags, activeLineList, provider, apiKey, onLineListChange, onResultChange, projectId }) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [useAi, setUseAi] = useState(true)
@@ -72,6 +73,7 @@ export default function CrossCheckPanel({ tags, activeLineList, provider, apiKey
       const data = await crossCheck({
         tags,
         lineListId: activeLineList.line_list_id,
+        projectId,
         useAi: useAi && canAi,
         provider,
         apiKey,
@@ -87,7 +89,7 @@ export default function CrossCheckPanel({ tags, activeLineList, provider, apiKey
     } finally {
       setLoading(false)
     }
-  }, [tags, activeLineList, useAi, canAi, provider, apiKey, hasTags])
+  }, [tags, activeLineList, useAi, canAi, provider, apiKey, hasTags, projectId])
 
   // Bubble the latest cross-check result up so the parent can build a combined workbook
   useEffect(() => { if (typeof onResultChange === 'function') onResultChange(result) }, [result, onResultChange])
@@ -142,6 +144,7 @@ export default function CrossCheckPanel({ tags, activeLineList, provider, apiKey
         <LineListHistoryPopover
           activeLineList={activeLineList}
           onChange={onLineListChange}
+          projectId={projectId}
         />
 
         <button

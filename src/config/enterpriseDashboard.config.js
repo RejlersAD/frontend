@@ -10,9 +10,12 @@ import { ROUTES } from './routes.config'
 
 export const API_CONFIG = {
   // Auto-refresh intervals (milliseconds)
-  dashboardRefreshInterval: 60000,      // Refresh dashboard data every 60s
+  // Was 60s/15s — dropped to production worker pool exhaustion when several
+  // dashboards + the activity feed all polled in the same window. 5 min
+  // keeps data reasonably fresh without repeatedly filling every worker.
+  dashboardRefreshInterval: 300000,     // Refresh dashboard data every 5 min
   kpiRefreshInterval: 30000,            // Refresh KPI cards every 30s
-  activityRefreshInterval: 15000,       // Refresh activity feed every 15s
+  activityRefreshInterval: 300000,      // Refresh activity feed every 5 min
   notificationRefreshInterval: 10000,   // Check notifications every 10s
   
   // Request limits

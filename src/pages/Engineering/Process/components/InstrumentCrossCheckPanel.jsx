@@ -77,7 +77,7 @@ const FILTERS = [
  *   onInstrumentIndexChange — refetch trigger after activate/delete
  */
 export default function InstrumentCrossCheckPanel({
-  tags, pdfFile, activeInstrumentIndex, provider, apiKey, onInstrumentIndexChange, onResultChange,
+  tags, pdfFile, activeInstrumentIndex, provider, apiKey, onInstrumentIndexChange, onResultChange, projectId,
 }) {
   const [loading, setLoading] = useState(false)
   const [extracting, setExtracting] = useState(false)
@@ -163,6 +163,7 @@ export default function InstrumentCrossCheckPanel({
       const data = await instrumentCrossCheck({
         instrumentTags: finalTags,
         instrumentIndexId: activeInstrumentIndex.instrument_index_id,
+        projectId,
         useAi: useAi && canAi,
         provider,
         apiKey,
@@ -182,7 +183,7 @@ export default function InstrumentCrossCheckPanel({
     } finally {
       setLoading(false)
     }
-  }, [finalTags, activeInstrumentIndex, useAi, canAi, provider, apiKey, attributesByTag, hasAttributes])
+  }, [finalTags, activeInstrumentIndex, useAi, canAi, provider, apiKey, attributesByTag, hasAttributes, projectId])
 
   // Reset stale result when the active index changes
   useEffect(() => { setResult(null); setExpanded(null) }, [activeInstrumentIndex?.instrument_index_id])
@@ -247,6 +248,7 @@ export default function InstrumentCrossCheckPanel({
         <InstrumentIndexHistoryPopover
           activeInstrumentIndex={activeInstrumentIndex}
           onChange={onInstrumentIndexChange}
+          projectId={projectId}
         />
 
         <button
