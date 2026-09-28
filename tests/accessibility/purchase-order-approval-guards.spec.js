@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
 import { orderFormHarness, orderFormId, orderFormNumber, orderFormRecommendation } from '../fixtures/purchase-order-form.fixture'
-import { purchaseOrderHarness } from '../fixtures/purchase-orders.fixture'
 
 test.setTimeout(120000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
@@ -88,9 +87,9 @@ test('editing a partially approved order permits number correction without expos
   await page.getByRole('button', { name: 'Edit', exact: true }).click()
   const editor = page.getByRole('region', { name: 'Purchase order editor', exact: true })
   await expect(editor.getByRole('textbox', { name: 'PO number', exact: true })).toBeEditable()
-  await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+  await expect(editor.getByRole('button', { name: 'Save changes', exact: true }).last()).toBeEnabled()
   await expect(editor.getByText(lockReason, { exact: true })).toHaveCount(0)
-  await expect(editor.locator('[name="payment_terms"]')).toHaveCount(0)
+  await expect(editor.getByRole('textbox', { name: 'Payment Terms', exact: true })).not.toBeEditable()
   expect(state.acceptedWrites).toEqual([])
   expect(state.record.payment_terms).toBe('Net 30')
   await expect(editor.getByRole('button', { name: 'Send to vendor', exact: true })).toHaveCount(0)
@@ -100,13 +99,20 @@ test('editing a partially approved order permits number correction without expos
 })
 
 test('register issue cannot rely on historical approval labels when the server blocks release', async ({ page }) => {
-  const state = await purchaseOrderHarness(page, { prepare: fixture => {
-    Object.assign(fixture.details[108], { can_send_to_vendor: false, lifecycle_block_reason: reason })
+  const state = await orderFormHarness(page, { path: '/procurement/orders', prepare: fixture => {
+    fixture.record = {
+      id: orderFormId, po_number: orderFormNumber, status: 'draft', po_date: '2026-09-15',
+      title: 'Synthetic historical approval guard', vendor: 21, vendor_name: fixture.vendors[0].name,
+      currency: 'AED', total_amount: '1050.00', tax_amount: '50.00',
+      approved_at: '2026-09-14T08:00:00Z', approved_by: 8,
+      can_send_to_vendor: false, lifecycle_block_reason: reason, items: [], attachments: [], approval_log: [],
+    }
+    fixture.orders = [fixture.record]
   } })
-  await page.getByRole('button', { name: 'Select PO-TEST-008', exact: true }).click()
+  await page.getByRole('button', { name: `Select ${orderFormNumber}`, exact: true }).click()
   const detail = page.getByRole('complementary', { name: 'Purchase order details', exact: true })
   await expect(detail.getByRole('button', { name: 'Send to Vendor', exact: true })).toBeDisabled()
   await expect(detail.getByRole('button', { name: 'Send to Vendor', exact: true })).toHaveAccessibleDescription(reason)
-  expect(await page.evaluate(() => window.purchaseOrderActions)).toEqual([])
+  expect(state.acceptedWrites).toEqual([])
   clean(state)
 })

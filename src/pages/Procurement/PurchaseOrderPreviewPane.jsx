@@ -2,17 +2,18 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import PropTypes from 'prop-types';
 import { ArrowDownTrayIcon, ArrowRightIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
-import { downloadPurchaseOrderDocument, previewPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
+import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, previewPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
 import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
+import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import './PurchaseOrderPreviewPane.css';
 
 const emptyFiles = [];
 
-export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles, issues = [], onIssueClick, orderId }) {
+export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles, issues = [], onIssueClick, orderId, savedOnly = false }) {
   const paneRef = useRef(null);
   const wordRequest = useRef(null);
   const instanceId = useId();
-  const [tab, setTab] = useState('document');
+  const [selectedTab, setSelectedTab] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [preview, setPreview] = useState(null);
@@ -22,7 +23,13 @@ export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles,
   const [wordPending, setWordPending] = useState(false);
   const [actionError, setActionError] = useState('');
   const documentIdentity = String(orderId || formData.po_number || formData.pr_reference || 'new-order');
-  const request = useMemo(() => ({ formData, files, orderId, attempt, documentIdentity }), [formData, files, orderId, attempt, documentIdentity]);
+  const sources = useUploadedPurchaseOrderSources(orderId, Boolean(orderId));
+  // Start with the retained PDF when one exists; an unresolved source lookup
+  // must not silently replace the uploaded evidence with a generated document.
+  const initialTab = orderId && (sources.loading || sources.error || sources.documents.length) ? 'original' : 'document';
+  const tab = selectedTab?.documentIdentity === documentIdentity ? selectedTab.value : initialTab;
+  const setTab = value => setSelectedTab({ documentIdentity, value });
+  const request = useMemo(() => ({ formData, files, orderId, savedOnly, attempt, documentIdentity }), [formData, files, orderId, savedOnly, attempt, documentIdentity]);
   const currentRequest = useRef(request);
   currentRequest.current = request;
   const objectUrls = useRef(new Set());
@@ -63,10 +70,13 @@ export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles,
   useEffect(() => {
     if (tab !== 'document' || preview?.request === request) return undefined;
     const controller = new AbortController();
-    // Render this exact draft without saving it. A saved ID alone would lose edits.
     const timer = window.setTimeout(async () => {
       try {
-        const result = await previewPurchaseOrderDocument(request.formData, request.files, request.orderId, 'pdf', { signal: controller.signal });
+        // Locked number-correction screens preview the saved, approved record.
+        // Editable drafts render the exact form snapshot without saving it.
+        const result = request.savedOnly
+          ? await fetchPurchaseOrderDocument({ ...request.formData, id: request.orderId }, 'pdf', { signal: controller.signal })
+          : await previewPurchaseOrderDocument(request.formData, request.files, request.orderId, 'pdf', { signal: controller.signal });
         if (controller.signal.aborted) return;
         const url = URL.createObjectURL(result.blob);
         objectUrls.current.add(url);
@@ -110,7 +120,9 @@ export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles,
     const controller = new AbortController();
     wordRequest.current = controller;
     try {
-      const result = await previewPurchaseOrderDocument(request.formData, request.files, request.orderId, 'word', { signal: controller.signal });
+      const result = request.savedOnly
+        ? await fetchPurchaseOrderDocument({ ...request.formData, id: request.orderId }, 'word', { signal: controller.signal })
+        : await previewPurchaseOrderDocument(request.formData, request.files, request.orderId, 'word', { signal: controller.signal });
       if (controller.signal.aborted) return;
       if (currentRequest.current !== request) {
         setActionError('The order changed while Word was being prepared. Download again to use the current content.');
@@ -135,13 +147,9 @@ export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles,
 
   return <aside className="pop-preview" ref={paneRef} aria-label="Live purchase order preview">
     <header className="pop-heading">
-      <div className="pop-title-row"><h2>Purchase order preview</h2>{tab === 'document' && <span className="pop-current">{apiError || pageError ? 'Preview unavailable' : ready ? 'Current form content' : 'Updating preview…'}</span>}</div>
+      <div className="pop-title-row"><h2>Purchase order preview</h2>{tab === 'document' && <span className="sr-only" role="status">{apiError || pageError ? 'Preview unavailable' : ready ? savedOnly ? 'Saved purchase order' : 'Current form content' : 'Updating preview…'}</span>}</div>
       <div className="pop-toolbar" aria-label="Purchase order preview controls">
         <button type="button" className="pop-tool pop-icon-tool" aria-label={expanded ? 'Exit expanded preview' : 'Expand preview'} onClick={toggleFullscreen}>{expanded ? <ArrowsPointingInIcon /> : <ArrowsPointingOutIcon />}</button>
-        {tab === 'document' && <>
-          <button type="button" className="pop-tool pop-download" disabled={!ready} onClick={() => { if (ready) downloadPurchaseOrderDocument(current); }}><ArrowDownTrayIcon />Download PDF</button>
-          <button type="button" className="pop-tool" disabled={!ready || wordPending} onClick={downloadWord}>{wordPending ? 'Preparing Word…' : 'Download Word'}</button>
-        </>}
       </div>
     </header>
     <div className="pop-tabs" role="tablist" aria-label="Purchase order preview views" onKeyDown={onTabKeyDown}>
@@ -151,15 +159,17 @@ export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles,
     {tab === 'document' && apiError && <div className="pop-error" role="alert"><p>{apiError}</p><button type="button" className="pop-tool" onClick={() => setAttempt(value => value + 1)}>Retry preview</button></div>}
     {tab === 'document' && pageError && <button type="button" className="pop-tool" onClick={() => setAttempt(value => value + 1)}>Retry preview</button>}
     <section className="pop-uploaded" role="tabpanel" id={`${instanceId}-document-panel`} aria-labelledby={`${instanceId}-document-tab`} hidden={tab !== 'document'} tabIndex={0}>
-      {displayed?.url ? <PdfDocumentPreview continuous url={displayed.url} documentKey={documentIdentity} title="Current purchase order PDF preview" className="h-full" refreshing={!ready && !apiError && !pageError} onReady={previewReady} onError={previewFailed} />
+      {displayed?.url ? <PdfDocumentPreview continuous url={displayed.url} documentKey={documentIdentity} title="Current purchase order PDF preview" className="h-full" refreshing={!ready && !apiError && !pageError} onReady={previewReady} onError={previewFailed} actions={<div className="pop-document-actions">
+        <button type="button" className="pop-tool pop-icon-tool" aria-label="Download PDF" title="Download PDF" disabled={!ready} onClick={() => { if (ready) downloadPurchaseOrderDocument(current); }}><ArrowDownTrayIcon aria-hidden="true" /></button>
+        <button type="button" className="pop-tool" aria-label={wordPending ? 'Preparing Word…' : 'Download Word'} title="Download Word" disabled={!ready || wordPending} onClick={downloadWord}>{wordPending ? 'Preparing…' : 'Word'}</button>
+      </div>} />
         : !apiError && <div className="upo-state" role="status">Updating purchase order PDF preview…</div>}
     </section>
     {orderId && <section className="pop-uploaded" role="tabpanel" id={`${instanceId}-original-panel`} aria-labelledby={`${instanceId}-original-tab`} hidden={tab !== 'original'} tabIndex={0}>
-      <UploadedPurchaseOrderPreview orderId={orderId} active={tab === 'original'} />
+      <UploadedPurchaseOrderPreview orderId={orderId} active={tab === 'original'} sourceState={sources} />
     </section>}
     <section className="pop-validation" role="tabpanel" id={`${instanceId}-validation-panel`} aria-labelledby={`${instanceId}-validation-tab`} hidden={tab !== 'validation'} tabIndex={0}>
       <h3>{issues.length ? 'Complete the required information' : 'Ready for review'}</h3>
-      <p>{issues.length ? 'Select an item to return to the relevant form section.' : 'All required form fields are complete. Review the purchase order before saving.'}</p>
       {issues.length > 0 ? <ul>{issues.map((issue, index) => <li key={`${issue.field || issue.step}-${index}`}><button type="button" onClick={() => onIssueClick?.(issue)}><ExclamationCircleIcon /><span>{issue.message}</span><ArrowRightIcon /></button></li>)}</ul>
         : <div className="pop-validation-ready"><CheckCircleIcon />Required information complete</div>}
     </section>
@@ -173,6 +183,7 @@ export default function PurchaseOrderPreviewPane({ formData, files = emptyFiles,
 PurchaseOrderPreviewPane.propTypes = {
   formData: PropTypes.object.isRequired,
   orderId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  savedOnly: PropTypes.bool,
   files: PropTypes.arrayOf(PropTypes.object),
   issues: PropTypes.arrayOf(PropTypes.shape({ field: PropTypes.string, message: PropTypes.string.isRequired, step: PropTypes.oneOfType([PropTypes.number, PropTypes.string]) })),
   onIssueClick: PropTypes.func,

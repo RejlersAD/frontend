@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { PencilIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
-import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
+import PurchaseOrderReferenceEditor from './PurchaseOrderReferenceEditor';
 
 const correctionError = problem => {
   const data = problem.response?.data;
@@ -11,7 +11,7 @@ const correctionError = problem => {
   return (Array.isArray(message) ? message.join(' ') : message) || 'The PO number could not be saved. Try again.';
 };
 
-export default function PurchaseOrderNumberEditor({ order, onSaved, standalone = false, onCancel }) {
+export default function PurchaseOrderNumberEditor({ order, onSaved, standalone = false, onCancel, children }) {
   const [editing, setEditing] = useState(standalone);
   const [number, setNumber] = useState(standalone ? order.po_number || '' : '');
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(standalone ? order.updated_at || '' : '');
@@ -70,6 +70,8 @@ export default function PurchaseOrderNumberEditor({ order, onSaved, standalone =
     }
   };
 
+  if (children) return children({ number, setNumber: value => { setNumber(value); setError(''); }, saving, error, save, close });
+
   if (!editing) return (
     <button
       ref={editButton}
@@ -124,20 +126,14 @@ PurchaseOrderNumberEditor.propTypes = {
   onSaved: PropTypes.func.isRequired,
   standalone: PropTypes.bool,
   onCancel: PropTypes.func,
+  children: PropTypes.func,
 };
 
 export function PurchaseOrderNumberCorrection({ order, onSaved, onClose }) {
   return (
-    <section aria-label="Purchase order editor" className="flex h-full min-h-0 flex-col gap-4 p-4 sm:p-6">
-      <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-4">
-        <h1 className="mb-4 text-xl font-semibold text-slate-900">Edit PO number</h1>
-        <PurchaseOrderNumberEditor key={order.id} order={order} onSaved={onSaved} standalone onCancel={onClose} />
-      </div>
-      <section aria-label="Original purchase order" className="flex min-h-80 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <h2 className="shrink-0 border-b border-slate-200 px-4 py-3 text-base font-semibold text-slate-900">Original source</h2>
-        <UploadedPurchaseOrderPreview orderId={order.id} />
-      </section>
-    </section>
+    <PurchaseOrderNumberEditor key={order.id} order={order} onSaved={onSaved} standalone onCancel={onClose}>
+      {editor => <PurchaseOrderReferenceEditor order={order} editor={editor} />}
+    </PurchaseOrderNumberEditor>
   );
 }
 

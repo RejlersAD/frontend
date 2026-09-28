@@ -5,7 +5,7 @@ import { orderFormHarness, orderFormId, orderFormNumber, orderFormRecommendation
 test.setTimeout(90000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
 
-const scope = page => page.getByRole('tab', { name: 'PO Description & Scope', exact: true })
+const scope = page => page.getByRole('tab', { name: 'Scope & pricing', exact: true })
 const narrative = page => page.getByRole('textbox', { name: 'PO Narrative', exact: true })
 const save = page => page.getByRole('button', { name: /^Save (changes|draft)$/, exact: true }).first()
 const close = page => page.getByRole('button', { name: 'Close purchase order', exact: true }).click()
@@ -148,7 +148,7 @@ test('a saved upload becomes an existing attachment and is not uploaded by the n
     await route.fulfill({ status: 200, json: state.record })
     return true
   } })
-  await page.getByRole('tab', { name: 'Attachments', exact: true }).click()
+  await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   await page.locator('#po-attachment-multiple').setInputFiles({ name: 'scope.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic attachment') })
   await page.getByRole('textbox', { name: 'Attachment 1 title', exact: true }).fill('Scope attachment')
   await save(page).click()
@@ -188,7 +188,7 @@ test('only an explicit successful vendor send exits the editor', async ({ page }
   await save(page).click()
   await saved(page, state, 1)
   expect(state.acceptedWrites[0].body).not.toHaveProperty('status')
-  await page.getByRole('tab', { name: 'Attachments', exact: true }).click()
+  await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   state.sendError = { detail: 'The send failed. Please retry.' }
   await page.getByRole('button', { name: 'Send to vendor', exact: true }).click()
   await expect(page.getByRole('form', { name: 'Purchase order form', exact: true }).getByRole('alert')).toContainText(state.sendError.detail)
