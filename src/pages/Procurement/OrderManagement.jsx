@@ -627,17 +627,13 @@ const OrderManagement = () => {
       console.error('Invalid order data');
       return;
     }
-    if (order.status === 'completed') {
-      await radaiAlert('Completed purchase orders are read-only and cannot be edited.');
-      return;
-    }
+    if (!moduleAction('procurement_orders', 'update')) return;
     
     const request = ++editOrderRequest.current;
     try {
       const { data } = await apiClient.get(`/procurement/orders/${order.id}/`);
       if (request !== editOrderRequest.current) return;
       if (String(data?.id) !== String(order.id)) throw new Error('The selected purchase order could not be loaded.');
-      if (data.status === 'completed') { toast.info('Completed purchase orders are read-only.'); return; }
       setEditingOrder(data);
       setShowPOForm(true);
     } catch (problem) {
