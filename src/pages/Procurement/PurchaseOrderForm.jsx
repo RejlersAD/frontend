@@ -1600,7 +1600,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       const poLabel = saved.po_number || formData.po_number || 'Purchase Order';
       if (sendToVendor) {
         await draftRecovery.clear();
-        toast.success(`${poLabel} sent to vendor successfully.`);
+        toast.success('Purchase order issued.');
       } else if (isExistingOrder) {
         toast.success(`${poLabel} saved successfully.`);
       } else {
