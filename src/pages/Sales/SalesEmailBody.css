@@ -1,0 +1,47 @@
+.sales-email-body {
+  min-width: 0;
+  color: #334155;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-size, 0.875rem);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.sales-email-body p,
+.sales-email-body ul,
+.sales-email-body ol,
+.sales-email-body blockquote,
+.sales-email-body pre,
+.sales-email-body .sales-email-table-scroll {
+  margin: 0 0 1rem;
+}
+
+.sales-email-body > :last-child { margin-bottom: 0; }
+.sales-email-body .sales-email-plain-paragraph { white-space: pre-wrap; }
+.sales-email-body div { max-width: 100%; }
+.sales-email-body a { color: #1d4ed8; text-decoration: underline; text-underline-offset: 2px; }
+.sales-email-body a:hover { color: #1e40af; }
+.sales-email-body a:focus-visible,
+.sales-email-body .sales-email-table-scroll:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.sales-email-body strong { font-weight: 600; color: #0f172a; }
+.sales-email-body em { font-style: italic; }
+.sales-email-body ul { list-style: disc; padding-left: 1.5rem; }
+.sales-email-body ol { list-style: decimal; padding-left: 1.5rem; }
+.sales-email-body li { margin: 0.25rem 0; }
+.sales-email-body li > ul,
+.sales-email-body li > ol { margin: 0.25rem 0; }
+.sales-email-body blockquote { border-left: 3px solid #cbd5e1; padding: 0.5rem 1rem; color: #475569; background: #f8fafc; }
+.sales-email-body pre { overflow-x: auto; padding: 0.75rem; border-radius: 0.375rem; background: #f8fafc; white-space: pre; }
+.sales-email-body code { font-family: var(--font-mono, monospace); font-size: 0.8125rem; }
+.sales-email-body h4,
+.sales-email-body h5 { margin: 1rem 0 0.5rem; color: #0f172a; font-size: 1rem; line-height: 1.5; font-weight: 600; }
+.sales-email-body h5 { font-size: 0.875rem; }
+.sales-email-body hr { margin: 1rem 0; border: 0; border-top: 1px solid #e2e8f0; }
+.sales-email-body .sales-email-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid #dbe3ee; border-radius: 0.375rem; }
+.sales-email-body table { width: 100%; border-collapse: collapse; text-align: left; font-size: inherit; }
+.sales-email-body caption { padding: 0.625rem 0.75rem; color: #0f172a; text-align: left; font-weight: 600; }
+.sales-email-body th,
+.sales-email-body td { min-width: 7rem; border: 1px solid #e2e8f0; padding: 0.625rem 0.75rem; vertical-align: top; }
+.sales-email-body th { background: #f1f5f9; color: #0f172a; font-weight: 600; }
+.sales-email-body td > :last-child,
+.sales-email-body th > :last-child { margin-bottom: 0; }

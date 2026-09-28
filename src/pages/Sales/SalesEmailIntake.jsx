@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSelector } from "react-redux";
 import PropTypes from "prop-types";
 import {
   ArrowLeftIcon,
@@ -21,6 +22,11 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import salesService from "../../services/sales.service";
+import SalesSharedMailboxMessages from "./SalesSharedMailboxMessages";
+import SalesEmailBody from "./SalesEmailBody";
+import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
+import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
+import "./SalesEmailIntake.css";
 
 const STATUS = {
   received: {
@@ -56,41 +62,9 @@ const fieldClass =
 
 const normalizeCompany = (value) =>
   String(value || "")
+    .trim()
     .toLowerCase()
-    .replace(/\b(limited|ltd|llc|incorporated|inc|company|co)\b/g, "")
-    .replace(/[^a-z0-9]/g, "");
-
-const emailDomain = (value) =>
-  String(value || "").toLowerCase().split("@").at(-1)?.replace(/^www\./, "") || "";
-
-const websiteDomain = (value) => {
-  if (!value) return "";
-  try {
-    return new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`).hostname
-      .toLowerCase()
-      .replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-};
-
-const companyFromDomain = (value) => {
-  const domain = String(value || "").toLowerCase().replace(/^www\./, "");
-  const genericDomains = new Set([
-    "gmail.com",
-    "outlook.com",
-    "hotmail.com",
-    "yahoo.com",
-    "icloud.com",
-  ]);
-  if (!domain || genericDomains.has(domain)) return "";
-  return domain
-    .split(".")[0]
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
-};
+    .replace(/\s+/g, " ");
 
 const formatDate = (value, includeTime = false) => {
   if (!value) return "Not available";
@@ -160,6 +134,34 @@ Modal.propTypes = {
 Modal.defaultProps = { description: "" };
 
 export default function SalesEmailIntake() {
+  const { user, isAuthenticated } = useSelector((state) => state.auth);
+  if (!isAuthenticated) return null;
+  return <EmailIntakeViews key={String(user?.user?.id ?? user?.id ?? "")} />;
+}
+
+function EmailIntakeViews() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const view = searchParams.get("view") === "imported" ? "imported" : "shared";
+  return (
+    <section className="sales-email-workspace" aria-label="Email Intake workspace">
+      <header className="sales-email-page-header">
+        <div className="flex min-w-0 items-start gap-3">
+          <button type="button" onClick={() => navigate("/sales")} aria-label="Back to Sales and Proposals" className="sales-email-back">
+            <ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <div className="min-w-0">
+            <h1>Email Intake</h1>
+            <p className="mt-1 text-sm text-slate-600">Browse shared emails and review imported client enquiries.</p>
+          </div>
+        </div>
+      </header>
+      {view === "shared" ? <SalesSharedMailboxMessages /> : <ImportedEmailIntakes />}
+    </section>
+  );
+}
+
+function ImportedEmailIntakes() {
   const navigate = useNavigate();
   const [records, setRecords] = useState([]);
   const [clients, setClients] = useState([]);
@@ -226,38 +228,22 @@ export default function SalesEmailIntake() {
   }, [records, search, statusFilter]);
   const selected = records.find((row) => row.id === selectedId) ?? null;
   const extracted = selected?.extracted_information ?? {};
-  const detectedDomain = (
-    extracted.declared_client_domain ||
-    extracted.client_domain ||
-    emailDomain(selected?.sender_email)
-  )
-    .toLowerCase()
-    .replace(/^www\./, "");
   const detectedCompany = normalizeCompany(extracted.company_name);
-  const matchedClient = clients.find((client) => {
+  const matchingClients = clients.filter((client) => {
     const clientNames = [client.company_name, client.legal_name, client.trading_name]
       .map(normalizeCompany)
       .filter(Boolean);
-    const nameMatches =
-      detectedCompany && clientNames.some((name) => name === detectedCompany);
-    const clientDomains = [
-      emailDomain(client.email),
-      websiteDomain(client.website),
-    ].filter(Boolean);
-    const domainMatches =
-      detectedDomain && clientDomains.some((domain) => domain === detectedDomain);
-    return nameMatches || domainMatches;
+    return detectedCompany && clientNames.some((name) => name === detectedCompany);
   });
-  const suggestedClientName = String(
-    extracted.company_name || companyFromDomain(detectedDomain),
-  ).trim();
+  const matchedClient = matchingClients.length === 1 ? matchingClients[0] : null;
+  const suggestedClientName = String(extracted.company_name || "").trim();
   const unresolved = records.filter((row) =>
     ["received", "under_review"].includes(row.status),
   ).length;
 
   useEffect(() => {
     if (dialog === "convert") {
-      setClientChoice(matchedClient?.id || (suggestedClientName ? "__new__" : ""));
+      setClientChoice(matchedClient?.id || "");
     }
   }, [dialog, matchedClient?.id, suggestedClientName]);
 
@@ -310,7 +296,7 @@ export default function SalesEmailIntake() {
 
   const convert = async (event) => {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected || selected.can_create_opportunity !== true || saving) return;
     const form = new FormData(event.currentTarget);
     const createClient = clientChoice === "__new__";
     if (createClient && !suggestedClientName) {
@@ -364,35 +350,19 @@ export default function SalesEmailIntake() {
   };
 
   return (
-    <div className="min-h-full bg-slate-100 text-slate-950">
-      <main className="space-y-4 p-5">
-        <header className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-          <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/sales")}
-              aria-label="Back to Sales and Proposals"
-              className="mt-1 rounded-md border border-slate-300 bg-white p-2 text-slate-600 hover:bg-slate-50"
-            >
-              <ArrowLeftIcon className="h-5 w-5" />
-            </button>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-[#102a47]">
-                Email Intake
-              </h1>
-              <p className="text-sm text-slate-600">
-                Review client emails and convert qualified requests into traceable opportunities.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+    <div className="sales-email-view text-slate-950">
+      <div className="sales-email-mailbox">
+        <header className="sales-email-source-heading">
+          <h2 className="text-base font-semibold text-slate-900">Imported enquiries</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
               <b>{unresolved}</b> awaiting review
             </div>
             <button
               type="button"
               onClick={load}
-              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-[#102a47] hover:bg-slate-50"
+              disabled={loading}
+              className="sales-email-button"
             >
               <ArrowPathIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               Refresh
@@ -407,13 +377,14 @@ export default function SalesEmailIntake() {
           </div>
         )}
 
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <section className="sales-email-card">
+          <div className="sales-email-toolbar">
             <nav aria-label="Email intake status" className="flex flex-wrap gap-1">
               {["all", ...Object.keys(STATUS)].map((value) => (
                 <button
                   type="button"
                   key={value}
+                  aria-pressed={statusFilter === value}
                   onClick={() => setStatusFilter(value)}
                   className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
                     statusFilter === value
@@ -432,10 +403,11 @@ export default function SalesEmailIntake() {
                 </button>
               ))}
             </nav>
-            <label className="relative block min-w-64">
+            <label className="sales-email-search">
               <span className="sr-only">Search email intake</span>
               <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
+                type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search sender or subject"
@@ -444,39 +416,41 @@ export default function SalesEmailIntake() {
             </label>
           </div>
 
-          <div className="grid min-h-[590px] lg:grid-cols-[390px_minmax(0,1fr)]">
-            <aside className="border-r border-slate-200 bg-slate-50/60">
-              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+          <div className="sales-email-grid">
+            <aside className="sales-email-list">
+              <div className="sales-email-list-summary">
                 <span>{filtered.length} messages</span>
                 <FunnelIcon className="h-4 w-4" />
               </div>
-              <div className="max-h-[650px] overflow-y-auto">
+              <div className="sales-email-list-scroll">
+                {loading && <p role="status" className="p-4 text-sm text-slate-600">Loading imported enquiries…</p>}
                 {filtered.map((row) => (
                   <button
                     type="button"
                     key={row.id}
                     onClick={() => setSelectedId(row.id)}
-                    className={`block w-full border-b border-slate-200 px-4 py-4 text-left transition ${
+                    aria-pressed={selectedId === row.id}
+                    className={`sales-email-row ${
                       selectedId === row.id
-                        ? "border-l-4 border-l-blue-700 bg-blue-50/80 pl-3"
-                        : "border-l-4 border-l-transparent bg-white hover:bg-slate-50"
+                        ? "sales-email-row-selected"
+                        : ""
                     }`}
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-bold text-[#102a47]">
+                      <span className="min-w-0 truncate font-semibold text-slate-900">
                         {row.sender_name || row.sender_email}
                       </span>
-                      <span className="shrink-0 text-xs text-slate-500">
+                      <span className="shrink-0 text-xs text-slate-600">
                         {formatDate(row.received_at)}
                       </span>
                     </span>
-                    <span className="mt-1 block truncate text-sm font-semibold text-slate-800">
+                    <span className="mt-1 block truncate font-semibold text-slate-800">
                       {row.subject || "No subject"}
                     </span>
-                    <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                    <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
                       {row.body_preview || "No email preview available."}
                     </span>
-                    <span className="mt-3 flex items-center justify-between">
+                    <span className="mt-2 flex items-center justify-between">
                       <StatusBadge value={row.status} />
                       {row.has_attachments && (
                         <PaperClipIcon className="h-4 w-4 text-slate-500" />
@@ -484,7 +458,7 @@ export default function SalesEmailIntake() {
                     </span>
                   </button>
                 ))}
-                {!loading && !filtered.length && (
+                {!loading && !error && !filtered.length && (
                   <div className="px-6 py-16 text-center">
                     <EnvelopeOpenIcon className="mx-auto h-9 w-9 text-slate-300" />
                     <p className="mt-3 text-sm font-semibold text-slate-700">
@@ -498,24 +472,24 @@ export default function SalesEmailIntake() {
               </div>
             </aside>
 
-            <article className="min-w-0">
+            <article className="sales-email-preview">
               {selected ? (
                 <>
-                  <header className="border-b border-slate-200 px-6 py-5">
-                    <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
+                  <header className="sales-email-preview-header">
+                    <div className="flex flex-col justify-between gap-4 2xl:flex-row 2xl:items-start">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge value={selected.status} />
                           {selected.importance && (
-                            <span className="text-xs font-semibold text-slate-500">
+                            <span className="text-xs font-semibold text-slate-600">
                               {selected.importance} importance
                             </span>
                           )}
                         </div>
-                        <h2 className="mt-3 text-xl font-bold text-[#102a47]">
+                        <h2 className="sales-email-subject mt-3">
                           {selected.subject || "No subject"}
                         </h2>
-                        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
+                        <div className="sales-email-preview-meta mt-3">
                           <span className="inline-flex items-center gap-1.5">
                             <UserIcon className="h-4 w-4" />
                             {selected.sender_name || "Sender name unavailable"}
@@ -559,39 +533,26 @@ export default function SalesEmailIntake() {
                               <NoSymbolIcon className="h-4 w-4" />
                               Reject
                             </button>
-                            <button
+                            {selected.can_create_opportunity === true && <button
                               type="button"
                               onClick={() => setDialog("convert")}
                               className="inline-flex items-center gap-1.5 rounded-md bg-[#f04b2f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d83f26]"
                             >
                               <PlusIcon className="h-4 w-4" />
                               Create opportunity
-                            </button>
+                            </button>}
                           </>
                         )}
                       </div>
                     </div>
                   </header>
 
-                  <div className="grid gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-                    <section>
-                      <h3 className="text-sm font-bold text-[#102a47]">Detected information</h3>
-                      <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-                        {[
-                          ["Request type", selected.extracted_information?.request_type || "General client email"],
-                          ["Client domain", selected.extracted_information?.client_domain || "Not detected"],
-                          ["Tender reference", selected.extracted_information?.tender_reference || "Not detected"],
-                          ["Stated deadline", selected.extracted_information?.deadline_text || "Not detected"],
-                        ].map(([label, value]) => (
-                          <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                            <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</dt>
-                            <dd className="mt-1 text-sm font-semibold text-slate-800">{value}</dd>
-                          </div>
-                        ))}
-                      </dl>
+                  <div className="sales-email-detail-grid">
+                    <section className="sales-email-reading-pane" aria-label="Email content" tabIndex={0}>
+                      <SalesEmailDetectedInformation information={extracted} subject={selected.subject} />
                       <h3 className="mt-6 text-sm font-bold text-[#102a47]">Email preview</h3>
-                      <div className="mt-3 min-h-44 whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
-                        {selected.body_preview || "No email preview was supplied."}
+                      <div className="sales-email-body-panel mt-3">
+                        <SalesEmailBody bodyText={selected.body_preview || "No email preview was supplied."} />
                       </div>
                       {selected.resolution_note && (
                         <div className="mt-4 rounded-lg border border-slate-200 px-4 py-3">
@@ -605,7 +566,7 @@ export default function SalesEmailIntake() {
                       )}
                     </section>
 
-                    <aside className="rounded-lg border border-slate-200 bg-white p-4">
+                    <aside className="sales-email-source-panel" aria-label="Source traceability" tabIndex={0}>
                       <div className="flex items-center gap-2">
                         <IdentificationIcon className="h-5 w-5 text-blue-700" />
                         <h3 className="text-sm font-bold text-[#102a47]">Source traceability</h3>
@@ -658,7 +619,7 @@ export default function SalesEmailIntake() {
                   </div>
                 </>
               ) : (
-                <div className="flex min-h-[590px] items-center justify-center text-center">
+                <div className="sales-email-empty flex items-center justify-center text-center">
                   <div>
                     <EnvelopeOpenIcon className="mx-auto h-10 w-10 text-slate-300" />
                     <p className="mt-3 text-sm font-semibold text-slate-700">Select an email to review</p>
@@ -668,92 +629,25 @@ export default function SalesEmailIntake() {
             </article>
           </div>
         </section>
-      </main>
+      </div>
 
-      {dialog === "convert" && selected && (
-        <Modal
-          title="Create opportunity from email"
-          description="Verify inherited information before creating the governed opportunity record."
+      {dialog === "convert" && selected?.can_create_opportunity === true && (
+        <SalesEmailOpportunityForm
+          key={selected.id}
+          subject={selected.subject}
+          information={extracted}
+          bodyPreview={selected.body_preview}
+          clients={clients}
+          clientChoice={clientChoice}
+          onClientChange={setClientChoice}
+          matchedClientId={matchedClient?.id || ""}
+          newClientName={matchingClients.length === 0 ? suggestedClientName : ""}
+          onSubmit={convert}
           onClose={() => setDialog(null)}
-        >
-          <form onSubmit={convert} className="grid max-h-[72vh] gap-4 overflow-y-auto p-6 sm:grid-cols-2">
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Opportunity name
-              <input name="deal_name" required defaultValue={selected.subject} maxLength="300" className={fieldClass} />
-            </label>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Client
-              <select
-                name="client_choice"
-                required
-                value={clientChoice}
-                onChange={(event) => setClientChoice(event.target.value)}
-                className={fieldClass}
-              >
-                <option value="">Select client</option>
-                {matchedClient && (
-                  <option value={matchedClient.id}>Matched: {matchedClient.company_name}</option>
-                )}
-                {!matchedClient && suggestedClientName && (
-                  <option value="__new__">Add new client: {suggestedClientName}</option>
-                )}
-                {clients
-                  .filter((client) => client.id !== matchedClient?.id)
-                  .map((client) => (
-                    <option key={client.id} value={client.id}>{client.company_name}</option>
-                  ))}
-              </select>
-              {clientChoice === "__new__" && (
-                <span className="mt-2 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
-                  <CheckCircleIcon className="h-4 w-4 shrink-0" />
-                  {suggestedClientName} will be added automatically from the email.
-                </span>
-              )}
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Client reference
-              <input name="client_reference" defaultValue={extracted.tender_reference} className={fieldClass} />
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Estimated value
-              <input name="estimated_value" type="number" min="0" step="0.01" required defaultValue={extracted.estimated_value} className={fieldClass} />
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Currency
-              <select name="currency" defaultValue={extracted.currency || "AED"} className={fieldClass}>
-                {["AED", "USD", "EUR", "GBP", "SAR", "QAR"].map((value) => <option key={value}>{value}</option>)}
-              </select>
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Expected award date
-              <input name="expected_close_date" type="date" required defaultValue={extracted.expected_award_date} className={fieldClass} />
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Proposal deadline
-              <input name="submission_due_date" type="date" defaultValue={extracted.deadline_date} className={fieldClass} />
-            </label>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Scope type
-              <select name="scope_type" defaultValue={extracted.scope_type || "other"} className={fieldClass}>
-                {["conceptual", "pre_feed", "feed", "basic_engineering", "detailed_engineering", "epcm", "epc", "pmc", "owner_engineer", "feasibility", "other"].map((value) => (
-                  <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Project location
-              <input name="location" defaultValue={extracted.location} className={fieldClass} />
-            </label>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Scope summary
-              <textarea name="description" rows="4" defaultValue={extracted.scope_summary || selected.body_preview} className={fieldClass} />
-            </label>
-            <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 sm:col-span-2">
-              <button type="button" onClick={() => setDialog(null)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-              <button disabled={saving} className="rounded-md bg-[#f04b2f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Creating…" : "Create opportunity"}</button>
-            </div>
-          </form>
-        </Modal>
+          submitting={saving}
+          error={error}
+          showLocation
+        />
       )}
 
       {["reject", "duplicate"].includes(dialog) && selected && (
