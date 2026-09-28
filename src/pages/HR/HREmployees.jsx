@@ -1240,6 +1240,18 @@ const OrgDemographyView = ({ employees, onSelect, onAction }) => {
     return ceoNode ? [ceoNode, ...otherRoots] : otherRoots;
   }, [focusedNode, ceoNode, otherRoots]);
 
+  // Full-demography mode: every level expanded, no fan-grid truncation, with
+  // zoom-out scaling so the complete top-to-bottom chart fits on one canvas.
+  const [fullMode, setFullMode] = useState(false);
+  const [zoom, setZoom] = useState(0.6);
+  const enterFullMode = useCallback(() => {
+    setFullMode(true);
+    setLevelDepth(null);
+    setCollapsed(new Set()); // expand every node incl. fan-grid expanders
+  }, []);
+  const zoomIn = () => setZoom((z) => Math.min(1.5, +(z + 0.15).toFixed(2)));
+  const zoomOut = () => setZoom((z) => Math.max(0.25, +(z - 0.15).toFixed(2)));
+
   // Soft-coded level control: collapse every node AT or BEYOND the chosen
   // depth so the chart reveals one level at a time (CEO → HODs → engineers).
   // levelDepth = null → show all levels.
@@ -1275,6 +1287,7 @@ const OrgDemographyView = ({ employees, onSelect, onAction }) => {
         collapsed={collapsed}
         onToggle={toggleNode}
         visited={new Set()}
+        fullMode={fullMode}
       />
     ) : (
       <DemographyNode
@@ -1324,6 +1337,46 @@ const OrgDemographyView = ({ employees, onSelect, onAction }) => {
                 {opt.label}
               </button>
             ))}
+          </div>
+          {/* Complete demography: every level, zoomable to fit one canvas */}
+          <div className="inline-flex items-center overflow-hidden rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => (fullMode ? setFullMode(false) : enterFullMode())}
+              aria-pressed={fullMode}
+              title="Show the complete demography — every level fully expanded"
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                fullMode
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Icon name="SquaresPlusIcon" className="h-3.5 w-3.5" />
+              Full
+            </button>
+            {fullMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  aria-label="Zoom out"
+                  className="rounded-md px-1.5 py-1 text-slate-500 hover:text-indigo-700"
+                >
+                  <HeroIcons.MagnifyingGlassMinusIcon className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-[38px] text-center text-[10px] font-bold text-slate-500">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  aria-label="Zoom in"
+                  className="rounded-md px-1.5 py-1 text-slate-500 hover:text-indigo-700"
+                >
+                  <HeroIcons.MagnifyingGlassPlusIcon className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
           </div>
           {/* Level stepper — walk the chart one level at a time */}
           <div className="inline-flex items-center overflow-hidden rounded-lg bg-slate-100 p-1 text-[11px] font-bold">
@@ -1402,24 +1455,42 @@ const OrgDemographyView = ({ employees, onSelect, onAction }) => {
           </p>
         )}
         {chartRoots.length > 0 ? (
-          <div className={layout === "topdown" ? "flex items-start justify-center gap-10 pb-6" : ""}>
-            {layout === "topdown" ? (
-              chartRoots.map(renderTree)
-            ) : (
-              <>
-                {ceoNode && renderTree(ceoNode)}
-                {otherRoots.length > 0 && (
-                  <div>
-                    {ceoNode && (
-                      <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                        Outside the CEO reporting line
-                      </p>
-                    )}
-                    {otherRoots.map(renderTree)}
-                  </div>
-                )}
-              </>
-            )}
+          <div
+            className={
+              fullMode
+                ? "origin-top-left"
+                : layout === "topdown"
+                  ? "flex items-start justify-center gap-10 pb-6"
+                  : ""
+            }
+            style={
+              fullMode
+                ? {
+                    transform: `scale(${zoom})`,
+                    width: `${100 / zoom}%`,
+                  }
+                : undefined
+            }
+          >
+            <div className={fullMode && layout === "topdown" ? "flex items-start justify-center gap-10 pb-6" : ""}>
+              {layout === "topdown" ? (
+                chartRoots.map(renderTree)
+              ) : (
+                <>
+                  {ceoNode && renderTree(ceoNode)}
+                  {otherRoots.length > 0 && (
+                    <div>
+                      {ceoNode && (
+                        <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                          Outside the CEO reporting line
+                        </p>
+                      )}
+                      {otherRoots.map(renderTree)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <p className="py-10 text-center text-sm text-slate-500">
@@ -1433,6 +1504,38 @@ const OrgDemographyView = ({ employees, onSelect, onAction }) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: Top-Down node — classic org-chart card with connector lines.
+// Smart arrangement: teams wider than FAN_GRID_VISIBLE render as a compact
+// fan grid (first N cards + a "+N more" expander) so large HOD teams stay on
+// one canvas instead of stretching into an endless horizontal row.
+const FAN_GRID_VISIBLE = 6;
+
+const TopDownChildCard = ({
+  child,
+  depth,
+  onSelect,
+  onAction,
+  onFocus,
+  collapsed,
+  onToggle,
+  visited,
+  fullMode,
+}) => (
+  <div className="relative flex flex-col items-center">
+    <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+    <TopDownNode
+      node={child}
+      depth={depth + 1}
+      onSelect={onSelect}
+      onAction={onAction}
+      onFocus={onFocus}
+      collapsed={collapsed}
+      onToggle={onToggle}
+      visited={visited}
+      fullMode={fullMode}
+    />
+  </div>
+);
+
 const TopDownNode = ({
   node,
   depth,
@@ -1442,6 +1545,7 @@ const TopDownNode = ({
   collapsed,
   onToggle,
   visited,
+  fullMode = false,
 }) => {
   if (visited.has(String(node.emp.id))) return null;
   const nextVisited = new Set(visited);
@@ -1450,6 +1554,14 @@ const TopDownNode = ({
   const isCollapsed = collapsed.has(nodeId);
   const isCeo = CEO_TITLE_RE.test(empDisplayTitle(node.emp));
   const showChildren = !isCollapsed && node.children.length > 0;
+  // In Full mode every child is always visible — no fan-grid truncation.
+  const isWideTeam = !fullMode && node.children.length > FAN_GRID_VISIBLE;
+  const isExpanded = collapsed.has(`expand-${nodeId}`);
+  const visibleChildren =
+    isWideTeam && !isExpanded
+      ? node.children.slice(0, FAN_GRID_VISIBLE)
+      : node.children;
+  const hiddenCount = node.children.length - visibleChildren.length;
   return (
     <div className="flex flex-col items-center">
       <div
@@ -1526,8 +1638,14 @@ const TopDownNode = ({
       {showChildren && (
         <>
           <span className="h-4 w-px bg-indigo-200" aria-hidden="true" />
-          <div className="relative flex items-start gap-6 pt-4">
-            {node.children.length > 1 && (
+          <div
+            className={`relative pt-4 ${
+              isWideTeam
+                ? "grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3"
+                : "flex items-start gap-6"
+            }`}
+          >
+            {node.children.length > 1 && !isWideTeam && (
               <span
                 className="absolute top-0 h-px bg-indigo-200"
                 style={{
@@ -1537,24 +1655,51 @@ const TopDownNode = ({
                 aria-hidden="true"
               />
             )}
-            {node.children.map((child) => (
-              <div key={child.emp.id} className="relative flex flex-col items-center">
-                <span
-                  className="absolute -top-4 h-4 w-px bg-indigo-200"
-                  aria-hidden="true"
-                />
-                <TopDownNode
-                  node={child}
-                  depth={depth + 1}
-                  onSelect={onSelect}
-                  onAction={onAction}
-                  onFocus={onFocus}
-                  collapsed={collapsed}
-                  onToggle={onToggle}
-                  visited={nextVisited}
-                />
-              </div>
+            {visibleChildren.map((child) => (
+              <TopDownChildCard
+                key={child.emp.id}
+                child={child}
+                depth={depth}
+                onSelect={onSelect}
+                onAction={onAction}
+                onFocus={onFocus}
+                collapsed={collapsed}
+                onToggle={onToggle}
+                visited={nextVisited}
+                fullMode={fullMode}
+              />
             ))}
+            {hiddenCount > 0 && (
+              <div className="relative flex flex-col items-center">
+                <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => onToggle(`expand-${nodeId}`)}
+                  className="flex w-56 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-3 text-center transition-colors hover:border-indigo-400 hover:bg-indigo-50"
+                >
+                  <HeroIcons.EllipsisHorizontalCircleIcon className="h-5 w-5 text-indigo-500" />
+                  <span className="text-xs font-bold text-indigo-700">
+                    +{hiddenCount} more
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Expand the full team
+                  </span>
+                </button>
+              </div>
+            )}
+            {isWideTeam && isExpanded && (
+              <div className="relative flex flex-col items-center">
+                <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => onToggle(`expand-${nodeId}`)}
+                  className="flex w-56 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600"
+                >
+                  <HeroIcons.ArrowsPointingOutIcon className="h-3.5 w-3.5" />
+                  Compact view
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
