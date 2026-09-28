@@ -60,3 +60,40 @@ four browser logs and final/rerun JSON reports. Build, source-hash, Node and
 application lint evidence is under
 `../.codex-temp/receipt-basis-release-20260928/`. These ignored artifacts are
 local verification records, not deployment or production migration evidence.
+
+## Safe receipt error messages — 28 September 2026 follow-up
+
+The PO selector and receipt form now use the existing `handoffError` export
+through `src/components/Procurement/handoffError.js`. Server failures display
+a concise retry message. HTML, encoded markup, tracebacks, diagnostic fields and
+oversized text are rejected rather than stripped or partially displayed. Error
+traversal and output are bounded; concise field validation, local verification
+instructions and the existing access/stale messages remain available.
+
+`PurchaseOrderHandoff.jsx` retains the public helper export for its existing
+consumers. `goodsReceipts.service.js` uses the established `suppressErrorToast`
+option only for available-order lookup, receiving balances, receiving-basis
+save and receipt creation/reconciliation. Their inline messages now own error
+presentation. `AIReceiptCreator.jsx` also suppresses error toasts for its optional
+PO-detail lookup, which already retains known queue metadata on failure. The
+global Axios interceptor is unchanged. Search, delivery fields, basis drafts,
+receipt quantities, stale refresh and operation-key retry behavior are retained.
+
+Follow-up checks passed 10 Node cases (seven new error cases plus three existing
+basis validators), changed-file ESLint and 76 distinct browser cases: eight new
+safe-error cases and 68 existing receipt/handoff cases rechecked. These 76 are
+follow-up coverage, not 76 additional cases to add to the earlier 224. The first
+run passed 70; six targeted reruns passed after correcting four new accessible
+test locators and one existing 502-message expectation, and rerunning an
+unchanged layout case whose fixture HTML fetch timed out during Vite warmup.
+Assertions and timeouts were retained, with automatic retries disabled.
+
+The final Node 20 production build passed on aligned commit
+`1f7f77580ede19bf82ddd4dd6b436705aeb0752e` plus this patch (2m27s, 111 PWA
+precache entries). The earlier build was deliberately stopped before alignment
+and is not release evidence. SHA-256 checks confirmed all four changed
+application files remained unchanged through alignment and final verification.
+Evidence is under `.codex-temp/receipt-safe-errors-20260928/`, including
+`browser-verification.json`, both browser reports/logs, `unit.log`, lint logs,
+`build-final.log` and `source-hashes-final.json`. The isolated fixture server was
+stopped after verification; no live receipt was created by these checks.

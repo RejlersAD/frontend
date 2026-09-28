@@ -189,7 +189,7 @@ for (const failure of [409, 500]) {
     await statusButton(page, 'Partial').click();
     await page.getByLabel(/^Exception reason/i).fill('Synthetic outstanding shipment');
     await record(page).click();
-    await expect(page.getByRole('alert')).toContainText(failure === 409 ? 'This record changed' : 'Receipt could not be saved');
+    await expect(page.getByRole('alert')).toContainText(failure === 409 ? 'This record changed' : 'The server could not complete the request');
     await expect(location(page)).toHaveValue('Synthetic receiving office');
     await expect(condition(page)).toHaveValue('good');
     await expect(page.getByLabel('Supplier Reference', { exact: true })).toHaveValue('SYN-INV-104');

@@ -77,7 +77,7 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
     let active = true;
     // The receiving summary remains the authority for eligibility and balances.
     // This optional read supplies display-only order dates and commercial terms.
-    apiClient.get(`/procurement/orders/${encodeURIComponent(order.id)}/`).then(({ data }) => {
+    apiClient.get(`/procurement/orders/${encodeURIComponent(order.id)}/`, { suppressErrorToast: true }).then(({ data }) => {
       if (active && String(data?.id) === String(order.id)) setOrderDetails(data);
     }).catch(() => { /* Keep known queue metadata when order details are unavailable. */ });
     return () => { active = false; };

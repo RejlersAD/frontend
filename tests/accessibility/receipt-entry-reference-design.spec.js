@@ -213,7 +213,7 @@ for (const status of [409, 500]) {
     await page.getByLabel(/^Delivery Date/).fill('2026-09-20');
     await page.getByRole('textbox', { name: 'Remarks', exact: true }).fill('Keep all user entries');
     await clickRecord(page);
-    await expect(page.getByRole('alert')).toContainText(status === 409 ? 'This record changed' : 'Receipt could not be saved');
+    await expect(page.getByRole('alert')).toContainText(status === 409 ? 'This record changed' : 'The server could not complete the request');
     await expect(quantity(page)).toHaveValue('2.5');
     await expect(page.getByLabel('Delivery Note No.', { exact: true })).toHaveValue('SYN-DN-PRESERVE');
     await expect(page.getByLabel(/^Delivery Date/)).toHaveValue('2026-09-20');

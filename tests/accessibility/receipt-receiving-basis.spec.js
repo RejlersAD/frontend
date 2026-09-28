@@ -109,7 +109,7 @@ for (const failure of [403, 409, 500]) {
   test(`basis HTTP ${failure} retains reviewed lines and delivery details for guarded recovery`, async ({ page }) => {
     const state = await setup(page, { failure }); await delivery(page); await goods(page);
     await save(page).click();
-    await expect(page.getByRole('alert')).toContainText(failure === 409 ? 'This record changed' : failure === 403 ? 'do not have access' : 'Synthetic basis save failed');
+    await expect(page.getByRole('alert')).toContainText(failure === 409 ? 'This record changed' : failure === 403 ? 'do not have access' : 'The server could not complete the request');
     await expect(page.getByLabel('Item description 1', { exact: true })).toHaveValue('Synthetic pipe');
     await expect(page.getByLabel('Ordered quantity 1', { exact: true })).toHaveValue('12.5');
     await expect(page.getByLabel(/^Delivery Location/)).toHaveValue('Synthetic receiving office');
@@ -144,7 +144,7 @@ for (const postSuccessFailure of ['unverified', 'refresh_failed']) {
   test(`acknowledged basis save with ${postSuccessFailure} requires explicit balance refresh and preserves input`, async ({ page }) => {
     const state = await setup(page, { postSuccessFailure }); await delivery(page); await goods(page);
     await save(page).click();
-    await expect(page.getByRole('alert')).toContainText(postSuccessFailure === 'unverified' ? 'could not be verified' : 'balance refresh failed');
+    await expect(page.getByRole('alert')).toContainText(postSuccessFailure === 'unverified' ? 'could not be verified' : 'The server could not complete the request');
     await expect(save(page)).toBeDisabled();
     await expect(page.getByLabel('Ordered quantity 1', { exact: true })).toHaveValue('12.5');
     await page.getByRole('button', { name: 'Refresh receipt balances', exact: true }).click();

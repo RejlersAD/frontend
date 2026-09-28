@@ -1,14 +1,9 @@
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
+import { handoffError } from './handoffError';
 import './PurchaseOrderHandoff.css';
 
-export function handoffError(error) {
-  if (error?.response?.status === 403) return 'You do not have access to these purchase orders.';
-  if (error?.response?.status === 409) return 'This record changed. Refresh its details before trying again.';
-  const data = error?.response?.data;
-  const messages = value => typeof value === 'string' ? value : Array.isArray(value) ? value.map(messages).join(' ') : value && typeof value === 'object' ? Object.values(value).map(messages).join(' ') : '';
-  return messages(data) || error?.message || 'Purchase orders could not be loaded.';
-}
+export { handoffError };
 
 export function usePurchaseOrderPage(fetchPage, search, page, refreshKey, filtersKey = '') {
   const [state, setState] = useState({ loading: true, error: '', rows: [], count: 0 });
