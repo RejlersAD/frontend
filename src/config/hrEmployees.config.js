@@ -293,10 +293,12 @@ export const HR_FILTERS = [
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_VIEW_MODES = [
   // 'cards' view intentionally removed — toggle this entry back to re-enable it.
-  { id: 'table',     label: 'Table',          icon: 'TableCellsIcon' },
-  { id: 'dept',      label: 'Departments',    icon: 'BuildingOffice2Icon' },
-  { id: 'hierarchy', label: 'Hierarchy',      icon: 'ShareIcon' },
-  { id: 'timesheet', label: 'Time Sheet',     icon: 'ClockIcon' },
+  { id: 'table',     label: 'Table',           icon: 'TableCellsIcon' },
+  // 'dept' tab re-purposed as a live organisation demography rooted at the CEO.
+  // The id stays 'dept' so view-mode wiring, pagination and URL params are untouched.
+  { id: 'dept',      label: 'Org Demography',  icon: 'UserGroupIcon' },
+  { id: 'hierarchy', label: 'Hierarchy',       icon: 'ShareIcon' },
+  { id: 'timesheet', label: 'Time Sheet',      icon: 'ClockIcon' },
 ]
 export const HR_DEFAULT_VIEW_MODE = 'table'
 

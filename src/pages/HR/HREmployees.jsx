@@ -1022,6 +1022,415 @@ const WorkforceHierarchy = ({ employees, onSelect, onAction }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sub-component: Organisation Demography — dynamic org tree rooted at the CEO.
+// Derived purely from live employee data (job titles + manager assignments),
+// so the chart reshapes itself automatically as people join, move or leave.
+const CEO_TITLE_RE = /\b(ceo|chief executive(?: officer)?|managing director)\b/i;
+
+const empDisplayTitle = (emp) =>
+  emp.job_title || emp.position || emp.designation || emp.title || "";
+
+const DemographyNode = ({
+  node,
+  depth,
+  onSelect,
+  onAction,
+  collapsed,
+  onToggle,
+  visited,
+}) => {
+  if (visited.has(String(node.emp.id))) return null;
+  const nextVisited = new Set(visited);
+  nextVisited.add(String(node.emp.id));
+  const nodeId = String(node.emp.id);
+  const isCollapsed = collapsed.has(nodeId);
+  const isCeo = CEO_TITLE_RE.test(empDisplayTitle(node.emp));
+  return (
+    <div
+      className={depth ? "ml-5 border-l border-indigo-100 pl-4 sm:ml-7" : ""}
+    >
+      <div
+        className={`relative mb-2 flex min-w-0 items-center gap-3 rounded-xl border bg-white p-3 shadow-sm ${
+          isCeo
+            ? "border-indigo-300 ring-1 ring-indigo-100"
+            : "border-slate-200"
+        }`}
+      >
+        {depth > 0 && (
+          <span className="absolute -left-4 top-1/2 h-px w-4 bg-indigo-100" />
+        )}
+        {node.children.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onToggle(nodeId)}
+            aria-label={isCollapsed ? "Expand reports" : "Collapse reports"}
+            className="shrink-0 rounded-full border border-slate-200 p-1 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+          >
+            <HeroIcons.ChevronDownIcon
+              className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+            />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onSelect(node.emp)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <Avatar emp={node.emp} size="sm" />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold text-slate-900">
+              {fullName(node.emp)}
+            </span>
+            <span className="block truncate text-xs text-slate-500">
+              {empDisplayTitle(node.emp) || "Role not assigned"} ·{" "}
+              {node.emp.department || "No department"}
+            </span>
+          </span>
+        </button>
+        {isCeo && (
+          <span className="rounded-full bg-indigo-600 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+            CEO
+          </span>
+        )}
+        {node.children.length > 0 && (
+          <span className="hidden rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 sm:inline">
+            {node.children.length} direct
+          </span>
+        )}
+        <EmployeeQuickActions emp={node.emp} onAction={onAction} compact />
+      </div>
+      {!isCollapsed &&
+        node.children.map((child) => (
+          <DemographyNode
+            key={child.emp.id}
+            node={child}
+            depth={depth + 1}
+            onSelect={onSelect}
+            onAction={onAction}
+            collapsed={collapsed}
+            onToggle={onToggle}
+            visited={nextVisited}
+          />
+        ))}
+    </div>
+  );
+};
+
+const OrgDemographyView = ({ employees, onSelect, onAction }) => {
+  const [collapsed, setCollapsed] = useState(new Set());
+  const [layout, setLayout] = useState("nested"); // 'nested' | 'topdown'
+  const toggleNode = useCallback(
+    (id) =>
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    [],
+  );
+
+  const { ceoNode, otherRoots, stats } = useMemo(() => {
+    const nodes = new Map(
+      employees.map((emp) => [String(emp.id), { emp, children: [] }]),
+    );
+    const top = [];
+    nodes.forEach((node) => {
+      const managerNode = nodes.get(managerIdOf(node.emp));
+      if (managerNode && managerNode !== node) managerNode.children.push(node);
+      else top.push(node);
+    });
+    const sortNodes = (list) =>
+      list
+        .sort((a, b) => fullName(a.emp).localeCompare(fullName(b.emp)))
+        .map((node) => ({ ...node, children: sortNodes(node.children) }));
+    const sortedTop = sortNodes(top);
+
+    // Locate the CEO dynamically by title anywhere in the chart.
+    let ceo = null;
+    nodes.forEach((node) => {
+      if (!ceo && CEO_TITLE_RE.test(empDisplayTitle(node.emp))) ceo = node;
+    });
+
+    // Split people reachable from the CEO vs. those outside that line.
+    const reachable = new Set();
+    const walk = (node) => {
+      if (!node || reachable.has(String(node.emp.id))) return;
+      reachable.add(String(node.emp.id));
+      node.children.forEach(walk);
+    };
+    walk(ceo);
+    const outside = ceo
+      ? sortedTop.filter((root) => !reachable.has(String(root.emp.id)))
+      : sortedTop;
+
+    const deptCount = new Set(
+      employees.map((e) => (e.department || "").trim()).filter(Boolean),
+    ).size;
+    let maxDepth = 0;
+    let managers = 0;
+    let reportSum = 0;
+    nodes.forEach((node) => {
+      if (node.children.length) {
+        managers += 1;
+        reportSum += node.children.length;
+      }
+      let d = 0;
+      let cursor = node;
+      const guard = new Set([String(node.emp.id)]);
+      while (d <= employees.length) {
+        const parent = nodes.get(managerIdOf(cursor.emp));
+        if (!parent || parent === cursor || guard.has(String(parent.emp.id)))
+          break;
+        guard.add(String(parent.emp.id));
+        cursor = parent;
+        d += 1;
+      }
+      if (d > maxDepth) maxDepth = d;
+    });
+
+    return {
+      ceoNode: ceo,
+      otherRoots: outside,
+      stats: {
+        people: employees.length,
+        departments: deptCount,
+        levels: employees.length ? maxDepth + 1 : 0,
+        avgSpan: managers ? (reportSum / managers).toFixed(1) : "0",
+      },
+    };
+  }, [employees]);
+
+  const chartRoots = useMemo(
+    () => (ceoNode ? [ceoNode, ...otherRoots] : otherRoots),
+    [ceoNode, otherRoots],
+  );
+
+  const renderTree = (node) =>
+    layout === "topdown" ? (
+      <TopDownNode
+        key={node.emp.id}
+        node={node}
+        depth={0}
+        onSelect={onSelect}
+        onAction={onAction}
+        collapsed={collapsed}
+        onToggle={toggleNode}
+        visited={new Set()}
+      />
+    ) : (
+      <DemographyNode
+        key={node.emp.id}
+        node={node}
+        depth={0}
+        onSelect={onSelect}
+        onAction={onAction}
+        collapsed={collapsed}
+        onToggle={toggleNode}
+        visited={new Set()}
+      />
+    );
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 font-bold text-slate-900">
+            <HeroIcons.UserGroupIcon className="h-5 w-5 text-indigo-600" />{" "}
+            Organisation Demography
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Live organisational structure derived from reporting lines —
+            starting from the CEO.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-lg bg-slate-100 p-1">
+            {[
+              { id: "nested", label: "Nested", icon: "Bars3BottomLeftIcon" },
+              { id: "topdown", label: "Top-Down", icon: "Squares2X2Icon" },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setLayout(opt.id)}
+                aria-pressed={layout === opt.id}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  layout === opt.id
+                    ? "bg-white text-indigo-700 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Icon name={opt.icon} className="h-3.5 w-3.5" />
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
+              {stats.people} people
+            </span>
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
+              {stats.departments} departments
+            </span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+              {stats.levels} levels
+            </span>
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+              {stats.avgSpan} avg span
+            </span>
+          </div>
+        </div>
+      </div>
+      <div
+        className={`max-h-[70vh] overflow-auto p-4 sm:p-5 ${layout === "topdown" ? "" : "space-y-4"}`}
+      >
+        {!ceoNode && (
+          <p className="mb-4 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-center text-xs text-slate-500">
+            No employee with a CEO title found — showing top-level reporting
+            lines instead.
+          </p>
+        )}
+        {chartRoots.length > 0 ? (
+          <div className={layout === "topdown" ? "flex items-start justify-center gap-10 pb-6" : ""}>
+            {layout === "topdown" ? (
+              chartRoots.map(renderTree)
+            ) : (
+              <>
+                {ceoNode && renderTree(ceoNode)}
+                {otherRoots.length > 0 && (
+                  <div>
+                    {ceoNode && (
+                      <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                        Outside the CEO reporting line
+                      </p>
+                    )}
+                    {otherRoots.map(renderTree)}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <p className="py-10 text-center text-sm text-slate-500">
+            No employees match the current filters.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-component: Top-Down node — classic org-chart card with connector lines.
+const TopDownNode = ({
+  node,
+  depth,
+  onSelect,
+  onAction,
+  collapsed,
+  onToggle,
+  visited,
+}) => {
+  if (visited.has(String(node.emp.id))) return null;
+  const nextVisited = new Set(visited);
+  nextVisited.add(String(node.emp.id));
+  const nodeId = String(node.emp.id);
+  const isCollapsed = collapsed.has(nodeId);
+  const isCeo = CEO_TITLE_RE.test(empDisplayTitle(node.emp));
+  const showChildren = !isCollapsed && node.children.length > 0;
+  return (
+    <div className="flex flex-col items-center">
+      <div
+        className={`relative flex w-56 flex-col items-center rounded-xl border bg-white p-3 text-center shadow-sm ${
+          isCeo
+            ? "border-indigo-300 ring-1 ring-indigo-100"
+            : "border-slate-200"
+        }`}
+      >
+        {isCeo && (
+          <span className="absolute -top-2 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+            CEO
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => onSelect(node.emp)}
+          className="flex w-full flex-col items-center gap-1.5"
+        >
+          <Avatar emp={node.emp} size="sm" />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold text-slate-900">
+              {fullName(node.emp)}
+            </span>
+            <span className="block truncate text-[11px] text-slate-500">
+              {empDisplayTitle(node.emp) || "Role not assigned"}
+            </span>
+            <span className="block truncate text-[10px] text-slate-400">
+              {node.emp.department || "No department"}
+            </span>
+          </span>
+        </button>
+        <div className="mt-1 flex items-center gap-1.5">
+          {node.children.length > 0 && (
+            <>
+              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700">
+                {node.children.length} direct
+              </span>
+              <button
+                type="button"
+                onClick={() => onToggle(nodeId)}
+                aria-label={isCollapsed ? "Expand reports" : "Collapse reports"}
+                className="rounded-full border border-slate-200 p-0.5 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+              >
+                <HeroIcons.ChevronDownIcon
+                  className={`h-3 w-3 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                />
+              </button>
+            </>
+          )}
+          <EmployeeQuickActions emp={node.emp} onAction={onAction} compact />
+        </div>
+      </div>
+      {showChildren && (
+        <>
+          <span className="h-4 w-px bg-indigo-200" aria-hidden="true" />
+          <div className="relative flex items-start gap-6 pt-4">
+            {node.children.length > 1 && (
+              <span
+                className="absolute top-0 h-px bg-indigo-200"
+                style={{
+                  left: `${100 / (node.children.length * 2)}%`,
+                  right: `${100 / (node.children.length * 2)}%`,
+                }}
+                aria-hidden="true"
+              />
+            )}
+            {node.children.map((child) => (
+              <div key={child.emp.id} className="relative flex flex-col items-center">
+                <span
+                  className="absolute -top-4 h-4 w-px bg-indigo-200"
+                  aria-hidden="true"
+                />
+                <TopDownNode
+                  node={child}
+                  depth={depth + 1}
+                  onSelect={onSelect}
+                  onAction={onAction}
+                  collapsed={collapsed}
+                  onToggle={onToggle}
+                  visited={nextVisited}
+                />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ─── Derive action subsets once (not per-render) ────────────────────────────
 const _TOOLBAR_ACTIONS = HR_DEPT_ACTIONS.filter((a) => a.scope === "toolbar");
 const _DEPT_HDR_ACTIONS = HR_DEPT_ACTIONS.filter(
@@ -4561,10 +4970,10 @@ export default function HREmployees() {
                   />
                 )}
                 {viewMode === "dept" && (
-                  <DepartmentsView
+                  <OrgDemographyView
                     employees={filteredEmployees}
                     onSelect={openEmp}
-                    navigate={navigate}
+                    onAction={handleEmployeeAction}
                   />
                 )}
                 {viewMode === "hierarchy" && (
