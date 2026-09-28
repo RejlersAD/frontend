@@ -18,6 +18,7 @@ import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import { createPurchaseOrderDraftRecovery, purchaseOrderRecoveryKey, currentPurchaseOrderDraftUser } from '../../services/purchaseOrderDraftRecovery';
 import PurchaseOrderPreviewPane from './PurchaseOrderPreviewPane';
+import { PurchaseOrderNumberCorrection } from './PurchaseOrderNumberEditor';
 import './PurchaseOrderForm.css';
 import { Save as SaveIcon, ArrowRight, ArrowLeft, AlertCircle, X } from 'lucide-react';
 import PurchaseOrderPriceSpreadsheet from './PurchaseOrderPriceSpreadsheet';
@@ -3068,4 +3069,17 @@ PurchaseOrderForm.propTypes = {
   }),
 };
 
-export default PurchaseOrderForm;
+function PurchaseOrderEditor(props) {
+  // Choose at entry so a save response cannot discard an already open draft.
+  const [numberOnly] = useState(() => Boolean(props.editData
+    && (props.editData.commercial_edit_locked === true || props.editData.status === 'completed')));
+  if (numberOnly) {
+    return props.isOpen ? <PurchaseOrderNumberCorrection key={props.editData.id} order={props.editData}
+      onSaved={props.onSuccess} onClose={props.onClose} /> : null;
+  }
+  return <PurchaseOrderForm {...props} />;
+}
+
+PurchaseOrderEditor.propTypes = PurchaseOrderForm.propTypes;
+
+export default PurchaseOrderEditor;

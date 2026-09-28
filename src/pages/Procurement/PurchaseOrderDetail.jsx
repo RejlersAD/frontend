@@ -26,6 +26,7 @@ import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import { getStatusConfig } from '../../config/procurement.config';
 import { BRANDING_CONFIG } from '../../config/branding.config';
 import PurchaseOrderForm from './PurchaseOrderForm';
+import PurchaseOrderNumberEditor from './PurchaseOrderNumberEditor';
 import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
 import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
 import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
@@ -663,6 +664,7 @@ const PurchaseOrderDetail = () => {
                     <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
                       {order.po_number || `PO-${order.id}`}
                     </h1>
+                    {canUpdate && <PurchaseOrderNumberEditor key={order.id} order={order} onSaved={setOrder} />}
                     {getStatusBadge(order.status)}
                     {typeof order.po_number_verified === 'boolean' && (
                       <span
@@ -737,7 +739,7 @@ const PurchaseOrderDetail = () => {
                 </button>
               )}
               
-              {canUpdate && order.status !== 'completed' && (
+              {canUpdate && (
                 <button
                   onClick={() => setShowEditForm(true)}
                     className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"

@@ -66,23 +66,23 @@ test('a server approval rejection during issue remains visible and leaves the or
   clean(state)
 })
 
-test('editing a partially approved order explains its commercial lock and preserves a rejected edit', async ({ page }) => {
+test('editing a partially approved order permits number correction without exposing commercial edits', async ({ page }) => {
   const state = await open(page, {
     can_send_to_vendor: false, lifecycle_block_reason: reason,
     commercial_edit_locked: true, commercial_edit_lock_reason: lockReason,
     approval_log: [{ level: 1, stage: 'Technical', status: 'approved' }, { level: 2, stage: 'Finance', status: 'pending' }],
-  }, fixture => { fixture.saveError = { payment_terms: [lockReason] } })
+  })
   await page.getByRole('button', { name: 'Edit', exact: true }).click()
   const editor = page.getByRole('region', { name: 'Purchase order editor', exact: true })
-  await expect(editor.getByRole('status').filter({ hasText: lockReason })).toBeVisible()
-  await page.locator('[name="payment_terms"]').fill('Net 90')
-  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click()
-  await expect(editor.getByRole('alert')).toContainText(lockReason)
-  await expect(page.locator('[name="payment_terms"]')).toHaveValue('Net 90')
+  await expect(editor.getByRole('textbox', { name: 'PO number', exact: true })).toBeEditable()
+  await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+  await expect(editor.getByText(lockReason, { exact: true })).toHaveCount(0)
+  await expect(editor.locator('[name="payment_terms"]')).toHaveCount(0)
   expect(state.acceptedWrites).toEqual([])
   expect(state.record.payment_terms).toBe('Net 30')
-  await page.getByRole('tab', { name: 'Attachments', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Send to vendor', exact: true })).toBeDisabled()
+  await expect(editor.getByRole('button', { name: 'Send to vendor', exact: true })).toHaveCount(0)
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Send to Vendor', exact: true })).toBeDisabled()
   clean(state)
 })
 

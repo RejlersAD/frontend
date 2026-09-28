@@ -66,14 +66,18 @@ test('completed PO links a recommendation through its dedicated action without e
   expect(state.pageErrors).toEqual([])
 })
 
-test('completed PO detail offers linkage while commercial edit remains unavailable and cancel sends no mutation', async ({ page }) => {
+test('completed PO detail offers linkage and number correction while cancel sends no mutation', async ({ page }) => {
   const state = await openCompleted(page)
   await page.getByRole('complementary', { name: 'Purchase order details', exact: true }).getByRole('button', { name: `Reconcile purchase recommendation for ${orderFormNumber}` }).click()
   await expect(dialog(page)).toBeVisible()
   await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(dialog(page)).toHaveCount(0)
   await register(page).getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
-  await expect(page.getByRole('menuitem', { name: 'Edit order', exact: true })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
+  const editor = page.getByRole('region', { name: 'Purchase order editor', exact: true })
+  await expect(editor.getByRole('textbox', { name: 'PO number', exact: true })).toBeEditable()
+  await expect(editor.locator('[name="payment_terms"]')).toHaveCount(0)
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
   expect(state.linkRequests).toEqual([])
   expect(state.acceptedWrites).toEqual([])
 })
