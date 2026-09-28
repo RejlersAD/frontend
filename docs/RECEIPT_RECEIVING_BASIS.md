@@ -1,5 +1,34 @@
 # Receiving basis recovery
 
+## Active Goods/Full defaults and direct recording
+
+28 September 2026 follow-up: Delivery information now owns the missing-basis
+Goods/Services choice, with Goods and Full selected by default. Separate source
+drafts survive type switches. Existing canonical service orders display Services
+and retain their currency/value basis. Full copies real available balances only
+for a fresh canonical basis or explicit click; refreshes preserve entered input.
+
+Record receipt is enabled for server-authorized source recovery and validates
+required delivery/source fields. Full records through the existing basis POST,
+verified summary GET and Pending receipt POST, using returned line IDs and PO
+freshness. The busy guard spans both commands. Each command retains its own
+retry UUID; a failed receipt retry does not resave an established basis. A changed
+saved-versus-refreshed version or line identity stops recording and requires
+refresh. Partial/Rejected first establishes missing source lines, then requires
+actual received values and the exception reason. No backend/schema changes.
+
+Implementation: `AIReceiptCreator.jsx`, `ReceiptDeliveryInformation.jsx`, and
+`ReceiptReceivingBasisEditor.jsx`. All 95 focused browser cases passed on the
+first run with retries disabled (19 new cases and 76 receipt/handoff regressions),
+along with 34 Node cases and scoped ESLint. The browser screenshot verifies active
+Goods/Full and Record receipt; failure cases cover denied/stale access, preserved
+input, exact retry keys, command sequencing and duplicate-click prevention.
+The Node 20 production build passed in 2m41s with 111 PWA precache entries. All
+three changed application source hashes matched after verification. Existing
+bundle-size and Browserslist notices remain. Local evidence is retained under
+`.codex-temp/receipt-defaults-20260928/` in `verification.json`,
+`browser-results.json`, build/unit/lint logs and source-hash records.
+
 28 September 2026. Uploaded purchase orders without structured receiving lines
 can use the compact **Set receiving basis** editor in the existing receipt form.
 The server must return both `needs_basis_review` and `can_review_basis`; the

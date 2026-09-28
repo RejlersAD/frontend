@@ -106,8 +106,9 @@ test('receipt line previews previous receipts, remaining balance and partial or 
   const cells = row.locator('th, td');
   await expect(cells.nth(1)).toHaveText('10');
   await expect(cells.nth(2)).toContainText('5');
-  await expect(cells.nth(4)).toHaveText('5');
-  await expect(cells.nth(5)).toContainText('Partial');
+  await expect(row.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' })).toHaveValue('5');
+  await expect(cells.nth(4)).toHaveText('0');
+  await expect(cells.nth(5)).toContainText('Complete');
   await expect(row).toContainText('Awaiting confirmation');
   const quantity = row.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' });
   await quantity.fill('2.5');
@@ -127,7 +128,8 @@ test('service receiving previews exact value balances with currency and pending 
   const row = table.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /^Synthetic service/ }) });
   const cells = row.locator('th, td');
   await expect(cells.nth(2)).toContainText('200');
-  await expect(row).not.toContainText('Awaiting confirmation');
+  await expect(row.getByRole('spinbutton', { name: 'Received value for Synthetic service' })).toHaveValue('800.00');
+  await expect(row).toContainText('Awaiting confirmation');
   await row.getByRole('spinbutton', { name: 'Received value for Synthetic service' }).fill('125.25');
   await expect(cells.nth(4)).toContainText('674.75');
   await expect(cells.nth(5)).toContainText('Partial');

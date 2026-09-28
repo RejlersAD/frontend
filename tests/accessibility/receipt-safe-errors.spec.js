@@ -88,7 +88,7 @@ test('HTML balance failure offers explicit refresh and preserves delivery detail
 for (const status of [500, 400]) test(`basis HTTP ${status} hides debug content and retries the exact retained command`, async ({ page }) => {
   const state = await setup(page, { stage: 'basis', status });
   const editor = page.getByRole('region', { name: 'Set receiving basis', exact: true });
-  await editor.getByRole('button', { name: 'Goods', exact: true }).click();
+  await page.getByRole('group', { name: /^Receipt Type/ }).getByRole('button', { name: 'Goods', exact: true }).click();
   await page.getByLabel('Item description 1', { exact: true }).fill('Synthetic pipe');
   await page.getByLabel('Unit 1', { exact: true }).fill('EA');
   await page.getByLabel('Ordered quantity 1', { exact: true }).fill('5');

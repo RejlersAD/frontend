@@ -10,11 +10,14 @@ import { receiptReviewDate } from '../../components/Procurement/goodsReceiptRevi
 import { receiptEntrySummary } from './receiptEntryPresentation';
 import ReceiptDeliveryInformation from './ReceiptDeliveryInformation';
 import ReceiptReceivingBasisEditor from './ReceiptReceivingBasisEditor';
+import { buildReceivingBasis } from './receiptReceivingBasis';
 import './AIReceiptCreator.css';
 
 const availableOrders = params => goodsReceiptsService.availableOrders({ ...params, queue: 'awaiting' });
 const emptyForm = () => ({ delivery_note_number: '', receipt_date: localReceiptDate(), notes: '', reason: '', delivery_location: '', supplier_reference: '', condition: '', exception_reason: '' });
 const orderText = value => typeof value === 'string' && value.trim() ? value : '—';
+const emptyBasisDrafts = (currency = '') => ({ quantity: [{ description: '', uom: '', ordered: '' }], service_value: [{ description: '', uom: currency, ordered: '' }] });
+const remainingDrafts = data => Object.fromEntries(data.lines.map(line => [line.line_id, { received: String(line.available), rejected: '0' }]));
 
 export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, initialOrder = null, reconciliation = false }) {
   const dialogRef = useRef(null);
@@ -24,6 +27,7 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
   const busyRef = useRef(false);
   const operation = useRef(null);
   const basisOperation = useRef(null);
+  const seedFull = useRef(true);
   const [order, setOrder] = useState(initialOrder);
   const [summary, setSummary] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -38,10 +42,19 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
   const [bounds, setBounds] = useState(null);
   const [orderDetails, setOrderDetails] = useState(null);
   const [actor, setActor] = useState({ data: null, loading: false });
-  const [statusChoice, setStatusChoice] = useState('');
+  const [statusChoice, setStatusChoice] = useState('full');
+  const [basisChoice, setBasisChoice] = useState('quantity');
+  const [basisDrafts, setBasisDrafts] = useState(emptyBasisDrafts);
+  const statusChoiceRef = useRef(statusChoice);
+  statusChoiceRef.current = statusChoice;
+  const currency = orderDetails?.currency || order?.currency || summary?.currency || '';
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const close = useCallback(() => { if (!busyRef.current) onCloseRef.current(); }, []);
+
+  useEffect(() => {
+    if (currency) setBasisDrafts(current => ({ ...current, service_value: current.service_value.map(line => line.uom ? line : { ...line, uom: currency }) }));
+  }, [currency]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -85,7 +98,7 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
 
   useEffect(() => {
     if (!isOpen) return;
-    setOrder(initialOrder); setSummary(null); setForm(emptyForm()); setDrafts({}); setStatusChoice(''); setError(''); setStale(false); setReviewed(false); operation.current = null; basisOperation.current = null;
+    setOrder(initialOrder); setSummary(null); setForm(emptyForm()); setDrafts({}); setStatusChoice('full'); setBasisChoice('quantity'); setBasisDrafts(emptyBasisDrafts(initialOrder?.currency || '')); setError(''); setStale(false); setReviewed(false); operation.current = null; basisOperation.current = null; seedFull.current = true;
   }, [isOpen, initialOrder]);
   useEffect(() => {
     if (!isOpen || !order?.id) return undefined;
@@ -95,9 +108,13 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
       if (!active) return;
       if (!Array.isArray(data?.lines) || !data.po_updated_at) throw new Error('Receipt balances are unavailable.');
       setSummary(data); setStale(false);
+      if (seedFull.current && data.lines.length && (reconciliation ? data.can_reconcile : data.can_record)) {
+        if (statusChoiceRef.current === 'full') setDrafts(remainingDrafts(data));
+        seedFull.current = false;
+      }
     }).catch(requestError => { if (active) { setError(handoffError(requestError)); setStale(true); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [isOpen, order?.id, retry]);
+  }, [isOpen, order?.id, retry, reconciliation]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -119,11 +136,10 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
   }, [isOpen, close]);
 
   const change = (name, value) => { setForm(current => ({ ...current, [name]: value })); setReviewed(false); };
-  const saveBasis = async basis => {
-    if (busyRef.current || loading || stale || !order?.id || !summary?.po_updated_at || summary.can_review_basis !== true || summary.needs_basis_review !== true) return;
+  const persistBasis = async basis => {
     const payload = { ...basis, expected_updated_at: summary.po_updated_at };
     basisOperation.current = receiptOperation(basisOperation.current, { purchase_order: order.id, ...payload });
-    busyRef.current = true; setBusy(true); setBasisSaving(true); setError('');
+    setBasisSaving(true);
     let acknowledged = false;
     try {
       const saved = await goodsReceiptsService.saveReceivingBasis(order.id, { ...payload, operation_key: basisOperation.current.key });
@@ -131,28 +147,60 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
       if (saved?.basis_source !== 'reviewed_receiving' || saved.basis !== basis.basis || !saved.po_updated_at || !Array.isArray(saved.lines) || saved.lines.length !== basis.lines.length || saved.lines.some(line => !line.line_id || !line.uom || !line.ordered)) throw new Error('The receiving basis response could not be verified. Refresh receipt balances.');
       const refreshed = await goodsReceiptsService.receivingSummary(order.id);
       if (refreshed?.basis_source !== 'reviewed_receiving' || refreshed.basis !== basis.basis || !refreshed.po_updated_at || !Array.isArray(refreshed.lines) || !refreshed.lines.length) throw new Error('Saved receiving balances could not be verified. Refresh receipt balances.');
-      setSummary(refreshed); setDrafts({}); setStatusChoice(''); setReviewed(false); setStale(false);
-    } catch (requestError) { setError(handoffError(requestError)); if (acknowledged || requestError?.response?.status === 409) setStale(true); }
-    finally { busyRef.current = false; setBusy(false); setBasisSaving(false); }
+      if (refreshed.po_updated_at !== saved.po_updated_at) throw new Error('The purchase order changed while saving. Refresh receipt balances.');
+      const savedLines = new Map(saved.lines.map(line => [line.line_id, line]));
+      if (savedLines.size !== saved.lines.length || refreshed.lines.length !== saved.lines.length || refreshed.lines.some(line => {
+        const original = savedLines.get(line.line_id);
+        return !original || original.uom !== line.uom || original.ordered !== line.ordered;
+      })) throw new Error('Saved receiving lines could not be verified. Refresh receipt balances.');
+      const received = statusChoice === 'full' ? remainingDrafts(refreshed) : {};
+      setSummary(refreshed); setDrafts(received); setStale(false); seedFull.current = false;
+      return { summary: refreshed, drafts: received };
+    } catch (requestError) { if (acknowledged || requestError?.response?.status === 409) setStale(true); throw requestError; }
+    finally { setBasisSaving(false); }
+  };
+  const saveBasis = async () => {
+    if (busyRef.current || loading || stale || !order?.id || !summary?.po_updated_at || summary.can_review_basis !== true || summary.needs_basis_review !== true) return;
+    setError('');
+    try {
+      const basis = buildReceivingBasis(basisChoice, basisDrafts[basisChoice], currency);
+      busyRef.current = true; setBusy(true);
+      await persistBasis(basis); setReviewed(false);
+    } catch (requestError) { setError(handoffError(requestError)); }
+    finally { busyRef.current = false; setBusy(false); }
   };
   const submit = async event => {
     event.preventDefault();
     if (busyRef.current || loading || stale) return;
     setError('');
     try {
-      if (!order?.id || !summary?.po_updated_at || (reconciliation ? summary.can_reconcile !== true : summary.can_record !== true)) throw new Error('This purchase order is not available for receipt.');
+      const needsBasis = summary?.needs_basis_review === true && summary?.can_review_basis === true;
+      if (!order?.id || !summary?.po_updated_at || (!needsBasis && (reconciliation ? summary.can_reconcile !== true : summary.can_record !== true))) throw new Error('This purchase order is not available for receipt.');
       if (!form.receipt_date) throw new Error('Enter a receipt date.');
-      const items = buildReceivingLines(summary, drafts);
-      const currentProjection = receiptEntrySummary(summary, drafts, orderDetails?.currency || order.currency || summary.currency || '');
+      if (!form.delivery_location.trim()) throw new Error('Enter the delivery location.');
+      if (!form.condition) throw new Error('Select the delivery condition.');
+      if (['partial', 'rejected'].includes(statusChoice || receiptEntrySummary(summary, drafts, currency).deliveryStatus) && !form.exception_reason.trim()) throw new Error('Enter an exception reason for the partial or rejected delivery.');
+      if (reconciliation && !form.reason.trim()) throw new Error('Enter a reconciliation reason.');
+      if (reconciliation && !reviewed) throw new Error('Review and confirm this receipt reconciliation.');
+      let currentSummary = summary;
+      let receivedDrafts = drafts;
+      if (needsBasis) {
+        const basis = buildReceivingBasis(basisChoice, basisDrafts[basisChoice], currency);
+        busyRef.current = true; setBusy(true);
+        const saved = await persistBasis(basis);
+        currentSummary = saved.summary; receivedDrafts = saved.drafts;
+        if (statusChoice !== 'full') {
+          setError('Enter the received quantities or service value for this delivery.');
+          itemsRef.current?.focus(); return;
+        }
+      }
+      if (reconciliation ? currentSummary.can_reconcile !== true : currentSummary.can_record !== true) throw new Error(currentSummary.blocked_reason || 'This purchase order is not available for receipt.');
+      const items = buildReceivingLines(currentSummary, receivedDrafts);
+      const currentProjection = receiptEntrySummary(currentSummary, receivedDrafts, currency);
       if (!currentProjection.valid) throw new Error(currentProjection.validationMessage);
       const recordedStatus = statusChoice || currentProjection.deliveryStatus;
       if (recordedStatus !== currentProjection.deliveryStatus) throw new Error('Adjust the received quantities to match the selected delivery status.');
-      if (!form.delivery_location.trim()) throw new Error('Enter the delivery location.');
-      if (!form.condition) throw new Error('Select the delivery condition.');
-      if (['partial', 'rejected'].includes(recordedStatus) && !form.exception_reason.trim()) throw new Error('Enter an exception reason for the partial or rejected delivery.');
-      if (reconciliation && !form.reason.trim()) throw new Error('Enter a reconciliation reason.');
-      if (reconciliation && !reviewed) throw new Error('Review and confirm this receipt reconciliation.');
-      const payload = { ...form, delivery_status: recordedStatus, purchase_order: order.id, status: 'pending', expected_po_updated_at: summary.po_updated_at, items_received: items };
+      const payload = { ...form, delivery_status: recordedStatus, purchase_order: order.id, status: 'pending', expected_po_updated_at: currentSummary.po_updated_at, items_received: items };
       for (const key of ['dimensional_check_passed', 'visual_inspection_passed', 'material_verification_passed', 'quality_check_passed']) payload[key] = null;
       if (!reconciliation) delete payload.reason;
       operation.current = receiptOperation(operation.current, payload);
@@ -164,34 +212,46 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
     finally { busyRef.current = false; setBusy(false); }
   };
   if (!isOpen) return null;
-  const service = summary?.basis === 'service_value';
+  const canonicalBasis = ['quantity', 'service_value'].includes(summary?.basis) ? summary.basis : null;
+  const receiptType = canonicalBasis || basisChoice;
+  const service = receiptType === 'service_value';
   const title = reconciliation ? 'Reconcile receipt evidence' : service ? 'Record service acceptance' : 'Record goods receipt';
   const allowed = reconciliation ? summary?.can_reconcile === true : summary?.can_record === true;
+  const canReviewBasis = summary?.needs_basis_review === true && summary?.can_review_basis === true;
+  let pendingBasis = null;
+  if (canReviewBasis) {
+    try { pendingBasis = buildReceivingBasis(basisChoice, basisDrafts[basisChoice], currency); }
+    catch { /* Required source fields are validated on save or submit. */ }
+  }
+  const fullBasisReady = !!pendingBasis && statusChoice === 'full';
   const po = { ...order, ...orderDetails };
-  const currency = po.currency || summary?.currency || '';
   const projection = receiptEntrySummary(summary, drafts, currency);
-  const deliveryStatus = statusChoice || projection.deliveryStatus || '';
+  const deliveryStatus = statusChoice || projection.deliveryStatus || 'full';
   const deliveryFieldsComplete = !!form.receipt_date && !!form.delivery_location.trim() && !!form.condition && (!['partial', 'rejected'].includes(deliveryStatus) || !!form.exception_reason.trim());
-  const deliveryComplete = deliveryFieldsComplete && !!deliveryStatus && deliveryStatus === projection.deliveryStatus;
+  const deliveryComplete = deliveryFieldsComplete && !!deliveryStatus && (canReviewBasis || deliveryStatus === projection.deliveryStatus);
   const canCopy = allowed && !loading && !stale && summary?.lines.length > 0 && projection.groups.every(group => group.ordered !== null && group.previouslyReceived !== null);
-  const ready = allowed && !loading && !stale && deliveryComplete && projection.valid && (!reconciliation || (form.reason.trim() && reviewed));
+  const ready = (allowed || canReviewBasis) && !loading && !stale && deliveryComplete && (canReviewBasis ? fullBasisReady : projection.valid) && (!reconciliation || (form.reason.trim() && reviewed));
   const checks = [
-    ['Purchase order available', !!order?.id && allowed && !stale && !loading],
+    ['Purchase order available', !!order?.id && (allowed || canReviewBasis) && !stale && !loading],
     ['Delivery details complete', deliveryComplete],
-    ['Quantities within remaining balance', projection.valid],
+    [canReviewBasis ? 'Receiving lines complete' : 'Quantities within remaining balance', canReviewBasis ? !!pendingBasis : projection.valid],
     ...(reconciliation ? [['Reconciliation reviewed', !!form.reason.trim() && reviewed]] : []),
   ];
   const copyRemaining = () => {
     if (!canCopy) return;
-    setDrafts(Object.fromEntries(summary.lines.map(line => [line.line_id, { received: String(line.available) }])));
-    setStatusChoice(''); setReviewed(false); setError('');
+    setDrafts(remainingDrafts(summary));
+    setStatusChoice('full'); setReviewed(false); setError('');
   };
   const chooseDeliveryStatus = value => {
-    if (!canCopy || busy) return;
-    if (value === 'full') { copyRemaining(); return; }
+    if (busy || loading || stale) return;
+    if (value === 'full' && canCopy) { copyRemaining(); return; }
     setStatusChoice(value);
     setDrafts(current => Object.fromEntries(Object.entries(current).map(([key, draft]) => [key, { ...draft, rejected: value === 'rejected' ? draft.received : '0' }])));
     setReviewed(false); setError('');
+  };
+  const chooseReceiptType = value => {
+    if (busy || loading || stale || canonicalBasis) return;
+    setBasisChoice(value); setReviewed(false); setError('');
   };
   const focusPanel = ref => { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); ref.current?.focus({ preventScroll: true }); };
   const status = String(po.status || '').replaceAll('_', ' ');
@@ -218,7 +278,7 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
           <fieldset disabled={busy} className="receipt-entry__grid">
             <section className="receipt-entry__panel receipt-entry__order" aria-labelledby="receipt-order-title">
               <h2 id="receipt-order-title">Purchase order</h2>
-              {initialOrder || reconciliation ? <div className="receipt-entry__selected-order"><strong>{order?.po_number || 'Select a purchase order'}</strong></div> : <PurchaseOrderSelector label="Purchase Order" fetchPage={availableOrders} value={order?.id} onChange={selected => { setOrder(selected); setDrafts({}); setStatusChoice(''); setSummary(null); setError(''); setStale(false); setReviewed(false); basisOperation.current = null; }} disabled={busy} />}
+              {initialOrder || reconciliation ? <div className="receipt-entry__selected-order"><strong>{order?.po_number || 'Select a purchase order'}</strong></div> : <PurchaseOrderSelector label="Purchase Order" fetchPage={availableOrders} value={order?.id} onChange={selected => { setOrder(selected); setDrafts({}); setStatusChoice('full'); setBasisChoice('quantity'); setBasisDrafts(emptyBasisDrafts(selected?.currency || '')); setSummary(null); setError(''); setStale(false); setReviewed(false); basisOperation.current = null; operation.current = null; seedFull.current = true; }} disabled={busy} />}
               {order && <>
                 {status && <span className="receipt-entry__badge receipt-entry__order-status">{status}</span>}
                 <details className="receipt-entry__order-details" open={(bounds?.width ?? window.innerWidth) > 720}><summary>Purchase order details</summary><dl className="receipt-entry__facts">
@@ -237,10 +297,10 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
               </>}
             </section>
             <div className="receipt-entry__centre">
-              <ReceiptDeliveryInformation form={form} basis={summary?.basis} actor={actor} deliveryStatus={deliveryStatus} onChange={change} onStatusChange={chooseDeliveryStatus} disabled={busy || !canCopy} />
+              <ReceiptDeliveryInformation form={form} basis={receiptType} actor={actor} deliveryStatus={deliveryStatus} onChange={change} onStatusChange={chooseDeliveryStatus} onTypeChange={chooseReceiptType} typeLocked={!!canonicalBasis} disabled={busy || loading || stale || (!!summary && !allowed && !canReviewBasis)} />
               <section ref={itemsRef} tabIndex={-1} className="receipt-entry__panel receipt-entry__items" aria-labelledby="receipt-items-title">
                 <div className="receipt-entry__panel-heading"><h2 id="receipt-items-title">{service ? `Service value (${currency})` : 'Items received'}</h2><button type="button" className="receipt-entry__button" disabled={busy || !canCopy} onClick={copyRemaining}><DocumentDuplicateIcon />{service ? 'Copy remaining value' : 'Copy remaining quantities'}</button></div>
-                {summary?.needs_basis_review && summary?.can_review_basis ? <ReceiptReceivingBasisEditor key={order.id} currency={currency} disabled={busy || loading || stale} saving={basisSaving} onSave={saveBasis} /> : loading ? <p role="status" className="receipt-entry__empty">Loading receipt balances…</p> : !order ? <p className="receipt-entry__empty">Select a purchase order to view its items.</p> : summary?.lines.length ? <div className="receipt-entry__table-scroll"><table>
+                {canReviewBasis ? <ReceiptReceivingBasisEditor basis={basisChoice} lines={basisDrafts[basisChoice]} onChange={lines => { setBasisDrafts(current => ({ ...current, [basisChoice]: lines })); setError(''); setReviewed(false); }} disabled={busy || loading || stale} saving={basisSaving} onSave={saveBasis} /> : loading ? <p role="status" className="receipt-entry__empty">Loading receipt balances…</p> : !order ? <p className="receipt-entry__empty">Select a purchase order to view its items.</p> : summary?.lines.length ? <div className="receipt-entry__table-scroll"><table>
                   <caption className="sr-only">{service ? 'Service value lines' : 'Purchase order lines'}</caption>
                   <thead><tr>{['Description', 'Ordered', 'Previously Received', service ? 'Received Value' : 'Received Quantity', 'Balance Remaining', 'Line Status'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
                   <tbody>{summary.lines.map(line => {
@@ -251,7 +311,7 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
                       <th scope="row">{line.description}<small>{service ? currency : line.uom}</small></th>
                       <td>{line.ordered}</td>
                       <td>{preview.previouslyReceived ?? '—'}{Number(line.pending) > 0 && <small>{line.pending} awaiting confirmation</small>}</td>
-                      <td><input aria-label={`Received ${service ? 'value' : 'quantity'} for ${line.description}`} aria-invalid={invalid || undefined} disabled={!allowed || stale} type="number" min="0" max={line.available} step="any" placeholder="0" value={received} onChange={event => { const value = event.target.value; setDrafts(current => ({ ...current, [line.line_id]: { received: value, rejected: statusChoice === 'rejected' ? value : '0' } })); setReviewed(false); }} /></td>
+                      <td><input aria-label={`Received ${service ? 'value' : 'quantity'} for ${line.description}`} aria-invalid={invalid || undefined} disabled={!allowed || stale} type="number" min="0" max={line.available} step="any" placeholder="0" value={received} onChange={event => { const value = event.target.value; setDrafts(current => ({ ...current, [line.line_id]: { received: value, rejected: statusChoice === 'rejected' ? value : '0' } })); if (statusChoice === 'full') setStatusChoice(''); setReviewed(false); }} /></td>
                       <td>{preview.balance ?? '—'}</td>
                       <td><span className={`receipt-entry__badge receipt-entry__badge--${preview.status === 'Complete' ? 'complete' : preview.status === 'Partial' ? 'partial' : invalid ? 'invalid' : 'neutral'}`}>{preview.status === 'Complete' && <CheckCircleIcon />}{preview.status || 'Check quantity'}</span>{preview.awaitingConfirmation && <small>Awaiting confirmation</small>}</td>
                     </tr>;
@@ -268,20 +328,20 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
               <h2 id="receipt-review-title">Receipt review</h2>
               <div className={`receipt-entry__readiness ${ready ? 'is-ready' : ''}`} aria-live="polite">{ready ? <CheckCircleIcon /> : <InformationCircleIcon />}<strong>{ready ? 'Ready to record' : stale ? 'Balance refresh required' : 'Complete receipt details'}</strong></div>
               <h3>Validation checklist</h3><ul className="receipt-entry__checklist">{checks.map(([label, passed]) => <li key={label}><span className={passed ? 'is-passed' : ''} aria-hidden="true">{passed ? <CheckIcon /> : null}</span><span className="sr-only">{passed ? 'Complete: ' : 'Required: '}</span>{label}</li>)}</ul>
-              <h3>Receipt outcome</h3><div className="receipt-entry__outcome"><span className="receipt-entry__outcome-dot" /><div><strong>{projection.valid ? projection.deliveryStatus === 'rejected' ? 'Rejected delivery recorded for review' : projection.complete ? 'Remaining balance entered' : 'Partial receipt' : 'Awaiting quantities'}</strong><p>{projection.valid ? projection.deliveryStatus === 'rejected' ? 'Awaiting authorized rejection review.' : 'Awaiting confirmation after recording.' : 'Enter received quantities to review.'}</p></div></div>
+              <h3>Receipt outcome</h3><div className="receipt-entry__outcome"><span className="receipt-entry__outcome-dot" /><div><strong>{fullBasisReady ? 'Full delivery' : projection.valid ? projection.deliveryStatus === 'rejected' ? 'Rejected delivery recorded for review' : projection.complete ? 'Remaining balance entered' : 'Partial receipt' : 'Awaiting quantities'}</strong><p>{fullBasisReady || projection.valid ? projection.deliveryStatus === 'rejected' ? 'Awaiting authorized rejection review.' : 'Awaiting confirmation after recording.' : 'Enter received quantities to review.'}</p></div></div>
               <h3>Summary</h3><dl className="receipt-entry__facts receipt-entry__summary">
                 <div><dt>Receipt number</dt><dd>Auto-generated</dd></div>
                 <div><dt>PO number</dt><dd>{order?.po_number || '—'}</dd></div>
                 <div><dt>Supplier</dt><dd>{orderText(po.vendor_name)}</dd></div>
                 <div><dt>Receipt date</dt><dd>{form.receipt_date ? receiptReviewDate(form.receipt_date) : '—'}</dd></div>
-                <div><dt>Lines entered</dt><dd>{projection.enteredLineCount}</dd></div>
+                <div><dt>Lines entered</dt><dd>{canReviewBasis ? pendingBasis?.lines.length || 0 : projection.enteredLineCount}</dd></div>
                 {projection.groups.map(group => <div key={group.key}><dt>Received ({group.label})</dt><dd>{group.received ?? '—'}</dd></div>)}
               </dl>
               <button type="button" className="receipt-entry__button receipt-entry__review-button" onClick={() => focusPanel(itemsRef)}>Review quantities<ChevronRightIcon /></button>
             </section>
           </fieldset>
         </div>
-        <footer className="receipt-entry__footer"><button type="button" disabled={busy} onClick={close} className="receipt-entry__button">Cancel</button><span className={`receipt-entry__footer-status ${ready ? 'is-ready' : ''}`}>{ready ? <CheckCircleIcon /> : <InformationCircleIcon />}{ready ? 'All required information complete' : stale ? 'Refresh receipt balances' : 'Complete the required information'}</span><button type="submit" disabled={busy || loading || stale || !allowed || !summary?.lines.length || (reconciliation && !reviewed)} className="receipt-entry__button receipt-entry__submit"><CheckIcon />{basisSaving ? 'Saving basis…' : busy ? 'Recording…' : reconciliation ? 'Record reconciliation' : 'Record receipt'}</button></footer>
+        <footer className="receipt-entry__footer"><button type="button" disabled={busy} onClick={close} className="receipt-entry__button">Cancel</button><span className={`receipt-entry__footer-status ${ready ? 'is-ready' : ''}`}>{ready ? <CheckCircleIcon /> : <InformationCircleIcon />}{ready ? 'All required information complete' : stale ? 'Refresh receipt balances' : 'Complete the required information'}</span><button type="submit" disabled={busy || loading || stale || (!allowed && !canReviewBasis)} className="receipt-entry__button receipt-entry__submit"><CheckIcon />{basisSaving ? 'Saving basis…' : busy ? 'Recording…' : reconciliation ? 'Record reconciliation' : 'Record receipt'}</button></footer>
       </form>
     </div></>, document.body)}</>;
 }

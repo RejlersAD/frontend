@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types';
 import { CalendarDaysIcon, ChevronDownIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
-export default function ReceiptDeliveryInformation({ form, basis, actor, deliveryStatus, onChange, onStatusChange, disabled }) {
+export default function ReceiptDeliveryInformation({ form, basis, actor, deliveryStatus, onChange, onStatusChange, onTypeChange, typeLocked, disabled }) {
   const identity = actor.data?.user || actor.data;
   const recorder = [identity?.first_name, identity?.last_name].filter(Boolean).join(' ').trim() || identity?.email || identity?.username || '';
   const location = typeof actor.data?.location === 'string' ? actor.data.location.trim() : '';
@@ -11,7 +11,7 @@ export default function ReceiptDeliveryInformation({ form, basis, actor, deliver
     <div className="receipt-delivery__fields">
       <div className="receipt-delivery__field"><span id="receipt-type-label">Receipt Type <b aria-hidden="true">*</b></span>
         <div className="receipt-delivery__segments receipt-delivery__type" role="group" aria-labelledby="receipt-type-label">
-          {[['quantity', 'Goods'], ['service_value', 'Services']].map(([value, label]) => <button type="button" key={value} aria-pressed={basis === value} disabled>{label}</button>)}
+          {[['quantity', 'Goods'], ['service_value', 'Services']].map(([value, label]) => <button type="button" key={value} aria-pressed={basis === value} disabled={disabled || (typeLocked && basis !== value)} onClick={() => onTypeChange(value)}>{label}</button>)}
         </div>
       </div>
       <label className="receipt-delivery__field">Delivery Date <b aria-hidden="true">*</b><span className="receipt-delivery__date"><CalendarDaysIcon aria-hidden="true" /><input type="date" required value={form.receipt_date} onChange={event => onChange('receipt_date', event.target.value)} /></span></label>
@@ -30,5 +30,6 @@ export default function ReceiptDeliveryInformation({ form, basis, actor, deliver
 
 ReceiptDeliveryInformation.propTypes = {
   form: PropTypes.object.isRequired, basis: PropTypes.string, actor: PropTypes.object.isRequired,
-  deliveryStatus: PropTypes.string, onChange: PropTypes.func.isRequired, onStatusChange: PropTypes.func.isRequired, disabled: PropTypes.bool,
+  deliveryStatus: PropTypes.string, onChange: PropTypes.func.isRequired, onStatusChange: PropTypes.func.isRequired,
+  onTypeChange: PropTypes.func.isRequired, typeLocked: PropTypes.bool, disabled: PropTypes.bool,
 };
