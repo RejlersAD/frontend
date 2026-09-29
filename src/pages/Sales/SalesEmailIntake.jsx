@@ -139,7 +139,6 @@ export default function SalesEmailIntake() {
 }
 
 function EmailIntakeViews() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const access = useSalesMailboxSetupAccess();
   const [setup, setSetup] = useState(null);
@@ -154,16 +153,8 @@ function EmailIntakeViews() {
   const view = searchParams.get("view") === "imported" ? "imported" : "shared";
   return (
     <section className="sales-email-workspace" aria-label="Email Intake workspace">
-      <header className="sales-email-page-header">
-        <div className="min-w-0">
-          <nav aria-label="Breadcrumb" className="sales-email-breadcrumb"><button type="button" onClick={() => navigate("/sales")}>Sales</button><span aria-hidden="true">/</span><span aria-current="page">Email Intake</span></nav>
-          <div className="min-w-0">
-            <h1>Email Intake</h1>
-            <p className="mt-1 text-sm text-slate-600">Review shared emails and turn qualified enquiries into opportunities.</p>
-          </div>
-        </div>
-        {view === "shared" && access.canCreate && <button type="button" onClick={() => setSetup({ connection: null })} className="sales-email-button"><PlusIcon className="h-4 w-4" aria-hidden="true" />Add shared mailbox</button>}
-      </header>
+      <h1 className="sr-only">Email Intake</h1>
+      {view === "shared" && access.canCreate && <div className="sales-email-workspace-actions"><button type="button" onClick={() => setSetup({ connection: null })} className="sales-email-button"><PlusIcon className="h-4 w-4" aria-hidden="true" />Add shared mailbox</button></div>}
       {view === "shared" ? <SalesSharedMailboxMessages key={mailboxes.revision} preferredConnectionId={mailboxes.selectedId} onConfigure={access.canManage ? (connection) => setSetup({ connection }) : undefined} /> : <ImportedEmailIntakes />}
       {view === "shared" && setup && access.canManage && (setup.connection || access.canCreate) && <SalesSharedMailboxSetup initialConnection={setup.connection} access={access} onClose={closeSetup} />}
     </section>
@@ -255,7 +246,13 @@ function ImportedEmailIntakes() {
         .includes(term);
     });
   }, [records, search, statusFilter]);
-  const selected = records.find((row) => row.id === selectedId) ?? null;
+  useEffect(() => {
+    if (!loading && !filtered.some((row) => row.id === selectedId)) {
+      setSelectedId(filtered[0]?.id ?? null);
+      setDialog(null);
+    }
+  }, [filtered, loading, selectedId]);
+  const selected = filtered.find((row) => row.id === selectedId) ?? null;
   useEffect(() => { setConfirmedClassification(""); }, [selectedId]);
   const extracted = selected?.extracted_information ?? {};
   const match = customerMatch(extracted);
@@ -419,7 +416,7 @@ function ImportedEmailIntakes() {
                   type="button"
                   key={value}
                   aria-pressed={statusFilter === value}
-                  onClick={() => setStatusFilter(value)}
+                  onClick={() => { setStatusFilter(value); setSelectedId(null); setDialog(null); }}
                   className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
                     statusFilter === value
                       ? "bg-blue-700 text-white"
@@ -443,7 +440,7 @@ function ImportedEmailIntakes() {
               <input
                 type="search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => { setSearch(event.target.value); setSelectedId(null); setDialog(null); }}
                 placeholder="Search sender or subject"
                 className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
               />
@@ -641,7 +638,16 @@ function ImportedEmailIntakes() {
                       {selected.duplicate_of && (
                         <button
                           type="button"
-                          onClick={() => setSelectedId(selected.duplicate_of)}
+                          onClick={() => {
+                            if (!records.some((row) => row.id === selected.duplicate_of)) {
+                              setError("The original email is not in the loaded enquiries.");
+                              return;
+                            }
+                            setError("");
+                            setStatusFilter("all");
+                            setSearch("");
+                            setSelectedId(selected.duplicate_of);
+                          }}
                           className="mt-5 w-full rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100"
                         >
                           View original: {selected.duplicate_of_subject || "email"}

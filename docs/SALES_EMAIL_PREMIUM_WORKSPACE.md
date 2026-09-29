@@ -6,6 +6,21 @@ sidebar and application shell remain unchanged. Administrator mailbox setup from
 main remains available. Desktop panels scroll independently; smaller screens
 retain readable stacked content and controls.
 
+The visible breadcrumb, page heading and introductory panel are removed. An
+accessible page heading remains available to screen readers. Opening the live
+inbox, changing mailbox/page, refreshing, or changing search/read filters loads
+the first visible email automatically. A manual selection remains until another
+selection or list action; ordinary renders do not force it back to the top.
+Selecting the already loaded/pending row reuses its request, and automatic
+selection does not move keyboard focus. Only the explicit Next step action moves
+focus to review. Failed previews retain explicit Retry; denied or missing sources
+clear the panes without automatic retry loops. Empty filters leave no selected
+email. Saved enquiry filters likewise select a visible row; View original clears
+filters to keep a loaded referenced record reachable. If that original is outside
+the loaded records, keep the current email and show an unavailable notice instead
+of selecting an unrelated row. All reads retain existing permissions and do not
+mark mail read or confirm classifications.
+
 ## Classification confirmation
 
 Before opening the opportunity form, explicitly confirm a supported email type.
@@ -35,7 +50,7 @@ Use the package's Node 20 runtime. The isolated browser configuration uses
 synthetic API fixtures and does not proxy requests to a real backend:
 
 ```text
-node node_modules/@playwright/test/cli.js test tests/accessibility/sales-email-premium-workspace.spec.js tests/accessibility/sales-shared-mailbox-messages.spec.js tests/accessibility/sales-mailbox-privacy.spec.js tests/accessibility/sales-shared-mailbox-setup.spec.js --config=playwright.email-premium.config.js --workers=1
+node node_modules/@playwright/test/cli.js test tests/accessibility/sales-email-auto-open.spec.js tests/accessibility/sales-email-premium-workspace.spec.js tests/accessibility/sales-shared-mailbox-messages.spec.js tests/accessibility/sales-mailbox-privacy.spec.js tests/accessibility/sales-shared-mailbox-setup.spec.js --config=playwright.email-auto-open.config.js --workers=1
 npm run build
 ```
 
@@ -44,3 +59,10 @@ stale/repeated requests, preserved input, literal source evidence, desktop/mobil
 layout and the retained mailbox setup flows. Release validation results are
 recorded in the pull request; earlier workspace checks are not a substitute for
 testing the combined release against current main.
+
+The compact-entry/automatic-preview follow-up passed 179 distinct browser cases
+on Node 20: 14 automatic-loading cases, 15 premium review cases, two privacy
+cases, 113 retained mailbox cases and 35 setup cases. Final scoped source/test
+lint and the production/PWA build passed. The browser checks use isolated
+synthetic responses, not live mailbox writes. Existing Browserslist, mixed-import
+and large-chunk build warnings remain. No backend or API contract changed.
