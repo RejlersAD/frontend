@@ -42,7 +42,7 @@ export function customerMatch(information) {
         text(match.detected_name) !== text(information.organization_name || information.company_name))) return null;
     const sources = Array.isArray(information?.analysis?.sources) ? information.analysis.sources : [];
     if (!text(match.detected_name) || !text(match.evidence.excerpt) || !match.evidence.source_ids.length ||
-        !match.evidence.source_ids.every((id) => sources.some((source) => source?.id === id && ["message", "quoted"].includes(source.origin)))) return null;
+        !match.evidence.source_ids.every((id) => sources.filter((source) => source?.id === id).length === 1 && sources.some((source) => source?.id === id && ["message", "quoted"].includes(source.origin)))) return null;
   }
   return match;
 }

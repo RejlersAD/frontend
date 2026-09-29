@@ -52,5 +52,7 @@ export default function useSalesEmailClients(enabled = true) {
     if (enabled) load();
     return () => { active.current = false; requestId.current += 1; };
   }, [enabled, load]);
-  return { ...state, load, access };
+  // A reopened form waits for its new directory request, even when the previous
+  // form left a complete list in state before the enabling effect runs.
+  return { ...state, loading: enabled && !active.current ? true : state.loading, load, access };
 }

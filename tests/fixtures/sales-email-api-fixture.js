@@ -91,6 +91,13 @@ async function prepare(page, options = {}) {
       response = state.importedHandler
         ? await state.importedHandler({ request, url })
         : { body: structuredClone(state.imported), hold: state.importedHold }
+    } else if (/\/sales\/email-intakes\/[^/]+\/$/.test(url.pathname)) {
+      const id = decodeURIComponent(url.pathname.split('/').at(-2))
+      const records = Array.isArray(state.imported) ? state.imported : state.imported.results
+      const record = records?.find(item => item.id === id)
+      response = state.importedDetailHandler
+        ? await state.importedDetailHandler({ request, url })
+        : record ? { body: structuredClone(record) } : { status: 404, body: { detail: 'Saved email not found.' } }
     } else if (url.pathname === '/api/v1/sales/clients/') {
       response = state.clientHandler
         ? await state.clientHandler({ request, url })
