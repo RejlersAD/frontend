@@ -39,6 +39,1052 @@ const opportunityDetails = (overrides = {}) => detail(message(), {
   can_create_opportunity: true, source_token: 'synthetic-source-token-1',
   extracted_information: detected(), ...overrides,
 })
+const conversationAnalysis = (overrides = {}) => ({
+  version: 1, message_kind: 'deadline_revision',
+  summary: 'Meridian Water Services requested a quotation for control-system engineering. The latest reply extends the proposal deadline.',
+  key_points: [
+    { label: 'Original request', value: 'RFQ: Water-treatment controls engineering', source_ids: ['original-request'] },
+    { label: 'Customer', value: 'Meridian Water Services', source_ids: ['original-request'] },
+    { label: 'Revised deadline', value: '2026-11-18', source_ids: ['latest-revision'] },
+  ],
+  requested_actions: [{ text: 'Submit the technical and commercial quotation by 18 November 2026.', source_ids: ['latest-revision'] }],
+  suggested_actions: [{ text: 'Review the revised deadline with the proposal team.', reason: 'The reply explicitly replaces the earlier deadline.', source_ids: ['latest-revision'] }],
+  limitations: ['Attachment contents have not been reviewed.'],
+  sources: [
+    { id: 'original-request', label: 'Original incoming request', subject: 'RFQ: Water-treatment controls engineering', sender_name: 'Leena Omar', sender_email: 'leena@meridian.example.test', sent_at: '2026-10-20T08:00:00Z', origin: 'message', excerpt: 'Customer: Meridian Water Services. Submission date: 10 November 2026. Please submit the quotation by 12 November 2026.' },
+    { id: 'latest-revision', label: 'Later deadline revision', subject: 'RE: RFQ: Water-treatment controls engineering', sender_name: 'Leena Omar', sender_email: 'leena@meridian.example.test', sent_at: '2026-10-28T08:00:00Z', origin: 'message', excerpt: 'The deadline is extended from 12 November to 18 November 2026. All other conditions remain unchanged.' },
+  ],
+  coverage: { status: 'complete', messages_reviewed: 3, segments_reviewed: 3, original_identified: true },
+  ...overrides,
+})
+const conversationInformation = (overrides = {}) => detected({
+  title: 'RFQ: Water-treatment controls engineering', customer_name: 'Meridian Water Services',
+  submission_date: '2026-11-10', due_date: '2026-11-18', deadline_date: '2026-11-18', request_type_code: 'RFQ',
+  tender_reference: 'MW-26-41', scope_summary: 'Control-system engineering for the water-treatment facility.',
+  evidence: { title: 'RFQ: Water-treatment controls engineering', customer_name: 'Customer: Meridian Water Services', submission_date: 'Submission date: 10 November 2026', due_date: 'The deadline is extended from 12 November to 18 November 2026.', request_type_code: 'Please submit the quotation.' },
+  field_sources: { title: ['original-request'], customer_name: ['original-request'], submission_date: ['original-request'], due_date: ['latest-revision'], request_type_code: ['original-request'] },
+  analysis: conversationAnalysis(), ...overrides,
+})
+const classification = (overrides = {}) => ({
+  version: 1, status: 'classified', code: 'clarification', label: 'Clarification',
+  confidence: { level: 'high', method: 'rule_evidence_v1', reason: 'The current message explicitly requests clarification.' },
+  needs_review: true,
+  evidence: [{ source_id: 'latest-revision', location: 'body', excerpt: 'Please clarify the control-system interface requirements.', rule_id: 'explicit_clarification' }],
+  alternatives: [], ...overrides,
+})
+
+const matchingClient = (overrides = {}) => canonicalClient({ company_name: 'Meridian Water Services', ...overrides })
+const matchCandidate = (overrides = {}) => ({
+  id: 'client-one', client_code: 'CLI-101', company_name: 'Meridian Water Services',
+  matched_fields: ['legal_name'], status: 'active', verification_status: 'verified',
+  new_proposals_permitted: true, ...overrides,
+})
+const customerMatchResult = (overrides = {}) => ({
+  version: 1, status: 'matched', method: 'exact_name_v1', detected_name: 'Meridian Water Services',
+  needs_review: true, evidence: { excerpt: 'Customer: Meridian Water Services', source_ids: ['original-request'] },
+  candidates: [matchCandidate()], has_more: false, ...overrides,
+})
+const matchingInformation = (overrides = {}) => conversationInformation({ customer_match: customerMatchResult(), ...overrides })
+const matchRegion = scope => scope.getByRole('region', { name: 'Customer matching', exact: true })
+const useMatchedClient = (scope, name = 'Meridian Water Services', code = 'CLI-101') => scope.getByRole('button', { name: `Use this client: ${name}${code ? ` (${code})` : ''}`, exact: true })
+
+const identifiedAnalysis = (overrides = {}) => {
+  const analysis = conversationAnalysis()
+  return { ...analysis,
+    selected_source_id: 'latest-revision', original_request_source_id: 'original-request', first_incoming_source_id: 'original-request',
+    sources: analysis.sources.map((source, index) => ({ ...source, direction: 'incoming',
+      thread_role: index === 0 ? 'new_message' : 'reply', thread_role_basis: 'synthetic_evidence',
+      thread_role_reason: index === 0 ? 'The available source explicitly opens the request.' : 'The message refers to the earlier request.',
+      is_selected: index === 1, is_original_request: index === 0, is_first_incoming: index === 0,
+    })),
+    coverage: { ...analysis.coverage, messages_reviewed: 2, segments_reviewed: 2 }, ...overrides,
+  }
+}
+const threadInformation = (overrides = {}) => matchingInformation({ analysis: identifiedAnalysis(), ...overrides })
+const conversationRegion = scope => scope.getByRole('region', { name: 'Conversation', exact: true })
+const conversationItem = (page, subject) => conversationRegion(analysisPanel(page)).getByRole('listitem').filter({ has: page.getByText(subject, { exact: true }) })
+
+const intelligenceResult = (overrides = {}) => ({
+  version: 1, source: { source_id: 'original-request', basis: 'original_incoming', confirmed: true },
+  customer_name: { status: 'detected', reason: 'Customer name is supported by the original organization evidence.', source_ids: ['original-request'] },
+  customer_domain: { status: 'detected', reason: 'Customer domain is evidenced by the original sender.', source_ids: ['original-request'] },
+  submission_date: { status: 'detected', reason: 'Genuine sent date of the original incoming email.', source_ids: ['original-request'] },
+  entities: [
+    { entity_type: 'organization', value: 'Meridian Water Services', evidence: 'Customer: Meridian Water Services', source_ids: ['original-request'] },
+    { entity_type: 'contact', value: 'Leena Omar', evidence: 'From: Leena Omar <leena@meridian.example.test>', source_ids: ['original-request'] },
+    { entity_type: 'email', value: 'leena@meridian.example.test', evidence: 'From: Leena Omar <leena@meridian.example.test>', source_ids: ['original-request'] },
+    { entity_type: 'domain', value: 'meridian.example.test', evidence: 'From: Leena Omar <leena@meridian.example.test>', source_ids: ['original-request'] },
+    { entity_type: 'project', value: 'Water-treatment controls engineering', evidence: 'RFQ: Water-treatment controls engineering', source_ids: ['original-request'] },
+  ],
+  deadline_review: { status: 'detected', reason: 'The reply explicitly replaces the earlier proposal deadline.', source_ids: ['latest-revision'] },
+  opportunity_detection: { status: 'candidate', needs_review: true, reason: 'An explicit RFQ requests an engineering quotation.', source_ids: ['original-request'] },
+  field_confidence: {
+    customer_name: { level: 'high', reason: 'The original request names this customer.', source_ids: ['original-request'] },
+    submission_date: { level: 'high', reason: 'Original sent metadata is available.', source_ids: ['original-request'] },
+    due_date: { level: 'medium', reason: 'Review the stated deadline amendment.', source_ids: ['latest-revision'] },
+  }, ...overrides,
+})
+const intelligenceInformation = (overrides = {}) => threadInformation({
+  detection_version: 2, customer_name: 'Meridian Water Services', customer_domain: 'meridian.example.test',
+  organization_name: 'Meridian Water Services', company_name: 'Meridian Water Services',
+  submission_date: '2026-10-20', intelligence: intelligenceResult(),
+  evidence: { ...conversationInformation().evidence, customer_name: 'Customer: Meridian Water Services', customer_domain: 'From: Leena Omar <leena@meridian.example.test>', submission_date: 'Sent: 20 October 2026 08:00 UTC' },
+  ...overrides,
+})
+const detectionPanel = scope => scope.getByRole('region', { name: 'Detected information', exact: true })
+const intelligencePanel = scope => scope.getByRole('region', { name: 'Detection review', exact: true })
+const detectedCard = (scope, label) => detectionPanel(scope).locator('dl').first().getByText(label, { exact: true }).locator('..')
+
+test('intelligence v2 live and saved detection show the customer name with five visible labels and keep the domain in source evidence', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1536, height: 960 })
+  const information = intelligenceInformation()
+  const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: information }),
+    imported: paginated([{ ...message({ id: 'intelligence-saved' }), status: 'received', extracted_information: information, can_create_opportunity: true }]),
+  })
+  await row(page).click()
+  for (const view of ['live', 'imported']) {
+    if (view === 'imported') await navigateView(page, view)
+    const fieldLabels = detectionPanel(page).locator('dl').first().locator('dt')
+    await expect(fieldLabels).toHaveText(['Title (Subject)', 'Customer Name', 'Submission Date', 'Due Date', 'Type of Request'])
+    for (const label of await fieldLabels.all()) {
+      const bounds = await label.boundingBox()
+      expect(bounds.width).toBeGreaterThan(20)
+      expect(bounds.height).toBeGreaterThan(10)
+      await expect(label).not.toHaveClass(/sr-only/)
+    }
+    await expect(detectedCard(page, 'Customer Name')).toContainText('Meridian Water Services')
+    await expect(detectedCard(page, 'Customer Name')).not.toContainText('meridian.example.test')
+    await expect(detectedCard(page, 'Submission Date')).toContainText('2026-10-20')
+    await expect(detectedCard(page, 'Submission Date')).not.toContainText(/2026-10-28|2026-11-10|2026-09-28/)
+    await expect(detectedCard(page, 'Customer Name').locator('dd')).toHaveText('Meridian Water Services')
+    await expect(detectedCard(page, 'Submission Date').locator('dd')).toHaveText('2026-10-20')
+    await expect(detectedCard(page, 'Due Date')).toContainText('2026-11-18')
+    await expect(detectedCard(page, 'Type of Request').locator('dd')).toHaveText('RFQ')
+    await expect(detectedCard(page, 'Customer Name')).not.toContainText('Customer name is supported by the original organization evidence.')
+    await expect(detectedCard(page, 'Submission Date')).not.toContainText('Genuine sent date of the original incoming email.')
+    await expect(matchRegion(page)).toContainText('Meridian Water Services')
+    if (view === 'live') await page.screenshot({ path: testInfo.outputPath('sales-email-intelligence-fields-desktop.png'), fullPage: true })
+    const sourceEvidence = detectionPanel(page).locator(':scope > details')
+    await expect(sourceEvidence.getByText('meridian.example.test', { exact: true })).not.toBeVisible()
+    await sourceEvidence.locator(':scope > summary').click()
+    await expect(sourceEvidence.getByText('meridian.example.test', { exact: true })).toBeVisible()
+    await expect(sourceEvidence.getByText('Customer name is supported by the original organization evidence.', { exact: true })).toBeVisible()
+    await sourceEvidence.locator(':scope > summary').click()
+    await intelligencePanel(page).getByText('Detected entities', { exact: true }).click()
+    await expect(intelligencePanel(page)).toContainText('Contact name')
+    await expect(intelligencePanel(page)).toContainText('Leena Omar')
+    await expect(intelligencePanel(page)).toContainText('Water-treatment controls engineering')
+    await expect(intelligencePanel(page).getByText('meridian.example.test', { exact: true })).toHaveCount(0)
+    await expect(conversationRegion(analysisPanel(page))).toContainText('Selected email')
+    await expect(conversationRegion(analysisPanel(page))).toContainText('Original request')
+    if (view === 'live') await page.screenshot({ path: testInfo.outputPath('sales-email-intelligence-desktop.png'), fullPage: true })
+  }
+  assertReadOnly(state)
+})
+
+test('intelligence v2 proposal dates and canonical client remain separate from email sent date and domain', async ({ page }) => {
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: intelligenceInformation() }), clients: paginated([matchingClient()]), allowConversion: true })
+  let dialog = await openOpportunityForm(page)
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
+  await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('2026-11-18')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await refresh(page).click()
+  state.details = opportunityDetails({ extracted_information: intelligenceInformation({ deadline_date: '', due_date: '' }) })
+  dialog = await openOpportunityForm(page)
+  await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('')
+  await useMatchedClient(dialog).click()
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  expect(conversionRequests(state)).toHaveLength(0)
+  await dialog.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(conversionRequests(state)).toHaveLength(1)
+  expect(conversionRequests(state)[0].body).toMatchObject({ client: 'client-one', submission_due_date: null, estimated_value: '850000.50' })
+  expect(conversionRequests(state)[0].body).not.toHaveProperty('new_client')
+  expect(JSON.stringify(conversionRequests(state)[0].body)).not.toContain('meridian.example.test')
+  assertExplicitConversionOnly(state)
+})
+
+test('intelligence v2 a missing customer name never falls back to a known domain and a returned display name is kept literally', async ({ page }) => {
+  const information = intelligenceInformation({ customer_name: '', organization_name: '', company_name: '',
+    customer_match: customerMatchResult({ status: 'not_detected', detected_name: '', candidates: [], evidence: { excerpt: '', source_ids: [] } }),
+    intelligence: intelligenceResult({ customer_name: { status: 'not_detected', reason: 'The customer name has not been established.', source_ids: [] } }),
+  })
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: information }) })
+  await row(page).click()
+  await expect(detectedCard(page, 'Customer Name').locator('dd')).toHaveText('Not detected')
+  await expect(detectedCard(page, 'Customer Name')).not.toContainText('meridian.example.test')
+  const sourceEvidence = detectionPanel(page).locator(':scope > details')
+  await sourceEvidence.locator(':scope > summary').click()
+  await expect(sourceEvidence.getByText('meridian.example.test', { exact: true })).toBeVisible()
+  await refresh(page).click()
+  state.details = opportunityDetails({ extracted_information: { ...information, customer_name: 'Meridian',
+    intelligence: intelligenceResult({ customer_name: { status: 'detected', basis: 'domain_label', reason: 'The supplied display name requires legal-organization verification.', source_ids: ['original-request'] } }),
+  } })
+  await row(page).click()
+  await expect(detectedCard(page, 'Customer Name').locator('dd')).toHaveText('Meridian')
+  await expect(detectedCard(page, 'Customer Name')).not.toContainText('meridian.example.test')
+  await expect(matchRegion(page)).toContainText('Customer name not detected')
+  assertReadOnly(state)
+})
+
+test('intelligence v2 portal and historical unknown source dates require human verification without sender or received-date guesses', async ({ page }) => {
+  const information = intelligenceInformation({ customer_name: '', customer_domain: '', submission_date: '', due_date: '', deadline_date: '', evidence: {}, field_sources: {},
+    intelligence: intelligenceResult({
+      customer_name: { status: 'requires_verification', reason: 'The original customer name requires verification.', source_ids: ['original-request'] },
+      customer_domain: { status: 'requires_verification', reason: 'SAP Ariba sender is a relay; verify the customer domain.', source_ids: ['original-request'] },
+      submission_date: { status: 'requires_verification', reason: 'The original genuine sent timestamp is unavailable.', source_ids: ['original-request'] },
+      deadline_review: { status: 'requires_verification', reason: 'Verify the deadline in the authorized portal; its contents were not retrieved.', source_ids: ['original-request'] },
+    }),
+  })
+  const state = await prepare(page, { details: opportunityDetails({ sender_email: 'relay@ariba.example.test', extracted_information: information }) })
+  await row(page).click()
+  await expect(detectedCard(page, 'Customer Name')).toContainText('Not detected')
+  await expect(detectedCard(page, 'Customer Name')).not.toContainText('ariba.example.test')
+  await expect(detectedCard(page, 'Submission Date')).toContainText('Not detected')
+  await expect(detectedCard(page, 'Submission Date')).not.toContainText('2026-09-28')
+  const sourceEvidence = detectionPanel(page).locator(':scope > details')
+  await expect(sourceEvidence.getByText('SAP Ariba sender is a relay; verify the customer domain.', { exact: true })).not.toBeVisible()
+  await sourceEvidence.locator(':scope > summary').click()
+  await expect(sourceEvidence.getByText('SAP Ariba sender is a relay; verify the customer domain.', { exact: true })).toBeVisible()
+  await expect(sourceEvidence.getByText('The original genuine sent timestamp is unavailable.', { exact: true })).toBeVisible()
+  await expect(intelligencePanel(page)).toContainText('Verify the deadline in the authorized portal')
+  await expect(detectedCard(page, 'Due Date')).toContainText('Not detected')
+  assertReadOnly(state)
+})
+
+test('intelligence v2 domain-only matching cannot offer a new legal company while an evidenced organization remains reviewable', async ({ page }) => {
+  const information = intelligenceInformation({ organization_name: '', company_name: '', customer_match: customerMatchResult({ status: 'no_match', detected_name: 'meridian.example.test', candidates: [] }) })
+  const intake = { ...message({ id: 'domain-only-intake' }), status: 'received', extracted_information: information, can_create_opportunity: true, can_create_client: true }
+  const state = await prepare(page, { view: 'imported', imported: paginated([intake]), clients: paginated([matchingClient()]) })
+  await expect(matchRegion(page)).toContainText('Customer matching unavailable')
+  await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  let dialog = opportunityDialog(page)
+  await expect(dialog.getByRole('option', { name: /Add new client/ })).toHaveCount(0)
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  state.imported = paginated([{ ...intake, extracted_information: intelligenceInformation({ customer_match: customerMatchResult({ status: 'no_match', candidates: [] }) }) }])
+  await navigateView(page, 'live')
+  await expect(row(page)).toBeVisible()
+  await navigateView(page, 'imported')
+  await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  dialog = opportunityDialog(page)
+  await expect(dialog.getByRole('option', { name: 'Add new client: Meridian Water Services', exact: true })).toHaveCount(1)
+  await expect(dialog.getByRole('option', { name: 'Add new client: meridian.example.test', exact: true })).toHaveCount(0)
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
+  assertReadOnly(state)
+})
+
+test('intelligence v2 ambiguous deadlines and opportunity signals remain suggestions without granting creation authority', async ({ page }) => {
+  const state = await prepare(page)
+  for (const [index, status] of ['candidate', 'follow_up', 'not_established', 'ambiguous'].entries()) {
+    if (index) await refresh(page).click()
+    state.details = opportunityDetails({ can_create_opportunity: false, extracted_information: intelligenceInformation({ due_date: '', deadline_date: '',
+      intelligence: intelligenceResult({ deadline_review: { status: 'ambiguous', reason: 'Two conflicting proposal dates require review.', source_ids: ['original-request', 'latest-revision'] },
+        opportunity_detection: { status, needs_review: true, reason: 'Review the explicit request and current reply.', source_ids: ['original-request'] },
+      }),
+    }) })
+    await row(page).click()
+    await expect(intelligencePanel(page)).toContainText('Conflicting or ambiguous deadlines')
+    await expect(detectedCard(page, 'Due Date')).toContainText('Not detected')
+    await expect(intelligencePanel(page)).toContainText(({ candidate: 'Potential opportunity', follow_up: 'Follow-up to an existing request', not_established: 'Opportunity not established', ambiguous: 'Requires review' })[status])
+    await expect(preview(page).getByRole('button', { name: 'Create opportunity', exact: true })).toHaveCount(0)
+  }
+  assertReadOnly(state)
+})
+
+test('intelligence v2 malformed status evidence and numerical confidence never become confirmed facts', async ({ page }) => {
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: intelligenceInformation({
+    intelligence: intelligenceResult({
+      customer_name: { status: 'detected', reason: 'Unreferenced customer claim.', source_ids: ['missing-source'] },
+      customer_domain: { status: 'detected', reason: 'Unreferenced claim.', source_ids: ['missing-source'] },
+      submission_date: { status: 'approved', reason: 'Unsupported claim.', source_ids: ['original-request'] },
+      entities: [{ entity_type: 'organization', value: 'Unsupported Corporation', evidence: 'Invented source', source_ids: ['missing-source'] }],
+      opportunity_detection: { status: 'candidate', needs_review: false, reason: 'Unsupported authority.', source_ids: ['original-request'] },
+      field_confidence: { customer_name: { level: 0.98, reason: '98% certainty', source_ids: ['original-request'] }, due_date: { level: 'high', reason: 'Unreferenced confidence', source_ids: ['missing-source'] } },
+    }),
+  }) }) })
+  await row(page).click()
+  await expect(detectedCard(page, 'Customer Name')).toContainText('Unavailable')
+  await expect(detectedCard(page, 'Submission Date')).toContainText('Unavailable')
+  await intelligencePanel(page).getByText('Detected entities', { exact: true }).click()
+  await intelligencePanel(page).getByText('Field confidence', { exact: true }).click()
+  await expect(intelligencePanel(page)).toContainText('No sourced entities are available.')
+  await expect(intelligencePanel(page)).toContainText('Field confidence is unavailable.')
+  await expect(intelligencePanel(page)).not.toContainText(/98%|Unsupported Corporation|Unsupported authority/)
+  await refresh(page).click()
+  state.details = opportunityDetails({ extracted_information: intelligenceInformation({ intelligence: { version: 9 } }) })
+  await row(page).click()
+  await expect(intelligencePanel(page)).toHaveText('Detection review is unavailable.')
+  await refresh(page).click()
+  state.details = opportunityDetails()
+  await row(page).click()
+  await expect(detectedCard(page, 'Customer Name')).toContainText('Example Energy LLC')
+  await expect(intelligencePanel(page)).toHaveCount(0)
+  assertReadOnly(state)
+})
+
+test('intelligence v2 source refresh updates review evidence while preserving reviewed client amount and proposal dates', async ({ page }) => {
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: intelligenceInformation() }), clients: paginated([matchingClient()]),
+    allowConversion: true, conversionStatus: 409, conversion: { code: 'email_review_changed' },
+  })
+  const dialog = await reviewedForm(page)
+  await dialog.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  state.details = opportunityDetails({ source_token: 'intelligence-refreshed-source', extracted_information: intelligenceInformation({ customer_name: 'Revised Water Services', customer_domain: 'revised.example.test', submission_date: '2026-10-19' }) })
+  await dialog.getByRole('button', { name: 'Reload email details', exact: true }).click()
+  await dialog.getByText('Review refreshed email', { exact: true }).click()
+  await expect(detectedCard(dialog, 'Customer Name')).toContainText('Revised Water Services')
+  await expect(detectedCard(dialog, 'Customer Name')).not.toContainText('revised.example.test')
+  await expect(detectedCard(dialog, 'Submission Date')).toContainText('2026-10-19')
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Reviewed pump package')
+  await expect(dialog.getByLabel('Estimated value', { exact: true })).toHaveValue('275000.25')
+  await expect(dialog.getByLabel('Expected award date', { exact: true })).toHaveValue('2026-12-15')
+  await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('2026-10-20')
+  expect(conversionRequests(state)).toHaveLength(1)
+  assertExplicitConversionOnly(state)
+})
+
+test('intelligence v2 literal entities and categorical evidence remain accessible on mobile without changing Next step', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const hostile = '<img src="https://intelligence.example.test/beacon" onerror="window.intelligenceInjected=true"><script>window.intelligenceInjected=true</script>'
+  const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: intelligenceInformation({
+    intelligence: intelligenceResult({ entities: [{ entity_type: 'project', value: hostile, evidence: hostile, source_ids: ['original-request'] }] }),
+  }) }) })
+  await row(page).click()
+  const entities = intelligencePanel(page).getByText('Detected entities', { exact: true })
+  await entities.focus()
+  await page.keyboard.press('Enter')
+  await expect(intelligencePanel(page)).toContainText(hostile)
+  await intelligencePanel(page).getByText('Field confidence', { exact: true }).click()
+  await expect(intelligencePanel(page)).toContainText('Original email sent date: High')
+  await expect(intelligencePanel(page)).toContainText('Proposal deadline: Medium')
+  await expect(intelligencePanel(page).locator('img,script,iframe,a')).toHaveCount(0)
+  expect(await page.evaluate(() => window.intelligenceInjected)).toBeUndefined()
+  await intelligencePanel(page).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-intelligence-literal-mobile.png'), fullPage: true })
+  await preview(page).locator('header').getByRole('button', { name: 'Next step', exact: true }).click()
+  await expect(suggestedStep(page)).toBeFocused()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  const result = await new AxeBuilder({ page }).include('main').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+  expect(result.violations).toEqual([])
+  state.details = opportunityDetails({ extracted_information: intelligenceInformation() })
+  await refresh(page).click()
+  await row(page).click()
+  await detectionPanel(page).locator('dl').first().scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-simple-labels-mobile.png'), fullPage: true })
+  await intelligencePanel(page).getByText('Detected entities', { exact: true }).click()
+  await intelligencePanel(page).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-intelligence-mobile.png'), fullPage: true })
+  assertReadOnly(state)
+})
+
+test('thread identification badges use server roles independently from direction, subject prefixes and list order', async ({ page }) => {
+  const records = [
+    message({ id: 'reply-no-prefix', subject: 'Updated controls scope', thread_role: 'reply', direction: 'incoming' }),
+    message({ id: 'new-original', subject: 'RFQ: Controls engineering', thread_role: 'new_message', direction: 'incoming' }),
+    message({ id: 'forward-no-prefix', subject: 'Engineering package for your review', thread_role: 'forward', direction: 'outgoing' }),
+    message({ id: 'unknown-prefix', subject: 'RE: Unproven subject prefix', thread_role: 'unsupported_role', direction: 'incoming' }),
+    message({ id: 'draft-reply', subject: 'RE: Unsent message', thread_role: 'reply', direction: 'draft', is_draft: true }),
+  ]
+  const state = await prepare(page, { messages: listing(records), detailHandler: ({ url }) => ({ body: detail(records.find(record => record.id === url.searchParams.get('message_id'))) }) })
+  for (const [index, label] of ['Reply', 'New message', 'Forward', 'Thread role unknown', 'Draft'].entries()) {
+    const item = rowItem(page, records[index].subject)
+    await expect(item.getByText(label, { exact: true })).toHaveCount(1)
+    await expect(item.getByText('First incoming available', { exact: true })).toHaveCount(0)
+    await expect(item.getByText('Original request', { exact: true })).toHaveCount(0)
+  }
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(0)
+  await row(page, records[0].subject).click()
+  await expect(preview(page).locator('header').getByText('Selected email: Reply', { exact: true })).toBeVisible()
+  await expect(preview(page).locator('header').getByText('Incoming', { exact: true })).toBeVisible()
+  await row(page, records[4].subject).click()
+  await expect(preview(page).locator('header').getByText('Draft', { exact: true })).toHaveCount(1)
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(2)
+  assertReadOnly(state)
+})
+
+test('thread identification keeps the selected reply separate from the original request and marks every source', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1536, height: 960 })
+  const selected = message({ subject: 'Updated controls scope', thread_role: 'reply', direction: 'incoming' })
+  const analysis = identifiedAnalysis()
+  analysis.sources[1].subject = selected.subject
+  const state = await prepare(page, { shell: true, messages: listing([selected]), details: opportunityDetails({ ...selected, extracted_information: threadInformation({ analysis }), body_text: 'Current reply: please use the revised interface specification.' }) })
+  await row(page, selected.subject).click()
+  await expect(preview(page).locator('header')).toContainText('Selected email: Reply')
+  await expect(preview(page).locator('header')).toContainText(selected.subject)
+  const fields = page.getByRole('region', { name: 'Detected information', exact: true }).locator('dl').first()
+  await expect(fields).toContainText('RFQ: Water-treatment controls engineering')
+  await expect(fields).toContainText('Meridian Water Services')
+  const panel = analysisPanel(page)
+  const original = conversationItem(page, analysis.sources[0].subject)
+  const reply = conversationItem(page, selected.subject)
+  await expect(original.getByText('New message', { exact: true })).toBeVisible()
+  await expect(original.getByText('Original request', { exact: true })).toBeVisible()
+  await expect(original.getByText('First incoming available', { exact: true })).toBeVisible()
+  await expect(original.getByText('Selected email', { exact: true })).toHaveCount(0)
+  await expect(reply.getByText('Reply', { exact: true })).toBeVisible()
+  await expect(reply.getByText('Selected email', { exact: true })).toBeVisible()
+  await reply.getByText('Source evidence', { exact: true }).click()
+  await expect(reply.locator('blockquote')).toHaveText(analysis.sources[1].excerpt)
+  await expect(preview(page)).toContainText('Current reply: please use the revised interface specification.')
+  await panel.evaluate(node => { node.scrollTop = 0 })
+  await page.screenshot({ path: testInfo.outputPath('sales-email-thread-identification-desktop.png') })
+  const before = await panePosition(page)
+  await preview(page).locator('header').getByRole('button', { name: 'Next step', exact: true }).click()
+  await expect(suggestedStep(page)).toBeFocused()
+  await expect.poll(async () => (await panePosition(page)).source).toBeGreaterThan(before.source)
+  expect(await panePosition(page)).toMatchObject({ document: before.document, main: before.main, reading: before.reading, list: before.list })
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(1)
+  assertReadOnly(state)
+})
+
+test('thread identification saved rows identify each selected email while preserving shared original request fields', async ({ page }) => {
+  const originalAnalysis = identifiedAnalysis({ selected_source_id: 'original-request' })
+  originalAnalysis.sources = originalAnalysis.sources.map(source => ({ ...source, is_selected: source.id === 'original-request' }))
+  const replyAnalysis = identifiedAnalysis({ coverage: { status: 'saved_content', messages_reviewed: 2, segments_reviewed: 2, original_identified: true }, limitations: ['Only captured incoming messages and their quoted content were available.'] })
+  const original = { ...message({ id: 'saved-original', subject: 'RFQ: Water-treatment controls engineering' }), status: 'received', extracted_information: threadInformation({ analysis: originalAnalysis }) }
+  const reply = { ...message({ id: 'saved-reply', subject: 'Updated deadline for your quotation' }), status: 'received', extracted_information: threadInformation({ analysis: replyAnalysis }) }
+  const state = await prepare(page, { view: 'imported', imported: paginated([original, reply]) })
+  const originalRow = page.locator('.sales-email-list-scroll > button').filter({ hasText: original.subject })
+  const replyRow = page.locator('.sales-email-list-scroll > button').filter({ hasText: reply.subject })
+  await expect(originalRow.getByText('New message', { exact: true })).toBeVisible()
+  await expect(replyRow.getByText('Reply', { exact: true })).toBeVisible()
+  await expect(page.locator('.sales-email-preview-header')).toContainText('Selected email: New message')
+  await replyRow.click()
+  await expect(page.locator('.sales-email-preview-header')).toContainText('Selected email: Reply')
+  await expect(conversationItem(page, replyAnalysis.sources[1].subject)).toContainText('Selected email')
+  await expect(page.getByRole('region', { name: 'Detected information', exact: true }).locator('dl').first()).toContainText(original.subject)
+  await expect(analysisPanel(page)).toContainText('Based on available saved messages and their quoted content.')
+  await expect(analysisPanel(page)).toContainText('Only captured incoming messages and their quoted content were available.')
+  expect(state.requests.filter(request => request.path.endsWith('/message/'))).toHaveLength(0)
+  assertReadOnly(state)
+})
+
+test('thread identification permits the first available incoming message to be a reply without inventing an original', async ({ page }) => {
+  const source = { ...identifiedAnalysis().sources[1], is_first_incoming: true, is_selected: true, is_original_request: false }
+  const analysis = identifiedAnalysis({ sources: [source], first_incoming_source_id: source.id, original_request_source_id: null,
+    coverage: { status: 'partial', messages_reviewed: 1, segments_reviewed: 1, original_identified: false }, limitations: ['Earlier messages were not available.'],
+  })
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: threadInformation({ analysis }) }) })
+  await row(page).click()
+  const item = conversationItem(page, source.subject)
+  await expect(item.getByText('Reply', { exact: true })).toBeVisible()
+  await expect(item.getByText('First incoming available', { exact: true })).toBeVisible()
+  await expect(item.getByText('Original request', { exact: true })).toHaveCount(0)
+  await expect(conversationRegion(analysisPanel(page))).toContainText('Original-request evidence is unavailable.')
+  await expect(analysisPanel(page)).toContainText('Earlier messages were not available.')
+  await expect(analysisPanel(page)).not.toContainText('Original request identified in the reviewed content.')
+  assertReadOnly(state)
+})
+
+test('thread identification distinguishes quoted original evidence from actual incoming messages', async ({ page }) => {
+  const sources = identifiedAnalysis().sources
+  sources[0] = { ...sources[0], origin: 'quoted', is_first_incoming: false }
+  sources[1] = { ...sources[1], is_first_incoming: true }
+  const analysis = identifiedAnalysis({ sources, first_incoming_source_id: sources[1].id, coverage: { status: 'selected_only', messages_reviewed: 1, segments_reviewed: 2, original_identified: true } })
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: threadInformation({ analysis }) }) })
+  await row(page).click()
+  const original = conversationItem(page, sources[0].subject)
+  await expect(original.getByText('Original request', { exact: true })).toBeVisible()
+  await expect(original.getByText('Quoted content · not a separate mailbox message', { exact: true })).toBeVisible()
+  await expect(original.getByText('First incoming available', { exact: true })).toHaveCount(0)
+  await expect(conversationItem(page, sources[1].subject).getByText('First incoming available', { exact: true })).toBeVisible()
+  await expect(conversationRegion(analysisPanel(page)).getByText('Mailbox message', { exact: true })).toHaveCount(1)
+  await expect(analysisPanel(page)).toContainText('1 message reviewed · 2 source segments')
+  assertReadOnly(state)
+})
+
+test('thread identification missing or contradictory references never promote source order into first or original identity', async ({ page }) => {
+  const state = await prepare(page)
+  const base = identifiedAnalysis()
+  const cases = [
+    { ...base, first_incoming_source_id: null, original_request_source_id: null, selected_source_id: null },
+    { ...base, first_incoming_source_id: 'missing-source', original_request_source_id: 'missing-source', selected_source_id: 'missing-source' },
+    { ...base, sources: base.sources.map(source => ({ ...source, thread_role: 'unsupported', is_selected: 'true', is_original_request: 'true', is_first_incoming: 'true' })) },
+    { ...base, sources: base.sources.map(source => ({ ...source, origin: 'quoted', sent_at: 'not-a-date' })), coverage: { ...base.coverage, original_identified: false } },
+    { ...base, sources: [...base.sources, ...base.sources.map(source => ({ ...source, origin: 'quoted' }))] },
+  ]
+  for (const [index, analysis] of cases.entries()) {
+    if (index) await refresh(page).click()
+    state.details = opportunityDetails({ extracted_information: threadInformation({ analysis }) })
+    await row(page).click()
+    const conversation = conversationRegion(analysisPanel(page))
+    await expect(conversation.getByText('Original request', { exact: true })).toHaveCount(0)
+    await expect(conversation.getByText('First incoming available', { exact: true })).toHaveCount(0)
+    await expect(conversation.getByText('Selected email', { exact: true })).toHaveCount(0)
+    await expect(preview(page).locator('header')).toContainText('Selected email: Thread role unknown')
+    await expect(conversation).toContainText('The selected email\'s source is not identified.')
+    await expect(analysisPanel(page)).not.toContainText('Original request identified in the reviewed content.')
+  }
+  await refresh(page).click()
+  state.details = opportunityDetails({ extracted_information: conversationInformation() })
+  await row(page).click()
+  await expect(preview(page).locator('header')).toContainText('Selected email: Thread role unknown')
+  await expect(conversationRegion(analysisPanel(page))).toHaveCount(0)
+  await expect(analysisPanel(page).getByText('Thread sources (2)', { exact: true })).toBeVisible()
+  assertReadOnly(state)
+})
+
+test('thread identification ignores a late conversation when another email is selected', async ({ page }) => {
+  const hold = deferred()
+  const other = secondMessage()
+  const otherAnalysis = identifiedAnalysis({ sources: [{ ...identifiedAnalysis().sources[1], id: 'other-source', subject: 'Current independent message', thread_role: 'new_message', is_first_incoming: false, is_original_request: false }],
+    selected_source_id: 'other-source', original_request_source_id: null, first_incoming_source_id: null, coverage: { status: 'selected_only', messages_reviewed: 1, segments_reviewed: 1, original_identified: false },
+  })
+  const state = await prepare(page, { detailHandler: ({ url }) => url.searchParams.get('message_id') === message().id
+    ? { body: opportunityDetails({ extracted_information: threadInformation() }), hold }
+    : { body: detail(other, { extracted_information: threadInformation({ analysis: otherAnalysis }) }) },
+  })
+  await row(page).click()
+  await expect.poll(() => state.requests.some(request => request.path === detailPath('shared-1'))).toBe(true)
+  await row(page, other.subject).click()
+  await expect(conversationRegion(analysisPanel(page))).toContainText('Current independent message')
+  const arrived = page.waitForResponse(response => new URL(response.url()).searchParams.get('message_id') === message().id)
+  hold.resolve()
+  await arrived
+  await expect(conversationRegion(analysisPanel(page))).not.toContainText('RFQ: Water-treatment controls engineering')
+  await expect(preview(page).locator('header')).toContainText('Selected email: New message')
+  assertReadOnly(state)
+})
+
+test('thread identification refreshed conversation preserves reviewer client and opportunity inputs', async ({ page }) => {
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: threadInformation() }), clients: paginated([matchingClient()]),
+    allowConversion: true, conversionStatus: 409, conversion: { code: 'email_review_changed', detail: 'The available history changed.' },
+  })
+  const dialog = await reviewedForm(page)
+  await dialog.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  const analysis = identifiedAnalysis()
+  analysis.sources[0].subject = 'Recovered original controls request'
+  state.details = opportunityDetails({ source_token: 'updated-thread-token', extracted_information: threadInformation({ analysis }) })
+  await dialog.getByRole('button', { name: 'Reload email details', exact: true }).click()
+  await dialog.getByText('Review refreshed email', { exact: true }).click()
+  await expect(conversationRegion(dialog)).toContainText('Recovered original controls request')
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Reviewed pump package')
+  await expect(dialog.getByLabel('Estimated value', { exact: true })).toHaveValue('275000.25')
+  await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('2026-10-20')
+  expect(conversionRequests(state)).toHaveLength(1)
+  assertExplicitConversionOnly(state)
+})
+
+test('thread identification stays readable on mobile and treats source evidence as literal untrusted text', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const hostile = '<img src="https://thread.example.test/beacon" onerror="window.threadInjected=true"><script>window.threadInjected=true</script>'
+  const analysis = identifiedAnalysis()
+  analysis.sources[0].excerpt = hostile
+  analysis.sources[0].thread_role_reason = hostile
+  const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: threadInformation({ analysis }) }) })
+  await row(page).click()
+  const conversation = conversationRegion(analysisPanel(page))
+  await conversation.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-thread-identification-mobile.png') })
+  const original = conversationItem(page, analysis.sources[0].subject)
+  const evidence = original.getByText('Source evidence', { exact: true })
+  await evidence.focus()
+  await page.keyboard.press('Enter')
+  await expect(original.locator('blockquote')).toHaveText(hostile)
+  await expect(conversation.locator('img, script, style, iframe, a')).toHaveCount(0)
+  expect(await page.evaluate(() => window.threadInjected)).toBeUndefined()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  const accessibility = await new AxeBuilder({ page }).include('.sales-email-workspace').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+  expect(accessibility.violations).toEqual([])
+  assertReadOnly(state)
+})
+
+test('customer matching shows the same sourced suggestion in saved and live email and requires explicit selection', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1536, height: 960 })
+  const information = matchingInformation()
+  const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: information }), clients: paginated([matchingClient()]),
+    imported: paginated([{ ...message({ id: 'matched-intake' }), status: 'received', extracted_information: information, can_create_opportunity: true }]),
+  })
+  await row(page).click()
+  const result = matchRegion(page)
+  await expect(result).toContainText('Suggested client')
+  await expect(result).toContainText('Matched on legal name')
+  await result.getByText('Customer matching evidence', { exact: true }).click()
+  await expect(result.locator('blockquote').first()).toHaveText('Customer: Meridian Water Services')
+  expect(state.requests.filter(request => request.path === '/api/v1/sales/clients/')).toHaveLength(0)
+  await page.screenshot({ path: testInfo.outputPath('sales-email-customer-match-desktop.png'), fullPage: true })
+  await preview(page).getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  let dialog = opportunityDialog(page)
+  await expect(useMatchedClient(dialog)).toBeEnabled()
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
+  await dialog.getByLabel('Opportunity name', { exact: true }).fill('Reviewer-controlled title')
+  await useMatchedClient(dialog).click()
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Reviewer-controlled title')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await navigateView(page, 'imported')
+  await expect(matchRegion(page)).toContainText('Suggested client')
+  await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  dialog = opportunityDialog(page)
+  await expect(useMatchedClient(dialog)).toBeEnabled()
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
+  await useMatchedClient(dialog).click()
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  assertReadOnly(state)
+})
+
+test('customer matching saved client options include records beyond 500 and never choose the first ambiguous match', async ({ page }) => {
+  const hold = deferred()
+  const candidates = [matchCandidate(), matchCandidate({ id: 'client-501', client_code: 'CLI-501' })]
+  const records = Array.from({ length: 500 }, (_, index) => matchingClient({ id: index === 0 ? 'client-one' : `other-${index}`, company_name: index === 0 ? 'Meridian Water Services' : `Synthetic client ${index}` }))
+  const information = matchingInformation({ customer_match: customerMatchResult({ status: 'ambiguous', candidates }) })
+  const state = await prepare(page, { view: 'imported', imported: paginated([{ ...message({ id: 'late-client-intake' }), status: 'received', can_create_opportunity: true, extracted_information: information }]),
+    clientHandler: ({ url }) => {
+      const current = Number(url.searchParams.get('page'))
+      return current === 6 ? { body: paginated([matchingClient({ id: 'client-501' })]), hold }
+        : { body: paginated(records.slice((current - 1) * 100, current * 100), `/api/v1/sales/clients/?page=${current + 1}`) }
+    },
+  })
+  await expect(matchRegion(page)).toContainText('Multiple matching clients')
+  await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  const dialog = opportunityDialog(page)
+  await expect.poll(() => state.requests.filter(request => request.path === '/api/v1/sales/clients/').length).toBe(6)
+  await expect(dialog.getByLabel('Client', { exact: true })).toBeDisabled()
+  await expect(useMatchedClient(dialog, 'Meridian Water Services', 'CLI-501')).toBeDisabled()
+  await expect(dialog.getByRole('option', { name: /Add new client/ })).toHaveCount(0)
+  hold.resolve()
+  await expect(dialog.getByLabel('Client', { exact: true }).getByRole('option')).toHaveCount(502)
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
+  await useMatchedClient(dialog, 'Meridian Water Services', 'CLI-501').click()
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-501')
+  assertReadOnly(state)
+})
+
+test('customer matching distinguishes no match, missing, conflicting and denied evidence while allowing manual client review', async ({ page }) => {
+  const state = await prepare(page, { clients: paginated([matchingClient()]) })
+  const cases = [
+    ['no_match', 'No matching client available to you'], ['not_detected', 'Customer name not detected'],
+    ['conflicting', 'Conflicting customer names'], ['denied', 'You do not have access to customer matching'], ['unavailable', 'Customer matching unavailable'],
+  ]
+  for (const [index, [status, label]] of cases.entries()) {
+    if (index) await refresh(page).click()
+    state.details = opportunityDetails({ extracted_information: matchingInformation({ customer_match: customerMatchResult({ status, candidates: [] }) }) })
+    await row(page).click()
+    await expect(matchRegion(page)).toContainText(label)
+    await preview(page).getByRole('button', { name: 'Create opportunity', exact: true }).click()
+    const dialog = opportunityDialog(page)
+    await expect(dialog.getByRole('button', { name: /^Use this client:/ })).toHaveCount(0)
+    await dialog.getByLabel('Client', { exact: true }).selectOption('client-one')
+    await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+    await expect(dialog.getByRole('option', { name: /Add new client/ })).toHaveCount(0)
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  }
+  assertReadOnly(state)
+})
+
+test('customer matching malformed or legacy projections never disclose candidates or fabricate a match', async ({ page }) => {
+  const state = await prepare(page)
+  const cases = [undefined, [], customerMatchResult({ method: 'domain_guess' }), customerMatchResult({ needs_review: false }),
+    customerMatchResult({ status: { toString: 1 } }), customerMatchResult({ status: 'ambiguous', has_more: true }),
+    customerMatchResult({ evidence: { excerpt: 'Unsupported evidence', source_ids: ['not-a-source'] } }),
+    customerMatchResult({ candidates: [matchCandidate({ new_proposals_permitted: 'true' })] }),
+    customerMatchResult({ status: 'denied' }),
+  ]
+  for (const [index, value] of cases.entries()) {
+    if (index) await refresh(page).click()
+    state.details = opportunityDetails({ extracted_information: matchingInformation({ customer_match: value }) })
+    await row(page).click()
+    await expect(matchRegion(page)).toHaveText('Customer matching unavailable')
+    await expect(matchRegion(page)).not.toContainText('CLI-101')
+    await expect(matchRegion(page).locator('button, details')).toHaveCount(0)
+  }
+  assertReadOnly(state)
+})
+
+test('customer matching saved client denial and partial-page failure preserve readable email and form input through retry', async ({ page }) => {
+  const state = await prepare(page, { view: 'imported', imported: paginated([{ ...message({ id: 'denied-client-intake' }), status: 'received', can_create_opportunity: true, extracted_information: matchingInformation() }]), clientStatus: 403, clients: { detail: 'Synthetic private client denial payload' } })
+  await expect(matchRegion(page)).toContainText('Suggested client')
+  expect(state.requests.filter(request => request.path === '/api/v1/sales/clients/')).toHaveLength(0)
+  await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  const dialog = opportunityDialog(page)
+  await expect(dialog).toContainText('You do not have access to client options.')
+  await expect(matchRegion(dialog)).toHaveText('You do not have access to customer matching')
+  await expect(page.getByRole('region', { name: 'Customer matching', exact: true }).filter({ hasText: 'CLI-101' })).toHaveCount(0)
+  await dialog.getByLabel('Opportunity name', { exact: true }).fill('Keep this reviewed title')
+  await dialog.getByLabel('Estimated value', { exact: true }).fill('48001.25')
+  state.clientHandler = ({ url }) => url.searchParams.get('page') === '2'
+    ? { status: 502, body: { detail: 'Synthetic private second-page payload' } }
+    : { body: paginated([matchingClient()], '/api/v1/sales/clients/?page=2') }
+  await dialog.getByRole('button', { name: 'Retry clients', exact: true }).click()
+  await expect(dialog).toContainText('Client options could not be loaded. Try again.')
+  await expect(dialog.getByLabel('Client', { exact: true }).getByRole('option')).toHaveCount(1)
+  await expect(useMatchedClient(dialog)).toHaveCount(0)
+  state.clientHandler = () => ({ body: paginated([matchingClient()]) })
+  await dialog.getByRole('button', { name: 'Retry clients', exact: true }).click()
+  await dialog.getByLabel('Client', { exact: true }).selectOption('client-one')
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Keep this reviewed title')
+  await expect(dialog.getByLabel('Estimated value', { exact: true })).toHaveValue('48001.25')
+  await expect(dialog).not.toContainText('Synthetic private')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Start review', exact: true })).toBeVisible()
+  assertReadOnly(state)
+})
+
+test('customer matching refuses candidates absent from current client options without treating proposal metadata as opportunity authority', async ({ page }) => {
+  const state = await prepare(page, { clients: paginated([matchingClient({ id: 'manual-client', company_name: 'Manual review client' })]),
+    details: opportunityDetails({ extracted_information: matchingInformation({ customer_match: customerMatchResult({ candidates: [matchCandidate({ new_proposals_permitted: false, status: 'inactive', verification_status: 'restricted' })] }) }) }),
+  })
+  let dialog = await openOpportunityForm(page)
+  await expect(dialog.getByLabel('Client', { exact: true })).toBeEnabled()
+  await expect(useMatchedClient(dialog)).toBeDisabled()
+  await expect(dialog).toContainText('This client is not available in your current client options.')
+  await dialog.getByLabel('Client', { exact: true }).selectOption('manual-client')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  state.clients = paginated([matchingClient()])
+  await preview(page).getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  dialog = opportunityDialog(page)
+  await expect(dialog).toContainText('New proposals: Restricted')
+  await useMatchedClient(dialog).click()
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  await expect(dialog.getByRole('button', { name: 'Create opportunity', exact: true })).toBeEnabled()
+  assertReadOnly(state)
+})
+
+test('customer matching source refresh changes suggestions without overwriting reviewed client or other values', async ({ page }) => {
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: matchingInformation() }),
+    clients: paginated([matchingClient(), matchingClient({ id: 'client-two', company_name: 'Reviewed alternative client' })]), allowConversion: true,
+    conversionStatus: 409, conversion: { code: 'email_review_changed', detail: 'The source changed.' },
+  })
+  const dialog = await reviewedForm(page)
+  await dialog.getByLabel('Client', { exact: true }).selectOption('client-two')
+  await dialog.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: 'Reload email details', exact: true })).toBeVisible()
+  await expect(useMatchedClient(dialog)).toBeDisabled()
+  state.details = opportunityDetails({ source_token: 'synthetic-source-token-2', extracted_information: matchingInformation({ customer_match: customerMatchResult({ status: 'no_match', candidates: [] }) }) })
+  await dialog.getByRole('button', { name: 'Reload email details', exact: true }).click()
+  await expect(matchRegion(dialog).first()).toContainText('No matching client available to you')
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-two')
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Reviewed pump package')
+  await expect(dialog.getByLabel('Estimated value', { exact: true })).toHaveValue('275000.25')
+  await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('2026-10-20')
+  expect(conversionRequests(state)).toHaveLength(1)
+  assertExplicitConversionOnly(state)
+})
+
+test('customer matching late client results cannot repopulate another account or a closed saved form', async ({ page }) => {
+  const hold = deferred()
+  const state = await prepare(page, { view: 'imported', imported: paginated([{ ...message({ id: 'pending-intake' }), status: 'received', can_create_opportunity: true, extracted_information: matchingInformation() }]), clients: paginated([matchingClient()]), clientHold: hold })
+  await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  await expect(opportunityDialog(page)).toContainText('Loading client options')
+  await expect.poll(() => state.requests.some(request => request.path === '/api/v1/sales/clients/')).toBe(true)
+  await opportunityDialog(page).getByRole('button', { name: 'Cancel', exact: true }).click()
+  state.imported = paginated([{ ...message({ id: 'new-account-intake' }), status: 'received', can_create_opportunity: true, extracted_information: matchingInformation({ customer_match: customerMatchResult({ status: 'denied', candidates: [], detected_name: '', evidence: { excerpt: '', source_ids: [] } }) }) }])
+  state.clients = paginated([])
+  state.clientHold = null
+  await page.evaluate(() => window.setSalesMailboxMessageActor({ id: 900, user: { id: 22 }, email: 'second-admin@example.test' }))
+  await expect(matchRegion(page)).toContainText('You do not have access to customer matching')
+  const arrived = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/sales/clients/')
+  hold.resolve()
+  await arrived
+  await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  await expect(opportunityDialog(page)).toContainText('No clients are available to your account.')
+  await expect(opportunityDialog(page).getByRole('option', { name: 'Meridian Water Services', exact: true })).toHaveCount(0)
+  await expect(opportunityDialog(page).getByRole('button', { name: /^Use this client:/ })).toHaveCount(0)
+  assertReadOnly(state)
+})
+
+test('customer matching permits the existing manual new-client choice only for authorized no-match review', async ({ page }) => {
+  const state = await prepare(page, { view: 'imported' })
+  const cases = [[true, 'no_match', true], [false, 'no_match', false], [undefined, 'no_match', false], [true, 'unavailable', false], [true, 'matched', false]]
+  for (const [capability, status, offered] of cases) {
+    state.imported = paginated([{ ...message({ id: 'new-client-intake' }), status: 'received', can_create_opportunity: true, can_create_client: capability,
+      extracted_information: matchingInformation({ customer_match: customerMatchResult({ status, candidates: status === 'matched' ? [matchCandidate()] : [] }) }) }])
+    const refreshSaved = page.getByRole('button', { name: 'Refresh', exact: true })
+    await expect(refreshSaved).toBeEnabled()
+    const reloaded = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/sales/email-intakes/' && response.request().method() === 'GET')
+    await refreshSaved.click()
+    await reloaded
+    await expect(refreshSaved).toBeEnabled()
+    await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+    const dialog = opportunityDialog(page)
+    await expect(dialog.getByLabel('Client', { exact: true })).toBeEnabled()
+    await expect(dialog.getByRole('option', { name: 'Add new client: Meridian Water Services', exact: true })).toHaveCount(offered ? 1 : 0)
+    await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
+    if (offered) {
+      await dialog.getByLabel('Client', { exact: true }).selectOption('__new__')
+      await expect(dialog).toContainText('will be added as a client when you create the opportunity.')
+    }
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  }
+  assertReadOnly(state)
+})
+
+test('customer matching a late source reload cannot restore candidates after client denial and directory recovery', async ({ page }) => {
+  const clientHold = deferred()
+  const sourceHold = deferred()
+  const state = await prepare(page, { details: opportunityDetails({ source_token: '', extracted_information: matchingInformation() }),
+    clientStatus: 403, clients: { detail: 'Client permission revoked.' }, clientHold,
+  })
+  const dialog = await openOpportunityForm(page)
+  await expect(dialog).toContainText('Loading client options')
+  await dialog.getByLabel('Opportunity name', { exact: true }).fill('Retained across access change')
+  state.details = opportunityDetails({ extracted_information: matchingInformation() })
+  state.detailHold = sourceHold
+  await dialog.getByRole('button', { name: 'Reload email details', exact: true }).click()
+  await expect.poll(() => state.requests.filter(request => request.path === detailPath('shared-1')).length).toBe(2)
+  clientHold.resolve()
+  await expect(dialog).toContainText('You do not have access to client options.')
+  await expect(page.getByRole('region', { name: 'Customer matching', exact: true }).filter({ hasText: 'CLI-101' })).toHaveCount(0)
+  state.clientStatus = 200
+  state.clientHold = null
+  state.clients = paginated([matchingClient()])
+  await dialog.getByRole('button', { name: 'Retry clients', exact: true }).click()
+  await dialog.getByLabel('Client', { exact: true }).selectOption('client-one')
+  const arrived = page.waitForResponse(response => new URL(response.url()).pathname === detailPath('shared-1'))
+  sourceHold.resolve()
+  await arrived
+  await dialog.getByText('Review refreshed email', { exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Customer matching', exact: true }).filter({ hasText: 'CLI-101' })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: /^Use this client:/ })).toHaveCount(0)
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Retained across access change')
+  await expect(dialog.getByText('Email details reloaded. Review the updated email and your entries.', { exact: true })).toBeVisible()
+  assertReadOnly(state)
+})
+
+test('customer matching a saved refresh started before client denial cannot reintroduce candidate metadata', async ({ page }) => {
+  const hold = deferred()
+  const imported = paginated([{ ...message({ id: 'refresh-intake' }), status: 'received', can_create_opportunity: true, extracted_information: matchingInformation() }])
+  const state = await prepare(page, { view: 'imported', imported, clientStatus: 403, clients: { detail: 'Client permission revoked.' } })
+  await expect(matchRegion(page)).toContainText('CLI-101')
+  state.importedHold = hold
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect.poll(() => state.requests.filter(request => request.path === '/api/v1/sales/email-intakes/').length).toBe(2)
+  await page.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  const dialog = opportunityDialog(page)
+  await expect(dialog).toContainText('You do not have access to client options.')
+  await dialog.getByLabel('Opportunity name', { exact: true }).fill('Keep saved review input')
+  state.clientStatus = 200
+  state.clients = paginated([matchingClient()])
+  await dialog.getByRole('button', { name: 'Retry clients', exact: true }).click()
+  await dialog.getByLabel('Client', { exact: true }).selectOption('client-one')
+  const arrived = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/sales/email-intakes/')
+  hold.resolve()
+  await arrived
+  await expect(page.getByRole('region', { name: 'Customer matching', exact: true }).filter({ hasText: 'CLI-101' })).toHaveCount(0)
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Keep saved review input')
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  assertReadOnly(state)
+})
+
+test('customer matching transient failure keeps the suggestion and mobile retry preserves reviewed fields', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const state = await prepare(page, { shell: true, clientStatus: 503, clients: { detail: 'Private upstream failure.' }, details: opportunityDetails({ extracted_information: matchingInformation() }) })
+  const dialog = await openOpportunityForm(page)
+  await expect(dialog).toContainText('Client options could not be loaded. Try again.')
+  await expect(matchRegion(dialog)).toContainText('CLI-101')
+  await expect(useMatchedClient(dialog)).toBeDisabled()
+  await dialog.getByLabel('Opportunity name', { exact: true }).fill('Mobile reviewed opportunity')
+  state.clientStatus = 200
+  state.clients = paginated([matchingClient()])
+  await dialog.getByRole('button', { name: 'Retry clients', exact: true }).click()
+  await expect(useMatchedClient(dialog)).toBeEnabled()
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
+  await useMatchedClient(dialog).focus()
+  await page.keyboard.press('Enter')
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Mobile reviewed opportunity')
+  await useMatchedClient(dialog).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-customer-match-mobile.png'), fullPage: true })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  assertReadOnly(state)
+})
+
+test('customer matching hostile names and evidence stay literal and mobile selection remains accessible', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const hostile = '<img src="https://untrusted.example.test/beacon" onerror="window.matchInjected=true">'
+  const information = matchingInformation({ customer_match: customerMatchResult({ detected_name: hostile,
+    evidence: { excerpt: `Customer: ${hostile}`, source_ids: ['original-request'] },
+    candidates: [matchCandidate({ company_name: hostile })],
+  }) })
+  const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: information }), clients: paginated([matchingClient({ company_name: hostile })]) })
+  const dialog = await openOpportunityForm(page)
+  const suggestion = matchRegion(dialog)
+  await suggestion.getByText('Customer matching evidence', { exact: true }).click()
+  await expect(suggestion.locator('blockquote').first()).toHaveText(`Customer: ${hostile}`)
+  await expect(suggestion.locator('img, script, style, iframe, a')).toHaveCount(0)
+  const use = useMatchedClient(dialog, hostile)
+  await use.focus()
+  await page.keyboard.press('Enter')
+  await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('client-one')
+  expect(await page.evaluate(() => window.matchInjected)).toBeUndefined()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await use.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-customer-match-untrusted-mobile.png'), fullPage: true })
+  const accessibility = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+  expect(accessibility.violations).toEqual([])
+  assertReadOnly(state)
+})
+
+test('classification is a sourced suggestion in live and saved email without replacing original request fields', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1536, height: 960 })
+  const information = conversationInformation({ classification: classification() })
+  const state = await prepare(page, { shell: true,
+    details: opportunityDetails({ extracted_information: information }),
+    imported: paginated([{ ...message({ id: 'classified-intake' }), status: 'received', extracted_information: information, can_create_opportunity: true }]),
+  })
+  await row(page).click()
+  const checkClassification = async () => {
+    const result = classificationRegion(page)
+    await expect(result.getByText('Clarification', { exact: true })).toBeVisible()
+    await expect(result.getByText('High', { exact: true })).toBeVisible()
+    await expect(result.getByText('Review required', { exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Detected information', exact: true }).locator('dl').first()).toContainText('RFQ')
+    await expect(analysisPanel(page)).toContainText('Message type: deadline revision')
+    await result.getByText('Classification evidence', { exact: true }).click()
+    await expect(result.locator('blockquote')).toHaveText('Please clarify the control-system interface requirements.')
+    await expect(result).toContainText('Later deadline revision · Email body')
+  }
+  await checkClassification()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-classification-desktop.png'), fullPage: true })
+  await navigateView(page, 'imported')
+  await checkClassification()
+  await expect(page.getByRole('button', { name: 'Start review', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create opportunity', exact: true })).toBeVisible()
+  assertReadOnly(state)
+})
+
+test('classification ambiguity exposes competing source evidence without choosing an award or approval', async ({ page }) => {
+  const evidence = (excerpt, location = 'body') => [{ source_id: 'latest-revision', location, excerpt, rule_id: 'synthetic_conflict' }]
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: conversationInformation({ classification: classification({
+    status: 'ambiguous', code: '', label: 'Needs review', evidence: [],
+    confidence: { level: 'unresolved', method: 'rule_evidence_v1', reason: 'The reviewed message contains conflicting notices.' },
+    alternatives: [
+      { code: 'award_notification', label: 'Award Notification', evidence: evidence('Your proposal has been selected.') },
+      { code: 'regret_notification', label: 'Regret Notification', evidence: evidence('We regret to inform you that your proposal was unsuccessful.') },
+    ],
+  }) }) }) })
+  await row(page).click()
+  const result = classificationRegion(page)
+  await expect(result.getByText('Needs review', { exact: true })).toBeVisible()
+  await expect(result.getByText('Unresolved', { exact: true })).toBeVisible()
+  await result.getByText('Classification evidence', { exact: true }).click()
+  await expect(result.getByText('Possible classifications', { exact: true })).toBeVisible()
+  await expect(result.getByText('Award Notification', { exact: true })).toBeVisible()
+  await expect(result.getByText('Regret Notification', { exact: true })).toBeVisible()
+  await expect(result.locator('blockquote')).toHaveCount(2)
+  await expect(result.locator('input, select, button')).toHaveCount(0)
+  assertReadOnly(state)
+})
+
+for (const [status, label] of [['unclassified', 'Not classified'], ['draft', 'Draft (not classified)']]) {
+  test(`classification ${status} stays unresolved without manufacturing a business category`, async ({ page }) => {
+    const state = await prepare(page, { details: opportunityDetails({ extracted_information: detected({ classification: classification({
+      status, code: '', label: status === 'draft' ? 'Draft' : 'Needs review', evidence: [],
+      confidence: { level: 'unresolved', method: 'rule_evidence_v1', reason: 'The available content does not support a confirmed category.' },
+    }) }) }) })
+    await row(page).click()
+    const result = classificationRegion(page)
+    await expect(result.getByText(label, { exact: true })).toBeVisible()
+    await expect(result.getByText('Unresolved', { exact: true })).toBeVisible()
+    await expect(result).not.toContainText(/General Communication|Tender Opportunity|approved/i)
+    await result.getByText('Classification evidence', { exact: true }).click()
+    await expect(result.getByText('No supporting quote is available.', { exact: true })).toBeVisible()
+    assertReadOnly(state)
+  })
+}
+
+test('classification missing from legacy or malformed responses remains compact and unavailable', async ({ page }) => {
+  const state = await prepare(page, { details: opportunityDetails() })
+  const cases = [undefined, [], classification({ version: 2 }), classification({ status: 'toString' }), classification({ code: 'unsupported_new_category', label: 'Guaranteed award' })]
+  for (const [index, value] of cases.entries()) {
+    if (index) await refresh(page).click()
+    state.details = opportunityDetails({ extracted_information: detected({ classification: value }) })
+    await row(page).click()
+    const result = classificationRegion(page)
+    await expect(result).toContainText('Suggested classification: Unavailable')
+    await expect(result).toContainText('Confidence: Unavailable')
+    await expect(result.locator('details')).toHaveCount(0)
+    await expect(result).not.toContainText(/Guaranteed award|unsupported_new_category|toString/)
+    await expect(page.getByRole('region', { name: 'Detected information', exact: true }).locator('dl').first()).toContainText('Example Energy LLC')
+  }
+  assertReadOnly(state)
+})
+
+test('classification confidence uses only supported evidence levels and never invents percentages', async ({ page }) => {
+  const state = await prepare(page)
+  const cases = [
+    [{ level: 'low', method: 'rule_evidence_v1', reason: 'The wording is nonspecific.' }, 'Low'],
+    [{ level: 'medium', method: 'rule_evidence_v1', reason: 'Some direct wording supports the category.' }, 'Medium'],
+    [{ level: 0.99, method: 'rule_evidence_v1', reason: '99% guaranteed' }, 'Unavailable'],
+    [{ level: 'high', method: 'unsupported_probability', reason: '99% guaranteed' }, 'Unavailable'],
+    [{ level: 'toString', method: 'rule_evidence_v1' }, 'Unavailable'],
+    [null, 'Unavailable'],
+  ]
+  for (const [index, [confidence, label]] of cases.entries()) {
+    if (index) await refresh(page).click()
+    state.details = opportunityDetails({ extracted_information: conversationInformation({ classification: classification({ code: 'general_communication', label: 'General Communication', confidence }) }) })
+    await row(page).click()
+    const result = classificationRegion(page)
+    await expect(result.getByText('General Communication', { exact: true })).toBeVisible()
+    await expect(result.getByText(label, { exact: true })).toBeVisible()
+    await result.getByText('Classification evidence', { exact: true }).click()
+    await expect(result).not.toContainText(/99|%|guaranteed|unsupported_probability|rule_evidence_v1/)
+  }
+  assertReadOnly(state)
+})
+
+test('classification evidence and source labels render hostile content literally without external requests', async ({ page }) => {
+  const hostile = '<img src="https://untrusted.example.test/classification.png" onerror="window.classificationInjected=true">\n<script>window.classificationInjected=true</script>'
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: conversationInformation({
+    classification: classification({ label: hostile, confidence: { level: 'medium', method: 'rule_evidence_v1', reason: hostile }, evidence: [
+      { source_id: 'latest-revision', location: 'subject', excerpt: hostile, rule_id: hostile },
+      { source_id: 'missing-source', location: 'body', excerpt: 'An exact supplied quote with unavailable source metadata.', rule_id: 'unknown' },
+      { source_id: 'latest-revision', location: 'img', excerpt: 'Invalid location must not render', rule_id: 'invalid' },
+    ] }),
+    analysis: conversationAnalysis({ sources: [{ id: 'latest-revision', label: hostile, origin: 'message', excerpt: 'Source text' }] }),
+  }) }) })
+  await row(page).click()
+  const result = classificationRegion(page)
+  await result.getByText('Classification evidence', { exact: true }).click()
+  await expect(result.locator('blockquote').first()).toHaveText(hostile)
+  await expect(result).toContainText('Source details unavailable · Email body')
+  await expect(result).not.toContainText('Invalid location must not render')
+  await expect(result.locator('img, script, style, iframe, a')).toHaveCount(0)
+  expect(await page.evaluate(() => window.classificationInjected)).toBeUndefined()
+  assertReadOnly(state)
+})
+
+test('classification source reload shows the new suggestion while retaining reviewed opportunity inputs', async ({ page }) => {
+  const state = await prepare(page, { allowConversion: true, clients: paginated([canonicalClient()]),
+    details: opportunityDetails({ extracted_information: conversationInformation({ classification: classification() }) }),
+    conversionStatus: 409, conversion: { code: 'email_review_changed', detail: 'Review the changed source.' },
+  })
+  const dialog = await reviewedForm(page)
+  await dialog.getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: 'Reload email details', exact: true })).toBeVisible()
+  state.details = opportunityDetails({ source_token: 'synthetic-source-token-2', extracted_information: conversationInformation({ classification: classification({ code: 'tender_addendum', label: 'Tender Addendum' }) }) })
+  await dialog.getByRole('button', { name: 'Reload email details', exact: true }).click()
+  await expect(dialog).toContainText('Email details reloaded. Review the updated email and your entries.')
+  await dialog.getByText('Review refreshed email', { exact: true }).click()
+  await expect(dialog.getByRole('region', { name: 'Email classification', exact: true }).getByText('Tender Addendum', { exact: true })).toBeVisible()
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Reviewed pump package')
+  await expect(dialog.getByLabel('Estimated value', { exact: true })).toHaveValue('275000.25')
+  await expect(dialog.getByRole('combobox', { name: 'Client', exact: true })).toHaveValue('client-one')
+  expect(conversionRequests(state)).toHaveLength(1)
+  assertExplicitConversionOnly(state)
+})
+
+test('classification evidence remains keyboard accessible and readable on a narrow screen', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: conversationInformation({ classification: classification() }) }) })
+  await row(page).click()
+  const result = classificationRegion(page)
+  const evidence = result.getByText('Classification evidence', { exact: true })
+  await evidence.focus()
+  await page.keyboard.press('Enter')
+  await expect(result.locator('blockquote')).toBeVisible()
+  await expect(evidence).toBeFocused()
+  const size = await page.evaluate(() => ({ width: window.innerWidth, scroll: document.documentElement.scrollWidth }))
+  expect(size.scroll).toBeLessThanOrEqual(size.width)
+  const accessibility = await new AxeBuilder({ page }).include('section[aria-label="Email classification"]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+  expect(accessibility.violations).toEqual([])
+  await result.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-classification-mobile.png'), fullPage: true })
+  assertReadOnly(state)
+})
 const textNode = text => ({ type: 'text', text })
 const element = (type, children = [], props = {}) => ({ type, children, ...props })
 const richBody = () => [
@@ -58,9 +1104,14 @@ const richBody = () => [
 ]
 const region = page => page.getByRole('region', { name: 'Shared mailbox messages', exact: true })
 const preview = page => page.getByRole('region', { name: 'Email preview', exact: true })
+const analysisPanel = page => page.getByRole('complementary', { name: 'Email analysis', exact: true })
 const refresh = page => region(page).getByRole('button', { name: 'Refresh emails', exact: true })
-const row = (page, subject = message().subject) => region(page).getByRole('button').filter({ hasText: subject })
+const row = (page, subject = message().subject) => region(page).getByRole('button', { name: `Open email: ${subject || 'No subject'}`, exact: true })
+const nextStep = (page, subject = message().subject) => region(page).getByRole('button', { name: `Next step: ${subject || 'No subject'}`, exact: true })
+const rowItem = (page, subject) => page.locator('.sales-email-list-scroll > li').filter({ has: page.getByRole('button', { name: `Open email: ${subject || 'No subject'}`, exact: true }) })
+const suggestedStep = page => analysisPanel(page).getByRole('region', { name: 'Suggested next step', exact: true })
 const opportunityDialog = page => page.getByRole('dialog', { name: 'Create opportunity from email', exact: true })
+const classificationRegion = page => page.getByRole('region', { name: 'Email classification', exact: true })
 const navigateView = (page, view) => page.evaluate(value => window.setSalesMailboxMessageView(value), view)
 const conversionRequests = state => state.requests.filter(request => request.path === conversionPath('shared-1') && request.method === 'POST')
 const deferred = () => {
@@ -119,7 +1170,9 @@ async function prepare(page, options = {}) {
         ? await state.detailHandler({ request, url })
         : { body: structuredClone(state.details), status: state.detailStatus, hold: state.detailHold }
     } else if (url.pathname === '/api/v1/sales/email-intakes/') {
-      response = { body: structuredClone(state.imported) }
+      response = state.importedHandler
+        ? await state.importedHandler({ request, url })
+        : { body: structuredClone(state.imported), hold: state.importedHold }
     } else if (url.pathname === '/api/v1/sales/clients/') {
       response = state.clientHandler
         ? await state.clientHandler({ request, url })
@@ -190,6 +1243,7 @@ test('Email Intake opens actual shared mail by default and loads a plain-text pr
   await row(page).click()
   await expect(preview(page)).toContainText('Please confirm revision C for the pump package.')
   await expect(preview(page)).toContainText('ava@example.test')
+  await preview(page).getByText('Message details', { exact: true }).click()
   await expect(preview(page)).toContainText('sales@example.test')
   await expect(preview(page)).toContainText('projects@example.test')
   expect(new URLSearchParams(state.requests.find(request => request.path === detailPath('shared-1')).query).get('message_id')).toBe(message().id)
@@ -197,6 +1251,163 @@ test('Email Intake opens actual shared mail by default and loads a plain-text pr
   await page.screenshot({ path: testInfo.outputPath('sales-shared-mailbox-messages-integrated.png'), fullPage: true })
   assertReadOnly(state)
 })
+
+test('direction badges follow the server projection beside read status in rows and the selected header', async ({ page }, testInfo) => {
+  const scenarios = [
+    { record: message({ id: 'incoming-mail', subject: 'Incoming design request', direction: 'incoming', is_read: true }), label: 'Incoming', read: 'Read' },
+    { record: message({ id: 'outgoing-mail', subject: 'Outgoing reviewed response', direction: 'outgoing', sender_email: 'sales@example.test', is_read: false }), label: 'Outgoing', read: 'Unread' },
+    { record: message({ id: 'draft-mail', subject: 'Unsent response draft', direction: 'draft', is_draft: true, is_read: true }), label: 'Draft', read: 'Read' },
+    { record: message({ id: 'draft-precedence', subject: 'Draft with inconsistent direction', direction: 'outgoing', is_draft: true, is_read: false }), label: 'Draft', read: 'Unread' },
+    { record: message({ id: 'unknown-mail', subject: 'Unknown delivery direction', direction: 'unknown', is_read: null }), label: 'Direction unknown', read: 'Read status unavailable' },
+    { record: message({ id: 'absent-direction', subject: 'Mailbox sender with missing direction', direction: undefined, sender_email: 'sales@example.test', is_read: true }), label: 'Direction unknown', read: 'Read' },
+    { record: message({ id: 'invalid-direction', subject: 'Unrecognized direction value', direction: '<img src="https://untrusted.example.test/direction">', is_read: false }), label: 'Direction unknown', read: 'Unread' },
+  ]
+  const state = await prepare(page, {
+    messages: listing(scenarios.map(({ record }) => record)),
+    detailHandler: ({ url }) => ({ body: detail(scenarios.find(({ record }) => record.id === url.searchParams.get('message_id')).record) }),
+  })
+  await expect(row(page, scenarios[0].record.subject)).toBeVisible()
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(0)
+  await expect(page.locator('.sales-email-list-scroll button button')).toHaveCount(0)
+  for (const { record, label, read } of scenarios) {
+    const item = rowItem(page, record.subject)
+    await expect(item.getByText(label, { exact: true })).toHaveCount(1)
+    await expect(item.getByText(read, { exact: true })).toBeVisible()
+    await expect(item.getByRole('button', { name: `Next step: ${record.subject}`, exact: true })).toBeVisible()
+    await row(page, record.subject).click()
+    const header = preview(page).locator('.sales-email-preview-header')
+    await expect(header.getByText(label, { exact: true })).toHaveCount(1)
+    await expect(header.getByText(read, { exact: true })).toBeVisible()
+    if (label === 'Draft') await expect(header.getByText(/Incoming|Outgoing/, { exact: true })).toHaveCount(0)
+    if (record.id === 'incoming-mail') await page.screenshot({ path: testInfo.outputPath('sales-email-direction-badges.png') })
+  }
+  await expect(region(page).locator('img[src*="untrusted.example.test"]')).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath('sales-email-direction-unknown.png') })
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(scenarios.length)
+  assertReadOnly(state)
+})
+
+test('Next step selects the requested email then reuses loaded analysis while only its desktop pane scrolls', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1536, height: 960 })
+  const first = message({ direction: 'incoming' })
+  const second = secondMessage()
+  second.direction = 'outgoing'
+  const state = await prepare(page, {
+    shell: true, messages: listing([first, second]),
+    detailHandler: ({ url }) => ({ body: url.searchParams.get('message_id') === first.id
+      ? detail(first)
+      : longDetail(second) }),
+  })
+  await expect(row(page)).toBeVisible()
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(0)
+  await row(page).click()
+  await expect(preview(page)).toContainText('Please confirm revision C')
+  await nextStep(page, second.subject).click()
+  await expect(preview(page).getByRole('heading', { name: second.subject, exact: true })).toBeVisible()
+  await expect(suggestedStep(page)).toBeFocused()
+  await expect(suggestedStep(page)).toBeInViewport()
+  await expect(suggestedStep(page)).toContainText('Review the revised deadline with the proposal team.')
+  const requests = () => state.requests.filter(request => request.path === detailPath('shared-1'))
+  expect(requests().map(request => new URLSearchParams(request.query).get('message_id'))).toEqual([first.id, second.id])
+  await page.locator('.sales-email-reading-pane').evaluate(node => { node.scrollTop = 250 })
+  await analysisPanel(page).evaluate(node => { node.scrollTop = 0 })
+  const before = await panePosition(page)
+  await preview(page).getByRole('button', { name: 'Next step', exact: true }).click()
+  await expect(suggestedStep(page)).toBeFocused()
+  await expect(suggestedStep(page)).toBeInViewport()
+  await expect.poll(async () => (await panePosition(page)).source).toBeGreaterThan(0)
+  expect(await panePosition(page)).toMatchObject({ document: before.document, main: before.main, reading: before.reading, list: before.list })
+  expect(requests()).toHaveLength(2)
+  await page.screenshot({ path: testInfo.outputPath('sales-email-next-step-desktop.png') })
+  assertReadOnly(state)
+})
+
+test('Next step is keyboard accessible on mobile and brings the selected suggestion into view without overflow', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const record = message({ direction: 'incoming', is_read: true })
+  const state = await prepare(page, { shell: true, messages: listing([record]), details: longDetail(record) })
+  await expect(nextStep(page)).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-direction-mobile.png') })
+  await nextStep(page).focus()
+  await page.keyboard.press('Enter')
+  await expect(suggestedStep(page)).toBeFocused()
+  await expect(suggestedStep(page)).toBeInViewport()
+  await expect(suggestedStep(page)).toContainText('Review the revised deadline with the proposal team.')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  const accessibility = await new AxeBuilder({ page }).include('.sales-email-workspace').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+  expect(accessibility.violations).toEqual([])
+  await page.screenshot({ path: testInfo.outputPath('sales-email-next-step-mobile.png') })
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(1)
+  assertReadOnly(state)
+})
+
+test('a late Next step response cannot replace the newly selected message or steal its suggestion focus', async ({ page }) => {
+  const hold = deferred()
+  const second = secondMessage()
+  const state = await prepare(page, { detailHandler: ({ url }) => url.searchParams.get('message_id') === message().id
+    ? { body: opportunityDetails({ extracted_information: conversationInformation({ analysis: conversationAnalysis({ summary: 'Obsolete first-message analysis' }) }) }), hold }
+    : { body: detail(second, { extracted_information: conversationInformation({ analysis: conversationAnalysis({ summary: 'Current second-message analysis' }) }) }) },
+  })
+  await nextStep(page).click()
+  await expect.poll(() => state.requests.filter(request => request.path === detailPath('shared-1')).length).toBe(1)
+  await nextStep(page, second.subject).click()
+  await expect(suggestedStep(page)).toBeFocused()
+  await expect(analysisPanel(page)).toContainText('Current second-message analysis')
+  const arrived = page.waitForResponse(response => new URL(response.url()).searchParams.get('message_id') === message().id)
+  hold.resolve()
+  await arrived
+  await expect(suggestedStep(page)).toBeFocused()
+  await expect(analysisPanel(page)).toContainText('Current second-message analysis')
+  await expect(region(page)).not.toContainText('Obsolete first-message analysis')
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(2)
+  assertReadOnly(state)
+})
+
+for (const reset of ['search', 'mailbox', 'account']) {
+  test(`${reset === 'account' ? 'an' : 'a'} ${reset} change cancels a pending Next step focus and discards its late analysis`, async ({ page }) => {
+    const hold = deferred()
+    const state = await prepare(page, {
+      ...(reset === 'mailbox' ? { connections: paginated([mailbox(), mailbox({ id: 'shared-2', mailbox_address: 'projects@example.test' })]) } : {}),
+      messageHandler: ({ url }) => ({ body: listing([message(), secondMessage()], null, url.pathname === messagesPath('shared-2') ? 'projects@example.test' : 'sales@example.test') }),
+      details: opportunityDetails({ extracted_information: conversationInformation({ analysis: conversationAnalysis({ summary: 'Discarded pending next-step analysis' }) }) }), detailHold: hold,
+    })
+    if (reset === 'mailbox') await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-1')
+    await nextStep(page).click()
+    await expect.poll(() => state.requests.filter(request => request.path === detailPath('shared-1')).length).toBe(1)
+    if (reset === 'search') await page.getByRole('searchbox', { name: 'Search emails on this page', exact: true }).fill('Site access')
+    if (reset === 'mailbox') {
+      await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-2')
+      await expect.poll(() => state.requests.some(request => request.path === messagesPath('shared-2'))).toBe(true)
+    }
+    if (reset === 'account') {
+      await page.evaluate(() => window.setSalesMailboxMessageActor({ id: 900, user: { id: 22 }, email: 'second-admin@example.test' }))
+      await expect.poll(() => state.requests.some(request => request.path === messagesPath('shared-1') && request.authorization === 'Bearer mailbox-fixture-user-22')).toBe(true)
+    }
+    await expect(row(page, secondMessage().subject)).toBeVisible()
+    await row(page, secondMessage().subject).focus()
+    const arrived = page.waitForResponse(response => new URL(response.url()).pathname === detailPath('shared-1'))
+    hold.resolve()
+    await arrived
+    await expect(row(page, secondMessage().subject)).toBeFocused()
+    await expect(analysisPanel(page)).toHaveCount(0)
+    await expect(region(page)).not.toContainText('Discarded pending next-step analysis')
+    assertReadOnly(state)
+  })
+}
+
+for (const hasAnalysis of [false, true]) {
+  test(`Next step keeps an honest ${hasAnalysis ? 'no-suggestion' : 'missing-analysis'} state and focuses its available explanation`, async ({ page }) => {
+    const information = hasAnalysis ? conversationInformation({ analysis: conversationAnalysis({ suggested_actions: [] }) }) : detected()
+    const state = await prepare(page, { details: opportunityDetails({ extracted_information: information }) })
+    await nextStep(page).click()
+    const destination = hasAnalysis ? suggestedStep(page) : analysisPanel(page).getByRole('region', { name: 'Email analysis unavailable', exact: true })
+    await expect(destination).toBeFocused()
+    await expect(destination).toContainText(hasAnalysis ? 'No next step was suggested.' : 'Analysis is not available for this email.')
+    await expect(destination.getByRole('button')).toHaveCount(0)
+    expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(1)
+    assertReadOnly(state)
+  })
+}
 
 test('next and previous preserve opaque cursors while refresh returns to newest mail', async ({ page }) => {
   const cursor = 'opaque-signed.cursor+/=value'
@@ -675,6 +1886,200 @@ test('live and imported detected fields keep source dates distinct and expose re
   assertReadOnly(state)
 })
 
+test('conversation analysis preserves the original request and distinguishes the later deadline revision', async ({ page }, testInfo) => {
+  const selected = message({ subject: 'RE: RFQ: Water-treatment controls engineering', sender_name: 'Leena Omar', sender_email: 'leena@meridian.example.test', received_at: '2026-10-28T08:01:00Z', sent_at: '2026-10-28T08:00:00Z', body_preview: 'The deadline is extended to 18 November 2026.' })
+  const state = await prepare(page, { messages: listing([selected]), details: opportunityDetails({ ...selected, body_text: 'The deadline is extended from 12 November to 18 November 2026.\nAll other conditions remain unchanged.', extracted_information: conversationInformation() }), clients: paginated([canonicalClient()]) })
+  await row(page, selected.subject).click()
+  await expect(preview(page).getByRole('heading', { name: selected.subject, exact: true })).toBeVisible()
+  const fields = page.getByRole('region', { name: 'Detected information', exact: true }).locator('dl').first()
+  await expect(fields).toContainText('RFQ: Water-treatment controls engineering')
+  await expect(fields).not.toContainText('RE:')
+  await expect(fields).toContainText('Meridian Water Services')
+  await expect(fields).toContainText('2026-11-10')
+  await expect(fields).toContainText('2026-11-18')
+  const detection = page.getByRole('region', { name: 'Detected information', exact: true })
+  await detection.getByText('Source evidence', { exact: true }).click()
+  const dueEvidence = detection.locator('dl').nth(1).locator(':scope > div').filter({ has: page.getByText('Due Date', { exact: true }) })
+  await dueEvidence.getByText('Evidence', { exact: true }).click()
+  await expect(dueEvidence).toContainText('Later deadline revision')
+  await expect(dueEvidence).not.toContainText('Original incoming request')
+  await detection.getByText('Source evidence', { exact: true }).click()
+  const panel = analysisPanel(page)
+  await expect(panel.getByRole('heading', { name: 'Email analysis', exact: true })).toBeVisible()
+  await expect(panel.getByRole('heading', { name: 'What this email means', exact: true })).toBeVisible()
+  await expect(panel).toContainText('The latest reply extends the proposal deadline.')
+  await expect(panel).toContainText('3 messages reviewed')
+  await expect(panel).toContainText('Original request identified in the reviewed content.')
+  await expect(panel.getByRole('heading', { name: 'Requested actions', exact: true })).toBeVisible()
+  await expect(panel).toContainText('Submit the technical and commercial quotation by 18 November 2026.')
+  await expect(panel.getByRole('heading', { name: 'Suggested next step', exact: true })).toBeVisible()
+  await expect(panel).toContainText('The reply explicitly replaces the earlier deadline.')
+  for (const evidence of await panel.getByText('Evidence', { exact: true }).all()) await evidence.click()
+  await expect(panel).toContainText('Original incoming request')
+  await expect(panel).toContainText('Later deadline revision')
+  await expect(panel).toContainText('Submission date: 10 November 2026.')
+  await expect(panel).toContainText('The deadline is extended from 12 November to 18 November 2026.')
+  await expect(panel.getByRole('button')).toHaveCount(0)
+  await preview(page).getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  const dialog = opportunityDialog(page)
+  await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('RFQ: Water-treatment controls engineering')
+  await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('2026-11-18')
+  await expect(dialog.getByRole('combobox', { name: 'Client', exact: true })).toHaveValue('')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await panel.evaluate(node => { node.scrollTop = 0 })
+  await page.screenshot({ path: testInfo.outputPath('sales-email-conversation-analysis.png'), fullPage: true })
+  assertReadOnly(state)
+})
+
+test('analysis leaves an unresolved date blank and preserves the sourced original deadline when a reply has no revision', async ({ page }) => {
+  const information = conversationInformation({
+    submission_date: '', due_date: '2026-11-12', deadline_date: '2026-11-12',
+    evidence: { due_date: 'Please submit the quotation by 12 November 2026.' },
+    field_sources: { due_date: ['original-request'] },
+    warnings: ['The submission date is not stated.'],
+    analysis: conversationAnalysis({
+      message_kind: 'clarification', summary: 'The latest reply clarifies the control-system interface without changing the quotation deadline.',
+      key_points: [{ label: 'Proposal deadline', value: '2026-11-12', source_ids: ['original-request'] }],
+      requested_actions: [], suggested_actions: [], limitations: ['No submission date was found in the reviewed messages.'],
+    }),
+  })
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: information }), clients: paginated([canonicalClient()]) })
+  const dialog = await openOpportunityForm(page)
+  await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('2026-11-12')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  const fields = page.getByRole('region', { name: 'Detected information', exact: true }).locator('dl').first()
+  const submission = fields.locator('div').filter({ has: page.getByText('Submission Date', { exact: true }) })
+  await expect(submission.locator('dd')).toHaveText('Not detected')
+  await expect(analysisPanel(page)).toContainText('without changing the quotation deadline')
+  await expect(analysisPanel(page)).toContainText('No submission date was found in the reviewed messages.')
+  await expect(analysisPanel(page)).not.toContainText('2026-11-18')
+  assertReadOnly(state)
+})
+
+test('a tender bulletin distinguishes requested review from suggestions and does not claim unread attachment facts', async ({ page }) => {
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: conversationInformation({
+    title: 'ITT: Coastal district cooling expansion', customer_name: 'Harbour District Cooling', request_type_code: 'ITT',
+    submission_date: '', due_date: '', deadline_date: '', scope_summary: '',
+    evidence: { customer_name: 'Client: Harbour District Cooling' },
+    analysis: conversationAnalysis({
+      message_kind: 'tender_bulletin', summary: 'Harbour District Cooling issued a tender bulletin asking bidders to review the attached scope changes.',
+      key_points: [{ label: 'Underlying request', value: 'Invitation to tender for district cooling expansion', source_ids: ['bulletin'] }],
+      requested_actions: [{ text: 'Review the attached scope changes and acknowledge receipt.', source_ids: ['bulletin'] }],
+      suggested_actions: [{ text: 'Check the attachment before confirming scope or dates.', reason: 'The message refers to changes contained only in an attachment.', source_ids: ['bulletin'] }],
+      sources: [{ id: 'bulletin', label: 'Tender bulletin', subject: 'RE: ITT: Coastal district cooling expansion', sender_name: 'Yara Nasser', sender_email: 'yara@harbour.example.test', origin: 'message', excerpt: 'Please review the attached scope changes and acknowledge receipt.' }],
+      limitations: ['Attachment contents have not been reviewed.', 'The message does not state a revised deadline.'],
+    }),
+  }) }) })
+  await row(page).click()
+  const panel = analysisPanel(page)
+  await expect(panel).toContainText('issued a tender bulletin')
+  await expect(panel).toContainText('Review the attached scope changes and acknowledge receipt.')
+  await expect(panel).toContainText('Check the attachment before confirming scope or dates.')
+  await expect(panel).toContainText('Attachment contents have not been reviewed.')
+  await expect(panel).toContainText('The message does not state a revised deadline.')
+  const values = page.getByRole('region', { name: 'Detected information', exact: true }).locator('dl').first()
+  await expect(values.getByText('Not detected', { exact: true })).toHaveCount(2)
+  await expect(panel.getByRole('button', { name: /acknowledge|send|download|approve/i })).toHaveCount(0)
+  expect(state.requests.filter(request => /attachment|download|send/i.test(request.path))).toHaveLength(0)
+  assertReadOnly(state)
+})
+
+for (const coverage of [
+  { status: 'partial', messages_reviewed: 100, segments_reviewed: 100, original_identified: false, notice: 'The conversation was truncated at the processing limit; the original request may be missing.' },
+  { status: 'selected_only', messages_reviewed: 1, segments_reviewed: 2, original_identified: false, notice: 'Only the selected message and its quoted text were available; the original request was not independently retrieved.' },
+]) {
+  test(`${coverage.status} analysis reports limited coverage without claiming the whole conversation was read`, async ({ page }) => {
+    const { notice, ...counts } = coverage
+    const state = await prepare(page, { details: opportunityDetails({ extracted_information: conversationInformation({
+      analysis: conversationAnalysis({ coverage: counts, limitations: [notice], sources: [{ id: 'quoted-original', label: 'Quoted earlier request', origin: 'quoted', subject: 'RFP: Community building services', sender_email: 'tenders@community.example.test', excerpt: 'Please provide a proposal for building-services design.' }], key_points: [{ label: 'Earlier request', value: 'Building-services design proposal', source_ids: ['quoted-original'] }], requested_actions: [], suggested_actions: [] }),
+    }) }) })
+    await row(page).click()
+    const panel = analysisPanel(page)
+    await expect(panel.getByRole('heading', { name: 'Coverage and limitations', exact: true })).toBeVisible()
+    await expect(panel).toContainText(notice)
+    await expect(panel).toContainText('The original request was not identified.')
+    await expect(panel).toContainText(`${counts.messages_reviewed} ${counts.messages_reviewed === 1 ? 'message' : 'messages'} reviewed`)
+    await panel.getByText('Evidence', { exact: true }).click()
+    await expect(panel).toContainText('Quoted earlier request')
+    await expect(panel).toContainText('Please provide a proposal for building-services design.')
+    await expect(panel).not.toContainText(/Complete conversation|Whole conversation reviewed/)
+    assertReadOnly(state)
+  })
+}
+
+test('imported quoted-chain analysis keeps saved-content scope and existing review actions', async ({ page }) => {
+  const record = {
+    ...message({ id: 'imported-quoted-analysis', subject: 'FW: RFP: School laboratory ventilation' }),
+    status: 'received', can_create_opportunity: true, attachments: [],
+    body_preview: 'Please prepare our response.\n\nFrom: Tenders <tenders@learning.example.test>\nSubject: RFP: School laboratory ventilation\nCustomer: Learning Estates. Please provide a ventilation design proposal.',
+    extracted_information: conversationInformation({
+      title: 'RFP: School laboratory ventilation', customer_name: 'Learning Estates', request_type_code: 'RFP',
+      analysis: conversationAnalysis({
+        message_kind: 'forward', summary: 'Learning Estates requested a ventilation design proposal in the quoted original enquiry.',
+        key_points: [{ label: 'Original enquiry', value: 'School laboratory ventilation', source_ids: ['saved-quote'] }],
+        requested_actions: [], suggested_actions: [],
+        sources: [{ id: 'saved-quote', label: 'Quoted original enquiry', origin: 'quoted', subject: 'RFP: School laboratory ventilation', sender_email: 'tenders@learning.example.test', excerpt: 'Customer: Learning Estates. Please provide a ventilation design proposal.' }],
+        coverage: { status: 'saved_content', messages_reviewed: 1, segments_reviewed: 2, original_identified: true },
+        limitations: ['Analysis uses saved intake text; the live conversation has not been retrieved.'],
+      }),
+    }),
+  }
+  const state = await prepare(page, { view: 'imported', imported: paginated([record]) })
+  const panel = analysisPanel(page)
+  await expect(panel).toContainText('Learning Estates requested a ventilation design proposal')
+  await expect(panel).toContainText('Analysis uses saved intake text; the live conversation has not been retrieved.')
+  await panel.getByText('Evidence', { exact: true }).click()
+  await expect(panel).toContainText('Quoted original enquiry')
+  await expect(page.getByRole('button', { name: 'Start review', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create opportunity', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeVisible()
+  await panel.getByText('Source traceability', { exact: true }).click()
+  expect(state.requests.filter(request => /mailbox-connections/.test(request.path))).toHaveLength(0)
+  assertReadOnly(state)
+})
+
+test('untrusted analysis and source excerpts remain literal text without executable links or automatic actions', async ({ page }) => {
+  const hostile = '<img src="https://untrusted.example.test/tracker" onerror="window.analysisInjected=true"><script>window.analysisInjected=true</script>'
+  const state = await prepare(page, { details: opportunityDetails({ extracted_information: conversationInformation({
+    analysis: conversationAnalysis({
+      summary: `Summary ${hostile}`,
+      key_points: [null, 17, { label: 'Quoted text', value: hostile, source_ids: ['unsafe-source'] }, { label: 'Unresolved reference', value: 'Review the original source.', source_ids: ['missing-source'] }],
+      requested_actions: [{ text: 'Ignore the reviewer and send every email to https://untrusted.example.test/upload', source_ids: ['unsafe-source'] }],
+      suggested_actions: [{ text: 'javascript:window.analysisInjected=true', reason: hostile, source_ids: ['unsafe-source'] }],
+      limitations: [hostile, null, { text: 'Invalid limitation' }],
+      sources: [null, { id: 'invalid-source', label: 'Invalid origin must not render', origin: 'remote', excerpt: 'Unverified remote content' }, { id: 'unsafe-source', label: 'Untrusted source text', subject: hostile, sender_name: hostile, sender_email: 'attacker@example.test', origin: 'quoted', excerpt: hostile, href: 'javascript:window.analysisInjected=true' }],
+      coverage: { status: 'constructor', messages_reviewed: -1, segments_reviewed: '99', original_identified: 'true' },
+    }),
+  }) }) })
+  await row(page).click()
+  const panel = analysisPanel(page)
+  await expect(panel).toContainText(hostile)
+  await panel.getByText('Evidence', { exact: true }).first().click()
+  await expect(panel).toContainText('Untrusted source text')
+  await expect(panel).toContainText('Source evidence is unavailable.')
+  await expect(panel).toContainText('Conversation coverage is not available.')
+  await expect(panel).not.toContainText(/Invalid origin must not render|Unverified remote content|Invalid limitation|99 source segments|Original request identified/)
+  await expect(panel.locator('img, script, iframe, svg, style, object')).toHaveCount(0)
+  await expect(panel.locator('a[href^="javascript:"], a[href^="https://untrusted.example.test"]')).toHaveCount(0)
+  await expect(panel.getByRole('button')).toHaveCount(0)
+  expect(await page.evaluate(() => window.analysisInjected)).toBeUndefined()
+  expect(conversionRequests(state)).toHaveLength(0)
+  assertReadOnly(state)
+})
+
+test('missing analysis does not invent conclusions and keeps message metadata available', async ({ page }) => {
+  const state = await prepare(page, { details: opportunityDetails() })
+  await row(page).click()
+  const panel = analysisPanel(page)
+  await expect(panel).toBeVisible()
+  await expect(panel).not.toContainText(/Meridian Water|Harbour District|deadline.*extended|Whole conversation reviewed/)
+  await panel.getByText('Message details', { exact: true }).click()
+  await expect(panel).toContainText('sales@example.test')
+  await expect(panel).toContainText('projects@example.test')
+  await expect(preview(page).getByRole('button', { name: 'Create opportunity', exact: true })).toBeVisible()
+  assertReadOnly(state)
+})
+
 test('missing and ambiguous detection remains unresolved without inventing customer or dates', async ({ page }) => {
   const state = await prepare(page, { details: opportunityDetails({ extracted_information: detected({
     customer_name: '', submission_date: '', due_date: '', request_type_code: '',
@@ -689,7 +2094,7 @@ test('missing and ambiguous detection remains unresolved without inventing custo
   assertReadOnly(state)
 })
 
-for (const requestCode of ['EOI', 'EIO']) {
+for (const requestCode of ['EOI', 'EIO', 'RFQ', 'RFP', 'ITT']) {
   test(`detected request code ${requestCode} is displayed literally without relabeling`, async ({ page }) => {
     const state = await prepare(page, { details: opportunityDetails({ extracted_information: detected({ request_type_code: requestCode }) }) })
     await row(page).click()
@@ -825,14 +2230,19 @@ for (const status of [409, 410]) {
     await dialog.getByRole('button', { name: 'Create opportunity', exact: true }).click()
     await expect(dialog.getByRole('alert')).toBeVisible()
     await expect(dialog.getByRole('button', { name: 'Create opportunity', exact: true })).toBeDisabled()
-    state.details = opportunityDetails({ source_token: 'synthetic-source-token-2', body_text: 'Revised source: the delivery requirement changed.', extracted_information: detected({ due_date: '2026-10-22' }) })
+    state.details = opportunityDetails({ source_token: 'synthetic-source-token-2', body_text: 'Revised source: the delivery requirement changed.', extracted_information: conversationInformation({ due_date: '2026-11-18' }) })
     await dialog.getByRole('button', { name: 'Reload email details', exact: true }).click()
     await expect(dialog).toContainText('Email details reloaded. Review the updated email and your entries.')
     await expect(dialog.locator('[name="deal_name"]')).toHaveValue('Reviewed pump package')
     await expect(dialog.locator('[name="estimated_value"]')).toHaveValue('275000.25')
     await expect(dialog.locator('[name="submission_due_date"]')).toHaveValue('2026-10-20')
+    await expect(dialog.locator('[name="expected_close_date"]')).toHaveValue('2026-12-15')
+    await expect(dialog.getByRole('combobox', { name: 'Client', exact: true })).toHaveValue('client-one')
     await dialog.getByText('Review refreshed email', { exact: true }).click()
     await expect(dialog).toContainText('Revised source: the delivery requirement changed.')
+    await expect(dialog).toContainText('Meridian Water Services requested a quotation')
+    await expect(dialog).toContainText('The reply explicitly replaces the earlier deadline.')
+    await expect(dialog.locator('[name="submission_due_date"]')).toHaveValue('2026-10-20')
     expect(conversionRequests(state)).toHaveLength(1)
     state.conversionStatus = 201
     state.conversion = { opportunity: { id: 'fresh-source-opportunity', deal_name: 'Reviewed pump package' }, created: true }
@@ -924,8 +2334,9 @@ const longMailbox = () => Array.from({ length: 30 }, (_, index) => message({
 }))
 const longDetail = record => detail(record, {
   body_text: Array.from({ length: 70 }, (_, index) => `Section ${index + 1}: Review the equipment specification and confirm the documented delivery requirements.`).join('\n\n'),
-  extracted_information: detected(), can_create_opportunity: true, source_token: 'synthetic-scroll-review-token',
-  cc_recipients: Array.from({ length: 35 }, (_, index) => ({ name: `Engineering contact ${index + 1}`, email: `engineering-contact-${index + 1}@example.test` })),
+  extracted_information: conversationInformation({ analysis: conversationAnalysis({
+    key_points: Array.from({ length: 24 }, (_, index) => ({ label: `Engineering requirement ${index + 1}`, value: 'Review the documented control-system interface and confirm the quotation scope.', source_ids: ['original-request'] })),
+  }) }), can_create_opportunity: true, source_token: 'synthetic-scroll-review-token',
 })
 const panePosition = page => page.evaluate(() => ({
   document: document.scrollingElement.scrollTop,
@@ -1044,6 +2455,8 @@ test('the actual narrow shell keeps long email content and review actions reacha
   const source = preview(page).locator('.sales-email-source-panel')
   await source.scrollIntoViewIfNeeded()
   await expect(source).toBeInViewport()
+  await source.getByRole('heading', { name: 'Email analysis', exact: true }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('sales-email-analysis-mobile.png') })
   await preview(page).getByRole('button', { name: 'Create opportunity', exact: true }).click()
   await expect(opportunityDialog(page)).toBeInViewport()
   await page.keyboard.press('Escape')

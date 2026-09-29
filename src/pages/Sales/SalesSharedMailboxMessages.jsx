@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
 import {
   ArrowPathIcon,
+  ArrowRightIcon,
   EnvelopeIcon,
   MagnifyingGlassIcon,
   PaperClipIcon,
@@ -11,11 +12,25 @@ import {
 import salesService from "../../services/sales.service";
 import SalesEmailBody from "./SalesEmailBody";
 import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
+import SalesEmailAnalysis from "./SalesEmailAnalysis";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
+import useSalesEmailClients from "./useSalesEmailClients";
+import { withoutCustomerMatch } from "./SalesEmailCustomerMatch";
+import SalesEmailThreadRole, { selectedThreadSource, threadRole } from "./SalesEmailThreadRole";
 
 const buttonClass =
   "inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50";
 const text = (value) => (typeof value === "string" ? value : "");
+const directionLabels = { incoming: "Incoming", outgoing: "Outgoing", draft: "Draft", unknown: "Direction unknown" };
+const directionBadge = (record) => {
+  const direction = record.is_draft ? "draft" : record.direction;
+  return <span className={`sales-email-status sales-email-direction-${direction}`} title={
+    direction === "incoming" ? "Received by this shared mailbox"
+      : direction === "outgoing" ? "Sent from or by this shared mailbox"
+        : direction === "draft" ? "This message has not been sent"
+          : "The available sender and recipient details do not establish the direction"
+  }>{directionLabels[direction]}</span>;
+};
 const dateLabel = (value, includeTime = true) => {
   if (!value) return "Not available";
   const date = new Date(value);
@@ -56,6 +71,9 @@ const messageRecord = (record) => {
     is_read: typeof record.is_read === "boolean" ? record.is_read : null,
     is_draft: record.is_draft === true,
     importance: text(record.importance),
+    direction: typeof record.direction === "string" && Object.hasOwn(directionLabels, record.direction) ? record.direction : "unknown",
+    thread_role: record.is_draft === true ? "draft" : threadRole(record.thread_role),
+    thread_role_reason: text(record.thread_role_reason),
   };
 };
 
@@ -75,8 +93,11 @@ const recipients = (records) => {
 const messageDetail = (payload, expectedId) => {
   const message = messageRecord(payload);
   if (message.id !== expectedId || typeof payload.body_text !== "string") throw new Error("Invalid email.");
+  const selectedSource = selectedThreadSource(payload.extracted_information?.analysis);
   return {
     ...message,
+    thread_role: message.is_draft ? "draft" : selectedSource ? threadRole(selectedSource.thread_role) : message.thread_role,
+    thread_role_reason: selectedSource ? text(selectedSource.thread_role_reason) : message.thread_role_reason,
     body: payload.body_text,
     bodyContent: Array.isArray(payload.body_content) ? payload.body_content : null,
     to: recipients(payload.to_recipients),
@@ -188,6 +209,8 @@ function MailboxEmails({ connection }) {
   const mounted = useRef(false);
   const pageRequest = useRef(0);
   const detailRequest = useRef(0);
+  const nextStepRef = useRef(null);
+  const [nextStepMessageId, setNextStepMessageId] = useState(null);
   const [page, setPage] = useState({
     records: null, loading: true, error: "", cursor: null, nextCursor: null, history: [],
   });
@@ -197,11 +220,15 @@ function MailboxEmails({ connection }) {
   const [search, setSearch] = useState("");
   const [showOpportunityForm, setShowOpportunityForm] = useState(false);
   const [conversion, setConversion] = useState(null);
+  const redactClientMatch = useCallback(() => {
+    setDetail((current) => current.message ? { ...current, message: { ...current.message, information: withoutCustomerMatch(current.message.information) } } : current);
+  }, []);
 
   const loadPage = useCallback(async (cursor = null, history = []) => {
     const currentRequest = ++pageRequest.current;
     const active = () => mounted.current && currentRequest === pageRequest.current;
     detailRequest.current += 1;
+    setNextStepMessageId(null);
     setSelectedId(null);
     setShowOpportunityForm(false);
     setConversion(null);
@@ -245,10 +272,25 @@ function MailboxEmails({ connection }) {
     };
   }, [loadPage]);
 
-  const loadMessage = async (record) => {
+  const focusNextStep = useCallback(() => {
+    const target = nextStepRef.current;
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, []);
+
+  useEffect(() => {
+    if (nextStepMessageId && detail.message?.id === nextStepMessageId && selectedId === nextStepMessageId) {
+      focusNextStep();
+      setNextStepMessageId(null);
+    }
+  }, [detail.message, selectedId, nextStepMessageId, focusNextStep]);
+
+  const loadMessage = async (record, openNextStep = false) => {
     const currentRequest = ++detailRequest.current;
     const active = () => mounted.current && currentRequest === detailRequest.current;
     setSelectedId(record.id);
+    setNextStepMessageId(openNextStep ? record.id : null);
     setShowOpportunityForm(false);
     setConversion(null);
     setDetail({ message: null, loading: true, error: "" });
@@ -261,6 +303,7 @@ function MailboxEmails({ connection }) {
       });
     } catch (error) {
       if (!active()) return;
+      setNextStepMessageId(null);
       const status = error?.response?.status;
       if (status === 401 || status === 403 || status === 404) {
         pageRequest.current += 1;
@@ -279,6 +322,14 @@ function MailboxEmails({ connection }) {
     }
   };
 
+  const openNextStep = (record) => {
+    if (detail.message?.id === record.id && !detail.loading) {
+      focusNextStep();
+    } else {
+      loadMessage(record, true);
+    }
+  };
+
   const selected = page.records?.find((record) => record.id === selectedId);
   const visibleRecords = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -292,6 +343,7 @@ function MailboxEmails({ connection }) {
   }, [page.records, readFilter, search]);
   const changeFilter = (nextFilter, nextSearch = search) => {
     detailRequest.current += 1;
+    setNextStepMessageId(null);
     setSelectedId(null);
     setShowOpportunityForm(false);
     setConversion(null);
@@ -308,6 +360,7 @@ function MailboxEmails({ connection }) {
   const mailboxUnavailable = () => {
     pageRequest.current += 1;
     detailRequest.current += 1;
+    setNextStepMessageId(null);
     setSelectedId(null);
     setShowOpportunityForm(false);
     setConversion(null);
@@ -365,13 +418,13 @@ function MailboxEmails({ connection }) {
           </p>}
           {!page.loading && !page.error && page.records?.length > 0 && visibleRecords.length === 0 && <p className="p-5 text-sm text-slate-600">No matching emails on this page.</p>}
           <ul className="sales-email-list-scroll">
-            {visibleRecords.map((record) => <li key={record.id}>
+            {visibleRecords.map((record) => <li key={record.id} className={`sales-email-row sales-email-row-with-actions ${selectedId === record.id ? "sales-email-row-selected" : ""}`}>
               <button
                 type="button"
                 aria-label={`Open email: ${record.subject || "No subject"}`}
                 aria-pressed={selectedId === record.id}
                 onClick={() => loadMessage(record)}
-                className={`sales-email-row ${selectedId === record.id ? "sales-email-row-selected" : ""}`}
+                className="sales-email-row-open"
               >
                 <span className="flex min-w-0 items-start justify-between gap-3">
                   <span className="min-w-0 truncate font-semibold text-slate-900">{record.sender_name || record.sender_email || "Sender unavailable"}</span>
@@ -379,12 +432,16 @@ function MailboxEmails({ connection }) {
                 </span>
                 <span className={`mt-1 block line-clamp-2 break-words text-slate-800 ${record.is_read === false ? "font-semibold" : "font-medium"}`}>{record.subject || "No subject"}</span>
                 <span className="mt-1 block line-clamp-2 break-words text-xs leading-4 text-slate-600">{record.body_preview || "No email preview available."}</span>
-                <span className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                  <span>{readState(record)}</span>
-                  {record.is_draft && <span>Draft</span>}
-                  {record.has_attachments && <span className="inline-flex items-center gap-1"><PaperClipIcon className="h-3.5 w-3.5" aria-hidden="true" />Attachments</span>}
-                </span>
               </button>
+              <div className="sales-email-row-status">
+                <span className="sales-email-status">{readState(record)}</span>
+                {directionBadge(record)}
+                <SalesEmailThreadRole role={record.thread_role} reason={record.thread_role_reason} hideDraft={record.is_draft || record.direction === "draft"} />
+                <button type="button" className="sales-email-next-step" aria-label={`Next step: ${record.subject || "No subject"}`} onClick={() => openNextStep(record)}>
+                  Next step <ArrowRightIcon className="h-3 w-3" aria-hidden="true" />
+                </button>
+                {record.has_attachments && <span className="inline-flex items-center gap-1"><PaperClipIcon className="h-3.5 w-3.5" aria-hidden="true" />Attachments</span>}
+              </div>
             </li>)}
           </ul>
           <nav aria-label="Email pages" className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 p-3">
@@ -401,7 +458,9 @@ function MailboxEmails({ connection }) {
               <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-600">
                 <span className="rounded bg-slate-100 px-2 py-1">{readState(detail.message)}</span>
-                {detail.message.is_draft && <span className="rounded bg-amber-50 px-2 py-1 text-amber-900">Draft</span>}
+                {directionBadge(detail.message)}
+                <SalesEmailThreadRole role={detail.message.thread_role} reason={detail.message.thread_role_reason} selected hideDraft={detail.message.is_draft || detail.message.direction === "draft"} />
+                <button type="button" className="sales-email-next-step" onClick={() => openNextStep(detail.message)}>Next step <ArrowRightIcon className="h-3 w-3" aria-hidden="true" /></button>
                 {detail.message.importance === "high" && <span className="rounded bg-amber-50 px-2 py-1 text-amber-900">High importance</span>}
                 {detail.message.has_attachments && <span className="inline-flex items-center gap-1"><PaperClipIcon className="h-3.5 w-3.5" aria-hidden="true" />Has attachments</span>}
               </div>
@@ -422,8 +481,10 @@ function MailboxEmails({ connection }) {
                 <SalesEmailBody bodyText={detail.message.body || "This email has no text content."} bodyContent={detail.message.bodyContent} />
                 </div>
               </section>
-              <aside className="sales-email-source-panel" aria-label="Email details" tabIndex={0}>
-                <h4 className="text-sm font-semibold text-slate-900">Email details</h4>
+              <aside className="sales-email-source-panel" aria-label="Email analysis" tabIndex={0}>
+                <SalesEmailAnalysis analysis={detail.message.information.analysis} nextStepRef={nextStepRef} />
+                <details className="sales-email-analysis-metadata">
+                <summary>Message details</summary>
                 <dl className="mt-3 space-y-3 text-xs">
                   {[
                     ["Mailbox", connection.address],
@@ -436,6 +497,7 @@ function MailboxEmails({ connection }) {
                     <dd className="mt-1 min-w-0 break-words leading-5 text-slate-800">{value}</dd>
                   </div>)}
                 </dl>
+                </details>
               </aside>
             </div>
           </> : <div className="py-12 text-center text-slate-500">
@@ -452,64 +514,35 @@ function MailboxEmails({ connection }) {
         onClose={() => setShowOpportunityForm(false)}
         onUnavailable={mailboxUnavailable}
         onSourceReloaded={(message) => setDetail({ message, loading: false, error: "" })}
+        onClientAccessDenied={redactClientMatch}
         onCreated={(result) => { setConversion(result); setShowOpportunityForm(false); }}
       />}
     </section>
   );
 }
 
-function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUnavailable, onSourceReloaded }) {
+function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUnavailable, onSourceReloaded, onClientAccessDenied }) {
   const mounted = useRef(false);
-  const clientRequest = useRef(0);
   const actionRequest = useRef(0);
   const submitting = useRef(false);
   const currentSource = useRef(message);
-  const [clients, setClients] = useState({ records: [], loading: true, error: "" });
+  const clients = useSalesEmailClients();
   const [clientChoice, setClientChoice] = useState("");
   const [state, setState] = useState({ submitting: false, error: message.sourceToken ? "" : "Reload email details before creating the opportunity.", fieldErrors: {}, reloadRequired: !message.sourceToken, reloading: false, refreshed: null });
-
-  const loadClients = useCallback(async () => {
-    const request = ++clientRequest.current;
-    const active = () => mounted.current && request === clientRequest.current;
-    setClients({ records: [], loading: true, error: "" });
-    try {
-      const records = [];
-      const ids = new Set();
-      const visited = new Set();
-      let page = 1;
-      while (page !== null) {
-        visited.add(page);
-        const payload = await salesService.getClients({ page, page_size: 100, ordering: "company_name" });
-        if (!active()) return;
-        const values = Array.isArray(payload) ? payload : payload?.results;
-        if (!Array.isArray(values)) throw new Error("Invalid clients.");
-        for (const record of values) {
-          if (typeof record?.id !== "string" || !record.id || !text(record.company_name).trim() || ids.has(record.id)) throw new Error("Invalid client.");
-          ids.add(record.id);
-          records.push({ id: record.id, company_name: record.company_name });
-        }
-        page = Array.isArray(payload) ? null : connectionPage(payload.next, page, visited);
-      }
-      if (active()) {
-        setClients({ records, loading: false, error: "" });
-        setClientChoice((current) => records.some((record) => record.id === current) ? current : "");
-      }
-    } catch (error) {
-      if (!active()) return;
-      const denied = [401, 403].includes(error?.response?.status);
-      setClients({ records: [], loading: false, error: denied ? "You do not have access to client options." : "Client options could not be loaded. Try again." });
-    }
-  }, []);
+  useEffect(() => {
+    if (!clients.denied) return;
+    currentSource.current = { ...currentSource.current, information: withoutCustomerMatch(currentSource.current.information) };
+    setState((current) => current.refreshed ? { ...current, refreshed: { ...current.refreshed, information: withoutCustomerMatch(current.refreshed.information) } } : current);
+    onClientAccessDenied();
+  }, [clients.denied, onClientAccessDenied]);
 
   useEffect(() => {
     mounted.current = true;
-    loadClients();
     return () => {
       mounted.current = false;
-      clientRequest.current += 1;
       actionRequest.current += 1;
     };
-  }, [loadClients]);
+  }, []);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -582,11 +615,14 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
     if (submitting.current || state.reloading) return;
     const request = ++actionRequest.current;
     const active = () => mounted.current && request === actionRequest.current;
+    const clientGeneration = clients.access.current.generation;
     setState((current) => ({ ...current, reloading: true }));
     try {
       const payload = await salesService.getMailboxMessage(connection.id, currentSource.current.id);
       if (!active()) return;
-      const refreshed = messageDetail(payload, currentSource.current.id);
+      const source = messageDetail(payload, currentSource.current.id);
+      const refreshed = clients.access.current.denied || clientGeneration !== clients.access.current.generation
+        ? { ...source, information: withoutCustomerMatch(source.information) } : source;
       if (!refreshed.sourceToken) throw new Error("Missing review token.");
       if (!refreshed.canCreateOpportunity) {
         setState((current) => ({ ...current, reloading: false, error: "You do not have permission to create an opportunity from this email." }));
@@ -607,7 +643,7 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
 
   return <SalesEmailOpportunityForm
     subject={message.subject}
-    information={message.information}
+    information={clients.denied ? withoutCustomerMatch(message.information) : message.information}
     clients={clients.records}
     clientChoice={clientChoice}
     onClientChange={setClientChoice}
@@ -618,7 +654,7 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
     fieldErrors={state.fieldErrors}
     loadingClients={clients.loading}
     clientError={clients.error}
-    onRetryClients={loadClients}
+    onRetryClients={clients.load}
     requireSourceReload={state.reloadRequired}
     onReloadEmail={state.reloadRequired ? reloadEmail : null}
     reloadingEmail={state.reloading}
@@ -627,7 +663,8 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
       <details className="mt-2 min-w-0">
         <summary className="w-fit cursor-pointer py-1 text-sm font-semibold text-blue-900">Review refreshed email</summary>
         <div className="mt-3 min-w-0 rounded-md border border-slate-200 bg-white p-3">
-          <SalesEmailDetectedInformation information={state.refreshed.information} subject={state.refreshed.subject} />
+          <SalesEmailDetectedInformation information={clients.denied ? withoutCustomerMatch(state.refreshed.information) : state.refreshed.information} subject={state.refreshed.subject} />
+          <div className="mt-4 border-t border-slate-200 pt-4"><SalesEmailAnalysis analysis={state.refreshed.information.analysis} /></div>
           <div className="mt-4"><SalesEmailBody bodyText={state.refreshed.body} bodyContent={state.refreshed.bodyContent} /></div>
         </div>
       </details>
@@ -650,4 +687,5 @@ MailboxOpportunityForm.propTypes = {
   onCreated: PropTypes.func.isRequired,
   onUnavailable: PropTypes.func.isRequired,
   onSourceReloaded: PropTypes.func.isRequired,
+  onClientAccessDenied: PropTypes.func.isRequired,
 };

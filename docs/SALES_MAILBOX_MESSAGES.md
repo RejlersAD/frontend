@@ -59,11 +59,49 @@ outside its containing block. No shared shell/global styles or backend changes.
 
 ## Detected information and opportunity review
 
+The subsequent row-status request adds Incoming/Outgoing beside Read/Unread,
+with matching badges in the selected header. Server `direction` values are
+`incoming`, `outgoing`, `draft` and `unknown`; unsupported/missing values display
+Direction unknown. Draft appears once and takes precedence. Direction is relative
+to the configured shared mailbox, not sender-company affiliation; unresolved
+aliases/hidden recipients are not guessed. Existing attachment indicators remain.
+
+The user explicitly selected Next step as a shortcut to suggested actions. Its
+button is a sibling of the row's open-email button, not a nested interactive
+element. It loads the requested message through the existing guarded read, then
+focuses the Suggested next step region; an already loaded selected message is
+reused. Missing analysis focuses its unavailable notice, and empty suggestions
+remain explicit. No suggestion count or pending/completed state is fabricated for
+unopened rows. Stale responses and account/mailbox/filter/page changes cannot
+restore prior content or move focus to another email's actions. Desktop navigation
+scrolls the source pane; narrow layouts retain ordinary vertical navigation.
+See workspace `docs/features/sales-email-row-status.md`.
+
 The user-requested follow-up adds shared detected Title (Subject), Customer Name,
 Submission Date, Due Date and Type of Request cards with source evidence. Detection
 is local and conservative: absent/conflicting values stay unresolved, and email
 received time does not replace a stated submission date. EOI/RFT and literal EIO
-source codes are shown without reclassifying unrelated requests.
+source codes, plus RFQ/RFP/ITT, are shown without reclassifying unrelated requests.
+
+The subsequent conversation-analysis correction replaces the right Email details
+heading with Email analysis, using `extracted_information.analysis` version 1.
+It explains the selected message in the context of the available conversation,
+shows key points, requested actions and separately labeled suggested next steps,
+and lets users expand source excerpts for each supported claim. Original-request
+fields can differ from the currently selected reply header. Complete/partial,
+selected-only and saved-content coverage stay visible, including missing-original
+and unread-attachment limitations. Useful transport metadata is collapsed under
+Message details; imported source traceability and actions remain available.
+
+The backend obtains the authorized conversation and parses it locally. The
+frontend accepts only supported structured analysis and renders strings as React
+text, never source HTML or executable instructions. Missing/malformed analysis has
+an honest unavailable state. A bulletin purpose remains distinct from its RFT/RFQ
+request type, and dates not stated in available text stay unresolved. Source review
+now binds the available conversation; reload after a changed sibling message keeps
+the user's form input. Existing panel scroll regions, responsive shell and access
+checks remain in place. See the workspace
+`docs/features/sales-email-conversation-analysis.md` for this correction's scope.
 
 The server's explicit `can_create_opportunity` capability exposes Create opportunity.
 The live form loads accessible canonical clients and requires explicit selection.
@@ -155,3 +193,217 @@ Deploy the companion backend before this frontend. Production needs its own
 authorized mailbox connection, server-side secret and effective Sales permissions.
 The frontend carries no Microsoft credential. This release does not change
 schema, send mail, enable automatic intake or authorize a production deployment.
+
+## Conversation-analysis verification, 28 September 2026
+
+The correction passed all 76 browser cases in one run (331.71 seconds): 64
+mailbox/detection/analysis/layout, 10 saved-status and two privacy cases. A separate
+mobile screenshot capture passed its existing case again (11.4 seconds). Desktop
+and mobile screenshots were inspected; source excerpts, scrolling, focus and
+accessibility checks passed. Coverage includes varied organizations/request kinds,
+reply versus original provenance, revised deadlines, partial/saved evidence,
+untrusted text and input preservation when the conversation changes during review.
+
+Changed-source/test ESLint passed. The final Node 20 container build passed in
+169.61 seconds (Vite 2m 44s), with the existing bundle-size, mixed-import and
+Browserslist warnings. All five affected production source hashes matched the
+browser-tested snapshot after the build. Logs, timing, hashes and screenshots
+are ignored local output under `artifacts/conversation-analysis/` and
+`test-results-conversation-*`. This records local verification of the correction,
+not a production deployment or a new Git push.
+
+## Row-status verification, 28 September 2026
+
+The Incoming/Outgoing and Next step follow-up passed all 85 browser cases in one
+run (285.86 seconds), including nine new cases and the retained mailbox/status/
+privacy checks. The nine focused cases also passed. Desktop and mobile screenshots
+were inspected; badges wrap cleanly, Next step focuses the correct suggestions,
+the desktop reading pane keeps its position, and narrow layouts bring the focused
+section into view. Keyboard/axe, missing suggestions, late responses, account and
+mailbox changes passed. Source/test lint and diff checks passed; four source/test
+hashes remained unchanged through the run. Evidence is under
+`artifacts/email-row-status/` and `test-results-email-row-final/` (ignored).
+
+The final Node 20 container build passed in 161.73 seconds (Vite 2m 36s), with
+existing Browserslist, mixed-import and bundle-size warnings. Evidence:
+`artifacts/email-row-status/build-final.log` and `build-timing.json`. The local
+frontend serves the updated controls and the backend live list returns actual
+direction values. No schema migration or production deployment was performed.
+
+## Customer matching for review, 28 September 2026
+
+Saved and live email details display the server's versioned `customer_match`
+suggestion, canonical client metadata and literal source evidence. Exact name
+matches require review; ambiguous, absent, conflicting, denied and unavailable
+results remain distinct. Unsupported or malformed projections display unavailable.
+Client status, verification and proposal permission are informational; opportunity
+creation retains its existing server validation.
+
+The shared opportunity form keeps Client blank initially. `Use this client`
+changes only that field and is available only for a candidate in the complete
+authorized client options. Manual selection stays available. Both views load all
+client pages on opening the form; a partial or failed directory is not published.
+Saved email loading no longer depends on client-directory access. The existing
+saved new-client option requires explicit `can_create_client: true`, a valid
+server `no_match` result and successful complete client loading. It is never a
+default and does not establish that the company is absent from other scopes.
+
+Review inputs survive retries and source refresh. A current client-access denial
+redacts candidate metadata in the form and displayed source. Source/list responses
+started before that denial cannot restore it, including after directory recovery.
+Transient provider errors remain separate from denied access. Existing session,
+selection, source-token and explicit confirmation boundaries remain in place.
+
+Final scoped browser verification passed all 30 selected cases in 165.90 seconds:
+13 new customer-matching cases plus 17 retained classification, conversion and
+layout checks. Coverage includes the 501st client, duplicate matches, explicit
+selection, no-match and denied states, malformed evidence, delayed permission
+responses, retained inputs, hostile text, keyboard/axe and narrow layouts.
+Desktop and mobile screenshots were inspected. Scoped source/test ESLint and
+diff checks passed. Fixtures use synthetic content and block external requests;
+no real client or opportunity was created by these checks. Logs, timing, source
+hashes and screenshots are local ignored artifacts under
+`artifacts/email-customer-matching/` and `test-results-email-customer-final/`.
+
+The final Node 20.20.2 container production build passed in 157.75 seconds
+(Vite 2m 32s), including PWA generation. Existing Browserslist, mixed-import and
+bundle-size warnings remain. All seven affected source/test hashes matched the
+browser-tested snapshot after the build. This records local verification only;
+no deployment, Git push or mailbox write was performed for this frontend task.
+
+## Selected email and original request, 28 September 2026
+
+Live and saved rows show the server's thread role separately from mailbox
+direction and business classification. The selected header names that role; a
+new message is not automatically called the original request. Missing or invalid
+role metadata stays unknown. Opening rows and using Next step retain the existing
+request, focus and stale-response guards, with no per-row detail prefetch.
+
+The existing analysis pane now includes a conversation timeline when the server
+provides thread identities. Each source keeps its subject, sender, date and
+literal evidence, plus explicit selected, first-incoming-available and original
+request markers where supported by unique source references and matching flags.
+Quoted content is visibly distinguished from a separately retrieved mailbox
+message. The earliest available incoming message may already be a reply; absent
+or contradictory references do not establish an original or complete history.
+Legacy analysis continues to use its existing source disclosure.
+
+Saved coverage can now include multiple authorized saved messages and their
+quotes. It still does not claim that live mailbox history was retrieved. Source
+refresh preserves reviewed client and opportunity values, and existing client
+access redaction and pane-local scrolling remain in place.
+
+Scoped browser verification passed nine new thread-identification cases in
+71.85 seconds and 34 retained cases in 223.05 seconds, covering 43 distinct cases
+across two successful runs. The retained checks include client denial and delayed
+responses, manual input preservation, reviewed conversion, existing analysis,
+keyboard/axe, Next step and desktop/mobile containment. An initial focused run
+found an incorrect test locator ancestry; the corrected helper passed without a
+product change. Desktop and mobile timeline screenshots were inspected. The
+fixtures contain synthetic content and block external requests.
+
+Source/test ESLint passed. Local logs, timing, hashes and screenshots are ignored
+artifacts under `artifacts/email-thread-identification/` and
+`test-results-email-thread-*`. This verification does not claim a mailbox write,
+production deployment or Git push.
+
+The final Node 20.20.2 container production build passed in 165.81 seconds
+(Vite 2m 41s), including PWA generation. Existing Browserslist, mixed-import and
+bundle-size warnings remain. All five affected source/test hashes matched the
+browser-tested snapshot after the build; scoped diff checks passed.
+
+## Detection reference, version 2 — 28 September 2026
+
+The later Customer Name display correction below supersedes this section's
+original domain-as-name presentation; the recorded verification remains historical.
+
+Version 2 detected information labels Customer Name as the evidenced customer
+domain and Submission Date as the original incoming email's sent calendar date.
+The server supplies source-backed status and reason; unavailable or conflicting
+evidence is not replaced with the current reply, received time, portal domain or
+today's date. Legacy payloads retain their previous presentation.
+
+The existing middle pane includes compact deadline review and opportunity
+suggestions, plus disclosures for sourced organizations, contacts, projects and
+categorical field confidence. Unsupported versions, statuses, confidence levels
+or source references stay unavailable. Evidence and entity text render literally;
+the UI does not crawl portals or load quoted content as executable markup.
+Opportunity signals are review proposals and never grant creation authority.
+
+Canonical customer matching continues to use explicit organization evidence.
+For version 2, a match naming only the displayed domain is rejected by the UI,
+including the saved view's existing guarded Add new client choice. Client
+selection remains explicit. The opportunity form still uses proposal deadline
+fields, independently of the original email sent date, and preserves typed
+client, decimal, date and scope values across source refresh and failures.
+
+Verification covered 47 distinct browser cases across the local runs. Eight new
+cases passed in 71.17 seconds. The retained run passed 40 of 41 cases in
+310.05 seconds; its remaining five-scenario test timed out while repeatedly
+reloading the development page. That test now uses the actual saved-view Refresh
+and an awaited response, with no reduced assertions. It and the two affected
+live/saved/mobile cases passed in the final three-case run (34.01 seconds), also
+verifying the final `contact` entity contract. This is evidence across runs,
+not a claim of one uninterrupted 47-case run.
+
+The four changed source/test files pass ESLint. Desktop and mobile screenshots
+were visually reviewed; existing thread markers, client permission races, form
+input retention, Next step and contained scrolling remain covered. Synthetic
+fixtures block external requests. Logs, timing, hashes and screenshots are local
+ignored artifacts under `artifacts/email-intelligence/` and
+`test-results-email-intelligence-*`. No email or business-record write, Git push
+or production deployment was performed by frontend verification.
+
+The final Node 20.20.2 container production build passed in 163.56 seconds
+(Vite 2m 37s), including PWA generation. Existing Browserslist, mixed-import and
+bundle-size warnings remain. All four final source/test hashes matched the
+browser-tested snapshot after the build; scoped diff checks passed.
+
+## Value-only customer and sent-date cards — 28 September 2026
+
+Superseded by the simple visible labels in the follow-up below.
+
+The follow-up presentation request removes visible labels and helper/status
+paragraphs from the customer-domain and original-email sent-date cards. Keep their
+field names available to assistive technology and retain the displayed values or
+honest unavailable/not-detected fallbacks. Verification status and reasons remain
+in the existing collapsed Source evidence disclosure, including when those
+reasons are the only available evidence.
+
+This adjustment changes neither the version 2 field meanings nor canonical
+organization matching, proposal deadlines, source authorization or reviewed form
+values. Other detected fields and controls retain their labels. Verification for
+this presentation follow-up is recorded separately from the preceding feature
+runs; those results do not by themselves verify the later visual change.
+
+## Customer Name display and simple labels — 28 September 2026
+
+All five detected field names are visible: Title (Subject), Customer Name,
+Submission Date, Due Date and Type of Request. Customer Name uses the server's
+`intelligence.customer_name` review status and `customer_name` value. It never
+falls back to `customer_domain`, formats a domain locally or substitutes the
+canonical organization field. A missing or unverified name stays unresolved.
+Legacy responses continue to use their supplied customer_name.
+
+The customer domain and its reasons remain in the collapsed Source evidence
+disclosure, alongside customer-name and original-sent-date evidence. The cards
+retain only their simple labels and values; explanatory paragraphs stay collapsed.
+A standalone domain entity is not duplicated in Detected entities. Field
+confidence correctly identifies customer_name as Customer name. Server-derived
+display names remain review proposals and do not establish canonical client
+identity or trigger client creation.
+
+Submission Date keeps its original genuine sent-date meaning. Request-type
+classification, source permissions, canonical matching, explicit opportunity
+creation and reviewed form values are unchanged by this frontend correction.
+
+Focused verification passed all 11 selected browser cases in 58.43 seconds,
+including live/saved labels, supplied customer name, no domain fallback, collapsed
+evidence, RFQ presentation, legacy/unknown values, preserved form inputs and
+mobile keyboard/axe checks. Desktop and mobile screenshots were visually reviewed.
+ESLint and scoped diff checks passed for the changed files; three source/test
+hashes remained unchanged through the run. Evidence is local ignored output under
+`artifacts/email-customer-name-display/` and
+`test-results-email-customer-name-display/`. No backend files or live data were
+changed, and no commit or push was performed. No new build is claimed by these
+focused checks.

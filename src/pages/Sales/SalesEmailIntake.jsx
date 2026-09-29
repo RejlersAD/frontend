@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import PropTypes from "prop-types";
@@ -13,7 +13,6 @@ import {
   EnvelopeOpenIcon,
   ExclamationTriangleIcon,
   FunnelIcon,
-  IdentificationIcon,
   MagnifyingGlassIcon,
   NoSymbolIcon,
   PaperClipIcon,
@@ -25,7 +24,11 @@ import salesService from "../../services/sales.service";
 import SalesSharedMailboxMessages from "./SalesSharedMailboxMessages";
 import SalesEmailBody from "./SalesEmailBody";
 import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
+import SalesEmailAnalysis from "./SalesEmailAnalysis";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
+import { customerMatch, withoutCustomerMatch } from "./SalesEmailCustomerMatch";
+import useSalesEmailClients from "./useSalesEmailClients";
+import SalesEmailThreadRole, { selectedThreadSource } from "./SalesEmailThreadRole";
 import "./SalesEmailIntake.css";
 
 const STATUS = {
@@ -57,14 +60,9 @@ const STATUS = {
 };
 
 const list = (data) => (Array.isArray(data) ? data : data?.results ?? []);
+const withoutIntakeClientMatch = (record) => ({ ...record, extracted_information: withoutCustomerMatch(record.extracted_information), can_create_client: false });
 const fieldClass =
   "mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
-
-const normalizeCompany = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
 
 const formatDate = (value, includeTime = false) => {
   if (!value) return "Not available";
@@ -164,7 +162,7 @@ function EmailIntakeViews() {
 function ImportedEmailIntakes() {
   const navigate = useNavigate();
   const [records, setRecords] = useState([]);
-  const [clients, setClients] = useState([]);
+  const loadRequest = useRef(0);
   const [selectedId, setSelectedId] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -173,35 +171,48 @@ function ImportedEmailIntakes() {
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(null);
   const [clientChoice, setClientChoice] = useState("");
+  const clients = useSalesEmailClients(dialog === "convert");
+  const clientAccess = clients.access;
+  useEffect(() => {
+    if (clients.denied) setRecords((current) => current.map(withoutIntakeClientMatch));
+  }, [clients.denied]);
 
   const load = useCallback(async () => {
+    const request = ++loadRequest.current;
+    const clientGeneration = clientAccess.current.generation;
     setLoading(true);
     setError("");
     try {
-      const [intakeResponse, clientResponse] = await Promise.all([
-        salesService.getEmailIntakes({ page_size: 500, ordering: "-received_at" }),
-        salesService.getClients({ page_size: 500, ordering: "company_name" }),
-      ]);
-      const nextRecords = list(intakeResponse);
+      const intakeResponse = await salesService.getEmailIntakes({ page_size: 500, ordering: "-received_at" });
+      if (request !== loadRequest.current) return;
+      const redactMatches = clientAccess.current.denied || clientGeneration !== clientAccess.current.generation;
+      const nextRecords = list(intakeResponse).map((record) => redactMatches ? withoutIntakeClientMatch(record) : record);
       setRecords(nextRecords);
-      setClients(list(clientResponse));
       setSelectedId((current) =>
         nextRecords.some((row) => row.id === current)
           ? current
           : nextRecords[0]?.id ?? null,
       );
     } catch (requestError) {
+      if (request !== loadRequest.current) return;
+      if ([401, 403].includes(requestError?.response?.status)) {
+        setRecords([]);
+        setSelectedId(null);
+        setDialog(null);
+      }
       setError(
-        requestError?.response?.data?.detail ||
-          "Email intake records could not be loaded.",
+        [401, 403].includes(requestError?.response?.status)
+          ? "You do not have access to saved email enquiries."
+          : "Email intake records could not be loaded.",
       );
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
-  }, []);
+  }, [clientAccess]);
 
   useEffect(() => {
     load();
+    return () => { loadRequest.current += 1; };
   }, [load]);
 
   const counts = useMemo(
@@ -228,28 +239,22 @@ function ImportedEmailIntakes() {
   }, [records, search, statusFilter]);
   const selected = records.find((row) => row.id === selectedId) ?? null;
   const extracted = selected?.extracted_information ?? {};
-  const detectedCompany = normalizeCompany(extracted.company_name);
-  const matchingClients = clients.filter((client) => {
-    const clientNames = [client.company_name, client.legal_name, client.trading_name]
-      .map(normalizeCompany)
-      .filter(Boolean);
-    return detectedCompany && clientNames.some((name) => name === detectedCompany);
-  });
-  const matchedClient = matchingClients.length === 1 ? matchingClients[0] : null;
-  const suggestedClientName = String(extracted.company_name || "").trim();
+  const match = customerMatch(extracted);
+  const suggestedClientName = selected?.can_create_client === true && !clients.loading && !clients.error && match?.status === "no_match"
+    ? match.detected_name.trim() : "";
   const unresolved = records.filter((row) =>
     ["received", "under_review"].includes(row.status),
   ).length;
 
   useEffect(() => {
     if (dialog === "convert") {
-      setClientChoice(matchedClient?.id || "");
+      setClientChoice("");
     }
-  }, [dialog, matchedClient?.id, suggestedClientName]);
+  }, [dialog, selectedId]);
 
   const updateRecord = (record) => {
     setRecords((current) =>
-      current.map((row) => (row.id === record.id ? record : row)),
+      current.map((row) => (row.id === record.id ? (clientAccess.current.denied ? withoutIntakeClientMatch(record) : record) : row)),
     );
   };
 
@@ -296,13 +301,14 @@ function ImportedEmailIntakes() {
 
   const convert = async (event) => {
     event.preventDefault();
-    if (!selected || selected.can_create_opportunity !== true || saving) return;
+    if (!selected || selected.can_create_opportunity !== true || saving || clients.loading || clients.error) return;
     const form = new FormData(event.currentTarget);
     const createClient = clientChoice === "__new__";
     if (createClient && !suggestedClientName) {
       setError("A client name could not be detected from this email.");
       return;
     }
+    if (!createClient && !clients.records.some((client) => client.id === clientChoice)) return;
     setSaving(true);
     setError("");
     try {
@@ -450,8 +456,9 @@ function ImportedEmailIntakes() {
                     <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
                       {row.body_preview || "No email preview available."}
                     </span>
-                    <span className="mt-2 flex items-center justify-between">
+                    <span className="mt-2 flex flex-wrap items-center gap-2">
                       <StatusBadge value={row.status} />
+                      <SalesEmailThreadRole role={selectedThreadSource(row.extracted_information?.analysis)?.thread_role} reason={selectedThreadSource(row.extracted_information?.analysis)?.thread_role_reason} />
                       {row.has_attachments && (
                         <PaperClipIcon className="h-4 w-4 text-slate-500" />
                       )}
@@ -480,6 +487,7 @@ function ImportedEmailIntakes() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge value={selected.status} />
+                          <SalesEmailThreadRole role={selectedThreadSource(extracted.analysis)?.thread_role} reason={selectedThreadSource(extracted.analysis)?.thread_role_reason} selected />
                           {selected.importance && (
                             <span className="text-xs font-semibold text-slate-600">
                               {selected.importance} importance
@@ -566,11 +574,10 @@ function ImportedEmailIntakes() {
                       )}
                     </section>
 
-                    <aside className="sales-email-source-panel" aria-label="Source traceability" tabIndex={0}>
-                      <div className="flex items-center gap-2">
-                        <IdentificationIcon className="h-5 w-5 text-blue-700" />
-                        <h3 className="text-sm font-bold text-[#102a47]">Source traceability</h3>
-                      </div>
+                    <aside className="sales-email-source-panel" aria-label="Email analysis" tabIndex={0}>
+                      <SalesEmailAnalysis analysis={extracted.analysis} savedContent />
+                      <details className="sales-email-analysis-metadata">
+                      <summary>Source traceability</summary>
                       <dl className="mt-4 space-y-4 text-sm">
                         <div>
                           <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">RADAI intake ID</dt>
@@ -595,6 +602,7 @@ function ImportedEmailIntakes() {
                           </div>
                         )}
                       </dl>
+                      </details>
                       {selected.opportunity && (
                         <button
                           type="button"
@@ -637,11 +645,13 @@ function ImportedEmailIntakes() {
           subject={selected.subject}
           information={extracted}
           bodyPreview={selected.body_preview}
-          clients={clients}
+          clients={clients.records}
           clientChoice={clientChoice}
           onClientChange={setClientChoice}
-          matchedClientId={matchedClient?.id || ""}
-          newClientName={matchingClients.length === 0 ? suggestedClientName : ""}
+          newClientName={suggestedClientName}
+          loadingClients={clients.loading}
+          clientError={clients.error}
+          onRetryClients={clients.load}
           onSubmit={convert}
           onClose={() => setDialog(null)}
           submitting={saving}
