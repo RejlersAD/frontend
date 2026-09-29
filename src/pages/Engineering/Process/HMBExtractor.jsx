@@ -60,6 +60,17 @@ const MASTER_TEMPLATE_CFG = {
   maxSizeMb: 20,
 };
 
+// Display numeric stream values with at most 4 decimal places (e.g. 106770.6597).
+const formatStreamValue = (value) => {
+  if (value === '' || value == null) return value;
+  const text = String(value).trim();
+  if (!text || text === '\u2013' || text === '-') return text;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric)) return text;
+  if (!/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(text)) return text;
+  return String(Math.round(numeric * 10000) / 10000);
+};
+
 const CASE_UPLOAD_CFG = {
   acceptedExt: ['xlsx', 'xlsm', 'csv', 'pdf'],
   maxFiles: 12,
@@ -1829,7 +1840,7 @@ const HMBExtractorPage = () => {
                                   padding: '6px 5px',
                                 }}
                               >
-                                {value === '' ? '' : String(value)}
+                                {value === '' ? '' : formatStreamValue(value)}
                               </td>
                             ))}
                           </tr>
@@ -1968,7 +1979,7 @@ const HMBExtractorPage = () => {
                                 <button type="button" title="Inspect source value" aria-label={`Inspect ${caseName} ${row.section} ${row.property} ${row.unit}`}
                                   onClick={() => setInspectedValue({ caseName, property: row.property, unit: row.unit, value: row.values?.[caseName], source: row.sources?.[caseName] || {} })}
                                   style={{ font: 'inherit', color: 'inherit', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'right', width: '100%' }}>
-                                  {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '\u2013' : row.values[caseName]}
+                                  {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '\u2013' : formatStreamValue(row.values[caseName])}
                                 </button>
                               </td>
                             ))}
@@ -2267,7 +2278,7 @@ const HMBExtractorPage = () => {
                           ))}
                           {file.sample_records?.length > 0 && (
                             <div style={{ marginTop: 7, fontSize: 11, color: '#475569' }}>
-                              Sample: {file.sample_records.slice(0, 3).map((record) => `${record.stream_id} / ${record.property_name}: ${record.value_text}`).join(' | ')}
+                              Sample: {file.sample_records.slice(0, 3).map((record) => `${record.stream_id} / ${record.property_name}: ${formatStreamValue(record.value_text)}`).join(' | ')}
                             </div>
                           )}
                         </div>
