@@ -931,7 +931,17 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
               <div className="flex gap-2">
                 <select
                   value={visionProvider}
-                  onChange={(e) => { setVisionProvider(e.target.value); setTestResult(null) }}
+                  onChange={(e) => {
+                    // BUG FIX: this used to only reach sessionStorage inside
+                    // doUpload() — if the user entered/tested a key, then
+                    // navigated back to the project list before ever
+                    // uploading a file, nothing had been saved yet, so
+                    // reopening the project showed an empty field again.
+                    // Persisting on every change (same key doUpload already
+                    // writes to) means "entered and tested" is enough.
+                    setVisionProvider(e.target.value); setTestResult(null)
+                    sessionStorage.setItem(visionProviderStorageKey, e.target.value)
+                  }}
                   className="text-xs border border-slate-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
                 >
                   {PID_VISION_CONFIG.providers.map(p => (
@@ -942,7 +952,10 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   ref={apiKeyInputRef}
                   type="password"
                   value={visionApiKey}
-                  onChange={(e) => { setVisionApiKey(e.target.value); setTestResult(null) }}
+                  onChange={(e) => {
+                    setVisionApiKey(e.target.value); setTestResult(null)
+                    sessionStorage.setItem(visionApiKeyStorageKey, e.target.value)
+                  }}
                   placeholder="API key (optional)"
                   className="flex-1 min-w-0 text-xs border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
                 />
@@ -968,14 +981,14 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                 <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
                   <button
                     type="button"
-                    onClick={() => setThoroughScan(false)}
+                    onClick={() => { setThoroughScan(false); sessionStorage.setItem(thoroughScanStorageKey, 'false') }}
                     className={`px-3 py-1.5 text-xs font-semibold ${!thoroughScan ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
                   >
                     Quick Scan
                   </button>
                   <button
                     type="button"
-                    onClick={() => setThoroughScan(true)}
+                    onClick={() => { setThoroughScan(true); sessionStorage.setItem(thoroughScanStorageKey, 'true') }}
                     className={`px-3 py-1.5 text-xs font-semibold border-l border-slate-300 ${thoroughScan ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
                   >
                     Thorough Scan
@@ -1282,7 +1295,7 @@ const AssignProjectPicker = ({ onAssign, onClose }) => {
 // ─────────────────────────────────────────────────────────────────────
 // Document Row — one row in the "Previous Uploads" list inside a project
 // ─────────────────────────────────────────────────────────────────────
-const DocumentRow = ({ doc, onOpen, busy, onReExtract, onDownload, onAssignProject }) => {
+const DocumentRow = ({ doc, onOpen, busy, onReExtract, onForceFreshExtract, onDownload, onAssignProject }) => {
   const stats = doc.extraction_stats || {}
   const [pickerOpen, setPickerOpen] = useState(false)
   return (
@@ -1329,13 +1342,28 @@ const DocumentRow = ({ doc, onOpen, busy, onReExtract, onDownload, onAssignProje
       <button
         onClick={() => onReExtract(doc.id)}
         disabled={busy}
-        title="Re-run extraction on this PDF"
+        title="Prefers a cached Vision result for this file — fast and consistent"
         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:-translate-y-px transition-all disabled:opacity-50 flex-shrink-0"
       >
         {busy
           ? <><Loader2 className="w-3 h-3 animate-spin" /> Extracting…</>
           : <><RefreshCw className="w-3 h-3" /> Re-extract</>}
       </button>
+      {doc.document_type === 'pid_drawing' && (
+        // Same condition as DetailView's own Force Fresh Analysis button
+        // — meaningless for a plain I/O List table document, which never
+        // calls Vision or caches a result.
+        <button
+          onClick={() => onForceFreshExtract(doc.id)}
+          disabled={busy}
+          title="Always runs a new Vision analysis and keeps whichever result is better (Vision isn't fully deterministic run-to-run)"
+          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:-translate-y-px transition-all disabled:opacity-50 flex-shrink-0"
+        >
+          {busy
+            ? <><Loader2 className="w-3 h-3 animate-spin" /> Extracting…</>
+            : <><Zap className="w-3 h-3" /> Force Fresh Analysis</>}
+        </button>
+      )}
     </div>
   )
 }
@@ -1345,7 +1373,7 @@ const DocumentRow = ({ doc, onOpen, busy, onReExtract, onDownload, onAssignProje
 // ─────────────────────────────────────────────────────────────────────
 const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToProjects, activeProjectFilter,
                     search, setSearch, statusFilter, setStatusFilter, sortBy, setSortBy,
-                    rowBusyId, onRowReExtract, onRowDownload, onAssignProject,
+                    rowBusyId, onRowReExtract, onRowForceFreshExtract, onRowDownload, onAssignProject,
                     processingDoc, processingMeta }) => {
   const filtered = useMemo(() => {
     let rows = [...documents]
@@ -1492,6 +1520,7 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
                 onOpen={onOpen}
                 busy={rowBusyId === d.id}
                 onReExtract={onRowReExtract}
+                onForceFreshExtract={onRowForceFreshExtract}
                 onDownload={onRowDownload}
                 onAssignProject={onAssignProject}
               />
@@ -1979,7 +2008,33 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
     setSavingCells({})
   }, [doc.id, doc.updated_at])
 
-  const rows = localRows || doc.extracted_rows || []
+  // Stable reference across renders — without this, `localRows ||
+  // doc.extracted_rows || []` builds a new array (or at least a new `||`
+  // result) every render, so the `rows` useMemo below never actually got
+  // a stable dependency and recomputed on every render regardless
+  // (caught by eslint's react-hooks/exhaustive-deps, confirmed before
+  // this fix).
+  const allRows = useMemo(
+    () => localRows || doc.extracted_rows || [],
+    [localRows, doc.extracted_rows],
+  )
+  // Hide a row that identifies NOTHING at all — mirrors the backend's own
+  // _drop_empty_rows filter (apps/instrument_io_workflow/services/
+  // pid_vision_extractor.py) at persistence time, applied again here so a
+  // document extracted BEFORE that backend fix (still holding old, truly
+  // blank rows) doesn't keep showing white space until it's re-extracted.
+  // Checks the same 5 fields with OR — a row is real if ANY one of them
+  // has data (a genuine 'equipment' row has tag_number/line_tag blank by
+  // design; a genuine untagged 'symbol' row often has no
+  // service_description at all but does have symbol_type) — never a
+  // narrower check that would hide real rows along with genuinely empty
+  // ones.
+  const rows = useMemo(() => allRows.filter(r => {
+    const d = r.data || {}
+    return Boolean(
+      r.tag_number || d.equipment_tag || d.line_tag || d.service_description || d.symbol_type,
+    )
+  }), [allRows])
   // "Show relevant columns" (default) picks the right column set for THIS
   // document's actual extraction path — was a fixed 16-column list shown
   // for every document, and an io_list table document never populates
@@ -2222,9 +2277,21 @@ const MetadataPanel = ({ doc, onPreviewPdf }) => (
 // ─────────────────────────────────────────────────────────────────────
 // Detail View — tabbed
 // ─────────────────────────────────────────────────────────────────────
-const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onDownload, onDelete, busyAction, processingDoc, processingMeta }) => {
+const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshExtract, onDownload, onDelete, busyAction, processingDoc, processingMeta, initialTab, onInitialTabConsumed }) => {
   const [activeTab, setActiveTab] = useState('overview')
   const [filterTag, setFilterTag] = useState('')
+  // Re-extract's auto-open (see handleReExtract's own comment) wants this
+  // view to land directly on "I/O List Table", not the default Overview
+  // — DetailView doesn't remount when `doc` merely swaps to a different
+  // document (same position in the tree), so activeTab has no other way
+  // to know a fresh completion just landed. "Consume once" (clearing via
+  // onInitialTabConsumed right after) so a later, unrelated re-render of
+  // this same DetailView instance doesn't keep forcing the tab back.
+  useEffect(() => {
+    if (!initialTab) return
+    setActiveTab(initialTab)
+    onInitialTabConsumed?.()
+  }, [initialTab, onInitialTabConsumed])
   // Lifted up from IOListPanel — see its own comment on this same state
   // for why (the "Download xlsx" button below needs to read it too).
   const [showAllColumns, setShowAllColumns] = useState(false)
@@ -2306,11 +2373,24 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onDownload, on
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button onClick={onReExtract} disabled={busyAction === 're'}
+              <button onClick={onReExtract} disabled={!!busyAction}
+                      title="Prefers a cached Vision result for this file — fast and consistent"
                       className="px-3 py-2 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg flex items-center gap-1.5 disabled:opacity-50">
                 {busyAction === 're' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 Re-extract
               </button>
+              {doc.document_type === 'pid_drawing' && (
+                // Only meaningful for a Vision-extracted P&ID drawing — a
+                // plain I/O List table document never calls Vision or
+                // caches a result, so this button would do nothing
+                // different from Re-extract for that document type.
+                <button onClick={onForceFreshExtract} disabled={!!busyAction}
+                        title="Always runs a new Vision analysis and keeps whichever result is better (Vision isn't fully deterministic run-to-run)"
+                        className="px-3 py-2 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                  {busyAction === 'force' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  Force Fresh Analysis
+                </button>
+              )}
               <button onClick={() => onDownload(showAllColumns ? 'all' : 'relevant')}
                       className="px-3 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg flex items-center gap-1.5 shadow-sm">
                 <Download className="w-4 h-4" /> Download xlsx
@@ -2490,6 +2570,19 @@ export default function IOListWorkflowPage() {
   // never by handleRowReExtract (a list-row re-extract must not hijack
   // whatever the user is currently looking at).
   const [autoOpenDocId, setAutoOpenDocId] = useState(null)
+  // BUG FIX: Re-extract (from an already-open DetailView) relied ONLY on
+  // "setActiveDoc(prev => prev?.id === docId ? doc : prev)" in the poll
+  // loop below to refresh the page in place — real, confirmed symptom:
+  // if the user navigated away while it ran (or a cache hit resolved
+  // near-instantly), that condition was false by completion time and the
+  // document silently never (re)opened at all, even though the toast
+  // correctly said "Complete! Found N rows...". handleReExtract now sets
+  // autoOpenDocId too, same as a fresh upload, so completion reliably
+  // opens the document regardless of what the user was doing meanwhile.
+  // autoOpenTab additionally requests which tab DetailView should land
+  // on once opened this way — 'iolist' for Re-extract specifically (see
+  // handleReExtract), consumed once by DetailView's own effect.
+  const [autoOpenTab, setAutoOpenTab] = useState(null)
 
   // Client-side hints for the processing banner's mode-aware text —
   // see handleSubmit's own comment (_usingVision/_thorough on `result`).
@@ -2558,6 +2651,16 @@ export default function IOListWorkflowPage() {
             const rowsFound = doc.extraction_stats?.io_rows_found ?? doc.extracted_rows?.length ?? 0
             const commentsFound = doc.extraction_stats?.comments_found ?? doc.extracted_comments?.length ?? 0
             toast.success(`Complete! Found ${rowsFound} row${rowsFound === 1 ? '' : 's'} and ${commentsFound} comment${commentsFound === 1 ? '' : 's'}`)
+            // "Force Fresh Analysis" specifically (see tasks.py's
+            // finalize_io_document compare_best param) surfaces which
+            // result won as its own warning string — real information a
+            // plain row-count toast above doesn't convey, so it gets its
+            // own separate, more visible toast rather than being buried
+            // in the Overview tab's general warnings banner.
+            const compareMsg = (doc.extraction_stats?.warnings || []).find(
+              w => w.startsWith('Better result found!') || w.startsWith('Cached result is better'),
+            )
+            if (compareMsg) toast.info(compareMsg)
             // Real, brief "Complete!" state in the ProcessingBanner itself
             // (not just the toast) — the same panel the user was watching
             // switches to its done state with the final real counts,
@@ -2577,7 +2680,10 @@ export default function IOListWorkflowPage() {
             }
           } else {
             setProcessingDoc(null)
-            if (autoOpenDocId === docId) setAutoOpenDocId(null)
+            if (autoOpenDocId === docId) {
+              setAutoOpenDocId(null)
+              setAutoOpenTab(null)
+            }
             setPageError(doc.extraction_error || 'Extraction failed.')
           }
           loadDocuments()
@@ -2621,10 +2727,18 @@ export default function IOListWorkflowPage() {
   // "just works" with whatever key was last provided, without needing
   // its own separate key-entry UI on this page.
   // Reads the SAME project-scoped sessionStorage keys UploadCard writes to
-  // (see its BUG FIX comment) — re-extract runs inside a selected project's
-  // workspace, so activeProjectFilter is the right scope to look under.
-  const getPersistedVisionMeta = () => {
-    const scope = activeProjectFilter?.id || 'unassigned'
+  // (see its BUG FIX comment).
+  // BUG FIX: this used to scope by activeProjectFilter?.id — wrong for
+  // Re-extract/Force Fresh Analysis on a document opened outside its own
+  // project filter (e.g. from a global/unfiltered list, or after switching
+  // filters after opening it): activeProjectFilter no longer matches the
+  // project the key was actually saved under, so the lookup silently found
+  // nothing and these actions fell back to no-key OCR even with a valid,
+  // tested key on file. The document's OWN `project` field is the correct,
+  // stable scope — pass it in explicitly rather than relying on whatever
+  // filter happens to be active right now.
+  const getPersistedVisionMeta = (projectId) => {
+    const scope = projectId || 'unassigned'
     const apiKey = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageApiKeyKey}::${scope}`) || ''
     if (!apiKey.trim()) return {}
     const provider = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageProviderKey}::${scope}`) || PID_VISION_CONFIG.defaultProvider
@@ -2636,14 +2750,53 @@ export default function IOListWorkflowPage() {
     if (!activeDoc) return
     setBusyAction('re')
     try {
-      const visionMeta = getPersistedVisionMeta()
+      const visionMeta = getPersistedVisionMeta(activeDoc.project)
       const result = await ioListWorkflowService.reExtract(activeDoc.id, visionMeta)
+      upsertDocument(result.document)
+      // BUG FIX: Re-extract from an already-open DetailView must reliably
+      // reopen it (and land on the I/O List Table tab) on completion,
+      // exactly like a fresh upload — see autoOpenDocId/autoOpenTab's own
+      // comment above for why the old "setActiveDoc(prev => ...)" re-sync
+      // alone wasn't enough.
+      if (result.processing) {
+        setProcessingDoc(result.document)
+        setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
+        setAutoOpenDocId(result.document.id)
+        setAutoOpenTab('iolist')
+      } else {
+        setActiveDoc(result.document)
+        setAutoOpenTab('iolist')
+      }
+      loadDocuments()
+    } catch (err) {
+      setPageError(err.response?.data?.error || err.message)
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  // "Force Fresh Analysis" — always pays for a new Vision run (never the
+  // cache); the backend keeps whichever result (this run vs whatever was
+  // already cached) actually has more rows and says which one won via
+  // extraction_stats.warnings — surfaced here as a toast so it's not
+  // easy to miss, on top of whatever the Overview tab's own warnings
+  // banner already shows once the document reloads.
+  const handleForceFreshExtract = async () => {
+    if (!activeDoc) return
+    setBusyAction('force')
+    try {
+      const visionMeta = getPersistedVisionMeta(activeDoc.project)
+      const result = await ioListWorkflowService.forceFreshExtract(activeDoc.id, visionMeta)
       upsertDocument(result.document)
       if (result.processing) {
         setProcessingDoc(result.document)
         setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
       } else {
         setActiveDoc(result.document)
+        const compareMsg = result.document?.extraction_stats?.warnings?.find(
+          w => w.startsWith('Better result found!') || w.startsWith('Cached result is better'),
+        )
+        if (compareMsg) toast.info(compareMsg)
       }
       loadDocuments()
     } catch (err) {
@@ -2658,7 +2811,9 @@ export default function IOListWorkflowPage() {
   const handleRowReExtract = async (id) => {
     setRowBusyId(id)
     try {
-      const visionMeta = getPersistedVisionMeta()
+      // Same project-scoping fix as handleReExtract above — look up the
+      // row's OWN project, not whatever filter is currently active.
+      const visionMeta = getPersistedVisionMeta(documents.find(d => d.id === id)?.project)
       const result = await ioListWorkflowService.reExtract(id, visionMeta)
       upsertDocument(result.document)
       if (result.processing) {
@@ -2670,6 +2825,43 @@ export default function IOListWorkflowPage() {
         // I/O List table re-extract, or vice versa). Same fix
         // handleReExtract already applies for the DetailView button.
         setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
+        // BUG FIX: row-level Re-extract (from the list, not an already-open
+        // DetailView) never auto-opened the document on completion at all —
+        // this was an earlier, incorrect assumption that auto-opening here
+        // would "hijack" the list view; the user explicitly wants the SAME
+        // behavior as a fresh upload regardless of which button triggered
+        // it, so this now sets autoOpenDocId/autoOpenTab exactly like
+        // handleUploaded and handleReExtract do.
+        setAutoOpenDocId(result.document.id)
+        setAutoOpenTab('iolist')
+      }
+      loadDocuments()
+    } catch (err) {
+      setPageError(err.response?.data?.error || err.message)
+    } finally {
+      setRowBusyId(null)
+    }
+  }
+
+  // Row-level "Force Fresh Analysis" — same relationship to
+  // handleRowReExtract as handleForceFreshExtract has to handleReExtract
+  // above (always runs fresh, keeps whichever result is better). The
+  // compare-result toast is skipped here deliberately: this action
+  // always dispatches async (result.processing is always true in
+  // practice), so the real completion — and the one place that toast
+  // fires — is the shared status-polling loop above, not this handler.
+  const handleRowForceFreshExtract = async (id) => {
+    setRowBusyId(id)
+    try {
+      const visionMeta = getPersistedVisionMeta(documents.find(d => d.id === id)?.project)
+      const result = await ioListWorkflowService.forceFreshExtract(id, visionMeta)
+      upsertDocument(result.document)
+      if (result.processing) {
+        setProcessingDoc(result.document)
+        setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
+        // Same auto-open fix as handleRowReExtract above.
+        setAutoOpenDocId(result.document.id)
+        setAutoOpenTab('iolist')
       }
       loadDocuments()
     } catch (err) {
@@ -2769,11 +2961,14 @@ export default function IOListWorkflowPage() {
             onBack={() => setActiveDoc(null)}
             onBackToProjects={activeProjectFilter ? () => { setActiveDoc(null); setActiveProjectFilter(null) } : null}
             onReExtract={handleReExtract}
+            onForceFreshExtract={handleForceFreshExtract}
             onDownload={handleDownload}
             onDelete={handleDelete}
             busyAction={busyAction}
             processingDoc={processingDoc}
             processingMeta={processingMeta}
+            initialTab={autoOpenTab}
+            onInitialTabConsumed={() => setAutoOpenTab(null)}
           />
         ) : !activeProjectFilter && IO_LIST_WORKFLOW_PROJECT_FEATURES.enableProjectManagement ? (
           /* Landing view: project workspace (cards, New Project, Edit/Delete) */
@@ -2793,6 +2988,7 @@ export default function IOListWorkflowPage() {
             sortBy={sortBy} setSortBy={setSortBy}
             rowBusyId={rowBusyId}
             onRowReExtract={handleRowReExtract}
+            onRowForceFreshExtract={handleRowForceFreshExtract}
             onRowDownload={handleRowDownload}
             onAssignProject={handleAssignProject}
             processingDoc={processingDoc}

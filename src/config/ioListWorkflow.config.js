@@ -17,6 +17,7 @@ export const IO_LIST_WORKFLOW_API = {
   documentById:   (id) => `/instrument-io-workflow/documents/${id}/`,
   documentStatus: (id) => `/instrument-io-workflow/documents/${id}/status/`,
   reextract:      (id) => `/instrument-io-workflow/documents/${id}/re-extract/`,
+  forceFreshExtract: (id) => `/instrument-io-workflow/documents/${id}/force-fresh-extract/`,
   originalPdf:    (id) => `/instrument-io-workflow/documents/${id}/original-pdf/`,
   exportXlsx:     (id) => `/instrument-io-workflow/documents/${id}/export-xlsx/`,
   patchRow:       (docId, rowId) => `/instrument-io-workflow/documents/${docId}/rows/${rowId}/`,
