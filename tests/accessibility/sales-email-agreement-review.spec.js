@@ -45,7 +45,7 @@ const detail = (extracted = information()) => opportunityDetails({ subject, body
 const review = page => page.getByRole('complementary', { name: 'Email review', exact: true })
 const preview = page => page.getByRole('region', { name: 'Email preview', exact: true })
 const facts = page => preview(page).getByRole('region', { name: 'Detected information', exact: true })
-const field = (scope, name) => scope.locator('dl').first().locator(':scope > div > dt').filter({ hasText: new RegExp(`^${name}$`) }).locator('xpath=following-sibling::dd[1]')
+const field = (scope, name) => scope.locator(':scope > dl > div > dt, .sales-email-context__facts > div > dt').filter({ hasText: new RegExp(`^${name}$`) }).locator('xpath=following-sibling::dd[1]')
 const form = page => page.getByRole('dialog', { name: 'Create opportunity from email', exact: true })
 const confirm = scope => scope.getByRole('button', { name: 'Confirm classification', exact: true })
 const create = scope => scope.getByRole('button', { name: 'Create opportunity', exact: true })
