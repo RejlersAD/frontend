@@ -3,12 +3,12 @@ import PropTypes from "prop-types";
 import SalesEmailBody from "./SalesEmailBody";
 import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
 import SalesEmailAnalysis from "./SalesEmailAnalysis";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Reply } from "lucide-react";
 
-export default function SalesEmailReader({ information, subject, bodyText, bodyContent, saved, hasAttachments, assistant, children }) {
+export default function SalesEmailReader({ information, subject, bodyText, bodyContent, saved, hasAttachments, onReply, children }) {
   const [tab, setTab] = useState("email");
   const id = useId();
-  const tabs = [["email", "Email preview"], ["thread", "Thread"], ["attachments", "Attachments"], ["details", "Extracted details"]];
+  const tabs = [["email", "Email"], ["thread", "Thread"], ["attachments", "Attachments"], ["details", "Extracted details"]];
   return <>
     <div role="tablist" aria-label="Email reading view" className="sales-email-reader-tabs">
       {tabs.map(([value, label], index) => <button
@@ -26,7 +26,6 @@ export default function SalesEmailReader({ information, subject, bodyText, bodyC
     </div>
     <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`} tabIndex={0} className="sales-email-reader-content">
       {tab === "email" ? <>
-        <p className="sales-email-eyebrow">{saved ? "Saved email preview" : "Email preview"}</p>
         <div className="sales-email-body-panel">
           <SalesEmailBody bodyText={bodyText} bodyContent={bodyContent} />
         </div>
@@ -36,7 +35,7 @@ export default function SalesEmailReader({ information, subject, bodyText, bodyC
         : tab === "attachments" ? <div className="sales-email-attachment-state"><Paperclip aria-hidden="true" /><h4>Attachments</h4><p>{hasAttachments ? "This email has attachments. Open the original email in your mailbox to view them." : "No attachments are reported for this email."}</p>{hasAttachments && <p>Attachment contents have not been included in this review.</p>}</div>
         : <SalesEmailDetectedInformation information={information} subject={subject} />}
     </div>
-    {assistant}
+    {onReply && <footer className="sales-email-reader-footer"><span>Review the email before replying.</span><button type="button" className="sales-email-button sales-email-reply" onClick={onReply} title="Prepare a reply with Ask RADAI"><Reply aria-hidden="true" />Reply</button></footer>}
   </>;
 }
 
@@ -47,6 +46,6 @@ SalesEmailReader.propTypes = {
   bodyContent: PropTypes.array,
   saved: PropTypes.bool,
   hasAttachments: PropTypes.bool,
-  assistant: PropTypes.node,
+  onReply: PropTypes.func,
   children: PropTypes.node,
 };

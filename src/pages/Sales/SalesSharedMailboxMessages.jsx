@@ -23,6 +23,7 @@ import SalesEmailAnalysis from "./SalesEmailAnalysis";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
 import SalesEmailReader from "./SalesEmailReader";
 import SalesEmailPageHeader from "./SalesEmailPageHeader";
+import SalesEmailMessageHeader from "./SalesEmailMessageHeader";
 import SalesEmailAssistant from "./SalesEmailAssistant";
 import SalesEmailReview from "./SalesEmailReview";
 import { EMAIL_CLASSIFICATIONS, classificationSuggestion, isOpportunityClassification } from "./salesEmailReviewState";
@@ -253,6 +254,7 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
   const [readFilter, setReadFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [insightsView, setInsightsView] = useState({ id: null, tab: "summary" });
   const [reviewSummaries, setReviewSummaries] = useState({});
   const [showOpportunityForm, setShowOpportunityForm] = useState(false);
   const [confirmedClassification, setConfirmedClassification] = useState("");
@@ -314,6 +316,8 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
   const focusNextStep = useCallback(() => {
     const target = nextStepRef.current;
     if (!target) return;
+    target.querySelector('button[aria-label="Expand AI insights"]')?.click();
+    target.querySelector('[role="tab"]')?.click();
     const pane = target.closest(".sales-email-source-panel");
     if (pane) pane.scrollTop = 0;
     const context = target.querySelector(".sales-email-context__scroll");
@@ -451,14 +455,7 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
   ];
   return (
     <section aria-label="Shared mailbox messages" className="sales-email-mailbox">
-      <SalesEmailPageHeader information={detail.message?.information}>
-        <button type="button" className="sales-email-analyze" disabled={page.loading || Boolean(page.error) || (!batch.running && !unreadEligible)} onClick={batch.running ? batch.cancel : batch.analyzeUnread} title="Analyze incoming unread emails on this page"><Sparkles aria-hidden="true" />{batch.running ? `Stop analysis (${batch.completed}/${batch.total})` : `Analyze unread (${unreadEligible})`}</button>
-        <button type="button" className="sales-email-button sales-email-icon-button" title="Refresh emails" aria-label="Refresh emails" onClick={() => loadPage()} disabled={page.loading}><ArrowPathIcon className={page.loading ? "animate-spin motion-reduce:animate-none" : ""} aria-hidden="true" /></button>
-        {(onConfigure || onAddMailbox) && <details className="sales-email-options"><summary className="sales-email-button sales-email-icon-button" aria-label="Mailbox options" title="Mailbox options"><MoreHorizontal aria-hidden="true" /></summary><div>
-          {onConfigure && <button type="button" onClick={() => onConfigure(connection.setup)}><Settings2 aria-hidden="true" />Mailbox setup</button>}
-          {onAddMailbox && <button type="button" onClick={onAddMailbox}><Plus aria-hidden="true" />Add shared mailbox</button>}
-        </div></details>}
-      </SalesEmailPageHeader>
+      <SalesEmailPageHeader>
       <div className="sales-email-toolbar">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <nav aria-label="Email read status" aria-description="Filters and counts apply to the current page." className="flex flex-wrap items-center gap-1">
@@ -486,10 +483,17 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
             className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-[13px] placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           />
         </label>
+        <button type="button" className="sales-email-analyze" disabled={page.loading || Boolean(page.error) || (!batch.running && !unreadEligible)} onClick={batch.running ? batch.cancel : batch.analyzeUnread} title="Analyze incoming unread emails on this page"><Sparkles aria-hidden="true" />{batch.running ? `Stop analysis (${batch.completed}/${batch.total})` : `Analyze unread (${unreadEligible})`}</button>
+        <button type="button" className="sales-email-button sales-email-icon-button" title="Refresh emails" aria-label="Refresh emails" onClick={() => loadPage()} disabled={page.loading}><ArrowPathIcon className={page.loading ? "animate-spin motion-reduce:animate-none" : ""} aria-hidden="true" /></button>
         <button type="button" className="sales-email-button sales-email-icon-button" title="Email filters" aria-label="Email filters" aria-expanded={showFilters} onClick={() => setShowFilters((current) => !current)}><Filter aria-hidden="true" /></button>
+        {(onConfigure || onAddMailbox) && <details className="sales-email-options"><summary className="sales-email-button sales-email-icon-button" aria-label="Mailbox options" title="Mailbox options"><MoreHorizontal aria-hidden="true" /></summary><div>
+          {onConfigure && <button type="button" onClick={() => onConfigure(connection.setup)}><Settings2 aria-hidden="true" />Mailbox setup</button>}
+          {onAddMailbox && <button type="button" onClick={onAddMailbox}><Plus aria-hidden="true" />Add shared mailbox</button>}
+        </div></details>}
         {showFilters && <div className="sales-email-filter-popover"><p>Filters apply to this page.</p>{[...readFilters, ["read", "Read"]].map(([value, label]) => <button key={value} type="button" aria-pressed={readFilter === value} onClick={() => { changeFilter(value); setShowFilters(false); }}>{label}</button>)}</div>}
         </div>
       </div>
+      </SalesEmailPageHeader>
       {batch.total > 0 && <p className="sales-email-batch-status" role="status">{batch.running ? `Reviewing ${batch.completed} of ${batch.total} emails on this page.` : `${batch.completed} of ${batch.total} emails reviewed · ${Object.values(batch.results).filter((result) => result.status === "validated").length} AI results. Saved read states are unchanged.`}{batch.error && <span> {batch.error}</span>}</p>}
       <div className="sales-email-card">
       {page.error && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 p-4">
@@ -553,6 +557,8 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
             {selected && <button type="button" className={buttonClass} onClick={() => loadMessage(selected)}>Retry email</button>}
           </div> : detail.message ? <>
             <header className="sales-email-preview-header">
+              <SalesEmailMessageHeader key={detail.message.id} subject={detail.message.subject} senderName={detail.message.sender_name} senderEmail={detail.message.sender_email}
+                to={detail.message.to} receivedAt={detail.message.received_at} dateLabel={dateLabel(detail.message.received_at)}>
               <div className="sales-email-message-state flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-600">
                 <span className="rounded bg-slate-100 px-2 py-1">{readState(detail.message)}</span>
@@ -563,22 +569,24 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
                 {detail.message.has_attachments && <span className="inline-flex items-center gap-1"><PaperClipIcon className="h-3.5 w-3.5" aria-hidden="true" />Has attachments</span>}
               </div>
               </div>
-              <h3 className="sales-email-subject mt-3">{detail.message.subject || "No subject"}</h3>
-              <div className="sales-email-sender">
-                <span className="sales-email-avatar" aria-hidden="true">{(detail.message.sender_name || detail.message.sender_email || "?").slice(0, 2).toUpperCase()}</span>
-                <div><strong>{detail.message.sender_name || detail.message.sender_email || "Sender unavailable"}</strong><span>{detail.message.sender_email || "Email address unavailable"}</span></div>
-                <time dateTime={detail.message.received_at || undefined}>{dateLabel(detail.message.received_at)}</time>
-              </div>
+              </SalesEmailMessageHeader>
               {conversion && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"><p role="status">{conversion.created ? "Opportunity created." : "This email already has an opportunity."}</p><Link to={`/sales/opportunities?record=${encodeURIComponent(conversion.opportunity.id)}`} className="font-semibold underline underline-offset-2">Open opportunity</Link></div>}
             </header>
             <div className="sales-email-detail-grid">
               <section className="sales-email-reading-pane" aria-label="Email content" tabIndex={0}>
                 <SalesEmailReader key={detail.message.id} information={detail.message.information} subject={detail.message.subject} bodyText={detail.message.body || "This email has no text content."} bodyContent={detail.message.bodyContent} hasAttachments={detail.message.has_attachments}
-                  assistant={<SalesEmailAssistant source={{ connectionId: connection.id, messageId: detail.message.id }} information={detail.message.information} onUnavailable={mailboxUnavailable} />} />
+                  onReply={() => {
+                    nextStepRef.current?.querySelector('button[aria-label="Expand AI insights"]')?.click();
+                    setInsightsView({ id: detail.message.id, tab: "ask" });
+                    requestAnimationFrame(() => nextStepRef.current?.querySelector('[data-assistant-action="draft_reply"]')?.focus());
+                  }} />
               </section>
               <aside className="sales-email-source-panel" aria-label="Email review" tabIndex={0}>
                 <SalesEmailReview key={`${detail.message.id}:${detail.message.sourceToken}`} information={detail.message.information} subject={detail.message.subject}
+                  activeTab={insightsView.id === detail.message.id ? insightsView.tab : "summary"} onTabChange={(tab) => setInsightsView({ id: detail.message.id, tab })}
+                  assistant={<SalesEmailAssistant source={{ connectionId: connection.id, messageId: detail.message.id }} information={detail.message.information} onUnavailable={mailboxUnavailable} />}
                   senderName={detail.message.sender_name} senderEmail={detail.message.sender_email} sentAt={detail.message.sent_at || detail.message.received_at}
+                  receivedAt={detail.message.received_at}
                   confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
                   onClassificationChange={() => setConfirmedClassification("")} nextStepRef={nextStepRef}
                   canCreateOpportunity={detail.message.canCreateOpportunity} converted={Boolean(conversion)}

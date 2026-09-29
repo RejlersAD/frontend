@@ -6,16 +6,13 @@ import {
   RefreshCw as ArrowPathIcon,
   ExternalLink as ArrowTopRightOnSquareIcon,
   CheckCircle as CheckCircleIcon,
-  Clock as ClockIcon,
   Copy as DocumentDuplicateIcon,
-  Mail as EnvelopeIcon,
   MailOpen as EnvelopeOpenIcon,
   AlertTriangle as ExclamationTriangleIcon,
   Filter as FunnelIcon,
   Search as MagnifyingGlassIcon,
   Ban as NoSymbolIcon,
   Paperclip as PaperClipIcon,
-  User as UserIcon,
   X as XMarkIcon,
 } from "lucide-react";
 import salesService from "../../services/sales.service";
@@ -24,6 +21,7 @@ import SalesSharedMailboxSetup from "./SalesSharedMailboxSetup";
 import useSalesMailboxSetupAccess from "./useSalesMailboxSetupAccess";
 import SalesEmailReader from "./SalesEmailReader";
 import SalesEmailPageHeader from "./SalesEmailPageHeader";
+import SalesEmailMessageHeader from "./SalesEmailMessageHeader";
 import SalesEmailAssistant from "./SalesEmailAssistant";
 import SalesEmailReview from "./SalesEmailReview";
 import { isOpportunityClassification } from "./salesEmailReviewState";
@@ -33,6 +31,7 @@ import useSalesEmailClients from "./useSalesEmailClients";
 import useSalesEmailClientChoice from "./useSalesEmailClientChoice";
 import SalesEmailThreadRole, { selectedThreadSource } from "./SalesEmailThreadRole";
 import "./SalesEmailIntake.css";
+import "./SalesEmailCompact.css";
 
 const STATUS = {
   received: {
@@ -168,6 +167,8 @@ function ImportedEmailIntakes() {
   const detailRequest = useRef(0);
   const detailClientGeneration = useRef(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [insightsView, setInsightsView] = useState({ id: null, tab: "summary" });
+  const insightsRef = useRef(null);
   const [detailRevision, setDetailRevision] = useState(0);
   const [detailState, setDetailState] = useState({ id: null, loading: false, error: "" });
   const [sourceReloadRequired, setSourceReloadRequired] = useState(false);
@@ -428,25 +429,6 @@ function ImportedEmailIntakes() {
   return (
     <div className="sales-email-view text-slate-950">
       <div className="sales-email-mailbox">
-        <SalesEmailPageHeader information={extracted} imported />
-        <header className="sales-email-source-heading">
-          <h2 className="text-base font-semibold text-slate-900">Imported enquiries</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
-              <b>{unresolved}</b> awaiting review
-            </div>
-            <button
-              type="button"
-              onClick={load}
-              disabled={loading}
-              className="sales-email-button"
-            >
-              <ArrowPathIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
-        </header>
-
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
             <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
@@ -455,6 +437,7 @@ function ImportedEmailIntakes() {
         )}
 
         <section className="sales-email-card">
+          <SalesEmailPageHeader>
           <div className="sales-email-toolbar">
             <nav aria-label="Email intake status" className="flex flex-wrap gap-1">
               {["all", ...Object.keys(STATUS)].map((value) => (
@@ -480,6 +463,7 @@ function ImportedEmailIntakes() {
                 </button>
               ))}
             </nav>
+            <div className="sales-email-toolbar-actions">
             <label className="sales-email-search">
               <span className="sr-only">Search email intake</span>
               <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -491,12 +475,15 @@ function ImportedEmailIntakes() {
                 className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
               />
             </label>
+            <button type="button" onClick={load} disabled={loading} className="sales-email-button sales-email-icon-button" aria-label="Refresh imported emails" title="Refresh imported emails"><ArrowPathIcon className={loading ? "animate-spin" : ""} aria-hidden="true" /></button>
+            </div>
           </div>
+          </SalesEmailPageHeader>
 
           <div className="sales-email-grid">
             <aside className="sales-email-list">
               <div className="sales-email-list-summary">
-                <span>{filtered.length} messages</span>
+                <h2>Imported enquiries</h2><span>{unresolved} awaiting review</span>
                 <FunnelIcon className="h-4 w-4" />
               </div>
               <div className="sales-email-list-scroll">
@@ -554,8 +541,8 @@ function ImportedEmailIntakes() {
               {selected ? (
                 <>
                   <header className="sales-email-preview-header">
-                    <div className="flex flex-col justify-between gap-4 2xl:flex-row 2xl:items-start">
-                      <div className="min-w-0">
+                    <SalesEmailMessageHeader key={selected.id} subject={selected.subject} senderName={selected.sender_name} senderEmail={selected.sender_email}
+                      receivedAt={selected.received_at} dateLabel={formatDate(selected.received_at, true)}>
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge value={selected.status} />
                           <SalesEmailThreadRole role={selectedThreadSource(extracted.analysis)?.thread_role} reason={selectedThreadSource(extracted.analysis)?.thread_role_reason} selected />
@@ -565,24 +552,6 @@ function ImportedEmailIntakes() {
                             </span>
                           )}
                         </div>
-                        <h2 className="sales-email-subject mt-3">
-                          {selected.subject || "No subject"}
-                        </h2>
-                        <div className="sales-email-preview-meta mt-3">
-                          <span className="inline-flex items-center gap-1.5">
-                            <UserIcon className="h-4 w-4" />
-                            {selected.sender_name || "Sender name unavailable"}
-                          </span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <EnvelopeIcon className="h-4 w-4" />
-                            {selected.sender_email}
-                          </span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <ClockIcon className="h-4 w-4" />
-                            {formatDate(selected.received_at, true)}
-                          </span>
-                        </div>
-                      </div>
                       <div className="flex flex-wrap gap-2">
                         {selected.status === "received" && (
                           <button
@@ -617,13 +586,17 @@ function ImportedEmailIntakes() {
                           </>
                         )}
                       </div>
-                    </div>
+                    </SalesEmailMessageHeader>
                   </header>
 
                   <div className="sales-email-detail-grid">
                     <section className="sales-email-reading-pane" aria-label="Email content" tabIndex={0}>
                       <SalesEmailReader key={selected.id} information={extracted} subject={selected.subject} bodyText={selected.body_preview || "No email preview was supplied."} saved hasAttachments={selected.has_attachments}
-                        assistant={<SalesEmailAssistant source={{ intakeId: selected.id }} information={extracted} disabled={reviewBlocked || sourceReloadRequired} onUnavailable={() => { setRecords((current) => current.filter((row) => row.id !== selected.id)); setSelectedId(null); setDialog(null); setError("You do not have access to this saved email."); }} />}>
+                        onReply={() => {
+                          insightsRef.current?.querySelector('button[aria-label="Expand AI insights"]')?.click();
+                          setInsightsView({ id: selected.id, tab: "ask" });
+                          requestAnimationFrame(() => insightsRef.current?.querySelector('[data-assistant-action="draft_reply"]')?.focus());
+                        }}>
                       {selected.resolution_note && (
                         <div className="mt-4 rounded-lg border border-slate-200 px-4 py-3">
                           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -639,6 +612,9 @@ function ImportedEmailIntakes() {
 
                     <aside className="sales-email-source-panel" aria-label="Email review" tabIndex={0}>
                       <SalesEmailReview key={`${selected.id}:${reviewVersion}`} information={extracted} subject={selected.subject}
+                        nextStepRef={insightsRef} receivedAt={selected.received_at}
+                        activeTab={insightsView.id === selected.id ? insightsView.tab : "summary"} onTabChange={(tab) => setInsightsView({ id: selected.id, tab })}
+                        assistant={<SalesEmailAssistant source={{ intakeId: selected.id }} information={extracted} disabled={reviewBlocked || sourceReloadRequired} onUnavailable={() => { setRecords((current) => current.filter((row) => row.id !== selected.id)); setSelectedId(null); setDialog(null); setError("You do not have access to this saved email."); }} />}
                         senderName={selected.sender_name} senderEmail={selected.sender_email} sentAt={selected.sent_at || selected.received_at}
                         disabled={reviewBlocked || sourceReloadRequired}
                         confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}

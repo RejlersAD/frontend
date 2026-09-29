@@ -20,7 +20,7 @@ const bodyFor = record => detail(record, { body_text: `Source body for ${record.
 const records = [message(), secondMessage(), message({ id: 'draft-three', subject: 'Draft engineering response', is_draft: true, is_read: true })]
 const detailsFor = ({ url }) => ({ body: bodyFor(records.find(record => record.id === url.searchParams.get('message_id'))) })
 
-test('the first email opens automatically without moving focus beneath the visible reference heading', async ({ page }, testInfo) => {
+test('the first email opens automatically without moving focus beneath the compact toolbar heading', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1672, height: 941 })
   const hold = deferred()
   const state = await prepare(page, { shell: true, messageHold: hold, details: opportunityDetails() })
@@ -33,10 +33,11 @@ test('the first email opens automatically without moving focus beneath the visib
   await expect(search(page)).toBeFocused()
   await expect(review(page).getByRole('button', { name: 'Create opportunity', exact: true })).toBeDisabled()
   const heading = await page.getByRole('heading', { name: 'Email Intake', exact: true }).boundingBox()
-  expect(heading.width).toBeGreaterThan(100)
-  expect(heading.height).toBeGreaterThan(30)
-  await expect(page.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toBeVisible()
-  await expect(page.getByText('Understand every email. Review the next action.', { exact: true })).toBeVisible()
+  expect(heading.width).toBeGreaterThan(60)
+  expect(heading.height).toBeLessThanOrEqual(28)
+  expect((await page.locator('.sales-email-page-header').boundingBox()).height).toBeLessThanOrEqual(64)
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toHaveCount(0)
+  await expect(page.getByText('Understand every email. Review the next action.', { exact: true })).toHaveCount(0)
   expect(requestedIds(state)).toEqual([message().id])
   expect(await sidebar.evaluate(node => node.outerHTML)).toBe(sidebarMarkup)
   await page.screenshot({ path: testInfo.outputPath('email-auto-open-desktop.png') })

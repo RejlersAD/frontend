@@ -63,7 +63,7 @@ const extractedDetails = async page => {
 
 test('quoted agreement deadline and references appear in existing fields without changing the latest reply classification', async ({ page }, testInfo) => {
   const state = await ready(page)
-  await expect(review(page).getByRole('combobox', { name: 'Suggested type', exact: true })).toHaveValue('general_communication')
+  await expect(review(page).getByRole('combobox', { name: 'Email type', exact: true })).toHaveValue('general_communication')
   await expect(field(review(page), 'Action deadline')).toHaveText('2026-09-25 · 11:00 UAE time · Quoted · Requires verification')
   await expect(field(review(page), 'Opportunity')).toHaveText('Existing request follow-up')
   await expect(create(review(page))).toBeDisabled()
