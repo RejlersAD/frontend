@@ -115,7 +115,7 @@ const accessError = (status) => {
   return "";
 };
 
-export default function SalesSharedMailboxMessages() {
+export default function SalesSharedMailboxMessages({ preferredConnectionId = "", onConfigure }) {
   const requestId = useRef(0);
   const mounted = useRef(false);
   const [state, setState] = useState({ records: null, loading: true, error: "" });
@@ -144,13 +144,21 @@ export default function SalesSharedMailboxMessages() {
             throw new Error("Invalid connection.");
           }
           ids.add(record.id);
-          connections.push({ id: record.id, address: record.mailbox_address, name: text(record.name) });
+          connections.push({
+            id: record.id, address: record.mailbox_address, name: text(record.name),
+            setup: {
+              id: record.id, name: text(record.name), mailbox_address: record.mailbox_address,
+              auth_mode: record.auth_mode, tenant_id: text(record.tenant_id), client_id: text(record.client_id),
+              secret_configured: record.secret_configured, enabled: record.enabled,
+              last_status: record.last_status, sync: record.sync,
+            },
+          });
         }
         page = Array.isArray(payload) ? null : connectionPage(payload.next, page, visited);
       }
       if (active()) {
         setState({ records: connections, loading: false, error: "" });
-        setSelectedId(connections.length === 1 ? connections[0].id : "");
+        setSelectedId(ids.has(preferredConnectionId) ? preferredConnectionId : connections.length === 1 ? connections[0].id : "");
       }
     } catch (error) {
       if (!active()) return;
@@ -160,7 +168,7 @@ export default function SalesSharedMailboxMessages() {
         error: accessError(error?.response?.status) || "Shared mailboxes could not be loaded. Try again.",
       });
     }
-  }, []);
+  }, [preferredConnectionId]);
 
   useEffect(() => {
     mounted.current = true;
@@ -200,10 +208,16 @@ export default function SalesSharedMailboxMessages() {
           </select>
         </label>
       )}
+      {connection && onConfigure && <div className="mb-3 flex justify-end"><button type="button" onClick={() => onConfigure(connection.setup)} className={buttonClass}>Mailbox setup</button></div>}
       {connection && <MailboxEmails key={connection.id} connection={connection} />}
     </div>
   );
 }
+
+SalesSharedMailboxMessages.propTypes = {
+  preferredConnectionId: PropTypes.string,
+  onConfigure: PropTypes.func,
+};
 
 function MailboxEmails({ connection }) {
   const mounted = useRef(false);
