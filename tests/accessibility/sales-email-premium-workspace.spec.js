@@ -26,7 +26,6 @@ const conversions = state => state.requests.filter(request => request.path === c
 const ready = async (page, options = {}) => {
   const state = await prepare(page, { details: eligibleDetail(), clients: paginated([canonicalClient()]), ...options })
   if (options.connections?.results?.length > 1) await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-1')
-  await row(page).click()
   await expect(review(page)).toBeVisible()
   return state
 }
@@ -232,8 +231,7 @@ test('selection and mailbox switches clear the previous email classification con
   await expect(create(review(page))).toBeDisabled()
   await confirm(review(page)).click()
   await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-2')
-  await expect(review(page)).toHaveCount(0)
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect(create(review(page))).toBeDisabled()
   assertReadOnly(state)
 })
@@ -303,6 +301,7 @@ for (const collapsed of [false, true]) {
 test('mobile review, reader tabs and opportunity fields remain reachable without horizontal overflow', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const state = await ready(page, { shell: true })
+  await page.screenshot({ path: testInfo.outputPath('premium-email-mobile-initial.png'), fullPage: true })
   await inbox(page).getByRole('button', { name: `Next step: ${message().subject}`, exact: true }).press('Enter')
   await expect(reviewFocus(page)).toBeFocused()
   await expect(confirm(review(page))).toBeVisible()

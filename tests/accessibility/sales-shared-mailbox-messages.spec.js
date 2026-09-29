@@ -105,7 +105,7 @@ test('intelligence v2 live and saved detection show the customer name with five 
   const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: information }),
     imported: paginated([{ ...message({ id: 'intelligence-saved' }), status: 'received', extracted_information: information, can_create_opportunity: true }]),
   })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   for (const view of ['live', 'imported']) {
     if (view === 'imported') await navigateView(page, view)
     await revealExtracted(page)
@@ -154,8 +154,8 @@ test('intelligence v2 proposal dates and canonical client remain separate from e
   await expect(dialog.getByLabel('Client', { exact: true })).toHaveValue('')
   await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('2026-11-18')
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await refresh(page).click()
   state.details = opportunityDetails({ extracted_information: intelligenceInformation({ deadline_date: '', due_date: '' }) })
+  await refresh(page).click()
   dialog = await openOpportunityForm(page)
   await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('')
   await useMatchedClient(dialog).click()
@@ -176,18 +176,18 @@ test('intelligence v2 a missing customer name never falls back to a known domain
     intelligence: intelligenceResult({ customer_name: { status: 'not_detected', reason: 'The customer name has not been established.', source_ids: [] } }),
   })
   const state = await prepare(page, { details: opportunityDetails({ extracted_information: information }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   await expect(detectedCard(page, 'Customer Name').locator('dd')).toHaveText('Not detected')
   await expect(detectedCard(page, 'Customer Name')).not.toContainText('meridian.example.test')
   const sourceEvidence = detectionPanel(page).locator(':scope > details')
   await sourceEvidence.locator(':scope > summary').click()
   await expect(sourceEvidence.getByText('meridian.example.test', { exact: true })).toBeVisible()
-  await refresh(page).click()
   state.details = opportunityDetails({ extracted_information: { ...information, customer_name: 'Meridian',
     intelligence: intelligenceResult({ customer_name: { status: 'detected', basis: 'domain_label', reason: 'The supplied display name requires legal-organization verification.', source_ids: ['original-request'] } }),
   } })
-  await row(page).click()
+  await refresh(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   await expect(detectedCard(page, 'Customer Name').locator('dd')).toHaveText('Meridian')
   await expect(detectedCard(page, 'Customer Name')).not.toContainText('meridian.example.test')
@@ -205,7 +205,7 @@ test('intelligence v2 portal and historical unknown source dates require human v
     }),
   })
   const state = await prepare(page, { details: opportunityDetails({ sender_email: 'relay@ariba.example.test', extracted_information: information }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   await expect(detectedCard(page, 'Customer Name')).toContainText('Not detected')
   await expect(detectedCard(page, 'Customer Name')).not.toContainText('ariba.example.test')
@@ -248,14 +248,14 @@ test('intelligence v2 domain-only matching cannot offer a new legal company whil
 
 test('intelligence v2 ambiguous deadlines and opportunity signals remain suggestions without granting creation authority', async ({ page }) => {
   const state = await prepare(page)
-  for (const [index, status] of ['candidate', 'follow_up', 'not_established', 'ambiguous'].entries()) {
-    if (index) await refresh(page).click()
+  for (const status of ['candidate', 'follow_up', 'not_established', 'ambiguous']) {
     state.details = opportunityDetails({ can_create_opportunity: false, extracted_information: intelligenceInformation({ due_date: '', deadline_date: '',
       intelligence: intelligenceResult({ deadline_review: { status: 'ambiguous', reason: 'Two conflicting proposal dates require review.', source_ids: ['original-request', 'latest-revision'] },
         opportunity_detection: { status, needs_review: true, reason: 'Review the explicit request and current reply.', source_ids: ['original-request'] },
       }),
     }) })
-    await row(page).click()
+    await refresh(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await revealExtracted(page)
     await expect(intelligencePanel(page)).toContainText('Conflicting or ambiguous deadlines')
     await expect(detectedCard(page, 'Due Date')).toContainText('Not detected')
@@ -276,7 +276,7 @@ test('intelligence v2 malformed status evidence and numerical confidence never b
       field_confidence: { customer_name: { level: 0.98, reason: '98% certainty', source_ids: ['original-request'] }, due_date: { level: 'high', reason: 'Unreferenced confidence', source_ids: ['missing-source'] } },
     }),
   }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   await expect(detectedCard(page, 'Customer Name')).toContainText('Unavailable')
   await expect(detectedCard(page, 'Submission Date')).toContainText('Unavailable')
@@ -285,14 +285,14 @@ test('intelligence v2 malformed status evidence and numerical confidence never b
   await expect(intelligencePanel(page)).toContainText('No sourced entities are available.')
   await expect(intelligencePanel(page)).toContainText('Field confidence is unavailable.')
   await expect(intelligencePanel(page)).not.toContainText(/98%|Unsupported Corporation|Unsupported authority/)
-  await refresh(page).click()
   state.details = opportunityDetails({ extracted_information: intelligenceInformation({ intelligence: { version: 9 } }) })
-  await row(page).click()
+  await refresh(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   await expect(intelligencePanel(page)).toHaveText('Detection review is unavailable.')
-  await refresh(page).click()
   state.details = opportunityDetails()
-  await row(page).click()
+  await refresh(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   await expect(detectedCard(page, 'Customer Name')).toContainText('Example Energy LLC')
   await expect(intelligencePanel(page)).toHaveCount(0)
@@ -326,7 +326,7 @@ test('intelligence v2 literal entities and categorical evidence remain accessibl
   const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: intelligenceInformation({
     intelligence: intelligenceResult({ entities: [{ entity_type: 'project', value: hostile, evidence: hostile, source_ids: ['original-request'] }] }),
   }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   const entities = intelligencePanel(page).getByText('Detected entities', { exact: true })
   await entities.focus()
@@ -346,7 +346,7 @@ test('intelligence v2 literal entities and categorical evidence remain accessibl
   expect(result.violations).toEqual([])
   state.details = opportunityDetails({ extracted_information: intelligenceInformation() })
   await refresh(page).click()
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   await detectionPanel(page).locator('dl').first().scrollIntoViewIfNeeded()
   await page.screenshot({ path: testInfo.outputPath('sales-email-simple-labels-mobile.png'), fullPage: true })
@@ -371,9 +371,9 @@ test('thread identification badges use server roles independently from direction
     await expect(item.getByText('First incoming available', { exact: true })).toHaveCount(0)
     await expect(item.getByText('Original request', { exact: true })).toHaveCount(0)
   }
-  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(0)
-  await row(page, records[0].subject).click()
+  await expect(row(page, records[0].subject)).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page).locator('.sales-email-preview-header').getByText('Selected email: Reply', { exact: true })).toBeVisible()
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(1)
   await expect(preview(page).locator('.sales-email-preview-header').getByText('Incoming', { exact: true })).toBeVisible()
   await row(page, records[4].subject).click()
   await expect(preview(page).locator('.sales-email-preview-header').getByText('Draft', { exact: true })).toHaveCount(1)
@@ -449,7 +449,7 @@ test('thread identification permits the first available incoming message to be a
     coverage: { status: 'partial', messages_reviewed: 1, segments_reviewed: 1, original_identified: false }, limitations: ['Earlier messages were not available.'],
   })
   const state = await prepare(page, { details: opportunityDetails({ extracted_information: threadInformation({ analysis }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealAnalysis(page)
   const item = conversationItem(page, source.subject)
   await expect(item.getByText('Reply', { exact: true })).toBeVisible()
@@ -467,7 +467,7 @@ test('thread identification distinguishes quoted original evidence from actual i
   sources[1] = { ...sources[1], is_first_incoming: true }
   const analysis = identifiedAnalysis({ sources, first_incoming_source_id: sources[1].id, coverage: { status: 'selected_only', messages_reviewed: 1, segments_reviewed: 2, original_identified: true } })
   const state = await prepare(page, { details: opportunityDetails({ extracted_information: threadInformation({ analysis }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealAnalysis(page)
   const original = conversationItem(page, sources[0].subject)
   await expect(original.getByText('Original request', { exact: true })).toBeVisible()
@@ -489,10 +489,10 @@ test('thread identification missing or contradictory references never promote so
     { ...base, sources: base.sources.map(source => ({ ...source, origin: 'quoted', sent_at: 'not-a-date' })), coverage: { ...base.coverage, original_identified: false } },
     { ...base, sources: [...base.sources, ...base.sources.map(source => ({ ...source, origin: 'quoted' }))] },
   ]
-  for (const [index, analysis] of cases.entries()) {
-    if (index) await refresh(page).click()
+  for (const analysis of cases) {
     state.details = opportunityDetails({ extracted_information: threadInformation({ analysis }) })
-    await row(page).click()
+    await refresh(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await revealAnalysis(page)
     const conversation = conversationRegion(analysisPanel(page))
     await expect(conversation.getByText('Original request', { exact: true })).toHaveCount(0)
@@ -502,9 +502,9 @@ test('thread identification missing or contradictory references never promote so
     await expect(conversation).toContainText('The selected email\'s source is not identified.')
     await expect(analysisPanel(page)).not.toContainText('Original request identified in the reviewed content.')
   }
-  await refresh(page).click()
   state.details = opportunityDetails({ extracted_information: conversationInformation() })
-  await row(page).click()
+  await refresh(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page).locator('.sales-email-preview-header')).toContainText('Selected email: Thread role unknown')
   await revealAnalysis(page)
   await expect(conversationRegion(analysisPanel(page))).toHaveCount(0)
@@ -522,7 +522,7 @@ test('thread identification ignores a late conversation when another email is se
     ? { body: opportunityDetails({ extracted_information: threadInformation() }), hold }
     : { body: detail(other, { extracted_information: threadInformation({ analysis: otherAnalysis }) }) },
   })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => state.requests.some(request => request.path === detailPath('shared-1'))).toBe(true)
   await row(page, other.subject).click()
   await revealAnalysis(page)
@@ -562,7 +562,7 @@ test('thread identification stays readable on mobile and treats source evidence 
   analysis.sources[0].excerpt = hostile
   analysis.sources[0].thread_role_reason = hostile
   const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: threadInformation({ analysis }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealAnalysis(page)
   const conversation = conversationRegion(analysisPanel(page))
   await conversation.scrollIntoViewIfNeeded()
@@ -586,7 +586,7 @@ test('customer matching shows the same sourced suggestion in saved and live emai
   const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: information }), clients: paginated([matchingClient()]),
     imported: paginated([{ ...message({ id: 'matched-intake' }), status: 'received', extracted_information: information, can_create_opportunity: true }]),
   })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   const result = matchRegion(page)
   await expect(result).toContainText('Suggested client')
@@ -653,10 +653,10 @@ test('customer matching distinguishes no match, missing, conflicting and denied 
     ['no_match', 'No matching client available to you'], ['not_detected', 'Customer name not detected'],
     ['conflicting', 'Conflicting customer names'], ['denied', 'You do not have access to customer matching'], ['unavailable', 'Customer matching unavailable'],
   ]
-  for (const [index, [status, label]] of cases.entries()) {
-    if (index) await refresh(page).click()
+  for (const [status, label] of cases) {
     state.details = opportunityDetails({ extracted_information: matchingInformation({ customer_match: customerMatchResult({ status, candidates: [] }) }) })
-    await row(page).click()
+    await refresh(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await revealExtracted(page)
     await expect(matchRegion(page)).toContainText(label)
     await confirmEmailType(page)
@@ -679,10 +679,10 @@ test('customer matching malformed or legacy projections never disclose candidate
     customerMatchResult({ candidates: [matchCandidate({ new_proposals_permitted: 'true' })] }),
     customerMatchResult({ status: 'denied' }),
   ]
-  for (const [index, value] of cases.entries()) {
-    if (index) await refresh(page).click()
+  for (const value of cases) {
     state.details = opportunityDetails({ extracted_information: matchingInformation({ customer_match: value }) })
-    await row(page).click()
+    await refresh(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await revealExtracted(page)
     await expect(matchRegion(page)).toHaveText('Customer matching unavailable')
     await expect(matchRegion(page)).not.toContainText('CLI-101')
@@ -936,7 +936,7 @@ test('classification is a sourced suggestion in live and saved email without rep
     details: opportunityDetails({ extracted_information: information }),
     imported: paginated([{ ...message({ id: 'classified-intake' }), status: 'received', extracted_information: information, can_create_opportunity: true }]),
   })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const checkClassification = async () => {
     await revealExtracted(page)
     const result = classificationRegion(page)
@@ -969,7 +969,7 @@ test('classification ambiguity exposes competing source evidence without choosin
       { code: 'regret_notification', label: 'Regret Notification', evidence: evidence('We regret to inform you that your proposal was unsuccessful.') },
     ],
   }) }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   const result = classificationRegion(page)
   await expect(result.getByText('Needs review', { exact: true })).toBeVisible()
@@ -989,7 +989,7 @@ for (const [status, label] of [['unclassified', 'Not classified'], ['draft', 'Dr
       status, code: '', label: status === 'draft' ? 'Draft' : 'Needs review', evidence: [],
       confidence: { level: 'unresolved', method: 'rule_evidence_v1', reason: 'The available content does not support a confirmed category.' },
     }) }) }) })
-    await row(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await revealExtracted(page)
     const result = classificationRegion(page)
     await expect(result.getByText(label, { exact: true })).toBeVisible()
@@ -1004,10 +1004,10 @@ for (const [status, label] of [['unclassified', 'Not classified'], ['draft', 'Dr
 test('classification missing from legacy or malformed responses remains compact and unavailable', async ({ page }) => {
   const state = await prepare(page, { details: opportunityDetails() })
   const cases = [undefined, [], classification({ version: 2 }), classification({ status: 'toString' }), classification({ code: 'unsupported_new_category', label: 'Guaranteed award' })]
-  for (const [index, value] of cases.entries()) {
-    if (index) await refresh(page).click()
+  for (const value of cases) {
     state.details = opportunityDetails({ extracted_information: detected({ classification: value }) })
-    await row(page).click()
+    await refresh(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await revealExtracted(page)
     const result = classificationRegion(page)
     await expect(result).toContainText('Suggested classification: Unavailable')
@@ -1029,10 +1029,10 @@ test('classification confidence uses only supported evidence levels and never in
     [{ level: 'toString', method: 'rule_evidence_v1' }, 'Unavailable'],
     [null, 'Unavailable'],
   ]
-  for (const [index, [confidence, label]] of cases.entries()) {
-    if (index) await refresh(page).click()
+  for (const [confidence, label] of cases) {
     state.details = opportunityDetails({ extracted_information: conversationInformation({ classification: classification({ code: 'general_communication', label: 'General Communication', confidence }) }) })
-    await row(page).click()
+    await refresh(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await revealExtracted(page)
     const result = classificationRegion(page)
     await expect(result.getByText('General Communication', { exact: true })).toBeVisible()
@@ -1053,7 +1053,7 @@ test('classification evidence and source labels render hostile content literally
     ] }),
     analysis: conversationAnalysis({ sources: [{ id: 'latest-revision', label: hostile, origin: 'message', excerpt: 'Source text' }] }),
   }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   const result = classificationRegion(page)
   await result.getByText('Classification evidence', { exact: true }).click()
@@ -1088,7 +1088,7 @@ test('classification source reload shows the new suggestion while retaining revi
 test('classification evidence remains keyboard accessible and readable on a narrow screen', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const state = await prepare(page, { shell: true, details: opportunityDetails({ extracted_information: conversationInformation({ classification: classification() }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   const result = classificationRegion(page)
   const evidence = result.getByText('Classification evidence', { exact: true })
@@ -1141,7 +1141,7 @@ const deferred = () => {
 }
 
 async function openOpportunityForm(page) {
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await confirmEmailType(page)
   await preview(page).getByRole('button', { name: 'Create opportunity', exact: true }).click()
   await expect(opportunityDialog(page)).toBeVisible()
@@ -1178,17 +1178,17 @@ async function reviewedForm(page) {
   return dialog
 }
 
-test('Email Intake opens actual shared mail by default and loads a plain-text preview only on selection', async ({ page }, testInfo) => {
+test('Email Intake opens actual shared mail and automatically loads the first plain-text preview', async ({ page }, testInfo) => {
   const state = await prepare(page)
   await expect(page.getByRole('navigation', { name: 'Email views' })).toHaveCount(0)
   await expect(region(page)).toContainText('All mail')
   await expect(row(page)).toBeVisible()
   await expect(row(page, 'Site access update')).toBeVisible()
   await expect(region(page)).toContainText('Ava Khan')
-  expect(state.requests.filter(request => request.path.endsWith('/message/'))).toHaveLength(0)
   expect(state.requests.filter(request => request.path.includes('email-intakes'))).toHaveLength(0)
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page)).toContainText('Please confirm revision C for the pump package.')
+  expect(state.requests.filter(request => request.path.endsWith('/message/'))).toHaveLength(1)
   await expect(preview(page)).toContainText('ava@example.test')
   await preview(page).getByText('Message details', { exact: true }).click()
   await expect(preview(page)).toContainText('sales@example.test')
@@ -1214,7 +1214,8 @@ test('direction badges follow the server projection beside read status in rows a
     detailHandler: ({ url }) => ({ body: detail(scenarios.find(({ record }) => record.id === url.searchParams.get('message_id')).record) }),
   })
   await expect(row(page, scenarios[0].record.subject)).toBeVisible()
-  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(0)
+  await expect(preview(page).getByRole('heading', { name: scenarios[0].record.subject, exact: true })).toBeVisible()
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(1)
   await expect(page.locator('.sales-email-list-scroll button button')).toHaveCount(0)
   for (const { record, label, read } of scenarios) {
     const item = rowItem(page, record.subject)
@@ -1246,9 +1247,9 @@ test('Next step selects the requested email then reuses loaded analysis while on
       : longDetail(second) }),
   })
   await expect(row(page)).toBeVisible()
-  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(0)
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page)).toContainText('Please confirm revision C')
+  expect(state.requests.filter(request => request.path === detailPath('shared-1'))).toHaveLength(1)
   await nextStep(page, second.subject).click()
   await expect(preview(page).getByRole('heading', { name: second.subject, exact: true })).toBeVisible()
   await expect(reviewFocus(page)).toBeFocused()
@@ -1315,10 +1316,18 @@ test('a late Next step response cannot replace the newly selected message or ste
 for (const reset of ['search', 'mailbox', 'account']) {
   test(`${reset === 'account' ? 'an' : 'a'} ${reset} change cancels a pending Next step focus and discards its late analysis`, async ({ page }) => {
     const hold = deferred()
+    let firstDetail = true
     const state = await prepare(page, {
       ...(reset === 'mailbox' ? { connections: paginated([mailbox(), mailbox({ id: 'shared-2', mailbox_address: 'projects@example.test' })]) } : {}),
       messageHandler: ({ url }) => ({ body: listing([message(), secondMessage()], null, url.pathname === messagesPath('shared-2') ? 'projects@example.test' : 'sales@example.test') }),
-      details: opportunityDetails({ extracted_information: conversationInformation({ analysis: conversationAnalysis({ summary: 'Discarded pending next-step analysis' }) }) }), detailHold: hold,
+      detailHandler: ({ url }) => {
+        const record = url.searchParams.get('message_id') === secondMessage().id ? secondMessage() : message()
+        if (firstDetail) {
+          firstDetail = false
+          return { body: detail(record, { extracted_information: conversationInformation({ analysis: conversationAnalysis({ summary: 'Discarded pending next-step analysis' }) }) }), hold }
+        }
+        return { body: detail(record, { extracted_information: conversationInformation({ analysis: conversationAnalysis({ summary: 'Current automatically opened analysis' }) }) }) }
+      },
     })
     if (reset === 'mailbox') await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-1')
     await nextStep(page).click()
@@ -1333,12 +1342,13 @@ for (const reset of ['search', 'mailbox', 'account']) {
       await expect.poll(() => state.requests.some(request => request.path === messagesPath('shared-1') && request.authorization === 'Bearer mailbox-fixture-user-22')).toBe(true)
     }
     await expect(row(page, secondMessage().subject)).toBeVisible()
+    await expect(analysisPanel(page)).toContainText('Current automatically opened analysis')
     await row(page, secondMessage().subject).focus()
     const arrived = page.waitForResponse(response => new URL(response.url()).pathname === detailPath('shared-1'))
     hold.resolve()
     await arrived
     await expect(row(page, secondMessage().subject)).toBeFocused()
-    await expect(analysisPanel(page)).toHaveCount(0)
+    await expect(analysisPanel(page)).toContainText('Current automatically opened analysis')
     await expect(region(page)).not.toContainText('Discarded pending next-step analysis')
     assertReadOnly(state)
   })
@@ -1361,9 +1371,11 @@ for (const hasAnalysis of [false, true]) {
 
 test('next and previous preserve opaque cursors while refresh returns to newest mail', async ({ page }) => {
   const cursor = 'opaque-signed.cursor+/=value'
+  const older = message({ id: 'older-message', subject: 'Older supplier update' })
   const state = await prepare(page, { messageHandler: ({ url }) => ({ body: url.searchParams.get('cursor')
-    ? listing([message({ id: 'older-message', subject: 'Older supplier update' })])
+    ? listing([older])
     : listing([message()], cursor) }),
+    detailHandler: ({ url }) => ({ body: detail(url.searchParams.get('message_id') === older.id ? older : message()) }),
   })
   const next = region(page).getByRole('button', { name: 'Next page', exact: true })
   const previous = region(page).getByRole('button', { name: 'Previous page', exact: true })
@@ -1461,7 +1473,7 @@ for (const scenario of [
 
 test('revoked mailbox access clears already displayed message and preview content', async ({ page }) => {
   const state = await prepare(page)
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page)).toContainText('Please confirm revision C')
   state.messageStatus = 403
   state.messages = { detail: 'private provider reason' }
@@ -1477,7 +1489,7 @@ for (const denied of [
 ]) {
   test(`preview failure allows a safe retry while detail ${denied.status} clears all email content`, async ({ page }) => {
     const state = await prepare(page, { detailStatus: 502, details: { detail: 'private-email-provider-diagnostic' } })
-    await row(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await expect(preview(page).getByRole('alert')).toHaveText('Email could not be loaded. Try again.')
     await expect(row(page)).toBeVisible()
     await expect(preview(page)).not.toContainText('private-email-provider-diagnostic')
@@ -1496,7 +1508,7 @@ for (const denied of [
 
 test('a missing text body is a retryable preview failure and cannot display partial details as success', async ({ page }) => {
   const state = await prepare(page, { details: { ...message(), to_recipients: [], cc_recipients: [] } })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page).getByRole('alert')).toHaveText('Email could not be loaded. Try again.')
   await expect(preview(page)).not.toContainText('This email has no text content.')
   state.details = detail()
@@ -1511,7 +1523,7 @@ test('selecting another email ignores a late preview from the first email', asyn
     ? { body: detail(message(), { body_text: 'Obsolete first preview' }), hold }
     : { body: detail(secondMessage(), { body_text: 'Current second preview' }) },
   })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => state.requests.filter(request => request.path.endsWith('/message/')).length).toBe(1)
   await row(page, 'Site access update').click()
   await expect(preview(page)).toContainText('Current second preview')
@@ -1525,16 +1537,20 @@ test('selecting another email ignores a late preview from the first email', asyn
 
 test('mailbox changes discard an old delayed preview and reset pagination', async ({ page }) => {
   const hold = deferred()
+  const projectMessage = message({ id: 'project-message', subject: 'Project mailbox correspondence' })
   const state = await prepare(page, {
     connections: paginated([mailbox(), mailbox({ id: 'shared-2', name: 'Projects mailbox', mailbox_address: 'projects@example.test' })]),
-    messageHandler: ({ url }) => ({ body: url.pathname === messagesPath('shared-1') ? listing() : listing([message({ id: 'project-message', subject: 'Project mailbox correspondence' })], null, 'projects@example.test') }),
-    detailHold: hold,
+    messageHandler: ({ url }) => ({ body: url.pathname === messagesPath('shared-1') ? listing() : listing([projectMessage], null, 'projects@example.test') }),
+    detailHandler: ({ url }) => url.pathname === detailPath('shared-1')
+      ? { body: detail(), hold }
+      : { body: detail(projectMessage, { body_text: 'Current project correspondence.' }) },
   })
   await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-1')
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => state.requests.filter(request => request.path.endsWith('/message/')).length).toBe(1)
   await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-2')
   await expect(row(page, 'Project mailbox correspondence')).toBeVisible()
+  await expect(preview(page)).toContainText('Current project correspondence.')
   await expect(region(page)).not.toContainText('Clarification on pump package')
   const arrived = page.waitForResponse(response => new URL(response.url()).pathname === detailPath('shared-1'))
   hold.resolve()
@@ -1546,10 +1562,12 @@ test('mailbox changes discard an old delayed preview and reset pagination', asyn
 
 test('account changes and sign-out discard late mail without displaying the previous identity data', async ({ page }) => {
   const hold = deferred()
+  const otherAccountMessage = message({ id: 'account-two-message', subject: 'Second account mail' })
   const state = await prepare(page, {
     messageHandler: ({ request }) => request.headers().authorization === 'Bearer mailbox-fixture-user-11'
       ? { body: listing(), hold }
-      : { body: listing([message({ id: 'account-two-message', subject: 'Second account mail' })]) },
+      : { body: listing([otherAccountMessage]) },
+    detailHandler: ({ url }) => ({ body: detail(url.searchParams.get('message_id') === otherAccountMessage.id ? otherAccountMessage : message()) }),
   })
   await expect.poll(() => state.requests.filter(request => request.path.endsWith('/messages/')).length).toBe(1)
   await page.evaluate(() => window.setSalesMailboxMessageActor({ id: 900, user: { id: 22 }, email: 'second-admin@example.test' }))
@@ -1615,12 +1633,14 @@ test('keyboard selection and refresh work at narrow widths with accessible list 
 
 test('the compact mailbox layout removes redundant headings and gives the preview more horizontal space', async ({ page }) => {
   const state = await prepare(page)
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page)).toContainText('Please confirm revision C')
   const heading = await page.getByRole('heading', { name: 'Email Intake', exact: true }).boundingBox()
   const mailboxList = await page.getByRole('complementary', { name: 'Mailbox emails', exact: true }).boundingBox()
   const messagePreview = await preview(page).boundingBox()
-  expect(heading.y).toBeLessThan(mailboxList.y)
+  expect(heading.width).toBeLessThanOrEqual(1)
+  expect(heading.height).toBeLessThanOrEqual(1)
+  await expect(page.locator('.sales-email-page-header')).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Email views' })).toHaveCount(0)
   await expect(region(page).getByRole('heading', { name: 'All mail', exact: true })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Detected information', exact: true })).toHaveCount(0)
@@ -1642,7 +1662,9 @@ test('the compact mailbox layout removes redundant headings and gives the previe
 
 test('live read filters and search affect only the current page and keep actual counts', async ({ page }) => {
   const records = [message(), secondMessage(), message({ id: 'draft-message', subject: 'Draft commercial response', sender_name: 'Draft owner', is_draft: true, is_read: true })]
-  const state = await prepare(page, { messages: listing(records, 'another-mail-page') })
+  const state = await prepare(page, { messages: listing(records, 'another-mail-page'),
+    detailHandler: ({ url }) => ({ body: detail(records.find(record => record.id === url.searchParams.get('message_id'))) }),
+  })
   await expect(row(page)).toBeVisible()
   const filters = page.getByRole('navigation', { name: 'Email read status', exact: true })
   const unread = filters.getByRole('button', { name: /^Unread\b/ })
@@ -1679,7 +1701,7 @@ test('live read filters and search affect only the current page and keep actual 
 
 test('rich email paragraphs, lists, tables and links retain their readable structure', async ({ page }, testInfo) => {
   const state = await prepare(page, { details: detail(message(), { body_text: 'Original fallback text', body_content: richBody() }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const body = preview(page).locator('.sales-email-body')
   await expect(body.locator('p')).toHaveCount(4)
   await expect(body.locator('strong')).toHaveText('revised pump package')
@@ -1718,7 +1740,7 @@ test('semantic email nodes cannot inject active elements, styling, attributes or
     element('p', [textNode(hostile)]),
   ]
   const state = await prepare(page, { details: detail(message(), { body_content: content }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const body = preview(page).locator('.sales-email-body')
   await expect(body.getByText('Visible safe paragraph', { exact: true })).toBeVisible()
   await body.getByText('Visible safe paragraph', { exact: true }).click()
@@ -1744,7 +1766,7 @@ for (const scenario of ['malformed children', 'excessive nesting', 'excessive no
       body_content: [element('p', [textNode('Partial rich preview must not appear')]), ...invalid],
       body_text: 'Retained plain text paragraph.\n\nSecond retained paragraph with https://documents.example.test/fallback.',
     }) })
-    await row(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     const body = preview(page).locator('.sales-email-body')
     await expect(body.locator('p')).toHaveCount(2)
     await expect(body).toContainText('Retained plain text paragraph.')
@@ -1767,7 +1789,7 @@ test('a wide email table scrolls locally and remains keyboard accessible on a na
     element('p', [textNode('Kind regards, Ava')]),
   ]
   const state = await prepare(page, { details: detail(message(), { body_content: content }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const scroll = preview(page).getByRole('region', { name: 'Email table', exact: true })
   await expect(scroll.getByRole('columnheader')).toHaveCount(6)
   const sizes = await scroll.evaluate(node => ({
@@ -1813,7 +1835,7 @@ test('live and imported detected fields keep source dates distinct and expose re
     details: opportunityDetails(),
     imported: paginated([{ ...message({ id: 'detected-intake' }), status: 'received', extracted_information: detected(), can_create_opportunity: true }]),
   })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const checkDetection = async () => {
     await revealExtracted(page)
     const detectedRegion = page.getByRole('region', { name: 'Detected information', exact: true })
@@ -1927,7 +1949,7 @@ test('a tender bulletin distinguishes requested review from suggestions and does
       limitations: ['Attachment contents have not been reviewed.', 'The message does not state a revised deadline.'],
     }),
   }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const panel = analysisPanel(page)
   await revealExtracted(page)
   await revealAnalysis(page)
@@ -1952,7 +1974,7 @@ for (const coverage of [
     const state = await prepare(page, { details: opportunityDetails({ extracted_information: conversationInformation({
       analysis: conversationAnalysis({ coverage: counts, limitations: [notice], sources: [{ id: 'quoted-original', label: 'Quoted earlier request', origin: 'quoted', subject: 'RFP: Community building services', sender_email: 'tenders@community.example.test', excerpt: 'Please provide a proposal for building-services design.' }], key_points: [{ label: 'Earlier request', value: 'Building-services design proposal', source_ids: ['quoted-original'] }], requested_actions: [], suggested_actions: [] }),
     }) }) })
-    await row(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     const panel = analysisPanel(page)
     await revealAnalysis(page)
     await expect(panel.getByRole('heading', { name: 'Coverage and limitations', exact: true })).toBeVisible()
@@ -2012,7 +2034,7 @@ test('untrusted analysis and source excerpts remain literal text without executa
       coverage: { status: 'constructor', messages_reviewed: -1, segments_reviewed: '99', original_identified: 'true' },
     }),
   }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const panel = analysisPanel(page)
   await revealAnalysis(page)
   await expect(panel).toContainText(hostile)
@@ -2031,7 +2053,7 @@ test('untrusted analysis and source excerpts remain literal text without executa
 
 test('missing analysis does not invent conclusions and keeps message metadata available', async ({ page }) => {
   const state = await prepare(page, { details: opportunityDetails() })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const panel = analysisPanel(page)
   await expect(panel).toBeVisible()
   await expect(panel).not.toContainText(/Meridian Water|Harbour District|deadline.*extended|Whole conversation reviewed/)
@@ -2047,7 +2069,7 @@ test('missing and ambiguous detection remains unresolved without inventing custo
     customer_name: '', submission_date: '', due_date: '', request_type_code: '',
     evidence: { due_date: 'Due date: 03/04/2026' }, warnings: ['The due date is ambiguous and needs review.'],
   }) }) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await revealExtracted(page)
   const information = page.getByRole('region', { name: 'Detected information', exact: true })
   await expect(information.locator('dl').first().getByText('Not detected', { exact: true })).toHaveCount(4)
@@ -2060,7 +2082,7 @@ test('missing and ambiguous detection remains unresolved without inventing custo
 for (const requestCode of ['EOI', 'EIO', 'RFQ', 'RFP', 'ITT']) {
   test(`detected request code ${requestCode} is displayed literally without relabeling`, async ({ page }) => {
     const state = await prepare(page, { details: opportunityDetails({ extracted_information: detected({ request_type_code: requestCode }) }) })
-    await row(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await revealExtracted(page)
     const field = page.getByRole('region', { name: 'Detected information', exact: true }).locator('dl').first().locator('div').filter({ has: page.getByText('Type of Request', { exact: true }) })
     await expect(field.locator('dd')).toHaveText(requestCode)
@@ -2071,7 +2093,7 @@ for (const requestCode of ['EOI', 'EIO', 'RFQ', 'RFP', 'ITT']) {
 for (const capability of [undefined, false, 'true']) {
   test(`creation requires an explicit true server capability (${String(capability)})`, async ({ page }) => {
     const state = await prepare(page, { details: opportunityDetails({ can_create_opportunity: capability }) })
-    await row(page).click()
+    await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
     await expect(preview(page)).toContainText('Please confirm revision C')
     await expect(preview(page).getByRole('button', { name: 'Create opportunity', exact: true })).toHaveCount(0)
     expect(state.requests.filter(request => request.path === '/api/v1/sales/clients/')).toHaveLength(0)
@@ -2342,7 +2364,7 @@ for (const collapsed of [false, true]) {
       expect(bounds.content).toBeGreaterThan(bounds.height)
       expect(['auto', 'scroll']).toContain(bounds.overflow)
     }
-    const headerBefore = await page.locator('.sales-email-page-header').boundingBox()
+    await expect(page.locator('.sales-email-page-header')).toHaveCount(0)
     const toolbarBefore = await page.locator('.sales-email-toolbar').boundingBox()
     const subjectBefore = await preview(page).locator('.sales-email-preview-header').boundingBox()
     const pagingBefore = await region(page).getByRole('button', { name: 'Next page', exact: true }).boundingBox()
@@ -2359,7 +2381,7 @@ for (const collapsed of [false, true]) {
     await page.mouse.wheel(0, 420)
     await expect.poll(async () => (await panePosition(page)).source).toBeGreaterThan(0)
     expect(await panePosition(page)).toMatchObject({ document: 0, main: 0, reading: afterReading.reading })
-    expect(await page.locator('.sales-email-page-header').boundingBox()).toEqual(headerBefore)
+    await expect(page.locator('.sales-email-page-header')).toHaveCount(0)
     expect(await page.locator('.sales-email-toolbar').boundingBox()).toEqual(toolbarBefore)
     expect(await preview(page).locator('.sales-email-preview-header').boundingBox()).toEqual(subjectBefore)
     expect(await region(page).getByRole('button', { name: 'Next page', exact: true }).boundingBox()).toEqual(pagingBefore)
@@ -2412,7 +2434,7 @@ test('the actual narrow shell keeps long email content and review actions reacha
   await page.setViewportSize({ width: 390, height: 844 })
   const record = message()
   const state = await prepare(page, { shell: true, messages: listing([record]), details: longDetail(record), clients: paginated([canonicalClient()]) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page)).toContainText('Section 70:')
   const main = page.locator('main.main-content')
   const dimensions = await main.evaluate(node => ({ height: node.clientHeight, content: node.scrollHeight, width: document.documentElement.scrollWidth, viewport: window.innerWidth }))
@@ -2443,7 +2465,7 @@ test('the actual narrow shell keeps long email content and review actions reacha
 test('a short desktop shell keeps stacked email details and the opportunity dialog reachable without clipping', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1366, height: 768 })
   const state = await prepare(page, { shell: true, details: longDetail(message()), clients: paginated([canonicalClient()]) })
-  await row(page).click()
+  await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   const detailPane = preview(page).locator('.sales-email-detail-grid')
   const reading = preview(page).locator('.sales-email-reading-pane')
   const source = preview(page).locator('.sales-email-source-panel')
