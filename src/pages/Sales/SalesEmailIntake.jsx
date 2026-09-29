@@ -3,28 +3,29 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import PropTypes from "prop-types";
 import {
-  ArrowLeftIcon,
-  ArrowPathIcon,
-  ArrowTopRightOnSquareIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  DocumentDuplicateIcon,
-  EnvelopeIcon,
-  EnvelopeOpenIcon,
-  ExclamationTriangleIcon,
-  FunnelIcon,
-  MagnifyingGlassIcon,
-  NoSymbolIcon,
-  PaperClipIcon,
-  PlusIcon,
-  UserIcon,
-  XMarkIcon,
-} from "@heroicons/react/24/outline";
+  RefreshCw as ArrowPathIcon,
+  ExternalLink as ArrowTopRightOnSquareIcon,
+  CheckCircle as CheckCircleIcon,
+  Clock as ClockIcon,
+  Copy as DocumentDuplicateIcon,
+  Mail as EnvelopeIcon,
+  MailOpen as EnvelopeOpenIcon,
+  AlertTriangle as ExclamationTriangleIcon,
+  Filter as FunnelIcon,
+  Search as MagnifyingGlassIcon,
+  Ban as NoSymbolIcon,
+  Paperclip as PaperClipIcon,
+  User as UserIcon,
+  X as XMarkIcon,
+  Plus as PlusIcon,
+} from "lucide-react";
 import salesService from "../../services/sales.service";
 import SalesSharedMailboxMessages from "./SalesSharedMailboxMessages";
-import SalesEmailBody from "./SalesEmailBody";
-import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
-import SalesEmailAnalysis from "./SalesEmailAnalysis";
+import SalesSharedMailboxSetup from "./SalesSharedMailboxSetup";
+import useSalesMailboxSetupAccess from "./useSalesMailboxSetupAccess";
+import SalesEmailReader from "./SalesEmailReader";
+import SalesEmailReview from "./SalesEmailReview";
+import { isOpportunityClassification } from "./salesEmailReviewState";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
 import { customerMatch, withoutCustomerMatch } from "./SalesEmailCustomerMatch";
 import useSalesEmailClients from "./useSalesEmailClients";
@@ -140,21 +141,31 @@ export default function SalesEmailIntake() {
 function EmailIntakeViews() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const access = useSalesMailboxSetupAccess();
+  const [setup, setSetup] = useState(null);
+  const [mailboxes, setMailboxes] = useState({ revision: 0, selectedId: "" });
+  useEffect(() => {
+    if (!access.canManage || (setup && !setup.connection && !access.canCreate)) setSetup(null);
+  }, [access.canManage, access.canCreate, setup]);
+  const closeSetup = (connection) => {
+    setSetup(null);
+    if (connection) setMailboxes((current) => ({ revision: current.revision + 1, selectedId: connection.id }));
+  };
   const view = searchParams.get("view") === "imported" ? "imported" : "shared";
   return (
     <section className="sales-email-workspace" aria-label="Email Intake workspace">
       <header className="sales-email-page-header">
-        <div className="flex min-w-0 items-start gap-3">
-          <button type="button" onClick={() => navigate("/sales")} aria-label="Back to Sales and Proposals" className="sales-email-back">
-            <ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
-          </button>
+        <div className="min-w-0">
+          <nav aria-label="Breadcrumb" className="sales-email-breadcrumb"><button type="button" onClick={() => navigate("/sales")}>Sales</button><span aria-hidden="true">/</span><span aria-current="page">Email Intake</span></nav>
           <div className="min-w-0">
             <h1>Email Intake</h1>
-            <p className="mt-1 text-sm text-slate-600">Browse shared emails and review imported client enquiries.</p>
+            <p className="mt-1 text-sm text-slate-600">Review shared emails and turn qualified enquiries into opportunities.</p>
           </div>
         </div>
+        {view === "shared" && access.canCreate && <button type="button" onClick={() => setSetup({ connection: null })} className="sales-email-button"><PlusIcon className="h-4 w-4" aria-hidden="true" />Add shared mailbox</button>}
       </header>
-      {view === "shared" ? <SalesSharedMailboxMessages /> : <ImportedEmailIntakes />}
+      {view === "shared" ? <SalesSharedMailboxMessages key={mailboxes.revision} preferredConnectionId={mailboxes.selectedId} onConfigure={access.canManage ? (connection) => setSetup({ connection }) : undefined} /> : <ImportedEmailIntakes />}
+      {view === "shared" && setup && access.canManage && (setup.connection || access.canCreate) && <SalesSharedMailboxSetup initialConnection={setup.connection} access={access} onClose={closeSetup} />}
     </section>
   );
 }
@@ -171,6 +182,9 @@ function ImportedEmailIntakes() {
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(null);
   const [clientChoice, setClientChoice] = useState("");
+  const [confirmedClassification, setConfirmedClassification] = useState("");
+  const [reviewVersion, setReviewVersion] = useState(0);
+  const [classificationReviewRequired, setClassificationReviewRequired] = useState(false);
   const clients = useSalesEmailClients(dialog === "convert");
   const clientAccess = clients.access;
   useEffect(() => {
@@ -178,6 +192,7 @@ function ImportedEmailIntakes() {
   }, [clients.denied]);
 
   const load = useCallback(async () => {
+    setConfirmedClassification("");
     const request = ++loadRequest.current;
     const clientGeneration = clientAccess.current.generation;
     setLoading(true);
@@ -187,7 +202,10 @@ function ImportedEmailIntakes() {
       if (request !== loadRequest.current) return;
       const redactMatches = clientAccess.current.denied || clientGeneration !== clientAccess.current.generation;
       const nextRecords = list(intakeResponse).map((record) => redactMatches ? withoutIntakeClientMatch(record) : record);
+      setConfirmedClassification("");
+      setClassificationReviewRequired(true);
       setRecords(nextRecords);
+      setReviewVersion((current) => current + 1);
       setSelectedId((current) =>
         nextRecords.some((row) => row.id === current)
           ? current
@@ -238,6 +256,7 @@ function ImportedEmailIntakes() {
     });
   }, [records, search, statusFilter]);
   const selected = records.find((row) => row.id === selectedId) ?? null;
+  useEffect(() => { setConfirmedClassification(""); }, [selectedId]);
   const extracted = selected?.extracted_information ?? {};
   const match = customerMatch(extracted);
   const suggestedClientName = selected?.can_create_client === true && !clients.loading && !clients.error && match?.status === "no_match"
@@ -253,6 +272,9 @@ function ImportedEmailIntakes() {
   }, [dialog, selectedId]);
 
   const updateRecord = (record) => {
+    setConfirmedClassification("");
+    setClassificationReviewRequired(true);
+    setReviewVersion((current) => current + 1);
     setRecords((current) =>
       current.map((row) => (row.id === record.id ? (clientAccess.current.denied ? withoutIntakeClientMatch(record) : record) : row)),
     );
@@ -301,7 +323,7 @@ function ImportedEmailIntakes() {
 
   const convert = async (event) => {
     event.preventDefault();
-    if (!selected || selected.can_create_opportunity !== true || saving || clients.loading || clients.error) return;
+    if (!selected || selected.can_create_opportunity !== true || saving || clients.loading || clients.error || !isOpportunityClassification(confirmedClassification)) return;
     const form = new FormData(event.currentTarget);
     const createClient = clientChoice === "__new__";
     if (createClient && !suggestedClientName) {
@@ -313,6 +335,8 @@ function ImportedEmailIntakes() {
     setError("");
     try {
       const result = await salesService.convertEmailIntake(selected.id, {
+        classification_code: confirmedClassification,
+        classification_confirmed: true,
         client: createClient ? undefined : clientChoice,
         new_client:
           createClient
@@ -343,8 +367,12 @@ function ImportedEmailIntakes() {
       setDialog(null);
     } catch (requestError) {
       const data = requestError?.response?.data;
+      if (data?.classification_code || data?.classification_confirmed) {
+        setConfirmedClassification("");
+        setClassificationReviewRequired(true);
+      }
       setError(
-        data?.client?.[0] ||
+        data?.classification_code?.[0] || data?.classification_confirmed?.[0] || data?.client?.[0] ||
           data?.expected_close_date?.[0] ||
           data?.estimated_value?.[0] ||
           data?.status?.[0] ||
@@ -541,14 +569,6 @@ function ImportedEmailIntakes() {
                               <NoSymbolIcon className="h-4 w-4" />
                               Reject
                             </button>
-                            {selected.can_create_opportunity === true && <button
-                              type="button"
-                              onClick={() => setDialog("convert")}
-                              className="inline-flex items-center gap-1.5 rounded-md bg-[#f04b2f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d83f26]"
-                            >
-                              <PlusIcon className="h-4 w-4" />
-                              Create opportunity
-                            </button>}
                           </>
                         )}
                       </div>
@@ -557,11 +577,7 @@ function ImportedEmailIntakes() {
 
                   <div className="sales-email-detail-grid">
                     <section className="sales-email-reading-pane" aria-label="Email content" tabIndex={0}>
-                      <SalesEmailDetectedInformation information={extracted} subject={selected.subject} />
-                      <h3 className="mt-6 text-sm font-bold text-[#102a47]">Email preview</h3>
-                      <div className="sales-email-body-panel mt-3">
-                        <SalesEmailBody bodyText={selected.body_preview || "No email preview was supplied."} />
-                      </div>
+                      <SalesEmailReader key={selected.id} information={extracted} subject={selected.subject} bodyText={selected.body_preview || "No email preview was supplied."} saved>
                       {selected.resolution_note && (
                         <div className="mt-4 rounded-lg border border-slate-200 px-4 py-3">
                           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -572,10 +588,17 @@ function ImportedEmailIntakes() {
                           </p>
                         </div>
                       )}
+                      </SalesEmailReader>
                     </section>
 
-                    <aside className="sales-email-source-panel" aria-label="Email analysis" tabIndex={0}>
-                      <SalesEmailAnalysis analysis={extracted.analysis} savedContent />
+                    <aside className="sales-email-source-panel" aria-label="Email review" tabIndex={0}>
+                      <SalesEmailReview key={`${selected.id}:${reviewVersion}`} information={extracted} subject={selected.subject}
+                        disabled={saving}
+                        confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
+                        onClassificationChange={() => setConfirmedClassification("")}
+                        canCreateOpportunity={selected.can_create_opportunity === true && ["received", "under_review"].includes(selected.status)}
+                        converted={Boolean(selected.opportunity)} savedContent
+                        onCreateOpportunity={() => { if (isOpportunityClassification(confirmedClassification)) { setClassificationReviewRequired(false); setDialog("convert"); } }}>
                       <details className="sales-email-analysis-metadata">
                       <summary>Source traceability</summary>
                       <dl className="mt-4 space-y-4 text-sm">
@@ -614,6 +637,7 @@ function ImportedEmailIntakes() {
                           <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                         </button>
                       )}
+                      </SalesEmailReview>
                       {selected.duplicate_of && (
                         <button
                           type="button"
@@ -642,6 +666,11 @@ function ImportedEmailIntakes() {
       {dialog === "convert" && selected?.can_create_opportunity === true && (
         <SalesEmailOpportunityForm
           key={selected.id}
+          requireSourceReload={!isOpportunityClassification(confirmedClassification)}
+          reviewPanel={classificationReviewRequired && <SalesEmailReview key={reviewVersion} information={extracted} subject={selected.subject}
+            disabled={saving}
+            confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
+            onClassificationChange={() => setConfirmedClassification("")} />}
           subject={selected.subject}
           information={extracted}
           bodyPreview={selected.body_preview}

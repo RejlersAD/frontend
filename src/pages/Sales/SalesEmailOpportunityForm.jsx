@@ -1,6 +1,6 @@
 import { useId } from "react";
 import PropTypes from "prop-types";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { X as XMarkIcon } from "lucide-react";
 import useModalAccessibility from "../../hooks/useModalAccessibility";
 import SalesEmailCustomerMatch from "./SalesEmailCustomerMatch";
 
@@ -71,7 +71,7 @@ export default function SalesEmailOpportunityForm({
           <div className="min-w-0 text-sm font-semibold text-slate-700 sm:col-span-2"><label htmlFor={`${formId}-description`}>Scope summary</label><textarea {...fieldProps("description")} name="description" rows="4" defaultValue={extracted.scope_summary || bodyPreview || ""} className={fieldClass} />{fieldError("description")}</div>
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4 sm:col-span-2">
             <button type="button" onClick={onClose} className="sales-email-button">Cancel</button>
-            <button type="submit" disabled={loadingClients || reloadingEmail || requireSourceReload || Boolean(clientError) || (!clients.some((client) => client.id === clientChoice) && !(clientChoice === "__new__" && newClientName))} className="rounded-md bg-[#c83d25] px-4 py-2 text-sm font-semibold text-white hover:bg-[#ac321e] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Creating…" : "Create opportunity"}</button>
+            <button type="submit" disabled={loadingClients || reloadingEmail || requireSourceReload || Boolean(clientError) || (!clients.some((client) => client.id === clientChoice) && !(clientChoice === "__new__" && newClientName))} className="rounded-md bg-[#c7442d] px-4 py-2 text-sm font-semibold text-white hover:bg-[#ac3825] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Creating…" : "Create opportunity"}</button>
           </div>
         </fieldset>
       </form>
