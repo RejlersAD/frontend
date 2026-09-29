@@ -1022,6 +1022,692 @@ const WorkforceHierarchy = ({ employees, onSelect, onAction }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sub-component: Organisation Demography — dynamic org tree rooted at the CEO.
+// Derived purely from live employee data (job titles + manager assignments),
+// so the chart reshapes itself automatically as people join, move or leave.
+const CEO_TITLE_RE = /\b(ceo|chief executive(?: officer)?|managing director)\b/i;
+
+const empDisplayTitle = (emp) =>
+  emp.job_title || emp.position || emp.designation || emp.title || "";
+
+const countSubtree = (node) =>
+  1 + node.children.reduce((sum, child) => sum + countSubtree(child), 0);
+
+const DemographyNode = ({
+  node,
+  depth,
+  onSelect,
+  onAction,
+  onFocus,
+  collapsed,
+  onToggle,
+  visited,
+}) => {
+  if (visited.has(String(node.emp.id))) return null;
+  const nextVisited = new Set(visited);
+  nextVisited.add(String(node.emp.id));
+  const nodeId = String(node.emp.id);
+  const isCollapsed = collapsed.has(nodeId);
+  const isCeo = CEO_TITLE_RE.test(empDisplayTitle(node.emp));
+  return (
+    <div
+      className={depth ? "ml-5 border-l border-indigo-100 pl-4 sm:ml-7" : ""}
+    >
+      <div
+        className={`relative mb-2 flex min-w-0 items-center gap-3 rounded-xl border bg-white p-3 shadow-sm ${
+          isCeo
+            ? "border-indigo-300 ring-1 ring-indigo-100"
+            : "border-slate-200"
+        }`}
+      >
+        {depth > 0 && (
+          <span className="absolute -left-4 top-1/2 h-px w-4 bg-indigo-100" />
+        )}
+        {node.children.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onToggle(nodeId)}
+            aria-label={isCollapsed ? "Expand reports" : "Collapse reports"}
+            className="shrink-0 rounded-full border border-slate-200 p-1 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+          >
+            <HeroIcons.ChevronDownIcon
+              className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+            />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onSelect(node.emp)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <Avatar emp={node.emp} size="sm" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-bold text-slate-900">
+              {fullName(node.emp)}
+            </span>
+            <span
+              className="block truncate text-xs text-slate-500"
+              title={`${empDisplayTitle(node.emp) || "Role not assigned"} · ${node.emp.department || "No department"}`}
+            >
+              {empDisplayTitle(node.emp) || "Role not assigned"} ·{" "}
+              {node.emp.department || "No department"}
+            </span>
+          </span>
+        </button>
+        {isCeo && (
+          <span className="shrink-0 rounded-full bg-indigo-600 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+            CEO
+          </span>
+        )}
+        {node.children.length > 0 && (
+          <span className="hidden shrink-0 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 sm:inline">
+            {node.children.length} direct
+          </span>
+        )}
+        {node.children.length > 0 && (
+          <button
+            type="button"
+            title={`View ${fullName(node.emp)}'s subtree`}
+            aria-label="Focus on this subtree"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFocus(nodeId);
+            }}
+            className="shrink-0 rounded-full border border-slate-200 p-1 text-slate-400 hover:border-indigo-300 hover:text-indigo-600"
+          >
+            <HeroIcons.ArrowsPointingInIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <EmployeeQuickActions emp={node.emp} onAction={onAction} compact />
+      </div>
+      {!isCollapsed &&
+        node.children.map((child) => (
+          <DemographyNode
+            key={child.emp.id}
+            node={child}
+            depth={depth + 1}
+            onSelect={onSelect}
+            onAction={onAction}
+            onFocus={onFocus}
+            collapsed={collapsed}
+            onToggle={onToggle}
+            visited={nextVisited}
+          />
+        ))}
+    </div>
+  );
+};
+
+const OrgDemographyView = ({ employees, onSelect, onAction }) => {
+  const [collapsed, setCollapsed] = useState(new Set());
+  const [layout, setLayout] = useState("nested"); // 'nested' | 'topdown'
+  const toggleNode = useCallback(
+    (id) =>
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    [],
+  );
+
+  const tree = useMemo(() => {
+    const nodes = new Map(
+      employees.map((emp) => [String(emp.id), { emp, children: [] }]),
+    );
+    const top = [];
+    nodes.forEach((node) => {
+      const managerNode = nodes.get(managerIdOf(node.emp));
+      if (managerNode && managerNode !== node) managerNode.children.push(node);
+      else top.push(node);
+    });
+    const sortNodes = (list) =>
+      list
+        .sort((a, b) => fullName(a.emp).localeCompare(fullName(b.emp)))
+        .map((node) => ({ ...node, children: sortNodes(node.children) }));
+    const sortedTop = sortNodes(top);
+
+    // Locate the CEO dynamically by title anywhere in the chart.
+    let ceo = null;
+    nodes.forEach((node) => {
+      if (!ceo && CEO_TITLE_RE.test(empDisplayTitle(node.emp))) ceo = node;
+    });
+
+    // Split people reachable from the CEO vs. those outside that line.
+    const reachable = new Set();
+    const walk = (node) => {
+      if (!node || reachable.has(String(node.emp.id))) return;
+      reachable.add(String(node.emp.id));
+      node.children.forEach(walk);
+    };
+    walk(ceo);
+    const outside = ceo
+      ? sortedTop.filter((root) => !reachable.has(String(root.emp.id)))
+      : sortedTop;
+
+    const deptCount = new Set(
+      employees.map((e) => (e.department || "").trim()).filter(Boolean),
+    ).size;
+    let maxDepth = 0;
+    let managers = 0;
+    let reportSum = 0;
+    nodes.forEach((node) => {
+      if (node.children.length) {
+        managers += 1;
+        reportSum += node.children.length;
+      }
+      let d = 0;
+      let cursor = node;
+      const guard = new Set([String(node.emp.id)]);
+      while (d <= employees.length) {
+        const parent = nodes.get(managerIdOf(cursor.emp));
+        if (!parent || parent === cursor || guard.has(String(parent.emp.id)))
+          break;
+        guard.add(String(parent.emp.id));
+        cursor = parent;
+        d += 1;
+      }
+      if (d > maxDepth) maxDepth = d;
+    });
+
+    return {
+      ceoNode: ceo,
+      otherRoots: outside,
+      stats: {
+        people: employees.length,
+        departments: deptCount,
+        levels: employees.length ? maxDepth + 1 : 0,
+        avgSpan: managers ? (reportSum / managers).toFixed(1) : "0",
+      },
+      byId: nodes,
+    };
+  }, [employees]);
+
+  const { ceoNode, otherRoots, stats, byId } = tree;
+
+  // Drill-down: focus on one person's subtree (e.g. Rafat → HODs → engineers).
+  const [focusId, setFocusId] = useState(null);
+  const focusedNode = focusId ? byId.get(focusId) : null;
+  const focusNode = useCallback((id) => {
+    setFocusId(id);
+    setLevelDepth(null);
+    setCollapsed(new Set());
+  }, []);
+
+  const chartRoots = useMemo(() => {
+    if (focusedNode) return [focusedNode];
+    return ceoNode ? [ceoNode, ...otherRoots] : otherRoots;
+  }, [focusedNode, ceoNode, otherRoots]);
+
+  // Full-demography mode: every level expanded, no fan-grid truncation, with
+  // zoom-out scaling so the complete top-to-bottom chart fits on one canvas.
+  const [fullMode, setFullMode] = useState(false);
+  const [zoom, setZoom] = useState(0.6);
+  const enterFullMode = useCallback(() => {
+    setFullMode(true);
+    setLevelDepth(null);
+    setCollapsed(new Set()); // expand every node incl. fan-grid expanders
+  }, []);
+  const zoomIn = () => setZoom((z) => Math.min(1.5, +(z + 0.15).toFixed(2)));
+  const zoomOut = () => setZoom((z) => Math.max(0.25, +(z - 0.15).toFixed(2)));
+
+  // Soft-coded level control: collapse every node AT or BEYOND the chosen
+  // depth so the chart reveals one level at a time (CEO → HODs → engineers).
+  // levelDepth = null → show all levels.
+  const [levelDepth, setLevelDepth] = useState(null);
+  const setLevel = useCallback(
+    (depth) => {
+      setLevelDepth(depth);
+      if (depth === null) {
+        setCollapsed(new Set());
+        return;
+      }
+      const ids = new Set();
+      const walk = (node, d) => {
+        if (!node) return;
+        if (d >= depth && node.children.length) ids.add(String(node.emp.id));
+        node.children.forEach((child) => walk(child, d + 1));
+      };
+      chartRoots.forEach((root) => walk(root, 0));
+      setCollapsed(ids);
+    },
+    [chartRoots],
+  );
+
+  const renderTree = (node) =>
+    layout === "topdown" ? (
+      <TopDownNode
+        key={node.emp.id}
+        node={node}
+        depth={0}
+        onSelect={onSelect}
+        onAction={onAction}
+        onFocus={focusNode}
+        collapsed={collapsed}
+        onToggle={toggleNode}
+        visited={new Set()}
+        fullMode={fullMode}
+      />
+    ) : (
+      <DemographyNode
+        key={node.emp.id}
+        node={node}
+        depth={0}
+        onSelect={onSelect}
+        onAction={onAction}
+        onFocus={focusNode}
+        collapsed={collapsed}
+        onToggle={toggleNode}
+        visited={new Set()}
+      />
+    );
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 font-bold text-slate-900">
+            <HeroIcons.UserGroupIcon className="h-5 w-5 text-indigo-600" />{" "}
+            Organisation Demography
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Live organisational structure derived from reporting lines —
+            starting from the CEO.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-lg bg-slate-100 p-1">
+            {[
+              { id: "nested", label: "Nested", icon: "Bars3BottomLeftIcon" },
+              { id: "topdown", label: "Top-Down", icon: "Squares2X2Icon" },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setLayout(opt.id)}
+                aria-pressed={layout === opt.id}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  layout === opt.id
+                    ? "bg-white text-indigo-700 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Icon name={opt.icon} className="h-3.5 w-3.5" />
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {/* Complete demography: every level, zoomable to fit one canvas */}
+          <div className="inline-flex items-center overflow-hidden rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => (fullMode ? setFullMode(false) : enterFullMode())}
+              aria-pressed={fullMode}
+              title="Show the complete demography — every level fully expanded"
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                fullMode
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Icon name="SquaresPlusIcon" className="h-3.5 w-3.5" />
+              Full
+            </button>
+            {fullMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  aria-label="Zoom out"
+                  className="rounded-md px-1.5 py-1 text-slate-500 hover:text-indigo-700"
+                >
+                  <HeroIcons.MagnifyingGlassMinusIcon className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-[38px] text-center text-[10px] font-bold text-slate-500">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  aria-label="Zoom in"
+                  className="rounded-md px-1.5 py-1 text-slate-500 hover:text-indigo-700"
+                >
+                  <HeroIcons.MagnifyingGlassPlusIcon className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+          {/* Level stepper — walk the chart one level at a time */}
+          <div className="inline-flex items-center overflow-hidden rounded-lg bg-slate-100 p-1 text-[11px] font-bold">
+            <span className="px-1.5 text-slate-400">Levels</span>
+            {[0, 1, 2, 3].map((lvl) => (
+              <button
+                key={lvl}
+                type="button"
+                onClick={() => setLevel(lvl + 1)}
+                aria-pressed={levelDepth === lvl + 1}
+                title={`Show up to level ${lvl + 1}`}
+                className={`rounded-md px-2 py-1 transition-colors ${
+                  levelDepth === lvl + 1
+                    ? "bg-white text-indigo-700 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {lvl + 1}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setLevel(null)}
+              aria-pressed={levelDepth === null}
+              title="Show all levels"
+              className={`rounded-md px-2 py-1 transition-colors ${
+                levelDepth === null
+                  ? "bg-white text-indigo-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              All
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
+              {stats.people} people
+            </span>
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
+              {stats.departments} departments
+            </span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+              {stats.levels} levels
+            </span>
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+              {stats.avgSpan} avg span
+            </span>
+          </div>
+        </div>
+      </div>
+      <div
+        className={`max-h-[70vh] overflow-auto p-4 sm:p-5 ${layout === "topdown" ? "" : "space-y-4"}`}
+      >
+        {focusedNode && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2">
+            <span className="text-xs text-indigo-800">
+              Viewing subtree of{" "}
+              <strong>{fullName(focusedNode.emp)}</strong> ·{" "}
+              {countSubtree(focusedNode)} people ·{" "}
+              {empDisplayTitle(focusedNode.emp) || "Role not assigned"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setFocusId(null)}
+              className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 shadow-sm hover:bg-indigo-100"
+            >
+              <HeroIcons.XMarkIcon className="h-3.5 w-3.5" />
+              Show full chart
+            </button>
+          </div>
+        )}
+        {!ceoNode && !focusedNode && (
+          <p className="mb-4 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-center text-xs text-slate-500">
+            No employee with a CEO title found — showing top-level reporting
+            lines instead.
+          </p>
+        )}
+        {chartRoots.length > 0 ? (
+          <div
+            className={
+              fullMode
+                ? "origin-top-left"
+                : layout === "topdown"
+                  ? "flex items-start justify-center gap-10 pb-6"
+                  : ""
+            }
+            style={
+              fullMode
+                ? {
+                    transform: `scale(${zoom})`,
+                    width: `${100 / zoom}%`,
+                  }
+                : undefined
+            }
+          >
+            <div className={fullMode && layout === "topdown" ? "flex items-start justify-center gap-10 pb-6" : ""}>
+              {layout === "topdown" ? (
+                chartRoots.map(renderTree)
+              ) : (
+                <>
+                  {ceoNode && renderTree(ceoNode)}
+                  {otherRoots.length > 0 && (
+                    <div>
+                      {ceoNode && (
+                        <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                          Outside the CEO reporting line
+                        </p>
+                      )}
+                      {otherRoots.map(renderTree)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="py-10 text-center text-sm text-slate-500">
+            No employees match the current filters.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-component: Top-Down node — classic org-chart card with connector lines.
+// Smart arrangement: teams wider than FAN_GRID_VISIBLE render as a compact
+// fan grid (first N cards + a "+N more" expander) so large HOD teams stay on
+// one canvas instead of stretching into an endless horizontal row.
+const FAN_GRID_VISIBLE = 6;
+
+const TopDownChildCard = ({
+  child,
+  depth,
+  onSelect,
+  onAction,
+  onFocus,
+  collapsed,
+  onToggle,
+  visited,
+  fullMode,
+}) => (
+  <div className="relative flex flex-col items-center">
+    <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+    <TopDownNode
+      node={child}
+      depth={depth + 1}
+      onSelect={onSelect}
+      onAction={onAction}
+      onFocus={onFocus}
+      collapsed={collapsed}
+      onToggle={onToggle}
+      visited={visited}
+      fullMode={fullMode}
+    />
+  </div>
+);
+
+const TopDownNode = ({
+  node,
+  depth,
+  onSelect,
+  onAction,
+  onFocus,
+  collapsed,
+  onToggle,
+  visited,
+  fullMode = false,
+}) => {
+  if (visited.has(String(node.emp.id))) return null;
+  const nextVisited = new Set(visited);
+  nextVisited.add(String(node.emp.id));
+  const nodeId = String(node.emp.id);
+  const isCollapsed = collapsed.has(nodeId);
+  const isCeo = CEO_TITLE_RE.test(empDisplayTitle(node.emp));
+  const showChildren = !isCollapsed && node.children.length > 0;
+  // In Full mode every child is always visible — no fan-grid truncation.
+  const isWideTeam = !fullMode && node.children.length > FAN_GRID_VISIBLE;
+  const isExpanded = collapsed.has(`expand-${nodeId}`);
+  const visibleChildren =
+    isWideTeam && !isExpanded
+      ? node.children.slice(0, FAN_GRID_VISIBLE)
+      : node.children;
+  const hiddenCount = node.children.length - visibleChildren.length;
+  return (
+    <div className="flex flex-col items-center">
+      <div
+        className={`relative flex w-56 flex-col items-center rounded-xl border bg-white p-3 text-center shadow-sm ${
+          isCeo
+            ? "border-indigo-300 ring-1 ring-indigo-100"
+            : "border-slate-200"
+        }`}
+      >
+        {isCeo && (
+          <span className="absolute -top-2 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+            CEO
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => onSelect(node.emp)}
+          className="flex w-full min-w-0 flex-col items-center gap-1.5"
+        >
+          <Avatar emp={node.emp} size="sm" />
+          <span className="w-full min-w-0">
+            <span className="block w-full truncate text-sm font-bold text-slate-900">
+              {fullName(node.emp)}
+            </span>
+            <span
+              className="block w-full truncate text-[11px] text-slate-500"
+              title={empDisplayTitle(node.emp) || "Role not assigned"}
+            >
+              {empDisplayTitle(node.emp) || "Role not assigned"}
+            </span>
+            <span
+              className="block w-full truncate text-[10px] text-slate-400"
+              title={node.emp.department || "No department"}
+            >
+              {node.emp.department || "No department"}
+            </span>
+          </span>
+        </button>
+        <div className="mt-1 flex items-center gap-1.5">
+          {node.children.length > 0 && (
+            <>
+              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700">
+                {node.children.length} direct
+              </span>
+              <button
+                type="button"
+                onClick={() => onToggle(nodeId)}
+                aria-label={isCollapsed ? "Expand reports" : "Collapse reports"}
+                className="rounded-full border border-slate-200 p-0.5 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+              >
+                <HeroIcons.ChevronDownIcon
+                  className={`h-3 w-3 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                />
+              </button>
+            </>
+          )}
+          <EmployeeQuickActions emp={node.emp} onAction={onAction} compact />
+          {node.children.length > 0 && (
+            <button
+              type="button"
+              title={`View ${fullName(node.emp)}'s subtree`}
+              aria-label="Focus on this subtree"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFocus(nodeId);
+              }}
+              className="rounded-full border border-slate-200 p-0.5 text-slate-400 hover:border-indigo-300 hover:text-indigo-600"
+            >
+              <HeroIcons.ArrowsPointingInIcon className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+      {showChildren && (
+        <>
+          <span className="h-4 w-px bg-indigo-200" aria-hidden="true" />
+          <div
+            className={`relative pt-4 ${
+              isWideTeam
+                ? "grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3"
+                : "flex items-start gap-6"
+            }`}
+          >
+            {node.children.length > 1 && !isWideTeam && (
+              <span
+                className="absolute top-0 h-px bg-indigo-200"
+                style={{
+                  left: `${100 / (node.children.length * 2)}%`,
+                  right: `${100 / (node.children.length * 2)}%`,
+                }}
+                aria-hidden="true"
+              />
+            )}
+            {visibleChildren.map((child) => (
+              <TopDownChildCard
+                key={child.emp.id}
+                child={child}
+                depth={depth}
+                onSelect={onSelect}
+                onAction={onAction}
+                onFocus={onFocus}
+                collapsed={collapsed}
+                onToggle={onToggle}
+                visited={nextVisited}
+                fullMode={fullMode}
+              />
+            ))}
+            {hiddenCount > 0 && (
+              <div className="relative flex flex-col items-center">
+                <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => onToggle(`expand-${nodeId}`)}
+                  className="flex w-56 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-3 text-center transition-colors hover:border-indigo-400 hover:bg-indigo-50"
+                >
+                  <HeroIcons.EllipsisHorizontalCircleIcon className="h-5 w-5 text-indigo-500" />
+                  <span className="text-xs font-bold text-indigo-700">
+                    +{hiddenCount} more
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Expand the full team
+                  </span>
+                </button>
+              </div>
+            )}
+            {isWideTeam && isExpanded && (
+              <div className="relative flex flex-col items-center">
+                <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => onToggle(`expand-${nodeId}`)}
+                  className="flex w-56 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600"
+                >
+                  <HeroIcons.ArrowsPointingOutIcon className="h-3.5 w-3.5" />
+                  Compact view
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ─── Derive action subsets once (not per-render) ────────────────────────────
 const _TOOLBAR_ACTIONS = HR_DEPT_ACTIONS.filter((a) => a.scope === "toolbar");
 const _DEPT_HDR_ACTIONS = HR_DEPT_ACTIONS.filter(
@@ -4561,10 +5247,10 @@ export default function HREmployees() {
                   />
                 )}
                 {viewMode === "dept" && (
-                  <DepartmentsView
+                  <OrgDemographyView
                     employees={filteredEmployees}
                     onSelect={openEmp}
-                    navigate={navigate}
+                    onAction={handleEmployeeAction}
                   />
                 )}
                 {viewMode === "hierarchy" && (

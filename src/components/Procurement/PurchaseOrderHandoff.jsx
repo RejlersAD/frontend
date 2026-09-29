@@ -1,14 +1,9 @@
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
+import { handoffError } from './handoffError';
 import './PurchaseOrderHandoff.css';
 
-export function handoffError(error) {
-  if (error?.response?.status === 403) return 'You do not have access to these purchase orders.';
-  if (error?.response?.status === 409) return 'This record changed. Refresh its details before trying again.';
-  const data = error?.response?.data;
-  const messages = value => typeof value === 'string' ? value : Array.isArray(value) ? value.map(messages).join(' ') : value && typeof value === 'object' ? Object.values(value).map(messages).join(' ') : '';
-  return messages(data) || error?.message || 'Purchase orders could not be loaded.';
-}
+export { handoffError };
 
 export function usePurchaseOrderPage(fetchPage, search, page, refreshKey, filtersKey = '') {
   const [state, setState] = useState({ loading: true, error: '', rows: [], count: 0 });
@@ -64,7 +59,7 @@ export default function PurchaseOrderHandoff({ title, fetchPage, onSelect, actio
     <label className="po-handoff-search">Search purchase orders<input type="search" placeholder="PO number, supplier or description" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} /></label>
     {loading ? <p role="status">Loading purchase orders…</p> : error ? <p role="alert">{error}<button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></p> : !rows.length ? <p>{search ? 'No purchase orders match this search.' : kind === 'reconciliation' ? 'No completed purchase orders need receipt reconciliation.' : kind === 'invoice' ? 'No purchase orders are awaiting a supplier invoice.' : 'No purchase orders are awaiting receipt or service acceptance.'}</p> :
       <div className="po-handoff-table"><table><thead><tr><th>Purchase order</th><th>Supplier</th><th>Status</th><th>{kind === 'invoice' ? 'Unallocated value' : 'Remaining receipt'}</th><th>Action</th></tr></thead><tbody>{rows.map(order => {
-        const allowed = kind === 'invoice' ? order.can_import_invoice === true : kind === 'reconciliation' ? order.receiving?.can_reconcile === true : order.receiving?.can_record === true;
+        const allowed = kind === 'invoice' ? order.can_import_invoice === true : (kind === 'reconciliation' ? order.receiving?.can_reconcile === true : order.receiving?.can_record === true) || (order.receiving?.needs_basis_review === true && order.receiving?.can_review_basis === true);
         return <tr key={order.id}><td><a href={`/procurement/orders/${encodeURIComponent(order.id)}`}>{order.po_number}</a><small>{order.title}</small></td><td>{order.vendor_name || 'Not recorded'}</td><td>{String(order.status || '').replaceAll('_', ' ')}{kind !== 'invoice' && <small>Receipt: {{ none: 'Not received', pending: 'Awaiting inspection', partial: 'Partially received', complete: 'Fully received', blocked: 'Needs review' }[order.receiving?.status] || 'Not assessed'}</small>}</td><td>{kind === 'invoice' ? order.remaining_amount === null ? 'Needs review' : `${order.currency} ${order.remaining_amount}` : (order.receiving?.lines || []).map(line => <div key={line.line_id}>{line.description}: {line.remaining} {order.receiving.basis === 'service_value' ? order.currency : line.uom}</div>)}{order.allocation_issue && <small>{order.allocation_issue}</small>}{order.receiving?.blocked_reason && <small>{order.receiving.blocked_reason}</small>}</td><td><button type="button" disabled={!allowed} onClick={() => onSelect(order)}>{actionLabel}</button>{!allowed && !order.receiving?.blocked_reason && <small>Action unavailable</small>}</td></tr>;
       })}</tbody></table></div>}
     <Pagination page={page} count={count} loading={loading} onPage={setPage} />

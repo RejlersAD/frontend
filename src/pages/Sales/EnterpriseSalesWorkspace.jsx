@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
+import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowDownTrayIcon,
@@ -19,6 +20,7 @@ import {
 } from "@heroicons/react/24/outline";
 import salesService from "../../services/sales.service";
 import SalesMailboxConnectionDialog from "./SalesMailboxConnectionDialog";
+import SalesSharedMailboxStatus from "./SalesSharedMailboxStatus";
 
 const PIPELINE = [
   ["qualified", "Qualified", "from-sky-200 to-sky-300 text-slate-900"],
@@ -136,6 +138,7 @@ Modal.propTypes = {
 
 export default function EnterpriseSalesWorkspace() {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useSelector((state) => state.auth);
   const [opportunities, setOpportunities] = useState([]);
   const [clients, setClients] = useState([]);
   const [quotes, setQuotes] = useState([]);
@@ -448,6 +451,9 @@ export default function EnterpriseSalesWorkspace() {
               </button>
             </div>
           </header>
+          {isAuthenticated && (
+            <SalesSharedMailboxStatus key={user?.user?.id ?? user?.id ?? ""} />
+          )}
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
               {error}

@@ -9,6 +9,7 @@ test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
 const pane = page => page.getByRole('complementary', { name: 'Live purchase order preview' })
 const previews = state => state.requests.filter(request => request.path.endsWith('/preview-document/'))
 const lastPdf = state => previews(state).filter(request => request.body.format === 'pdf').at(-1)
+const sourceReads = state => state.requests.filter(request => request.path.includes('/uploaded-documents/'))
 const clean = state => {
   expect(state.acceptedWrites).toEqual([])
   expect(state.unknown).toEqual([])
@@ -27,11 +28,16 @@ async function openEditor(page, overrides = {}) {
     }
     fixture.orders = [fixture.record]
     fixture.uploadedDocuments = [{ id: 'source', filename: 'Older-original.pdf', content_url: `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/source/content/` }]
+    fixture.originalPdf = mixedSizePdf(2)
+    fixture.uploadedContent[`/api/v1/procurement/orders/${orderFormId}/uploaded-documents/source/content/`] = { body: fixture.originalPdf }
   } })
   await page.getByRole('button', { name: `Actions for ${orderFormNumber}`, exact: true }).click()
   await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
-  await page.getByRole('tab', { name: 'PO Description & Scope', exact: true }).click()
+  await expect(pane(page).getByRole('tab', { name: 'Original source', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(pane(page).getByRole('region', { name: 'Uploaded PO PDF: Older-original.pdf', exact: true }).getByRole('img').first()).toBeVisible({ timeout: 30000 })
+  await pane(page).getByRole('tab', { name: 'Document', exact: true }).click()
+  await page.getByRole('tab', { name: 'Scope & pricing', exact: true }).click()
   await expect(pane(page).getByRole('button', { name: 'Download PDF', exact: true })).toBeEnabled({ timeout: 30000 })
   return state
 }
@@ -52,6 +58,7 @@ async function downloaded(page, control) {
 
 test('editor PDF and Word use the current rich narrative snapshot without saving or substituting an uploaded original', async ({ page }) => {
   const state = await openEditor(page)
+  const originalReads = [...sourceReads(state)]
   await editNarrative(page, narrative)
   await expect(pane(page).getByRole('button', { name: 'Download PDF', exact: true })).toBeDisabled()
   await expect.poll(() => lastPdf(state)?.body.snapshot.description).toBe(narrative)
@@ -60,12 +67,20 @@ test('editor PDF and Word use the current rich narrative snapshot without saving
   const count = previews(state).length
   const pdf = await downloaded(page, pane(page).getByRole('button', { name: 'Download PDF', exact: true }))
   expect(pdf.bytes).toEqual(state.generatedPdf)
+  expect(pdf.bytes).not.toEqual(state.originalPdf)
   expect(previews(state)).toHaveLength(count)
   const word = await downloaded(page, pane(page).getByRole('button', { name: 'Download Word', exact: true }))
   expect(word.filename).toBe('Current-PO.docx')
   expect(word.bytes.toString()).toBe(state.generatedWord)
   expect(previews(state).at(-1).body).toMatchObject({ format: 'word', order_id: orderFormId, snapshot: { description: narrative }, attachment_metadata: [] })
-  expect(state.requests.filter(request => request.path.includes('/uploaded-documents/') || request.path.endsWith('/export-pdf/') || request.path.endsWith('/export-word/'))).toEqual([])
+  expect(sourceReads(state)).toEqual(originalReads)
+  expect([...new Set(originalReads.map(request => request.path))].sort()).toEqual([
+    `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/`,
+    `/api/v1/procurement/orders/${orderFormId}/uploaded-documents/source/content/`,
+  ])
+  expect(originalReads.every(request => request.method === 'GET')).toBe(true)
+  expect(originalReads.find(request => request.path.endsWith('/content/')).authorization).toMatch(/^Bearer /)
+  expect(state.requests.filter(request => request.path.endsWith('/export-pdf/') || request.path.endsWith('/export-word/'))).toEqual([])
   await page.screenshot({ path: '../artifacts/po-current-narrative-canonical-preview.png' })
   clean(state)
 })
@@ -105,6 +120,7 @@ test('stale preview responses and preview failures never enable a download of ol
 
 test('saved detail PDF downloads reuse its canonical preview and Word exports the same saved order', async ({ page }) => {
   const state = await openEditor(page)
+  const originalReads = [...sourceReads(state)]
   await page.getByRole('button', { name: 'Close purchase order', exact: true }).click()
   const row = page.getByRole('region', { name: 'Purchase order register', exact: true }).getByRole('row').filter({ has: page.getByRole('button', { name: `Select ${orderFormNumber}`, exact: true }) })
   await row.getByRole('button', { name: 'Preview', exact: true }).click()
@@ -118,14 +134,14 @@ test('saved detail PDF downloads reuse its canonical preview and Word exports th
   const word = await downloaded(page, page.getByRole('button', { name: 'Export Word document', exact: true }))
   expect(word.bytes.toString()).toBe(state.generatedWord)
   expect(state.requests.filter(request => request.path.endsWith('/export-word/'))).toHaveLength(1)
-  expect(state.requests.filter(request => request.path.includes('/uploaded-documents/'))).toEqual([])
+  expect(sourceReads(state)).toEqual(originalReads)
   clean(state)
 })
 
 test('preview attachment order preserves untouched metadata and reflects removals and unsaved labels', async ({ page }) => {
   const state = await openEditor(page, { attachments: [{ filename: 'first.pdf', s3_key: 'first' }, { filename: 'second.pdf', s3_key: 'second' }] })
   expect(lastPdf(state).body.attachment_metadata).toEqual([{ existing_attachment_index: 0 }, { existing_attachment_index: 1 }])
-  await page.getByRole('tab', { name: 'Attachments', exact: true }).click()
+  await page.getByRole('tab', { name: 'Approval', exact: true }).click()
   await page.getByRole('button', { name: 'Remove', exact: true }).first().click()
   await page.getByRole('textbox', { name: 'Attachment 1 title', exact: true }).fill(' Retained revised title ')
   await page.locator('#po-attachment-multiple').setInputFiles({ name: 'new-source.pdf', mimeType: 'application/pdf', buffer: Buffer.from(mixedSizePdf(1)) })
@@ -139,7 +155,7 @@ test('preview attachment order preserves untouched metadata and reflects removal
 
 test('saving a reviewed purchase summary preserves contact metadata and restores the same text when reopened', async ({ page }) => {
   const state = await openEditor(page, { contact_persons: { purchase_summary: 'Saved supplier summary', technical: [{ name: 'Technical contact retained' }] } })
-  await page.getByRole('tab', { name: 'Header, Buyer & Project', exact: true }).click()
+  await page.getByRole('tab', { name: 'Order & parties', exact: true }).click()
   await expect(page.locator('[name="summary"]')).toHaveValue('Saved supplier summary')
   await page.locator('[name="summary"]').fill('Reviewed vendor purchase summary')
   await expect.poll(() => lastPdf(state)?.body.snapshot.summary).toBe('Reviewed vendor purchase summary')

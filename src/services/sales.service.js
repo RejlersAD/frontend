@@ -7,6 +7,13 @@ import apiClient from "./api.service";
 
 const BASE_URL = "/sales";
 
+// These screens own inline recovery. Keep email data, cursors and review tokens
+// out of the shared interceptor's detailed error logs and duplicate toasts.
+const EMAIL_REQUEST_OPTIONS = {
+  silentTimeout: true,
+  suppressErrorToast: true,
+};
+
 class SalesService {
   // ============================================================================
   // CLIENT MANAGEMENT
@@ -757,8 +764,40 @@ class SalesService {
   }
 
   async getMailboxConnections(params = {}) {
-    return (await apiClient.get(`${BASE_URL}/mailbox-connections/`, { params }))
-      .data;
+    return (
+      await apiClient.get(`${BASE_URL}/mailbox-connections/`, {
+        ...EMAIL_REQUEST_OPTIONS,
+        params,
+      })
+    ).data;
+  }
+
+  async getMailboxMessages(connectionId, params = {}) {
+    return (
+      await apiClient.get(
+        `${BASE_URL}/mailbox-connections/${encodeURIComponent(connectionId)}/messages/`,
+        { ...EMAIL_REQUEST_OPTIONS, params },
+      )
+    ).data;
+  }
+
+  async getMailboxMessage(connectionId, messageId) {
+    return (
+      await apiClient.get(
+        `${BASE_URL}/mailbox-connections/${encodeURIComponent(connectionId)}/message/`,
+        { ...EMAIL_REQUEST_OPTIONS, params: { message_id: messageId } },
+      )
+    ).data;
+  }
+
+  async convertMailboxMessage(connectionId, payload) {
+    return (
+      await apiClient.post(
+        `${BASE_URL}/mailbox-connections/${encodeURIComponent(connectionId)}/convert-to-opportunity/`,
+        payload,
+        EMAIL_REQUEST_OPTIONS,
+      )
+    ).data;
   }
 
   async createMailboxConnection(payload) {
@@ -841,6 +880,7 @@ class SalesService {
       await apiClient.post(
         `${BASE_URL}/email-intakes/${intakeId}/convert-to-opportunity/`,
         payload,
+        EMAIL_REQUEST_OPTIONS,
       )
     ).data;
   }

@@ -1,0 +1,380 @@
+.sales-email-workspace {
+  min-width: 0;
+  min-height: 100%;
+  padding: 20px;
+  background: #f5f7fa;
+  color: var(--app-text, #0f172a);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-size, 14px);
+  line-height: var(--text-body-line, 20px);
+}
+
+.sales-email-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.sales-email-page-header h1 {
+  font-size: var(--text-page-title-size, 24px);
+  line-height: var(--text-page-title-line, 32px);
+  font-weight: var(--font-semibold, 600);
+  color: #102a47;
+}
+
+.sales-email-back {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: white;
+  color: #475569;
+}
+
+.sales-email-view,
+.sales-email-mailbox,
+.sales-email-preview,
+.sales-email-reading-pane { min-width: 0; }
+
+.sales-email-view > * + *,
+.sales-email-mailbox > * + * { margin-top: 12px; }
+
+.sales-email-source-heading,
+.sales-email-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sales-email-toolbar-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.sales-email-toolbar-actions > button { flex-shrink: 0; }
+
+.sales-email-source-heading { margin-bottom: 12px; }
+
+.sales-email-toolbar {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sales-email-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dbe2ea;
+  border-radius: 10px;
+  background: white;
+}
+
+.sales-email-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: white;
+  color: #334155;
+  font-size: var(--text-body-size, 14px);
+  font-weight: 600;
+}
+
+.sales-email-button:hover { background: #f8fafc; }
+.sales-email-button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.sales-email-search {
+  position: relative;
+  display: block;
+  min-width: 0;
+  width: 260px;
+  max-width: 100%;
+}
+
+.sales-email-grid {
+  container: sales-email / inline-size;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 350px minmax(0, 1fr);
+  min-height: 590px;
+}
+
+.sales-email-list {
+  min-width: 0;
+  border-right: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.sales-email-list-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: var(--text-caption-size, 12px);
+  line-height: var(--text-caption-line, 16px);
+  font-weight: 600;
+}
+
+.sales-email-list-scroll { max-height: 650px; overflow-y: auto; overscroll-behavior: contain; }
+
+.sales-email-row {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 14px 16px 14px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  border-left: 4px solid transparent;
+  background: white;
+  text-align: left;
+  font-size: var(--text-table-size, 13px);
+  line-height: var(--text-table-line, 18px);
+  overflow-wrap: anywhere;
+}
+
+.sales-email-row:hover { background: #f8fafc; }
+.sales-email-row-selected,
+.sales-email-row-selected:hover { border-left-color: #1d4ed8; background: #eff6ff; }
+.sales-email-row:focus-visible { outline-offset: -3px; }
+
+.sales-email-row-with-actions { padding: 0; }
+.sales-email-row-open {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 14px 16px 0 12px;
+  background: transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.sales-email-row-open:focus-visible { outline: 2px solid #2563eb; outline-offset: -3px; }
+.sales-email-row-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  color: #475569;
+  font-size: 11px;
+  line-height: 16px;
+}
+.sales-email-status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+}
+.sales-email-direction-incoming { border-color: #bfdbfe; background: #eff6ff; color: #1e40af; }
+.sales-email-direction-outgoing { border-color: #c4b5fd; background: #f5f3ff; color: #5b21b6; }
+.sales-email-direction-draft { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+.sales-email-next-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 26px;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  padding: 3px 7px;
+  background: #fff;
+  color: #1d4ed8;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+}
+.sales-email-next-step:hover { background: #eff6ff; }
+.sales-email-next-step:focus-visible,
+.sales-email-analysis [tabindex="-1"]:focus-visible,
+.sales-email-analysis[tabindex="-1"]:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+.sales-email-preview-header { padding: 20px 24px; border-bottom: 1px solid #e2e8f0; }
+
+.sales-email-subject {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-section-title-size, 18px);
+  line-height: var(--text-section-title-line, 24px);
+  font-weight: 600;
+  color: #102a47;
+}
+
+.sales-email-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  color: #475569;
+  font-size: var(--text-caption-size, 12px);
+  line-height: var(--text-caption-line, 16px);
+  overflow-wrap: anywhere;
+}
+
+.sales-email-preview-meta > span { min-width: 0; }
+
+.sales-email-detail-grid {
+  display: grid;
+  min-width: 0;
+  gap: 24px;
+  padding: 24px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sales-email-body-panel {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+}
+
+.sales-email-source-panel {
+  min-width: 0;
+  align-self: start;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow-wrap: anywhere;
+}
+
+.sales-email-empty { min-height: 360px; }
+
+.sales-email-analysis { min-width: 0; overflow-wrap: anywhere; }
+.sales-email-analysis > * + * { margin-top: 20px; }
+.sales-email-analysis-heading { color: #102a47; font-size: 14px; line-height: 20px; font-weight: 600; }
+.sales-email-analysis h4 { color: #334155; font-size: 13px; line-height: 18px; font-weight: 600; }
+.sales-email-analysis-source { min-width: 0; padding: 10px; border-left: 2px solid #cbd5e1; background: white; }
+.sales-email-analysis-suggestion { padding: 10px 12px; border: 1px solid #dbeafe; border-radius: 6px; background: #eff6ff; }
+.sales-email-analysis-evidence { margin-top: 8px; font-size: 12px; line-height: 20px; }
+.sales-email-analysis-metadata { margin-top: 20px; padding-top: 16px; border-top: 1px solid #dbe2ea; font-size: 12px; line-height: 20px; }
+.sales-email-analysis-evidence > summary,
+.sales-email-analysis-metadata > summary { width: fit-content; cursor: pointer; border-radius: 3px; padding: 3px 0; font-weight: 600; color: #334155; }
+.sales-email-analysis-evidence > summary:focus-visible,
+.sales-email-analysis-metadata > summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+.sales-email-reading-pane:focus-visible,
+.sales-email-source-panel:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+/* The shell already allocates the space between its header and footer. */
+@media (min-width: 1024px) {
+  .sales-email-workspace {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 16px;
+  }
+
+  .sales-email-page-header { flex-shrink: 0; margin-bottom: 16px; }
+
+  .sales-email-view,
+  .sales-email-mailbox,
+  .sales-email-card,
+  .sales-email-preview {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .sales-email-view > *,
+  .sales-email-mailbox > *,
+  .sales-email-card > * { flex-shrink: 0; }
+
+  .sales-email-view > .sales-email-mailbox,
+  .sales-email-mailbox > .sales-email-card,
+  .sales-email-card > .sales-email-grid { flex: 1; min-height: 0; }
+
+  .sales-email-grid {
+    grid-template-columns: clamp(260px, 22%, 320px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .sales-email-list { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+  .sales-email-list > * { flex-shrink: 0; }
+  .sales-email-list > .sales-email-list-scroll { flex: 1; min-height: 0; max-height: none; }
+  .sales-email-preview { overflow: hidden; }
+  .sales-email-preview-header { flex-shrink: 0; padding: 16px 20px; }
+
+  .sales-email-detail-grid {
+    display: block;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 16px;
+  }
+
+  .sales-email-source-panel { margin-top: 16px; }
+  .sales-email-empty { flex: 1; min-height: 0; }
+}
+
+@container sales-email (min-width: 1100px) {
+  .sales-email-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 16px;
+    overflow: hidden;
+  }
+
+  .sales-email-reading-pane,
+  .sales-email-source-panel {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .sales-email-source-panel { align-self: stretch; margin-top: 0; }
+}
+
+@container sales-email (min-width: 1400px) {
+  .sales-email-detail-grid { grid-template-columns: minmax(0, 1fr) 360px; }
+}
+
+@media (max-width: 1100px) {
+  .sales-email-grid { grid-template-columns: 310px minmax(0, 1fr); }
+}
+
+@media (max-width: 850px) {
+  .sales-email-grid { grid-template-columns: minmax(0, 1fr); }
+  .sales-email-list { border-right: none; border-bottom: 1px solid #e2e8f0; }
+  .sales-email-list-scroll { max-height: 360px; }
+}
+
+@media (max-width: 600px) {
+  .sales-email-workspace { padding: 12px; }
+  .sales-email-page-header { gap: 12px; }
+  .sales-email-preview-header,
+  .sales-email-detail-grid { padding: 16px; }
+  .sales-email-body-panel { padding: 14px; }
+  .sales-email-toolbar { padding: 12px; }
+  .sales-email-toolbar-actions { width: 100%; }
+  .sales-email-search { width: 100%; }
+}

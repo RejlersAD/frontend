@@ -21,20 +21,22 @@ const calculate = (left, right, subtract = false) => {
   return `${result < 0n ? '-' : ''}${text}`;
 };
 
-export function receivingLinePreview(line, received = '') {
+export function receivingLinePreview(line, received = '', rejected = '0') {
   try {
     const accepted = decimal(line.accepted, 'Accepted quantity');
     const pending = decimal(line.pending, 'Pending quantity');
     const available = decimal(line.available, 'Available balance');
     const previouslyReceived = calculate(accepted, pending);
     const entered = decimal(received, 'Received quantity', true);
-    if (compare(entered, available) > 0) return { previouslyReceived, balance: null, status: null, awaitingConfirmation: compare(pending, '0') > 0 };
-    const balance = calculate(available, entered, true);
+    const rejectedEntry = decimal(rejected, 'Rejected quantity', true);
+    if (compare(entered, available) > 0 || compare(rejectedEntry, entered) > 0) return { previouslyReceived, balance: null, status: null, awaitingConfirmation: compare(pending, '0') > 0 };
+    const proposedAccepted = calculate(entered, rejectedEntry, true);
+    const balance = calculate(available, proposedAccepted, true);
     return {
       previouslyReceived,
       balance,
-      status: compare(balance, '0') === 0 ? 'Complete' : compare(calculate(previouslyReceived, entered), '0') > 0 ? 'Partial' : 'Not received',
-      awaitingConfirmation: compare(calculate(pending, entered), '0') > 0,
+      status: compare(balance, '0') === 0 ? 'Complete' : compare(calculate(previouslyReceived, proposedAccepted), '0') > 0 ? 'Partial' : 'Not received',
+      awaitingConfirmation: compare(calculate(pending, proposedAccepted), '0') > 0,
     };
   } catch {
     return { previouslyReceived: null, balance: null, status: null, awaitingConfirmation: false };

@@ -10,7 +10,7 @@ import GoodsReceiptDeleteDialog from '../../components/Procurement/GoodsReceiptD
 import { receiptConfirmationBlock, receiptDeletionBlock } from '../../components/Procurement/GoodsReceiptActions';
 import AIReceiptCreator from './AIReceiptCreator';
 import { handoffError } from '../../components/Procurement/PurchaseOrderHandoff';
-import { receiptDisplayItems, receiptReviewAttachment, receiptReviewDate as receiptDate, receiptReviewStatus } from '../../components/Procurement/goodsReceiptReviewPresentation';
+import { receiptDisplayItems, receiptReviewAttachment, receiptReviewDate as receiptDate, receiptReviewStatus, receiptReviewText } from '../../components/Procurement/goodsReceiptReviewPresentation';
 
 class ReceiptCreatorErrorBoundary extends React.Component {
   constructor(props) {
@@ -72,6 +72,15 @@ const listText = (value) => {
 const inspectionResult = value => value === false ? 'RECORDED FAIL' : 'NOT VERIFIED';
 
 const receiptItems = receiptDisplayItems;
+const DELIVERY_CONDITIONS = new Map([['good', 'Accepted with no damage'], ['damaged', 'Damage observed'], ['not_inspected', 'Not inspected']]);
+const DELIVERY_STATUSES = new Map([['full', 'Full'], ['partial', 'Partial'], ['rejected', 'Rejected']]);
+const deliveryFields = receipt => [
+  ['Delivery location', receiptReviewText(receipt?.delivery_location)],
+  ['Supplier reference', receiptReviewText(receipt?.supplier_reference)],
+  ['Condition (delivery)', DELIVERY_CONDITIONS.get(receiptReviewText(receipt?.condition)) || receiptReviewText(receipt?.condition)],
+  ['Delivery status (declared)', DELIVERY_STATUSES.get(receiptReviewText(receipt?.delivery_status)) || receiptReviewText(receipt?.delivery_status)],
+  ['Exception reason', receiptReviewText(receipt?.exception_reason)],
+].filter(([, value]) => value);
 
 const ReceiptPrintContent = ({ receipt, printDate }) => {
   const items = receiptItems(receipt);
@@ -109,6 +118,10 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
             <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Delivery Note</th>
             <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.delivery_note_number)}</td>
           </tr>
+          {deliveryFields(receipt).map(([label, value]) => <tr key={label}>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">{label}</th>
+            <td colSpan={3} className="whitespace-pre-wrap break-words border border-gray-400 px-2 py-1.5">{value}</td>
+          </tr>)}
           <tr>
             <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Received By</th>
             <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.received_by_name)}</td>
@@ -275,7 +288,7 @@ const ReceiptManagement = () => {
   }, []);
   const recordReceipt = (capabilities, order = null, reconcile = false) => {
     setCreatorError('');
-    if (capabilities?.create !== true && !(order && (reconcile ? order.receiving?.can_reconcile : order.receiving?.can_record))) { setCreatorError('You do not have access to record this receipt.'); return; }
+    if (capabilities?.create !== true && !(order && ((reconcile ? order.receiving?.can_reconcile : order.receiving?.can_record) || order.receiving?.can_review_basis === true))) { setCreatorError('You do not have access to record this receipt.'); return; }
     if (!order && capabilities?.read_purchase_orders !== true) { setCreatorError('Purchase order access is required to select an order.'); return; }
     setInitialOrder(order); setReconciliation(reconcile); setShowAICreator(true);
   };
@@ -407,6 +420,7 @@ const ReceiptManagement = () => {
                       ['Receipt Date', receiptDate(selectedReceipt.receipt_date)],
                       ['Received By', selectedReceipt.received_by_name],
                       ['Delivery Note', selectedReceipt.delivery_note_number],
+                      ...deliveryFields(selectedReceipt),
                       ['Delivery Confirmation By', selectedReceipt.confirmation?.responsible_user_name],
                       ...(selectedReceipt.confirmation?.confirmed_at ? [['Confirmed By', selectedReceipt.confirmation.confirmed_by_name], ['Confirmed At', receiptDate(selectedReceipt.confirmation.confirmed_at, true)]] : []),
                       ['Technical Inspector', selectedReceipt.inspector_name],

@@ -449,7 +449,7 @@
 .procurement-register-workspace.purchase-orders-workspace .prw-secondary,
 .procurement-register-workspace.purchase-orders-workspace .prw-detail-heading > .prw-secondary { font-size: var(--pow-note); line-height: var(--pow-note-line); }
 .procurement-register-workspace.purchase-orders-workspace .prw-badge { min-height: 1.5rem; font-size: var(--pow-label); line-height: var(--pow-note-line); }
-.procurement-register-workspace.purchase-orders-workspace .prw-kpis { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+.procurement-register-workspace.purchase-orders-workspace .prw-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .procurement-register-workspace.purchase-orders-workspace .prw-kpi { min-height: 5.5rem; padding: 10px; gap: 8px; }
 .procurement-register-workspace.purchase-orders-workspace .prw-kpi-value,
 .procurement-register-workspace.purchase-orders-workspace .prw-workload-item strong { font-size: 1.5rem; line-height: 1.875rem; font-weight: 700; }
@@ -478,6 +478,15 @@
 .procurement-register-workspace.purchase-orders-workspace .prw-workload > :is(h2, h3) { font-size: 1.125rem; line-height: 1.5rem; font-weight: 600; }
 .procurement-register-workspace.purchase-orders-workspace .prw-main > .prw-panel > .prw-table-scroll { max-height: 28rem; overflow: auto; }
 .procurement-register-workspace.purchase-orders-workspace .prw-register-table thead { position: sticky; top: 0; z-index: 2; }
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(1) { width: 12%; }
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(2) { width: 14%; }
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(3) { width: 17%; }
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(4) { width: 8%; }
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(5) { width: 10%; }
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(6),
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(7) { width: 9%; }
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(8) { width: 11%; }
+.procurement-register-workspace.purchase-orders-workspace .prw-register-table th:nth-child(9) { width: 10%; }
 .procurement-register-workspace.purchase-orders-workspace .prw-table th,
 .procurement-register-workspace.purchase-orders-workspace .prw-items .prw-table :is(th, td) { padding: .375rem .5rem; font-size: var(--pow-body); line-height: var(--pow-line); }
 .procurement-register-workspace.purchase-orders-workspace .prw-items .prw-table { min-width: 38rem; }
@@ -509,7 +518,7 @@
 body:has(.purchase-orders-workspace) .prw-menu-portal .prw-dropdown :is(button, a) { min-height: 2.25rem; font-size: .875rem; line-height: 1.25rem; white-space: normal; }
 
 @container purchase-orders (max-width: 94rem) {
-  .procurement-register-workspace.purchase-orders-workspace .prw-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .procurement-register-workspace.purchase-orders-workspace .prw-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 @container purchase-orders (max-width: 75rem) {
   .procurement-register-workspace.purchase-orders-workspace .prw-header,

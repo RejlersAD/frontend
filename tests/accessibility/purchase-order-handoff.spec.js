@@ -22,7 +22,8 @@ async function setup(page, { view = 'creator', reconciliation = false, service =
     else state.reads.push(url);
     if (custom && await custom(route, state, url)) return;
     let body = pageData([]);
-    if (path.endsWith('/receiving-summary/')) body = state.summary;
+    if (path.endsWith('/rbac/users/me/')) body = { user: { id: 'synthetic-recorder', first_name: 'Synthetic', last_name: 'Recorder' }, location: 'Synthetic project office' };
+    else if (path.endsWith('/receiving-summary/')) body = state.summary;
     else if (path.endsWith('/available-orders/')) body = pageData([{ ...order, receiving: { ...state.summary, can_reconcile: true } }]);
     else if (path.endsWith('/inspection-summary/')) body = { schema_version: '1.0', as_of_date: '2026-09-24', filtered_count: 0, capabilities: { create: true, approve: true, read_purchase_orders: true }, counts: {}, kpis: {} };
     else if (path.endsWith('/reconcile/') || (path.endsWith('/receipts/') && request.method() === 'POST')) body = { ...state.receipt, purchase_order: request.postDataJSON().purchase_order, operation_key: request.postDataJSON().operation_key };
@@ -36,7 +37,21 @@ async function setup(page, { view = 'creator', reconciliation = false, service =
     await route.fulfill({ json: body });
   });
   await page.goto(`/tests/fixtures/purchase-order-handoff.html?view=${view}`);
+  if (view === 'creator') {
+    await page.getByLabel(/^Delivery Location/).fill('Synthetic receiving office');
+    await page.getByLabel(/^Condition/).selectOption('good');
+  }
   return state;
+}
+
+async function fillException(page) {
+  const reason = page.getByLabel(/^Exception reason/i);
+  if (await reason.isVisible() && !await reason.inputValue()) await reason.fill('Synthetic remaining shipment');
+}
+
+async function clickRecord(page) {
+  await fillException(page);
+  await page.getByRole('button', { name: 'Record receipt', exact: true }).click();
 }
 
 test('simple receipt records the chosen date, reference and remarks with pending confirmation', async ({ page }, testInfo) => {
@@ -46,12 +61,12 @@ test('simple receipt records the chosen date, reference and remarks with pending
     await expect(dialog.getByLabel(label, { exact: true })).toHaveCount(0);
   }
   await expect(dialog.getByRole('spinbutton', { name: /Rejected/ })).toHaveCount(0);
-  await page.getByLabel('Delivery Note / Reference', { exact: true }).fill('SYN-DN-025');
-  await page.getByLabel(/^Receipt Date/).fill('2026-09-18');
+  await page.getByLabel('Delivery Note No.', { exact: true }).fill('SYN-DN-025');
+  await page.getByLabel(/^Delivery Date/).fill('2026-09-18');
   await page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' }).fill('2.5');
   await page.getByRole('textbox', { name: 'Remarks', exact: true }).fill('Keep this delivery note');
   await page.screenshot({ path: testInfo.outputPath('receipt-desktop.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Record receipt' }).click();
+  await clickRecord(page);
   await expect(page.getByText('Saved receipt receipt-1')).toBeVisible();
   expect(state.posts).toHaveLength(1);
   expect(state.posts[0].data).toMatchObject({ status: 'pending', receipt_date: '2026-09-18', delivery_note_number: 'SYN-DN-025', notes: 'Keep this delivery note', expected_po_updated_at: token, quality_check_passed: null, dimensional_check_passed: null, visual_inspection_passed: null, material_verification_passed: null, items_received: [{ line_id: 'line:10', received_qty: '2.5', rejected_qty: '0' }] });
@@ -62,12 +77,12 @@ test('simple receipt records the chosen date, reference and remarks with pending
 test('receipt date defaults to the local day and is required before posting', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-23T21:15:00Z'));
   const state = await setup(page);
-  const date = page.getByLabel(/^Receipt Date/);
+  const date = page.getByLabel(/^Delivery Date/);
   await expect(date).toHaveAttribute('type', 'date');
   await expect(date).toHaveValue('2026-09-24');
   await page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' }).fill('1');
   await date.fill('');
-  await page.getByRole('button', { name: 'Record receipt' }).click();
+  await clickRecord(page);
   expect(await date.evaluate(element => element.validity.valueMissing)).toBe(true);
   expect(state.posts).toHaveLength(0);
 });
@@ -77,7 +92,7 @@ test('receipt form loads lines after choosing a purchase order', async ({ page }
   await expect(page.getByRole('button', { name: 'Record receipt' })).toBeDisabled();
   await page.getByRole('combobox', { name: 'Purchase Order', exact: true }).selectOption(order.id);
   await expect(page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' })).toBeVisible();
-  await expect(page.getByLabel(/^Receipt Date/)).not.toHaveValue('');
+  await expect(page.getByLabel(/^Delivery Date/)).not.toHaveValue('');
   await page.screenshot({ path: testInfo.outputPath('receipt-selector-desktop.png'), fullPage: true });
   expect(state.reads.some(url => url.pathname.endsWith('/available-orders/') && url.searchParams.get('queue') === 'awaiting')).toBe(true);
   expect(state.posts).toHaveLength(0);
@@ -91,8 +106,9 @@ test('receipt line previews previous receipts, remaining balance and partial or 
   const cells = row.locator('th, td');
   await expect(cells.nth(1)).toHaveText('10');
   await expect(cells.nth(2)).toContainText('5');
-  await expect(cells.nth(4)).toHaveText('5');
-  await expect(cells.nth(5)).toContainText('Partial');
+  await expect(row.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' })).toHaveValue('5');
+  await expect(cells.nth(4)).toHaveText('0');
+  await expect(cells.nth(5)).toContainText('Complete');
   await expect(row).toContainText('Awaiting confirmation');
   const quantity = row.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' });
   await quantity.fill('2.5');
@@ -112,12 +128,13 @@ test('service receiving previews exact value balances with currency and pending 
   const row = table.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /^Synthetic service/ }) });
   const cells = row.locator('th, td');
   await expect(cells.nth(2)).toContainText('200');
-  await expect(row).not.toContainText('Awaiting confirmation');
+  await expect(row.getByRole('spinbutton', { name: 'Received value for Synthetic service' })).toHaveValue('800.00');
+  await expect(row).toContainText('Awaiting confirmation');
   await row.getByRole('spinbutton', { name: 'Received value for Synthetic service' }).fill('125.25');
   await expect(cells.nth(4)).toContainText('674.75');
   await expect(cells.nth(5)).toContainText('Partial');
   await expect(row).toContainText('Awaiting confirmation');
-  await page.getByRole('button', { name: 'Record receipt' }).click();
+  await clickRecord(page);
   await expect(page.getByText('Saved receipt receipt-1')).toBeVisible();
   expect(state.posts[0].data.items_received).toEqual([{ line_id: 'service:total', received_amount: '125.25', rejected_amount: '0' }]);
 });
@@ -126,16 +143,16 @@ test('zero, negative and over-balance quantities cannot be posted', async ({ pag
   const state = await setup(page);
   const quantity = page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' });
   await quantity.fill('0');
-  await page.getByRole('button', { name: 'Record receipt' }).click();
+  await clickRecord(page);
   await expect(page.getByRole('alert')).toContainText('greater than zero');
   for (const value of ['-1', '5.01']) {
     await quantity.fill(value);
-    await page.getByRole('button', { name: 'Record receipt' }).click();
+    await clickRecord(page);
     expect(await quantity.evaluate(element => element.validity.valid)).toBe(false);
   }
   expect(state.posts).toHaveLength(0);
   await expect(quantity).toHaveValue('5.01');
-  await expect(page.getByLabel(/^Receipt Date/)).not.toHaveValue('');
+  await expect(page.getByLabel(/^Delivery Date/)).not.toHaveValue('');
 });
 
 test('missing line basis explains the blocked receipt and prevents posting', async ({ page }) => {
@@ -172,16 +189,16 @@ test('failed response keeps values and retries with the same operation key', asy
     if (url.pathname.endsWith('/receipts/') && route.request().method() === 'POST' && !failed) { failed = true; await route.fulfill({ status: 500, json: { detail: 'Receipt could not be saved.' } }); return true; }
   } });
   await page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' }).fill('1');
-  await page.getByLabel(/^Receipt Date/).fill('2026-09-20');
-  await page.getByLabel('Delivery Note / Reference', { exact: true }).fill('SYN-RETRY-01');
+  await page.getByLabel(/^Delivery Date/).fill('2026-09-20');
+  await page.getByLabel('Delivery Note No.', { exact: true }).fill('SYN-RETRY-01');
   await page.getByRole('textbox', { name: 'Remarks', exact: true }).fill('Retained after failure');
-  await page.getByRole('button', { name: 'Record receipt' }).click();
-  await expect(page.getByRole('alert')).toContainText('Receipt could not be saved');
+  await clickRecord(page);
+  await expect(page.getByRole('alert')).toContainText('The server could not complete the request');
   await expect(page.getByRole('textbox', { name: 'Remarks', exact: true })).toHaveValue('Retained after failure');
-  await expect(page.getByLabel(/^Receipt Date/)).toHaveValue('2026-09-20');
-  await expect(page.getByLabel('Delivery Note / Reference', { exact: true })).toHaveValue('SYN-RETRY-01');
+  await expect(page.getByLabel(/^Delivery Date/)).toHaveValue('2026-09-20');
+  await expect(page.getByLabel('Delivery Note No.', { exact: true })).toHaveValue('SYN-RETRY-01');
   await expect(page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' })).toHaveValue('1');
-  await page.getByRole('button', { name: 'Record receipt' }).click();
+  await clickRecord(page);
   await expect(page.getByText('Saved receipt receipt-1')).toBeVisible();
   expect(state.posts[0].data.operation_key).toBe(state.posts[1].data.operation_key);
 });
@@ -193,10 +210,15 @@ test('narrow service receipt scrolls its line table without shifting the form', 
   const geometry = await page.getByRole('dialog').evaluate(element => ({ width: element.clientWidth, scroll: element.scrollWidth, left: element.scrollLeft }));
   expect(geometry.scroll).toBeLessThanOrEqual(geometry.width);
   expect(geometry.left).toBe(0);
-  await expect(page.getByRole('heading', { name: 'Record service acceptance' })).toBeInViewport();
-  await expect(page.getByLabel('Delivery Note / Reference', { exact: true })).toBeInViewport();
-  await expect(page.getByLabel(/^Receipt Date/)).toBeInViewport();
-  await expect(page.getByRole('heading', { name: 'Service value (AED)', exact: true })).toBeInViewport();
+  for (const control of [
+    page.getByRole('heading', { name: 'Record service acceptance' }),
+    page.getByLabel('Delivery Note No.', { exact: true }),
+    page.getByLabel(/^Delivery Date/),
+    page.getByRole('heading', { name: 'Service value (AED)', exact: true }),
+  ]) {
+    await control.scrollIntoViewIfNeeded();
+    await expect(control).toBeInViewport();
+  }
   await page.screenshot({ path: testInfo.outputPath('receipt-service-narrow.png'), fullPage: true });
 });
 
@@ -209,9 +231,9 @@ test('lost creation response can replay an already inspected receipt without a d
     }
   } });
   await page.getByRole('spinbutton', { name: 'Received quantity for Synthetic pipe' }).fill('1');
-  await page.getByRole('button', { name: 'Record receipt' }).click();
-  await expect(page.getByRole('alert')).toContainText('Response unavailable');
-  await page.getByRole('button', { name: 'Record receipt' }).click();
+  await clickRecord(page);
+  await expect(page.getByRole('alert')).toContainText('The server could not complete the request');
+  await clickRecord(page);
   await expect(page.getByText('Saved receipt receipt-1 (accepted)', { exact: true })).toBeVisible();
   expect(state.posts[0].data.operation_key).toBe(state.posts[1].data.operation_key);
   expect(state.posts[1].data.status).toBe('pending');
@@ -241,12 +263,13 @@ test('receipt decision conflict retains rejection reason and inspection fields f
   expect(state.errors).toEqual([]);
 });
 
-async function setupConfirmation(page, { blockedReason = '', failure = null, missingMetadata = false, technicalAuthority = false } = {}) {
+async function setupConfirmation(page, { blockedReason = '', failure = null, missingMetadata = false, technicalAuthority = false, deliveryMetadata = false } = {}) {
   let attempted = false;
   return setup(page, { view: 'receipts', custom: async (route, state, url) => {
     if (!state.confirmationReady) {
       state.confirmationReady = true;
       state.receipt = { ...state.receipt, purchase_order: order.id, received_by_name: 'Synthetic receiver',
+        ...(deliveryMetadata ? { delivery_location: 'Synthetic receiving office', supplier_reference: 'SYN-DELIVERY-104', condition: 'good', delivery_status: 'partial', exception_reason: 'Synthetic outstanding shipment' } : {}),
         capabilities: { accept: technicalAuthority, reject: technicalAuthority, export: true },
         confirmation: missingMetadata ? undefined : { can_confirm: !blockedReason, blocked_reason: blockedReason, responsible_user_id: 7, responsible_user_name: 'Synthetic receiver', confirmed_by_id: null, confirmed_by_name: null, confirmed_at: null },
         items_received: [{ line_id: 'line:10', item: 'Synthetic pipe', uom: 'EA', ordered_qty: '10', received_qty: '2', accepted_qty: '0', rejected_qty: '0' }],
@@ -269,13 +292,22 @@ async function setupConfirmation(page, { blockedReason = '', failure = null, mis
 }
 
 test('recorder confirms delivery without inspection authority and sees actual confirmation in review and print', async ({ page }, testInfo) => {
-  const state = await setupConfirmation(page);
+  const state = await setupConfirmation(page, { deliveryMetadata: true });
+  const deliveryFields = [
+    ['Delivery location', 'Synthetic receiving office'],
+    ['Supplier reference', 'SYN-DELIVERY-104'],
+    ['Condition (delivery)', 'Accepted with no damage'],
+    ['Delivery status (declared)', 'Partial'],
+    ['Exception reason', 'Synthetic outstanding shipment'],
+  ];
   const review = page.getByRole('complementary', { name: 'Goods receipt review' });
   await expect(review).toContainText('Awaiting confirmation');
   await expect(review).toContainText('Synthetic receiver');
   await expect(review.getByText('Technical inspector', { exact: true }).locator('..')).toContainText('Not recorded');
+  for (const [label, value] of deliveryFields) await expect(review.getByText(label, { exact: true }).locator('..')).toContainText(value);
   await page.getByRole('complementary', { name: 'Goods receipt review' }).getByRole('button', { name: 'Confirm delivery', exact: true }).click();
   const details = page.getByRole('dialog', { name: 'Goods Receipt Details', exact: true });
+  for (const [label, value] of deliveryFields) await expect(details.getByText(label, { exact: true }).locator('..')).toContainText(value);
   await expect(details.getByRole('combobox', { name: 'Overall quality', exact: true })).toHaveCount(0);
   await expect(details.getByRole('button', { name: 'Accept receipt', exact: true })).toHaveCount(0);
   await details.getByRole('textbox', { name: 'Confirmation notes (optional)', exact: true }).fill('Delivery count checked against reference');
@@ -298,6 +330,7 @@ test('recorder confirms delivery without inspection authority and sees actual co
   expect(state.posts[0].path).toMatch(/\/confirm_delivery\/$/);
   await details.getByRole('button', { name: 'Print Preview', exact: true }).click();
   const preview = page.getByRole('dialog', { name: /Print Preview/ });
+  for (const [label, value] of deliveryFields) await expect(preview.getByText(label, { exact: true }).locator('..')).toContainText(value);
   await expect(preview.getByText('Delivery Confirmed By', { exact: true }).locator('..')).toContainText('Synthetic receiver');
   await expect(preview).toContainText('DELIVERY CONFIRMED');
   await expect(preview).not.toContainText('RECORDED PASS');
@@ -344,7 +377,7 @@ for (const failure of [403, 500]) {
     await page.getByRole('complementary', { name: 'Goods receipt review' }).getByRole('button', { name: 'Confirm delivery', exact: true }).click();
     await page.getByRole('textbox', { name: 'Confirmation notes (optional)', exact: true }).fill('Keep this evidence for retry');
     await page.getByRole('dialog', { name: 'Goods Receipt Details', exact: true }).getByRole('button', { name: 'Confirm delivery', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText(failure === 403 ? 'Your receipt access was revoked' : 'could not be saved');
+    await expect(page.getByRole('alert')).toContainText(failure === 403 ? 'Your receipt access was revoked' : 'The server could not complete the request');
     await expect(page.getByRole('textbox', { name: 'Confirmation notes (optional)', exact: true })).toHaveValue('Keep this evidence for retry');
     await expect(page.getByRole('dialog', { name: 'Goods Receipt Details', exact: true })).not.toContainText('Delivery confirmed');
     expect(state.posts).toHaveLength(1);
@@ -418,18 +451,19 @@ test('stale reconciliation preserves reason/value and requires refreshed balance
   const state = await setup(page, { service: true, reconciliation: true, custom: async (route, state, url) => {
     if (url.pathname.endsWith('/reconcile/') && stale) { stale = false; state.summary.po_updated_at = '2026-09-24T10:01:00.654321+00:00'; await route.fulfill({ status: 409, json: { detail: 'Order changed.' } }); return true; }
   } });
-  await page.getByLabel(/^Receipt Date/).fill('2026-08-31');
-  await page.getByLabel('Delivery Note / Reference', { exact: true }).fill('SYN-LATE-REF');
+  await page.getByLabel(/^Delivery Date/).fill('2026-08-31');
+  await page.getByLabel('Delivery Note No.', { exact: true }).fill('SYN-LATE-REF');
   await page.getByRole('textbox', { name: 'Remarks', exact: true }).fill('Retain historic receipt details');
   await page.getByRole('spinbutton', { name: 'Received value for Synthetic service' }).fill('125.25');
   await page.getByLabel('Reconciliation reason').fill('Delivery evidence received late');
+  await fillException(page);
   await page.getByRole('checkbox', { name: /I reviewed/ }).check();
   await page.getByRole('button', { name: 'Record reconciliation', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Record reconciliation', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Refresh receipt balances' }).click();
   await expect(page.getByLabel('Reconciliation reason')).toHaveValue('Delivery evidence received late');
-  await expect(page.getByLabel(/^Receipt Date/)).toHaveValue('2026-08-31');
-  await expect(page.getByLabel('Delivery Note / Reference', { exact: true })).toHaveValue('SYN-LATE-REF');
+  await expect(page.getByLabel(/^Delivery Date/)).toHaveValue('2026-08-31');
+  await expect(page.getByLabel('Delivery Note No.', { exact: true })).toHaveValue('SYN-LATE-REF');
   await expect(page.getByRole('textbox', { name: 'Remarks', exact: true })).toHaveValue('Retain historic receipt details');
   await expect(page.getByRole('spinbutton', { name: 'Received value for Synthetic service' })).toHaveValue('125.25');
   await expect(page.getByRole('checkbox', { name: /I reviewed/ })).not.toBeChecked();
@@ -588,18 +622,24 @@ async function setupReceiptActions(page, { confirmationBlock = '', deletionBlock
   } });
 }
 
+async function openReceiptRowActions(page) {
+  const register = page.getByRole('region', { name: 'Goods receipt register', exact: true });
+  await register.getByRole('button', { name: 'More actions for SYN-GR-001', exact: true }).click();
+  return register;
+}
+
 test('register exposes confirm and delete, with the PO blocker visible while pending deletion remains available', async ({ page }, testInfo) => {
   const block = 'Complete a purchase order approval route before progressing this order.';
   const state = await setupReceiptActions(page, { confirmationBlock: block });
-  const row = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'SYN-GR-001', exact: true }) });
-  await expect(row.getByRole('button', { name: 'Confirm delivery', exact: true })).toBeDisabled();
-  await expect(row).toContainText(block);
-  await expect(row.getByRole('button', { name: 'Delete receipt', exact: true })).toBeEnabled();
-  const rowDeleteBounds = await row.getByRole('button', { name: 'Delete receipt', exact: true }).boundingBox();
-  const registerBounds = await page.getByRole('region', { name: 'Goods receipt register', exact: true }).boundingBox();
+  const register = await openReceiptRowActions(page);
+  await expect(register.getByRole('button', { name: 'Confirm delivery', exact: true })).toBeDisabled();
+  await expect(register).toContainText(block);
+  await expect(register.getByRole('button', { name: 'Delete receipt', exact: true })).toBeEnabled();
+  const rowDeleteBounds = await register.getByRole('button', { name: 'Delete receipt', exact: true }).boundingBox();
+  const registerBounds = await register.boundingBox();
   expect(rowDeleteBounds.x + rowDeleteBounds.width).toBeLessThanOrEqual(registerBounds.x + registerBounds.width);
   await page.screenshot({ path: testInfo.outputPath('receipt-register-actions-desktop.png'), fullPage: true });
-  await row.getByRole('button', { name: 'Open', exact: true }).click();
+  await register.getByRole('button', { name: 'Open', exact: true }).click();
   const detail = page.getByRole('dialog', { name: 'Goods Receipt Details' });
   await expect(detail.getByRole('button', { name: 'Confirm delivery', exact: true })).toBeDisabled();
   await expect(detail.getByRole('button', { name: 'Delete receipt', exact: true })).toBeEnabled();
@@ -613,6 +653,7 @@ test('register exposes confirm and delete, with the PO blocker visible while pen
 
 test('delete cancellation preserves confirmation notes and makes no delete request', async ({ page }) => {
   const state = await setupReceiptActions(page);
+  await openReceiptRowActions(page);
   await page.getByRole('region', { name: 'Goods receipt register', exact: true }).getByRole('button', { name: 'Confirm delivery', exact: true }).click();
   const detail = page.getByRole('dialog', { name: 'Goods Receipt Details' });
   await detail.getByRole('textbox', { name: 'Confirmation notes (optional)' }).fill('Keep these checked quantities');
@@ -628,6 +669,7 @@ test('delete cancellation preserves confirmation notes and makes no delete reque
 
 test('explicit delete sends the exact version and refreshes register and receiving metrics after success', async ({ page }, testInfo) => {
   const state = await setupReceiptActions(page);
+  await openReceiptRowActions(page);
   const register = page.getByRole('region', { name: 'Goods receipt register', exact: true });
   await register.getByRole('button', { name: 'Delete receipt', exact: true }).click();
   const deletion = page.getByRole('dialog', { name: 'Delete goods receipt?' });
@@ -641,7 +683,7 @@ test('explicit delete sends the exact version and refreshes register and receivi
   await page.screenshot({ path: testInfo.outputPath('receipt-delete-mobile.png'), fullPage: true });
   await deletion.getByRole('button', { name: 'Delete receipt', exact: true }).click();
   await expect(deletion).toHaveCount(0);
-  await expect(page.getByRole('status')).toContainText('Receipt SYN-GR-001 deleted.');
+  await expect(page.getByRole('status').filter({ hasText: 'Receipt SYN-GR-001 deleted.' })).toBeVisible();
   await expect(register).toContainText('No receipts match this queue');
   expect(state.posts).toHaveLength(1);
   expect(state.posts[0].data).toEqual({ expected_updated_at: token });
@@ -651,6 +693,7 @@ test('explicit delete sends the exact version and refreshes register and receivi
 
 test('stale deletion stays open and requires explicit refresh before a new attempt', async ({ page }) => {
   const state = await setupReceiptActions(page, { failure: 409 });
+  await openReceiptRowActions(page);
   await page.getByRole('region', { name: 'Goods receipt register', exact: true }).getByRole('button', { name: 'Delete receipt', exact: true }).click();
   const deletion = page.getByRole('dialog', { name: 'Delete goods receipt?' });
   await deletion.getByRole('button', { name: 'Delete receipt', exact: true }).click();
@@ -668,10 +711,11 @@ test('stale deletion stays open and requires explicit refresh before a new attem
 for (const failure of [403, 500]) {
   test(`delete HTTP ${failure} retains the named receipt and shows no success`, async ({ page }) => {
     const state = await setupReceiptActions(page, { failure });
+    await openReceiptRowActions(page);
     await page.getByRole('region', { name: 'Goods receipt register', exact: true }).getByRole('button', { name: 'Delete receipt', exact: true }).click();
     const deletion = page.getByRole('dialog', { name: 'Delete goods receipt?' });
     await deletion.getByRole('button', { name: 'Delete receipt', exact: true }).click();
-    await expect(deletion.getByRole('alert')).toContainText(failure === 403 ? 'permission' : 'could not be deleted');
+    await expect(deletion.getByRole('alert')).toContainText(failure === 403 ? 'permission' : 'The server could not complete the request');
     await expect(deletion).toContainText('SYN-GR-001');
     expect(state.deleted).not.toBe(true);
     expect(state.posts).toHaveLength(1);
@@ -683,26 +727,26 @@ for (const failure of [403, 500]) {
 
 test('already removed receipt offers register refresh without claiming deletion succeeded', async ({ page }) => {
   const state = await setupReceiptActions(page, { failure: 404 });
+  await openReceiptRowActions(page);
   await page.getByRole('region', { name: 'Goods receipt register', exact: true }).getByRole('button', { name: 'Delete receipt', exact: true }).click();
   const deletion = page.getByRole('dialog', { name: 'Delete goods receipt?' });
   await deletion.getByRole('button', { name: 'Delete receipt', exact: true }).click();
   await expect(deletion.getByRole('alert')).toContainText('no longer available');
   await expect(deletion.getByRole('button', { name: 'Delete receipt', exact: true })).toBeDisabled();
   await deletion.getByRole('button', { name: 'Refresh register' }).click();
-  await expect(page.getByRole('status')).toContainText('Receipt no longer available');
+  await expect(page.getByRole('status').filter({ hasText: 'Receipt no longer available' })).toBeVisible();
   await expect(page.getByText('Receipt SYN-GR-001 deleted.')).toHaveCount(0);
   expect(state.posts).toHaveLength(1);
 });
 
 for (const status of ['accepted', 'pending']) {
-  test(`deletion blocked for ${status === 'accepted' ? 'confirmed evidence' : 'denied delete permission'} in list, card and detail`, async ({ page }) => {
+  test(`deletion blocked for ${status === 'accepted' ? 'confirmed evidence' : 'denied delete permission'} in register and detail`, async ({ page }) => {
     const deletionBlock = status === 'accepted' ? 'Confirmed or decided receipts cannot be deleted.' : 'You do not have permission to delete this receipt.';
     const state = await setupReceiptActions(page, { status, deletionBlock });
+    await openReceiptRowActions(page);
     const register = page.getByRole('region', { name: 'Goods receipt register', exact: true });
     await expect(register.getByRole('button', { name: 'Delete receipt', exact: true })).toBeDisabled();
     await expect(register).toContainText(deletionBlock);
-    await page.getByRole('button', { name: 'Card view', exact: true }).click();
-    await expect(register.getByRole('button', { name: 'Delete receipt', exact: true })).toBeDisabled();
     await register.getByRole('button', { name: 'Open', exact: true }).click();
     const detail = page.getByRole('dialog', { name: 'Goods Receipt Details' });
     await expect(detail.getByRole('button', { name: 'Delete receipt', exact: true })).toBeDisabled();
