@@ -27,8 +27,9 @@ import SalesEmailReader from "./SalesEmailReader";
 import SalesEmailReview from "./SalesEmailReview";
 import { isOpportunityClassification } from "./salesEmailReviewState";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
-import { customerMatch, withoutCustomerMatch } from "./SalesEmailCustomerMatch";
+import { withoutCustomerMatch } from "./SalesEmailCustomerMatch";
 import useSalesEmailClients from "./useSalesEmailClients";
+import useSalesEmailClientChoice from "./useSalesEmailClientChoice";
 import SalesEmailThreadRole, { selectedThreadSource } from "./SalesEmailThreadRole";
 import "./SalesEmailIntake.css";
 
@@ -165,14 +166,18 @@ function ImportedEmailIntakes() {
   const navigate = useNavigate();
   const [records, setRecords] = useState([]);
   const loadRequest = useRef(0);
+  const detailRequest = useRef(0);
+  const detailClientGeneration = useRef(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [detailRevision, setDetailRevision] = useState(0);
+  const [detailState, setDetailState] = useState({ id: null, loading: false, error: "" });
+  const [sourceReloadRequired, setSourceReloadRequired] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(null);
-  const [clientChoice, setClientChoice] = useState("");
   const [confirmedClassification, setConfirmedClassification] = useState("");
   const [reviewVersion, setReviewVersion] = useState(0);
   const [classificationReviewRequired, setClassificationReviewRequired] = useState(false);
@@ -197,6 +202,8 @@ function ImportedEmailIntakes() {
       setClassificationReviewRequired(true);
       setRecords(nextRecords);
       setReviewVersion((current) => current + 1);
+      detailClientGeneration.current = clientGeneration;
+      setDetailRevision((current) => current + 1);
       setSelectedId((current) =>
         nextRecords.some((row) => row.id === current)
           ? current
@@ -223,6 +230,45 @@ function ImportedEmailIntakes() {
     load();
     return () => { loadRequest.current += 1; };
   }, [load]);
+
+  const loadDetail = useCallback(async (id, sourceClientGeneration) => {
+    if (!id) return;
+    const request = ++detailRequest.current;
+    const clientGeneration = sourceClientGeneration ?? clientAccess.current.generation;
+    setDetailState({ id, loading: true, error: "" });
+    setConfirmedClassification("");
+    try {
+      const record = await salesService.getEmailIntake(id);
+      if (request !== detailRequest.current) return;
+      if (!record || record.id !== id || typeof record.extracted_information !== "object" || Array.isArray(record.extracted_information)) throw new Error("Invalid email details.");
+      const redactMatches = clientAccess.current.denied || clientGeneration !== clientAccess.current.generation;
+      setRecords((current) => current.map((row) => row.id === id ? redactMatches ? withoutIntakeClientMatch(record) : record : row));
+      setConfirmedClassification("");
+      setClassificationReviewRequired(true);
+      setReviewVersion((current) => current + 1);
+      setSourceReloadRequired(false);
+      setError("");
+      setDetailState({ id, loading: false, error: "" });
+    } catch (requestError) {
+      if (request !== detailRequest.current) return;
+      const denied = [401, 403, 404].includes(requestError?.response?.status);
+      const message = denied ? "You do not have access to this saved email." : "Email details could not be loaded. Refresh emails and try again.";
+      setDetailState({ id, loading: false, error: message });
+      setError(message);
+      if (denied) {
+        setRecords((current) => current.filter((row) => row.id !== id));
+        setSelectedId((current) => current === id ? null : current);
+        setDialog(null);
+      }
+    }
+  }, [clientAccess]);
+
+  useEffect(() => {
+    const clientGeneration = detailClientGeneration.current;
+    detailClientGeneration.current = null;
+    loadDetail(selectedId, clientGeneration);
+    return () => { detailRequest.current += 1; };
+  }, [selectedId, detailRevision, loadDetail]);
 
   const counts = useMemo(
     () =>
@@ -253,20 +299,18 @@ function ImportedEmailIntakes() {
     }
   }, [filtered, loading, selectedId]);
   const selected = filtered.find((row) => row.id === selectedId) ?? null;
-  useEffect(() => { setConfirmedClassification(""); }, [selectedId]);
+
+  const detailPending = Boolean(selected && (detailState.id !== selectedId || detailState.loading));
+  const reviewBlocked = saving || detailPending || Boolean(detailState.error && detailState.id === selectedId);
+  useEffect(() => { setConfirmedClassification(""); setSourceReloadRequired(false); }, [selectedId]);
   const extracted = selected?.extracted_information ?? {};
-  const match = customerMatch(extracted);
-  const suggestedClientName = selected?.can_create_client === true && !clients.loading && !clients.error && match?.status === "no_match"
-    ? match.detected_name.trim() : "";
+  const { clientChoice, newClientName: suggestedClientName, chooseClient: setClientChoice } = useSalesEmailClientChoice({
+    information: extracted, clients, canCreateClient: selected?.can_create_client === true,
+    enabled: dialog === "convert", reviewKey: `${selectedId}:${dialog}`,
+  });
   const unresolved = records.filter((row) =>
     ["received", "under_review"].includes(row.status),
   ).length;
-
-  useEffect(() => {
-    if (dialog === "convert") {
-      setClientChoice("");
-    }
-  }, [dialog, selectedId]);
 
   const updateRecord = (record) => {
     setConfirmedClassification("");
@@ -278,7 +322,7 @@ function ImportedEmailIntakes() {
   };
 
   const startReview = async () => {
-    if (!selected) return;
+    if (!selected || reviewBlocked) return;
     setSaving(true);
     setError("");
     try {
@@ -294,7 +338,7 @@ function ImportedEmailIntakes() {
 
   const resolve = async (event) => {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected || reviewBlocked) return;
     const form = new FormData(event.currentTarget);
     setSaving(true);
     setError("");
@@ -320,7 +364,7 @@ function ImportedEmailIntakes() {
 
   const convert = async (event) => {
     event.preventDefault();
-    if (!selected || selected.can_create_opportunity !== true || saving || clients.loading || clients.error || !isOpportunityClassification(confirmedClassification)) return;
+    if (!selected || selected.can_create_opportunity !== true || reviewBlocked || sourceReloadRequired || clients.loading || clients.error || !isOpportunityClassification(confirmedClassification)) return;
     const form = new FormData(event.currentTarget);
     const createClient = clientChoice === "__new__";
     if (createClient && !suggestedClientName) {
@@ -332,6 +376,7 @@ function ImportedEmailIntakes() {
     setError("");
     try {
       const result = await salesService.convertEmailIntake(selected.id, {
+        source_token: typeof selected.source_token === "string" && selected.source_token ? selected.source_token : undefined,
         classification_code: confirmedClassification,
         classification_confirmed: true,
         client: createClient ? undefined : clientChoice,
@@ -339,15 +384,6 @@ function ImportedEmailIntakes() {
           createClient
             ? {
                 company_name: suggestedClientName,
-                industry_type: extracted.industry_type || "other",
-                email: extracted.contact_email || "",
-                phone: extracted.contact_phone || "",
-                website: extracted.declared_client_domain
-                  ? `https://${extracted.declared_client_domain}`
-                  : "",
-                country: extracted.location?.split(",").at(-1)?.trim() || "",
-                contact_name: extracted.contact_name || "",
-                contact_email: extracted.contact_email || "",
               }
             : undefined,
         deal_name: form.get("deal_name"),
@@ -364,15 +400,25 @@ function ImportedEmailIntakes() {
       setDialog(null);
     } catch (requestError) {
       const data = requestError?.response?.data;
+      const sourceChanged = ([409, 410].includes(requestError?.response?.status) && !["email_already_converted", "email_tender_already_exists", "email_customer_conflict"].includes(data?.code)) || Boolean(data?.source_token);
+      if (sourceChanged) {
+        setSourceReloadRequired(true);
+        setConfirmedClassification("");
+        setClassificationReviewRequired(true);
+      }
       if (data?.classification_code || data?.classification_confirmed) {
         setConfirmedClassification("");
         setClassificationReviewRequired(true);
       }
+      const fieldError = (name) => {
+        const value = data?.[name];
+        const first = Array.isArray(value) ? value[0] : value;
+        return typeof first === "string" ? first : "";
+      };
       setError(
-        data?.classification_code?.[0] || data?.classification_confirmed?.[0] || data?.client?.[0] ||
-          data?.expected_close_date?.[0] ||
-          data?.estimated_value?.[0] ||
-          data?.status?.[0] ||
+        fieldError("classification_code") || fieldError("classification_confirmed") || fieldError("client") ||
+          fieldError("expected_close_date") || fieldError("estimated_value") || fieldError("status") ||
+          (sourceChanged ? "Reload email details and confirm the classification. Your entries have been kept." : typeof data?.detail === "string" ? data.detail : "") ||
           "The opportunity could not be created.",
       );
     } finally {
@@ -541,7 +587,7 @@ function ImportedEmailIntakes() {
                         {selected.status === "received" && (
                           <button
                             type="button"
-                            disabled={saving}
+                            disabled={reviewBlocked}
                             onClick={startReview}
                             className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
                           >
@@ -552,6 +598,7 @@ function ImportedEmailIntakes() {
                           <>
                             <button
                               type="button"
+                              disabled={reviewBlocked}
                               onClick={() => setDialog("duplicate")}
                               className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                             >
@@ -560,6 +607,7 @@ function ImportedEmailIntakes() {
                             </button>
                             <button
                               type="button"
+                              disabled={reviewBlocked}
                               onClick={() => setDialog("reject")}
                               className="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
                             >
@@ -590,12 +638,12 @@ function ImportedEmailIntakes() {
 
                     <aside className="sales-email-source-panel" aria-label="Email review" tabIndex={0}>
                       <SalesEmailReview key={`${selected.id}:${reviewVersion}`} information={extracted} subject={selected.subject}
-                        disabled={saving}
+                        disabled={reviewBlocked || sourceReloadRequired}
                         confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
                         onClassificationChange={() => setConfirmedClassification("")}
                         canCreateOpportunity={selected.can_create_opportunity === true && ["received", "under_review"].includes(selected.status)}
                         converted={Boolean(selected.opportunity)} savedContent
-                        onCreateOpportunity={() => { if (isOpportunityClassification(confirmedClassification)) { setClassificationReviewRequired(false); setDialog("convert"); } }}>
+                        onCreateOpportunity={() => { if (!reviewBlocked && !sourceReloadRequired && isOpportunityClassification(confirmedClassification)) { setClassificationReviewRequired(false); setDialog("convert"); } }}>
                       <details className="sales-email-analysis-metadata">
                       <summary>Source traceability</summary>
                       <dl className="mt-4 space-y-4 text-sm">
@@ -672,9 +720,11 @@ function ImportedEmailIntakes() {
       {dialog === "convert" && selected?.can_create_opportunity === true && (
         <SalesEmailOpportunityForm
           key={selected.id}
-          requireSourceReload={!isOpportunityClassification(confirmedClassification)}
+          requireSourceReload={reviewBlocked || sourceReloadRequired || !isOpportunityClassification(confirmedClassification)}
+          onReloadEmail={sourceReloadRequired || detailState.error ? () => loadDetail(selectedId) : null}
+          reloadingEmail={detailPending}
           reviewPanel={classificationReviewRequired && <SalesEmailReview key={reviewVersion} information={extracted} subject={selected.subject}
-            disabled={saving}
+            disabled={reviewBlocked || sourceReloadRequired}
             confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
             onClassificationChange={() => setConfirmedClassification("")} />}
           subject={selected.subject}
@@ -719,7 +769,7 @@ function ImportedEmailIntakes() {
             </label>
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
               <button type="button" onClick={() => setDialog(null)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-              <button disabled={saving} className={`rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${dialog === "reject" ? "bg-rose-700 hover:bg-rose-800" : "bg-violet-700 hover:bg-violet-800"}`}>{saving ? "Saving…" : dialog === "reject" ? "Reject intake" : "Mark duplicate"}</button>
+              <button disabled={reviewBlocked} className={`rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${dialog === "reject" ? "bg-rose-700 hover:bg-rose-800" : "bg-violet-700 hover:bg-violet-800"}`}>{saving ? "Saving…" : dialog === "reject" ? "Reject intake" : "Mark duplicate"}</button>
             </div>
           </form>
         </Modal>

@@ -46,7 +46,9 @@ export default function SalesEmailIntelligence({ information }) {
   const confirmedOpportunity = opportunity?.needs_review === true ? opportunity : null;
   const confidence = object(supplied.field_confidence) ? Object.entries(supplied.field_confidence).filter(([field, value]) =>
     supportedKey(fieldLabels, field) && object(value) && supportedKey(levels, value.level) && text(value.reason) &&
+    (value.method === undefined || ["rule_evidence_v1", "ai_evidence_v1"].includes(value.method)) &&
     sourceReferences(information, value.source_ids, value.level !== "unresolved")) : [];
+  const hasAIConfidence = confidence.some(([, value]) => value.method === "ai_evidence_v1");
   const deadlineLabels = { detected: "Detected deadline — review before use", not_detected: "Not detected", requires_verification: "Human verification required", ambiguous: "Conflicting or ambiguous deadlines" };
   const opportunityLabels = { candidate: "Potential opportunity — review required", follow_up: "Follow-up to an existing request", not_established: "Opportunity not established", ambiguous: "Requires review" };
   return <section aria-label="Detection review" className="mt-3 min-w-0 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
@@ -67,7 +69,7 @@ export default function SalesEmailIntelligence({ information }) {
     </details>
     <details className="mt-1 min-w-0">
       <summary className="w-fit cursor-pointer rounded py-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">Field confidence</summary>
-      <p className="mt-2 leading-5">Confidence describes the available rule evidence. Review the source before using a value.</p>
+      <p className="mt-2 leading-5">{hasAIConfidence ? "Confidence includes AI suggestions checked against cited evidence." : "Confidence describes the available rule evidence."} Review the source before using a value.</p>
       {confidence.length ? <dl className="mt-2 space-y-3">{confidence.map(([field, value]) => <div key={field} className="min-w-0 [overflow-wrap:anywhere]">
         <dt className="font-semibold">{fieldLabels[field]}: {levels[value.level]}</dt><dd><ReviewEvidence value={value} sources={sources} /></dd>
       </div>)}</dl> : <p className="mt-2">Field confidence is unavailable.</p>}

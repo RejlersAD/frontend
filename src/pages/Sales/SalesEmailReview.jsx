@@ -54,7 +54,7 @@ export default function SalesEmailReview({
   const selectedSuggestion = selectedCode && selectedCode === suggestedCode;
   const facts = emailReviewFacts(information, converted);
   const confidence = reviewObject(suggestion?.confidence);
-  const supportedConfidence = confidence?.method === "rule_evidence_v1" && typeof confidence.level === "string" && Object.hasOwn(confidenceLabels, confidence.level);
+  const supportedConfidence = ["rule_evidence_v1", "ai_evidence_v1"].includes(confidence?.method) && typeof confidence.level === "string" && Object.hasOwn(confidenceLabels, confidence.level);
   const alternatives = suggestion?.status === "ambiguous" && Array.isArray(suggestion.alternatives)
     ? suggestion.alternatives.filter((entry) => reviewObject(entry) && isOpportunityClassification(entry.code)) : [];
 
@@ -87,7 +87,7 @@ export default function SalesEmailReview({
 
     <dl className="sales-email-review__facts">
       <div><dt>Customer</dt><dd>{facts.customer}</dd></div>
-      <div><dt>Due date</dt><dd>{facts.dueDate}</dd></div>
+      <div><dt>{facts.dueLabel}</dt><dd>{facts.dueDate}</dd></div>
       <div><dt>Opportunity</dt><dd>{facts.opportunity}</dd></div>
     </dl>
 

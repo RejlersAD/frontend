@@ -197,7 +197,7 @@ test('View original reveals and selects an imported original hidden by the dupli
 })
 
 test('an unavailable imported original leaves the duplicate selected with an honest notice', async ({ page }) => {
-  const unrelated = { ...message(), status: 'received', extracted_information: detected(), attachments: [] }
+  const unrelated = { ...message({ id: 'saved-unrelated' }), status: 'received', extracted_information: detected(), attachments: [] }
   const duplicate = { ...secondMessage(), status: 'duplicate', duplicate_of: 'not-in-loaded-enquiries', duplicate_of_subject: 'Unavailable original', extracted_information: detected(), attachments: [] }
   const state = await prepare(page, { view: 'imported', imported: paginated([unrelated, duplicate]) })
   const filters = page.getByRole('navigation', { name: 'Email intake status', exact: true })
@@ -213,7 +213,7 @@ test('an unavailable imported original leaves the duplicate selected with an hon
 })
 
 test('imported search and status filters replace hidden selections and clear empty readers', async ({ page }) => {
-  const saved = records.slice(0, 2).map((record, index) => ({ ...record, status: index ? 'under_review' : 'received', can_create_opportunity: true, extracted_information: detected(), attachments: [] }))
+  const saved = records.slice(0, 2).map((record, index) => ({ ...record, id: `saved-filter-${index}`, status: index ? 'under_review' : 'received', can_create_opportunity: true, extracted_information: detected(), attachments: [] }))
   const state = await prepare(page, { view: 'imported', imported: paginated(saved) })
   const reader = page.locator('.sales-email-preview-header')
   await expect(reader).toContainText(message().subject)
