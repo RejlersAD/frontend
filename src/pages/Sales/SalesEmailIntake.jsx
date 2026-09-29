@@ -22,6 +22,8 @@ import {
 } from "@heroicons/react/24/outline";
 import salesService from "../../services/sales.service";
 import SalesSharedMailboxMessages from "./SalesSharedMailboxMessages";
+import SalesSharedMailboxSetup from "./SalesSharedMailboxSetup";
+import useSalesMailboxSetupAccess from "./useSalesMailboxSetupAccess";
 import SalesEmailBody from "./SalesEmailBody";
 import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
 import SalesEmailAnalysis from "./SalesEmailAnalysis";
@@ -140,6 +142,16 @@ export default function SalesEmailIntake() {
 function EmailIntakeViews() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const access = useSalesMailboxSetupAccess();
+  const [setup, setSetup] = useState(null);
+  const [mailboxes, setMailboxes] = useState({ revision: 0, selectedId: "" });
+  useEffect(() => {
+    if (!access.canManage || (setup && !setup.connection && !access.canCreate)) setSetup(null);
+  }, [access.canManage, access.canCreate, setup]);
+  const closeSetup = (connection) => {
+    setSetup(null);
+    if (connection) setMailboxes((current) => ({ revision: current.revision + 1, selectedId: connection.id }));
+  };
   const view = searchParams.get("view") === "imported" ? "imported" : "shared";
   return (
     <section className="sales-email-workspace" aria-label="Email Intake workspace">
@@ -153,8 +165,10 @@ function EmailIntakeViews() {
             <p className="mt-1 text-sm text-slate-600">Browse shared emails and review imported client enquiries.</p>
           </div>
         </div>
+        {view === "shared" && access.canCreate && <button type="button" onClick={() => setSetup({ connection: null })} className="sales-email-button"><PlusIcon className="h-4 w-4" aria-hidden="true" />Add shared mailbox</button>}
       </header>
-      {view === "shared" ? <SalesSharedMailboxMessages /> : <ImportedEmailIntakes />}
+      {view === "shared" ? <SalesSharedMailboxMessages key={mailboxes.revision} preferredConnectionId={mailboxes.selectedId} onConfigure={access.canManage ? (connection) => setSetup({ connection }) : undefined} /> : <ImportedEmailIntakes />}
+      {view === "shared" && setup && access.canManage && (setup.connection || access.canCreate) && <SalesSharedMailboxSetup initialConnection={setup.connection} access={access} onClose={closeSetup} />}
     </section>
   );
 }
