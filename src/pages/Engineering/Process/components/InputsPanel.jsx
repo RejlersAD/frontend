@@ -27,6 +27,15 @@ const ACCEPTED_EXTENSIONS = '.pdf'
 export default function InputsPanel({
   // PDF
   fileInputRef, file, onPickFile,
+  // Active project — passed through to the upload calls below, but note:
+  // the Master Line List / Equipment List / Instrument Index are
+  // DELIBERATELY global, one per user account, not scoped by project (see
+  // PIDCheckerV2.jsx's own top-of-file comment for the full trace —
+  // confirmed against the actual backend models/views and a previously-
+  // pending migration that formalized this). This prop does NOT scope
+  // reference-data uploads to a project; it exists for other genuinely
+  // project-scoped things this panel/its children may use.
+  projectId,
   // Excel / Line List
   activeLineList, onLineListUploaded,
   // Excel / Equipment List
@@ -131,6 +140,7 @@ export default function InputsPanel({
           activeLineList={activeLineList}
           onUploaded={onLineListUploaded}
           disabled={loading}
+          projectId={projectId}
         />
       </div>
 
@@ -139,6 +149,7 @@ export default function InputsPanel({
         activeEquipmentList={activeEquipmentList}
         onUploaded={onEquipmentListUploaded}
         disabled={loading}
+        projectId={projectId}
       />
 
       {/* Instrument Index card (full width) */}
@@ -146,6 +157,7 @@ export default function InputsPanel({
         activeInstrumentIndex={activeInstrumentIndex}
         onUploaded={onInstrumentIndexUploaded}
         disabled={loading}
+        projectId={projectId}
       />
 
       {/* Mode selector */}

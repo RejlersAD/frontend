@@ -67,7 +67,7 @@ class PredictiveAnalyticsErrorBoundary extends React.Component {
   }
 }
 
-const PredictiveAnalyticsDashboard = ({ refreshInterval = 60000 }) => {
+const PredictiveAnalyticsDashboard = ({ refreshInterval = 300000 }) => {
   const [predictions, setPredictions] = useState({});
   const [insights, setInsights] = useState([]);
   const [anomalies, setAnomalies] = useState([]);

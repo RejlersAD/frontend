@@ -2199,12 +2199,17 @@ const PIDVerificationV2 = () => {
 
   const fetchReferenceData = async (projectId, epoch = projectEpochRef.current) => {
     if (!projectId) return;
+    console.log('fetchReferenceData called for projectId:', projectId, 'epoch:', epoch, 'currentEpoch:', projectEpochRef.current);
     try {
       const res = await axios.get(
         `${API_PREFIX}/projects/${projectId}/reference-data/`,
         { headers: authHeader() }
       );
-      if (epoch !== projectEpochRef.current) return; // stale — user switched project mid-request
+      console.log('fetchReferenceData RAW RESPONSE for projectId:', projectId, res.data);
+      if (epoch !== projectEpochRef.current) {
+        console.log('fetchReferenceData DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current);
+        return; // stale — user switched project mid-request
+      }
       const allData = res.data.reference_data || [];
 
       // Soft-coded: split by data_type
@@ -2343,6 +2348,8 @@ const PIDVerificationV2 = () => {
       setShowCreateModal(false);
       setNewProjectName(''); setNewProjectDesc('');
       flash('success', `Project "${p.project_name}" created`);
+      console.log('NEW PROJECT CREATED:', p.project_id);
+      console.log('Calling handleSelectProject');
       // Navigate straight into the new project instead of leaving
       // selectedProject pointing at whatever was open before — otherwise
       // the screen right after creating still shows the PREVIOUS project's
@@ -2391,6 +2398,7 @@ const PIDVerificationV2 = () => {
   };
 
   const handleSelectProject = (p) => {
+    console.log('PROJECT SWITCHED - clearing lists', p.project_id);
     setSelectedProject(p);
     resetUpload();
     setResults(null);
@@ -2404,6 +2412,7 @@ const PIDVerificationV2 = () => {
     // these fetches has a catch block that swallows the error with no state
     // reset). Clearing everything to its empty default HERE, synchronously,
     // before any fetch starts, closes that window for the common case.
+    console.log('setLineListFiles([]) called');
     setLineListFiles([]);
     setEquipmentListFiles([]);
     setInstrumentIndexFiles([]);

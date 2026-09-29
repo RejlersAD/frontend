@@ -77,7 +77,7 @@ const FILTERS = [
  *   onEquipmentListChange — refetch trigger after activate/delete
  */
 export default function EquipmentCrossCheckPanel({
-  tags, pdfFile, activeEquipmentList, provider, apiKey, onEquipmentListChange, onResultChange,
+  tags, pdfFile, activeEquipmentList, provider, apiKey, onEquipmentListChange, onResultChange, projectId,
 }) {
   const [loading, setLoading] = useState(false)
   const [extracting, setExtracting] = useState(false)
@@ -159,6 +159,7 @@ export default function EquipmentCrossCheckPanel({
       const data = await equipmentCrossCheck({
         equipmentTags: finalTags,
         equipmentListId: activeEquipmentList.equipment_list_id,
+        projectId,
         useAi: useAi && canAi,
         provider,
         apiKey,
@@ -178,7 +179,7 @@ export default function EquipmentCrossCheckPanel({
     } finally {
       setLoading(false)
     }
-  }, [finalTags, activeEquipmentList, useAi, canAi, provider, apiKey, attributesByTag, hasAttributes])
+  }, [finalTags, activeEquipmentList, useAi, canAi, provider, apiKey, attributesByTag, hasAttributes, projectId])
 
   // Reset stale result when the active list changes
   useEffect(() => { setResult(null); setExpanded(null) }, [activeEquipmentList?.equipment_list_id])
@@ -243,6 +244,7 @@ export default function EquipmentCrossCheckPanel({
         <EquipmentListHistoryPopover
           activeEquipmentList={activeEquipmentList}
           onChange={onEquipmentListChange}
+          projectId={projectId}
         />
 
         <button

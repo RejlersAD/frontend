@@ -30,8 +30,14 @@ const MAX_MB = 15
  *   activeInstrumentIndex — currently-active II summary (or null)
  *   onUploaded(data)      — called with the API response when parse succeeds
  *   disabled              — parent-controlled (e.g. during PDF extraction)
+ *   projectId             — active project's UUID, sent with the upload
+ *                           request but NOT used to scope it — the Master
+ *                           Instrument Index is deliberately global (one per
+ *                           user account, not per project); see
+ *                           PIDCheckerV2.jsx's top-of-file comment for the
+ *                           full trace.
  */
-export default function InstrumentIndexDropzone({ activeInstrumentIndex, onUploaded, disabled }) {
+export default function InstrumentIndexDropzone({ activeInstrumentIndex, onUploaded, disabled, projectId }) {
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [pct, setPct] = useState(0)
@@ -46,7 +52,7 @@ export default function InstrumentIndexDropzone({ activeInstrumentIndex, onUploa
     }
     setUploading(true); setPct(0)
     try {
-      const data = await uploadInstrumentIndex(f, { onProgress: setPct })
+      const data = await uploadInstrumentIndex(f, { onProgress: setPct, projectId })
       toast.success(`Uploaded — ${data.total_rows} instrument tags parsed`)
       onUploaded?.(data)
     } catch (err) {

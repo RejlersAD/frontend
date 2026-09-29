@@ -56,6 +56,9 @@ export default function ResultsTabs({
   onExportCsv, onExportJson,
   // Raw uploaded PDF (source for BYOK Vision extraction inside panels)
   pdfFile,
+  // Active project — scopes cross-check history popovers so they never leak
+  // into another project.
+  projectId,
   // Legend
   activeLegend, effectiveLegend,
   // Cross-check (Line List)
@@ -237,7 +240,8 @@ export default function ResultsTabs({
                 tags={result.tags} activeLineList={activeLineList}
                 provider={visionProvider} apiKey={apiKey}
                 onLineListChange={refreshLineList}
-                onResultChange={setLineListResult} />
+                onResultChange={setLineListResult}
+                projectId={projectId} />
             : <EmptyState
                 Icon={GitCompare} title="Cross-check needs extracted tags"
                 message="Run Analyse P&ID on the left, then compare against the master Line List." />}
@@ -251,6 +255,7 @@ export default function ResultsTabs({
             provider={visionProvider} apiKey={apiKey}
             onEquipmentListChange={refreshEquipmentList}
             onResultChange={setEquipmentResult}
+            projectId={projectId}
           />
         </div>
 
@@ -262,6 +267,7 @@ export default function ResultsTabs({
             provider={visionProvider} apiKey={apiKey}
             onInstrumentIndexChange={refreshInstrumentIndex}
             onResultChange={setInstrumentResult}
+            projectId={projectId}
           />
         </div>
 

@@ -1189,8 +1189,9 @@ export const PAYROLL_WORKFLOW_STAGES = [
 
 // Approval tracker configuration
 export const PAYROLL_TRACKER_CONFIG = {
-  // Auto-refresh interval in milliseconds (30 seconds)
-  pollIntervalMs: 30000,
+  // Auto-refresh interval in milliseconds (was 30s — widened to 5 min as
+  // part of the fix for production Gunicorn worker-pool exhaustion)
+  pollIntervalMs: 300000,
   // SLA thresholds (days) for warning/overdue badges
   slaWarningDays: 2,
   slaOverdueDays: 3,
