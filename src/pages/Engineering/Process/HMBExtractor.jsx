@@ -47,6 +47,7 @@ const MASTER_TEMPLATE_CFG = {
   endpoint: '/process-datasheet/datasheets/analyze-hmb-master-template/',
   listEndpoint: '/process-datasheet/datasheets/hmb-master-templates/',
   detailEndpoint: (id) => `/process-datasheet/datasheets/hmb-master-templates/${id}/`,
+  syncStreamsEndpoint: '/process-datasheet/datasheets/hmb-master-templates/sync-streams/',
   importCasesEndpoint: '/process-datasheet/datasheets/import-hmb-cases/',
   previewCasesEndpoint: '/process-datasheet/datasheets/preview-hmb-cases/',
   executeCasesEndpoint: '/process-datasheet/datasheets/execute-hmb-cases/',
@@ -154,6 +155,8 @@ const HMBExtractorPage = () => {
   const [caseAssignments, setCaseAssignments] = useState({});
   const [casePreviewConfirmed, setCasePreviewConfirmed] = useState(false);
   const [replaceExisting, setReplaceExisting] = useState(false);
+  const [extractAllStreams, setExtractAllStreams] = useState(false);
+  const [syncStreamsBusy, setSyncStreamsBusy] = useState(false);
   const caseFileInputRef = useRef(null);
   const [projectSummary, setProjectSummary] = useState(null);
   const [canvasExportError, setCanvasExportError] = useState('');
@@ -308,13 +311,22 @@ const HMBExtractorPage = () => {
     const previewStreamIds = Array.from(
       new Set(preview.map((p) => String(p.stream_id || '').trim()).filter(Boolean))
     ).sort(streamIdCollator.compare);
-    const streamColumns = casePreviewRecords.length > 0
-      ? previewStreamIds.map((streamId, index) => ({
-        column_index: index + 4,
-        column_letter: columnLetter(index + 4),
-        stream_id: streamId,
-        description: '',
-      }))
+    const importedStreamIds = (Array.isArray(projectSummary?.stream_ids) ? projectSummary.stream_ids : [])
+      .map((sid) => String(sid || '').trim()).filter(Boolean).sort(streamIdCollator.compare);
+    const dynamicStreamIds = previewStreamIds.length > 0
+      ? previewStreamIds
+      : importedStreamIds;
+    const streamColumns = dynamicStreamIds.length > 0
+      ? dynamicStreamIds.map((streamId, index) => {
+        const templateMeta = templateStreamColumns.find((s) => String(s.stream_id) === streamId);
+        return {
+          column_index: index + 4,
+          column_letter: columnLetter(index + 4),
+          stream_id: streamId,
+          description: templateMeta?.description || '',
+          dynamic: !templateMeta,
+        };
+      })
       : templateStreamColumns;
     const canvasStreamIds = streamColumns.map((s) => String(s.stream_id || '').trim());
 
@@ -375,7 +387,7 @@ const HMBExtractorPage = () => {
             const loose = `${sectionKey}::${propKey}::${unitKey}::${resolvedStream}`;
             if (matrixValueMapExact.has(exact)) return matrixValueMapExact.get(exact);
             if (matrixValueMapLoose.has(loose)) return matrixValueMapLoose.get(loose);
-            return '';
+            return '\u2013';
           }),
         });
 
@@ -389,7 +401,7 @@ const HMBExtractorPage = () => {
             const loose = `${sectionKey}::${propKey}::${unitKey}::${resolvedStream}::${caseCol}`;
             if (valueMapExact.has(exact)) return valueMapExact.get(exact);
             if (valueMapLoose.has(loose)) return valueMapLoose.get(loose);
-            return '';
+            return '\u2013';
           });
           rows.push({
             section: section.label || '',
@@ -411,7 +423,7 @@ const HMBExtractorPage = () => {
       layout,
       layoutCells,
     };
-  }, [templateAnalysis, casePreviewRecords]);
+  }, [templateAnalysis, casePreviewRecords, projectSummary]);
 
   const masterCellStyle = useCallback((row, column, fallback = {}) => {
     const cell = templateCanvasModel.layoutCells?.get(`${row}:${column}`);
@@ -779,6 +791,29 @@ const HMBExtractorPage = () => {
     loadTemplateProfileDetail(selectedTemplateProfileId, { silent: true, withNotice: false });
   }, [selectedTemplateProfileId, templateAnalysis, loadTemplateProfileDetail]);
 
+  const handleSyncTemplateStreams = async () => {
+    if (!activeProject?.project_id || !selectedTemplateProfileId) {
+      setTemplateNotice('Select a project and master template first.');
+      return;
+    }
+    setSyncStreamsBusy(true);
+    setTemplateNotice('');
+    try {
+      const { data } = await apiClient.post(MASTER_TEMPLATE_CFG.syncStreamsEndpoint, {
+        project_id: activeProject.project_id,
+        template_profile_id: selectedTemplateProfileId,
+      }, { timeout: 120000 });
+      if (!data?.success) throw new Error(data?.error || 'Stream sync failed');
+      setTemplateNotice(`Template streams synced from source data: ${data.stream_count} streams (${data.added_dynamic_streams} added, ${data.retained_template_streams} retained).`);
+      await loadTemplateProfileDetail(selectedTemplateProfileId, { silent: true, withNotice: false });
+      await loadProjectSummary();
+    } catch (err) {
+      setTemplateNotice(err?.response?.data?.error || err.message || 'Stream sync failed.');
+    } finally {
+      setSyncStreamsBusy(false);
+    }
+  };
+
   const handleAnalyzeCases = async (incomingFiles = null) => {
     const context = selectionRef.current;
     const filesToImport = Array.isArray(incomingFiles) ? incomingFiles : caseFiles;
@@ -809,6 +844,7 @@ const HMBExtractorPage = () => {
       const fd = new FormData();
       fd.append('project_id', activeProject.project_id);
       fd.append('template_profile_id', resolvedTemplateProfileId);
+      if (extractAllStreams) fd.append('extract_all_streams', 'true');
       filesToImport.forEach((file) => fd.append('case_files', file));
       const { data } = await apiClient.post(MASTER_TEMPLATE_CFG.previewCasesEndpoint, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -1049,14 +1085,17 @@ const HMBExtractorPage = () => {
 
   useEffect(() => {
     const streams = Array.isArray(templateAnalysis?.stream_columns) ? templateAnalysis.stream_columns : [];
-    if (!streams.length) {
+    const importedIds = Array.isArray(projectSummary?.stream_ids) ? projectSummary.stream_ids : [];
+    const validIds = new Set([...streams.map((s) => String(s.stream_id)), ...importedIds.map(String)]);
+    if (!validIds.size) {
       setComparisonStreamId('');
       return;
     }
-    if (!streams.some((stream) => String(stream.stream_id) === String(comparisonStreamId))) {
-      setComparisonStreamId(String(streams[0].stream_id));
+    if (!validIds.has(String(comparisonStreamId))) {
+      const fallback = streams.length ? String(streams[0].stream_id) : String(importedIds[0]);
+      setComparisonStreamId(fallback);
     }
-  }, [templateAnalysis, comparisonStreamId]);
+  }, [templateAnalysis, projectSummary, comparisonStreamId]);
 
   const loadStreamComparison = useCallback(async () => {
     const context = selectionRef.current;
@@ -1671,11 +1710,22 @@ const HMBExtractorPage = () => {
                   flexWrap: 'wrap',
                 }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>Attribute Alignment Audit</div>
-                  <div style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>
-                    Score: {templateAlignmentAudit.score}%
-                    {' | '}Matched: {templateAlignmentAudit.matched}/{templateAlignmentAudit.total}
-                    {' | '}Missing: {templateAlignmentAudit.missingCount}
-                    {' | '}Unit Mismatch: {templateAlignmentAudit.unitMismatchCount}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={handleSyncTemplateStreams}
+                      disabled={syncStreamsBusy || !selectedTemplateProfileId || !activeProject?.project_id}
+                      title="Rebuild the template's stream columns from the stream IDs actually found in imported case files (e.g. 1, 2, 3...) instead of the fixed IDs in the uploaded Master file"
+                      style={{ height: 26, display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #94b8b0', borderRadius: 6, padding: '0 9px', background: '#fff', color: '#123b35', fontSize: 11, fontWeight: 700, cursor: syncStreamsBusy ? 'wait' : 'pointer', opacity: syncStreamsBusy || !selectedTemplateProfileId ? 0.6 : 1 }}
+                    >
+                      <RefreshCw width={12} /> {syncStreamsBusy ? 'Syncing...' : 'Sync Streams from Data'}
+                    </button>
+                    <div style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>
+                      Score: {templateAlignmentAudit.score}%
+                      {' | '}Matched: {templateAlignmentAudit.matched}/{templateAlignmentAudit.total}
+                      {' | '}Missing: {templateAlignmentAudit.missingCount}
+                      {' | '}Unit Mismatch: {templateAlignmentAudit.unitMismatchCount}
+                    </div>
                   </div>
                 </div>
 
@@ -1810,11 +1860,28 @@ const HMBExtractorPage = () => {
                         onChange={(event) => setComparisonStreamId(event.target.value)}
                         style={{ height: 34, minWidth: 190, border: '1px solid #94b8b0', borderRadius: 6, padding: '0 9px', background: '#fff', fontSize: 12 }}
                       >
-                        {(templateAnalysis?.stream_columns || []).map((stream) => (
-                          <option key={stream.stream_id} value={stream.stream_id}>
-                            {stream.stream_id} {stream.description ? `- ${stream.description}` : ''}
-                          </option>
-                        ))}
+                        {(() => {
+                          const templateStreams = templateAnalysis?.stream_columns || [];
+                          const known = new Map(templateStreams.map((stream) => [String(stream.stream_id), stream]));
+                          const importedIds = Array.isArray(projectSummary?.stream_ids) ? projectSummary.stream_ids : [];
+                          const dynamicIds = importedIds.filter((sid) => !known.has(String(sid)));
+                          return (
+                            <>
+                              {templateStreams.map((stream) => (
+                                <option key={stream.stream_id} value={stream.stream_id}>
+                                  {stream.stream_id} {stream.description ? `- ${stream.description}` : ''}
+                                </option>
+                              ))}
+                              {dynamicIds.length > 0 && (
+                                <optgroup label={`Extracted streams (${dynamicIds.length})`}>
+                                  {dynamicIds.map((sid) => (
+                                    <option key={`dyn-${sid}`} value={sid}>{sid}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </>
+                          );
+                        })()}
                       </select>
                       <button
                         onClick={loadStreamComparison}
@@ -1901,7 +1968,7 @@ const HMBExtractorPage = () => {
                                 <button type="button" title="Inspect source value" aria-label={`Inspect ${caseName} ${row.section} ${row.property} ${row.unit}`}
                                   onClick={() => setInspectedValue({ caseName, property: row.property, unit: row.unit, value: row.values?.[caseName], source: row.sources?.[caseName] || {} })}
                                   style={{ font: 'inherit', color: 'inherit', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'right', width: '100%' }}>
-                                  {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '-' : row.values[caseName]}
+                                  {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '\u2013' : row.values[caseName]}
                                 </button>
                               </td>
                             ))}
@@ -2099,6 +2166,11 @@ const HMBExtractorPage = () => {
                   <span style={{ fontSize: 12, color: selectedTemplateProfileId ? '#176b5b' : '#92400e', fontWeight: 700 }}>
                     {selectedTemplateProfileId ? 'Master template ready' : 'Template setup required'}
                   </span>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#0f172a', fontWeight: 600, cursor: 'pointer' }}
+                    title="Extract every stream found in the source files, not just the streams defined in the master template">
+                    <input type="checkbox" checked={extractAllStreams} onChange={(event) => { setExtractAllStreams(event.target.checked); setCasePreviewConfirmed(false); }} />
+                    Extract all source streams
+                  </label>
                 </div>
 
                 {!selectedTemplateProfileId && (
