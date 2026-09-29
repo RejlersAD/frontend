@@ -801,7 +801,7 @@ class SalesService {
   }
 
   async createMailboxConnection(payload) {
-    return (await apiClient.post(`${BASE_URL}/mailbox-connections/`, payload))
+    return (await apiClient.post(`${BASE_URL}/mailbox-connections/`, payload, EMAIL_REQUEST_OPTIONS))
       .data;
   }
 
@@ -810,6 +810,7 @@ class SalesService {
       await apiClient.patch(
         `${BASE_URL}/mailbox-connections/${connectionId}/`,
         payload,
+        EMAIL_REQUEST_OPTIONS,
       )
     ).data;
   }
@@ -818,8 +819,18 @@ class SalesService {
     return (
       await apiClient.post(
         `${BASE_URL}/mailbox-connections/${connectionId}/test-connection/`,
+        {},
+        EMAIL_REQUEST_OPTIONS,
       )
     ).data;
+  }
+
+  async configureMailboxSync(connectionId, enabled, expectedIdentity) {
+    return (await apiClient.post(
+      `${BASE_URL}/mailbox-connections/${encodeURIComponent(connectionId)}/configure-sync/`,
+      { enabled, ...(expectedIdentity ? { expected_identity: expectedIdentity } : {}) },
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
   }
 
   async connectOutlook(connectionId) {
